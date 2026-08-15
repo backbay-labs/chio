@@ -46,3 +46,22 @@ fn legacy_custom_recovery_token(
         issuer,
     )?)
 }
+
+fn assert_superseded_reservation_replays(lane: &Lane, web: &MarketWeb) -> TestResult {
+    let replayed = lane.coordinator.reserve(
+        &lane.purchase.handshake.bid,
+        &lane.purchase.handshake.ask,
+        &lane.purchase.handshake.buyer_signature_hex,
+        &web.admission,
+        &web.authorization,
+        EXPOSURE_UNITS,
+        RESERVATION_TTL_SECS,
+        unix_timestamp_now(),
+    )?;
+    assert_eq!(
+        VerifiedReservationReceipt::from_signed(&replayed, &keypair(16).public_key())?.receipt_id(),
+        lane.purchase.handshake.reservation_id,
+        "a response-loss retry must recover the committed reservation after supersession"
+    );
+    Ok(())
+}

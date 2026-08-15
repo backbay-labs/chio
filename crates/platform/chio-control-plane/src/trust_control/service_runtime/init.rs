@@ -8,12 +8,15 @@ use chio_http_serve::{
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-#[cfg(feature = "cognition-market-experimental")]
 pub(crate) async fn serve_async(
     config: TrustServiceConfig,
     injected_joint_authority_store: Option<Arc<SqliteAuthorityStore>>,
+    finding_rail: Option<Arc<dyn super::super::finding_handlers::FindingRailObserver>>,
     finding_purchase_executor: Option<
         super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+    >,
+    finding_authority_status_resolver: Option<
+        Arc<dyn super::super::finding_challenge_coordinator::FindingAuthorityStatusResolver>,
     >,
     finding_challenge_executor: Option<
         Arc<dyn super::super::finding_challenge_handlers::FindingChallengeSubmissionExecutor>,
@@ -22,37 +25,40 @@ pub(crate) async fn serve_async(
     serve_async_inner(
         config,
         injected_joint_authority_store,
+        finding_rail,
         finding_purchase_executor,
+        finding_authority_status_resolver,
         finding_challenge_executor,
     )
     .await
 }
 
-#[cfg(not(feature = "cognition-market-experimental"))]
-pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliError> {
-    serve_async_inner(config).await
-}
-
 async fn serve_async_inner(
     config: TrustServiceConfig,
-    #[cfg(feature = "cognition-market-experimental")] injected_joint_authority_store: Option<
-        Arc<SqliteAuthorityStore>,
-    >,
-    #[cfg(feature = "cognition-market-experimental")] finding_purchase_executor: Option<
+    injected_joint_authority_store: Option<Arc<SqliteAuthorityStore>>,
+    finding_rail: Option<Arc<dyn super::super::finding_handlers::FindingRailObserver>>,
+    finding_purchase_executor: Option<
         super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
     >,
-    #[cfg(feature = "cognition-market-experimental")] finding_challenge_executor: Option<
+    finding_authority_status_resolver: Option<
+        Arc<dyn super::super::finding_challenge_coordinator::FindingAuthorityStatusResolver>,
+    >,
+    finding_challenge_executor: Option<
         Arc<dyn super::super::finding_challenge_handlers::FindingChallengeSubmissionExecutor>,
     >,
 ) -> Result<(), CliError> {
     config.validate()?;
+    validate_finding_purchase_runtime_dependencies(
+        finding_purchase_executor.is_some(),
+        finding_rail.is_some(),
+        finding_authority_status_resolver.is_some(),
+    )?;
     let enterprise_provider_registry = load_enterprise_provider_registry(
         config.enterprise_providers_file.as_deref(),
         "trust_control",
     )?;
     let verifier_policy_registry =
         load_verifier_policy_registry(config.verifier_policies_file.as_deref(), "trust_control")?;
-    #[cfg(feature = "cognition-market-experimental")]
     let joint_authority_store = match injected_joint_authority_store {
         Some(store) => {
             validate_injected_joint_authority_store(&config, &store)?;
@@ -60,8 +66,20 @@ async fn serve_async_inner(
         }
         None => open_configured_joint_authority_store(&config)?,
     };
-    #[cfg(not(feature = "cognition-market-experimental"))]
-    let joint_authority_store = open_configured_joint_authority_store(&config)?;
+    if let Some(purchase_executor) = finding_purchase_executor.as_ref() {
+        let serving_authority = joint_authority_store.as_ref().ok_or_else(|| {
+            CliError::cli_other_error(
+                "finding purchase runtime requires the configured joint authority database"
+                    .to_string(),
+            )
+        })?;
+        let serving_fence = serving_authority.mutation_fence();
+        let purchase_fence = purchase_executor.mutation_fence();
+        super::super::config_and_public::validate_finding_market_mutation_fence(
+            &serving_fence,
+            &purchase_fence,
+        )?;
+    }
     let fiscal_runtime = compose_trust_fiscal_runtime(
         joint_authority_store.as_ref(),
         config.fiscal_runtime.as_ref(),
@@ -98,14 +116,6 @@ async fn serve_async_inner(
         FederationAdmissionRateLimiter::from_memory_budget(&config.memory_budget),
     ));
     let cluster_progress = cluster.as_ref().map(|_| Arc::new(ClusterProgress::new()));
-    // The evidenced rail is present exactly when the finding market
-    // is configured, so activation fails closed on unconfigured venues.
-    #[cfg(feature = "cognition-market-experimental")]
-    let finding_rail: Option<Arc<dyn super::super::finding_handlers::FindingRailObserver>> =
-        config.finding_market.as_ref().map(|_| {
-            Arc::new(super::super::finding_handlers::VenueLedgerRailObserver)
-                as Arc<dyn super::super::finding_handlers::FindingRailObserver>
-        });
     let state = TrustServiceState {
         config,
         joint_authority_store,
@@ -117,11 +127,9 @@ async fn serve_async_inner(
         federation_admission_rate_limiter,
         cluster,
         cluster_progress,
-        #[cfg(feature = "cognition-market-experimental")]
         finding_rail,
-        #[cfg(feature = "cognition-market-experimental")]
         finding_purchase_executor,
-        #[cfg(feature = "cognition-market-experimental")]
+        finding_authority_status_resolver,
         finding_challenge_executor,
     };
     let controller = ShutdownController::install();
@@ -201,7 +209,24 @@ async fn serve_async_inner(
     })
 }
 
-#[cfg(feature = "cognition-market-experimental")]
+fn validate_finding_purchase_runtime_dependencies(
+    has_purchase_executor: bool,
+    has_rail: bool,
+    has_authority_status_resolver: bool,
+) -> Result<(), CliError> {
+    if has_purchase_executor && !has_rail {
+        return Err(CliError::cli_other_error(
+            "finding purchase runtime requires an idempotent settlement rail".to_string(),
+        ));
+    }
+    if has_purchase_executor && !has_authority_status_resolver {
+        return Err(CliError::cli_other_error(
+            "finding purchase runtime requires an authority-status resolver".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_injected_joint_authority_store(
     config: &TrustServiceConfig,
     store: &SqliteAuthorityStore,
@@ -246,18 +271,14 @@ fn cluster_join_budget(drain_timeout: Duration, elapsed_since_signal: Duration) 
 #[cfg(test)]
 mod tests {
     use super::cluster_join_budget;
-    #[cfg(feature = "cognition-market-experimental")]
     use super::{
-        open_configured_joint_authority_store, validate_injected_joint_authority_store,
-        SqliteAuthorityStore, TrustServiceConfig,
+        open_configured_joint_authority_store, validate_finding_purchase_runtime_dependencies,
+        validate_injected_joint_authority_store, SqliteAuthorityStore, TrustServiceConfig,
     };
-    #[cfg(feature = "cognition-market-experimental")]
     use std::collections::BTreeMap;
-    #[cfg(feature = "cognition-market-experimental")]
     use std::path::{Path, PathBuf};
     use std::time::Duration;
 
-    #[cfg(feature = "cognition-market-experimental")]
     fn test_config(joint_authority_db_path: PathBuf) -> TrustServiceConfig {
         TrustServiceConfig {
             listen: "127.0.0.1:0"
@@ -294,7 +315,7 @@ mod tests {
         }
     }
 
-    #[cfg(all(feature = "cognition-market-experimental", unix))]
+    #[cfg(unix)]
     fn secure_directory(path: &Path) -> std::io::Result<()> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
@@ -319,7 +340,27 @@ mod tests {
         }
     }
 
-    #[cfg(all(feature = "cognition-market-experimental", unix))]
+    #[test]
+    fn purchase_runtime_requires_rail_and_authority_status_resolution() {
+        assert!(validate_finding_purchase_runtime_dependencies(false, false, false).is_ok());
+        assert!(validate_finding_purchase_runtime_dependencies(true, true, true).is_ok());
+
+        let Err(missing_rail) = validate_finding_purchase_runtime_dependencies(true, false, true)
+        else {
+            panic!("purchase runtime without a rail must fail closed");
+        };
+        assert!(missing_rail.to_string().contains("settlement rail"));
+
+        let Err(missing_status) = validate_finding_purchase_runtime_dependencies(true, true, false)
+        else {
+            panic!("purchase runtime without status resolution must fail closed");
+        };
+        assert!(missing_status
+            .to_string()
+            .contains("authority-status resolver"));
+    }
+
+    #[cfg(unix)]
     #[test]
     fn injected_challenge_authority_must_match_configured_database(
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -349,7 +390,7 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(all(feature = "cognition-market-experimental", unix))]
+    #[cfg(unix)]
     #[test]
     fn configured_joint_authority_hardens_an_existing_lock_root(
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -416,7 +457,7 @@ mod windows_authority_tests {
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         };
 
-        let Err(error) = serve_async(config).await else {
+        let Err(error) = serve_async(config, None, None, None, None, None).await else {
             return Err(CliError::cli_other_error(
                 "Windows trust service unexpectedly started with a joint authority database",
             ));

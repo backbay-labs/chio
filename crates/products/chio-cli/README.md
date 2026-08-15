@@ -74,7 +74,7 @@ Full flag reference: `chio <command> [<subcommand>...] --help`.
 | `attest` | `buyer`, `supply-chain`, `runtime-quote` | Verify offline attestation evidence and buyer proof packages. |
 | `runtime` | `admit`, `sign-trust-input`, `policy`, `peer-weights`, `pheromone`, `orchestrate`, `ops`, `run-loopback` | Evaluate local live-runtime admission artifacts. |
 | `pheromone` | `receive`, `query`, `relay` (relay nests ~45 more, 7 levels deep) | Receive, query, and relay pheromone artifacts. |
-| `finding` | `publish`, `search`, `verify`, `buy`, `challenge` | Publish, discover, verify, purchase, and dispute cognition-market findings. Requires the `cognition-market-experimental` feature. |
+| `finding` | `publish`, `search`, `verify`, `buy`, `challenge`, `status` | Publish, discover, verify, purchase, dispute, and inspect cognition-market findings. |
 | `replay <log>` | `traffic` | Re-verify a captured receipt log against the current build. |
 | `settle` | `status` | Inspect pending, settled, and dead-lettered settlements. |
 | `lineage` | `query`, `diff`, `roots` | Query, diff, and list anchored roots in the lineage DAG. |
@@ -110,11 +110,25 @@ meaningful against exact bytes.
 `chio.finding.challenge-verifier-profile.v1` envelope), `admitted_kernel_keys`
 (an array of bare Ed25519 hex keys), `collateral_authority`, and an optional
 `trusted_time` in unix seconds. Without `trusted_time` the local clock is
-used and the report says so.
+used and the report says so. Status verification additionally requires the
+paired `status_operator_authorization` and `status_freshness_policy` object;
+the latter carries a nonzero `max_epoch_age_secs`, while its evaluation clock
+is the same trusted time recorded in the report.
 
 `chio finding verify --evidence <FILE>` supplies resolved evidence:
 `receipts` (each `{receipt, inclusion_proof}`), `checkpoints`, and an
-optional `bond_snapshot` of `{backing, live, accepted_at}`. Every member is
+optional `bond_snapshot` of `{backing, store_snapshot}`. The collateral
+authority must sign `store_snapshot`, which binds the exact backing-envelope
+digest, allocation, Finding, liveness, acceptance time, and evaluation time.
+A portable status proof is carried as `status_proof_input_b64`, preserving the
+exact canonical
+`chio.finding.status-proof-input.v1` bytes. It is accepted only when the paired
+status trust fields above are pinned and `--status-rollback-floor <FILE>` names
+durable per-feed high-water state. The same floor file may be shared with
+`chio finding status`; a signed proof below its retained map epoch or a
+same-epoch conflicting root fails closed. Sticky retractions are partitioned
+into immutable records under the sibling `<FILE>.retractions/` directory, so
+operators must retain that directory with the floor file. Every member is
 optional; a facet whose evidence is absent reports unavailable and is never
 collapsed into a verified badge.
 
@@ -230,7 +244,6 @@ chio mcp serve --policy policy.yaml --server-id fs -- \
 |---|---|
 | `tee-quotes` | Enables `chio-attest-verify/tee-quotes`: TCB-collateral parsing for `chio attest runtime-quote verify` (Intel TDX, AMD SEV-SNP, AWS Nitro). |
 | `iroh` | Links `chio-federation-transport-iroh` into the binary. Off by default so the shipped `chio` keeps the smaller supply-chain surface. |
-| `cognition-market-experimental` | Compiles the `chio finding` family and forwards to `chio-control-plane/cognition-market-experimental`, whose finding routes carry the same flag. Default builds link none of the finding crates. |
 
 ## Testing
 

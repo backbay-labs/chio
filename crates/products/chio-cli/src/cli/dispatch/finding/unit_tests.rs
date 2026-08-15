@@ -3,10 +3,13 @@ use super::*;
 use super::finding_challenge::{
     load_challenge_evidence_document, prepare_challenge, FINDING_CHALLENGE_EVIDENCE_MAX_BYTES,
 };
-use super::finding_verify::{strict_finding_ingress, AcceptedFinding};
+use super::finding_verify::{
+    strict_finding_ingress, AcceptedFinding, CliFindingNonceResolver,
+};
 use crate::cli_entrypoint_support::parse_cli;
 use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
+use chio_core_types::message::{ExecutionNonce, NonceBinding, SignedExecutionNonce};
 use chio_core_types::receipt::body::{ChioReceipt, ChioReceiptBody};
 use chio_core_types::receipt::decision::{Decision, ToolCallAction};
 use chio_core_types::receipt::kinds::TrustLevel;
@@ -28,6 +31,7 @@ use chio_finding::{
 use chio_open_market::purchase_verification::{
     derive_payment_operation_id, derive_purchase_intent_id,
 };
+use chio_finding_verifier::FindingNonceResolver;
 use wiremock::matchers::{body_string, header, method, path as path_matcher, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -301,6 +305,8 @@ fn verify_subcommand_parses() {
         "evidence.json",
         "--recipe",
         "recipe.bin",
+        "--status-rollback-floor",
+        "status-floor.json",
     ])
     .unwrap();
     match cli.command {
@@ -312,6 +318,7 @@ fn verify_subcommand_parses() {
                     trust_roots,
                     evidence,
                     recipe,
+                    status_rollback_floor,
                     integrity_only,
                 },
         } => {
@@ -320,6 +327,10 @@ fn verify_subcommand_parses() {
             assert_eq!(trust_roots, Some(PathBuf::from("roots.json")));
             assert_eq!(evidence, Some(PathBuf::from("evidence.json")));
             assert_eq!(recipe, Some(PathBuf::from("recipe.bin")));
+            assert_eq!(
+                status_rollback_floor,
+                Some(PathBuf::from("status-floor.json"))
+            );
             assert!(!integrity_only);
         }
         _ => panic!("expected finding verify command"),
@@ -517,506 +528,8 @@ fn status_requires_a_venue_url() {
     assert!(error.contains("--control-url"), "unexpected error: {error}");
 }
 
-include!("status_floor_time_tests.rs");
-
-#[test]
-fn status_floor_accepts_same_key_authorization_refresh_and_rejects_key_equivocation() {
-    let dir = tempfile::tempdir().unwrap();
-    let floor_path = dir.path().join("status-floor.json");
-    let mut authorization = chio_finding::FindingStatusOperatorAuthorization {
-        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
-        feed_id: "status-feed/venue-01".to_owned(),
-        operator: chio_finding::FindingAuthorityKeyPolicy {
-            authority_id: "venue-01-status-operator".to_owned(),
-            key: Keypair::from_seed(&[91_u8; 32]).public_key(),
-            key_epoch: 4,
-            valid_from: 1_700_000_000,
-            valid_until: 1_900_000_000,
-            rotation_policy_ref: "governance/status-rotation".to_owned(),
-            revocation_status_ref: "governance/status-revocation".to_owned(),
-        },
-        revoked_from: None,
-    };
-    let response = FindingStatusProofResponse {
-        feed_id: authorization.feed_id.clone(),
-        key_domain_nonce: 3_318_287_169_837_494,
-        map_epoch: 8,
-        epoch_id: "1".repeat(64),
-        root_hash: "2".repeat(64),
-        finding_id: GOLDEN_FINDING_ID.to_owned(),
-        proof_kind: "non_inclusion".to_owned(),
-        proof_sha256: "3".repeat(64),
-        proof_input_b64: String::new(),
-        signed_epoch_sha256: "4".repeat(64),
-        signed_epoch_b64: String::new(),
-        service_bond_evidence_sha256: "9".repeat(64),
-        checked_at: 1_800_000_000,
-        valid_until: 1_800_000_300,
-    };
-    let initial_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
-    advance_status_floor(
-        &floor_path,
-        &response,
-        &authorization,
-        &initial_sha256,
-        1_800_000_000,
-    )
-    .unwrap();
-
-    authorization.operator.valid_until = 1_950_000_000;
-    let refreshed_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
-    let mut refreshed_response = response;
-    assert!(advance_status_floor(
-        &floor_path,
-        &refreshed_response,
-        &authorization,
-        &refreshed_sha256,
-        1_800_000_001,
-    )
-    .unwrap_err()
-    .to_string()
-    .contains("did not advance"));
-    refreshed_response.map_epoch = 9;
-    refreshed_response.epoch_id = "5".repeat(64);
-    refreshed_response.root_hash = "6".repeat(64);
-    advance_status_floor(
-        &floor_path,
-        &refreshed_response,
-        &authorization,
-        &refreshed_sha256,
-        1_800_000_001,
-    )
-    .unwrap();
-    let floor = read_status_floor(&floor_path).unwrap().unwrap();
-    assert_eq!(floor.operator_key, Some(authorization.operator.key.clone()));
-    assert_eq!(floor.operator_authorization_sha256, refreshed_sha256);
-
-    authorization.operator.key = Keypair::from_seed(&[92_u8; 32]).public_key();
-    let substituted_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
-    refreshed_response.map_epoch = 10;
-    assert!(advance_status_floor(
-        &floor_path,
-        &refreshed_response,
-        &authorization,
-        &substituted_sha256,
-        1_800_000_002,
-    )
-    .unwrap_err()
-    .to_string()
-    .contains("key equivocated"));
-}
-
-#[test]
-fn status_floor_keeps_retractions_sticky_across_later_epochs() {
-    let dir = tempfile::tempdir().unwrap();
-    let floor_path = dir.path().join("status-floor.json");
-    let authorization = chio_finding::FindingStatusOperatorAuthorization {
-        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
-        feed_id: "status-feed/venue-01".to_owned(),
-        operator: chio_finding::FindingAuthorityKeyPolicy {
-            authority_id: "venue-01-status-operator".to_owned(),
-            key: Keypair::from_seed(&[91_u8; 32]).public_key(),
-            key_epoch: 4,
-            valid_from: 1_700_000_000,
-            valid_until: 1_900_000_000,
-            rotation_policy_ref: "governance/status-rotation".to_owned(),
-            revocation_status_ref: "governance/status-revocation".to_owned(),
-        },
-        revoked_from: None,
-    };
-    let authorization_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
-    let mut response = FindingStatusProofResponse {
-        feed_id: authorization.feed_id.clone(),
-        key_domain_nonce: 3_318_287_169_837_494,
-        map_epoch: 8,
-        epoch_id: "1".repeat(64),
-        root_hash: "2".repeat(64),
-        finding_id: GOLDEN_FINDING_ID.to_owned(),
-        proof_kind: "inclusion".to_owned(),
-        proof_sha256: "3".repeat(64),
-        proof_input_b64: String::new(),
-        signed_epoch_sha256: "4".repeat(64),
-        signed_epoch_b64: String::new(),
-        service_bond_evidence_sha256: "9".repeat(64),
-        checked_at: 1_800_000_000,
-        valid_until: 1_800_000_300,
-    };
-    advance_status_floor(
-        &floor_path,
-        &response,
-        &authorization,
-        &authorization_sha256,
-        1_800_000_000,
-    )
-    .unwrap();
-
-    response.map_epoch = 9;
-    response.epoch_id = "5".repeat(64);
-    response.root_hash = "6".repeat(64);
-    response.proof_kind = "non_inclusion".to_owned();
-    assert!(advance_status_floor(
-        &floor_path,
-        &response,
-        &authorization,
-        &authorization_sha256,
-        1_800_000_001,
-    )
-    .unwrap_err()
-    .to_string()
-    .contains("durably retracted"));
-    let retraction_directory = dir.path().join("status-floor.json.retractions");
-    assert_eq!(
-        std::fs::read_dir(retraction_directory).unwrap().count(),
-        1
-    );
-}
-
-#[test]
-fn status_floor_migrates_v1_epoch_and_sticky_retractions() {
-    let dir = tempfile::tempdir().unwrap();
-    let floor_path = dir.path().join("status-floor.json");
-    let authorization = chio_finding::FindingStatusOperatorAuthorization {
-        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
-        feed_id: "status-feed/venue-01".to_owned(),
-        operator: chio_finding::FindingAuthorityKeyPolicy {
-            authority_id: "venue-01-status-operator".to_owned(),
-            key: Keypair::from_seed(&[91_u8; 32]).public_key(),
-            key_epoch: 4,
-            valid_from: 1_700_000_000,
-            valid_until: 1_900_000_000,
-            rotation_policy_ref: "governance/status-rotation".to_owned(),
-            revocation_status_ref: "governance/status-revocation".to_owned(),
-        },
-        revoked_from: None,
-    };
-    let authorization_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
-    let legacy = status_floor::FindingStatusCliFloorV1 {
-        schema: "chio.finding.status-cli-floor.v1".to_owned(),
-        feed_id: authorization.feed_id.clone(),
-        operator_id: authorization.operator.authority_id.clone(),
-        rotation_policy_ref: authorization.operator.rotation_policy_ref.clone(),
-        operator_key_epoch: authorization.operator.key_epoch,
-        operator_key: Some(authorization.operator.key.clone()),
-        operator_authorization_sha256: authorization_sha256.clone(),
-        key_domain_nonce: 3_318_287_169_837_494,
-        map_epoch: 8,
-        epoch_id: "1".repeat(64),
-        root_hash: "2".repeat(64),
-        retracted_finding_ids: std::iter::once(GOLDEN_FINDING_ID.to_owned()).collect(),
-    };
-    std::fs::write(&floor_path, canonical_json_bytes(&legacy).unwrap()).unwrap();
-
-    let mut response = FindingStatusProofResponse {
-        feed_id: authorization.feed_id.clone(),
-        key_domain_nonce: legacy.key_domain_nonce,
-        map_epoch: 9,
-        epoch_id: "3".repeat(64),
-        root_hash: "4".repeat(64),
-        finding_id: "f".repeat(64),
-        proof_kind: "non_inclusion".to_owned(),
-        proof_sha256: "5".repeat(64),
-        proof_input_b64: String::new(),
-        signed_epoch_sha256: "6".repeat(64),
-        signed_epoch_b64: String::new(),
-        service_bond_evidence_sha256: "9".repeat(64),
-        checked_at: 1_800_000_000,
-        valid_until: 1_800_000_300,
-    };
-    advance_status_floor(
-        &floor_path,
-        &response,
-        &authorization,
-        &authorization_sha256,
-        1_800_000_000,
-    )
-    .unwrap();
-
-    let migrated = read_status_floor(&floor_path).unwrap().unwrap();
-    assert_eq!(migrated.schema, "chio.finding.status-cli-floor.v2");
-    assert_eq!(migrated.map_epoch, 9);
-    assert_eq!(
-        std::fs::read_dir(dir.path().join("status-floor.json.retractions"))
-            .unwrap()
-            .count(),
-        1
-    );
-
-    response.map_epoch = 10;
-    response.epoch_id = "7".repeat(64);
-    response.root_hash = "8".repeat(64);
-    response.finding_id = GOLDEN_FINDING_ID.to_owned();
-    assert!(advance_status_floor(
-        &floor_path,
-        &response,
-        &authorization,
-        &authorization_sha256,
-        1_800_000_001,
-    )
-    .unwrap_err()
-    .to_string()
-    .contains("durably retracted"));
-}
-
-#[test]
-fn status_floor_partitions_retractions_without_growing_the_epoch_document() {
-    let dir = tempfile::tempdir().unwrap();
-    let floor_path = dir.path().join("status-floor.json");
-    let authorization = chio_finding::FindingStatusOperatorAuthorization {
-        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
-        feed_id: "status-feed/venue-01".to_owned(),
-        operator: chio_finding::FindingAuthorityKeyPolicy {
-            authority_id: "venue-01-status-operator".to_owned(),
-            key: Keypair::from_seed(&[91_u8; 32]).public_key(),
-            key_epoch: 4,
-            valid_from: 1_700_000_000,
-            valid_until: 1_900_000_000,
-            rotation_policy_ref: "governance/status-rotation".to_owned(),
-            revocation_status_ref: "governance/status-revocation".to_owned(),
-        },
-        revoked_from: None,
-    };
-    let authorization_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
-    let mut response = FindingStatusProofResponse {
-        feed_id: authorization.feed_id.clone(),
-        key_domain_nonce: 3_318_287_169_837_494,
-        map_epoch: 8,
-        epoch_id: "1".repeat(64),
-        root_hash: "2".repeat(64),
-        finding_id: String::new(),
-        proof_kind: "inclusion".to_owned(),
-        proof_sha256: "3".repeat(64),
-        proof_input_b64: String::new(),
-        signed_epoch_sha256: "4".repeat(64),
-        signed_epoch_b64: String::new(),
-        service_bond_evidence_sha256: "9".repeat(64),
-        checked_at: 1_800_000_000,
-        valid_until: 1_800_000_300,
-    };
-    for index in 0..300_u16 {
-        response.finding_id = format!("{index:064x}");
-        advance_status_floor(
-            &floor_path,
-            &response,
-            &authorization,
-            &authorization_sha256,
-            1_800_000_000,
-        )
-        .unwrap();
-    }
-
-    assert!(read_status_floor(&floor_path).unwrap().is_some());
-    assert!(
-        std::fs::metadata(&floor_path).unwrap().len() < 16 * 1024,
-        "epoch floor exceeded its read bound"
-    );
-    let retraction_directory = dir.path().join("status-floor.json.retractions");
-    assert_eq!(
-        std::fs::read_dir(retraction_directory).unwrap().count(),
-        300
-    );
-}
-
-#[test]
-fn status_floor_lock_recovers_from_stale_sidecar_and_excludes_live_writer() {
-    let dir = tempfile::tempdir().unwrap();
-    let floor_path = dir.path().join("status-floor.json");
-    let lock_path = dir.path().join("status-floor.json.lock");
-    std::fs::write(&lock_path, b"stale owner").unwrap();
-
-    let first = FindingStatusFloorLock::acquire(&floor_path).unwrap();
-    assert!(FindingStatusFloorLock::acquire(&floor_path).is_err());
-    drop(first);
-    FindingStatusFloorLock::acquire(&floor_path).unwrap();
-}
-
-#[test]
-fn status_rejects_oversized_encoded_proof_before_decoding() {
-    let authorization = chio_finding::FindingStatusOperatorAuthorization {
-        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
-        feed_id: "status-feed/venue-01".to_owned(),
-        operator: chio_finding::FindingAuthorityKeyPolicy {
-            authority_id: "venue-01-status-operator".to_owned(),
-            key: Keypair::from_seed(&[91_u8; 32]).public_key(),
-            key_epoch: 4,
-            valid_from: 1_700_000_000,
-            valid_until: 1_900_000_000,
-            rotation_policy_ref: "governance/status-rotation".to_owned(),
-            revocation_status_ref: "governance/status-revocation".to_owned(),
-        },
-        revoked_from: None,
-    };
-    let max_encoded_proof =
-        (chio_finding::MAX_FINDING_STATUS_PROOF_BYTES.saturating_add(2) / 3)
-            .saturating_mul(4);
-    let response = FindingStatusProofResponse {
-        feed_id: authorization.feed_id.clone(),
-        key_domain_nonce: 3_318_287_169_837_494,
-        map_epoch: 8,
-        epoch_id: "1".repeat(64),
-        root_hash: "2".repeat(64),
-        finding_id: GOLDEN_FINDING_ID.to_owned(),
-        proof_kind: "non_inclusion".to_owned(),
-        proof_sha256: "3".repeat(64),
-        proof_input_b64: "A".repeat(max_encoded_proof.saturating_add(1)),
-        signed_epoch_sha256: "4".repeat(64),
-        signed_epoch_b64: String::new(),
-        service_bond_evidence_sha256: "9".repeat(64),
-        checked_at: 1_800_000_000,
-        valid_until: 1_800_000_300,
-    };
-
-    let error = verify_status_projection(
-        &response,
-        &authorization.feed_id,
-        GOLDEN_FINDING_ID,
-        &authorization,
-        &"9".repeat(64),
-        300,
-        response.checked_at,
-    )
-    .unwrap_err()
-    .to_string();
-    assert!(error.contains("oversized"), "unexpected error: {error}");
-}
-
-#[test]
-fn status_rejects_a_projected_digest_that_does_not_hash_the_proof_bytes() {
-    let authorization = chio_finding::FindingStatusOperatorAuthorization {
-        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
-        feed_id: "status-feed/venue-01".to_owned(),
-        operator: chio_finding::FindingAuthorityKeyPolicy {
-            authority_id: "venue-01-status-operator".to_owned(),
-            key: Keypair::from_seed(&[91_u8; 32]).public_key(),
-            key_epoch: 4,
-            valid_from: 1_700_000_000,
-            valid_until: 1_900_000_000,
-            rotation_policy_ref: "governance/status-rotation".to_owned(),
-            revocation_status_ref: "governance/status-revocation".to_owned(),
-        },
-        revoked_from: None,
-    };
-    let response = FindingStatusProofResponse {
-        feed_id: authorization.feed_id.clone(),
-        key_domain_nonce: 3_318_287_169_837_494,
-        map_epoch: 8,
-        epoch_id: "1".repeat(64),
-        root_hash: "2".repeat(64),
-        finding_id: GOLDEN_FINDING_ID.to_owned(),
-        proof_kind: "non_inclusion".to_owned(),
-        proof_sha256: "3".repeat(64),
-        proof_input_b64: STANDARD.encode(b"{}"),
-        signed_epoch_sha256: "4".repeat(64),
-        signed_epoch_b64: String::new(),
-        service_bond_evidence_sha256: "9".repeat(64),
-        checked_at: 1_800_000_000,
-        valid_until: 1_800_000_300,
-    };
-
-    let error = verify_status_projection(
-        &response,
-        &authorization.feed_id,
-        GOLDEN_FINDING_ID,
-        &authorization,
-        &"9".repeat(64),
-        300,
-        response.checked_at,
-    )
-    .unwrap_err()
-    .to_string();
-    assert!(error.contains("proof digest"), "unexpected error: {error}");
-}
-
-#[test]
-fn status_operator_authorization_is_loaded_out_of_band_and_feed_pinned() {
-    let dir = tempfile::tempdir().unwrap();
-    let authorization = chio_finding::FindingStatusOperatorAuthorization {
-        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
-        feed_id: "status-feed/venue-01".to_owned(),
-        operator: chio_finding::FindingAuthorityKeyPolicy {
-            authority_id: "venue-01-status-operator".to_owned(),
-            key: Keypair::from_seed(&[91_u8; 32]).public_key(),
-            key_epoch: 4,
-            valid_from: 1_700_000_000,
-            valid_until: 1_900_000_000,
-            rotation_policy_ref: "governance/status-rotation".to_owned(),
-            revocation_status_ref: "governance/status-revocation".to_owned(),
-        },
-        revoked_from: Some(1_850_000_000),
-    };
-    let path = write_temp(
-        &dir,
-        "status-operator.json",
-        &canonical_json_string(&authorization).unwrap(),
-    );
-    assert_eq!(
-        load_status_operator_authorization(&path, "status-feed/venue-01").unwrap(),
-        authorization
-    );
-    let error = load_status_operator_authorization(&path, "status-feed/elsewhere")
-        .unwrap_err()
-        .to_string();
-    assert!(error.contains("different feed"), "unexpected error: {error}");
-}
-
-#[test]
-fn status_service_bond_is_canonical_operator_bound_and_current() {
-    let dir = tempfile::tempdir().unwrap();
-    let authorization = chio_finding::FindingStatusOperatorAuthorization {
-        role: chio_finding::FindingStatusOperatorRole::FindingStatusOperator,
-        feed_id: "status-feed/venue-01".to_owned(),
-        operator: chio_finding::FindingAuthorityKeyPolicy {
-            authority_id: "venue-01-status-operator".to_owned(),
-            key: Keypair::from_seed(&[91_u8; 32]).public_key(),
-            key_epoch: 4,
-            valid_from: 1_700_000_000,
-            valid_until: 1_900_000_000,
-            rotation_policy_ref: "governance/status-rotation".to_owned(),
-            revocation_status_ref: "governance/status-revocation".to_owned(),
-        },
-        revoked_from: None,
-    };
-    let authorization_sha256 = sha256_hex(&canonical_json_bytes(&authorization).unwrap());
-    let bond = chio_control_plane::trust_control::FindingStatusServiceBond {
-        bond_id: "status-bond-01".to_owned(),
-        feed_id: authorization.feed_id.clone(),
-        operator_id: authorization.operator.authority_id.clone(),
-        locked_units: 1_000,
-        currency: "USD".to_owned(),
-        valid_from: 1_799_999_000,
-        valid_until: 1_800_010_000,
-        inclusion_sla_secs: 600,
-        missed_inclusion_slash_units: 100,
-        equivocation_slash_units: 1_000,
-        evidence_sha256: "a".repeat(64),
-    };
-    let path = write_temp(
-        &dir,
-        "status-bond.json",
-        &canonical_json_string(&bond).unwrap(),
-    );
-    assert_eq!(
-        load_status_service_bond(
-            &path,
-            &authorization.feed_id,
-            &authorization,
-            &authorization_sha256,
-            1_800_000_000,
-        )
-        .unwrap(),
-        bond
-    );
-    let error = load_status_service_bond(
-        &path,
-        &authorization.feed_id,
-        &authorization,
-        &authorization_sha256,
-        bond.valid_until,
-    )
-    .unwrap_err()
-    .to_string();
-    assert!(error.contains("not current"), "unexpected error: {error}");
-}
-
+#[path = "unit_tests/status_floor.rs"]
+mod status_floor;
 #[test]
 fn finding_ids_must_be_lowercase_content_addresses() {
     assert!(require_finding_id(GOLDEN_FINDING_ID).is_ok());
@@ -1087,7 +600,7 @@ fn search_rejects_a_malformed_context_digest() {
 
 #[test]
 fn verify_requires_exactly_one_artifact_source() {
-    let error = cmd_finding_verify(None, None, None, None, None, true, false, None)
+    let error = cmd_finding_verify(None, None, None, None, None, None, true, false, None)
         .unwrap_err()
         .to_string();
     assert!(
@@ -1100,7 +613,17 @@ fn verify_requires_exactly_one_artifact_source() {
 fn verify_rejects_bytes_that_are_not_the_canonical_serialization() {
     let dir = tempfile::tempdir().unwrap();
     let path = write_temp(&dir, "pretty.json", GOLDEN_FINDING_RAW);
-    let error = cmd_finding_verify(Some(&path), None, None, None, None, true, false, None)
+    let error = cmd_finding_verify(
+        Some(&path),
+        None,
+        None,
+        None,
+        None,
+        None,
+        true,
+        false,
+        None,
+    )
         .unwrap_err()
         .to_string();
     assert!(
@@ -1113,7 +636,18 @@ fn verify_rejects_bytes_that_are_not_the_canonical_serialization() {
 fn verify_accepts_the_canonical_artifact_under_integrity_only() {
     let dir = tempfile::tempdir().unwrap();
     let path = write_temp(&dir, "finding.json", &canonical_golden_finding());
-    cmd_finding_verify(Some(&path), None, None, None, None, true, true, None).unwrap();
+    cmd_finding_verify(
+        Some(&path),
+        None,
+        None,
+        None,
+        None,
+        None,
+        true,
+        true,
+        None,
+    )
+    .unwrap();
 }
 
 #[test]
@@ -1156,6 +690,7 @@ fn verify_caps_every_support_file_before_parsing() {
             trust_roots.as_deref(),
             evidence.as_deref(),
             recipe.as_deref(),
+            None,
             false,
             true,
             None,
@@ -1169,11 +704,118 @@ fn verify_caps_every_support_file_before_parsing() {
     }
 }
 
+fn cli_nonce_evidence() -> (ChioReceipt, SignedExecutionNonce) {
+    let kernel = Keypair::from_seed(&[91; 32]);
+    let action = ToolCallAction::from_parameters(serde_json::json!({"input": "finding"}))
+        .unwrap();
+    let nonce_id = "nonce-cli-finding-1";
+    let receipt = ChioReceipt::sign(
+        ChioReceiptBody {
+            id: String::new(),
+            timestamp: 1_750_000_010,
+            capability_id: "cap-cli-finding-1".to_string(),
+            tool_server: "finding-server".to_string(),
+            tool_name: "finding.produce".to_string(),
+            action: action.clone(),
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
+            content_hash: "a".repeat(64),
+            policy_hash: "b".repeat(64),
+            evidence: Vec::new(),
+            metadata: Some(serde_json::json!({
+                "budget_authority": {
+                    "guarantee_level": "single_node_atomic",
+                    "authority_profile": "authoritative_hold_event",
+                    "metering_profile": "max_cost_preauthorize_then_reconcile_actual",
+                    "hold_id": "hold-cli-finding-1",
+                    "execution_nonce_id": nonce_id,
+                    "authorize": {
+                        "event_id": "hold-cli-finding-1:authorize",
+                        "exposure_units": 1,
+                        "committed_cost_units_after": 1
+                    },
+                    "terminal": {
+                        "disposition": "reconciled",
+                        "event_id": "hold-cli-finding-1:reconcile",
+                        "exposure_units": 1,
+                        "realized_spend_units": 1,
+                        "committed_cost_units_after": 1
+                    }
+                },
+                "financial": {
+                    "grant_index": 0,
+                    "cost_charged": 1,
+                    "currency": "USD",
+                    "budget_remaining": 99,
+                    "budget_total": 100,
+                    "delegation_depth": 0,
+                    "root_budget_holder": "finding-producer",
+                    "settlement_status": "settled"
+                }
+            })),
+            trust_level: TrustLevel::Mediated,
+            tenant_id: None,
+            kernel_key: kernel.public_key(),
+            bbs_projection_version: None,
+        },
+        &kernel,
+    )
+    .unwrap();
+    let nonce = ExecutionNonce {
+        schema: chio_kernel::execution_nonce::EXECUTION_NONCE_SCHEMA.to_string(),
+        nonce_id: nonce_id.to_string(),
+        issued_at: 1_750_000_009,
+        expires_at: 1_750_000_040,
+        bound_to: NonceBinding {
+            subject_id: "finding-producer".to_string(),
+            request_id: "request-cli-finding-1".to_string(),
+            capability_id: receipt.capability_id.clone(),
+            tool_server: receipt.tool_server.clone(),
+            tool_name: receipt.tool_name.clone(),
+            parameter_hash: action.parameter_hash,
+        },
+        reserved_hold_id: Some("hold-cli-finding-1".to_string()),
+        reserving_request_id: None,
+    };
+    let signature = kernel.sign(&canonical_json_bytes(&nonce).unwrap());
+    (receipt, SignedExecutionNonce { nonce, signature })
+}
+
+#[test]
+fn verify_resolves_bounded_signed_execution_nonce_evidence() {
+    let (receipt, nonce) = cli_nonce_evidence();
+    let resolver = CliFindingNonceResolver::new(vec![nonce.clone()]).unwrap();
+    let resolved = resolver.nonce_for(&receipt).expect("resolve nonce by receipt binding");
+    assert_eq!(resolved.nonce_id(), nonce.nonce_id());
+
+    assert!(CliFindingNonceResolver::new(vec![nonce.clone(), nonce.clone()]).is_err());
+    assert!(CliFindingNonceResolver::new(vec![
+        nonce;
+        chio_finding::MAX_FINDING_EVIDENCE_RECEIPTS + 2
+    ])
+    .is_err());
+}
+
 #[test]
 fn verify_refuses_to_call_integrity_alone_evidence_verification() {
     let dir = tempfile::tempdir().unwrap();
     let path = write_temp(&dir, "finding.json", &canonical_golden_finding());
-    let error = cmd_finding_verify(Some(&path), None, None, None, None, false, true, None)
+    let error = cmd_finding_verify(
+        Some(&path),
+        None,
+        None,
+        None,
+        None,
+        None,
+        false,
+        true,
+        None,
+    )
         .unwrap_err()
         .to_string();
     assert!(
@@ -1187,11 +829,58 @@ fn verify_refuses_to_call_integrity_alone_evidence_verification() {
 /// unavailable rather than collapsing them into a verified badge.
 fn golden_trust_roots() -> String {
     let profile: serde_json::Value = serde_json::from_str(GOLDEN_PROFILE_RAW).unwrap();
+    let governance_key = chio_core_types::crypto::PublicKey::from_hex(GOLDEN_GOVERNANCE_AUTHORITY)
+        .unwrap();
+    let governance_policy = chio_finding::FindingAuthorityKeyPolicy {
+        authority_id: "profile-governance".to_owned(),
+        key: governance_key.clone(),
+        key_epoch: 1,
+        valid_from: 1_700_000_000,
+        valid_until: 1_900_000_000,
+        rotation_policy_ref: "rotation/profile-governance".to_owned(),
+        revocation_status_ref: "revocations/profile-governance".to_owned(),
+    };
+    let status_authority = Keypair::from_seed(&[99_u8; 32]);
+    let governance_status = chio_core_types::receipt::lineage::SignedExportEnvelope::sign(
+        chio_finding::FindingAuthorityStatus {
+            schema: chio_finding::FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+            status_ref: governance_policy.revocation_status_ref.clone(),
+            authority_id: governance_policy.authority_id.clone(),
+            key: governance_key,
+            key_epoch: governance_policy.key_epoch,
+            revoked_from: None,
+            observed_at: 1_784_880_000,
+        },
+        &status_authority,
+    )
+    .unwrap();
     serde_json::to_string(&serde_json::json!({
         "governance_authority": GOLDEN_GOVERNANCE_AUTHORITY,
+        "governance_authority_policy": governance_policy,
         "profile": profile,
         "admitted_kernel_keys": [GOLDEN_PRODUCTION_SIGNER],
-        "collateral_authority": GOLDEN_PRODUCTION_SIGNER,
+        "collateral_authority": {
+            "authority_id": "collateral-authority",
+            "key": GOLDEN_PRODUCTION_SIGNER,
+            "key_epoch": 1,
+            "valid_from": 1_700_000_000_u64,
+            "valid_until": 1_900_000_000_u64,
+            "rotation_policy_ref": "rotation/collateral-authority",
+            "revocation_status_ref": "revocations/collateral-authority"
+        },
+        "checkpoint_signer_status": {
+            "signed_statuses": [governance_status],
+            "status_authority": {
+                "authority_id": "evidence-status-authority",
+                "key": status_authority.public_key(),
+                "key_epoch": 1,
+                "valid_from": 1_700_000_000_u64,
+                "valid_until": 1_900_000_000_u64,
+                "rotation_policy_ref": "rotation/evidence-status-authority",
+                "revocation_status_ref": "revocations/evidence-status-authority"
+            },
+            "max_age_secs": 300_u64
+        },
         "trusted_time": 1_784_880_000_u64,
     }))
     .unwrap()
@@ -1207,6 +896,7 @@ fn verify_names_every_required_facet_it_could_not_establish() {
         Some(&artifact),
         None,
         Some(&roots),
+        None,
         None,
         None,
         false,
@@ -2364,6 +2054,7 @@ async fn verify_by_id_runs_the_strict_ingress_over_the_served_bytes() {
             None,
             None,
             None,
+            None,
             true,
             true,
             Some(&uri),
@@ -2398,6 +2089,7 @@ async fn verify_by_id_rejects_a_different_valid_artifact() {
         cmd_finding_verify(
             None,
             Some(&requested_id),
+            None,
             None,
             None,
             None,

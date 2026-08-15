@@ -1761,8 +1761,12 @@ fn stream_delivery_cannot_satisfy_a_committed_output_digest() -> Result<(), Box<
     assert_eq!(block.result, DeliveryResult::Mismatched);
     assert_eq!(block.expected_digest, stream_hash);
     assert_eq!(
+        block.observed_digest, response.receipt.content_hash,
+        "the public delivery block must bind the redacted receipt content"
+    );
+    assert_ne!(
         block.observed_digest, stream_hash,
-        "the colliding stream hash is exactly what the denial must resist"
+        "a denied stream must not disclose its actual colliding digest"
     );
     assert_eq!(invocations.load(Ordering::SeqCst), 1);
     assert_eq!(payment_calls.captures.load(Ordering::SeqCst), 0);

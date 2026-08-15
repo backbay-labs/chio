@@ -1,4 +1,59 @@
 impl FindingChallengeCoordinator {
+    /// Reconstruct the immutable anchor binding for a pre-upgrade intent.
+    /// Current intent digests bind the stable seller-impair intent. Legacy
+    /// digests bind the original enforcement ID. Both forms still commit to
+    /// this liability, penalty, and Merkle root.
+    fn recover_anchor_binding(
+        &self,
+        liability_key: &str,
+        verified: &VerifiedFindingEnforcement,
+        intent: &chio_settle::FindingImpairmentIntent,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let current_commitment = anchor_evidence_intent_commitment(
+            liability_key,
+            &intent.intent_id,
+            &verified.enforcement().penalty_envelope_sha256,
+            &intent.merkle_root,
+        );
+        let enforcement = verified.enforcement();
+        let legacy_commitment = sha256_hex(
+            format!(
+                "{EFFECT_ANCHOR_EVIDENCE_DOMAIN}\0{liability_key}\0{enforcement_id}\0{penalty}\0{root}",
+                enforcement_id = enforcement.enforcement_id,
+                penalty = enforcement.penalty_envelope_sha256,
+                root = intent.merkle_root,
+            )
+            .as_bytes(),
+        );
+        let anchor_key = derive_anchor_evidence_intent_key(&intent.evidence_hash);
+        let durable_intent = self
+            .challenges
+            .get_effect_intent(&anchor_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        let commitment = if durable_intent.intent_digest == current_commitment {
+            current_commitment
+        } else if durable_intent.intent_digest == legacy_commitment {
+            legacy_commitment
+        } else {
+            return Err(ChallengeCoordinatorError::ChallengeStore(
+                "anchor intent does not match a supported commitment".to_owned(),
+            ));
+        };
+        self.challenges
+            .reconcile_anchor_effect_root_binding(
+                &anchor_key,
+                liability_key,
+                &commitment,
+                &intent.merkle_root,
+                &intent.evidence_hash,
+                now,
+            )
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        self.confirm_effect_intent(&anchor_key, now)
+    }
+
     fn retraction_effect_key<'a>(
         &self,
         enforcement: &'a SignedFindingChallengeEnforcement,
@@ -134,6 +189,18 @@ impl FindingChallengeCoordinator {
             .get_effect_intent(intent_key)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
             .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        let root_binding = if intent.kind == FindingEffectIntentKind::RootIntent {
+            Some(
+                self.challenges
+                    .get_effect_root_binding(intent_key)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?
+                    .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?,
+            )
+        } else {
+            None
+        };
         match intent.state {
             FindingEffectIntentState::Pending | FindingEffectIntentState::Failed => {
                 self.challenges
@@ -150,12 +217,7 @@ impl FindingChallengeCoordinator {
                 ));
             }
         }
-        if intent.kind == FindingEffectIntentKind::RootIntent {
-            let binding = self
-                .challenges
-                .get_effect_root_binding(intent_key)
-                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
-                .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        if let Some(binding) = root_binding {
             self.challenges
                 .confirm_effect_root(
                     intent_key,
@@ -229,6 +291,48 @@ impl FindingChallengeCoordinator {
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         Ok(true)
     }
+}
+
+enum RecoveryObservationAuthority<'a> {
+    Fresh(&'a VerifiedFindingEnforcement),
+    Reconciled(&'a ReconciledFindingEnforcement),
+}
+
+impl FindingChallengeCoordinator {
+    /// A confirmed impairment may recover across operator rotation, but not
+    /// across an inactive operator, reorg, or loss of finality for the
+    /// collateral snapshot it used.
+    fn require_canonical_recovery_observation(
+        &self,
+        authority: RecoveryObservationAuthority<'_>,
+        observations: &dyn FindingBondObservationSource,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let verdict = match authority {
+            RecoveryObservationAuthority::Fresh(verified) => {
+                let observed = observations.observe(verified).map_err(|error| {
+                    ChallengeCoordinatorError::BondObservation(error.to_string())
+                })?;
+                recheck_finding_bond_observation(verified, &observed)
+            }
+            RecoveryObservationAuthority::Reconciled(reconciled) => {
+                let observed = observations
+                    .observe_reconciliation(reconciled)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::BondObservation(error.to_string())
+                    })?;
+                recheck_reconciled_finding_bond_observation(reconciled, &observed)
+            }
+        };
+        match verdict {
+            FindingBondObservationVerdict::Qualified
+            | FindingBondObservationVerdict::OperatorRotated { .. } => Ok(()),
+            FindingBondObservationVerdict::OperatorNotActive
+            | FindingBondObservationVerdict::Reorged { .. }
+            | FindingBondObservationVerdict::FinalityRegressed { .. } => Err(
+                ChallengeCoordinatorError::BondObservation(verdict.reason().to_owned()),
+            ),
+        }
+    }
 
     /// Finish a previously confirmed impairment without dispatching it
     /// again.
@@ -243,6 +347,8 @@ impl FindingChallengeCoordinator {
         enforcement: &SignedFindingChallengeEnforcement,
         bond_snapshot: &SignedFindingFinalizedBondSnapshot,
         reconciliation: &ConfirmedFindingImpairmentReconciliation,
+        observation_authority: RecoveryObservationAuthority<'_>,
+        observations: &dyn FindingBondObservationSource,
         now: u64,
     ) -> Result<FindingFinalization, ChallengeCoordinatorError> {
         let liability = self
@@ -288,6 +394,7 @@ impl FindingChallengeCoordinator {
                 now,
             )
             .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+            self.require_canonical_recovery_observation(observation_authority, observations)?;
         }
         self
             .challenges

@@ -97,9 +97,9 @@ use crate::finding_purchase_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
-/// Revision 13 combines authenticated seller-impairment reconciliations with
-/// append-only enforcement-root refreshes; revision 11 retains pre-dispatch
-/// finalizing-authorization refreshes.
+/// Revision 13 combines authenticated seller-impairment reconciliations,
+/// append-only enforcement-root refreshes, and exact legacy anchor-binding
+/// recovery; revision 11 retains pre-dispatch authorization refreshes.
 /// revision 10 retains the initial exact finalizing authorization atomically
 /// with the liability transition; revision 9 retains exact signed evaluator
 /// outcomes with their verdict.
@@ -2741,7 +2741,6 @@ impl SqliteFindingChallengeStore {
         self.sync_after_write(&connection)?;
         Ok(FindingChallengeWriteOutcome::Inserted)
     }
-
     /// Refine a root intent with the exact proof values published and passed
     /// to the vault. The first binding is immutable. A failed seller retry
     /// appends a chained refresh while retaining every earlier binding.
@@ -3409,6 +3408,7 @@ impl SqliteFindingChallengeStore {
         Ok(outcome)
     }
 }
+include!("finding_challenge_store/effect_root_recovery.rs");
 
 /// The caller names the state it believes a head is in, and that state
 /// must be the only legal source of the edge it is asking for, so no
@@ -4804,11 +4804,14 @@ pub(crate) fn initialize_finding_challenge_schema(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(sqlite_error)?;
-        if table_has_rows_where(&transaction, "liability_heads", "state = 'finalizing'")? {
+        if matches!(on_disk, 10 | 11)
+            && table_has_rows_where(&transaction, "liability_heads", "state = 'finalizing'")?
+        {
             return Err(invariant(
                 "legacy finalizing liability has no retained settlement observer policy",
             ));
         }
+        replace_legacy_effect_root_binding_trigger(&transaction, on_disk)?;
         transaction
             .execute_batch(FINDING_CHALLENGE_SCHEMA)
             .map_err(sqlite_error)?;
@@ -4821,28 +4824,7 @@ pub(crate) fn initialize_finding_challenge_schema(
         verify_finding_challenge_invariants(&transaction)?;
         return transaction.commit().map_err(sqlite_error);
     }
-    if on_disk == 9 {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(sqlite_error)?;
-        if table_has_rows_where(&transaction, "liability_heads", "state = 'finalizing'")? {
-            return Err(invariant(
-                "v9 finalizing liability has no retained authorization",
-            ));
-        }
-        transaction
-            .execute_batch(FINDING_CHALLENGE_SCHEMA)
-            .map_err(sqlite_error)?;
-        crate::stamp_schema_version(
-            &transaction,
-            FINDING_CHALLENGE_SCHEMA_KEY,
-            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
-        )
-        .map_err(|error| invariant(error.to_string()))?;
-        verify_finding_challenge_invariants(&transaction)?;
-        return transaction.commit().map_err(sqlite_error);
-    }
-    if matches!(on_disk, 7 | 8) {
+    if matches!(on_disk, 7..=9) {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(sqlite_error)?;
@@ -4851,6 +4833,7 @@ pub(crate) fn initialize_finding_challenge_schema(
                 "legacy finalizing liability has no retained authorization",
             ));
         }
+        replace_legacy_effect_root_binding_trigger(&transaction, on_disk)?;
         transaction
             .execute_batch(FINDING_CHALLENGE_SCHEMA)
             .map_err(sqlite_error)?;

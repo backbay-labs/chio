@@ -2076,10 +2076,10 @@ in `cli/types/`, dispatch module registered in `cli/dispatch/mod.rs:1-60`,
 
 ### 8.4 Release-process obligations (ship-dark first)
 
-The bounded-release machinery gives the wedge a dark-ship path: the
-`cognition-market-experimental` feature on each owning crate keeps the
-surfaces out of the bounded operational profile
-until qualified, then entries land in the bounded qualification matrix
+The bounded-release machinery gave the wedge a dark-ship path: one
+default-off gate on each owning crate kept the surfaces out of the bounded
+operational profile until qualification. M9 removes that gate after the
+entries land in the bounded qualification matrix
 (`cargo xtask qualify bounded-chio`,
 `docs/standards/CHIO_BOUNDED_QUALIFICATION_MATRIX.json`;
 `docs/release/QUALIFICATION.md:36`). Before any release-facing claim:
@@ -2116,7 +2116,7 @@ none of them.
 | `crates/products/chio-cli` | extend | `chio finding publish/search/verify/buy/challenge/status` per 8.3 |
 | `crates/economy/chio-settle` | extend (thin) | verify finding escrow/release authority receipts and adapt them to the existing settlement-anchor release input (F6) |
 | `crates/trust/chio-attest-buyer` | extend (thin) | M2 `FindingEvidenceVerifier` facet profile |
-| `crates/platform/chio-transaction-passport` | extend | M9 ClaimSet integration consuming signed Finding-verifier reports; unsigned verifier inputs remain non-authority attachments |
+| `crates/platform/chio-transaction-passport` | integration owner | M9 ClaimSet and proof-passport verification consuming signed Finding-verifier reports; unsigned verifier inputs remain content-addressed non-authority attachments |
 | `crates/tooling/chio-conformance` | extend | scenarios per 7.2/PLAN |
 | `spec/PROTOCOL.md` | extend | finding family section under 6.4.x; explicit-gaps update |
 

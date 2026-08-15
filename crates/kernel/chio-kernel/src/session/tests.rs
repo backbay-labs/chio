@@ -1,8 +1,6 @@
 use super::*;
-#[cfg(feature = "cognition-market-experimental")]
 use std::sync::mpsc;
 use std::sync::{Arc, Barrier};
-#[cfg(feature = "cognition-market-experimental")]
 use std::time::Duration;
 
 fn make_context(request_id: &str) -> OperationContext {
@@ -40,7 +38,6 @@ fn lifecycle_transitions_do_not_require_exclusive_session_borrow() {
 }
 
 #[test]
-#[cfg(feature = "cognition-market-experimental")]
 fn operation_boundary_holds_ready_state_until_the_effect_finishes() {
     let session = Arc::new(Session::new(
         SessionId::new("sess-1"),

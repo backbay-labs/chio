@@ -94,7 +94,6 @@ fn durable_server_url_elicitation_terminalizes_as_outcome_unknown() {
     assert!(!kernel.receipt_log().receipts().is_empty());
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn durable_server_url_elicitation_finalizes_the_pool_claim() {
     use crate::finding_pool::tests::RecordingLedger;
@@ -120,7 +119,7 @@ fn durable_server_url_elicitation_finalizes_the_pool_claim() {
     assert!(matches!(
         error,
         Err(KernelError::UrlElicitationsRequired { .. })
-    ));
+    ), "unexpected durable URL elicitation result: {error:?}");
     let terminal = store.operation();
     assert_eq!(
         terminal.state(),
@@ -136,7 +135,6 @@ fn durable_server_url_elicitation_finalizes_the_pool_claim() {
     );
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn durable_startup_reconciliation_rejects_late_pool_ledger_installation() {
     use crate::finding_pool::tests::RecordingLedger;
@@ -162,7 +160,6 @@ fn durable_startup_reconciliation_rejects_late_pool_ledger_installation() {
     assert_eq!(ledger.receipt_sink_id(), None);
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn durable_startup_reconciliation_drains_the_pool_receipt_outbox() {
     use crate::finding_pool::tests::{purchase, RecordingLedger};
@@ -211,7 +208,6 @@ fn durable_startup_reconciliation_drains_the_pool_receipt_outbox() {
     assert_eq!(projection.successful_appends(), 1);
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn configured_pool_ledger_freezes_the_durable_admission_runtime() {
     use crate::admission_operation::AdmissionOperationError;
@@ -239,7 +235,6 @@ fn configured_pool_ledger_freezes_the_durable_admission_runtime() {
     );
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn pool_ledger_allows_the_initial_durable_admission_runtime() {
     use crate::admission_operation::AdmissionOperationError;

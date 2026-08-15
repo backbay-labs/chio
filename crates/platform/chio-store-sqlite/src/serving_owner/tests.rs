@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Barrier};
 
 use chio_core::capability::scope::MonetaryAmount;
-#[cfg(feature = "cognition-market-experimental")]
 use chio_core::sha256_hex;
 use chio_kernel::budget_store::{
     BudgetAdmissionBinding, BudgetAuthorizationOutcome, BudgetAuthorizeCumulativeApprovalRequest,
@@ -318,7 +317,6 @@ fn revocation_only_snapshot_rollback_is_rejected_by_the_global_anchor() {
     ));
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn finding_challenge_snapshot_rollback_is_rejected_by_the_global_anchor() {
     use crate::finding_challenge_store::{
@@ -353,7 +351,6 @@ fn finding_challenge_snapshot_rollback_is_rejected_by_the_global_anchor() {
     ));
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn finding_market_projection_commits_manually_admitted_buyer_slots() {
     let (_temp, database, lock_root) = fixture();
@@ -407,7 +404,6 @@ fn finding_market_projection_commits_manually_admitted_buyer_slots() {
     );
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn finding_market_projection_rejects_v9_snapshot_with_uncommitted_manual_slot() {
     let (_temp, database, lock_root) = fixture();
@@ -449,7 +445,6 @@ fn finding_market_projection_rejects_v9_snapshot_with_uncommitted_manual_slot() 
     ));
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn finding_challenge_projection_rejects_offline_state_tampering() {
     use crate::finding_challenge_store::{
@@ -492,7 +487,6 @@ fn finding_challenge_projection_rejects_offline_state_tampering() {
     ));
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 #[test]
 fn finding_challenge_projection_covers_retained_outcome_bytes() {
     use crate::finding_challenge_store::{

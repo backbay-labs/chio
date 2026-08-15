@@ -12,8 +12,6 @@
 //! through the accepted bid's receipt id; no caller-shaped value overrides
 //! it. Every artifact this coordinator signs passes its own validator
 //! first, because both closes are one-shot and the store keeps the bytes.
-//!
-//! Compiled only under the `cognition-market-experimental` feature.
 
 use std::sync::Arc;
 
@@ -28,11 +26,14 @@ use chio_core::receipt::metadata::{
 };
 use chio_finding::{
     compute_failed_delivery_id, derive_purchase_key, validate_evm_payout_destination,
-    verify_finding, verify_signed_bond_backing, verify_signed_seller_authorization, Finding,
-    FindingFailedDelivery, FindingHoldReleaseTerminal, FindingPurchaseRecord,
-    SignedFindingAdmission, SignedFindingBondBacking, SignedFindingFailedDelivery,
+    verify_finding, verify_signed_authority_status, verify_signed_bond_backing,
+    verify_signed_failed_delivery, verify_signed_purchase_record,
+    verify_signed_seller_authorization, Finding, FindingAuthorityKeyPolicy, FindingFailedDelivery,
+    FindingHoldReleaseTerminal, FindingPurchaseRecord, SignedFindingAdmission,
+    SignedFindingBondBacking, SignedFindingFailedDelivery, SignedFindingMarketTerms,
     SignedFindingPurchaseRecord, SignedFindingSellerAuthorization,
     FINDING_FAILED_DELIVERY_SCHEMA_V1, FINDING_PURCHASE_RECORD_SCHEMA_V1,
+    FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1,
 };
 use chio_kernel::admission_operation::{
     AdmissionOperationState, AdmissionOperationStore, AdmissionReceiptMetadataV1,
@@ -51,13 +52,18 @@ use chio_open_market::purchase_verification::{
     derive_payment_operation_id, derive_purchase_intent_id,
 };
 use chio_store_sqlite::{
-    FindingPurchaseDeliveryInput, FindingPurchaseDenyInput, FindingPurchaseReservationInput,
-    FindingPurchaseReservationRecord, FindingPurchaseReservationState,
-    SqliteAdmissionOperationStore, SqliteFindingMarketStore, SqliteFindingPurchaseStore,
-    SqliteToolOutcomeStore,
+    FindingPublicPurchaseRequestBinding, FindingPurchaseDeliveryInput, FindingPurchaseDenyInput,
+    FindingPurchaseReservationInput, FindingPurchaseReservationRecord,
+    FindingPurchaseReservationState, SqliteAdmissionOperationStore, SqliteFindingMarketStore,
+    SqliteFindingPurchaseStore, SqliteToolOutcomeStore,
 };
 
+use super::finding_challenge_coordinator::FindingAuthorityStatusResolver;
 use super::finding_purchase_verifier::{PurchaseReservationReader, ReservationExpectation};
+use super::service_types::{
+    require_status_feed_through, FindingAuthorityPin, FindingStatusOperatorPin,
+    FindingStatusServiceBond, FINDING_STATUS_MAX_EPOCH_AGE_SECS,
+};
 
 /// Domain separator for the deterministic reservation identity.
 const RESERVATION_DOMAIN: &str = "chio.finding.reservation.v1";
@@ -65,10 +71,46 @@ const RESERVATION_DOMAIN: &str = "chio.finding.reservation.v1";
 /// Domain separator for the deterministic encumbrance identity.
 const ENCUMBRANCE_DOMAIN: &str = "chio.finding.encumbrance.v1";
 
+/// Maximum age of an independently signed revocation reading used to
+/// authorize a new terminal signature.
+const TERMINAL_AUTHORITY_STATUS_MAX_AGE_SECS: u64 = 3_600;
+
+fn authority_policy_covers(policy: &FindingAuthorityKeyPolicy, instant: u64) -> bool {
+    instant >= policy.valid_from && instant < policy.valid_until
+}
+
+fn require_purchase_terminal_window(
+    policy: &FindingAuthorityKeyPolicy,
+    recorded_at: u64,
+) -> Result<(), PurchaseCoordinatorError> {
+    if !authority_policy_covers(policy, recorded_at) {
+        return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(
+            "purchase",
+        ));
+    }
+    Ok(())
+}
+
+fn require_failed_delivery_terminal_window(
+    policy: &FindingAuthorityKeyPolicy,
+    recorded_at: u64,
+) -> Result<(), PurchaseCoordinatorError> {
+    if !authority_policy_covers(policy, recorded_at) {
+        return Err(PurchaseCoordinatorError::FailedDeliveryAuthorityWindow);
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExpectedPurchaseTerminal {
     Delivered,
     Denied,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AuthorityStatusReading {
+    Current,
+    PostTerminal { terminal_at: u64 },
 }
 
 struct VerifiedPurchaseTerminal {
@@ -89,7 +131,13 @@ pub fn derive_reservation_id(ask_digest: &str, payer_hex: &str) -> String {
 pub enum PurchaseCoordinatorError {
     #[error("purchase authority key does not match the configured pin")]
     AuthorityPinMismatch,
-    #[error("venue authority pin must be named and distinct from the signing authorities")]
+    #[error("authority-status pin is invalid or aliases a terminal signing authority")]
+    AuthorityStatusPin,
+    #[error("configured status epoch age ceiling is invalid")]
+    StatusEpochAge,
+    #[error("listing authority pin is invalid or aliases another trusted authority")]
+    ListingPin,
+    #[error("venue authority pin is invalid or aliases another trusted authority")]
     VenuePin,
     #[error("reserve request signature does not verify under the buyer key")]
     BuyerSignature,
@@ -111,16 +159,29 @@ pub enum PurchaseCoordinatorError {
     AdmissionMismatch,
     #[error("venue admission is not the current admission for this finding")]
     AdmissionNotCurrent,
+    #[error("finding participation binding rejected: {0}")]
+    ParticipationBinding(String),
     #[error("admission-declared {0} authority is not the coordinator signing key")]
     DeclaredAuthorityMismatch(&'static str),
     #[error("admission-declared {0} authority window does not cover the reservation instant")]
     DeclaredAuthorityWindow(&'static str),
+    #[error("admission-declared {role} authority lifecycle rejected terminal closure: {reason}")]
+    AuthorityLifecycle {
+        role: &'static str,
+        reason: &'static str,
+    },
+    #[error(
+        "admission-declared failed-delivery authority window does not cover the denial terminal"
+    )]
+    FailedDeliveryAuthorityWindow,
     #[error("seller authorization envelope rejected: {0}")]
     SellerAuthorization(String),
     #[error("seller authorization is not the admission-bound envelope for this sale")]
     SellerAuthorizationBinding,
     #[error("seller authorization is not live at the supplied clock")]
     SellerAuthorizationWindow,
+    #[error("seller authorization lifecycle rejected the reservation: {0}")]
+    SellerAuthorizationLifecycle(&'static str),
     #[error("ask signer is neither the finding issuer nor the authorized seller")]
     AskMinterUnauthorized,
     #[error("the admission-bound finding artifact is unavailable or invalid: {0}")]
@@ -161,7 +222,13 @@ pub struct FindingPurchaseCoordinator {
     outcomes: SqliteToolOutcomeStore,
     purchase_authority: Keypair,
     failed_delivery_authority: Keypair,
-    venue_authority: PublicKey,
+    authority_status: Arc<dyn FindingAuthorityStatusResolver>,
+    authority_status_pin: FindingAuthorityPin,
+    status_feed_operator: FindingStatusOperatorPin,
+    status_feed_service_bond: FindingStatusServiceBond,
+    status_max_epoch_age_secs: u64,
+    listing_authority: FindingAuthorityPin,
+    venue_authority: FindingAuthorityPin,
     venue_id: String,
 }
 
@@ -169,7 +236,8 @@ impl FindingPurchaseCoordinator {
     /// Build the coordinator over the durable purchase store and the
     /// market store whose admission lifecycle gates every sale, verifying
     /// each signing key equals its configured public pin and that the
-    /// venue the admissions must carry is named.
+    /// venue authority policy is valid and names the admissions this
+    /// coordinator accepts.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         store: SqliteFindingPurchaseStore,
@@ -180,17 +248,63 @@ impl FindingPurchaseCoordinator {
         purchase_pin: &PublicKey,
         failed_delivery_authority: Keypair,
         failed_delivery_pin: &PublicKey,
-        venue_pin: &PublicKey,
+        authority_status: Arc<dyn FindingAuthorityStatusResolver>,
+        authority_status_pin: &FindingAuthorityPin,
+        status_feed_operator: &FindingStatusOperatorPin,
+        status_feed_service_bond: &FindingStatusServiceBond,
+        status_max_epoch_age_secs: u64,
+        listing_pin: &FindingAuthorityPin,
+        venue_pin: &FindingAuthorityPin,
         venue_id: &str,
     ) -> Result<Self, PurchaseCoordinatorError> {
         if purchase_authority.public_key() != *purchase_pin
             || failed_delivery_authority.public_key() != *failed_delivery_pin
+            || purchase_authority.public_key() == failed_delivery_authority.public_key()
         {
             return Err(PurchaseCoordinatorError::AuthorityPinMismatch);
         }
+        let authority_status_key = authority_status_pin
+            .validate("authority-status")
+            .map_err(|_| PurchaseCoordinatorError::AuthorityStatusPin)?;
+        let status_operator_key = status_feed_operator
+            .require_live(
+                &status_feed_operator.feed_id,
+                status_feed_operator.authority.valid_from,
+            )
+            .map_err(|_| PurchaseCoordinatorError::AuthorityStatusPin)?;
+        status_feed_service_bond
+            .validate(status_feed_operator)
+            .map_err(|_| PurchaseCoordinatorError::AuthorityStatusPin)?;
+        if authority_status_key == purchase_authority.public_key()
+            || authority_status_key == failed_delivery_authority.public_key()
+            || authority_status_key == status_operator_key
+        {
+            return Err(PurchaseCoordinatorError::AuthorityStatusPin);
+        }
+        if status_max_epoch_age_secs == 0
+            || status_max_epoch_age_secs > FINDING_STATUS_MAX_EPOCH_AGE_SECS
+        {
+            return Err(PurchaseCoordinatorError::StatusEpochAge);
+        }
+        let listing_key = listing_pin
+            .validate("listing")
+            .map_err(|_| PurchaseCoordinatorError::ListingPin)?;
+        if listing_key == purchase_authority.public_key()
+            || listing_key == failed_delivery_authority.public_key()
+            || listing_key == authority_status_key
+            || listing_key == status_operator_key
+        {
+            return Err(PurchaseCoordinatorError::ListingPin);
+        }
+        let venue_key = venue_pin
+            .validate("venue")
+            .map_err(|_| PurchaseCoordinatorError::VenuePin)?;
         if venue_id.is_empty()
-            || *venue_pin == purchase_authority.public_key()
-            || *venue_pin == failed_delivery_authority.public_key()
+            || venue_key == purchase_authority.public_key()
+            || venue_key == failed_delivery_authority.public_key()
+            || venue_key == authority_status_key
+            || venue_key == status_operator_key
+            || venue_key == listing_key
         {
             return Err(PurchaseCoordinatorError::VenuePin);
         }
@@ -201,9 +315,281 @@ impl FindingPurchaseCoordinator {
             outcomes,
             purchase_authority,
             failed_delivery_authority,
+            authority_status,
+            authority_status_pin: authority_status_pin.clone(),
+            status_feed_operator: status_feed_operator.clone(),
+            status_feed_service_bond: status_feed_service_bond.clone(),
+            status_max_epoch_age_secs,
+            listing_authority: listing_pin.clone(),
             venue_authority: venue_pin.clone(),
             venue_id: venue_id.to_owned(),
         })
+    }
+
+    fn require_live_configured_authority(
+        &self,
+        policy: &FindingAuthorityPin,
+        now: u64,
+        role: &'static str,
+    ) -> Result<PublicKey, PurchaseCoordinatorError> {
+        let reject = |reason| PurchaseCoordinatorError::AuthorityLifecycle { role, reason };
+        if !self.authority_status_pin.covers(now) {
+            return Err(reject("authority-status signer window is not live"));
+        }
+        if !policy.covers(now) {
+            return Err(reject("configured authority window is not live"));
+        }
+        let configured_key = policy
+            .key()
+            .map_err(|_| reject("configured authority key is invalid"))?;
+        let signed = self
+            .authority_status
+            .resolve(policy, now)
+            .map_err(|_| reject("revocation source could not be resolved"))?;
+        let authority_status_key = self
+            .authority_status_pin
+            .key()
+            .map_err(|_| reject("authority-status signer key is invalid"))?;
+        verify_signed_authority_status(&signed, &authority_status_key)
+            .map_err(|_| reject("revocation status signature is invalid"))?;
+        let status = &signed.body;
+        if !self.authority_status_pin.covers(status.observed_at) {
+            return Err(reject(
+                "revocation status was signed outside the authority-status window",
+            ));
+        }
+        if !policy.covers(status.observed_at) {
+            return Err(reject(
+                "revocation status was observed outside the configured authority window",
+            ));
+        }
+        if status.status_ref != policy.revocation_status_ref
+            || status.authority_id != policy.authority_id
+            || status.key != configured_key
+            || status.key_epoch != policy.key_epoch
+        {
+            return Err(reject(
+                "revocation status does not bind the configured authority policy",
+            ));
+        }
+        if status.observed_at > now
+            || now.saturating_sub(status.observed_at) > TERMINAL_AUTHORITY_STATUS_MAX_AGE_SECS
+        {
+            return Err(reject("revocation status is not a fresh current reading"));
+        }
+        if status
+            .revoked_from
+            .is_some_and(|revoked_from| revoked_from <= now)
+        {
+            return Err(reject("authority is revoked at reservation"));
+        }
+        Ok(configured_key)
+    }
+
+    fn require_live_listing_authority(
+        &self,
+        now: u64,
+    ) -> Result<PublicKey, PurchaseCoordinatorError> {
+        self.require_live_configured_authority(&self.listing_authority, now, "listing")
+    }
+
+    fn require_live_venue_authority(
+        &self,
+        now: u64,
+    ) -> Result<PublicKey, PurchaseCoordinatorError> {
+        self.require_live_configured_authority(&self.venue_authority, now, "venue")
+    }
+
+    fn require_live_terminal_authority(
+        &self,
+        policy: &FindingAuthorityKeyPolicy,
+        signing_key: &PublicKey,
+        reading: AuthorityStatusReading,
+        now: u64,
+        role: &'static str,
+    ) -> Result<u64, PurchaseCoordinatorError> {
+        let reject = |reason| PurchaseCoordinatorError::AuthorityLifecycle { role, reason };
+        if !self.authority_status_pin.covers(now) {
+            return Err(reject("authority-status signer window is not live"));
+        }
+        if policy.key != *signing_key {
+            return Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(role));
+        }
+        if !authority_policy_covers(policy, now)
+            || matches!(
+                reading,
+                AuthorityStatusReading::PostTerminal { terminal_at }
+                    if !authority_policy_covers(policy, terminal_at)
+            )
+        {
+            return Err(reject("configured authority window is not live"));
+        }
+        let signed = self
+            .authority_status
+            .resolve(
+                &super::service_types::FindingAuthorityPin {
+                    authority_id: policy.authority_id.clone(),
+                    key_hex: policy.key.to_hex(),
+                    key_epoch: policy.key_epoch,
+                    valid_from: policy.valid_from,
+                    valid_until: policy.valid_until,
+                    revocation_status_ref: policy.revocation_status_ref.clone(),
+                },
+                now,
+            )
+            .map_err(|_| reject("revocation source could not be resolved"))?;
+        let authority_status_key = self
+            .authority_status_pin
+            .key()
+            .map_err(|_| reject("authority-status signer key is invalid"))?;
+        verify_signed_authority_status(&signed, &authority_status_key)
+            .map_err(|_| reject("revocation status signature is invalid"))?;
+        let status = &signed.body;
+        if !self.authority_status_pin.covers(status.observed_at) {
+            return Err(reject(
+                "revocation status was signed outside the authority-status window",
+            ));
+        }
+        if !authority_policy_covers(policy, status.observed_at) {
+            return Err(reject(
+                "revocation status was observed outside the admitted authority window",
+            ));
+        }
+        if status.status_ref != policy.revocation_status_ref
+            || status.authority_id != policy.authority_id
+            || status.key != policy.key
+            || status.key_epoch != policy.key_epoch
+        {
+            return Err(reject(
+                "revocation status does not bind the admitted policy",
+            ));
+        }
+        if status.observed_at > now
+            || now.saturating_sub(status.observed_at) > TERMINAL_AUTHORITY_STATUS_MAX_AGE_SECS
+            || matches!(
+                reading,
+                AuthorityStatusReading::PostTerminal { terminal_at }
+                    if status.observed_at < terminal_at
+            )
+        {
+            return Err(reject(match reading {
+                AuthorityStatusReading::Current => {
+                    "revocation status is not a fresh current reading"
+                }
+                AuthorityStatusReading::PostTerminal { .. } => {
+                    "revocation status is not a fresh post-terminal reading"
+                }
+            }));
+        }
+        if status
+            .revoked_from
+            .is_some_and(|revoked_from| revoked_from <= now)
+        {
+            return Err(reject(match reading {
+                AuthorityStatusReading::Current => "authority is revoked at reservation",
+                AuthorityStatusReading::PostTerminal { .. } => {
+                    "authority is revoked at finalization"
+                }
+            }));
+        }
+        Ok(status.observed_at)
+    }
+
+    fn require_live_status_operator(
+        &self,
+        feed_id: &str,
+        now: u64,
+    ) -> Result<(&str, u64), PurchaseCoordinatorError> {
+        let key = require_status_feed_through(
+            &self.status_feed_operator,
+            &self.status_feed_service_bond,
+            feed_id,
+            now,
+            now,
+        )
+        .map_err(|_| PurchaseCoordinatorError::AuthorityLifecycle {
+            role: "status-operator",
+            reason: "configured operator authorization or service bond is not live",
+        })?;
+        let policy = FindingAuthorityKeyPolicy {
+            authority_id: self.status_feed_operator.authority.authority_id.clone(),
+            key: key.clone(),
+            key_epoch: self.status_feed_operator.authority.key_epoch,
+            valid_from: self.status_feed_operator.authority.valid_from,
+            valid_until: self.status_feed_operator.authority.valid_until,
+            rotation_policy_ref: self.status_feed_operator.rotation_policy_ref.clone(),
+            revocation_status_ref: self
+                .status_feed_operator
+                .authority
+                .revocation_status_ref
+                .clone(),
+        };
+        let observed_at = self.require_live_terminal_authority(
+            &policy,
+            &key,
+            AuthorityStatusReading::Current,
+            now,
+            "status-operator",
+        )?;
+        Ok((&self.status_feed_operator.authorization_sha256, observed_at))
+    }
+
+    fn require_live_seller_authorization(
+        &self,
+        authorization: &SignedFindingSellerAuthorization,
+        now: u64,
+    ) -> Result<(), PurchaseCoordinatorError> {
+        let reject = PurchaseCoordinatorError::SellerAuthorizationLifecycle;
+        if !self.authority_status_pin.covers(now) {
+            return Err(reject("authority-status signer window is not live"));
+        }
+        let body = &authorization.body;
+        let pin = FindingAuthorityPin {
+            authority_id: body.authorization_id.clone(),
+            key_hex: body.issuer.to_hex(),
+            key_epoch: FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1,
+            valid_from: body.issued_at,
+            valid_until: body.expires_at,
+            revocation_status_ref: body.revocation_status_ref.clone(),
+        };
+        let signed = self
+            .authority_status
+            .resolve(&pin, now)
+            .map_err(|_| reject("revocation source could not be resolved"))?;
+        let status_key = self
+            .authority_status_pin
+            .key()
+            .map_err(|_| reject("authority-status signer key is invalid"))?;
+        verify_signed_authority_status(&signed, &status_key)
+            .map_err(|_| reject("revocation status signature is invalid"))?;
+        let status = &signed.body;
+        if !self.authority_status_pin.covers(status.observed_at) {
+            return Err(reject(
+                "revocation status was signed outside the authority-status window",
+            ));
+        }
+        if status.status_ref != body.revocation_status_ref
+            || status.authority_id != body.authorization_id
+            || status.key != body.issuer
+            || status.key_epoch != FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1
+        {
+            return Err(reject(
+                "revocation status does not bind the seller authorization",
+            ));
+        }
+        if status.observed_at < body.issued_at
+            || status.observed_at > now
+            || now.saturating_sub(status.observed_at) > TERMINAL_AUTHORITY_STATUS_MAX_AGE_SECS
+        {
+            return Err(reject("revocation status is not a fresh current reading"));
+        }
+        if status
+            .revoked_from
+            .is_some_and(|revoked_from| revoked_from <= now)
+        {
+            return Err(reject("seller authorization is revoked"));
+        }
+        Ok(())
     }
 
     /// Reserve funds and seller exposure for one accepted ask, then sign
@@ -228,6 +614,61 @@ impl FindingPurchaseCoordinator {
         maximum_sale_exposure_units: u64,
         reservation_ttl_secs: u64,
         now: u64,
+    ) -> Result<SignedReservationReceipt, PurchaseCoordinatorError> {
+        self.reserve_inner(
+            bid,
+            ask,
+            buyer_signature_over_ask_digest,
+            admission,
+            seller_authorization,
+            maximum_sale_exposure_units,
+            reservation_ttl_secs,
+            now,
+            None,
+        )
+    }
+
+    /// Reserve for a public request and atomically retain its complete buyer
+    /// policy beside the reservation. Exact replays verify the same immutable
+    /// binding without requiring the admission to remain current.
+    #[allow(clippy::too_many_arguments)]
+    pub fn reserve_for_public_request(
+        &self,
+        bid: &SignedBidRequest,
+        ask: &SignedAskResponse,
+        buyer_signature_over_ask_digest: &str,
+        admission: &SignedFindingAdmission,
+        seller_authorization: &SignedFindingSellerAuthorization,
+        maximum_sale_exposure_units: u64,
+        reservation_ttl_secs: u64,
+        now: u64,
+        public_request: &FindingPublicPurchaseRequestBinding<'_>,
+    ) -> Result<SignedReservationReceipt, PurchaseCoordinatorError> {
+        self.reserve_inner(
+            bid,
+            ask,
+            buyer_signature_over_ask_digest,
+            admission,
+            seller_authorization,
+            maximum_sale_exposure_units,
+            reservation_ttl_secs,
+            now,
+            Some(public_request),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reserve_inner(
+        &self,
+        bid: &SignedBidRequest,
+        ask: &SignedAskResponse,
+        buyer_signature_over_ask_digest: &str,
+        admission: &SignedFindingAdmission,
+        seller_authorization: &SignedFindingSellerAuthorization,
+        maximum_sale_exposure_units: u64,
+        reservation_ttl_secs: u64,
+        now: u64,
+        public_request: Option<&FindingPublicPurchaseRequestBinding<'_>>,
     ) -> Result<SignedReservationReceipt, PurchaseCoordinatorError> {
         if ask.body.schema != ASK_RESPONSE_SCHEMA
             || !matches!(ask.verify_signature(), Ok(true))
@@ -295,7 +736,13 @@ impl FindingPurchaseCoordinator {
         // usable once it verifies under the pinned venue authority. An
         // unverified admission would let its presenter choose which
         // collateral the sale encumbers.
-        chio_finding::verify_signed_admission(admission, &self.venue_authority, &self.venue_id)
+        let venue_authority = self.venue_authority.key().map_err(|_| {
+            PurchaseCoordinatorError::AuthorityLifecycle {
+                role: "venue",
+                reason: "configured authority key is invalid",
+            }
+        })?;
+        chio_finding::verify_signed_admission(admission, &venue_authority, &self.venue_id)
             .map_err(|error| PurchaseCoordinatorError::AdmissionEnvelope(error.to_string()))?;
         if now < admission.body.issued_at || now >= admission.body.expires_at {
             return Err(PurchaseCoordinatorError::AdmissionWindow);
@@ -325,7 +772,7 @@ impl FindingPurchaseCoordinator {
             if policy.key != signing_key {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(role));
             }
-            if now < policy.valid_from || now >= policy.valid_until {
+            if !authority_policy_covers(policy, now) {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(role));
             }
         }
@@ -336,18 +783,6 @@ impl FindingPurchaseCoordinator {
         let admission_envelope_sha256 = canonical_json_bytes(admission)
             .map(|bytes| sha256_hex(&bytes))
             .map_err(|_| PurchaseCoordinatorError::Canonical)?;
-        // An unexpired admission is not sufficient: activation of a newer
-        // admission supersedes it in the durable market store, retiring
-        // its terms, fees, collateral binding, and authority pins. Only
-        // the byte-exact current admission for this finding transacts.
-        let current = self
-            .admissions
-            .get_current_admission(&admission.body.finding_id)
-            .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
-            .ok_or(PurchaseCoordinatorError::AdmissionNotCurrent)?;
-        if current.envelope_sha256 != admission_envelope_sha256 {
-            return Err(PurchaseCoordinatorError::AdmissionNotCurrent);
-        }
         // The ask mints the delivery grant and prices the sale against the
         // seller's collateral, so its signer must be a principal the
         // finding issuer authorized for exactly this sale surface. The
@@ -479,13 +914,19 @@ impl FindingPurchaseCoordinator {
             .min(ask.body.expires_at)
             .min(ask.body.token_offer.expires_at)
             .min(admission.body.expires_at)
+            .min(self.authority_status_pin.valid_until)
+            .min(self.listing_authority.valid_until)
+            .min(self.venue_authority.valid_until)
             .min(admission.body.purchase_authority.valid_until)
             .min(admission.body.failed_delivery_authority.valid_until)
             .min(authorization.expires_at);
-        if expires_at <= now {
-            return Err(PurchaseCoordinatorError::ReservationWindow);
-        }
-        let input = FindingPurchaseReservationInput {
+        let replay_probe_expires_at = if expires_at > now {
+            expires_at
+        } else {
+            now.checked_add(1)
+                .ok_or(PurchaseCoordinatorError::ReservationWindow)?
+        };
+        let mut input = FindingPurchaseReservationInput {
             reservation_id: &reservation_id,
             purchase_intent_id: &derive_purchase_intent_id(&reservation_id),
             authoritative_payment_operation_id: &derive_payment_operation_id(&reservation_id),
@@ -497,17 +938,125 @@ impl FindingPurchaseCoordinator {
             bid_envelope_sha256: &bid_envelope_sha256,
             ask_digest: &ask_digest,
             admission_envelope_sha256: &admission_envelope_sha256,
+            fee_schedule_envelope_sha256: &admission.body.fee_schedule_envelope_sha256,
+            // The exact replay probe compares immutable purchase identity and
+            // ignores this new-reservation-only value. It is populated from
+            // the current admission before any new reservation is opened.
+            participation_epoch: 0,
             amount_units: ask.body.quoted_price.units,
             currency: &ask.body.quoted_price.currency,
-            expires_at,
+            expires_at: replay_probe_expires_at,
             encumbrance_id: &encumbrance_id,
             allocation_id: &admission.body.backing_allocation_id,
             maximum_sale_exposure_units,
             created_at: now,
         };
-        self.store
-            .open_reservation(&input)
+        let exact_replay = self
+            .store
+            .is_exact_reservation_replay(&input)
             .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
+        if exact_replay {
+            if let Some(public_request) = public_request {
+                self.store
+                    .verify_public_purchase_reservation(public_request, &reservation_id)
+                    .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
+            }
+        } else {
+            // A newer activation may supersede this admission after a
+            // reservation committed but before its response arrived. Exact
+            // durable replay above recovers that receipt; only a new
+            // reservation requires the presented admission to remain current.
+            let current = self
+                .admissions
+                .get_current_admission(&admission.body.finding_id)
+                .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
+                .ok_or(PurchaseCoordinatorError::AdmissionNotCurrent)?;
+            if current.envelope_sha256 != admission_envelope_sha256 {
+                return Err(PurchaseCoordinatorError::AdmissionNotCurrent);
+            }
+            if now < current.activated_at {
+                return Err(PurchaseCoordinatorError::ParticipationBinding(
+                    "reservation clock predates admission activation".to_owned(),
+                ));
+            }
+            let terms_bytes = self
+                .admissions
+                .get_recipe_blob(&admission.body.terms_envelope_sha256)
+                .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
+                .ok_or_else(|| {
+                    PurchaseCoordinatorError::ParticipationBinding(
+                        "admission-bound terms are not retained".to_owned(),
+                    )
+                })?;
+            let terms: SignedFindingMarketTerms =
+                serde_json::from_slice(&terms_bytes).map_err(|_| {
+                    PurchaseCoordinatorError::ParticipationBinding(
+                        "admission-bound terms are malformed".to_owned(),
+                    )
+                })?;
+            terms.body.validate().map_err(|error| {
+                PurchaseCoordinatorError::ParticipationBinding(error.to_string())
+            })?;
+            if terms.body.finding_id != admission.body.finding_id
+                || terms.body.listing_id != admission.body.listing_id
+            {
+                return Err(PurchaseCoordinatorError::ParticipationBinding(
+                    "admission-bound terms name another sale".to_owned(),
+                ));
+            }
+            input.participation_epoch =
+                now.saturating_sub(current.activated_at) / terms.body.audit_epoch_length_secs;
+            self.require_live_listing_authority(now)?;
+            self.require_live_venue_authority(now)?;
+            if expires_at <= now {
+                return Err(PurchaseCoordinatorError::ReservationWindow);
+            }
+            for (role, policy, signing_key) in [
+                (
+                    "purchase",
+                    &admission.body.purchase_authority,
+                    self.purchase_authority.public_key(),
+                ),
+                (
+                    "failed-delivery",
+                    &admission.body.failed_delivery_authority,
+                    self.failed_delivery_authority.public_key(),
+                ),
+            ] {
+                self.require_live_terminal_authority(
+                    policy,
+                    &signing_key,
+                    AuthorityStatusReading::Current,
+                    now,
+                    role,
+                )?;
+            }
+            self.require_live_seller_authorization(seller_authorization, now)?;
+            input.expires_at = expires_at;
+            let status_operator_observed_at = self
+                .require_live_status_operator(&finding.status_feed_ref, now)?
+                .1;
+            match public_request {
+                Some(public_request) => self.store.open_live_public_reservation(
+                    &input,
+                    public_request,
+                    &finding.status_feed_ref,
+                    &self.status_feed_operator.authorization_sha256,
+                    status_operator_observed_at,
+                    now,
+                    self.status_max_epoch_age_secs,
+                ),
+                None => self.store.open_live_reservation(
+                    &input,
+                    &finding.status_feed_ref,
+                    &self.status_feed_operator.authorization_sha256,
+                    status_operator_observed_at,
+                    now,
+                    self.status_max_epoch_age_secs,
+                ),
+            }
+            .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
+        }
         let receipt = ReservationReceipt {
             schema: RESERVATION_RECEIPT_SCHEMA.to_owned(),
             receipt_id: reservation_id,
@@ -549,7 +1098,11 @@ impl FindingPurchaseCoordinator {
         reservation: &FindingPurchaseReservationRecord,
         admission: &SignedFindingAdmission,
     ) -> Result<(), PurchaseCoordinatorError> {
-        chio_finding::verify_signed_admission(admission, &self.venue_authority, &self.venue_id)
+        let venue_authority = self
+            .venue_authority
+            .key()
+            .map_err(|_| PurchaseCoordinatorError::VenuePin)?;
+        chio_finding::verify_signed_admission(admission, &venue_authority, &self.venue_id)
             .map_err(|error| PurchaseCoordinatorError::AdmissionEnvelope(error.to_string()))?;
         let digest = canonical_json_bytes(admission)
             .map(|bytes| sha256_hex(&bytes))
@@ -575,9 +1128,7 @@ impl FindingPurchaseCoordinator {
             if policy.key != signing_key {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(role));
             }
-            if reservation.created_at < policy.valid_from
-                || reservation.created_at >= policy.valid_until
-            {
+            if !authority_policy_covers(policy, reservation.created_at) {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(role));
             }
         }
@@ -795,17 +1346,15 @@ impl FindingPurchaseCoordinator {
     ) -> Result<SignedFindingPurchaseRecord, PurchaseCoordinatorError> {
         let reservation = self.resolve(reservation_id)?;
         self.verify_reservation_admission(&reservation, admission)?;
+        if receipt.timestamp > now {
+            return Err(PurchaseCoordinatorError::TerminalEvidence(
+                "delivery receipt is ahead of the finalization clock".to_owned(),
+            ));
+        }
         Self::verify_terminal_chronology(&reservation, receipt, "delivery")?;
         let terminal =
             self.verify_terminal(&reservation, receipt, ExpectedPurchaseTerminal::Delivered)?;
-        let purchase_policy = &admission.body.purchase_authority;
-        if receipt.timestamp < purchase_policy.valid_from
-            || receipt.timestamp >= purchase_policy.valid_until
-        {
-            return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(
-                "purchase",
-            ));
-        }
+        require_purchase_terminal_window(&admission.body.purchase_authority, receipt.timestamp)?;
         let SettlementDispositionV1::Capture { amount } = terminal.settlement else {
             return Err(PurchaseCoordinatorError::TerminalEvidence(
                 "Allow terminal did not durably capture the purchase".to_owned(),
@@ -920,6 +1469,40 @@ impl FindingPurchaseCoordinator {
         record
             .validate()
             .map_err(|error| PurchaseCoordinatorError::ArtifactValidation(error.to_string()))?;
+        if reservation.state == FindingPurchaseReservationState::Consumed {
+            let retained = self
+                .store
+                .get_purchase_record(&record.purchase_key)
+                .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
+                .ok_or_else(|| {
+                    PurchaseCoordinatorError::Store(
+                        "consumed reservation lost its purchase record".to_owned(),
+                    )
+                })?;
+            let signed: SignedFindingPurchaseRecord = serde_json::from_slice(&retained.record_json)
+                .map_err(|_| {
+                    PurchaseCoordinatorError::Store(
+                        "retained purchase record failed deserialization".to_owned(),
+                    )
+                })?;
+            verify_signed_purchase_record(&signed, &admission.body.purchase_authority.key)
+                .map_err(|error| PurchaseCoordinatorError::ArtifactValidation(error.to_string()))?;
+            if signed.body != record {
+                return Err(PurchaseCoordinatorError::Store(
+                    "retained purchase record conflicts with replay inputs".to_owned(),
+                ));
+            }
+            return Ok(signed);
+        }
+        self.require_live_terminal_authority(
+            &admission.body.purchase_authority,
+            &self.purchase_authority.public_key(),
+            AuthorityStatusReading::PostTerminal {
+                terminal_at: receipt.timestamp,
+            },
+            now,
+            "purchase",
+        )?;
         let signed = SignedFindingPurchaseRecord::sign(record, &self.purchase_authority)
             .map_err(|_| PurchaseCoordinatorError::Signing)?;
         let record_json =
@@ -957,9 +1540,18 @@ impl FindingPurchaseCoordinator {
     ) -> Result<SignedFindingFailedDelivery, PurchaseCoordinatorError> {
         let reservation = self.resolve(reservation_id)?;
         self.verify_reservation_admission(&reservation, admission)?;
+        if receipt.timestamp > now {
+            return Err(PurchaseCoordinatorError::TerminalEvidence(
+                "denial receipt is ahead of the finalization clock".to_owned(),
+            ));
+        }
         Self::verify_terminal_chronology(&reservation, receipt, "denial")?;
         let terminal =
             self.verify_terminal(&reservation, receipt, ExpectedPurchaseTerminal::Denied)?;
+        require_failed_delivery_terminal_window(
+            &admission.body.failed_delivery_authority,
+            receipt.timestamp,
+        )?;
         let (currency, release_terminal) = match terminal.settlement {
             SettlementDispositionV1::ContractualZeroCharge { currency } => {
                 (currency, FindingHoldReleaseTerminal::Released)
@@ -977,6 +1569,11 @@ impl FindingPurchaseCoordinator {
         }
         validate_checkpoint(checkpoint)
             .map_err(|error| PurchaseCoordinatorError::CheckpointEvidence(error.to_string()))?;
+        if checkpoint.body.issued_at > now {
+            return Err(PurchaseCoordinatorError::CheckpointEvidence(
+                "denial checkpoint is ahead of the finalization clock".to_owned(),
+            ));
+        }
         if !matches!(verify_checkpoint_signature(checkpoint), Ok(true))
             || checkpoint.body.kernel_key != receipt.kernel_key
             || checkpoint.body.issued_at < receipt.timestamp
@@ -1057,6 +1654,40 @@ impl FindingPurchaseCoordinator {
         artifact
             .validate()
             .map_err(|error| PurchaseCoordinatorError::ArtifactValidation(error.to_string()))?;
+        if reservation.state == FindingPurchaseReservationState::Released {
+            if let Some(retained) = self
+                .store
+                .get_failed_delivery_record(&artifact.failed_delivery_id)
+                .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
+            {
+                let signed: SignedFindingFailedDelivery =
+                    serde_json::from_slice(&retained.record_json).map_err(|_| {
+                        PurchaseCoordinatorError::Store(
+                            "retained failed-delivery record failed deserialization".to_owned(),
+                        )
+                    })?;
+                verify_signed_failed_delivery(
+                    &signed,
+                    &admission.body.failed_delivery_authority.key,
+                )
+                .map_err(|error| PurchaseCoordinatorError::ArtifactValidation(error.to_string()))?;
+                if signed.body != artifact {
+                    return Err(PurchaseCoordinatorError::Store(
+                        "retained failed-delivery record conflicts with replay inputs".to_owned(),
+                    ));
+                }
+                return Ok(signed);
+            }
+        }
+        self.require_live_terminal_authority(
+            &admission.body.failed_delivery_authority,
+            &self.failed_delivery_authority.public_key(),
+            AuthorityStatusReading::PostTerminal {
+                terminal_at: receipt.timestamp,
+            },
+            now,
+            "failed-delivery",
+        )?;
         let signed = SignedFindingFailedDelivery::sign(artifact, &self.failed_delivery_authority)
             .map_err(|_| PurchaseCoordinatorError::Signing)?;
         let record_json =
@@ -1167,5 +1798,50 @@ impl PurchaseReservationReader for CoordinatorReservationReader {
             )
             .map(|_| ())
             .map_err(|error| error.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_delivery_terminal_must_precede_the_authority_boundary() {
+        let policy = FindingAuthorityKeyPolicy {
+            authority_id: "failed-delivery".to_owned(),
+            key: chio_core::crypto::Keypair::from_seed(&[17_u8; 32]).public_key(),
+            key_epoch: 1,
+            valid_from: 100,
+            valid_until: 200,
+            rotation_policy_ref: "rotation-policy-v1".to_owned(),
+            revocation_status_ref: "revocations/failed-delivery".to_owned(),
+        };
+
+        assert!(require_failed_delivery_terminal_window(&policy, 199).is_ok());
+        assert!(matches!(
+            require_failed_delivery_terminal_window(&policy, 200),
+            Err(PurchaseCoordinatorError::FailedDeliveryAuthorityWindow)
+        ));
+    }
+
+    #[test]
+    fn purchase_terminal_must_precede_the_authority_boundary() {
+        let policy = FindingAuthorityKeyPolicy {
+            authority_id: "purchase".to_owned(),
+            key: chio_core::crypto::Keypair::from_seed(&[16_u8; 32]).public_key(),
+            key_epoch: 1,
+            valid_from: 100,
+            valid_until: 200,
+            rotation_policy_ref: "rotation-policy-v1".to_owned(),
+            revocation_status_ref: "revocations/purchase".to_owned(),
+        };
+
+        assert!(require_purchase_terminal_window(&policy, 199).is_ok());
+        assert!(matches!(
+            require_purchase_terminal_window(&policy, 200),
+            Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(
+                "purchase"
+            ))
+        ));
     }
 }

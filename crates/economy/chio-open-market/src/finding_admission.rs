@@ -11,22 +11,20 @@
 //! [`VerifiedFindingAdmission`] witness whose existence is the only proof
 //! of currency [`bid_with_finding_admission`] accepts before delegating to
 //! the real [`bid`] path unchanged.
-//!
-//! Compiled only under the `cognition-market-experimental` feature; default
-//! builds omit this module entirely.
 
 use chio_finding::{
-    signed_envelope_sha256, verify_signed_admission, verify_signed_bond_backing,
-    verify_signed_market_terms, FindingAdmission, FindingError, SignedFindingAdmission,
-    SignedFindingBondBacking, SignedFindingMarketTerms,
+    signed_envelope_sha256, verify_finding, verify_signed_admission, verify_signed_bond_backing,
+    verify_signed_market_terms, verify_signed_seller_authorization, FindingAdmission, FindingError,
+    SignedFindingAdmission, SignedFindingBondBacking, SignedFindingMarketTerms,
+    SignedFindingSellerAuthorization,
 };
 use chio_fiscal::FiscalResolver;
 
 use crate::bidding::{bid, BidMintContext, BiddingError, SignedAskResponse, SignedBidRequest};
 use crate::capability::scope::{
-    Constraint, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount,
+    Constraint, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount, Operation,
 };
-use crate::crypto::PublicKey;
+use crate::crypto::{sha256_hex, PublicKey};
 use crate::evaluation::OpenMarketPenaltyEvaluation;
 use crate::fee_schedule::{OpenMarketBondClass, SignedOpenMarketFeeSchedule};
 use crate::fiscal_adapter::{
@@ -72,6 +70,8 @@ pub enum FindingAdmissionError {
     TermsDigestMismatch,
     #[error("terms envelope rejected: {0}")]
     TermsEnvelope(FindingError),
+    #[error("market terms are not yet live at the verification time")]
+    TermsNotYetLive,
     #[error("backing envelope digest does not match the admission binding")]
     BackingDigestMismatch,
     #[error("backing envelope rejected: {0}")]
@@ -108,6 +108,8 @@ pub enum FindingAdmissionError {
     FeeScheduleEnvelope(FiscalOpenMarketError),
     #[error("fee schedule rejected by the fiscal authorization gate: {0}")]
     FeeScheduleUnauthorized(FiscalOpenMarketError),
+    #[error("fee schedule was issued after the verification time")]
+    FeeScheduleNotYetLive,
     #[error("fee schedule defines no Listing-class bond requirement")]
     ListingRequirementMissing,
     #[error("Listing-class bond requirement is not slashable")]
@@ -128,10 +130,32 @@ pub enum FindingAdmissionError {
     ListingMismatch,
     #[error("bid pricing hint is not the hint the admission binds")]
     PricingHintMismatch,
+    #[error("purchase mint authority does not match the admitted listing provider")]
+    ProviderAuthorityMismatch,
+    #[error("purchase scope does not match the admitted provider server and reveal tool")]
+    ProviderToolMismatch,
+    #[error("seller authorization envelope digest does not match the admission binding")]
+    SellerAuthorizationDigestMismatch,
+    #[error("seller authorization envelope rejected: {0}")]
+    SellerAuthorizationEnvelope(FindingError),
+    #[error("seller authorization identity does not match the admitted finding or listing")]
+    SellerAuthorizationIdentityMismatch,
+    #[error("seller authorization is not yet live at the verification time")]
+    SellerAuthorizationNotYetLive,
+    #[error("seller authorization has expired at the verification time")]
+    SellerAuthorizationExpired,
+    #[error("purchase ask was minted under a different admission")]
+    MintingAdmissionMismatch,
     #[error("bid rejected: {0}")]
     Bidding(BiddingError),
     #[error("finding artifact is not the finding the admission was issued for")]
     FindingMismatch,
+    #[error("finding artifact rejected: {0}")]
+    FindingArtifact(FindingError),
+    #[error("finding artifact cannot be canonically bound to the admission")]
+    FindingArtifactCanonical,
+    #[error("finding artifact digest does not match the admission binding")]
+    FindingArtifactDigestMismatch,
     #[error("finding is not yet live at the purchase clock")]
     FindingNotYetLive,
     #[error("finding has expired at the purchase clock")]
@@ -217,6 +241,9 @@ pub struct FindingAdmissionContext<'a> {
     pub fee_schedule_gate: FindingFeeScheduleGate<'a>,
     /// Trusted open-market governing authority signers.
     pub trusted_local_operator_signers: &'a [PublicKey],
+    /// Exact issuer-signed seller authorization whose digest the admission
+    /// binds. The provider tool is derived from this authenticated body.
+    pub seller_authorization: &'a SignedFindingSellerAuthorization,
     /// The seller-signed terms envelope the admission binds by digest.
     pub terms: &'a SignedFindingMarketTerms,
     /// The collateral-authority-signed backing envelope the admission
@@ -249,6 +276,8 @@ pub struct FindingAdmissionContext<'a> {
 #[derive(Debug, Clone)]
 pub struct VerifiedFindingAdmission {
     admission: FindingAdmission,
+    admission_envelope_sha256: String,
+    provider_tool: String,
 }
 
 impl VerifiedFindingAdmission {
@@ -281,6 +310,56 @@ impl VerifiedFindingAdmission {
     #[must_use]
     pub fn expires_at(&self) -> u64 {
         self.admission.expires_at
+    }
+
+    /// Unix seconds when the admission becomes current.
+    #[must_use]
+    pub fn issued_at(&self) -> u64 {
+        self.admission.issued_at
+    }
+
+    /// Digest of the exact signed admission that produced this witness.
+    #[must_use]
+    pub fn admission_envelope_sha256(&self) -> &str {
+        &self.admission_envelope_sha256
+    }
+
+    /// Reveal tool authenticated by the admission's seller authorization.
+    #[must_use]
+    pub fn provider_tool(&self) -> &str {
+        &self.provider_tool
+    }
+}
+
+/// A purchase ask minted through the provider-authenticated admission seam.
+///
+/// Construction is private so acceptance cannot be reached with an arbitrary
+/// self-signed ask that merely imitates the public token shape.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(transparent)]
+pub struct VerifiedFindingPurchaseAsk {
+    ask: SignedAskResponse,
+    #[serde(skip)]
+    minting_admission_id: String,
+    #[serde(skip)]
+    minting_admission_envelope_sha256: String,
+    #[serde(skip)]
+    provider_tool: String,
+}
+
+impl VerifiedFindingPurchaseAsk {
+    /// The signed ask for reservation and transport.
+    #[must_use]
+    pub fn signed_ask(&self) -> &SignedAskResponse {
+        &self.ask
+    }
+}
+
+impl std::ops::Deref for VerifiedFindingPurchaseAsk {
+    type Target = SignedAskResponse;
+
+    fn deref(&self) -> &Self::Target {
+        self.signed_ask()
     }
 }
 
@@ -324,6 +403,27 @@ fn verify_finding_admission_inner(
     verify_signed_admission(signed, context.venue_authority, context.venue_id)
         .map_err(FindingAdmissionError::AdmissionEnvelope)?;
     let admission = &signed.body;
+    let seller_authorization_digest = signed_envelope_sha256(context.seller_authorization)
+        .map_err(FindingAdmissionError::SellerAuthorizationEnvelope)?;
+    if seller_authorization_digest != admission.seller_authorization_envelope_sha256 {
+        return Err(FindingAdmissionError::SellerAuthorizationDigestMismatch);
+    }
+    verify_signed_seller_authorization(context.seller_authorization)
+        .map_err(FindingAdmissionError::SellerAuthorizationEnvelope)?;
+    let seller_authorization = &context.seller_authorization.body;
+    if seller_authorization.finding_id != admission.finding_id
+        || seller_authorization.finding_artifact_sha256 != admission.finding_artifact_sha256
+        || seller_authorization.listing_id != admission.listing_id
+        || seller_authorization.provider_server_id != admission.server_id
+    {
+        return Err(FindingAdmissionError::SellerAuthorizationIdentityMismatch);
+    }
+    if context.now < seller_authorization.issued_at {
+        return Err(FindingAdmissionError::SellerAuthorizationNotYetLive);
+    }
+    if context.now >= seller_authorization.expires_at {
+        return Err(FindingAdmissionError::SellerAuthorizationExpired);
+    }
 
     // Liveness at the caller's clock, both bounds.
     if context.now < admission.issued_at {
@@ -359,10 +459,14 @@ fn verify_finding_admission_inner(
         return Err(FindingAdmissionError::TermsDigestMismatch);
     }
     verify_signed_market_terms(context.terms).map_err(FindingAdmissionError::TermsEnvelope)?;
+    if context.now < context.terms.body.issued_at {
+        return Err(FindingAdmissionError::TermsNotYetLive);
+    }
     if context.terms.body.finding_id != admission.finding_id
         || context.terms.body.finding_artifact_sha256 != admission.finding_artifact_sha256
         || context.terms.body.listing_id != admission.listing_id
         || context.terms.body.verifier_profile_envelope_sha256 != admission.profile_envelope_sha256
+        || context.terms.body.seller != seller_authorization.seller
     {
         return Err(FindingAdmissionError::TermsIdentityMismatch);
     }
@@ -450,6 +554,9 @@ fn verify_finding_admission_inner(
             .map_err(FindingAdmissionError::FeeScheduleUnauthorized)?;
         }
     }
+    if context.fee_schedule.body.issued_at > context.now {
+        return Err(FindingAdmissionError::FeeScheduleNotYetLive);
+    }
 
     // Sizing inequality: the schedule's slashable Listing-class
     // requirement (unique after the duplicate-bond-class rejection the
@@ -509,7 +616,10 @@ fn verify_finding_admission_inner(
             "pricing_hint",
         ),
         (
-            context.constituent_expiry_bounds.seller_authorization,
+            context
+                .constituent_expiry_bounds
+                .seller_authorization
+                .min(seller_authorization.expires_at),
             "seller_authorization",
         ),
         (context.constituent_expiry_bounds.profile, "profile"),
@@ -533,12 +643,18 @@ fn verify_finding_admission_inner(
         || context.backing.body.profile_envelope_sha256 != admission.profile_envelope_sha256
         || context.backing.body.fee_schedule_envelope_sha256
             != admission.fee_schedule_envelope_sha256
+        || context.backing.body.authorization_envelope_sha256
+            != admission.seller_authorization_envelope_sha256
     {
         return Err(FindingAdmissionError::BackingBindingMismatch);
     }
 
+    let admission_envelope_sha256 =
+        signed_envelope_sha256(signed).map_err(FindingAdmissionError::AdmissionEnvelope)?;
     Ok(VerifiedFindingAdmission {
         admission: admission.clone(),
+        admission_envelope_sha256,
+        provider_tool: seller_authorization.provider_tool.clone(),
     })
 }
 
@@ -554,6 +670,9 @@ pub fn bid_with_finding_admission(
 ) -> Result<SignedAskResponse, FindingAdmissionError> {
     // The witness certifies bindings as of its own verification time, so
     // spending it later must re-check currency against the bid clock.
+    if bid_context.now < admission.issued_at() {
+        return Err(FindingAdmissionError::AdmissionNotYetLive);
+    }
     if bid_context.now >= admission.expires_at() {
         return Err(FindingAdmissionError::AdmissionExpired);
     }
@@ -587,6 +706,23 @@ fn is_lowercase_sha256_hex(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+fn verify_admitted_finding(
+    admission: &VerifiedFindingAdmission,
+    finding: &chio_finding::Finding,
+) -> Result<(), FindingAdmissionError> {
+    verify_finding(finding).map_err(FindingAdmissionError::FindingArtifact)?;
+    if finding.finding_id != admission.finding_id() {
+        return Err(FindingAdmissionError::FindingMismatch);
+    }
+    let digest = crate::canonical_json_bytes(finding)
+        .map(|bytes| sha256_hex(&bytes))
+        .map_err(|_| FindingAdmissionError::FindingArtifactCanonical)?;
+    if digest != admission.admission().finding_artifact_sha256 {
+        return Err(FindingAdmissionError::FindingArtifactDigestMismatch);
+    }
+    Ok(())
+}
+
 /// Mint a delivery-committed purchase ask for an admitted finding.
 ///
 /// The provider, not the buyer, authors the grant bindings: exactly one
@@ -605,13 +741,11 @@ pub fn bid_with_finding_purchase(
     mut bid_context: BidMintContext<'_>,
     admission: &VerifiedFindingAdmission,
     finding: &chio_finding::Finding,
-) -> Result<SignedAskResponse, FindingAdmissionError> {
+) -> Result<VerifiedFindingPurchaseAsk, FindingAdmissionError> {
     if !bid_context.grant_constraints.is_empty() || bid_context.dpop_required.is_some() {
         return Err(FindingAdmissionError::MintContextPreoccupied);
     }
-    if finding.finding_id != admission.finding_id() {
-        return Err(FindingAdmissionError::FindingMismatch);
-    }
+    verify_admitted_finding(admission, finding)?;
     if !is_lowercase_sha256_hex(&finding.payload_sha256) {
         return Err(FindingAdmissionError::FindingDigestMalformed);
     }
@@ -624,6 +758,21 @@ pub fn bid_with_finding_purchase(
     if request.body.requested_scope.max_invocations != Some(1) {
         return Err(FindingAdmissionError::InvocationCardinality);
     }
+    if request.body.requested_scope.server_id != admission.admission().server_id
+        || request.body.requested_scope.tool_name != admission.provider_tool()
+    {
+        return Err(FindingAdmissionError::ProviderToolMismatch);
+    }
+    if bid_context.issuer_keypair.public_key()
+        != bid_context
+            .listing
+            .listing
+            .body
+            .namespace_ownership
+            .signer_public_key
+    {
+        return Err(FindingAdmissionError::ProviderAuthorityMismatch);
+    }
     bid_context.grant_constraints = vec![
         Constraint::OutputDigestSha256(finding.payload_sha256.clone()),
         Constraint::RequireFindingPurchase(Box::new(FindingPurchaseMarkerV1 {
@@ -633,7 +782,14 @@ pub fn bid_with_finding_purchase(
         })),
     ];
     bid_context.dpop_required = Some(true);
-    bid_with_finding_admission(request, bid_context, admission)
+    bid_with_finding_admission(request, bid_context, admission).map(|ask| {
+        VerifiedFindingPurchaseAsk {
+            ask,
+            minting_admission_id: admission.admission().admission_id.clone(),
+            minting_admission_envelope_sha256: admission.admission_envelope_sha256().to_owned(),
+            provider_tool: admission.provider_tool().to_owned(),
+        }
+    })
 }
 
 /// Accept a delivery-committed purchase ask against the authoritative
@@ -646,21 +802,42 @@ pub fn bid_with_finding_purchase(
 /// price, both grant ceilings, and the reserved amount, all in one
 /// currency, so an oversized reservation cannot mask a mispriced mint.
 pub fn accept_finding_purchase(
-    ask: &SignedAskResponse,
+    ask: &VerifiedFindingPurchaseAsk,
     reservation: &crate::bidding::VerifiedReservationReceipt,
     acceptor_keypair: &crate::crypto::Keypair,
     accepted_at: u64,
     admission: &VerifiedFindingAdmission,
     finding: &chio_finding::Finding,
 ) -> Result<crate::bidding::SignedAcceptedBid, FindingAdmissionError> {
-    if finding.finding_id != admission.finding_id() {
-        return Err(FindingAdmissionError::FindingMismatch);
+    verify_admitted_finding(admission, finding)?;
+    if ask.minting_admission_id != admission.admission().admission_id
+        || ask.minting_admission_envelope_sha256 != admission.admission_envelope_sha256()
+        || ask.provider_tool != admission.provider_tool()
+    {
+        return Err(FindingAdmissionError::MintingAdmissionMismatch);
+    }
+    let ask = ask.signed_ask();
+    if accepted_at < admission.issued_at() {
+        return Err(FindingAdmissionError::AdmissionNotYetLive);
+    }
+    if accepted_at < finding.issued_at {
+        return Err(FindingAdmissionError::FindingNotYetLive);
+    }
+    if accepted_at >= finding.expires_at {
+        return Err(FindingAdmissionError::FindingExpired);
+    }
+    if accepted_at >= admission.expires_at() {
+        return Err(FindingAdmissionError::AdmissionExpired);
     }
     let grants = &ask.body.token_offer.scope.grants;
     let [grant] = grants.as_slice() else {
         return Err(FindingAdmissionError::TokenOfferProfile);
     };
-    if grant.max_invocations != Some(1)
+    if ask.body.listing_id != admission.listing_id()
+        || grant.server_id != admission.admission().server_id
+        || grant.tool_name != admission.provider_tool()
+        || grant.operations.as_slice() != [Operation::Invoke]
+        || grant.max_invocations != Some(1)
         || grant.dpop_required != Some(true)
         || !ask.body.token_offer.scope.resource_grants.is_empty()
         || !ask.body.token_offer.scope.prompt_grants.is_empty()

@@ -28,6 +28,10 @@ pub const FINDING_MARKET_TERMS_SCHEMA_V1: &str =
 /// other policy reject at validation.
 pub const FINDING_PAYOUT_POLICY_PRO_RATA_CAPPED_V1: &str = "pro_rata_capped_v1";
 
+/// The sole collateral policy whose reservation and settlement semantics are
+/// implemented by the cognition-market venue ledger.
+pub const FINDING_COLLATERAL_POLICY_VENUE_LEDGER_EXCLUSIVE_V1: &str = "venue_ledger_exclusive_v1";
+
 /// Canonical backing requirement the admission sizing check enforces
 /// against the exact signed fee schedule:
 /// `listing_requirement.required_amount >= base_finding_stake +
@@ -67,6 +71,11 @@ impl FindingBackingRequirement {
             &self.collateral_policy,
             "backing_requirement.collateral_policy",
         )?;
+        if self.collateral_policy != FINDING_COLLATERAL_POLICY_VENUE_LEDGER_EXCLUSIVE_V1 {
+            return Err(FindingError::InvalidField(
+                "backing_requirement.collateral_policy",
+            ));
+        }
         Ok(())
     }
 

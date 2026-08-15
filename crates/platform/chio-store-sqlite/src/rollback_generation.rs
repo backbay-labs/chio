@@ -168,7 +168,6 @@ impl RollbackGenerationAnchor {
         })
     }
 
-    #[cfg_attr(not(feature = "cognition-market-experimental"), allow(dead_code))]
     pub(crate) fn instance_id(&self) -> Result<String, String> {
         self.with_lock(|| {
             let loaded = self

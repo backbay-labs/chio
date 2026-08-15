@@ -20,6 +20,8 @@ web3 = [
     "dep:chio-core",
     "dep:chio-credit",
     "dep:chio-federation",
+    "dep:chio-finding",
+    "dep:chio-open-market",
     "dep:chio-web3",
     "dep:chio-web3-bindings",
     "dep:bs58",
@@ -33,15 +35,6 @@ web3 = [
     "dep:tokio",
     "dep:zeroize",
 ]
-# The finding settlement choke point compiles only when this feature is
-# enabled, so default builds omit it entirely and keep byte-identical
-# behavior.
-cognition-market-experimental = [
-    "web3",
-    "dep:chio-finding",
-    "dep:chio-open-market",
-]
-
 [dependencies]
 chio-core = { workspace = true, optional = true }
 chio-finding = { workspace = true, optional = true }

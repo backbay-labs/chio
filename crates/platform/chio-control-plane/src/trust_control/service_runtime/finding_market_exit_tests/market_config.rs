@@ -56,7 +56,7 @@ fn market_config() -> FindingMarketConfig {
             evidence_sha256: sha256_hex(b"status-bond-venue-wedge"),
         },
         status_max_epoch_age_secs: 300,
-        fee_schedule_operator_keys: vec![keypair(24).public_key().to_hex()],
+        fee_schedule_operator_keys: vec![keypair(39).public_key().to_hex()],
     }
 }
 
@@ -68,4 +68,20 @@ fn finding_market_config_rejects_non_ijson_status_freshness() {
 
     config.status_max_epoch_age_secs = (1_u64 << 53) - 1;
     assert!(config.validate().is_ok());
+}
+
+#[test]
+fn finding_market_config_rejects_fee_schedule_role_aliases() {
+    let mut config = market_config();
+    assert!(config.validate().is_ok());
+
+    config.fee_schedule_operator_keys = vec![config.listing.key_hex.clone()];
+    assert!(config.validate().is_err());
+
+    config.fee_schedule_operator_keys = vec![config.collateral.key_hex.clone()];
+    assert!(config.validate().is_err());
+
+    let fee_operator = keypair(39).public_key().to_hex();
+    config.fee_schedule_operator_keys = vec![fee_operator.clone(), fee_operator];
+    assert!(config.validate().is_err());
 }

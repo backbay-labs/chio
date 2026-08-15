@@ -29,6 +29,7 @@ mod receipts;
 mod verify;
 
 pub use checkpoints::{verify_checkpoint_membership, CheckpointMembershipError};
+pub use chio_finding::required_finding_facets;
 // The checkpoint and inclusion-proof types are part of this crate's
 // verification contract, so a consumer can name them without taking a
 // kernel dependency for two type aliases.
@@ -36,7 +37,10 @@ pub use chio_kernel::checkpoint::{KernelCheckpoint, ReceiptInclusionProof};
 pub use cost::{FindingNonceResolver, NoNonceEvidence};
 pub use receipts::{verify_receipt_strict, ReceiptStrictError};
 pub use verify::{
-    sign_finding_verifier_report, verify_finding_evidence, FindingBondSnapshot,
-    FindingEvidenceBundle, FindingVerifierDraft, FindingVerifierError, FindingVerifierTrustRoots,
-    ResolvedReceiptEvidence, MAX_RAW_FINDING_BYTES,
+    sign_finding_verifier_report, validate_supported_finding_verifier_profile,
+    verify_finding_evidence, verify_status_operator_standing, FindingBondSnapshot,
+    FindingBondStoreSnapshot, FindingCheckpointSignerStatusTrust, FindingEvidenceBundle,
+    FindingVerifierDraft, FindingVerifierError, FindingVerifierTrustRoots,
+    ResolvedFindingDeliveryEvidence, ResolvedReceiptEvidence, SignedFindingBondStoreSnapshot,
+    FINDING_BOND_STORE_SNAPSHOT_SCHEMA_V1, MAX_RAW_FINDING_BYTES,
 };

@@ -4,13 +4,16 @@
 //! settled into a signed purchase record, and recorded into buyer memory
 //! with a signed lineage statement back to the delivery receipt. The
 //! failure lanes cover every way the reveal must refuse.
-//!
 //! One sqlite authority store provisions both the kernel's durable
 //! admission stores and the finding market and purchase stores, so a
 //! simulated restart is a genuine re-open of the same database.
 
 use super::super::super::*;
 use super::build_router;
+use super::finding_evidence_test_support::{
+    checkpoint_at, make_signed_finding_report as make_signed_report, matched_delivery_metadata,
+    FindingReportInputs as ReportInputs,
+};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -41,34 +44,34 @@ use chio_core::receipt::metadata::{
     FINDING_DELIVERY_SCHEMA, FINDING_RECOVERY_METADATA_KEY,
 };
 use chio_core::sha256_hex;
+use chio_core::AnchorInclusionProof;
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
     compute_profile_id, compute_terms_id, derive_finding_recovery_id, derive_purchase_key,
     sign_finding, signed_envelope_sha256, verify_signed_failed_delivery,
     verify_signed_purchase_record, Finding, FindingAdmission, FindingAuthorityKeyPolicy,
-    FindingBackingRequirement, FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass,
-    FindingChallengeBondLimit, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
-    FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor, FindingEvidenceClass,
-    FindingFacetKind, FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass,
-    FindingMarketTerms, FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate,
-    FindingPurchaseContext, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
-    FindingRecipePhase, FindingRecipePhaseKind, FindingRecoveryContext, FindingReplayRecipeInput,
-    FindingResourceCaps, FindingSellerAuthorization, SignedFindingAdmission,
+    FindingAuthorityStatus, FindingBackingRequirement, FindingBbsIssuerPolicy, FindingBondBacking,
+    FindingBondClass, FindingChallengeBondLimit, FindingChallengeVerifierProfile,
+    FindingCheckpointLogPolicy, FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor,
+    FindingEvidenceClass, FindingFacetKind, FindingFeeEvent, FindingFeeTerminalBinding,
+    FindingGuaranteeClass, FindingMarketTerms, FindingOutcomeClass, FindingPayee,
+    FindingPoolBinding, FindingPredicate, FindingPurchaseContext, FindingReceiptRole,
+    FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind,
+    FindingRecoveryContext, FindingReplayRecipeInput, FindingResourceCaps,
+    FindingSellerAuthorization, SignedFindingAdmission, SignedFindingAuthorityStatus,
     SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
     SignedFindingSellerAuthorization, SignedFindingVerifierReport, FINDING_ADMISSION_SCHEMA_V1,
-    FINDING_BOND_BACKING_SCHEMA_V1, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
-    FINDING_MARKET_TERMS_SCHEMA_V1, FINDING_RECOVERY_CONTEXT_SCHEMA_V1,
-    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
-    FINDING_SELLER_AUTHORIZATION_SCHEMA_V1, PURCHASE_CONTEXT_SCHEMA,
+    FINDING_AUTHORITY_STATUS_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1,
+    FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_MARKET_TERMS_SCHEMA_V1,
+    FINDING_RECOVERY_CONTEXT_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
+    FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1, FINDING_SELLER_AUTHORIZATION_SCHEMA_V1,
+    PURCHASE_CONTEXT_SCHEMA,
 };
-use chio_finding_verifier::{
-    sign_finding_verifier_report, verify_finding_evidence, FindingBondSnapshot,
-    FindingEvidenceBundle, FindingVerifierTrustRoots, NoNonceEvidence, ResolvedReceiptEvidence,
-};
+use chio_finding_verifier::ResolvedReceiptEvidence;
 use chio_http_serve::{apply_server_hygiene, ServeHygieneConfig};
 use chio_kernel::checkpoint::{
-    build_checkpoint, build_checkpoint_transparency, build_inclusion_proof, checkpoint_log_id,
-    KernelCheckpoint, ReceiptInclusionProof,
+    build_checkpoint, build_inclusion_proof, checkpoint_log_id, KernelCheckpoint,
+    ReceiptInclusionProof,
 };
 use chio_kernel::finding_purchase::{
     FINDING_PURCHASE_CONTEXT_KEY, FINDING_STATUS_PROOF_CONTEXT_KEY,
@@ -114,13 +117,25 @@ use chio_open_market::recovery::{
     mint_verified_finding_recovery_grant, verify_finding_recovery_context,
     RecoveryVerificationAuthorities, RecoveryVerificationInputs,
 };
+use chio_settle::{
+    finding_anchor_checkpoint_statement_sha256, FindingAnchorCheckpointPublication,
+    SignedFindingAnchorCheckpointPublication, FINDING_ANCHOR_CHECKPOINT_PUBLICATION_SCHEMA_V1,
+};
 use chio_store_sqlite::finding_market_store::FindingAllocationState;
 use chio_store_sqlite::{
-    FindingPurchaseEncumbranceState, FindingPurchaseReservationState, FindingPurchaseSlotState,
-    SqliteFindingStatusStore,
+    FindingPublicPurchaseRequestBinding, FindingPurchaseEncumbranceState,
+    FindingPurchaseReservationState, FindingPurchaseSlotState, SqliteFindingStatusStore,
 };
+
+#[path = "finding_wedge_purchase_e2e_tests/public_route_support.rs"]
+mod public_route_support;
+use public_route_support::{
+    assert_terminal_cannot_rebind_public_request, FixedTerminalExecutor, RoutedPurchaseExecutor,
+};
+include!("finding_wedge_purchase_e2e_tests/listing_authority_regressions.rs");
 use tower::ServiceExt;
 
+use crate::trust_control::finding_challenge_coordinator::FindingAuthorityStatusResolver;
 use crate::trust_control::finding_purchase_coordinator::{
     derive_reservation_id, CoordinatorReservationReader, FindingPurchaseCoordinator,
     PurchaseCoordinatorError,
@@ -128,7 +143,8 @@ use crate::trust_control::finding_purchase_coordinator::{
 use crate::trust_control::finding_purchase_routes::{
     FindingPurchaseExecutionError, FindingPurchaseExecutor, FindingPurchaseRequest,
     FindingPurchaseResult, FindingPurchaseSettlementTerminal, FindingPurchaseVerdict,
-    FindingPurchasedOutput, FINDING_PURCHASE_MAX_BODY_BYTES, FINDING_PURCHASE_RESULT_SCHEMA,
+    FindingPurchasedOutput, FINDING_PURCHASE_MAX_BODY_BYTES, FINDING_PURCHASE_MAX_OUTPUT_BYTES,
+    FINDING_PURCHASE_RESULT_SCHEMA,
 };
 use crate::trust_control::finding_purchase_verifier::MarketFindingPurchaseVerifier;
 use crate::trust_control::finding_recovery_verifier::MarketFindingRecoveryVerifier;
@@ -151,6 +167,7 @@ const COMMUNITY_FUND_DESTINATION: &str = "0xcccccccccccccccccccccccccccccccccccc
 const PAYOUT_DESTINATION: &str = "rail:venue-ledger:seller-42";
 const HEX64: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const ISSUED_AT: u64 = 1_700_000_000;
+const REPORT_MATURATION_SECS: u64 = 5;
 const WINDOW_EXPIRES_AT: u64 = 1_900_000_000;
 const ADMISSION_EXPIRES_AT: u64 = 1_890_000_000;
 const LONG_EPOCH_SECS: u64 = 2_592_000;
@@ -234,6 +251,246 @@ fn key_policy(seed: u8, label: &str) -> FindingAuthorityKeyPolicy {
     }
 }
 
+fn signed_verifier_authority_status(
+    observed_at: u64,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = authority_pin(15, "verifier-report");
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
+fn signed_governance_authority_status(
+    observed_at: u64,
+    revoked_from: Option<u64>,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = authority_pin(1, "governance");
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
+fn signed_venue_authority_status(
+    observed_at: u64,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = authority_pin(6, "venue");
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
+fn signed_listing_authority_status(
+    observed_at: u64,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = listing_authority_pin();
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
+fn signed_status_operator_authority_status(
+    observed_at: u64,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = market_config().status_feed_operator.authority;
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
+fn signed_seller_authorization_status(
+    authorization: &SignedFindingSellerAuthorization,
+    observed_at: u64,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: authorization.body.revocation_status_ref.clone(),
+            authority_id: authorization.body.authorization_id.clone(),
+            key: authorization.body.issuer.clone(),
+            key_epoch: FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1,
+            revoked_from: None,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
+fn signed_collateral_authority_status(
+    observed_at: u64,
+) -> Result<SignedFindingAuthorityStatus, AnyError> {
+    let pin = authority_pin(4, "collateral");
+    let key = pin.key()?;
+    Ok(SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key,
+            key_epoch: pin.key_epoch,
+            revoked_from: None,
+            observed_at,
+        },
+        &keypair(37),
+    )?)
+}
+
+struct TestTerminalAuthorityStatusResolver {
+    revoked_authority_id: Option<String>,
+    observed_at_lag_secs: u64,
+}
+
+impl TestTerminalAuthorityStatusResolver {
+    fn live() -> Self {
+        Self {
+            revoked_authority_id: None,
+            observed_at_lag_secs: 0,
+        }
+    }
+
+    fn cached(observed_at_lag_secs: u64) -> Self {
+        Self {
+            revoked_authority_id: None,
+            observed_at_lag_secs,
+        }
+    }
+
+    fn revoked(authority_id: &str) -> Self {
+        Self {
+            revoked_authority_id: Some(authority_id.to_owned()),
+            observed_at_lag_secs: 0,
+        }
+    }
+}
+
+impl FindingAuthorityStatusResolver for TestTerminalAuthorityStatusResolver {
+    fn resolve(
+        &self,
+        pin: &FindingAuthorityPin,
+        now: u64,
+    ) -> Result<SignedFindingAuthorityStatus, String> {
+        let key = pin.key().map_err(|error| error.to_string())?;
+        SignedExportEnvelope::sign(
+            FindingAuthorityStatus {
+                schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
+                status_ref: pin.revocation_status_ref.clone(),
+                authority_id: pin.authority_id.clone(),
+                key,
+                key_epoch: pin.key_epoch,
+                revoked_from: (self.revoked_authority_id.as_deref()
+                    == Some(pin.authority_id.as_str()))
+                .then_some(now),
+                observed_at: now.saturating_sub(self.observed_at_lag_secs),
+            },
+            &keypair(37),
+        )
+        .map_err(|error| error.to_string())
+    }
+
+    fn checkpoint_publication(
+        &self,
+        proof: &AnchorInclusionProof,
+        now: u64,
+    ) -> Result<SignedFindingAnchorCheckpointPublication, String> {
+        SignedExportEnvelope::sign(
+            FindingAnchorCheckpointPublication {
+                schema: FINDING_ANCHOR_CHECKPOINT_PUBLICATION_SCHEMA_V1.to_string(),
+                checkpoint_statement_sha256: finding_anchor_checkpoint_statement_sha256(proof)
+                    .map_err(|error| error.to_string())?,
+                checkpoint_seq: proof.checkpoint_statement.checkpoint_seq,
+                published_at: proof.checkpoint_statement.issued_at,
+                observed_at: now.saturating_sub(self.observed_at_lag_secs),
+            },
+            &keypair(37),
+        )
+        .map_err(|error| error.to_string())
+    }
+}
+
+fn collateral_registration_raw(
+    backing: &SignedFindingBondBacking,
+    observed_at: u64,
+) -> Result<String, AnyError> {
+    canonical_string(&serde_json::json!({
+        "backing": serde_json::to_value(backing)?,
+        "collateralAuthorityStatus": serde_json::to_value(
+            signed_collateral_authority_status(observed_at)?,
+        )?,
+    }))
+}
+
+fn profile_registration_raw(
+    profile: &SignedFindingChallengeVerifierProfile,
+) -> Result<String, AnyError> {
+    let pin = authority_pin(1, "governance");
+    let governance_key = pin.key()?;
+    let status = SignedExportEnvelope::sign(
+        FindingAuthorityStatus {
+            schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_string(),
+            status_ref: pin.revocation_status_ref,
+            authority_id: pin.authority_id,
+            key: governance_key,
+            key_epoch: pin.key_epoch,
+            revoked_from: None,
+            observed_at: unix_timestamp_now(),
+        },
+        &keypair(37),
+    )?;
+    canonical_string(&serde_json::json!({
+        "profile": serde_json::to_value(profile)?,
+        "governanceAuthorityStatus": serde_json::to_value(status)?,
+    }))
+}
+
 fn market_config() -> FindingMarketConfig {
     FindingMarketConfig {
         venue_id: VENUE_ID.to_string(),
@@ -292,7 +549,7 @@ fn market_config() -> FindingMarketConfig {
             evidence_sha256: sha256_hex(b"status-bond-venue-wedge"),
         },
         status_max_epoch_age_secs: 300,
-        fee_schedule_operator_keys: vec![keypair(24).public_key().to_hex()],
+        fee_schedule_operator_keys: vec![keypair(39).public_key().to_hex()],
     }
 }
 
@@ -346,6 +603,9 @@ fn market_state(
         cluster_progress: None,
         finding_rail: Some(Arc::new(VenueLedgerRailObserver)),
         finding_purchase_executor: None,
+        finding_authority_status_resolver: Some(Arc::new(
+            TestTerminalAuthorityStatusResolver::live(),
+        )),
         finding_challenge_executor: None,
     }
 }
@@ -396,10 +656,14 @@ fn json_body(bytes: &[u8]) -> Result<serde_json::Value, AnyError> {
 }
 
 /// One evidence receipt signed by the admitted kernel key.
-fn evidence_receipt(kernel: &Keypair, index: u32) -> Result<ChioReceipt, AnyError> {
+fn evidence_receipt(
+    kernel: &Keypair,
+    index: u32,
+    payload_sha256: &str,
+) -> Result<ChioReceipt, AnyError> {
     let body = ChioReceiptBody {
         id: String::new(),
-        timestamp: 1_750_000_000 + u64::from(index),
+        timestamp: ISSUED_AT,
         capability_id: format!("cap-evidence-{index}"),
         tool_server: SERVER_ID.to_string(),
         tool_name: "finding.produce".to_string(),
@@ -411,10 +675,10 @@ fn evidence_receipt(kernel: &Keypair, index: u32) -> Result<ChioReceipt, AnyErro
         tool_origin: Default::default(),
         redaction_mode: Default::default(),
         actor_chain: Vec::new(),
-        content_hash: HEX64.to_string(),
+        content_hash: payload_sha256.to_string(),
         policy_hash: "policy-wedge".to_string(),
         evidence: Vec::new(),
-        metadata: None,
+        metadata: Some(matched_delivery_metadata(payload_sha256, index)?),
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: kernel.public_key(),
@@ -538,7 +802,7 @@ fn build_profile(
         ],
         checkpoint_logs: vec![FindingCheckpointLogPolicy {
             log_id,
-            signer: key_policy(21, "checkpoint"),
+            signer: key_policy(23, "checkpoint"),
         }],
         bbs_projection_issuer: FindingBbsIssuerPolicy {
             issuer_fingerprint: "bbs-issuer-fp".to_string(),
@@ -724,8 +988,15 @@ fn build_backing(
     collateral: &Keypair,
     seller: &Keypair,
     finding: &Finding,
+    schedule: &SignedOpenMarketFeeSchedule,
     digests: &BackingDigests<'_>,
 ) -> Result<SignedFindingBondBacking, AnyError> {
+    let listing_requirement = schedule
+        .body
+        .bond_requirements
+        .iter()
+        .find(|requirement| requirement.bond_class == OpenMarketBondClass::Listing)
+        .ok_or_else(|| std::io::Error::other("listing bond requirement missing"))?;
     let mut backing = FindingBondBacking {
         schema: FINDING_BOND_BACKING_SCHEMA_V1.to_string(),
         allocation_id: String::new(),
@@ -736,7 +1007,7 @@ fn build_backing(
         listing_id: LISTING_ID.to_string(),
         terms_envelope_sha256: digests.terms_sha256.to_string(),
         profile_envelope_sha256: digests.profile_sha256.to_string(),
-        fee_requirement_sha256: HEX64.to_string(),
+        fee_requirement_sha256: sha256_hex(&canonical_json_bytes(listing_requirement)?),
         fee_schedule_envelope_sha256: digests.schedule_sha256.to_string(),
         bond_class: FindingBondClass::Listing,
         locked_amount: usd(LOCKED_UNITS),
@@ -818,74 +1089,6 @@ fn build_pricing_hint(
             expires_at: WINDOW_EXPIRES_AT,
         },
         operator,
-    )?)
-}
-
-struct ReportInputs<'a> {
-    governance: &'a Keypair,
-    kernel: &'a Keypair,
-    profile: &'a SignedFindingChallengeVerifierProfile,
-    raw_finding: &'a str,
-    receipts: &'a [ResolvedReceiptEvidence],
-    checkpoint: &'a KernelCheckpoint,
-    recipe_bytes: &'a [u8],
-    backing: &'a SignedFindingBondBacking,
-    collateral: &'a Keypair,
-}
-
-fn make_signed_report(
-    inputs: &ReportInputs<'_>,
-    trusted_time: u64,
-) -> Result<SignedFindingVerifierReport, AnyError> {
-    let trust = FindingVerifierTrustRoots {
-        governance_authority: inputs.governance.public_key(),
-        profile: inputs.profile.clone(),
-        admitted_kernel_keys: vec![inputs.kernel.public_key()],
-        collateral_authority: inputs.collateral.public_key(),
-        runtime_attestation_authority: None,
-        appraisal_authority: None,
-        attestation_trust_policy: None,
-        trusted_time,
-        trust_root_snapshot_sha256: HEX64.to_string(),
-        resolver_policy_sha256: HEX64.to_string(),
-        trusted_time_input_sha256: HEX64.to_string(),
-    };
-    let bundle = FindingEvidenceBundle {
-        receipts: inputs
-            .receipts
-            .iter()
-            .map(|evidence| ResolvedReceiptEvidence {
-                receipt: evidence.receipt.clone(),
-                canonical_receipt_bytes: evidence.canonical_receipt_bytes.clone(),
-                inclusion_proof: evidence.inclusion_proof.clone(),
-            })
-            .collect(),
-        checkpoints: vec![inputs.checkpoint.clone()],
-        checkpoint_transparency: build_checkpoint_transparency(std::slice::from_ref(
-            inputs.checkpoint,
-        ))?,
-        recipe_preimage: Some(inputs.recipe_bytes),
-        runtime_attestation: None,
-        runtime_appraisal: None,
-        bond_snapshot: Some(FindingBondSnapshot {
-            backing: inputs.backing.clone(),
-            live: true,
-            accepted_at: trusted_time.saturating_sub(7_200),
-        }),
-        nonce_resolver: &NoNonceEvidence,
-    };
-    let draft = verify_finding_evidence(inputs.raw_finding, &trust, &bundle)?;
-    if !draft.satisfies_required_facets(&trust.profile.body) {
-        return Err(Box::new(std::io::Error::other(format!(
-            "draft does not satisfy the required profile facets: {:?}",
-            draft.facets
-        ))));
-    }
-    Ok(sign_finding_verifier_report(
-        &draft,
-        &trust,
-        "chio-finding-verifier/0.1",
-        &keypair(15),
     )?)
 }
 
@@ -984,6 +1187,7 @@ impl RevealCase {
 
 struct MarketWeb {
     operator: Keypair,
+    fee_schedule_operator: Keypair,
     venue: Keypair,
     finding: Finding,
     finding_id: String,
@@ -1016,23 +1220,35 @@ impl MarketWeb {
         // listing authorizes is the same principal the seller authorization
         // names, which is what the reveal-time verifier requires.
         let operator = keypair(24);
+        let fee_schedule_operator = keypair(39);
         let governance = keypair(1);
         let issuer = keypair(3);
         let collateral = keypair(4);
         let venue = keypair(6);
         let kernel = keypair(21);
 
-        let first = evidence_receipt(&kernel, 0)?;
-        let second = evidence_receipt(&kernel, 1)?;
+        // Production receipts authenticate the exact payload digest later
+        // promoted into the Finding and replay recipe.
+        let committed_digest = digest_of(&reveal_envelope(
+            case.committed_media_type,
+            case.committed_payload,
+        ))?;
+        let first = evidence_receipt(&kernel, 0, &committed_digest)?;
+        let second = evidence_receipt(&kernel, 1, &committed_digest)?;
         let first_bytes = canonical_json_bytes(&first)?;
         let second_bytes = canonical_json_bytes(&second)?;
         let tree = MerkleTree::from_leaves(&[first_bytes.clone(), second_bytes.clone()])?;
-        let checkpoint = build_checkpoint(
-            1,
-            1,
-            2,
-            &[first_bytes.clone(), second_bytes.clone()],
-            &kernel,
+        let checkpoint_signer = keypair(23);
+        let checkpoint = checkpoint_at(
+            build_checkpoint(
+                1,
+                1,
+                2,
+                &[first_bytes.clone(), second_bytes.clone()],
+                &checkpoint_signer,
+            )?,
+            ISSUED_AT,
+            &checkpoint_signer,
         )?;
         let log_id = checkpoint_log_id(&checkpoint);
         let evidence_checkpoint_ref = format!("{log_id}#1");
@@ -1060,10 +1276,6 @@ impl MarketWeb {
         // The finding commits to the digest of the whole reveal envelope,
         // which is what the kernel compares the delivered output against,
         // and the replay recipe commits to the same payload.
-        let committed_digest = digest_of(&reveal_envelope(
-            case.committed_media_type,
-            case.committed_payload,
-        ))?;
         let recipe = build_recipe(&profile_sha256, &committed_digest, &recipe_dependencies);
         let recipe_bytes = canonical_json_bytes(&recipe)?;
         let recipe_sha256 = sha256_hex(&recipe_bytes);
@@ -1079,7 +1291,7 @@ impl MarketWeb {
         let raw_finding = canonical_string(&finding)?;
         let artifact_sha256 = sha256_hex(raw_finding.as_bytes());
 
-        let schedule = build_schedule(&operator)?;
+        let schedule = build_schedule(&fee_schedule_operator)?;
         let schedule_sha256 = signed_fee_schedule_digest(&schedule)?;
         let terms = build_terms(&operator, &finding, &artifact_sha256, &profile_sha256)?;
         let terms_sha256 = digest_of(&terms)?;
@@ -1089,6 +1301,7 @@ impl MarketWeb {
             &collateral,
             &operator,
             &finding,
+            &schedule,
             &BackingDigests {
                 authorization_sha256: &authorization_sha256,
                 terms_sha256: &terms_sha256,
@@ -1109,14 +1322,17 @@ impl MarketWeb {
                 governance: &governance,
                 kernel: &kernel,
                 profile: &profile,
+                finding: &finding,
                 raw_finding: &raw_finding,
                 receipts: &receipts,
                 checkpoint: &checkpoint,
                 recipe_bytes: &recipe_bytes,
                 backing: &backing,
+                terms: &terms,
+                fee_schedule: &schedule,
                 collateral: &collateral,
             },
-            unix_timestamp_now().saturating_add(3_600),
+            unix_timestamp_now().saturating_add(REPORT_MATURATION_SECS),
         )?;
 
         let mut admission = FindingAdmission {
@@ -1182,6 +1398,7 @@ impl MarketWeb {
 
         Ok(MarketWeb {
             operator,
+            fee_schedule_operator,
             venue,
             finding_id: finding.finding_id.clone(),
             finding,
@@ -1212,11 +1429,35 @@ impl MarketWeb {
     fn activate_request(&self) -> Result<String, AnyError> {
         Ok(serde_json::json!({
             "admission": serde_json::to_value(&self.admission)?,
+            "collateralAuthorityStatus": serde_json::to_value(
+                signed_collateral_authority_status(unix_timestamp_now())?,
+            )?,
+            "profileGovernanceAuthorityStatus": serde_json::to_value(
+                signed_governance_authority_status(unix_timestamp_now(), None)?,
+            )?,
+            "venueAuthorityStatus": serde_json::to_value(signed_venue_authority_status(
+                unix_timestamp_now(),
+            )?)?,
+            "listingAuthorityStatus": serde_json::to_value(signed_listing_authority_status(
+                unix_timestamp_now(),
+            )?)?,
+            "statusOperatorAuthorityStatus": serde_json::to_value(
+                signed_status_operator_authority_status(unix_timestamp_now())?,
+            )?,
             "sellerAuthorization": serde_json::to_value(&self.authorization)?,
+            "sellerAuthorizationStatus": serde_json::to_value(
+                signed_seller_authorization_status(
+                    &self.authorization,
+                    unix_timestamp_now(),
+                )?,
+            )?,
             "terms": serde_json::to_value(&self.terms)?,
             "backing": serde_json::to_value(&self.backing)?,
             "feeSchedule": serde_json::to_value(&self.schedule)?,
             "verifierReport": serde_json::to_value(&self.report)?,
+            "verifierAuthorityStatus": serde_json::to_value(signed_verifier_authority_status(
+                unix_timestamp_now(),
+            )?)?,
             "listing": serde_json::to_value(&self.listing)?,
             "pricingHint": serde_json::to_value(&self.pricing_hint)?,
         })
@@ -1307,7 +1548,10 @@ impl Deployment {
         let web = &self.web;
         let (status, body) = send(
             state,
-            authed_post("/v1/findings/profiles", web.profile_raw.clone())?,
+            authed_post(
+                "/v1/findings/profiles",
+                profile_registration_raw(&web.profile)?,
+            )?,
         )
         .await?;
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
@@ -1348,11 +1592,22 @@ impl Deployment {
             state,
             authed_post(
                 "/v1/findings/collateral",
-                serde_json::to_string(&web.backing)?,
+                collateral_registration_raw(&web.backing, unix_timestamp_now())?,
             )?,
         )
         .await?;
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+
+        // The allocation must predate the signed report, and the report
+        // authority status must be observed no earlier than that evaluation.
+        // Let the pre-signed fixture mature before constructing the current
+        // status used at activation.
+        wait_until_unix(web.report.body.evaluation_time).await;
+        let authority = state
+            .joint_authority_store
+            .as_ref()
+            .ok_or_else(|| missing("joint authority store before activation"))?;
+        publish_live_status_proof_b64(authority, &web.finding_id, unix_timestamp_now())?;
 
         let (status, body) = send(
             state,
@@ -1384,13 +1639,20 @@ fn allocation_accepted_at(
     Ok(allocation.accepted_at)
 }
 
+async fn wait_until_unix(target: u64) {
+    let remaining = target.saturating_sub(unix_timestamp_now());
+    if remaining > 0 {
+        tokio::time::sleep(std::time::Duration::from_secs(remaining)).await;
+    }
+}
+
 fn admission_witness(
     web: &MarketWeb,
     accepted_at: u64,
 ) -> Result<VerifiedFindingAdmission, AnyError> {
     let venue_key = web.venue.public_key();
     let collateral_key = keypair(4).public_key();
-    let trusted_signers = vec![web.operator.public_key()];
+    let trusted_signers = vec![web.fee_schedule_operator.public_key()];
     let context = FindingAdmissionContext {
         venue_authority: &venue_key,
         venue_id: VENUE_ID,
@@ -1398,6 +1660,7 @@ fn admission_witness(
         fee_schedule: &web.schedule,
         fee_schedule_gate: FindingFeeScheduleGate::Legacy,
         trusted_local_operator_signers: &trusted_signers,
+        seller_authorization: &web.authorization,
         terms: &web.terms,
         backing: &web.backing,
         allocation_snapshot: SeamAllocationSnapshot {
@@ -1768,6 +2031,28 @@ fn publish_live_status_proof_b64(
 }
 
 fn coordinator(authority: &SqliteAuthorityStore) -> Result<FindingPurchaseCoordinator, AnyError> {
+    coordinator_with_status(
+        authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+    )
+}
+
+fn coordinator_with_status(
+    authority: &SqliteAuthorityStore,
+    authority_status: Arc<dyn FindingAuthorityStatusResolver>,
+) -> Result<FindingPurchaseCoordinator, AnyError> {
+    coordinator_with_status_pin(
+        authority,
+        authority_status,
+        &authority_pin(37, "authority-status"),
+    )
+}
+
+fn coordinator_with_status_pin(
+    authority: &SqliteAuthorityStore,
+    authority_status: Arc<dyn FindingAuthorityStatusResolver>,
+    authority_status_pin: &FindingAuthorityPin,
+) -> Result<FindingPurchaseCoordinator, AnyError> {
     Ok(FindingPurchaseCoordinator::new(
         authority.finding_purchase_store(),
         authority.finding_market_store(),
@@ -1777,9 +2062,58 @@ fn coordinator(authority: &SqliteAuthorityStore) -> Result<FindingPurchaseCoordi
         &keypair(16).public_key(),
         keypair(17),
         &keypair(17).public_key(),
-        &keypair(6).public_key(),
+        authority_status,
+        authority_status_pin,
+        &market_config().status_feed_operator,
+        &market_config().status_feed_service_bond,
+        market_config().status_max_epoch_age_secs,
+        &market_config().listing,
+        &market_config().venue,
         VENUE_ID,
     )?)
+}
+
+fn coordinator_with_venue(
+    authority: &SqliteAuthorityStore,
+    authority_status: Arc<dyn FindingAuthorityStatusResolver>,
+    venue: &FindingAuthorityPin,
+) -> Result<FindingPurchaseCoordinator, AnyError> {
+    Ok(FindingPurchaseCoordinator::new(
+        authority.finding_purchase_store(),
+        authority.finding_market_store(),
+        authority.admission_operation_store(),
+        authority.tool_outcome_store(),
+        keypair(16),
+        &keypair(16).public_key(),
+        keypair(17),
+        &keypair(17).public_key(),
+        authority_status,
+        &authority_pin(37, "authority-status"),
+        &market_config().status_feed_operator,
+        &market_config().status_feed_service_bond,
+        market_config().status_max_epoch_age_secs,
+        &market_config().listing,
+        venue,
+        VENUE_ID,
+    )?)
+}
+
+fn live_status_proof_b64_at(
+    authority: &SqliteAuthorityStore,
+    finding_id: &str,
+    checked_at: u64,
+) -> Result<String, AnyError> {
+    let config = market_config();
+    let publisher =
+        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+            authority.finding_status_store(),
+            config.status_feed_operator,
+            config.status_feed_service_bond,
+            keypair(36),
+            config.status_max_epoch_age_secs,
+        )?;
+    let live = publisher.publish_non_inclusion(finding_id, &[], checked_at)?;
+    Ok(STANDARD.encode(&live.proof_bytes))
 }
 
 // ---------------------------------------------------------------------------
@@ -1788,7 +2122,7 @@ fn coordinator(authority: &SqliteAuthorityStore) -> Result<FindingPurchaseCoordi
 
 struct Handshake {
     bid: SignedBidRequest,
-    ask: SignedAskResponse,
+    ask: chio_open_market::finding_admission::VerifiedFindingPurchaseAsk,
     ask_digest: String,
     buyer_signature_hex: String,
     reservation_id: String,
@@ -2231,6 +2565,28 @@ async fn open_lane(options: LaneOptions) -> Result<Lane, AnyError> {
 
 impl Lane {
     fn reveal(&self, request_id: &str, nonce: &str) -> Result<ToolCallResponse, AnyError> {
+        let status_proof_b64 = live_status_proof_b64_at(
+            &self.authority,
+            &self.deployment.web.finding_id,
+            unix_timestamp_now(),
+        )?;
+        let request = reveal_request(&RevealRequestInputs {
+            request_id,
+            capability: &self.purchase.capability,
+            buyer: &self.buyer,
+            finding_id: &self.deployment.web.finding_id,
+            context_b64: Some(&self.purchase.context_b64),
+            status_proof_b64: Some(&status_proof_b64),
+            nonce,
+        })?;
+        Ok(self.kernel.evaluate_tool_call_blocking(&request)?)
+    }
+
+    fn reveal_without_status(
+        &self,
+        request_id: &str,
+        nonce: &str,
+    ) -> Result<ToolCallResponse, AnyError> {
         let request = reveal_request(&RevealRequestInputs {
             request_id,
             capability: &self.purchase.capability,
@@ -2263,29 +2619,6 @@ impl Lane {
     }
 }
 
-/// Deployment adapter used by the public-route exit. It owns the seller web,
-/// buyer mapping, coordinator keys, and kernel construction, so none of those
-/// artifacts become caller-authoritative request fields.
-struct RoutedPurchaseExecutor {
-    authority: Arc<SqliteAuthorityStore>,
-    web: MarketWeb,
-    witness: VerifiedFindingAdmission,
-    buyer: Keypair,
-    kernel_keypair: Keypair,
-    calls: Arc<PaymentCalls>,
-    invocations: Arc<AtomicU64>,
-    attempts: Arc<AtomicU64>,
-    exchange_now: u64,
-    now: Arc<AtomicU64>,
-    status_proof_b64: String,
-}
-
-impl RoutedPurchaseExecutor {
-    fn execution_error(error: impl std::fmt::Display) -> FindingPurchaseExecutionError {
-        FindingPurchaseExecutionError::Internal(error.to_string())
-    }
-}
-
 #[async_trait::async_trait]
 impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
     fn mutation_fence(&self) -> chio_kernel::admission_operation::StoreMutationFence {
@@ -2307,13 +2640,24 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
             ));
         }
         let payer_key = self.buyer.public_key();
-        let payer = request.payer.clone().unwrap_or_else(|| payer_key.to_hex());
-        if payer != payer_key.to_hex() {
+        let payer_hex = payer_key.to_hex();
+        let payer = request.payer.clone().unwrap_or_else(|| payer_hex.clone());
+        if payer != payer_hex {
             return Err(FindingPurchaseExecutionError::Rejected(
                 "payer is not mapped to the authenticated buyer key".to_owned(),
             ));
         }
         let deadline_secs = request.deadline_secs.unwrap_or(RESERVATION_TTL_SECS);
+        let public_request = FindingPublicPurchaseRequestBinding {
+            request_id: &request.request_id,
+            finding_id: &request.finding_id,
+            requested_payer: request.payer.as_deref(),
+            resolved_payer: &payer,
+            payer_hex: &payer_hex,
+            max_price_units: request.max_price.units,
+            currency: &request.max_price.currency,
+            deadline_secs: request.deadline_secs,
+        };
         let exchange = handshake_at(
             &self.web,
             &self.witness,
@@ -2341,7 +2685,7 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
                     != derive_purchase_intent_id(&exchange.reservation_id)
                     || reservation.authoritative_payment_operation_id
                         != derive_payment_operation_id(&exchange.reservation_id)
-                    || reservation.payer_hex != payer_key.to_hex()
+                    || reservation.payer_hex != payer_hex
                     || reservation.agent_id != exchange.ask.body.agent_id
                     || reservation.finding_id != self.web.finding_id
                     || reservation.listing_id != exchange.ask.body.listing_id
@@ -2357,6 +2701,10 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
                         "durable reservation does not bind the public replay".to_owned(),
                     ));
                 }
+                self.authority
+                    .finding_purchase_store()
+                    .verify_public_purchase_reservation(&public_request, &exchange.reservation_id)
+                    .map_err(Self::execution_error)?;
                 SignedReservationReceipt::sign(
                     ReservationReceipt {
                         schema: RESERVATION_RECEIPT_SCHEMA.to_owned(),
@@ -2371,7 +2719,7 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
                 .map_err(Self::execution_error)?
             }
             Err(PurchaseCoordinatorError::UnknownReservation) => coordinator
-                .reserve(
+                .reserve_for_public_request(
                     &exchange.bid,
                     &exchange.ask,
                     &exchange.buyer_signature_hex,
@@ -2380,6 +2728,7 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
                     EXPOSURE_UNITS,
                     deadline_secs,
                     now,
+                    &public_request,
                 )
                 .map_err(Self::execution_error)?,
             Err(error) => return Err(Self::execution_error(error)),
@@ -2467,12 +2816,13 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| Self::execution_error("reveal payload missing"))?
             .to_owned();
+        let finalized_at = unix_timestamp_now();
         self.authority
             .finding_purchase_store()
             .register_community_fund_destination(
                 &self.web.allocation_id,
                 COMMUNITY_FUND_DESTINATION,
-                now,
+                finalized_at,
             )
             .map_err(Self::execution_error)?;
         let record = coordinator
@@ -2481,7 +2831,7 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
                 &response.receipt,
                 &self.web.admission,
                 &self.web.backing,
-                now,
+                finalized_at,
             )
             .map_err(Self::execution_error)?;
         Ok(FindingPurchaseResult {
@@ -2605,7 +2955,7 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
     let attempts = Arc::new(AtomicU64::new(0));
     let purchase_clock = Arc::new(AtomicU64::new(fixed_now));
     let status_proof_b64 =
-        publish_live_status_proof_b64(&authority, &deployment.web.finding_id, fixed_now)?;
+        live_status_proof_b64_at(&authority, &deployment.web.finding_id, fixed_now)?;
     state.finding_purchase_executor = Some(Arc::new(RoutedPurchaseExecutor {
         authority: authority.clone(),
         web: deployment.web,
@@ -2669,7 +3019,16 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
 
     // The identical public request rebuilds the same signed exchange, replays
     // the durable kernel terminal, and returns byte-identical result JSON even
-    // after the ask, Finding, admission, and purchase authority have expired.
+    // after the ask, Finding, admission, and admitted purchase authority have
+    // expired and the deployment has rotated to another purchase key. Route
+    // verification resolves the old key from the retained admission.
+    let rotated_purchase = state
+        .config
+        .finding_market
+        .as_mut()
+        .ok_or_else(|| missing("finding market config"))?;
+    rotated_purchase.purchase.key_hex = keypair(18).public_key().to_hex();
+    rotated_purchase.purchase.key_epoch = 2;
     purchase_clock.store(replay_now, Ordering::SeqCst);
     let (status, replay_body) = send(&state, authed_post(&path, request_body)?).await?;
     assert_eq!(status, StatusCode::OK);
@@ -2678,37 +3037,55 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
     assert_eq!(calls.releases.load(Ordering::SeqCst), 0);
     assert_eq!(invocations.load(Ordering::SeqCst), 1);
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
+
+    assert_terminal_cannot_rebind_public_request(
+        &mut state,
+        &authority,
+        &path,
+        &first,
+        &expected_finding_id,
+        &payer,
+    )
+    .await?;
+
+    // A retired purchase key cannot use its retained admission to forge a
+    // fresh, backdated terminal. Even a correctly signed and internally
+    // consistent record must byte-match the exact joint-authority row.
+    let mut forged = first;
+    let mut forged_body = forged
+        .purchase_record
+        .as_ref()
+        .ok_or_else(|| missing("public purchase result omitted its record"))?
+        .body
+        .clone();
+    forged_body.recorded_at = forged_body.recorded_at.saturating_sub(1);
+    forged.purchase_record = Some(SignedExportEnvelope::sign(forged_body, &keypair(16))?);
+    state.finding_purchase_executor = Some(Arc::new(FixedTerminalExecutor {
+        authority,
+        result: forged,
+    }));
+    let (status, body) = send(&state, authed_post(&path, canonical_json_bytes(&request)?)?).await?;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        json_body(&body)?["code"],
+        serde_json::json!("purchase_terminal_invalid")
+    );
     Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cognition_market_wedge_purchase_e2e() -> TestResult {
+    run_cognition_market_wedge_purchase_e2e().await
+}
+
+pub(super) async fn run_cognition_market_wedge_purchase_e2e() -> TestResult {
     let deployment = provision(RevealCase::honest())?;
     let calls = Arc::new(PaymentCalls::default());
     let invocations = Arc::new(AtomicU64::new(0));
     let kernel_keypair = keypair(40);
     let buyer = keypair(31);
-    let status_authority = deployment.open()?;
-    let status_config = market_config();
-    let status_publisher =
-        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
-            status_authority.finding_status_store(),
-            status_config.status_feed_operator.clone(),
-            status_config.status_feed_service_bond.clone(),
-            keypair(36),
-            status_config.status_max_epoch_age_secs,
-        )?;
-    let live_status = status_publisher.publish_non_inclusion(
-        &deployment.web.finding_id,
-        &[],
-        unix_timestamp_now(),
-    )?;
-    let live_status_proof_b64 = STANDARD.encode(&live_status.proof_bytes);
-    drop(status_publisher);
-    drop(status_authority);
-
     // Epoch one: everything runs against one open serving store.
-    let (reveal, delivery_receipt, purchase) = {
+    let (reveal, delivery_receipt, purchase, status_proof_b64) = {
         let authority = deployment.open()?;
         let state = market_state(authority.clone(), market_config());
         deployment.seed_and_activate(&state).await?;
@@ -2804,13 +3181,15 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
             install_verifier: true,
             install_status_verifier: true,
         })?;
+        let status_proof_b64 =
+            live_status_proof_b64_at(&authority, &deployment.web.finding_id, unix_timestamp_now())?;
         let request = reveal_request(&RevealRequestInputs {
             request_id: "wedge-reveal-1",
             capability: &purchase.capability,
             buyer: &buyer,
             finding_id: &deployment.web.finding_id,
             context_b64: Some(&purchase.context_b64),
-            status_proof_b64: Some(&live_status_proof_b64),
+            status_proof_b64: Some(&status_proof_b64),
             nonce: "wedge-reveal-nonce-1",
         })?;
         let response = kernel.evaluate_tool_call_blocking(&request)?;
@@ -2876,11 +3255,12 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
             &deployment,
             &response.receipt,
             &buyer,
+            &authority,
             authority.finding_status_store(),
         )?;
 
         let delivery_receipt = response.receipt.clone();
-        (response, delivery_receipt, purchase)
+        (response, delivery_receipt, purchase, status_proof_b64)
     };
 
     // Epoch two: a restart re-opens the same store, rebuilds the kernel
@@ -2902,7 +3282,7 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
         buyer: &buyer,
         finding_id: &deployment.web.finding_id,
         context_b64: Some(&purchase.context_b64),
-        status_proof_b64: Some(&live_status_proof_b64),
+        status_proof_b64: Some(&status_proof_b64),
         nonce: "wedge-reveal-nonce-2",
     })?;
     let replay = recovered.evaluate_tool_call_blocking(&request)?;
@@ -2927,13 +3307,13 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
 }
 
 include!("finding_wedge_purchase_e2e_tests/status_and_settlement_tests.rs");
-
 /// The buyer's own kernel writes the purchased payload into memory and
 /// records a signed lineage statement whose parent is the delivery receipt.
 fn buyer_memory_write(
     deployment: &Deployment,
     delivery_receipt: &ChioReceipt,
     buyer: &Keypair,
+    authority: &SqliteAuthorityStore,
     status_store: SqliteFindingStatusStore,
 ) -> TestResult {
     let receipts = Arc::new(chio_store_sqlite::SqliteReceiptStore::open(
@@ -2946,6 +3326,11 @@ fn buyer_memory_write(
     config.checkpoint_batch_size = 0;
     let mut kernel = ChioKernel::new(config);
     kernel.set_receipt_store_handle(receipts.clone())?;
+    kernel.set_durable_admission_store(
+        Arc::new(authority.admission_operation_store()),
+        Arc::new(authority.tool_outcome_store()),
+        authority.mutation_fence(),
+    )?;
     let status_config = market_config();
     kernel.set_finding_status_proof_verifier(Arc::new(MarketFindingStatusVerifier::new(
         status_config.status_feed_operator,
@@ -3019,7 +3404,6 @@ fn buyer_memory_write(
         .as_deref()
         .unwrap_or_default()
         .contains("authentic allow receipt"));
-
     kernel.set_finding_delivery_receipt_authorities(vec![keypair(40).public_key()]);
     request.request_id = "wedge-memory-write-trusted-1".to_string();
     if let Some(intent) = request.governed_intent.as_mut() {
@@ -3033,7 +3417,6 @@ fn buyer_memory_write(
         .as_ref()
         .and_then(|metadata| metadata.get("governed_transaction"))
         .is_some());
-
     let store: &dyn ReceiptStore = receipts.as_ref();
     assert!(store
         .load_retained_chio_receipt_commitment(&write.receipt.id)?
@@ -3056,7 +3439,6 @@ fn buyer_memory_write(
         statement.relation_kind,
         ReceiptLineageRelationKind::FindingMemoryWriteToDelivery
     );
-
     let mut substituted = request.clone();
     substituted.request_id = "wedge-memory-write-substituted".to_string();
     substituted.arguments["content"] = serde_json::json!({
@@ -3073,9 +3455,9 @@ fn buyer_memory_write(
         .as_deref()
         .unwrap_or_default()
         .contains("differs from the authenticated delivery"));
+    receipts.create_next_receipt_checkpoint(100, &buyer_kernel_keypair)?;
     Ok(())
 }
-
 // ---------------------------------------------------------------------------
 // Failure lanes
 // ---------------------------------------------------------------------------
@@ -3087,7 +3469,6 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
         ..LaneOptions::standard()
     })
     .await?;
-
     let response = lane.reveal("wedge-digest-mismatch-1", "nonce-digest-1")?;
     assert_denied_with(&response, "committed output digest");
     let contract = delivery_contract_block(&response)?;
@@ -3101,7 +3482,6 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
     assert_eq!(lane.invocations.load(Ordering::SeqCst), 1);
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 0);
     assert_eq!(lane.calls.releases.load(Ordering::SeqCst), 1);
-
     // A durable Deny cannot be selected into a paid terminal.
     let now = unix_timestamp_now();
     assert!(matches!(
@@ -3116,7 +3496,60 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
     ));
 
     // The coordinator closes the purchase to its checkpointed denial terminal.
+    let reservation_created_at = {
+        let purchase_store = lane.authority.finding_purchase_store();
+        purchase_store
+            .get_reservation(&lane.purchase.handshake.reservation_id)?
+            .ok_or_else(|| missing("purchase reservation"))?
+            .created_at
+    };
+    let mut future_body = response.receipt.body();
+    future_body.timestamp = now.saturating_add(1);
+    let future_receipt = ChioReceipt::sign(future_body, &keypair(40))?;
+    let (future_checkpoint, future_proof) = denial_checkpoint(&future_receipt)?;
+    assert!(matches!(
+        lane.coordinator.finalize_denial(
+            &lane.purchase.handshake.reservation_id,
+            &future_receipt,
+            &lane.deployment.web.admission,
+            &future_checkpoint,
+            &future_proof,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::TerminalEvidence(message))
+            if message.contains("ahead of the finalization clock")
+    ));
+    let mut backdated_body = response.receipt.body();
+    backdated_body.timestamp = reservation_created_at.saturating_sub(1);
+    let backdated_receipt = ChioReceipt::sign(backdated_body, &keypair(40))?;
+    let (backdated_checkpoint, backdated_proof) = denial_checkpoint(&backdated_receipt)?;
+    assert!(matches!(
+        lane.coordinator.finalize_denial(
+            &lane.purchase.handshake.reservation_id,
+            &backdated_receipt,
+            &lane.deployment.web.admission,
+            &backdated_checkpoint,
+            &backdated_proof,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::TerminalEvidence(message))
+            if message.contains("denial receipt predates the purchase reservation")
+    ));
+
     let (checkpoint, inclusion_proof) = denial_checkpoint(&response.receipt)?;
+    let future_checkpoint = checkpoint_at(checkpoint.clone(), now.saturating_add(1), &keypair(40))?;
+    assert!(matches!(
+        lane.coordinator.finalize_denial(
+            &lane.purchase.handshake.reservation_id,
+            &response.receipt,
+            &lane.deployment.web.admission,
+            &future_checkpoint,
+            &inclusion_proof,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::CheckpointEvidence(message))
+            if message.contains("ahead of the finalization clock")
+    ));
     let mut wrong_proof = inclusion_proof.clone();
     wrong_proof.receipt_seq = wrong_proof.receipt_seq.saturating_add(1);
     assert!(matches!(
@@ -3203,7 +3636,7 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
         witness,
         purchase,
         buyer,
-        status_proof_b64,
+        status_proof_b64: _,
     } = lane;
     drop((state, coordinator, kernel, witness, authority));
     let authority = deployment.open()?;
@@ -3217,13 +3650,15 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
         install_verifier: true,
         install_status_verifier: true,
     })?;
+    let status_proof_b64 =
+        live_status_proof_b64_at(&authority, &deployment.web.finding_id, unix_timestamp_now())?;
     let request = reveal_request(&RevealRequestInputs {
         request_id: "wedge-digest-mismatch-1",
         capability: &purchase.capability,
         buyer: &buyer,
         finding_id: &deployment.web.finding_id,
         context_b64: Some(&purchase.context_b64),
-        status_proof_b64: status_proof_b64.as_deref(),
+        status_proof_b64: Some(&status_proof_b64),
         nonce: "nonce-digest-2",
     })?;
     let replay = recovered.evaluate_tool_call_blocking(&request)?;
@@ -3591,20 +4026,21 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
     )?;
     assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 1);
+    let finalized_at = unix_timestamp_now();
 
     lane.authority
         .finding_purchase_store()
         .register_community_fund_destination(
             &lane.deployment.web.allocation_id,
             COMMUNITY_FUND_DESTINATION,
-            now,
+            finalized_at,
         )?;
     let purchase_record = lane.coordinator.finalize_delivery(
         &lane.purchase.handshake.reservation_id,
         &response.receipt,
         &lane.deployment.web.admission,
         &lane.deployment.web.backing,
-        now,
+        finalized_at,
     )?;
     let recovery_id = derive_finding_recovery_id(
         &lane.purchase.capability.id,
@@ -4003,6 +4439,109 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
         canonical_json_bytes(&first)?,
         canonical_json_bytes(&second)?
     );
+    let revoked_status_operator = coordinator_with_status(
+        &authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::revoked(
+            &market_config().status_feed_operator.authority.authority_id,
+        )),
+    )?;
+    let replay_after_revocation = revoked_status_operator.reserve(
+        &exchange.bid,
+        &exchange.ask,
+        &exchange.buyer_signature_hex,
+        &deployment.web.admission,
+        &deployment.web.authorization,
+        EXPOSURE_UNITS,
+        RESERVATION_TTL_SECS,
+        now,
+    )?;
+    assert_eq!(
+        canonical_json_bytes(&first)?,
+        canonical_json_bytes(&replay_after_revocation)?,
+        "an exact committed reservation must replay after operator revocation"
+    );
+    for authority_id in [
+        deployment
+            .web
+            .admission
+            .body
+            .purchase_authority
+            .authority_id
+            .as_str(),
+        deployment
+            .web
+            .admission
+            .body
+            .failed_delivery_authority
+            .authority_id
+            .as_str(),
+        deployment.web.authorization.body.authorization_id.as_str(),
+    ] {
+        let revoked_authority = coordinator_with_status(
+            &authority,
+            Arc::new(TestTerminalAuthorityStatusResolver::revoked(authority_id)),
+        )?;
+        let replay_after_revocation = revoked_authority.reserve(
+            &exchange.bid,
+            &exchange.ask,
+            &exchange.buyer_signature_hex,
+            &deployment.web.admission,
+            &deployment.web.authorization,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        )?;
+        assert_eq!(
+            canonical_json_bytes(&first)?,
+            canonical_json_bytes(&replay_after_revocation)?,
+            "an exact committed reservation must replay after authority revocation"
+        );
+    }
+    let venue = market_config().venue;
+    let revoked_venue = coordinator_with_venue(
+        &authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::revoked(
+            &venue.authority_id,
+        )),
+        &venue,
+    )?;
+    let replay_after_venue_revocation = revoked_venue.reserve(
+        &exchange.bid,
+        &exchange.ask,
+        &exchange.buyer_signature_hex,
+        &deployment.web.admission,
+        &deployment.web.authorization,
+        EXPOSURE_UNITS,
+        RESERVATION_TTL_SECS,
+        now,
+    )?;
+    assert_eq!(
+        canonical_json_bytes(&first)?,
+        canonical_json_bytes(&replay_after_venue_revocation)?,
+        "an exact committed reservation must replay after venue revocation"
+    );
+    let mut expired_venue = venue;
+    expired_venue.valid_until = now;
+    let expired_venue_coordinator = coordinator_with_venue(
+        &authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+        &expired_venue,
+    )?;
+    let replay_after_venue_expiry = expired_venue_coordinator.reserve(
+        &exchange.bid,
+        &exchange.ask,
+        &exchange.buyer_signature_hex,
+        &deployment.web.admission,
+        &deployment.web.authorization,
+        EXPOSURE_UNITS,
+        RESERVATION_TTL_SECS,
+        now,
+    )?;
+    assert_eq!(
+        canonical_json_bytes(&first)?,
+        canonical_json_bytes(&replay_after_venue_expiry)?,
+        "an exact committed reservation must replay after venue expiry"
+    );
     assert_eq!(first.body.receipt_id, exchange.reservation_id);
     let stored = authority
         .finding_purchase_store()
@@ -4213,7 +4752,13 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         &keypair(18).public_key(),
         keypair(17),
         &keypair(17).public_key(),
-        &keypair(6).public_key(),
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+        &authority_pin(37, "authority-status"),
+        &market_config().status_feed_operator,
+        &market_config().status_feed_service_bond,
+        market_config().status_max_epoch_age_secs,
+        &market_config().listing,
+        &market_config().venue,
         VENUE_ID,
     )?;
     assert!(matches!(
@@ -4243,7 +4788,13 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         &keypair(16).public_key(),
         keypair(19),
         &keypair(19).public_key(),
-        &keypair(6).public_key(),
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+        &authority_pin(37, "authority-status"),
+        &market_config().status_feed_operator,
+        &market_config().status_feed_service_bond,
+        market_config().status_max_epoch_age_secs,
+        &market_config().listing,
+        &market_config().venue,
         VENUE_ID,
     )?;
     assert!(matches!(
@@ -4262,6 +4813,84 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         ))
     ));
 
+    // A direct consumer cannot let either terminal signer certify its own
+    // authority status.
+    for aliased_status_pin in [
+        authority_pin(16, "purchase-as-status"),
+        authority_pin(17, "failed-delivery-as-status"),
+    ] {
+        assert!(matches!(
+            FindingPurchaseCoordinator::new(
+                purchase_store.clone(),
+                fixture.authority.finding_market_store(),
+                fixture.authority.admission_operation_store(),
+                fixture.authority.tool_outcome_store(),
+                keypair(16),
+                &keypair(16).public_key(),
+                keypair(17),
+                &keypair(17).public_key(),
+                Arc::new(TestTerminalAuthorityStatusResolver::live()),
+                &aliased_status_pin,
+                &market_config().status_feed_operator,
+                &market_config().status_feed_service_bond,
+                market_config().status_max_epoch_age_secs,
+                &market_config().listing,
+                &market_config().venue,
+                VENUE_ID,
+            ),
+            Err(PurchaseCoordinatorError::AuthorityStatusPin)
+        ));
+    }
+
+    for aliased_venue_pin in [
+        authority_pin(37, "venue-as-authority-status"),
+        authority_pin(36, "venue-as-status-operator"),
+    ] {
+        assert!(matches!(
+            FindingPurchaseCoordinator::new(
+                purchase_store.clone(),
+                fixture.authority.finding_market_store(),
+                fixture.authority.admission_operation_store(),
+                fixture.authority.tool_outcome_store(),
+                keypair(16),
+                &keypair(16).public_key(),
+                keypair(17),
+                &keypair(17).public_key(),
+                Arc::new(TestTerminalAuthorityStatusResolver::live()),
+                &authority_pin(37, "authority-status"),
+                &market_config().status_feed_operator,
+                &market_config().status_feed_service_bond,
+                market_config().status_max_epoch_age_secs,
+                &market_config().listing,
+                &aliased_venue_pin,
+                VENUE_ID,
+            ),
+            Err(PurchaseCoordinatorError::VenuePin)
+        ));
+    }
+
+    assert!(matches!(
+        FindingPurchaseCoordinator::new(
+            purchase_store.clone(),
+            fixture.authority.finding_market_store(),
+            fixture.authority.admission_operation_store(),
+            fixture.authority.tool_outcome_store(),
+            keypair(16),
+            &keypair(16).public_key(),
+            keypair(16),
+            &keypair(16).public_key(),
+            Arc::new(TestTerminalAuthorityStatusResolver::live()),
+            &authority_pin(37, "authority-status"),
+            &market_config().status_feed_operator,
+            &market_config().status_feed_service_bond,
+            market_config().status_max_epoch_age_secs,
+            &market_config().listing,
+            &market_config().venue,
+            VENUE_ID,
+        ),
+        Err(PurchaseCoordinatorError::AuthorityPinMismatch)
+    ));
+
     // A venue-signed admission whose declared purchase window has lapsed
     // by the reservation instant.
     let mut lapsed_body = fixture.deployment.web.admission.body.clone();
@@ -4271,6 +4900,17 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
         SignedExportEnvelope::sign(lapsed_body, &fixture.deployment.web.venue)?;
     assert!(matches!(
         fixture.reserve_with(&lapsed, now),
+        Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(
+            "purchase"
+        ))
+    ));
+    let mut boundary_body = fixture.deployment.web.admission.body.clone();
+    boundary_body.purchase_authority.valid_until = now;
+    boundary_body.admission_id = compute_admission_id(&boundary_body)?;
+    let boundary: SignedFindingAdmission =
+        SignedExportEnvelope::sign(boundary_body, &fixture.deployment.web.venue)?;
+    assert!(matches!(
+        fixture.reserve_with(&boundary, now),
         Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(
             "purchase"
         ))
@@ -4307,6 +4947,206 @@ async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> T
     assert!(purchase_store
         .get_reservation(&fixture.exchange.reservation_id)?
         .is_some());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_reservation_cannot_outlive_authority_status_signer() -> TestResult {
+    let fixture = open_reserve_fixture().await?;
+    let now = unix_timestamp_now();
+    let mut authority_status_pin = authority_pin(37, "authority-status");
+    authority_status_pin.valid_until = now.saturating_add(1);
+    let coordinator = FindingPurchaseCoordinator::new(
+        fixture.authority.finding_purchase_store(),
+        fixture.authority.finding_market_store(),
+        fixture.authority.admission_operation_store(),
+        fixture.authority.tool_outcome_store(),
+        keypair(16),
+        &keypair(16).public_key(),
+        keypair(17),
+        &keypair(17).public_key(),
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+        &authority_status_pin,
+        &market_config().status_feed_operator,
+        &market_config().status_feed_service_bond,
+        market_config().status_max_epoch_age_secs,
+        &market_config().listing,
+        &market_config().venue,
+        VENUE_ID,
+    )?;
+
+    coordinator.reserve(
+        &fixture.exchange.bid,
+        &fixture.exchange.ask,
+        &fixture.exchange.buyer_signature_hex,
+        &fixture.deployment.web.admission,
+        &fixture.deployment.web.authorization,
+        EXPOSURE_UNITS,
+        RESERVATION_TTL_SECS,
+        now,
+    )?;
+    let reservation = coordinator.resolve(&fixture.exchange.reservation_id)?;
+    assert_eq!(reservation.expires_at, authority_status_pin.valid_until);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_reserve_requires_live_terminal_and_status_operator_standing() -> TestResult
+{
+    let fixture = open_reserve_fixture().await?;
+    let now = unix_timestamp_now();
+    let status_operator = market_config().status_feed_operator;
+    let venue = market_config().venue;
+    for (authority_id, expected_role) in [
+        (
+            fixture
+                .deployment
+                .web
+                .admission
+                .body
+                .purchase_authority
+                .authority_id
+                .as_str(),
+            "purchase",
+        ),
+        (
+            fixture
+                .deployment
+                .web
+                .admission
+                .body
+                .failed_delivery_authority
+                .authority_id
+                .as_str(),
+            "failed-delivery",
+        ),
+        (
+            status_operator.authority.authority_id.as_str(),
+            "status-operator",
+        ),
+        (venue.authority_id.as_str(), "venue"),
+    ] {
+        let coordinator = coordinator_with_status(
+            &fixture.authority,
+            Arc::new(TestTerminalAuthorityStatusResolver::revoked(authority_id)),
+        )?;
+        assert!(matches!(
+            coordinator.reserve(
+                &fixture.exchange.bid,
+                &fixture.exchange.ask,
+                &fixture.exchange.buyer_signature_hex,
+                &fixture.deployment.web.admission,
+                &fixture.deployment.web.authorization,
+                EXPOSURE_UNITS,
+                RESERVATION_TTL_SECS,
+                now,
+            ),
+            Err(PurchaseCoordinatorError::AuthorityLifecycle { role, .. })
+                if role == expected_role
+        ));
+        assert!(fixture
+            .authority
+            .finding_purchase_store()
+            .get_reservation(&fixture.exchange.reservation_id)?
+            .is_none());
+    }
+
+    let mut expired_venue = market_config().venue;
+    expired_venue.valid_until = now;
+    let expired_venue_coordinator = FindingPurchaseCoordinator::new(
+        fixture.authority.finding_purchase_store(),
+        fixture.authority.finding_market_store(),
+        fixture.authority.admission_operation_store(),
+        fixture.authority.tool_outcome_store(),
+        keypair(16),
+        &keypair(16).public_key(),
+        keypair(17),
+        &keypair(17).public_key(),
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+        &authority_pin(37, "authority-status"),
+        &market_config().status_feed_operator,
+        &market_config().status_feed_service_bond,
+        market_config().status_max_epoch_age_secs,
+        &market_config().listing,
+        &expired_venue,
+        VENUE_ID,
+    )?;
+    assert!(matches!(
+        expired_venue_coordinator.reserve(
+            &fixture.exchange.bid,
+            &fixture.exchange.ask,
+            &fixture.exchange.buyer_signature_hex,
+            &fixture.deployment.web.admission,
+            &fixture.deployment.web.authorization,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::AuthorityLifecycle { role: "venue", .. })
+    ));
+    assert!(fixture
+        .authority
+        .finding_purchase_store()
+        .get_reservation(&fixture.exchange.reservation_id)?
+        .is_none());
+
+    let mut expired_bond = market_config().status_feed_service_bond;
+    expired_bond.valid_until = now;
+    let expired_bond_coordinator = FindingPurchaseCoordinator::new(
+        fixture.authority.finding_purchase_store(),
+        fixture.authority.finding_market_store(),
+        fixture.authority.admission_operation_store(),
+        fixture.authority.tool_outcome_store(),
+        keypair(16),
+        &keypair(16).public_key(),
+        keypair(17),
+        &keypair(17).public_key(),
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+        &authority_pin(37, "authority-status"),
+        &status_operator,
+        &expired_bond,
+        market_config().status_max_epoch_age_secs,
+        &market_config().listing,
+        &market_config().venue,
+        VENUE_ID,
+    )?;
+    assert!(matches!(
+        expired_bond_coordinator.reserve(
+            &fixture.exchange.bid,
+            &fixture.exchange.ask,
+            &fixture.exchange.buyer_signature_hex,
+            &fixture.deployment.web.admission,
+            &fixture.deployment.web.authorization,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::AuthorityLifecycle {
+            role: "status-operator",
+            ..
+        })
+    ));
+    assert!(fixture
+        .authority
+        .finding_purchase_store()
+        .get_reservation(&fixture.exchange.reservation_id)?
+        .is_none());
+
+    let live_status_coordinator = coordinator_with_status(
+        &fixture.authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+    )?;
+    let receipt = live_status_coordinator.reserve(
+        &fixture.exchange.bid,
+        &fixture.exchange.ask,
+        &fixture.exchange.buyer_signature_hex,
+        &fixture.deployment.web.admission,
+        &fixture.deployment.web.authorization,
+        EXPOSURE_UNITS,
+        RESERVATION_TTL_SECS,
+        now,
+    )?;
+    assert_eq!(receipt.body.receipt_id, fixture.exchange.reservation_id);
     Ok(())
 }
 
@@ -4616,13 +5456,18 @@ async fn wedge_purchase_rejects_a_resigned_bid_envelope() -> TestResult {
     context.bid_request_envelope_json = canonical_string(&resigned)?;
     context.validate()?;
     let substituted_context = STANDARD.encode(canonical_json_bytes(&context)?);
+    let status_proof_b64 = live_status_proof_b64_at(
+        &lane.authority,
+        &lane.deployment.web.finding_id,
+        unix_timestamp_now(),
+    )?;
     let request = reveal_request(&RevealRequestInputs {
         request_id: "wedge-resigned-bid-1",
         capability: &lane.purchase.capability,
         buyer: &lane.buyer,
         finding_id: &lane.deployment.web.finding_id,
         context_b64: Some(&substituted_context),
-        status_proof_b64: lane.status_proof_b64.as_deref(),
+        status_proof_b64: Some(&status_proof_b64),
         nonce: "nonce-resigned-bid-1",
     })?;
     let response = lane.kernel.evaluate_tool_call_blocking(&request)?;
@@ -4637,8 +5482,9 @@ async fn wedge_purchase_rejects_a_resigned_bid_envelope() -> TestResult {
 /// reserved under. A superseded admission carries retired terms, fees,
 /// collateral bindings, and authority pins, so it must stop transacting
 /// everywhere money could still move: a reveal reserved under it denies
-/// before dispatch, and a new reserve presenting the retired envelope
-/// refuses while the current one still reserves.
+/// before dispatch, an exact committed reservation remains replayable, and
+/// a new reserve presenting the retired envelope refuses while the current
+/// one still reserves.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
     let lane = open_lane(LaneOptions::standard()).await?;
@@ -4656,7 +5502,7 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
         &lane.state,
         authed_post(
             "/v1/findings/collateral",
-            serde_json::to_string(&second_backing)?,
+            collateral_registration_raw(&second_backing, unix_timestamp_now())?,
         )?,
     )
     .await?;
@@ -4667,14 +5513,17 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
             governance: &keypair(1),
             kernel: &keypair(21),
             profile: &web.profile,
+            finding: &web.finding,
             raw_finding: &web.raw_finding,
             receipts: &web.receipts,
             checkpoint: &web.checkpoint,
             recipe_bytes: &web.recipe_bytes,
             backing: &second_backing,
+            terms: &web.terms,
+            fee_schedule: &web.schedule,
             collateral: &keypair(4),
         },
-        unix_timestamp_now().saturating_add(3_600),
+        unix_timestamp_now().saturating_add(1),
     )?;
     let mut admission_body = web.admission.body.clone();
     admission_body.backing_allocation_id = second_backing.body.allocation_id.clone();
@@ -4685,13 +5534,35 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
     admission_body.admission_id = compute_admission_id(&admission_body)?;
     let second_admission: SignedFindingAdmission =
         SignedExportEnvelope::sign(admission_body, &web.venue)?;
+    wait_until_unix(second_report.body.evaluation_time).await;
     let activate = serde_json::json!({
         "admission": serde_json::to_value(&second_admission)?,
+        "collateralAuthorityStatus": serde_json::to_value(
+            signed_collateral_authority_status(unix_timestamp_now())?,
+        )?,
+        "profileGovernanceAuthorityStatus": serde_json::to_value(
+            signed_governance_authority_status(unix_timestamp_now(), None)?,
+        )?,
+        "venueAuthorityStatus": serde_json::to_value(signed_venue_authority_status(
+            unix_timestamp_now(),
+        )?)?,
+        "listingAuthorityStatus": serde_json::to_value(signed_listing_authority_status(
+            unix_timestamp_now(),
+        )?)?,
+        "statusOperatorAuthorityStatus": serde_json::to_value(
+            signed_status_operator_authority_status(unix_timestamp_now())?,
+        )?,
         "sellerAuthorization": serde_json::to_value(&web.authorization)?,
+        "sellerAuthorizationStatus": serde_json::to_value(
+            signed_seller_authorization_status(&web.authorization, unix_timestamp_now())?,
+        )?,
         "terms": serde_json::to_value(&web.terms)?,
         "backing": serde_json::to_value(&second_backing)?,
         "feeSchedule": serde_json::to_value(&web.schedule)?,
         "verifierReport": serde_json::to_value(&second_report)?,
+        "verifierAuthorityStatus": serde_json::to_value(signed_verifier_authority_status(
+            unix_timestamp_now(),
+        )?)?,
         "listing": serde_json::to_value(&web.listing)?,
         "pricingHint": serde_json::to_value(&web.pricing_hint)?,
     })
@@ -4705,6 +5576,8 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
     )
     .await?;
     assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+
+    assert_superseded_reservation_replays(&lane, web)?;
 
     // The reveal reserved under the first admission denies before
     // dispatch: no invocation and no payment authorization.
@@ -4791,13 +5664,14 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
         accepted: &accepted,
         reservation_receipt: &reservation_receipt,
     })?;
+    let status_proof_b64 = live_status_proof_b64_at(&lane.authority, &web.finding_id, now)?;
     let request = reveal_request(&RevealRequestInputs {
         request_id: "wedge-superseded-substitution-1",
         capability: &exchange.ask.body.token_offer,
         buyer: &second_buyer,
         finding_id: &web.finding_id,
         context_b64: Some(&stale_carrier),
-        status_proof_b64: lane.status_proof_b64.as_deref(),
+        status_proof_b64: Some(&status_proof_b64),
         nonce: "nonce-superseded-substitution-1",
     })?;
     let substituted = lane.kernel.evaluate_tool_call_blocking(&request)?;
@@ -4806,6 +5680,238 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
     assert_eq!(lane.calls.authorizations.load(Ordering::SeqCst), 0);
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 0);
     Ok(())
+}
+
+/// Terminal selection and realized spend come from the durable kernel
+/// verdict and outcome, never from coordinator-call parameters.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_terminal_closure_requires_live_authority_status() -> TestResult {
+    let delivered = open_lane(LaneOptions::standard()).await?;
+    let delivered_response = delivered.reveal("wedge-revoked-purchase-1", "nonce-revoked-1")?;
+    assert_eq!(delivered_response.verdict, Verdict::Allow);
+    let now = unix_timestamp_now();
+    delivered
+        .authority
+        .finding_purchase_store()
+        .register_community_fund_destination(
+            &delivered.deployment.web.allocation_id,
+            COMMUNITY_FUND_DESTINATION,
+            now,
+        )?;
+    let revoked_purchase = coordinator_with_status(
+        &delivered.authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::revoked(
+            "authority-purchase",
+        )),
+    )?;
+    assert!(matches!(
+        revoked_purchase.finalize_delivery(
+            &delivered.purchase.handshake.reservation_id,
+            &delivered_response.receipt,
+            &delivered.deployment.web.admission,
+            &delivered.deployment.web.backing,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::AuthorityLifecycle {
+            role: "purchase",
+            reason: "authority is revoked at finalization",
+        })
+    ));
+    let pre_terminal_reading = coordinator_with_status(
+        &delivered.authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::cached(
+            now.saturating_sub(delivered_response.receipt.timestamp)
+                .saturating_add(1),
+        )),
+    )?;
+    assert!(matches!(
+        pre_terminal_reading.finalize_delivery(
+            &delivered.purchase.handshake.reservation_id,
+            &delivered_response.receipt,
+            &delivered.deployment.web.admission,
+            &delivered.deployment.web.backing,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::AuthorityLifecycle {
+            role: "purchase",
+            reason: "revocation status is not a fresh post-terminal reading",
+        })
+    ));
+    let mut expired_status_pin = authority_pin(37, "authority-status");
+    expired_status_pin.valid_until = now;
+    let expired_status = coordinator_with_status_pin(
+        &delivered.authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::live()),
+        &expired_status_pin,
+    )?;
+    assert!(matches!(
+        expired_status.finalize_delivery(
+            &delivered.purchase.handshake.reservation_id,
+            &delivered_response.receipt,
+            &delivered.deployment.web.admission,
+            &delivered.deployment.web.backing,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::AuthorityLifecycle {
+            role: "purchase",
+            reason: "authority-status signer window is not live",
+        })
+    ));
+
+    let denied = open_lane(LaneOptions {
+        case: RevealCase::digest_mismatch(),
+        ..LaneOptions::standard()
+    })
+    .await?;
+    let denied_response = denied.reveal("wedge-revoked-denial-1", "nonce-revoked-2")?;
+    assert_eq!(denied_response.verdict, Verdict::Deny);
+    let (checkpoint, inclusion_proof) = denial_checkpoint(&denied_response.receipt)?;
+    let revoked_failed_delivery = coordinator_with_status(
+        &denied.authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::revoked(
+            "authority-failed-delivery",
+        )),
+    )?;
+    assert!(matches!(
+        revoked_failed_delivery.finalize_denial(
+            &denied.purchase.handshake.reservation_id,
+            &denied_response.receipt,
+            &denied.deployment.web.admission,
+            &checkpoint,
+            &inclusion_proof,
+            unix_timestamp_now(),
+        ),
+        Err(PurchaseCoordinatorError::AuthorityLifecycle {
+            role: "failed-delivery",
+            reason: "authority is revoked at finalization",
+        })
+    ));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_reservation_rechecks_seller_authorization_status() -> TestResult {
+    let lane = open_lane(LaneOptions::standard()).await?;
+    let now = unix_timestamp_now();
+    lane.coordinator
+        .release(&lane.purchase.handshake.reservation_id, now)?;
+
+    let buyer = keypair(32);
+    let exchange = handshake(
+        &lane.deployment.web,
+        &lane.witness,
+        &buyer,
+        OTHER_BUYER_PAYOUT,
+        "finding-purchase-token-revoked-seller",
+    )?;
+    let revoked = coordinator_with_status(
+        &lane.authority,
+        Arc::new(TestTerminalAuthorityStatusResolver::revoked(
+            &lane.deployment.web.authorization.body.authorization_id,
+        )),
+    )?;
+    assert!(matches!(
+        revoked.reserve(
+            &exchange.bid,
+            &exchange.ask,
+            &exchange.buyer_signature_hex,
+            &lane.deployment.web.admission,
+            &lane.deployment.web.authorization,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::SellerAuthorizationLifecycle(
+            "seller authorization is revoked"
+        ))
+    ));
+    assert!(lane
+        .authority
+        .finding_purchase_store()
+        .get_reservation(&exchange.reservation_id)?
+        .is_none());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_reservation_atomically_rejects_retracted_finding() -> TestResult {
+    let lane = open_lane(LaneOptions::standard()).await?;
+    let now = unix_timestamp_now();
+    lane.coordinator
+        .release(&lane.purchase.handshake.reservation_id, now)?;
+
+    let config = market_config();
+    let status_store = lane.authority.finding_status_store();
+    let intent_id = sha256_hex(b"reservation-gate-retraction-intent");
+    let intent_bytes = canonical_json_bytes(&serde_json::json!({
+        "finding_id": lane.deployment.web.finding_id,
+        "reason": "reservation_gate_regression",
+        "schema": "chio.finding.voluntary-retraction.v1",
+    }))?;
+    status_store.issue_retraction_intent(&chio_store_sqlite::FindingRetractionIntentInput {
+        intent_id: &intent_id,
+        feed_id: &config.status_feed_operator_ref,
+        operator_id: &config.status_feed_operator.authority.authority_id,
+        finding_id: &lane.deployment.web.finding_id,
+        source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
+        intent_bytes: &intent_bytes,
+        issued_at: now,
+        inclusion_deadline: now.saturating_add(config.status_feed_service_bond.inclusion_sla_secs),
+        created_at: now,
+    })?;
+    let publisher =
+        crate::trust_control::finding_status_publisher::FindingStatusEpochPublisher::new(
+            status_store,
+            config.status_feed_operator,
+            config.status_feed_service_bond,
+            keypair(36),
+            config.status_max_epoch_age_secs,
+        )?;
+    publisher.publish_retraction(&intent_id, &[], now)?;
+
+    let buyer = keypair(32);
+    let exchange = handshake(
+        &lane.deployment.web,
+        &lane.witness,
+        &buyer,
+        OTHER_BUYER_PAYOUT,
+        "finding-purchase-token-retracted",
+    )?;
+    let error = lane
+        .coordinator
+        .reserve(
+            &exchange.bid,
+            &exchange.ask,
+            &exchange.buyer_signature_hex,
+            &lane.deployment.web.admission,
+            &lane.deployment.web.authorization,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            exchange.ask.body.issued_at,
+        )
+        .err()
+        .ok_or("retracted finding opened a reservation")?;
+    assert!(
+        matches!(
+            error,
+            PurchaseCoordinatorError::Store(ref message) if message.contains("finding is retracted")
+        ),
+        "unexpected reservation rejection: {error:?}"
+    );
+    assert!(lane
+        .authority
+        .finding_purchase_store()
+        .get_reservation(&exchange.reservation_id)?
+        .is_none());
+    Ok(())
+}
+
+#[test]
+fn public_purchase_output_bound_cannot_reject_a_kernel_captured_output() {
+    assert_eq!(
+        FINDING_PURCHASE_MAX_OUTPUT_BYTES,
+        chio_kernel::tool_outcome::MAX_RAW_INVOCATION_OUTCOME_BYTES
+    );
 }
 
 /// Terminal selection and realized spend come from the durable kernel
@@ -4826,6 +5932,21 @@ async fn wedge_purchase_finalization_uses_the_durable_verdict_and_capture() -> T
         now,
     )?;
 
+    let mut future_body = response.receipt.body();
+    future_body.timestamp = now.saturating_add(1);
+    let future_receipt = ChioReceipt::sign(future_body, &keypair(40))?;
+    assert!(matches!(
+        lane.coordinator.finalize_delivery(
+            &reservation_id,
+            &future_receipt,
+            &lane.deployment.web.admission,
+            &lane.deployment.web.backing,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::TerminalEvidence(message))
+            if message.contains("ahead of the finalization clock")
+    ));
+
     let (checkpoint, inclusion_proof) = denial_checkpoint(&response.receipt)?;
     let refused = lane.coordinator.finalize_denial(
         &reservation_id,
@@ -4840,8 +5961,9 @@ async fn wedge_purchase_finalization_uses_the_durable_verdict_and_capture() -> T
         Err(PurchaseCoordinatorError::TerminalEvidence(_))
     ));
 
-    // The refusal did not promote the buyer destination, left the purchase
-    // slot reserved, and wrote no terminal record.
+    // The refusal left the buyer payout unadmitted, kept the purchase slot
+    // reserved, and wrote no terminal record. Buyer payout promotion belongs
+    // to the same transaction as a valid settlement record.
     assert_eq!(
         purchase_store.list_payout_destinations(&allocation_id)?,
         vec![(0_u8, COMMUNITY_FUND_DESTINATION.to_string())]
@@ -4869,6 +5991,13 @@ async fn wedge_purchase_finalization_uses_the_durable_verdict_and_capture() -> T
     assert!(purchase_store
         .get_purchase_record(&record.body.purchase_key)?
         .is_some());
+    assert_eq!(
+        purchase_store.list_payout_destinations(&allocation_id)?,
+        vec![
+            (0_u8, COMMUNITY_FUND_DESTINATION.to_string()),
+            (1_u8, BUYER_PAYOUT.to_string()),
+        ]
+    );
     Ok(())
 }
 
@@ -4996,8 +6125,8 @@ async fn wedge_purchase_refuses_to_persist_an_unvalidatable_artifact() -> TestRe
         Err(PurchaseCoordinatorError::TerminalEvidence(_))
     ));
 
-    // Neither refusal promoted the buyer destination or moved the purchase
-    // beyond its pre-payment admission.
+    // Neither refusal moved the purchase beyond its pre-payment reservation
+    // or admitted the buyer payout as an immutable distribution slot.
     assert_eq!(
         purchase_store.list_payout_destinations(&allocation_id)?,
         vec![(0_u8, COMMUNITY_FUND_DESTINATION.to_string())]
@@ -5031,5 +6160,12 @@ async fn wedge_purchase_refuses_to_persist_an_unvalidatable_artifact() -> TestRe
     assert!(purchase_store
         .get_purchase_record(&record.body.purchase_key)?
         .is_some());
+    assert_eq!(
+        purchase_store.list_payout_destinations(&allocation_id)?,
+        vec![
+            (0_u8, COMMUNITY_FUND_DESTINATION.to_string()),
+            (1_u8, BUYER_PAYOUT.to_string()),
+        ]
+    );
     Ok(())
 }

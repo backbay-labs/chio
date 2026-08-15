@@ -1,9 +1,9 @@
 # Pool Purchasing and SDK (M8) Qualification
 
-Status: implemented behind `cognition-market-experimental`. The buyer ceiling
-is buyer-local policy. The hard pool ceiling applies only to the qualifying
-durable SQLite ledger. A final integrated branch must still pass the workspace
-gate listed below.
+Status: implemented and promoted to the default surface by M9. The buyer
+ceiling is buyer-local policy. The hard pool ceiling applies only to the
+qualifying durable SQLite ledger. A final integrated branch must still pass
+the workspace gate listed below.
 
 ## Authority boundaries
 
@@ -91,9 +91,9 @@ The rebased M8 stack recorded these results on 2026-08-09:
 
 | Exit | Command | Result |
 |---|---|---|
-| Rust ceiling, real marketplace, and pheromone convention | `cargo test -p chio-open-market --features cognition-market-experimental --test finding_bid_policy --test cognition_market_flow --test finding_admission -j1` | 41 passed on the cumulative M6 base |
-| Kernel pool lifecycle and durability regressions | `cargo test -p chio-kernel --features cognition-market-experimental 'finding_pool::tests' --lib -j1` | 7 passed |
-| Authenticated pool concurrency, restart, and purchaser proof | `cargo test -p chio-store-sqlite --features cognition-market-experimental --test finding_pool_ledger -j1` | 13 passed |
+| Rust ceiling, real marketplace, and pheromone convention | `cargo test -p chio-open-market --test finding_bid_policy --test cognition_market_flow --test finding_admission -j1` | 41 passed on the promoted cumulative M9 default |
+| Kernel pool lifecycle and durability regressions | `cargo test -p chio-kernel 'finding_pool::tests' --lib -j1` | 7 passed on the promoted cumulative M9 default |
+| Authenticated pool concurrency, restart, and purchaser proof | `cargo test -p chio-store-sqlite --test finding_pool_ledger -j1` | 13 passed on the promoted cumulative M9 default |
 | TypeScript SDK suite and parity vectors | `node --experimental-strip-types --test ./test/*.test.ts` in `sdks/typescript/chio-ts` | 89 passed |
 | TypeScript strict type check | `tsc --noEmit -p chio-ts/tsconfig.json` | passed |
 | Python SDK suite and parity vectors | `uv run --project . --extra dev pytest -q` in `sdks/python/chio-sdk-python` | 145 passed |

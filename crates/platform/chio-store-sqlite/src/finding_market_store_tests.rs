@@ -13,9 +13,16 @@ use chio_finding::{
 use tempfile::TempDir;
 
 use super::*;
-use crate::SqliteAuthorityStore;
+use crate::{
+    FindingStatusProofKind, SqliteAuthorityStore, VerifiedFindingStatusEpochInput,
+    VerifiedFindingStatusProofInput, FINDING_STATUS_KEY_DOMAIN_NONCE,
+};
 
 const LISTING_ID: &str = "finding-listing-01";
+const STATUS_FEED: &str = "status-feed/venue-wedge";
+const STATUS_OPERATOR: &str = "venue-wedge-status-operator";
+const STATUS_AUTHORIZATION_SHA256: &str =
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const NOW: u64 = 1_750_000_000;
 
 struct Fixture {
@@ -259,6 +266,51 @@ fn reconcile(
         &usd(amount_units),
         "rail:venue-ledger:audit-pool",
     )
+}
+
+fn install_status(fixture: &Fixture, finding_id: &str, kind: FindingStatusProofKind) {
+    let epoch_id = hex64('d');
+    let root_hash = hex64('e');
+    let status = fixture._authority.finding_status_store();
+    status
+        .observe_verified_epoch(&VerifiedFindingStatusEpochInput {
+            feed_id: STATUS_FEED,
+            operator_id: STATUS_OPERATOR,
+            key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+            map_epoch: 1,
+            epoch_id: &epoch_id,
+            root_hash: &root_hash,
+            signed_epoch_bytes: b"market-status-epoch",
+            operator_key: "market-status-key",
+            operator_key_epoch: 1,
+            operator_authorization_sha256: STATUS_AUTHORIZATION_SHA256,
+            generated_at: NOW - 2,
+            valid_until: NOW + 600,
+            recorded_at: NOW - 1,
+        })
+        .expect("persist market status epoch");
+    let (status_value_bytes, retraction_intent_sha256) = match kind {
+        FindingStatusProofKind::Inclusion => (Some(b"retracted".as_slice()), Some(hex64('f'))),
+        FindingStatusProofKind::NonInclusion => (None, None),
+    };
+    status
+        .record_verified_proof(&VerifiedFindingStatusProofInput {
+            feed_id: STATUS_FEED,
+            operator_id: STATUS_OPERATOR,
+            key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+            map_epoch: 1,
+            epoch_id: &epoch_id,
+            root_hash: &root_hash,
+            finding_id,
+            kind,
+            proof_bytes: b"market-status-proof",
+            status_value_bytes,
+            retraction_intent_sha256: retraction_intent_sha256.as_deref(),
+            checked_at: NOW - 1,
+            valid_until: NOW + 500,
+            recorded_at: NOW,
+        })
+        .expect("persist market status proof");
 }
 
 #[test]
@@ -537,6 +589,22 @@ fn retained_recipe_dependency_survives_restart_and_rejects_deletion() {
 }
 
 #[test]
+fn allocation_registration_rejects_acceptance_before_signed_issuance() {
+    let fixture = fixture();
+    let finding_id = hex64('a');
+    let collateral = keypair(21);
+    let mut backing = backing_body(&finding_id, "vault:future-allocation");
+    backing.issued_at = NOW.saturating_add(1);
+    backing.allocation_id = compute_allocation_id(&backing).expect("allocation id");
+    let envelope = envelope_string(&backing, &collateral);
+
+    assert!(matches!(
+        fixture.store.register_allocation(&envelope, &backing, NOW),
+        Err(FindingMarketStoreError::Conflict(_))
+    ));
+}
+
+#[test]
 fn allocation_exclusivity_and_single_consumption() {
     let fixture = fixture();
     let finding_id = hex64('a');
@@ -697,7 +765,7 @@ fn paid_through_epoch_stops_at_gaps() {
     assert_eq!(
         fixture
             .store
-            .paid_through_epoch(&finding_id, LISTING_ID)
+            .paid_through_epoch(&finding_id, LISTING_ID, &hex64('5'))
             .expect("empty listing"),
         None
     );
@@ -720,10 +788,18 @@ fn paid_through_epoch_stops_at_gaps() {
     assert_eq!(
         fixture
             .store
-            .paid_through_epoch(&finding_id, LISTING_ID)
+            .paid_through_epoch(&finding_id, LISTING_ID, &hex64('5'))
             .expect("gapped listing"),
         Some(1),
         "the gap at epoch 2 stops the contiguous count"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .paid_through_epoch(&finding_id, LISTING_ID, &hex64('6'))
+            .expect("different schedule"),
+        None,
+        "payments from a superseded fee schedule must not fund the active terms"
     );
     // A listing whose first reconciled epoch is 1 has not paid epoch 0.
     let other_finding = hex64('b');
@@ -733,7 +809,7 @@ fn paid_through_epoch_stops_at_gaps() {
     assert_eq!(
         fixture
             .store
-            .paid_through_epoch(&other_finding, LISTING_ID)
+            .paid_through_epoch(&other_finding, LISTING_ID, &hex64('5'))
             .expect("epoch zero unpaid"),
         None
     );
@@ -813,7 +889,11 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
     assert_eq!(
         fixture
             .store
-            .prepare_listing_activation(&admission_envelope, &admission, NOW)
+            .prepare_listing_activation_without_status_for_test(
+                &admission_envelope,
+                &admission,
+                NOW
+            )
             .expect("prepare activation"),
         FindingActivationPreparationOutcome::Prepared
     );
@@ -849,7 +929,11 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
     assert_eq!(
         fixture
             .store
-            .prepare_listing_activation(&admission_envelope, &admission, NOW + 1)
+            .prepare_listing_activation_without_status_for_test(
+                &admission_envelope,
+                &admission,
+                NOW + 1
+            )
             .expect("replay prepare"),
         FindingActivationPreparationOutcome::PendingReplay
     );
@@ -858,7 +942,11 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
         matches!(
             fixture
                 .store
-                .prepare_listing_activation(&conflicting_envelope, &admission, NOW + 1),
+                .prepare_listing_activation_without_status_for_test(
+                    &conflicting_envelope,
+                    &admission,
+                    NOW + 1
+                ),
             Err(FindingMarketStoreError::Conflict(_))
         ),
         "the same admission id cannot bind different prepare bytes"
@@ -884,7 +972,11 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
     assert!(matches!(
         fixture
             .store
-            .prepare_listing_activation(&second_envelope, &second_admission, NOW + 10),
+            .prepare_listing_activation_without_status_for_test(
+                &second_envelope,
+                &second_admission,
+                NOW + 10
+            ),
         Err(FindingMarketStoreError::Conflict(_))
     ));
     assert_eq!(
@@ -944,7 +1036,11 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
     assert_eq!(
         fixture
             .store
-            .prepare_listing_activation(&admission_envelope, &admission, NOW + 5)
+            .prepare_listing_activation_without_status_for_test(
+                &admission_envelope,
+                &admission,
+                NOW + 5
+            )
             .expect("replay completed prepare"),
         FindingActivationPreparationOutcome::AlreadyActivated
     );
@@ -972,7 +1068,11 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
     assert_eq!(
         fixture
             .store
-            .prepare_listing_activation(&second_envelope, &second_admission, NOW + 20)
+            .prepare_listing_activation_without_status_for_test(
+                &second_envelope,
+                &second_admission,
+                NOW + 20
+            )
             .expect("prepare superseding admission"),
         FindingActivationPreparationOutcome::Prepared
     );
@@ -1010,6 +1110,10 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
          guarantees the prior row moved to superseded"
     );
     assert_eq!(superseding.envelope_json, second_envelope);
+    assert_eq!(
+        superseding.activated_at, NOW,
+        "supersession must preserve the original participation epoch origin"
+    );
     let old_allocation = fixture
         .store
         .get_allocation(&backing.allocation_id)
@@ -1051,7 +1155,11 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
         matches!(
             fixture
                 .store
-                .prepare_listing_activation(&third_envelope, &third_admission, NOW + 23),
+                .prepare_listing_activation_without_status_for_test(
+                    &third_envelope,
+                    &third_admission,
+                    NOW + 23
+                ),
             Err(FindingMarketStoreError::Conflict(_))
         ),
         "a live sales block must refuse fresh activation"
@@ -1076,6 +1184,626 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
         second_admission.admission_id,
         "the refused activation cannot supersede the active row"
     );
+}
+
+#[test]
+fn retracted_status_atomically_blocks_activation_and_participation_intents() {
+    let fixture = fixture();
+    let finding_id = hex64('a');
+    let artifact = publish_finding(
+        &fixture.store,
+        &finding_id,
+        "regression/status-gate",
+        &hex64('c'),
+        1_700_000_000,
+        1_900_000_000,
+    );
+    let backing = backing_body(&finding_id, "vault:status-gate");
+    let backing_envelope = envelope_string(&backing, &keypair(21));
+    let backing_sha256 = chio_core::sha256_hex(backing_envelope.as_bytes());
+    fixture
+        .store
+        .register_allocation(&backing_envelope, &backing, NOW)
+        .expect("register status-gated allocation");
+    let admission = admission_body(
+        &finding_id,
+        &chio_core::sha256_hex(artifact.as_bytes()),
+        &backing,
+        &backing_sha256,
+    );
+    let admission_envelope = envelope_string(&admission, &keypair(31));
+    install_status(&fixture, &finding_id, FindingStatusProofKind::Inclusion);
+
+    let activation = fixture.store.prepare_listing_activation(
+        &admission_envelope,
+        &admission,
+        STATUS_FEED,
+        STATUS_AUTHORIZATION_SHA256,
+        NOW,
+        NOW,
+        300,
+    );
+    assert!(matches!(
+        activation,
+        Err(FindingMarketStoreError::Conflict(ref detail))
+            if detail.contains("pending or retracted")
+    ));
+    assert_eq!(
+        fixture
+            .store
+            .get_allocation(&backing.allocation_id)
+            .expect("read status-gated allocation")
+            .expect("status-gated allocation exists")
+            .state,
+        FindingAllocationState::Live
+    );
+    assert!(fixture
+        .store
+        .get_activation_attempt(&admission.admission_id)
+        .expect("read rejected activation")
+        .is_none());
+
+    let event = FindingFeeEvent::ParticipationEpoch { epoch_index: 1 };
+    let amount = usd(3);
+    let instruction_sha256 = hex64('8');
+    let schedule_sha256 = hex64('5');
+    let intent = FindingFeeIntent {
+        fee_schedule_envelope_sha256: &schedule_sha256,
+        event: &event,
+        finding_id: &finding_id,
+        listing_id: LISTING_ID,
+        payer: "venue-operator",
+        amount: &amount,
+        pool_principal_id: "pool:audit",
+        rail_destination: "rail:venue-ledger:audit-pool",
+        instruction_sha256: &instruction_sha256,
+    };
+    let admission_envelope_sha256 = chio_core::sha256_hex(admission_envelope.as_bytes());
+    let admission_fence = FindingParticipationAdmissionFence {
+        admission_id: &admission.admission_id,
+        admission_envelope_sha256: &admission_envelope_sha256,
+    };
+    let renewal = fixture.store.begin_live_participation_fee_intent(
+        &intent,
+        &admission_fence,
+        STATUS_FEED,
+        STATUS_AUTHORIZATION_SHA256,
+        NOW,
+        NOW,
+        300,
+    );
+    assert!(matches!(
+        renewal,
+        Err(FindingMarketStoreError::Conflict(ref detail))
+            if detail.contains("pending or retracted")
+    ));
+    let key = finding_fee_idempotency_key(&schedule_sha256, &event, &finding_id, LISTING_ID);
+    assert!(fixture
+        .store
+        .get_fee_event(&key)
+        .expect("read rejected renewal intent")
+        .is_none());
+}
+
+#[test]
+fn stale_status_epoch_atomically_blocks_activation_and_participation_intents() {
+    let fixture = fixture();
+    let finding_id = hex64('a');
+    let artifact = publish_finding(
+        &fixture.store,
+        &finding_id,
+        "regression/stale-status-gate",
+        &hex64('c'),
+        1_700_000_000,
+        1_900_000_000,
+    );
+    let backing = backing_body(&finding_id, "vault:stale-status-gate");
+    let backing_envelope = envelope_string(&backing, &keypair(21));
+    let backing_sha256 = chio_core::sha256_hex(backing_envelope.as_bytes());
+    fixture
+        .store
+        .register_allocation(&backing_envelope, &backing, NOW)
+        .expect("register stale-status-gated allocation");
+    let admission = admission_body(
+        &finding_id,
+        &chio_core::sha256_hex(artifact.as_bytes()),
+        &backing,
+        &backing_sha256,
+    );
+    let admission_envelope = envelope_string(&admission, &keypair(31));
+    install_status(&fixture, &finding_id, FindingStatusProofKind::NonInclusion);
+
+    let activation = fixture.store.prepare_listing_activation(
+        &admission_envelope,
+        &admission,
+        STATUS_FEED,
+        STATUS_AUTHORIZATION_SHA256,
+        NOW,
+        NOW,
+        1,
+    );
+    assert!(matches!(
+        activation,
+        Err(FindingMarketStoreError::Conflict(ref detail)) if detail.contains("stale")
+    ));
+    assert!(fixture
+        .store
+        .get_activation_attempt(&admission.admission_id)
+        .expect("read rejected stale-status activation")
+        .is_none());
+
+    let event = FindingFeeEvent::ParticipationEpoch { epoch_index: 1 };
+    let amount = usd(3);
+    let instruction_sha256 = hex64('8');
+    let schedule_sha256 = hex64('5');
+    let intent = FindingFeeIntent {
+        fee_schedule_envelope_sha256: &schedule_sha256,
+        event: &event,
+        finding_id: &finding_id,
+        listing_id: LISTING_ID,
+        payer: "venue-operator",
+        amount: &amount,
+        pool_principal_id: "pool:audit",
+        rail_destination: "rail:venue-ledger:audit-pool",
+        instruction_sha256: &instruction_sha256,
+    };
+    let admission_envelope_sha256 = chio_core::sha256_hex(admission_envelope.as_bytes());
+    let admission_fence = FindingParticipationAdmissionFence {
+        admission_id: &admission.admission_id,
+        admission_envelope_sha256: &admission_envelope_sha256,
+    };
+    let renewal = fixture.store.begin_live_participation_fee_intent(
+        &intent,
+        &admission_fence,
+        STATUS_FEED,
+        STATUS_AUTHORIZATION_SHA256,
+        NOW,
+        NOW,
+        1,
+    );
+    assert!(matches!(
+        renewal,
+        Err(FindingMarketStoreError::Conflict(ref detail)) if detail.contains("stale")
+    ));
+    let key = finding_fee_idempotency_key(&schedule_sha256, &event, &finding_id, LISTING_ID);
+    assert!(fixture
+        .store
+        .get_fee_event(&key)
+        .expect("read rejected stale-status renewal")
+        .is_none());
+}
+
+#[test]
+fn participation_fee_intent_replays_after_status_freshness_expires() {
+    let fixture = fixture();
+    let finding_id = hex64('a');
+    let (admission, admission_envelope) = activate_participation_admission(&fixture, &finding_id);
+    let admission_envelope_sha256 = chio_core::sha256_hex(admission_envelope.as_bytes());
+    let admission_fence = FindingParticipationAdmissionFence {
+        admission_id: &admission.admission_id,
+        admission_envelope_sha256: &admission_envelope_sha256,
+    };
+    install_status(&fixture, &finding_id, FindingStatusProofKind::NonInclusion);
+    let event = FindingFeeEvent::ParticipationEpoch { epoch_index: 1 };
+    let amount = usd(3);
+    let instruction_sha256 = hex64('8');
+    let schedule_sha256 = hex64('5');
+    let intent = FindingFeeIntent {
+        fee_schedule_envelope_sha256: &schedule_sha256,
+        event: &event,
+        finding_id: &finding_id,
+        listing_id: LISTING_ID,
+        payer: "venue-operator",
+        amount: &amount,
+        pool_principal_id: "pool:audit",
+        rail_destination: "rail:venue-ledger:audit-pool",
+        instruction_sha256: &instruction_sha256,
+    };
+
+    let rejected = fixture.store.begin_live_participation_fee_intent(
+        &intent,
+        &admission_fence,
+        STATUS_FEED,
+        STATUS_AUTHORIZATION_SHA256,
+        NOW - 3,
+        NOW,
+        300,
+    );
+    assert!(matches!(
+        rejected,
+        Err(FindingMarketStoreError::Conflict(ref detail))
+            if detail.contains("standing predates")
+    ));
+
+    let inserted = fixture
+        .store
+        .begin_live_participation_fee_intent(
+            &intent,
+            &admission_fence,
+            STATUS_FEED,
+            STATUS_AUTHORIZATION_SHA256,
+            NOW,
+            NOW,
+            300,
+        )
+        .expect("insert fee intent while status is live");
+    assert_eq!(inserted.outcome, FindingFeeIntentOutcome::Inserted);
+    assert!(fixture
+        .store
+        .is_exact_fee_intent_replay(&intent)
+        .expect("probe exact fee replay"));
+
+    let replay = fixture
+        .store
+        .begin_live_participation_fee_intent(
+            &intent,
+            &admission_fence,
+            STATUS_FEED,
+            STATUS_AUTHORIZATION_SHA256,
+            NOW,
+            NOW + 500,
+            300,
+        )
+        .expect("replay fee intent after status expiry");
+    assert_eq!(replay.outcome, FindingFeeIntentOutcome::ExistingIntent);
+}
+
+#[test]
+fn pending_participation_intent_is_recoverable_without_an_admission_lookup() {
+    let fixture = fixture();
+    let finding_id = hex64('a');
+    let schedule_sha256 = hex64('5');
+    let event = FindingFeeEvent::ParticipationEpoch { epoch_index: 4 };
+    let amount = usd(3);
+    let instruction_sha256 = hex64('8');
+    let intent = FindingFeeIntent {
+        fee_schedule_envelope_sha256: &schedule_sha256,
+        event: &event,
+        finding_id: &finding_id,
+        listing_id: LISTING_ID,
+        payer: "seller-42",
+        amount: &amount,
+        pool_principal_id: "pool:audit",
+        rail_destination: "rail:venue-ledger:audit-pool",
+        instruction_sha256: &instruction_sha256,
+    };
+    fixture
+        .store
+        .begin_fee_intent(&intent)
+        .expect("persist participation intent");
+
+    let pending = fixture
+        .store
+        .get_pending_participation_fee_intent(&finding_id, &schedule_sha256)
+        .expect("recover pending intent")
+        .expect("pending intent exists");
+    assert_eq!(pending.event, event);
+    assert_eq!(pending.instruction_sha256, instruction_sha256);
+
+    reconcile(&fixture.store, &pending.idempotency_key, &hex64('9'), 3)
+        .expect("reconcile pending intent");
+    assert!(fixture
+        .store
+        .get_pending_participation_fee_intent(&finding_id, &schedule_sha256)
+        .expect("recheck pending intent")
+        .is_none());
+}
+
+#[path = "finding_market_store_tests/participation_fence.rs"]
+mod participation_fence;
+#[path = "finding_market_store_tests/sales_block.rs"]
+mod sales_block;
+use participation_fence::activate_participation_admission;
+
+#[test]
+fn prepared_activation_replay_reuses_its_retained_live_status_decision() {
+    let fixture = fixture();
+    let finding_id = hex64('a');
+    let artifact = publish_finding(
+        &fixture.store,
+        &finding_id,
+        "regression/status-replay",
+        &hex64('c'),
+        1_700_000_000,
+        1_900_000_000,
+    );
+    let backing = backing_body(&finding_id, "vault:status-replay");
+    let backing_envelope = envelope_string(&backing, &keypair(21));
+    let backing_sha256 = chio_core::sha256_hex(backing_envelope.as_bytes());
+    fixture
+        .store
+        .register_allocation(&backing_envelope, &backing, NOW)
+        .expect("register status-replay allocation");
+    let admission = admission_body(
+        &finding_id,
+        &chio_core::sha256_hex(artifact.as_bytes()),
+        &backing,
+        &backing_sha256,
+    );
+    let admission_envelope = envelope_string(&admission, &keypair(31));
+    install_status(&fixture, &finding_id, FindingStatusProofKind::NonInclusion);
+
+    assert_eq!(
+        fixture
+            .store
+            .prepare_listing_activation(
+                &admission_envelope,
+                &admission,
+                STATUS_FEED,
+                STATUS_AUTHORIZATION_SHA256,
+                NOW,
+                NOW,
+                300,
+            )
+            .expect("prepare under live status"),
+        FindingActivationPreparationOutcome::Prepared
+    );
+    assert_eq!(
+        fixture
+            .store
+            .prepare_listing_activation(
+                &admission_envelope,
+                &admission,
+                STATUS_FEED,
+                STATUS_AUTHORIZATION_SHA256,
+                NOW,
+                NOW + 500,
+                300,
+            )
+            .expect("replay after the live-status proof expires"),
+        FindingActivationPreparationOutcome::PendingReplay
+    );
+    assert_eq!(
+        fixture
+            .store
+            .get_allocation(&backing.allocation_id)
+            .expect("read replay allocation")
+            .expect("replay allocation exists")
+            .state,
+        FindingAllocationState::Consumed
+    );
+}
+
+#[test]
+fn expired_prepared_activation_releases_collateral_and_retains_fee_credit() {
+    let fixture = fixture();
+    let finding_id = hex64('b');
+    let artifact = publish_finding(
+        &fixture.store,
+        &finding_id,
+        "regression/expired-prepare",
+        &hex64('c'),
+        1_700_000_000,
+        1_900_000_000,
+    );
+    let backing = backing_body(&finding_id, "vault:expired-prepare");
+    let backing_envelope = envelope_string(&backing, &keypair(21));
+    let backing_sha256 = chio_core::sha256_hex(backing_envelope.as_bytes());
+    fixture
+        .store
+        .register_allocation(&backing_envelope, &backing, NOW)
+        .expect("register expiring allocation");
+    let publication = begin_intent(
+        &fixture.store,
+        &FindingFeeEvent::Publication,
+        &finding_id,
+        5,
+        &hex64('6'),
+    );
+    let participation = begin_intent(
+        &fixture.store,
+        &FindingFeeEvent::ParticipationEpoch { epoch_index: 0 },
+        &finding_id,
+        3,
+        &hex64('8'),
+    );
+    reconcile(&fixture.store, &publication.idempotency_key, &hex64('7'), 5)
+        .expect("reconcile publication credit");
+    reconcile(
+        &fixture.store,
+        &participation.idempotency_key,
+        &hex64('9'),
+        3,
+    )
+    .expect("reconcile participation credit");
+    let admission = admission_body(
+        &finding_id,
+        &chio_core::sha256_hex(artifact.as_bytes()),
+        &backing,
+        &backing_sha256,
+    );
+    let admission_envelope = envelope_string(&admission, &keypair(31));
+    assert_eq!(
+        fixture
+            .store
+            .prepare_listing_activation_without_status_for_test(
+                &admission_envelope,
+                &admission,
+                NOW,
+            )
+            .expect("prepare expiring activation"),
+        FindingActivationPreparationOutcome::Prepared
+    );
+    assert_eq!(
+        fixture
+            .store
+            .activate_listing(&admission_envelope, &admission, admission.expires_at,)
+            .expect("terminalize expired activation"),
+        FindingActivationOutcome::Expired
+    );
+    assert_eq!(
+        fixture
+            .store
+            .get_allocation(&backing.allocation_id)
+            .expect("read released allocation")
+            .expect("released allocation exists")
+            .state,
+        FindingAllocationState::Released
+    );
+    assert_eq!(
+        fixture
+            .store
+            .get_activation_attempt(&admission.admission_id)
+            .expect("read expired attempt")
+            .expect("expired attempt exists")
+            .state,
+        FindingActivationAttemptState::Expired
+    );
+    assert!(fixture
+        .store
+        .get_current_admission(&finding_id)
+        .expect("read absent expired admission")
+        .is_none());
+    for key in [&publication.idempotency_key, &participation.idempotency_key] {
+        assert_eq!(
+            fixture
+                .store
+                .get_fee_event(key)
+                .expect("read retained fee credit")
+                .expect("retained fee credit exists")
+                .state,
+            FindingFeeState::Reconciled
+        );
+    }
+    assert_eq!(
+        fixture
+            .store
+            .prepare_listing_activation_without_status_for_test(
+                &admission_envelope,
+                &admission,
+                admission.expires_at.saturating_add(1),
+            )
+            .expect("replay expired preparation"),
+        FindingActivationPreparationOutcome::Expired
+    );
+    assert_eq!(
+        fixture
+            .store
+            .begin_fee_intent(&FindingFeeIntent {
+                fee_schedule_envelope_sha256: &hex64('5'),
+                event: &FindingFeeEvent::Publication,
+                finding_id: &finding_id,
+                listing_id: LISTING_ID,
+                payer: "seller-42",
+                amount: &usd(5),
+                pool_principal_id: "pool:audit",
+                rail_destination: "rail:venue-ledger:audit-pool",
+                instruction_sha256: &hex64('6'),
+            })
+            .expect("reuse reconciled publication credit")
+            .outcome,
+        FindingFeeIntentOutcome::AlreadyReconciled
+    );
+}
+
+#[test]
+fn schema_v2_upgrade_adds_expired_activation_recovery_without_replaying_admissions() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    secure_temp_directory(temp.path());
+    let database = temp.path().join("authority.db");
+    let lock_root = temp.path().join("locks");
+    fs::create_dir(&lock_root).expect("create lock root");
+    secure_temp_directory(&lock_root);
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision authority");
+    let admission_id = {
+        let authority =
+            SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open authority");
+        let store = authority.finding_market_store();
+        let finding_id = hex64('c');
+        let artifact = publish_finding(
+            &store,
+            &finding_id,
+            "regression/schema-v2",
+            &hex64('d'),
+            1_700_000_000,
+            1_900_000_000,
+        );
+        let backing = backing_body(&finding_id, "vault:schema-v2");
+        let backing_envelope = envelope_string(&backing, &keypair(21));
+        let backing_sha256 = chio_core::sha256_hex(backing_envelope.as_bytes());
+        store
+            .register_allocation(&backing_envelope, &backing, NOW)
+            .expect("register schema fixture allocation");
+        let admission = admission_body(
+            &finding_id,
+            &chio_core::sha256_hex(artifact.as_bytes()),
+            &backing,
+            &backing_sha256,
+        );
+        let envelope = envelope_string(&admission, &keypair(31));
+        store
+            .prepare_listing_activation_without_status_for_test(&envelope, &admission, NOW)
+            .expect("prepare schema fixture activation");
+        for terminal in &admission.fee_terminals {
+            let key = finding_fee_idempotency_key(
+                &terminal.fee_schedule_envelope_sha256,
+                &terminal.event,
+                &admission.finding_id,
+                &admission.listing_id,
+            );
+            store
+                .mark_fee_reconciled(
+                    &key,
+                    &terminal.observation_sha256,
+                    &terminal.amount,
+                    &terminal.rail_destination,
+                )
+                .expect("reconcile schema fixture fee");
+        }
+        store
+            .activate_listing(&envelope, &admission, NOW)
+            .expect("activate schema fixture");
+        admission.admission_id
+    };
+
+    let connection = rusqlite::Connection::open(&database).expect("open raw schema fixture");
+    connection
+        .execute_batch(
+            r#"
+            DROP TABLE finding_expired_activation_attempts;
+            DROP TRIGGER collateral_allocations_lifecycle;
+            CREATE TRIGGER collateral_allocations_lifecycle
+            BEFORE UPDATE OF state ON collateral_allocations
+            WHEN NOT (
+                OLD.state = 'live'
+                AND NEW.state IN ('consumed', 'expired', 'released')
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'collateral allocation leaves live exactly once');
+            END;
+            "#,
+        )
+        .expect("restore prior schema shape");
+    crate::stamp_schema_version(&connection, FINDING_MARKET_SCHEMA_KEY, 2)
+        .expect("stamp prior market schema");
+    drop(connection);
+
+    let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)
+        .expect("upgrade prior schema revision");
+    let store = authority.finding_market_store();
+    assert_eq!(
+        store
+            .get_activation_attempt(&admission_id)
+            .expect("read upgraded activation")
+            .expect("upgraded activation exists")
+            .state,
+        FindingActivationAttemptState::Activated
+    );
+    let connection = store.connection().expect("read upgraded schema");
+    let marker_table: bool = connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM sqlite_schema
+                WHERE type = 'table'
+                  AND name = 'finding_expired_activation_attempts'
+            )
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .expect("query upgraded marker table");
+    assert!(marker_table);
 }
 
 #[test]

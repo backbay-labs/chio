@@ -1,13 +1,13 @@
 //! Durable storage for the cognition finding market: publication,
 //! discovery, collateral backing, fee accounting, and venue admission.
-//!
-//! Six tables back the cognition market: `findings` (the exact accepted
+//! Seven tables back the cognition market: `findings` (the exact accepted
 //! canonical artifact bytes plus the descriptor index), `recipe_blobs`
 //! (content-addressed replay-recipe preimages, retained without
 //! deletion), `collateral_allocations` (live, exclusive, non-reusable
 //! backing allocations), `fee_events` (the durable idempotency fence for
 //! evidenced fee collection), `finding_activation_attempts` (the durable
-//! prepare record that owns an allocation before any fee dispatch), and
+//! prepare record that owns an allocation before any fee dispatch),
+//! `finding_expired_activation_attempts` (terminal recovery markers), and
 //! `admissions` (venue-signed admission bundles). Writes run under
 //! `TransactionBehavior::Immediate` behind the serving-owner fence; reads
 //! run `Deferred`; a commit whose outcome cannot be observed surfaces as
@@ -21,8 +21,10 @@
 //! single consumption, fee idempotency, and the atomic activation prepare
 //! and finalization transactions).
 
-use std::sync::{Arc, Mutex, MutexGuard};
-
+use crate::admission_operation_store::verify_active_owner;
+use crate::finding_purchase_store::sales_blocked_tx;
+use crate::finding_status_store::{status_for_purchase_tx, FindingStatusDecision};
+use crate::serving_owner::SqliteServingOwner;
 use chio_core::capability::scope::MonetaryAmount;
 use chio_core::sha256_hex;
 use chio_finding::{
@@ -31,14 +33,16 @@ use chio_finding::{
 };
 use chio_kernel::admission_operation::AdmissionOperationStoreError;
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
+use std::sync::{Arc, Mutex, MutexGuard};
 use thiserror::Error;
 
-use crate::admission_operation_store::verify_active_owner;
-use crate::finding_purchase_store::sales_blocked_tx;
-use crate::serving_owner::SqliteServingOwner;
+#[path = "finding_market_participation.rs"]
+mod participation;
+pub use participation::FindingParticipationAdmissionFence;
+use participation::{paid_through_epoch_tx, require_current_participation_admission_tx};
 
 const FINDING_MARKET_SCHEMA_KEY: &str = "finding_market";
-pub(crate) const FINDING_MARKET_SUPPORTED_SCHEMA_VERSION: i32 = 2;
+pub(crate) const FINDING_MARKET_SUPPORTED_SCHEMA_VERSION: i32 = 3;
 const FINDING_MARKET_SCHEMA_ANCHORS: &[&str] =
     &["findings", "admission_operations", "chio_serving_owner"];
 const FINDING_MARKET_SCHEMA: &str = include_str!("finding_market_store.sql");
@@ -206,6 +210,10 @@ pub struct FindingFeeIntentResult {
 pub enum FindingActivationOutcome {
     Activated,
     ExactReplay,
+    /// The prepared admission expired before finalization. Its collateral
+    /// reservation was released and reconciled fee events remain durable as
+    /// credits for a replacement admission with the same fee identities.
+    Expired,
 }
 
 /// Whether the durable activation prepare transaction claimed a fresh
@@ -216,6 +224,7 @@ pub enum FindingActivationPreparationOutcome {
     Prepared,
     PendingReplay,
     AlreadyActivated,
+    Expired,
 }
 
 /// Lifecycle of the durable activation prepare record.
@@ -223,6 +232,7 @@ pub enum FindingActivationPreparationOutcome {
 pub enum FindingActivationAttemptState {
     Prepared,
     Activated,
+    Expired,
 }
 
 /// One durable activation prepare record. The exact admission envelope
@@ -248,6 +258,8 @@ pub struct FindingAdmissionSnapshot {
     pub envelope_json: String,
     pub envelope_sha256: String,
     pub expires_at: u64,
+    /// Stable participation epoch origin for this finding and listing.
+    /// Superseding admissions preserve it so renewal cannot reset the clock.
     pub activated_at: u64,
     pub backing_allocation_id: String,
     pub allocation_state: FindingAllocationState,
@@ -621,9 +633,9 @@ impl SqliteFindingMarketStore {
                 "backing envelope bytes do not carry the supplied backing body",
             ));
         }
-        if accepted_at == 0 || accepted_at >= backing.expires_at {
+        if accepted_at < backing.issued_at || accepted_at >= backing.expires_at {
             return Err(FindingMarketStoreError::Conflict(
-                "backing allocation is stale at acceptance time".to_owned(),
+                "backing allocation is not live at acceptance time".to_owned(),
             ));
         }
         let backing_envelope_sha256 = sha256_hex(backing_envelope_json.as_bytes());
@@ -729,6 +741,49 @@ impl SqliteFindingMarketStore {
         &self,
         intent: &FindingFeeIntent<'_>,
     ) -> Result<FindingFeeIntentResult, FindingMarketStoreError> {
+        self.begin_fee_intent_inner(intent, None)
+    }
+
+    /// Fence a participation charge only if the same immediate transaction
+    /// observes a current non-retraction proof under the governance-pinned
+    /// status-operator authorization. A concurrent status update therefore
+    /// wins before an unsellable listing can open another fee intent.
+    #[allow(clippy::too_many_arguments)]
+    pub fn begin_live_participation_fee_intent(
+        &self,
+        intent: &FindingFeeIntent<'_>,
+        admission_fence: &FindingParticipationAdmissionFence<'_>,
+        status_feed_id: &str,
+        status_operator_authorization_sha256: &str,
+        status_operator_observed_at: u64,
+        trusted_now: u64,
+        status_max_epoch_age_secs: u64,
+    ) -> Result<FindingFeeIntentResult, FindingMarketStoreError> {
+        self.begin_fee_intent_inner(
+            intent,
+            Some((
+                admission_fence,
+                status_feed_id,
+                status_operator_authorization_sha256,
+                status_operator_observed_at,
+                trusted_now,
+                status_max_epoch_age_secs,
+            )),
+        )
+    }
+
+    fn begin_fee_intent_inner(
+        &self,
+        intent: &FindingFeeIntent<'_>,
+        status_gate: Option<(
+            &FindingParticipationAdmissionFence<'_>,
+            &str,
+            &str,
+            u64,
+            u64,
+            u64,
+        )>,
+    ) -> Result<FindingFeeIntentResult, FindingMarketStoreError> {
         require_hex64(
             intent.fee_schedule_envelope_sha256,
             "fee_schedule_envelope_sha256",
@@ -753,13 +808,7 @@ impl SqliteFindingMarketStore {
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
         if let Some(existing) = load_fee_event_tx(&transaction, &key)? {
-            if existing.payer == intent.payer
-                && existing.amount_units == intent.amount.units
-                && existing.currency == intent.amount.currency
-                && existing.pool_principal_id == intent.pool_principal_id
-                && existing.rail_destination == intent.rail_destination
-                && existing.instruction_sha256 == intent.instruction_sha256
-            {
+            if fee_intent_matches(&existing, intent) {
                 let outcome = match existing.state {
                     FindingFeeState::Reconciled => FindingFeeIntentOutcome::AlreadyReconciled,
                     FindingFeeState::Intent | FindingFeeState::Failed => {
@@ -774,6 +823,42 @@ impl SqliteFindingMarketStore {
             return Err(FindingMarketStoreError::Conflict(
                 "conflicting fee parameters under an existing idempotency key".to_owned(),
             ));
+        }
+        if let Some((
+            admission_fence,
+            feed_id,
+            operator_authorization_sha256,
+            operator_status_observed_at,
+            trusted_now,
+            max_epoch_age_secs,
+        )) = status_gate
+        {
+            // Participation is meaningful only while the listing can sell.
+            // Check the joint purchase-authority block in the same immediate
+            // transaction that inserts the fee intent. Exact intent replays
+            // returned above remain recoverable after a later block.
+            if sales_blocked_tx(&transaction, intent.listing_id)
+                .map_err(|error| FindingMarketStoreError::Conflict(error.to_string()))?
+            {
+                return Err(FindingMarketStoreError::Conflict(
+                    "listing sales are blocked".to_owned(),
+                ));
+            }
+            require_verified_live_status_tx(
+                &transaction,
+                feed_id,
+                intent.finding_id,
+                operator_authorization_sha256,
+                operator_status_observed_at,
+                trusted_now,
+                max_epoch_age_secs,
+            )?;
+            require_current_participation_admission_tx(
+                &transaction,
+                intent,
+                admission_fence,
+                trusted_now,
+            )?;
         }
         let inserted = transaction
             .execute(
@@ -922,45 +1007,56 @@ impl SqliteFindingMarketStore {
         load_fee_event_tx(&transaction, idempotency_key)
     }
 
+    /// Report whether an exact participation-fee intent is already durable.
+    /// Current Finding liveness gates only creation; a caller must be able to
+    /// resume an already dispatched intent after status changes.
+    pub fn is_exact_fee_intent_replay(
+        &self,
+        intent: &FindingFeeIntent<'_>,
+    ) -> Result<bool, FindingMarketStoreError> {
+        require_hex64(
+            intent.fee_schedule_envelope_sha256,
+            "fee_schedule_envelope_sha256",
+        )?;
+        require_hex64(intent.finding_id, "finding_id")?;
+        require_hex64(intent.instruction_sha256, "instruction_sha256")?;
+        let key = finding_fee_idempotency_key(
+            intent.fee_schedule_envelope_sha256,
+            intent.event,
+            intent.finding_id,
+            intent.listing_id,
+        );
+        let Some(existing) = self.get_fee_event(&key)? else {
+            return Ok(false);
+        };
+        if fee_intent_matches(&existing, intent) {
+            return Ok(true);
+        }
+        Err(FindingMarketStoreError::Conflict(
+            "conflicting fee parameters under an existing idempotency key".to_owned(),
+        ))
+    }
+
     /// Highest participation epoch reconciled contiguously from epoch 0
-    /// for one finding listing; a gap stops the count. `None` means epoch
-    /// 0 itself is unpaid.
+    /// for one finding listing and fee schedule; a gap stops the count.
+    /// `None` means epoch 0 itself is unpaid.
     pub fn paid_through_epoch(
         &self,
         finding_id: &str,
         listing_id: &str,
+        fee_schedule_envelope_sha256: &str,
     ) -> Result<Option<u64>, FindingMarketStoreError> {
         require_hex64(finding_id, "finding_id")?;
         require_non_empty(listing_id, "listing_id")?;
+        require_hex64(fee_schedule_envelope_sha256, "fee_schedule_envelope_sha256")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_read(&mut connection)?;
-        let mut statement = transaction
-            .prepare(
-                r#"
-                SELECT DISTINCT epoch_index FROM fee_events
-                WHERE finding_id = ?1 AND listing_id = ?2
-                  AND event_kind = 'participation_epoch' AND state = 'reconciled'
-                ORDER BY epoch_index ASC
-                "#,
-            )
-            .map_err(sqlite_error)?;
-        let epochs = statement
-            .query_map(params![finding_id, listing_id], |row| row.get::<_, i64>(0))
-            .map_err(sqlite_error)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(sqlite_error)?;
-        let mut paid_through: Option<u64> = None;
-        let mut expected: u64 = 0;
-        for epoch in epochs {
-            if stored_u64(epoch, "epoch_index")? != expected {
-                break;
-            }
-            paid_through = Some(expected);
-            expected = expected
-                .checked_add(1)
-                .ok_or_else(|| invariant("participation epoch index overflowed"))?;
-        }
-        Ok(paid_through)
+        paid_through_epoch_tx(
+            &transaction,
+            finding_id,
+            listing_id,
+            fee_schedule_envelope_sha256,
+        )
     }
 
     /// Load a durable activation prepare record by admission id.
@@ -983,16 +1079,53 @@ impl SqliteFindingMarketStore {
     /// envelope and matched to its durable intent in the same transaction.
     /// Another admission cannot prepare for the same finding or listing
     /// while this attempt is pending.
+    #[allow(clippy::too_many_arguments)]
     pub fn prepare_listing_activation(
         &self,
         admission_envelope_json: &str,
         admission: &FindingAdmission,
+        status_feed_id: &str,
+        status_operator_authorization_sha256: &str,
+        status_operator_observed_at: u64,
+        prepared_at: u64,
+        status_max_epoch_age_secs: u64,
+    ) -> Result<FindingActivationPreparationOutcome, FindingMarketStoreError> {
+        self.prepare_listing_activation_inner(
+            admission_envelope_json,
+            admission,
+            Some((
+                status_feed_id,
+                status_operator_authorization_sha256,
+                status_operator_observed_at,
+                prepared_at,
+                status_max_epoch_age_secs,
+            )),
+            prepared_at,
+        )
+    }
+
+    #[cfg(test)]
+    fn prepare_listing_activation_without_status_for_test(
+        &self,
+        admission_envelope_json: &str,
+        admission: &FindingAdmission,
+        prepared_at: u64,
+    ) -> Result<FindingActivationPreparationOutcome, FindingMarketStoreError> {
+        self.prepare_listing_activation_inner(admission_envelope_json, admission, None, prepared_at)
+    }
+
+    fn prepare_listing_activation_inner(
+        &self,
+        admission_envelope_json: &str,
+        admission: &FindingAdmission,
+        status_gate: Option<(&str, &str, u64, u64, u64)>,
         prepared_at: u64,
     ) -> Result<FindingActivationPreparationOutcome, FindingMarketStoreError> {
         let envelope_sha256 =
             validate_activation_envelope(admission_envelope_json, admission, prepared_at)?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
+        ensure_admission_fee_intents_tx(&transaction, admission)?;
         if let Some(existing) = load_activation_attempt_tx(&transaction, &admission.admission_id)? {
             if existing.envelope_json != admission_envelope_json {
                 return Err(FindingMarketStoreError::Conflict(
@@ -1014,6 +1147,9 @@ impl SqliteFindingMarketStore {
                 FindingActivationAttemptState::Activated => {
                     Ok(FindingActivationPreparationOutcome::AlreadyActivated)
                 }
+                FindingActivationAttemptState::Expired => {
+                    Ok(FindingActivationPreparationOutcome::Expired)
+                }
             };
         }
         if let Some(stored) = load_admission_bytes_tx(&transaction, &admission.admission_id)? {
@@ -1023,6 +1159,24 @@ impl SqliteFindingMarketStore {
             return Err(FindingMarketStoreError::Conflict(
                 "admission id is already bound to different bytes".to_owned(),
             ));
+        }
+        if let Some((
+            feed_id,
+            operator_authorization_sha256,
+            operator_status_observed_at,
+            trusted_now,
+            max_epoch_age_secs,
+        )) = status_gate
+        {
+            require_verified_live_status_tx(
+                &transaction,
+                feed_id,
+                &admission.finding_id,
+                operator_authorization_sha256,
+                operator_status_observed_at,
+                trusted_now,
+                max_epoch_age_secs,
+            )?;
         }
         if sales_blocked_tx(&transaction, &admission.listing_id)
             .map_err(|error| FindingMarketStoreError::Unavailable(error.to_string()))?
@@ -1101,8 +1255,6 @@ impl SqliteFindingMarketStore {
         admission: &FindingAdmission,
         activated_at: u64,
     ) -> Result<FindingActivationOutcome, FindingMarketStoreError> {
-        let envelope_sha256 =
-            validate_activation_envelope(admission_envelope_json, admission, activated_at)?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
         let attempt = load_activation_attempt_tx(&transaction, &admission.admission_id)?
@@ -1111,6 +1263,12 @@ impl SqliteFindingMarketStore {
                     "activation was not durably prepared before fee settlement".to_owned(),
                 )
             })?;
+        // Preparation is the durable authorization boundary before any fee
+        // dispatch. Exact retries may finish after a constituent expires or
+        // rotates, so validate the envelope at that retained instant while
+        // recording the real completion time below.
+        let envelope_sha256 =
+            validate_activation_envelope(admission_envelope_json, admission, attempt.prepared_at)?;
         if attempt.envelope_json != admission_envelope_json
             || attempt.envelope_sha256 != envelope_sha256
         {
@@ -1128,12 +1286,8 @@ impl SqliteFindingMarketStore {
                 "activated admission bytes differ from the prepare record".to_owned(),
             ));
         }
-        verify_admission_fee_events_tx(&transaction, admission, true)?;
-        let allocation = verify_admission_storage_bindings_tx(&transaction, admission)?;
-        if allocation.state != FindingAllocationState::Consumed {
-            return Err(FindingMarketStoreError::Conflict(
-                "prepared activation no longer owns its collateral allocation".to_owned(),
-            ));
+        if attempt.state == FindingActivationAttemptState::Expired {
+            return Ok(FindingActivationOutcome::Expired);
         }
         if attempt.backing_allocation_id != admission.backing_allocation_id
             || attempt.finding_id != admission.finding_id
@@ -1141,6 +1295,59 @@ impl SqliteFindingMarketStore {
         {
             return Err(invariant(
                 "prepared activation columns do not match its admission envelope",
+            ));
+        }
+        if activated_at >= admission.expires_at {
+            let released = transaction
+                .execute(
+                    r#"
+                    UPDATE collateral_allocations SET state = 'released'
+                    WHERE allocation_id = ?1 AND state = 'consumed'
+                    "#,
+                    [&admission.backing_allocation_id],
+                )
+                .map_err(sqlite_error)?;
+            if released != 1 {
+                return Err(invariant(
+                    "expired activation did not release its prepared allocation",
+                ));
+            }
+            transaction
+                .execute(
+                    r#"
+                    INSERT INTO finding_expired_activation_attempts (
+                        admission_id, expired_at
+                    ) VALUES (?1, ?2)
+                    "#,
+                    params![
+                        &admission.admission_id,
+                        sqlite_i64(activated_at, "expired_at")?,
+                    ],
+                )
+                .map_err(sqlite_error)?;
+            let terminalized = transaction
+                .execute(
+                    r#"
+                    UPDATE finding_activation_attempts SET state = 'activated'
+                    WHERE admission_id = ?1 AND state = 'prepared'
+                    "#,
+                    [&admission.admission_id],
+                )
+                .map_err(sqlite_error)?;
+            if terminalized != 1 {
+                return Err(invariant(
+                    "expired activation did not terminalize its prepare record",
+                ));
+            }
+            self.commit_write(transaction)?;
+            self.sync_after_write(&connection)?;
+            return Ok(FindingActivationOutcome::Expired);
+        }
+        verify_admission_fee_events_tx(&transaction, admission, true)?;
+        let allocation = verify_admission_storage_bindings_tx(&transaction, admission)?;
+        if allocation.state != FindingAllocationState::Consumed {
+            return Err(FindingMarketStoreError::Conflict(
+                "prepared activation no longer owns its collateral allocation".to_owned(),
             ));
         }
         if let Some(stored) = load_admission_bytes_tx(&transaction, &admission.admission_id)? {
@@ -1153,6 +1360,19 @@ impl SqliteFindingMarketStore {
                 "admission id is already bound to different bytes".to_owned(),
             ));
         }
+        let participation_epoch_origin = transaction
+            .query_row(
+                r#"
+                SELECT MIN(activated_at) FROM admissions
+                WHERE finding_id = ?1 AND listing_id = ?2
+                "#,
+                params![&admission.finding_id, &admission.listing_id],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .map_err(sqlite_error)?
+            .map(|stored| stored_u64(stored, "activated_at"))
+            .transpose()?
+            .unwrap_or(activated_at);
         transaction
             .execute(
                 r#"
@@ -1179,7 +1399,7 @@ impl SqliteFindingMarketStore {
                     &envelope_sha256,
                     admission_envelope_json,
                     sqlite_i64(admission.expires_at, "expires_at")?,
-                    sqlite_i64(activated_at, "activated_at")?,
+                    sqlite_i64(participation_epoch_origin, "activated_at")?,
                 ],
             )
             .map_err(sqlite_error)?;
@@ -1311,6 +1531,37 @@ impl SqliteFindingMarketStore {
             backing_allocation_id,
             allocation_state: allocation.state,
         }))
+    }
+
+    /// Resolve exact retained admission bytes by their canonical envelope
+    /// digest. Historical purchase replay uses this content address rather
+    /// than the deployment's current authority pins, which may have rotated
+    /// after the sale completed.
+    pub fn get_admission_by_envelope_sha256(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<String>, FindingMarketStoreError> {
+        require_hex64(envelope_sha256, "admission_envelope_sha256")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let envelope_json = transaction
+            .query_row(
+                "SELECT admission_envelope_json FROM admissions WHERE admission_envelope_sha256 = ?1 LIMIT 1",
+                [envelope_sha256],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(sqlite_error)?;
+        if let Some(envelope_json) = envelope_json {
+            verify_stored_digest(
+                envelope_json.as_bytes(),
+                envelope_sha256,
+                "admission envelope",
+            )?;
+            Ok(Some(envelope_json))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -1600,6 +1851,19 @@ fn load_fee_event_tx(
     }))
 }
 
+fn fee_intent_matches(existing: &FindingFeeEventRecord, intent: &FindingFeeIntent<'_>) -> bool {
+    existing.fee_schedule_envelope_sha256 == intent.fee_schedule_envelope_sha256
+        && existing.event == *intent.event
+        && existing.finding_id == intent.finding_id
+        && existing.listing_id == intent.listing_id
+        && existing.payer == intent.payer
+        && existing.amount_units == intent.amount.units
+        && existing.currency == intent.amount.currency
+        && existing.pool_principal_id == intent.pool_principal_id
+        && existing.rail_destination == intent.rail_destination
+        && existing.instruction_sha256 == intent.instruction_sha256
+}
+
 fn validate_activation_envelope(
     admission_envelope_json: &str,
     admission: &FindingAdmission,
@@ -1693,6 +1957,71 @@ fn verify_admission_fee_events_tx(
     Ok(())
 }
 
+fn ensure_admission_fee_intents_tx(
+    transaction: &Transaction<'_>,
+    admission: &FindingAdmission,
+) -> Result<(), FindingMarketStoreError> {
+    for terminal in &admission.fee_terminals {
+        let key = finding_fee_idempotency_key(
+            &terminal.fee_schedule_envelope_sha256,
+            &terminal.event,
+            &admission.finding_id,
+            &admission.listing_id,
+        );
+        if let Some(existing) = load_fee_event_tx(transaction, &key)? {
+            if existing.fee_schedule_envelope_sha256 == terminal.fee_schedule_envelope_sha256
+                && existing.event == terminal.event
+                && existing.finding_id == admission.finding_id
+                && existing.listing_id == admission.listing_id
+                && existing.payer == terminal.payer
+                && existing.amount_units == terminal.amount.units
+                && existing.currency == terminal.amount.currency
+                && existing.pool_principal_id == terminal.pool_principal_id
+                && existing.rail_destination == terminal.rail_destination
+                && existing.instruction_sha256 == terminal.instruction_sha256
+            {
+                continue;
+            }
+            return Err(FindingMarketStoreError::Conflict(
+                "admission fee terminal conflicts with its durable idempotency key".to_owned(),
+            ));
+        }
+        let (event_kind, epoch_index) = fee_event_parts(&terminal.event);
+        let inserted = transaction
+            .execute(
+                r#"
+                INSERT INTO fee_events (
+                    idempotency_key, fee_schedule_envelope_sha256, event_kind,
+                    epoch_index, finding_id, listing_id, payer, amount_units,
+                    currency, pool_principal_id, rail_destination,
+                    instruction_sha256, observation_sha256, state
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL, 'intent')
+                "#,
+                params![
+                    &key,
+                    &terminal.fee_schedule_envelope_sha256,
+                    event_kind,
+                    sqlite_i64(epoch_index, "epoch_index")?,
+                    &admission.finding_id,
+                    &admission.listing_id,
+                    &terminal.payer,
+                    sqlite_i64(terminal.amount.units, "amount_units")?,
+                    &terminal.amount.currency,
+                    &terminal.pool_principal_id,
+                    &terminal.rail_destination,
+                    &terminal.instruction_sha256,
+                ],
+            )
+            .map_err(sqlite_error)?;
+        if inserted != 1 {
+            return Err(invariant(
+                "activation fee intent insert did not affect one row",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn activation_attempt_state_from_name(
     state: &str,
 ) -> Result<FindingActivationAttemptState, FindingMarketStoreError> {
@@ -1763,19 +2092,37 @@ fn load_activation_attempt_tx(
             "activation prepare columns do not match the stored admission body",
         ));
     }
-    let state = activation_attempt_state_from_name(&state)?;
+    let mut state = activation_attempt_state_from_name(&state)?;
     let stored_admission = load_admission_bytes_tx(transaction, admission_id)?;
-    match (state, stored_admission) {
-        (FindingActivationAttemptState::Prepared, None) => {}
-        (FindingActivationAttemptState::Activated, Some(stored)) if stored == envelope_json => {}
-        (FindingActivationAttemptState::Prepared, Some(_)) => {
+    let expired_marker: bool = transaction
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM finding_expired_activation_attempts
+                WHERE admission_id = ?1
+            )
+            "#,
+            [admission_id],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    match (state, stored_admission, expired_marker) {
+        (FindingActivationAttemptState::Prepared, None, false) => {}
+        (FindingActivationAttemptState::Activated, Some(stored), false)
+            if stored == envelope_json => {}
+        (FindingActivationAttemptState::Activated, None, true) => {
+            state = FindingActivationAttemptState::Expired;
+        }
+        (FindingActivationAttemptState::Prepared, Some(_), _) => {
             return Err(invariant(
                 "prepared activation already has an active admission",
             ));
         }
-        (FindingActivationAttemptState::Activated, _) => {
+        (FindingActivationAttemptState::Activated, _, _)
+        | (FindingActivationAttemptState::Prepared, _, true)
+        | (FindingActivationAttemptState::Expired, _, _) => {
             return Err(invariant(
-                "activated prepare record lost its exact admission",
+                "activation terminal state does not match its retained outcome",
             ));
         }
     }
@@ -1805,6 +2152,38 @@ fn load_admission_bytes_tx(
         .map_err(sqlite_error)
 }
 
+fn require_verified_live_status_tx(
+    transaction: &Transaction<'_>,
+    feed_id: &str,
+    finding_id: &str,
+    operator_authorization_sha256: &str,
+    operator_status_observed_at: u64,
+    trusted_now: u64,
+    max_epoch_age_secs: u64,
+) -> Result<(), FindingMarketStoreError> {
+    match status_for_purchase_tx(
+        transaction,
+        feed_id,
+        finding_id,
+        trusted_now,
+        max_epoch_age_secs,
+        Some(operator_authorization_sha256),
+        Some(operator_status_observed_at),
+    )
+    .map_err(|error| {
+        FindingMarketStoreError::Conflict(format!(
+            "finding is not verified live for market mutation: {error}"
+        ))
+    })? {
+        FindingStatusDecision::VerifiedLive(_) => Ok(()),
+        FindingStatusDecision::Pending(_) | FindingStatusDecision::Retracted(_) => {
+            Err(FindingMarketStoreError::Conflict(
+                "finding is pending or retracted and cannot open market state".to_owned(),
+            ))
+        }
+    }
+}
+
 pub(crate) fn initialize_finding_market_schema(
     connection: &mut Connection,
 ) -> Result<(), FindingMarketStoreError> {
@@ -1824,22 +2203,24 @@ pub(crate) fn initialize_finding_market_schema(
     transaction
         .execute_batch(FINDING_MARKET_SCHEMA)
         .map_err(sqlite_error)?;
-    transaction
-        .execute(
-            r#"
-            INSERT INTO finding_activation_attempts (
-                admission_id, finding_id, listing_id, backing_allocation_id,
-                admission_envelope_sha256, admission_envelope_json,
-                prepared_at, state
+    if on_disk < 2 {
+        transaction
+            .execute(
+                r#"
+                INSERT INTO finding_activation_attempts (
+                    admission_id, finding_id, listing_id, backing_allocation_id,
+                    admission_envelope_sha256, admission_envelope_json,
+                    prepared_at, state
+                )
+                SELECT admission_id, finding_id, listing_id, backing_allocation_id,
+                       admission_envelope_sha256, admission_envelope_json,
+                       activated_at, 'activated'
+                FROM admissions
+                "#,
+                [],
             )
-            SELECT admission_id, finding_id, listing_id, backing_allocation_id,
-                   admission_envelope_sha256, admission_envelope_json,
-                   activated_at, 'activated'
-            FROM admissions
-            "#,
-            [],
-        )
-        .map_err(sqlite_error)?;
+            .map_err(sqlite_error)?;
+    }
     crate::stamp_schema_version(
         &transaction,
         FINDING_MARKET_SCHEMA_KEY,
@@ -1940,6 +2321,8 @@ fn finding_market_schema_catalog(
                OR name GLOB 'fee_events*' OR tbl_name GLOB 'fee_events*'
                OR name GLOB 'finding_activation_attempts*'
                OR tbl_name GLOB 'finding_activation_attempts*'
+               OR name GLOB 'finding_expired_activation_attempts*'
+               OR tbl_name GLOB 'finding_expired_activation_attempts*'
                OR name GLOB 'admissions*' OR tbl_name GLOB 'admissions*'
                ORDER BY type, name, tbl_name
             "#,
@@ -2020,7 +2403,10 @@ fn sqlite_error(error: rusqlite::Error) -> FindingMarketStoreError {
         other => FindingMarketStoreError::Unavailable(other.to_string()),
     }
 }
-
+#[path = "finding_market_fee_recovery.rs"]
+mod fee_recovery;
+#[path = "finding_market_status_read.rs"]
+mod status_read;
 #[cfg(test)]
 #[path = "finding_market_store_tests.rs"]
 #[allow(clippy::expect_used, clippy::unwrap_used)]

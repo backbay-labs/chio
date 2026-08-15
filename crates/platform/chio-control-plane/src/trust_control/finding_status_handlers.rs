@@ -835,6 +835,9 @@ mod tests {
     };
     use chio_store_sqlite::SqliteAuthorityStore;
     use chio_test_support::prelude::*;
+    use chio_transaction_passport::{
+        CognitionMarketStatusObservation, CognitionMarketStatusTrustStore,
+    };
 
     const FEED_ID: &str = "status-feed/test";
     const NOW: u64 = 1_800_000_000;
@@ -1042,6 +1045,7 @@ mod tests {
             cluster_progress: None,
             finding_rail: None,
             finding_purchase_executor: None,
+            finding_authority_status_resolver: None,
             finding_challenge_executor: None,
         }
     }
@@ -1317,9 +1321,47 @@ mod tests {
             inclusion_deadline: NOW + bond.inclusion_sla_secs,
             created_at: NOW,
         })?;
-        remote_publisher.publish_retraction(&intent_id, &[], NOW + 1)?;
+        let retracted = remote_publisher.publish_retraction(&intent_id, &[], NOW + 1)?;
+        let retracted_epoch =
+            chio_finding::parse_signed_status_epoch(&retracted.signed_epoch_bytes)?;
+        let retracted_proof = chio_finding::parse_status_proof_input(&retracted.proof_bytes)?;
+        let retracted_error = remote_store
+            .admit_verified_status(&CognitionMarketStatusObservation {
+                signed_epoch: &retracted_epoch,
+                signed_epoch_bytes: &retracted.signed_epoch_bytes,
+                proof: &retracted_proof,
+                proof_bytes: &retracted.proof_bytes,
+                operator_authorization_sha256: &operator.authorization_sha256,
+                max_epoch_age_secs: 300,
+                recorded_at: NOW + 1,
+            })
+            .test_expect_err("an imported inclusion must preserve the raw v1 leaf encoding");
+        assert_eq!(retracted_error, "finding is retracted");
+        assert_eq!(
+            remote_store
+                .get_leaf(FEED_ID, &retracted_id)?
+                .ok_or_else(|| std::io::Error::other("retracted leaf"))?
+                .status_value_bytes,
+            b"retracted"
+        );
         let imported = remote_publisher.publish_non_inclusion(&finding_id, &[], NOW + 1)?;
         assert_eq!(imported.map_epoch, 2);
+
+        let imported_epoch = chio_finding::parse_signed_status_epoch(&imported.signed_epoch_bytes)?;
+        let imported_proof = chio_finding::parse_status_proof_input(&imported.proof_bytes)?;
+        let import_error = local_store
+            .admit_verified_status(&CognitionMarketStatusObservation {
+                signed_epoch: &imported_epoch,
+                signed_epoch_bytes: &imported.signed_epoch_bytes,
+                proof: &imported_proof,
+                proof_bytes: &imported.proof_bytes,
+                operator_authorization_sha256: &operator.authorization_sha256,
+                max_epoch_age_secs: 300,
+                recorded_at: NOW + 1,
+            })
+            .test_expect_err("one imported point proof must not advance the durable feed floor");
+        assert!(import_error.contains("exact durable feed floor"));
+        assert_eq!(local_store.get_feed_floor(FEED_ID)?.map_epoch, 1);
 
         let verifier = super::super::finding_status_verifier::MarketFindingStatusVerifier::new(
             operator,
@@ -1606,13 +1648,16 @@ mod tests {
         let first = publisher.publish_non_inclusion(&sha256_hex(b"first"), &[], NOW)?;
 
         let mut refreshed_operator = operator;
+        let rotated_key = Keypair::from_seed(&[82; 32]);
+        refreshed_operator.authority.key_hex = rotated_key.public_key().to_hex();
+        refreshed_operator.authority.key_epoch += 1;
         refreshed_operator.revoked_from = Some(NOW + 1_000);
         refreshed_operator.authorization_sha256 = sha256_hex(b"refreshed-status-authorization");
         let refreshed = super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
             store.clone(),
             refreshed_operator.clone(),
             bond,
-            operator_key(),
+            rotated_key,
             300,
         )?;
         let second = refreshed.publish_non_inclusion(&sha256_hex(b"second"), &[], NOW + 1)?;

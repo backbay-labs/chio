@@ -5,7 +5,6 @@ mod attest;
 mod certify_cert;
 mod did_passport;
 mod federation;
-#[cfg(feature = "cognition-market-experimental")]
 #[path = "finding.rs"]
 mod finding_cmd;
 #[path = "lineage.rs"]
@@ -45,7 +44,6 @@ pub(crate) use self::federation::{
     dispatch_chio_authority_command, dispatch_chio_federation_command,
     dispatch_chio_treaty_command,
 };
-#[cfg(feature = "cognition-market-experimental")]
 use finding_cmd::dispatch_finding;
 #[allow(unused_imports)]
 pub(crate) use self::lineage_cmd::{dispatch_lineage, emit_lineage_report};
@@ -264,7 +262,6 @@ pub(crate) fn run() {
         Commands::Attest { command } => dispatch_chio_attest_command(command),
         Commands::Runtime { command } => dispatch_chio_runtime_command(command),
         Commands::Pheromone { command } => dispatch_chio_pheromone_command(command),
-        #[cfg(feature = "cognition-market-experimental")]
         Commands::Finding { command } => {
             dispatch_finding(command, json_output, control_url, control_token)
         }

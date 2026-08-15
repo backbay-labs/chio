@@ -128,6 +128,61 @@ sibling tombstone directory while holding the floor lock. Tombstones are
 written before the version-two floor replacement, so an interrupted migration
 fails closed and resumes idempotently on the next verified observation.
 
+The standard proof verifier routes `claim.finding.*` bundles through the
+cognition-market verifier. Configure its trust inputs out of band before
+running `chio proof verify <transaction-passport.json>`:
+
+```bash
+export CHIO_TRANSACTION_TRUSTED_ROOT_KEYS=<passport-root-public-key>
+export CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_KEY=<profile-governance-public-key>
+export CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_POLICY_PATH=<canonical-profile-governance-policy.json>
+export CHIO_FINDING_PROFILE_GOVERNANCE_AUTHORITY_STATUS_PATH=<canonical-signed-governance-status.json>
+export CHIO_FINDING_VERIFIER_AUTHORITY_KEY=<finding-verifier-public-key>
+export CHIO_FINDING_PURCHASE_AUTHORITY_KEY=<purchase-record-public-key>
+export CHIO_FINDING_PURCHASE_AUTHORITY_STATUS_PATH=<canonical-signed-purchase-authority-status.json>
+export CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_PATH=<canonical-signed-authority-status.json>
+export CHIO_FINDING_VERIFIER_STATUS_AUTHORITY_POLICY_PATH=<canonical-authority-status-signer-policy.json>
+export CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_CHECKED_AT=<trusted-verification-time>
+export CHIO_FINDING_VERIFIER_AUTHORITY_STATUS_MAX_AGE_SECONDS=<deployment-freshness-limit>
+export CHIO_FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256=<approved-profile-envelope-digest>
+export CHIO_FINDING_VERIFIER_PROFILE_PATH=<canonical-signed-verifier-profile.json>
+export CHIO_FINDING_TRUST_ROOT_SNAPSHOT_SHA256=<approved-trust-root-snapshot-digest>
+export CHIO_FINDING_RESOLVER_POLICY_SHA256=<approved-resolver-policy-digest>
+export CHIO_FINDING_TRUSTED_TIME_INPUT_SHA256=<approved-trusted-time-input-digest>
+export CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_PATH=<canonical-signed-authorization-envelope.json>
+export CHIO_FINDING_STATUS_OPERATOR_AUTHORIZATION_SHA256=<signed-authorization-envelope-digest>
+export CHIO_FINDING_STATUS_OPERATOR_AUTHORITY_STATUS_PATH=<canonical-signed-operator-status.json>
+export CHIO_FINDING_STATUS_AUTHORITY_DATABASE_PATH=<provisioned-authority.db>
+export CHIO_FINDING_STATUS_AUTHORITY_LOCK_ROOT=<secure-authority-lock-directory>
+export CHIO_FINDING_STATUS_NOW_UNIX_SECONDS=<trusted-verification-time>
+export CHIO_FINDING_STATUS_MAX_AGE_SECONDS=<deployment-freshness-limit>
+```
+
+The signed profile is the source of the report signer policy and required
+facet floor. Its governance signer must equal both the separately pinned
+profile-governance key and policy, and its report signer must equal the
+separately pinned verifier key. The verifier loads the profile's exact
+canonical bytes, requires their digest to match the out-of-band profile pin,
+and verifies the profile signature and lifecycle. It also requires fresh
+signed status witnesses for the profile-governance signer, report signer,
+purchase-record signer, and status operator from the separately pinned
+status-authority policy, requires
+that policy to cover each witness observation and the shared current trusted
+verification time, and rejects newly backdated artifacts after any key is
+revoked or expires. The report must bind the
+deployment-pinned trust-root snapshot, resolver policy, and trusted-time
+input. Verification fails closed when any profile floor, snapshot commitment,
+pin, authorization, durable authority store, trusted time, or freshness limit
+is missing or malformed. A delivery-bound claim also requires a purchase
+record under the separately pinned purchase authority, within that authority's
+lifecycle, and with fresh non-revoked standing. Its exact sale identity must
+match the verifier-signed delivery overlay carried by the report.
+Provision the authority database and secure lock directory before verification
+and reuse them for every bundle from that feed and stable operator identity.
+The store advances the signed epoch high-water mark and retains sticky
+retraction state before a status-fresh claim can be granted. None of these
+trust inputs are derived from the proof bundle.
+
 At minimum, monitoring checks:
 
 - outer signature and governance-pinned operator authorization;

@@ -14,7 +14,6 @@ mod budget_lifecycle;
 mod cluster_budget;
 #[path = "service_types/config.rs"]
 mod config;
-#[cfg(feature = "cognition-market-experimental")]
 #[path = "service_types/finding_market_config.rs"]
 mod finding_market_config;
 #[path = "service_types/paths.rs"]
@@ -48,11 +47,9 @@ pub use self::cluster_budget::{
 };
 pub(crate) use self::config::validate_control_secret;
 pub use self::config::{TrustFiscalRuntimeConfig, TrustServiceConfig};
-#[cfg(feature = "cognition-market-experimental")]
 pub(crate) use self::finding_market_config::{
     require_status_feed_through, FINDING_STATUS_MAX_EPOCH_AGE_SECS,
 };
-#[cfg(feature = "cognition-market-experimental")]
 pub use self::finding_market_config::{
     FindingAuthorityPin, FindingMarketConfig, FindingPoolPin, FindingStatusOperatorPin,
     FindingStatusServiceBond, FINDING_STATUS_KEY_DOMAIN_NONCE, FINDING_STATUS_OPERATOR_ROLE,
@@ -133,7 +130,6 @@ pub(crate) use self::paths::{
     UNDERWRITING_DECISIONS_REPORT_PATH, UNDERWRITING_DECISION_ISSUE_PATH,
     UNDERWRITING_DECISION_PATH, UNDERWRITING_INPUT_PATH, UNDERWRITING_SIMULATION_PATH,
 };
-#[cfg(feature = "cognition-market-experimental")]
 pub(crate) use self::paths::{
     FINDINGS_COLLATERAL_PATH, FINDINGS_PROFILES_PATH, FINDINGS_PUBLISH_PATH, FINDINGS_RECIPES_PATH,
     FINDINGS_SEARCH_PATH, FINDING_ACTIVATE_PATH, FINDING_ADMISSION_PATH, FINDING_CHALLENGES_PATH,

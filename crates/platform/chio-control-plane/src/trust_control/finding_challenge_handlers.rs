@@ -10,7 +10,8 @@ use chio_finding::{verify_signed_challenge, Finding, SignedFindingChallenge};
 use chio_store_sqlite::{FindingChallengeAuthorizationBranch, FindingChallengeWriteOutcome};
 
 use super::finding_challenge_coordinator::{
-    ChallengeCoordinatorError, ChallengeSubmissionOutcome, FindingChallengeCoordinator,
+    ChallengeCoordinatorError, ChallengeSubmissionOutcome, FindingAuthorityStatusResolver,
+    FindingChallengeCoordinator,
 };
 use super::finding_handlers::{
     finding_market_context, strict_artifact_ingress, FINDING_PUBLISH_MAX_BODY_BYTES,
@@ -123,6 +124,7 @@ pub struct FindingChallengeSubmissionRuntime {
     joint_authority_store: Arc<SqliteAuthorityStore>,
     market_config: FindingMarketConfig,
     executor: Arc<dyn FindingChallengeSubmissionExecutor>,
+    authority_status_resolver: Arc<dyn FindingAuthorityStatusResolver>,
 }
 
 impl FindingChallengeSubmissionRuntime {
@@ -136,10 +138,12 @@ impl FindingChallengeSubmissionRuntime {
             ));
         }
         let market_config = coordinator.market_config().clone();
+        let authority_status_resolver = coordinator.authority_status_resolver();
         Ok(Self {
             joint_authority_store,
             market_config,
             executor: coordinator,
+            authority_status_resolver,
         })
     }
 
@@ -158,8 +162,13 @@ impl FindingChallengeSubmissionRuntime {
     ) -> (
         Arc<SqliteAuthorityStore>,
         Arc<dyn FindingChallengeSubmissionExecutor>,
+        Arc<dyn FindingAuthorityStatusResolver>,
     ) {
-        (self.joint_authority_store, self.executor)
+        (
+            self.joint_authority_store,
+            self.executor,
+            self.authority_status_resolver,
+        )
     }
 }
 

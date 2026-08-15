@@ -24,32 +24,25 @@ pub struct RevokeCapabilityResponse {
 }
 
 pub fn serve(config: TrustServiceConfig) -> Result<(), CliError> {
-    serve_with_optional_finding_challenge_executor(
-        config,
-        #[cfg(feature = "cognition-market-experimental")]
-        None,
-        #[cfg(feature = "cognition-market-experimental")]
-        None,
-        #[cfg(feature = "cognition-market-experimental")]
-        None,
-    )
+    serve_with_optional_finding_challenge_executor(config, None, None, None, None, None)
 }
 
 /// Serve trust control with a checked cognition-market challenge runtime.
 /// The ordinary [`serve`] entrypoint supplies no runtime and the challenge
 /// route fails closed. The runtime's already-open authority store takes the
 /// place of reopening `joint_authority_db_path` during startup.
-#[cfg(feature = "cognition-market-experimental")]
 pub fn serve_with_finding_challenge_runtime(
     config: TrustServiceConfig,
     runtime: FindingChallengeSubmissionRuntime,
 ) -> Result<(), CliError> {
     validate_finding_challenge_runtime(&config, &runtime)?;
-    let (joint_authority_store, executor) = runtime.into_parts();
+    let (joint_authority_store, executor, authority_status_resolver) = runtime.into_parts();
     serve_with_optional_finding_challenge_executor(
         config,
         Some(joint_authority_store),
         None,
+        None,
+        Some(authority_status_resolver),
         Some(executor),
     )
 }
@@ -58,28 +51,33 @@ pub fn serve_with_finding_challenge_runtime(
 ///
 /// This is the production composition path for deployments whose challenge
 /// coordinator and purchase executor share the serving-owned purchase store.
-#[cfg(feature = "cognition-market-experimental")]
+/// The injected rail must implement the idempotent observation contract of
+/// [`FindingRailObserver`]; activation and participation renewal use it rather
+/// than silently omitting settlement observation.
 pub fn serve_with_finding_market_runtime(
     config: TrustServiceConfig,
     challenge_runtime: FindingChallengeSubmissionRuntime,
     purchase_executor: super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+    rail: Arc<dyn super::finding_handlers::FindingRailObserver>,
 ) -> Result<(), CliError> {
     validate_finding_challenge_runtime(&config, &challenge_runtime)?;
     validate_finding_market_mutation_fence(
         &challenge_runtime.mutation_fence(),
         &purchase_executor.mutation_fence(),
     )?;
-    let (joint_authority_store, challenge_executor) = challenge_runtime.into_parts();
+    let (joint_authority_store, challenge_executor, authority_status_resolver) =
+        challenge_runtime.into_parts();
     serve_with_optional_finding_challenge_executor(
         config,
         Some(joint_authority_store),
+        Some(rail),
         Some(purchase_executor),
+        Some(authority_status_resolver),
         Some(challenge_executor),
     )
 }
 
-#[cfg(feature = "cognition-market-experimental")]
-fn validate_finding_market_mutation_fence(
+pub(crate) fn validate_finding_market_mutation_fence(
     challenge_fence: &chio_kernel::admission_operation::StoreMutationFence,
     purchase_fence: &chio_kernel::admission_operation::StoreMutationFence,
 ) -> Result<(), CliError> {
@@ -91,7 +89,6 @@ fn validate_finding_market_mutation_fence(
     Ok(())
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 fn validate_finding_challenge_runtime(
     config: &TrustServiceConfig,
     runtime: &FindingChallengeSubmissionRuntime,
@@ -112,15 +109,13 @@ fn validate_finding_challenge_runtime(
 
 fn serve_with_optional_finding_challenge_executor(
     config: TrustServiceConfig,
-    #[cfg(feature = "cognition-market-experimental")] joint_authority_store: Option<
-        Arc<SqliteAuthorityStore>,
+    joint_authority_store: Option<Arc<SqliteAuthorityStore>>,
+    rail: Option<Arc<dyn super::finding_handlers::FindingRailObserver>>,
+    purchase_executor: Option<super::finding_purchase_routes::SharedFindingPurchaseExecutor>,
+    authority_status_resolver: Option<
+        Arc<dyn super::finding_challenge_coordinator::FindingAuthorityStatusResolver>,
     >,
-    #[cfg(feature = "cognition-market-experimental")] purchase_executor: Option<
-        super::finding_purchase_routes::SharedFindingPurchaseExecutor,
-    >,
-    #[cfg(feature = "cognition-market-experimental")] executor: Option<
-        Arc<dyn FindingChallengeSubmissionExecutor>,
-    >,
+    executor: Option<Arc<dyn FindingChallengeSubmissionExecutor>>,
 ) -> Result<(), CliError> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -134,11 +129,10 @@ fn serve_with_optional_finding_challenge_executor(
     runtime.block_on(async move {
         service_runtime::serve_async(
             config,
-            #[cfg(feature = "cognition-market-experimental")]
             joint_authority_store,
-            #[cfg(feature = "cognition-market-experimental")]
+            rail,
             purchase_executor,
-            #[cfg(feature = "cognition-market-experimental")]
+            authority_status_resolver,
             executor,
         )
         .await
@@ -146,16 +140,29 @@ fn serve_with_optional_finding_challenge_executor(
 }
 
 /// Serve trust-control with an explicitly configured cognition-market
-/// purchase adapter. Ordinary [`serve`] keeps the purchase route unavailable.
-#[cfg(feature = "cognition-market-experimental")]
+/// purchase adapter, fee rail, and current authority-status resolver. Ordinary
+/// [`serve`] keeps the purchase route unavailable. Startup opens the configured
+/// joint authority and rejects an executor with a different active mutation
+/// fence before installing any route.
 pub fn serve_with_finding_purchase_executor(
     config: TrustServiceConfig,
     executor: super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+    rail: Arc<dyn super::finding_handlers::FindingRailObserver>,
+    authority_status_resolver: Arc<
+        dyn super::finding_challenge_coordinator::FindingAuthorityStatusResolver,
+    >,
 ) -> Result<(), CliError> {
-    serve_with_optional_finding_challenge_executor(config, None, Some(executor), None)
+    serve_with_optional_finding_challenge_executor(
+        config,
+        None,
+        Some(rail),
+        Some(executor),
+        Some(authority_status_resolver),
+        None,
+    )
 }
 
-#[cfg(all(test, feature = "cognition-market-experimental"))]
+#[cfg(test)]
 mod finding_market_runtime_tests {
     use chio_kernel::admission_operation::StoreMutationFence;
 
@@ -170,7 +177,7 @@ mod finding_market_runtime_tests {
     }
 
     #[test]
-    fn combined_market_runtime_requires_one_serving_fence() {
+    fn market_runtimes_require_one_serving_fence() {
         let challenge = fence("store-a", "lease-a", 7);
         assert!(validate_finding_market_mutation_fence(&challenge, &challenge).is_ok());
 
@@ -1472,7 +1479,6 @@ mod config_and_public_tests {
             cluster_sync_interval: Duration::from_millis(200),
             roster_policy: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
-            #[cfg(feature = "cognition-market-experimental")]
             finding_market: None,
         }
     }

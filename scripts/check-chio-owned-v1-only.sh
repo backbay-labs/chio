@@ -166,6 +166,25 @@ while IFS= read -r line; do
     continue
   fi
 
+  # SQLite authority snapshots retain historical digest domains so an older
+  # on-disk projection cannot be reinterpreted under a newer table set. These
+  # are internal storage migration domains, not Chio wire or SDK versions.
+  if [[ "$text" =~ chio\.sqlite-finding-market-snapshot\.v[2-9][0-9]* ]]; then
+    continue
+  fi
+  if [[ "$path" == "crates/platform/chio-store-sqlite/src/finding_challenge_store_tests.rs" ]] && \
+     [[ "$text" =~ migrate\ v[2-9][0-9]*\ schema ]]; then
+    continue
+  fi
+
+  # The local finding-status rollback floor moved to v2 when its authority,
+  # rotation, and authorization bindings became mandatory. Retaining the v2
+  # tag makes old local state fail closed instead of accepting it as the new
+  # security-interpreted format. This file format is not a wire or SDK schema.
+  if [[ "$text" =~ chio\.finding\.status-cli-floor\.v2|FINDING_STATUS_FLOOR_SCHEMA_V2 ]]; then
+    continue
+  fi
+
   # Public settlement intentionally publishes v2 dispatch and execution-receipt
   # artifacts while preserving v1 bundle verification.
   if [[ "$text" =~ chio\.web3-settlement-(dispatch|execution-receipt)\.v2|CHIO_WEB3_SETTLEMENT_(DISPATCH|RECEIPT|EXECUTION_RECEIPT)_V2_SCHEMA|WEB3_SETTLEMENT_EXECUTION_RECEIPT_SCHEMA ]]; then

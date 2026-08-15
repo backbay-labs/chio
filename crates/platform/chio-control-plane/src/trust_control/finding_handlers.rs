@@ -3,27 +3,24 @@
 //! paginated descriptor index, digest-addressed dependency retention,
 //! governance-profile registration, collateral registration, the durable
 //! idempotent activation transaction, participation-epoch renewal, and
-//! admission serving. Compiled only under `cognition-market-experimental`.
+//! admission serving.
 //!
-//! Ingress discipline (the reusable Finding-ingress invariant): the raw
-//! request body is size-limited at the route layer, strict-canonicalized
-//! from the raw text (rejecting duplicate keys and non-I-JSON numbers),
-//! required byte-equal to its canonical serialization, schema-validated
-//! as a parsed value from the same accepted input, typed-deserialized,
-//! required to reserialize to the same strict bytes, domain-verified, and
-//! only then persisted. Composite authenticated venue requests (activate,
-//! participation) carry already-signed envelopes whose digests are
-//! recomputed and cross-bound here; the raw-first invariant applies to
-//! the standalone artifact surfaces (publish, recipes, profiles).
+//! Ingress discipline (the reusable Finding-ingress invariant): route-bound raw
+//! input is strict-canonicalized, rejecting duplicate keys and non-I-JSON numbers.
+//! It must be byte-equal to that serialization, schema-valid, typed-deserializable,
+//! domain-verified, and byte-stable when reserialized before persistence.
+//! Composite authenticated venue requests carry signed envelopes whose digests
+//! are recomputed and cross-bound here; the raw-first invariant applies to the
+//! standalone artifact surfaces (publish, recipes, profiles).
 
 use chio_finding::{
-    verify_signed_bond_backing, verify_signed_profile, verify_signed_seller_authorization,
-    verify_signed_verifier_report, Finding, FindingChallengeVerifierProfile, FindingEvidenceClass,
-    FindingFacetKind, FindingFacetOutcome, FindingFeeEvent, FindingGuaranteeClass, FindingPayee,
-    FindingReplayRecipeInput, SignedFindingAdmission, SignedFindingBondBacking,
-    SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
-    SignedFindingSellerAuthorization, SignedFindingVerifierReport,
-    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
+    required_finding_facets, verify_signed_authority_status, verify_signed_bond_backing,
+    verify_signed_profile, verify_signed_seller_authorization, verify_signed_verifier_report,
+    Finding, FindingAuthorityKeyPolicy, FindingFacetKind, FindingFacetOutcome, FindingFeeEvent,
+    FindingGuaranteeClass, FindingPayee, FindingReplayRecipeInput, SignedFindingAdmission,
+    SignedFindingAuthorityStatus, SignedFindingBondBacking, SignedFindingChallengeVerifierProfile,
+    SignedFindingMarketTerms, SignedFindingSellerAuthorization, SignedFindingVerifierReport,
+    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1,
 };
 use chio_open_market::fee_schedule::SignedOpenMarketFeeSchedule;
 use chio_open_market::finding_admission::{
@@ -33,16 +30,29 @@ use chio_open_market::finding_admission::{
 };
 use chio_open_market::fiscal_adapter::signed_fee_schedule_digest;
 use chio_open_market::listing::{
-    ensure_generic_listing_signed_by_namespace_owner, GenericListingStatus, SignedGenericListing,
+    ensure_generic_listing_signed_by_namespace_owner, normalize_namespace, GenericListingStatus,
+    SignedGenericListing,
 };
 use chio_store_sqlite::finding_market_store::{
-    finding_fee_idempotency_key, FindingActivationAttemptState,
-    FindingActivationPreparationOutcome, FindingAllocationState, FindingFeeIntent,
-    FindingFeeIntentOutcome, FindingRecordInput, SqliteFindingMarketStore,
+    finding_fee_idempotency_key, FindingActivationAttemptState, FindingActivationOutcome,
+    FindingActivationPreparationOutcome, FindingAdmissionSnapshot, FindingAllocationState,
+    FindingFeeEventRecord, FindingFeeIntent, FindingFeeIntentOutcome, FindingFeeState,
+    FindingParticipationAdmissionFence, FindingRecordInput, SqliteFindingMarketStore,
 };
+use chio_store_sqlite::SqliteFindingStatusStore;
 
 use super::report_validation::validate_service_auth;
 use super::*;
+
+#[path = "finding_admission_view.rs"]
+mod admission_view;
+use admission_view::{
+    current_admission_view, live_admission_epoch, terminal_authority_pin,
+    verify_current_admission_authorities, verify_terminal_authority_lifecycle,
+};
+#[path = "finding_handlers/participation.rs"]
+mod participation;
+use participation::reconcile_participation_fee_intent;
 
 /// Publish body cap: strict canonical findings are small; anything larger
 /// is hostile or malformed. Enforced at the route layer and re-checked
@@ -51,6 +61,9 @@ pub(crate) const FINDING_PUBLISH_MAX_BODY_BYTES: usize = 256 * 1024;
 /// Dependency uploads (recipes, input bundles, profiles) may carry larger
 /// canonical payloads; still bounded well below the service cap.
 pub(crate) const FINDING_DEPENDENCY_MAX_BODY_BYTES: usize = 1024 * 1024;
+/// A status reading older than this cannot establish current authority
+/// standing at a finding-market trust boundary.
+pub(crate) const FINDING_AUTHORITY_STATUS_MAX_AGE_SECS: u64 = 3_600;
 
 const FINDING_SCHEMA_JSON: &str =
     include_str!("../../../../../spec/schemas/chio-finding/v1/finding.schema.json");
@@ -59,6 +72,62 @@ const RECIPE_SCHEMA_JSON: &str =
 const PROFILE_SCHEMA_JSON: &str = include_str!(
     "../../../../../spec/schemas/chio-finding/v1/challenge-verifier-profile.schema.json"
 );
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FindingProfileRegistrationRequest {
+    profile: SignedFindingChallengeVerifierProfile,
+    governance_authority_status: SignedFindingAuthorityStatus,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct FindingCollateralRegistrationRequest {
+    backing: SignedFindingBondBacking,
+    collateral_authority_status: SignedFindingAuthorityStatus,
+}
+
+fn verify_collateral_authority_lifecycle(
+    backing: &SignedFindingBondBacking,
+    authority_status: &SignedFindingAuthorityStatus,
+    config: &FindingMarketConfig,
+    now: u64,
+) -> Result<PublicKey, String> {
+    if !config.collateral.covers(backing.body.issued_at) || !config.collateral.covers(now) {
+        return Err("finding collateral authority is not live".to_owned());
+    }
+    let collateral_key = config.collateral.key().map_err(|error| error.to_string())?;
+    verify_signed_bond_backing(backing, &collateral_key).map_err(|error| error.to_string())?;
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_authority_status(authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let status = &authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err("authority-status signer is not live".to_owned());
+    }
+    if status.status_ref != config.collateral.revocation_status_ref
+        || status.authority_id != config.collateral.authority_id
+        || status.key != collateral_key
+        || status.key_epoch != config.collateral.key_epoch
+    {
+        return Err("collateral authority status does not bind the deployment pin".to_owned());
+    }
+    if status.observed_at < backing.body.issued_at {
+        return Err("collateral authority status predates backing issuance".to_owned());
+    }
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("collateral authority status is not a fresh current reading".to_owned());
+    }
+    if status.revoked_from.is_some() {
+        return Err("collateral authority is revoked".to_owned());
+    }
+    Ok(collateral_key)
+}
 
 /// Deterministic instruction the venue-ledger rail settles. Its canonical
 /// digest is the instruction commitment the admission's fee terminal
@@ -159,6 +228,19 @@ pub(super) fn finding_market_context(
     Ok((config, store))
 }
 
+fn finding_status_store(state: &TrustServiceState) -> Result<SqliteFindingStatusStore, Response> {
+    state
+        .joint_authority_store
+        .as_ref()
+        .map(|authority| authority.finding_status_store())
+        .ok_or_else(|| {
+            plain_http_error(
+                StatusCode::CONFLICT,
+                "finding market requires the joint authority store",
+            )
+        })
+}
+
 /// The strict raw-first ingress pipeline for one registered artifact.
 pub(super) fn strict_artifact_ingress<T: serde::de::DeserializeOwned + serde::Serialize>(
     raw: &str,
@@ -216,6 +298,145 @@ pub(super) fn strict_artifact_ingress<T: serde::de::DeserializeOwned + serde::Se
         ));
     }
     Ok((strict_bytes, typed))
+}
+
+fn strict_profile_registration_ingress(
+    raw: &str,
+) -> Result<(Vec<u8>, FindingProfileRegistrationRequest), Response> {
+    if raw.len() > FINDING_DEPENDENCY_MAX_BODY_BYTES {
+        return Err(plain_http_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "profile registration exceeds the ingress size bound",
+        ));
+    }
+    let strict_request_bytes =
+        chio_core::canonical::canonical_json_bytes_from_str(raw).map_err(|_| {
+            plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "profile registration is not strict canonical I-JSON",
+            )
+        })?;
+    if strict_request_bytes.as_slice() != raw.as_bytes() {
+        return Err(plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "profile registration bytes are not the canonical serialization",
+        ));
+    }
+    let request: FindingProfileRegistrationRequest = serde_json::from_str(raw).map_err(|_| {
+        plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "profile registration failed typed deserialization",
+        )
+    })?;
+    let typed_bytes = chio_core::canonical_json_bytes(&request).map_err(|_| {
+        plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "profile registration failed canonicalization",
+        )
+    })?;
+    if typed_bytes != strict_request_bytes {
+        return Err(plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "typed profile registration drifts from the accepted bytes",
+        ));
+    }
+    let profile_bytes = chio_core::canonical_json_bytes(&request.profile).map_err(|_| {
+        plain_http_error(StatusCode::BAD_REQUEST, "profile failed canonicalization")
+    })?;
+    let profile_raw = std::str::from_utf8(&profile_bytes).map_err(|_| {
+        plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "profile canonical bytes are not UTF-8",
+        )
+    })?;
+    let (profile_bytes, _) = strict_artifact_ingress::<SignedFindingChallengeVerifierProfile>(
+        profile_raw,
+        FINDING_DEPENDENCY_MAX_BODY_BYTES,
+        PROFILE_SCHEMA_JSON,
+        "chio-finding/v1/challenge-verifier-profile.schema.json",
+    )?;
+    Ok((profile_bytes, request))
+}
+
+fn verify_profile_registration_authority(
+    request: &FindingProfileRegistrationRequest,
+    config: &FindingMarketConfig,
+    now: u64,
+) -> Result<(), String> {
+    if !config.governance_root.covers(now) {
+        return Err("profile governance authority is not live at registration".to_owned());
+    }
+    let governance_key = config
+        .governance_root
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_profile(&request.profile, &governance_key).map_err(|error| error.to_string())?;
+    if !config
+        .governance_root
+        .covers(request.profile.body.issued_at)
+    {
+        return Err("profile was issued outside the governance key validity window".to_owned());
+    }
+    if now < request.profile.body.issued_at || now >= request.profile.body.expires_at {
+        return Err("verifier profile is not live at registration".to_owned());
+    }
+
+    verify_profile_governance_lifecycle(
+        &request.profile,
+        &request.governance_authority_status,
+        config,
+        now,
+        "profile registration",
+    )
+}
+
+fn verify_profile_governance_lifecycle(
+    profile: &SignedFindingChallengeVerifierProfile,
+    authority_status: &SignedFindingAuthorityStatus,
+    config: &FindingMarketConfig,
+    now: u64,
+    boundary: &'static str,
+) -> Result<(), String> {
+    if !config.governance_root.covers(now) {
+        return Err(format!(
+            "profile governance authority is not live at {boundary}"
+        ));
+    }
+    let governance_key = config
+        .governance_root
+        .key()
+        .map_err(|error| error.to_string())?;
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_authority_status(authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let status = &authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err(format!("authority-status signer is not live at {boundary}"));
+    }
+    if status.status_ref != config.governance_root.revocation_status_ref
+        || status.authority_id != config.governance_root.authority_id
+        || status.key != governance_key
+        || status.key_epoch != config.governance_root.key_epoch
+    {
+        return Err("governance authority status does not bind the deployment pin".to_owned());
+    }
+    if status.observed_at < profile.body.issued_at {
+        return Err("governance authority status predates profile issuance".to_owned());
+    }
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("governance authority status is not a fresh current reading".to_owned());
+    }
+    if status.revoked_from.is_some() {
+        return Err(format!(
+            "profile governance authority is revoked at {boundary}"
+        ));
+    }
+    Ok(())
 }
 
 /// Re-load the exact recipe committed by a deterministic-replay Finding
@@ -424,6 +645,8 @@ struct FindingSearchAdmissionView {
     admission_id: String,
     envelope_sha256: String,
     expires_at: u64,
+    #[serde(skip)]
+    envelope_json: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -448,55 +671,23 @@ struct FindingSearchResponse {
     count: usize,
 }
 
-/// A stored admission is CURRENT only while its envelope is unexpired,
-/// its allocation remains consumed by the active admission, and
-/// participation fees are paid through the present audit epoch (computed
-/// from the retained terms envelope the admission binds by digest).
-/// Presence of this block in a search row IS the qualified
-/// cognition-market profile marker.
-fn current_admission_view(
-    store: &SqliteFindingMarketStore,
-    finding_id: &str,
-    now: u64,
-) -> Option<FindingSearchAdmissionView> {
-    let snapshot = store.get_current_admission(finding_id).ok().flatten()?;
-    if now >= snapshot.expires_at {
-        return None;
-    }
-    // Activation dedicates the allocation in the same transaction that
-    // indexes the admission, so the healthy state for an ACTIVE admission
-    // is `Consumed` (encumbered by exactly this admission). `Expired` and
-    // `Released` mean the backing is gone; `Live` with an active
-    // admission cannot happen through the store transaction.
-    if snapshot.allocation_state != FindingAllocationState::Consumed {
-        return None;
-    }
-    let admission: SignedFindingAdmission = serde_json::from_str(&snapshot.envelope_json).ok()?;
-    let terms_bytes = store
-        .get_recipe_blob(&admission.body.terms_envelope_sha256)
-        .ok()
-        .flatten()?;
-    let terms: SignedFindingMarketTerms = serde_json::from_slice(&terms_bytes).ok()?;
-    let epoch_length = terms.body.audit_epoch_length_secs.max(1);
-    let current_epoch = now.saturating_sub(snapshot.activated_at) / epoch_length;
-    let paid_through = store
-        .paid_through_epoch(finding_id, &snapshot.listing_id)
-        .ok()
-        .flatten()?;
-    if paid_through < current_epoch {
-        return None;
-    }
-    Some(FindingSearchAdmissionView {
-        admission_id: snapshot.admission_id,
-        envelope_sha256: snapshot.envelope_sha256,
-        expires_at: snapshot.expires_at,
-    })
-}
-
 fn run_finding_search(state: &TrustServiceState, query: &FindingSearchQuery) -> Response {
-    let (_, store) = match finding_market_context(state) {
+    let (config, store) = match finding_market_context(state) {
         Ok(context) => context,
         Err(response) => return response,
+    };
+    let status_store = match finding_status_store(state) {
+        Ok(store) => store,
+        Err(response) => return response,
+    };
+    let purchase_store = match state.joint_authority_store.as_ref() {
+        Some(authority) => authority.finding_purchase_store(),
+        None => {
+            return plain_http_error(
+                StatusCode::CONFLICT,
+                "finding market requires the joint authority store",
+            )
+        }
     };
     if query.topic_prefix.is_none() && query.context_sha256.is_none() {
         return plain_http_error(
@@ -524,10 +715,32 @@ fn run_finding_search(state: &TrustServiceState, query: &FindingSearchQuery) -> 
     } else {
         None
     };
+    let status_operator_authority_status = state
+        .finding_authority_status_resolver
+        .as_ref()
+        .and_then(|resolver| {
+            resolver
+                .resolve(&config.status_feed_operator.authority, now)
+                .ok()
+        });
+    let venue_authority_status = state
+        .finding_authority_status_resolver
+        .as_ref()
+        .and_then(|resolver| resolver.resolve(&config.venue, now).ok());
     let results: Vec<FindingSearchRowView> = rows
         .into_iter()
         .map(|row| {
-            let admission = current_admission_view(&store, &row.finding_id, now);
+            let admission = current_admission_view(
+                &store,
+                &purchase_store,
+                &status_store,
+                &config,
+                state.finding_authority_status_resolver.as_deref(),
+                status_operator_authority_status.as_ref(),
+                venue_authority_status.as_ref(),
+                &row.finding_id,
+                now,
+            );
             FindingSearchRowView {
                 finding_id: row.finding_id,
                 artifact_sha256: row.artifact_sha256,
@@ -643,29 +856,23 @@ pub(crate) async fn handle_register_finding_profile(
         Ok(context) => context,
         Err(response) => return response,
     };
-    let (strict_bytes, profile) =
-        match strict_artifact_ingress::<SignedFindingChallengeVerifierProfile>(
-            &raw,
-            FINDING_DEPENDENCY_MAX_BODY_BYTES,
-            PROFILE_SCHEMA_JSON,
-            "chio-finding/v1/challenge-verifier-profile.schema.json",
-        ) {
-            Ok(accepted) => accepted,
-            Err(response) => return response,
-        };
-    let governance_key = match config.governance_root.key() {
-        Ok(key) => key,
-        Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
-        }
+    let (profile_bytes, request) = match strict_profile_registration_ingress(&raw) {
+        Ok(accepted) => accepted,
+        Err(response) => return response,
     };
-    if let Err(error) = verify_signed_profile(&profile, &governance_key) {
+    let now = unix_timestamp_now();
+    if let Err(error) = verify_profile_registration_authority(&request, &config, now) {
         return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
     }
-    let digest = chio_core::sha256_hex(&strict_bytes);
-    match store.put_recipe_blob(&digest, &strict_bytes, unix_timestamp_now()) {
+    if let Err(error) =
+        chio_finding_verifier::validate_supported_finding_verifier_profile(&request.profile.body)
+    {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+    }
+    let digest = chio_core::sha256_hex(&profile_bytes);
+    match store.put_recipe_blob(&digest, &profile_bytes, now) {
         Ok(_) => Json(serde_json::json!({
-            "profileId": profile.body.profile_id,
+            "profileId": request.profile.body.profile_id,
             "envelopeSha256": digest,
         }))
         .into_response(),
@@ -679,7 +886,7 @@ pub(crate) async fn handle_register_finding_profile(
 pub(crate) async fn handle_register_finding_collateral(
     State(state): State<TrustServiceState>,
     headers: HeaderMap,
-    Json(backing): Json<SignedFindingBondBacking>,
+    Json(request): Json<FindingCollateralRegistrationRequest>,
 ) -> Response {
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
@@ -688,14 +895,15 @@ pub(crate) async fn handle_register_finding_collateral(
         Ok(context) => context,
         Err(response) => return response,
     };
-    let collateral_key = match config.collateral.key() {
-        Ok(key) => key,
-        Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
-        }
-    };
-    if let Err(error) = verify_signed_bond_backing(&backing, &collateral_key) {
-        return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+    let backing = &request.backing;
+    let now = unix_timestamp_now();
+    if let Err(error) = verify_collateral_authority_lifecycle(
+        backing,
+        &request.collateral_authority_status,
+        &config,
+        now,
+    ) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
     // The allocation backs a finding this venue actually serves.
     match store.get_finding_bytes(&backing.body.finding_id) {
@@ -712,7 +920,7 @@ pub(crate) async fn handle_register_finding_collateral(
             return plain_http_error(StatusCode::BAD_REQUEST, "backing failed canonicalization")
         }
     };
-    match store.register_allocation(&envelope_json, &backing.body, unix_timestamp_now()) {
+    match store.register_allocation(&envelope_json, &backing.body, now) {
         Ok(()) => Json(serde_json::json!({
             "allocationId": backing.body.allocation_id,
         }))
@@ -728,46 +936,206 @@ pub(crate) async fn handle_register_finding_collateral(
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct FindingActivateRequest {
     pub admission: SignedFindingAdmission,
+    pub collateral_authority_status: SignedFindingAuthorityStatus,
+    pub profile_governance_authority_status: SignedFindingAuthorityStatus,
+    pub venue_authority_status: SignedFindingAuthorityStatus,
+    pub listing_authority_status: SignedFindingAuthorityStatus,
+    pub status_operator_authority_status: SignedFindingAuthorityStatus,
     pub seller_authorization: SignedFindingSellerAuthorization,
+    pub seller_authorization_status: SignedFindingAuthorityStatus,
     pub terms: SignedFindingMarketTerms,
     pub backing: SignedFindingBondBacking,
     pub fee_schedule: SignedOpenMarketFeeSchedule,
     pub verifier_report: SignedFindingVerifierReport,
+    pub verifier_authority_status: SignedFindingAuthorityStatus,
     pub listing: SignedGenericListing,
     pub pricing_hint: chio_open_market::listing::SignedListingPricingHint,
 }
 
-/// The facets a finding REQUIRES exactly `verified` before admission: the
-/// profile's floor plus every claim the artifact itself makes. The
-/// verifier derives required facets the same way when it evaluates
-/// outcomes; nothing here waives a profile-listed facet.
-fn required_facets(
-    finding: &Finding,
-    profile: &FindingChallengeVerifierProfile,
-) -> Vec<FindingFacetKind> {
-    let mut required: std::collections::BTreeSet<FindingFacetKind> =
-        profile.required_facets.iter().copied().collect();
-    required.insert(FindingFacetKind::ArtifactIntegrity);
-    if finding.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
-        required.insert(FindingFacetKind::RecipeBinding);
+fn verify_seller_authorization_lifecycle(
+    authorization: &SignedFindingSellerAuthorization,
+    authority_status: &SignedFindingAuthorityStatus,
+    config: &FindingMarketConfig,
+    now: u64,
+) -> Result<(), String> {
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_authority_status(authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let status = &authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err("authority-status signer is not live at activation".into());
     }
-    if finding.evidence_class == FindingEvidenceClass::Verified {
-        required.insert(FindingFacetKind::ReceiptAuthenticity);
-        required.insert(FindingFacetKind::CheckpointMembership);
+    let authorization = &authorization.body;
+    if status.status_ref != authorization.revocation_status_ref
+        || status.authority_id != authorization.authorization_id
+        || status.key != authorization.issuer
+        || status.key_epoch != FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1
+    {
+        return Err("seller authorization status does not bind the exact authorization".into());
     }
-    if finding.runtime_assurance_tier.is_some() {
-        required.insert(FindingFacetKind::RuntimeAssuranceBacking);
+    if status.observed_at < authorization.issued_at {
+        return Err("seller authorization status predates the authorization".into());
     }
-    required.into_iter().collect()
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("seller authorization status is not a fresh current reading".into());
+    }
+    if status.revoked_from.is_some() {
+        return Err("seller authorization is revoked at activation".into());
+    }
+    Ok(())
+}
+
+fn verify_listing_authority_lifecycle(
+    listing: &SignedGenericListing,
+    pricing_hint: &chio_open_market::listing::SignedListingPricingHint,
+    authority_status: &SignedFindingAuthorityStatus,
+    config: &FindingMarketConfig,
+    now: u64,
+) -> Result<(), String> {
+    let listing_key = config.listing.key().map_err(|error| error.to_string())?;
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_authority_status(authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let status = &authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err("authority-status signer is not live at activation".into());
+    }
+    if status.status_ref != config.listing.revocation_status_ref
+        || status.authority_id != config.listing.authority_id
+        || status.key != listing_key
+        || status.key_epoch != config.listing.key_epoch
+    {
+        return Err("listing authority status does not bind the deployment pin".into());
+    }
+    if status.observed_at < listing.body.published_at
+        || status.observed_at < pricing_hint.body.issued_at
+    {
+        return Err("listing authority status predates the listing or pricing hint".into());
+    }
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("listing authority status is not a fresh current reading".into());
+    }
+    if status.revoked_from.is_some() {
+        return Err("listing authority is revoked at activation".into());
+    }
+    Ok(())
+}
+
+pub(super) fn verify_status_operator_authority_lifecycle(
+    authority_status: &SignedFindingAuthorityStatus,
+    config: &FindingMarketConfig,
+    feed_id: &str,
+    status_epoch_generated_at: u64,
+    now: u64,
+    boundary: &str,
+) -> Result<(), String> {
+    let operator_key = config
+        .status_feed_operator
+        .require_live(feed_id, now)
+        .map_err(|error| error.to_string())?;
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_authority_status(authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let operator = &config.status_feed_operator.authority;
+    let status = &authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err(format!("authority-status signer is not live at {boundary}"));
+    }
+    if !operator.covers(status.observed_at) {
+        return Err("status operator reading is outside its configured authority window".into());
+    }
+    if status.status_ref != operator.revocation_status_ref
+        || status.authority_id != operator.authority_id
+        || status.key != operator_key
+        || status.key_epoch != operator.key_epoch
+    {
+        return Err("status operator reading does not bind the configured authority".into());
+    }
+    if status.observed_at < status_epoch_generated_at {
+        return Err(format!(
+            "status operator reading predates the retained status epoch at {boundary}"
+        ));
+    }
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err(format!(
+            "status operator reading is not fresh at {boundary}"
+        ));
+    }
+    if status
+        .revoked_from
+        .is_some_and(|revoked_from| revoked_from <= now)
+    {
+        return Err(format!("status operator is revoked at {boundary}"));
+    }
+    Ok(())
+}
+
+pub(crate) fn verify_venue_authority_lifecycle(
+    admission: &SignedFindingAdmission,
+    authority_status: &SignedFindingAuthorityStatus,
+    config: &FindingMarketConfig,
+    now: u64,
+) -> Result<(), String> {
+    let venue_key = config.venue.key().map_err(|error| error.to_string())?;
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_authority_status(authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let status = &authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err("authority-status signer is not live at activation".into());
+    }
+    if !config.venue.covers(now) {
+        return Err("venue authority is not live at activation".into());
+    }
+    if status.status_ref != config.venue.revocation_status_ref
+        || status.authority_id != config.venue.authority_id
+        || status.key != venue_key
+        || status.key_epoch != config.venue.key_epoch
+    {
+        return Err("venue authority status does not bind the deployment pin".into());
+    }
+    if status.observed_at < admission.body.issued_at {
+        return Err("venue authority status predates the admission".into());
+    }
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("venue authority status is not a fresh current reading".into());
+    }
+    if status.revoked_from.is_some() {
+        return Err("venue authority is revoked at activation".into());
+    }
+    Ok(())
 }
 
 pub(crate) fn verify_profile_for_activation(
     profile: &SignedFindingChallengeVerifierProfile,
     expected_envelope_sha256: &str,
+    governance_authority_status: &SignedFindingAuthorityStatus,
     config: &FindingMarketConfig,
     now: u64,
 ) -> Result<(), String> {
     profile.body.validate().map_err(|error| error.to_string())?;
+    chio_finding_verifier::validate_supported_finding_verifier_profile(&profile.body)
+        .map_err(|error| error.to_string())?;
     let digest = canonical_digest_of(profile)?;
     if digest != expected_envelope_sha256 {
         return Err("retained profile digest does not match the admission".to_string());
@@ -783,13 +1151,71 @@ pub(crate) fn verify_profile_for_activation(
     if now < profile.body.issued_at || now >= profile.body.expires_at {
         return Err("verifier profile is not live at activation".to_string());
     }
+    verify_profile_governance_lifecycle(
+        profile,
+        governance_authority_status,
+        config,
+        now,
+        "activation",
+    )
+}
+
+fn verify_authority_policy_matches_deployment(
+    label: &str,
+    policy: &FindingAuthorityKeyPolicy,
+    pin: &FindingAuthorityPin,
+) -> Result<(), String> {
+    let key = pin.key().map_err(|error| error.to_string())?;
+    if policy.authority_id != pin.authority_id
+        || policy.key != key
+        || policy.key_epoch != pin.key_epoch
+        || policy.valid_from != pin.valid_from
+        || policy.valid_until != pin.valid_until
+        || policy.revocation_status_ref != pin.revocation_status_ref
+    {
+        return Err(format!(
+            "profile {label} authority does not match the deployment pin"
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn verify_profile_settlement_authorities(
+    profile: &SignedFindingChallengeVerifierProfile,
+    admission: &SignedFindingAdmission,
+    config: &FindingMarketConfig,
+) -> Result<(), String> {
+    for (label, profile_policy, admission_policy, deployment_pin) in [
+        (
+            "purchase",
+            &profile.body.purchase_authority,
+            &admission.body.purchase_authority,
+            &config.purchase,
+        ),
+        (
+            "failed-delivery",
+            &profile.body.failed_delivery_authority,
+            &admission.body.failed_delivery_authority,
+            &config.failed_delivery,
+        ),
+    ] {
+        if profile_policy != admission_policy {
+            return Err(format!(
+                "profile {label} authority does not match the admission policy"
+            ));
+        }
+        verify_authority_policy_matches_deployment(label, profile_policy, deployment_pin)?;
+    }
     Ok(())
 }
 
 pub(crate) fn verify_report_authority_lifecycle(
     report: &SignedFindingVerifierReport,
+    authority_status: &SignedFindingAuthorityStatus,
     profile: &SignedFindingChallengeVerifierProfile,
+    finding: &Finding,
     config: &FindingMarketConfig,
+    now: u64,
 ) -> Result<(), String> {
     let instant = report.body.evaluation_time;
     let verifier_key = config
@@ -799,6 +1225,15 @@ pub(crate) fn verify_report_authority_lifecycle(
     verify_signed_verifier_report(report, &verifier_key).map_err(|error| error.to_string())?;
     if !config.verifier_report.covers(instant) {
         return Err("verifier report evaluation is outside the pinned key validity window".into());
+    }
+    if !config.verifier_report.covers(now) {
+        return Err("verifier report authority is not live at activation".into());
+    }
+    if instant < profile.body.issued_at || instant >= profile.body.expires_at {
+        return Err("verifier report evaluation is outside the profile lifecycle".into());
+    }
+    if instant < finding.issued_at || instant >= finding.expires_at {
+        return Err("verifier report evaluation is outside the Finding lifecycle".into());
     }
     if report.body.verifier_key_epoch != config.verifier_report.key_epoch {
         return Err("verifier report key epoch does not match the deployment pin".into());
@@ -813,6 +1248,38 @@ pub(crate) fn verify_report_authority_lifecycle(
     }
     if instant < policy.valid_from || instant >= policy.valid_until {
         return Err("verifier report evaluation is outside the profile signer policy".into());
+    }
+    if now < policy.valid_from || now >= policy.valid_until {
+        return Err("profile verifier-report authority is not live at activation".into());
+    }
+
+    let status_key = config
+        .authority_status
+        .key()
+        .map_err(|error| error.to_string())?;
+    verify_signed_authority_status(authority_status, &status_key)
+        .map_err(|error| error.to_string())?;
+    let status = &authority_status.body;
+    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
+        return Err("authority-status signer is not live at activation".into());
+    }
+    if status.status_ref != config.verifier_report.revocation_status_ref
+        || status.authority_id != config.verifier_report.authority_id
+        || status.key != verifier_key
+        || status.key_epoch != config.verifier_report.key_epoch
+    {
+        return Err("verifier authority status does not bind the deployment pin".into());
+    }
+    if status.observed_at < instant {
+        return Err("verifier authority status predates the report evaluation".into());
+    }
+    if status.observed_at > now
+        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
+    {
+        return Err("verifier authority status is not a fresh current reading".into());
+    }
+    if status.revoked_from.is_some() {
+        return Err("verifier report authority is revoked at activation".into());
     }
     Ok(())
 }
@@ -836,6 +1303,15 @@ pub(crate) async fn handle_activate_finding(
         Ok(context) => context,
         Err(response) => return response,
     };
+    let purchase_store = match state.joint_authority_store.as_ref() {
+        Some(authority) => authority.finding_purchase_store(),
+        None => {
+            return plain_http_error(
+                StatusCode::CONFLICT,
+                "finding market requires the joint authority store",
+            )
+        }
+    };
     let admission = &request.admission.body;
     if admission.finding_id != finding_id {
         return plain_http_error(StatusCode::BAD_REQUEST, "admission names another finding");
@@ -854,7 +1330,7 @@ pub(crate) async fn handle_activate_finding(
     // A prepared retry owns the consumed allocation named by these exact
     // bytes. An activated retry is already complete, including when a
     // later admission superseded it.
-    let activation_attempt_state = match store.get_activation_attempt(&admission.admission_id) {
+    let activation_attempt = match store.get_activation_attempt(&admission.admission_id) {
         Ok(Some(attempt)) => {
             if attempt.envelope_json != admission_json {
                 return plain_http_error(
@@ -862,16 +1338,19 @@ pub(crate) async fn handle_activate_finding(
                     "admission id is already bound to different activation bytes",
                 );
             }
-            Some(attempt.state)
+            Some(attempt)
         }
         Ok(None) => None,
         Err(error) => {
             return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
         }
     };
-    let prepared_replay = activation_attempt_state == Some(FindingActivationAttemptState::Prepared);
-    let mut completed_replay =
-        activation_attempt_state == Some(FindingActivationAttemptState::Activated);
+    let prepared_replay = activation_attempt
+        .as_ref()
+        .is_some_and(|attempt| attempt.state == FindingActivationAttemptState::Prepared);
+    let mut completed_replay = activation_attempt
+        .as_ref()
+        .is_some_and(|attempt| attempt.state == FindingActivationAttemptState::Activated);
 
     // Exact-replay short circuit: a retry of an already committed
     // activation must return the stored outcome instead of re-verifying
@@ -892,21 +1371,55 @@ pub(crate) async fn handle_activate_finding(
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
 
-    let purchase_store = match state.joint_authority_store.as_ref() {
-        Some(authority) => authority.finding_purchase_store(),
-        None => {
-            return plain_http_error(
-                StatusCode::CONFLICT,
-                "finding market requires the joint authority store",
-            )
+    if completed_replay {
+        if let Err(error) = purchase_store.register_community_fund_destination(
+            &admission.backing_allocation_id,
+            &admission.community_fund_destination,
+            now,
+        ) {
+            return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
         }
-    };
+        return Json(serde_json::json!({
+            "admissionId": admission.admission_id,
+            "outcome": "ExactReplay",
+        }))
+        .into_response();
+    }
+
+    // Preparing the exact admission durably records the authorization
+    // decision before any fee can move. An exact retry reuses that bounded
+    // instant for constituent lifecycle validation so a later rotation or
+    // expiry cannot strand a reconciled charge and consumed allocation.
+    let authorization_now = activation_attempt
+        .as_ref()
+        .filter(|attempt| attempt.state == FindingActivationAttemptState::Prepared)
+        .map_or(now, |attempt| attempt.prepared_at);
+    if !config.venue.covers(admission.issued_at) || !config.venue.covers(authorization_now) {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding venue authority is not live for admission activation",
+        );
+    }
+    if let Err(error) = verify_venue_authority_lifecycle(
+        &request.admission,
+        &request.venue_authority_status,
+        &config,
+        authorization_now,
+    ) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
+    }
+
     match purchase_store.sales_blocked(&admission.listing_id) {
         Ok(true) => {
-            return plain_http_error(
-                StatusCode::BAD_REQUEST,
-                "listing admission is blocked by an enforced penalty",
-            )
+            if prepared_replay {
+                // The durable prepare owns the pre-fee block decision. The
+                // activated listing will still be blocked from new sales.
+            } else {
+                return plain_http_error(
+                    StatusCode::BAD_REQUEST,
+                    "listing admission is blocked by an enforced penalty",
+                );
+            }
         }
         Ok(false) => {}
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
@@ -927,6 +1440,48 @@ pub(crate) async fn handle_activate_finding(
             )
         }
     };
+    if admission.status_feed_operator_ref != finding.status_feed_ref {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "admission status feed does not match the Finding status feed",
+        );
+    }
+    if require_status_feed_through(
+        &config.status_feed_operator,
+        &config.status_feed_service_bond,
+        &finding.status_feed_ref,
+        authorization_now,
+        authorization_now,
+    )
+    .is_err()
+    {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding status service bond is not live for activation",
+        );
+    }
+    let status_epoch = match finding_status_store(&state).and_then(|store| {
+        store
+            .get_current_epoch(&finding.status_feed_ref)
+            .map_err(|error| plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()))
+    }) {
+        Ok(epoch) => epoch,
+        Err(response) => return response,
+    };
+    if let Err(error) = verify_status_operator_authority_lifecycle(
+        &request.status_operator_authority_status,
+        &config,
+        &finding.status_feed_ref,
+        if prepared_replay || completed_replay {
+            0
+        } else {
+            status_epoch.generated_at
+        },
+        authorization_now,
+        "activation",
+    ) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
+    }
     if finding.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
         let Some(recipe_sha256) = finding.replay_recipe_sha256.as_deref() else {
             return plain_http_error(StatusCode::BAD_REQUEST, "replay recipe digest missing");
@@ -971,22 +1526,26 @@ pub(crate) async fn handle_activate_finding(
             "finding listing signer does not match the configured listing authority",
         );
     }
+    if request.listing.body.published_at > authorization_now {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding listing was published after the activation clock",
+        );
+    }
+    if !config.listing.covers(request.listing.body.published_at) {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding listing was published outside the configured listing authority window",
+        );
+    }
+    if !config.listing.covers(authorization_now) {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding listing authority is not live at activation",
+        );
+    }
     if request.listing.body.status != GenericListingStatus::Active {
         return plain_http_error(StatusCode::BAD_REQUEST, "finding listing is not active");
-    }
-    if completed_replay {
-        if let Err(error) = purchase_store.register_community_fund_destination(
-            &admission.backing_allocation_id,
-            &admission.community_fund_destination,
-            now,
-        ) {
-            return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
-        }
-        return Json(serde_json::json!({
-            "admissionId": admission.admission_id,
-            "outcome": "ExactReplay",
-        }))
-        .into_response();
     }
     let hint_digest = match canonical_digest_of(&request.pricing_hint) {
         Ok(digest) => digest,
@@ -997,6 +1556,41 @@ pub(crate) async fn handle_activate_finding(
             StatusCode::BAD_REQUEST,
             "pricing hint envelope digest mismatch",
         );
+    }
+    if let Err(error) = request.pricing_hint.body.validate() {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
+    }
+    if !matches!(request.pricing_hint.verify_signature(), Ok(true)) {
+        return plain_http_error(StatusCode::BAD_REQUEST, "pricing hint signature is invalid");
+    }
+    if !request.pricing_hint.body.is_live_at(authorization_now) {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "pricing hint is not live at activation",
+        );
+    }
+    if request.pricing_hint.signer_key != listing_authority
+        || request.pricing_hint.body.listing_id != request.listing.body.listing_id
+        || normalize_namespace(&request.pricing_hint.body.namespace)
+            != normalize_namespace(&request.listing.body.namespace)
+        || request.pricing_hint.body.provider_operator_id != admission.publisher_operator_id
+        || request.pricing_hint.body.provider_operator_id
+            != request.listing.body.namespace_ownership.owner_id
+        || request.listing.body.subject.actor_id != admission.server_id
+    {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "pricing hint identity does not match the admitted listing",
+        );
+    }
+    if let Err(error) = verify_listing_authority_lifecycle(
+        &request.listing,
+        &request.pricing_hint,
+        &request.listing_authority_status,
+        &config,
+        authorization_now,
+    ) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
     if request.pricing_hint.body.capability_scope != admission.capability_scope {
         return plain_http_error(StatusCode::BAD_REQUEST, "pricing hint scope mismatch");
@@ -1064,8 +1658,23 @@ pub(crate) async fn handle_activate_finding(
             "seller authorization names a different listing",
         );
     }
-    if authorization.issued_at > now || authorization.expires_at <= now {
+    if authorization.issued_at > authorization_now || authorization.expires_at <= authorization_now
+    {
         return plain_http_error(StatusCode::BAD_REQUEST, "seller authorization is not live");
+    }
+    if authorization.provider_server_id != admission.server_id {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "seller authorization provider server does not match the admission",
+        );
+    }
+    if let Err(error) = verify_seller_authorization_lifecycle(
+        &request.seller_authorization,
+        &request.seller_authorization_status,
+        &config,
+        authorization_now,
+    ) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
     if let FindingPayee::Beneficiary { destination, .. } = &authorization.payee {
         if destination != &admission.payee_destination {
@@ -1083,6 +1692,15 @@ pub(crate) async fn handle_activate_finding(
             return plain_http_error(StatusCode::BAD_REQUEST, "unknown collateral allocation")
         }
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+    };
+    let collateral_key = match verify_collateral_authority_lifecycle(
+        &request.backing,
+        &request.collateral_authority_status,
+        &config,
+        authorization_now,
+    ) {
+        Ok(key) => key,
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error),
     };
 
     // The retained profile remains an authority-bearing dependency at
@@ -1109,16 +1727,52 @@ pub(crate) async fn handle_activate_finding(
                 )
             }
         };
-    if let Err(error) =
-        verify_profile_for_activation(&profile, &admission.profile_envelope_sha256, &config, now)
+    if let Err(error) = verify_profile_for_activation(
+        &profile,
+        &admission.profile_envelope_sha256,
+        &request.profile_governance_authority_status,
+        &config,
+        authorization_now,
+    ) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
+    }
+    if let Err(error) = verify_profile_settlement_authorities(&profile, &request.admission, &config)
     {
         return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
+    let Some(authority_status_resolver) = state.finding_authority_status_resolver.as_deref() else {
+        return plain_http_error(
+            StatusCode::CONFLICT,
+            "finding activation requires the authority-status resolver",
+        );
+    };
+    for policy in [
+        &admission.purchase_authority,
+        &admission.failed_delivery_authority,
+    ] {
+        let authority_status = match authority_status_resolver
+            .resolve(&terminal_authority_pin(policy), authorization_now)
+        {
+            Ok(status) => status,
+            Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error),
+        };
+        if let Err(error) = verify_terminal_authority_lifecycle(
+            policy,
+            &authority_status,
+            &config,
+            admission.issued_at,
+            authorization_now,
+        ) {
+            return plain_http_error(StatusCode::BAD_REQUEST, &error);
+        }
+    }
 
     // Pinned keys.
-    let (venue_key, collateral_key) = match (config.venue.key(), config.collateral.key()) {
-        (Ok(venue), Ok(collateral)) => (venue, collateral),
-        _ => return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, "pinned keys invalid"),
+    let venue_key = match config.venue.key() {
+        Ok(venue) => venue,
+        Err(_) => {
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, "pinned keys invalid")
+        }
     };
 
     // The full admission verification: venue pin, liveness, terms and
@@ -1141,9 +1795,14 @@ pub(crate) async fn handle_activate_finding(
         }
         None => FindingFeeScheduleGate::Legacy,
     };
-    if let Err(error) =
-        verify_report_authority_lifecycle(&request.verifier_report, &profile, &config)
-    {
+    if let Err(error) = verify_report_authority_lifecycle(
+        &request.verifier_report,
+        &request.verifier_authority_status,
+        &profile,
+        &finding,
+        &config,
+        authorization_now,
+    ) {
         return plain_http_error(StatusCode::BAD_REQUEST, &error);
     }
     // The report's affirmative bond claim, if any, feeds the admission
@@ -1155,10 +1814,11 @@ pub(crate) async fn handle_activate_finding(
     let admission_context = FindingAdmissionContext {
         venue_authority: &venue_key,
         venue_id: &config.venue_id,
-        now,
+        now: authorization_now,
         fee_schedule: &request.fee_schedule,
         fee_schedule_gate: gate,
         trusted_local_operator_signers: &trusted_signers,
+        seller_authorization: &request.seller_authorization,
         terms: &request.terms,
         backing: &request.backing,
         allocation_snapshot: AdmissionAllocationSnapshot {
@@ -1194,14 +1854,9 @@ pub(crate) async fn handle_activate_finding(
         return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
     }
 
-    // Verifier report: pinned signer, exact bindings, report-before-
-    // backing, and the required-facet policy against the
-    // retained profile.
-    if let Err(error) =
-        verify_report_authority_lifecycle(&request.verifier_report, &profile, &config)
-    {
-        return plain_http_error(StatusCode::BAD_REQUEST, &error);
-    }
+    // The verifier signer and its current authenticated status were checked
+    // above before the report influenced admission sizing. Continue with its
+    // exact bindings and required-facet policy against the retained profile.
     let report = &request.verifier_report.body;
     let report_digest = match canonical_digest_of(&request.verifier_report) {
         Ok(digest) => digest,
@@ -1251,7 +1906,7 @@ pub(crate) async fn handle_activate_finding(
             "verifier report contains a failed facet; admission denied",
         );
     }
-    for facet in required_facets(&finding, &profile.body) {
+    for facet in required_finding_facets(&finding, &profile.body) {
         if report.facet_outcome(facet) != Some(FindingFacetOutcome::Verified) {
             return plain_http_error(
                 StatusCode::BAD_REQUEST,
@@ -1274,6 +1929,24 @@ pub(crate) async fn handle_activate_finding(
         .is_err()
     {
         return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, "terms retention failed");
+    }
+    let authorization_json = match chio_core::canonical_json_bytes(&request.seller_authorization) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "seller authorization failed canonicalization",
+            )
+        }
+    };
+    if store
+        .put_recipe_blob(&authorization_digest, &authorization_json, now)
+        .is_err()
+    {
+        return plain_http_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "seller authorization retention failed",
+        );
     }
 
     // Validate every fee terminal and install every idempotency fence
@@ -1346,32 +2019,35 @@ pub(crate) async fn handle_activate_finding(
             instruction_sha256,
         });
     }
-    let mut fee_outcomes = Vec::with_capacity(charges.len());
-    for (terminal, charge) in admission.fee_terminals.iter().zip(&charges) {
-        let intent = FindingFeeIntent {
-            fee_schedule_envelope_sha256: &schedule_digest,
-            event: &terminal.event,
-            finding_id: &finding_id,
-            listing_id: &admission.listing_id,
-            payer: &terminal.payer,
-            amount: &terminal.amount,
-            pool_principal_id: &terminal.pool_principal_id,
-            rail_destination: &terminal.rail_destination,
-            instruction_sha256: &charge.instruction_sha256,
-        };
-        match store.begin_fee_intent(&intent) {
-            Ok(fenced) => fee_outcomes.push(fenced.outcome),
-            Err(error) => {
-                return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
-            }
-        }
+    // Atomically validate live status, fence every fee intent, claim the
+    // allocation, and retain the exact admission before money can move. A
+    // concurrent retraction therefore wins before any financial state opens.
+    // A crash from here onward leaves one replayable prepare record, so a
+    // reconciled charge cannot lose its activation owner.
+    if !prepared_replay
+        && require_status_feed_through(
+            &config.status_feed_operator,
+            &config.status_feed_service_bond,
+            &finding.status_feed_ref,
+            now,
+            now,
+        )
+        .is_err()
+    {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "finding status operator or service bond is not live for activation",
+        );
     }
-
-    // Claim the allocation and retain the exact admission before money
-    // can move. A crash from here onward leaves a replayable prepare
-    // record, so a reconciled charge cannot lose its activation owner to
-    // a concurrent allocation consumer.
-    match store.prepare_listing_activation(&admission_json, admission, now) {
+    match store.prepare_listing_activation(
+        &admission_json,
+        admission,
+        &finding.status_feed_ref,
+        &config.status_feed_operator.authorization_sha256,
+        request.status_operator_authority_status.body.observed_at,
+        now,
+        config.status_max_epoch_age_secs,
+    ) {
         Ok(FindingActivationPreparationOutcome::Prepared)
         | Ok(FindingActivationPreparationOutcome::PendingReplay) => {}
         Ok(FindingActivationPreparationOutcome::AlreadyActivated) => {
@@ -1381,18 +2057,31 @@ pub(crate) async fn handle_activate_finding(
             }))
             .into_response();
         }
+        Ok(FindingActivationPreparationOutcome::Expired) => {
+            return plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "prepared activation expired before completion",
+            );
+        }
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
 
     // Dispatch and reconcile each unsettled terminal. Reconciled intents
     // from an earlier attempt are never dispatched twice.
-    for ((terminal, charge), outcome) in admission
-        .fee_terminals
-        .iter()
-        .zip(&charges)
-        .zip(fee_outcomes)
-    {
-        if outcome == FindingFeeIntentOutcome::AlreadyReconciled {
+    for (terminal, charge) in admission.fee_terminals.iter().zip(&charges) {
+        let fee_event = match store.get_fee_event(&charge.idempotency_key) {
+            Ok(Some(event)) => event,
+            Ok(None) => {
+                return plain_http_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "prepared activation lost its fee intent",
+                )
+            }
+            Err(error) => {
+                return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+            }
+        };
+        if fee_event.state == FindingFeeState::Reconciled {
             continue;
         }
         let observation = match rail.dispatch(&charge.instruction) {
@@ -1407,6 +2096,17 @@ pub(crate) async fn handle_activate_finding(
                 );
             }
         };
+        if !super::finding_challenge_coordinator::rail_observation_matches(
+            &charge.instruction,
+            &charge.instruction_sha256,
+            &observation,
+        ) {
+            let _ = store.mark_fee_failed(&charge.idempotency_key);
+            return plain_http_error(
+                StatusCode::BAD_GATEWAY,
+                "rail observation does not reconcile to the dispatched instruction",
+            );
+        }
         let observation_sha256 = match canonical_digest_of(&observation) {
             Ok(digest) => digest,
             Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error),
@@ -1431,6 +2131,10 @@ pub(crate) async fn handle_activate_finding(
     // the active admission, supersedes the prior active row, and marks
     // the durable prepare complete.
     match store.activate_listing(&admission_json, admission, now) {
+        Ok(FindingActivationOutcome::Expired) => plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "prepared activation expired; collateral was released and matching fees remain credited",
+        ),
         Ok(outcome) => {
             if let Err(error) = purchase_store.register_community_fund_destination(
                 &admission.backing_allocation_id,
@@ -1455,6 +2159,7 @@ pub(crate) async fn handle_activate_finding(
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct FindingParticipationRequest {
     pub fee_schedule: SignedOpenMarketFeeSchedule,
+    pub status_operator_authority_status: SignedFindingAuthorityStatus,
 }
 
 /// POST /v1/findings/{finding_id}/participation (authenticated): collect
@@ -1473,6 +2178,30 @@ pub(crate) async fn handle_finding_participation(
         Ok(context) => context,
         Err(response) => return response,
     };
+    let schedule_digest = match signed_fee_schedule_digest(&request.fee_schedule) {
+        Ok(digest) => digest,
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+    };
+    let pending = match store.get_pending_participation_fee_intent(&finding_id, &schedule_digest) {
+        Ok(pending) => pending,
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+    };
+    if let Some(pending) = pending {
+        let Some(rail) = state.finding_rail.as_ref() else {
+            return plain_http_error(
+                StatusCode::CONFLICT,
+                "no evidenced rail observer is configured",
+            );
+        };
+        return match reconcile_participation_fee_intent(&store, rail.as_ref(), &pending) {
+            Ok(epoch) => Json(serde_json::json!({
+                "findingId": finding_id,
+                "paidThroughEpoch": epoch,
+            }))
+            .into_response(),
+            Err(response) => response,
+        };
+    }
     let snapshot = match store.get_current_admission(&finding_id) {
         Ok(Some(snapshot)) => snapshot,
         Ok(None) => return plain_http_error(StatusCode::NOT_FOUND, "no active admission"),
@@ -1487,9 +2216,29 @@ pub(crate) async fn handle_finding_participation(
             )
         }
     };
-    let schedule_digest = match signed_fee_schedule_digest(&request.fee_schedule) {
-        Ok(digest) => digest,
+    let now = unix_timestamp_now();
+    let artifact_json = match store.get_finding_bytes(&finding_id) {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => return plain_http_error(StatusCode::NOT_FOUND, "unknown finding"),
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+    };
+    let finding: Finding = match serde_json::from_str(&artifact_json) {
+        Ok(finding) => finding,
+        Err(_) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "stored finding failed deserialization",
+            )
+        }
+    };
+    let current_epoch = match live_admission_epoch(&store, &snapshot, &admission, now) {
+        Some(epoch) => epoch,
+        None => {
+            return plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "admission is not live for participation renewal",
+            )
+        }
     };
     if schedule_digest != admission.body.fee_schedule_envelope_sha256 {
         return plain_http_error(
@@ -1497,7 +2246,11 @@ pub(crate) async fn handle_finding_participation(
             "fee schedule does not match the admitted binding",
         );
     }
-    let paid_through = match store.paid_through_epoch(&finding_id, &snapshot.listing_id) {
+    let paid_through = match store.paid_through_epoch(
+        &finding_id,
+        &snapshot.listing_id,
+        &admission.body.fee_schedule_envelope_sha256,
+    ) {
         Ok(Some(epoch)) => epoch,
         Ok(None) => {
             return plain_http_error(StatusCode::BAD_REQUEST, "no reconciled participation epoch")
@@ -1508,6 +2261,12 @@ pub(crate) async fn handle_finding_participation(
         Some(epoch) => epoch,
         None => return plain_http_error(StatusCode::BAD_REQUEST, "epoch index overflow"),
     };
+    if next_epoch > current_epoch {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "participation is already paid through the current audit epoch",
+        );
+    }
     let Some(rail) = state.finding_rail.as_ref() else {
         return plain_http_error(
             StatusCode::CONFLICT,
@@ -1549,7 +2308,74 @@ pub(crate) async fn handle_finding_participation(
         rail_destination: &config.audit_pool.rail_destination,
         instruction_sha256: &instruction_sha256,
     };
-    match store.begin_fee_intent(&intent) {
+    let exact_replay = match store.is_exact_fee_intent_replay(&intent) {
+        Ok(exact_replay) => exact_replay,
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+    };
+    if !exact_replay {
+        if let Err(error) = require_status_feed_through(
+            &config.status_feed_operator,
+            &config.status_feed_service_bond,
+            &finding.status_feed_ref,
+            now,
+            now,
+        ) {
+            return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+        }
+        let status_epoch = match finding_status_store(&state).and_then(|status_store| {
+            status_store
+                .get_current_epoch(&finding.status_feed_ref)
+                .map_err(|error| plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()))
+        }) {
+            Ok(epoch) => epoch,
+            Err(response) => return response,
+        };
+        if let Err(error) = verify_status_operator_authority_lifecycle(
+            &request.status_operator_authority_status,
+            &config,
+            &finding.status_feed_ref,
+            status_epoch.generated_at,
+            now,
+            "participation renewal",
+        ) {
+            return plain_http_error(StatusCode::BAD_REQUEST, &error);
+        }
+        let authority_status_resolver = match state.finding_authority_status_resolver.as_deref() {
+            Some(resolver) => resolver,
+            None => {
+                return plain_http_error(
+                    StatusCode::BAD_REQUEST,
+                    "admission authority status resolver is not configured",
+                )
+            }
+        };
+        let venue_authority_status = match authority_status_resolver.resolve(&config.venue, now) {
+            Ok(status) => status,
+            Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error),
+        };
+        if let Err(error) = verify_current_admission_authorities(
+            &store,
+            &config,
+            authority_status_resolver,
+            &venue_authority_status,
+            &admission,
+            now,
+        ) {
+            return plain_http_error(StatusCode::BAD_REQUEST, &error);
+        }
+    }
+    let fenced = match store.begin_live_participation_fee_intent(
+        &intent,
+        &FindingParticipationAdmissionFence {
+            admission_id: &snapshot.admission_id,
+            admission_envelope_sha256: &snapshot.envelope_sha256,
+        },
+        &finding.status_feed_ref,
+        &config.status_feed_operator.authorization_sha256,
+        request.status_operator_authority_status.body.observed_at,
+        now,
+        config.status_max_epoch_age_secs,
+    ) {
         Ok(fenced) if fenced.outcome == FindingFeeIntentOutcome::AlreadyReconciled => {
             return Json(serde_json::json!({
                 "findingId": finding_id,
@@ -1557,37 +2383,18 @@ pub(crate) async fn handle_finding_participation(
             }))
             .into_response();
         }
-        Ok(_) => {}
+        Ok(fenced) => fenced,
         Err(error) => {
             return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
         }
-    }
-    let observation = match rail.dispatch(&instruction) {
-        Ok(observation) => observation,
-        Err(reason) => {
-            let _ = store.mark_fee_failed(&idempotency_key);
-            return plain_http_error(
-                StatusCode::BAD_GATEWAY,
-                &format!("rail dispatch failed: {reason}"),
-            );
-        }
     };
-    let observation_sha256 = match canonical_digest_of(&observation) {
-        Ok(digest) => digest,
-        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error),
-    };
-    match store.mark_fee_reconciled(
-        &idempotency_key,
-        &observation_sha256,
-        &amount,
-        &config.audit_pool.rail_destination,
-    ) {
-        Ok(()) => Json(serde_json::json!({
+    match reconcile_participation_fee_intent(&store, rail.as_ref(), &fenced.record) {
+        Ok(epoch) => Json(serde_json::json!({
             "findingId": finding_id,
-            "paidThroughEpoch": next_epoch,
+            "paidThroughEpoch": epoch,
         }))
         .into_response(),
-        Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+        Err(response) => response,
     }
 }
 
@@ -1598,22 +2405,53 @@ pub(crate) async fn handle_get_finding_admission(
     State(state): State<TrustServiceState>,
     AxumPath(finding_id): AxumPath<String>,
 ) -> Response {
-    let (_, store) = match finding_market_context(&state) {
+    let (config, store) = match finding_market_context(&state) {
         Ok(context) => context,
         Err(response) => return response,
     };
+    let status_store = match finding_status_store(&state) {
+        Ok(store) => store,
+        Err(response) => return response,
+    };
+    let purchase_store = match state.joint_authority_store.as_ref() {
+        Some(authority) => authority.finding_purchase_store(),
+        None => {
+            return plain_http_error(
+                StatusCode::CONFLICT,
+                "finding market requires the joint authority store",
+            )
+        }
+    };
     let now = unix_timestamp_now();
-    if current_admission_view(&store, &finding_id, now).is_none() {
+    let status_operator_authority_status = state
+        .finding_authority_status_resolver
+        .as_ref()
+        .and_then(|resolver| {
+            resolver
+                .resolve(&config.status_feed_operator.authority, now)
+                .ok()
+        });
+    let venue_authority_status = state
+        .finding_authority_status_resolver
+        .as_ref()
+        .and_then(|resolver| resolver.resolve(&config.venue, now).ok());
+    let Some(admission) = current_admission_view(
+        &store,
+        &purchase_store,
+        &status_store,
+        &config,
+        state.finding_authority_status_resolver.as_deref(),
+        status_operator_authority_status.as_ref(),
+        venue_authority_status.as_ref(),
+        &finding_id,
+        now,
+    ) else {
         return plain_http_error(StatusCode::NOT_FOUND, "no current admission");
-    }
-    match store.get_current_admission(&finding_id) {
-        Ok(Some(snapshot)) => (
-            StatusCode::OK,
-            [(axum::http::header::CONTENT_TYPE, "application/json")],
-            snapshot.envelope_json,
-        )
-            .into_response(),
-        Ok(None) => plain_http_error(StatusCode::NOT_FOUND, "no current admission"),
-        Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
-    }
+    };
+    (
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        admission.envelope_json,
+    )
+        .into_response()
 }

@@ -21,6 +21,8 @@ bounded Chio release. Anything stronger stays out of the ship-facing claim.
 | Discovery / certify transparency | `informational-only` | signed snapshot/feed visibility metadata for review | no automatic trust activation or transparency-log semantics |
 | Hosted auth with `cnf` and dedicated sessions | `local-only` | bounded request-time authorization and protected-resource admission | no cross-node auth-code failover or restart-safe replay guarantee |
 | Static bearer / non-`cnf` / `shared_hosted_owner` | `compatibility-only` | supported interoperability and migration path | not part of the recommended bounded security profile |
+| Cognition-market verified-fix wedge | `local-only` | one operator publishes and searches Findings, verifies digest-bound purchase and reveal, runs challenge and outbox-backed retraction, rejects portable retraction proofs, and quarantines governed memory under the named qualified profile | no cross-org escrow or fair-exchange claim; status-feed completeness and seller effects outside Chio remain audited assumptions |
+| Cognition-market ClaimSet and passport | `local-only` | four registered `claim.finding.*` rows bind through a signed Finding-verifier report to exact content-addressed recipe and status attachments | no unsigned attachment is promoted to authority evidence; `status_fresh` does not imply external insertion completeness |
 
 ## Recommended Bounded Hosted/Auth Profile
 

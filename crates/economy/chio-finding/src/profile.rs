@@ -24,6 +24,9 @@ use crate::validate::{
 pub const FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1: &str =
     chio_core_types::CHIO_FINDING_CHALLENGE_VERIFIER_PROFILE_V1_SCHEMA;
 
+/// Predicate engine implemented by the shipped finding verifier.
+pub const FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1: &str = "chio-replay-v1";
+
 /// Receipt signer roles the profile pins.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
@@ -85,6 +88,17 @@ pub struct FindingCheckpointLogPolicy {
     /// locally derived id through this pin.
     pub log_id: String,
     pub signer: FindingAuthorityKeyPolicy,
+}
+
+/// Deterministic checkpoint log identity used by the kernel for an
+/// Ed25519 signer. Profiles reject any caller-chosen alias so a pinned
+/// signer always resolves to the log its checkpoints actually inhabit.
+#[must_use]
+pub fn finding_checkpoint_log_id(signer: &PublicKey) -> String {
+    format!(
+        "local-log-{}",
+        chio_core_types::crypto::sha256_hex(signer.as_bytes())
+    )
 }
 
 /// Externally trusted BBS projection issuer pin. The registry reference
@@ -209,6 +223,15 @@ impl FindingChallengeVerifierProfile {
                 return Err(FindingError::DuplicateEntry("receipt_signers[].role"));
             }
         }
+        for (index, signer) in self.receipt_signers.iter().enumerate() {
+            for other in &self.receipt_signers[index + 1..] {
+                let validity_overlaps = signer.policy.valid_from < other.policy.valid_until
+                    && other.policy.valid_from < signer.policy.valid_until;
+                if signer.policy.key == other.policy.key && validity_overlaps {
+                    return Err(FindingError::InvalidField("receipt_signers[].policy.key"));
+                }
+            }
+        }
         for role in [
             FindingReceiptRole::Production,
             FindingReceiptRole::Delivery,
@@ -230,6 +253,9 @@ impl FindingChallengeVerifierProfile {
         for log in &self.checkpoint_logs {
             require_bounded_id(&log.log_id, "checkpoint_logs[].log_id")?;
             log.signer.validate("checkpoint_logs[].signer")?;
+            if log.log_id != finding_checkpoint_log_id(&log.signer.key) {
+                return Err(FindingError::InvalidField("checkpoint_logs[].log_id"));
+            }
             if !log_ids.insert(log.log_id.as_str()) {
                 return Err(FindingError::DuplicateEntry("checkpoint_logs[].log_id"));
             }

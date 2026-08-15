@@ -13,7 +13,6 @@ mod ccip;
 pub mod channel;
 mod config;
 mod evm;
-#[cfg(feature = "cognition-market-experimental")]
 mod finding_enforcement;
 mod hook;
 mod observe;
@@ -58,12 +57,12 @@ pub use evm::{
     PreparedEvmSubmission, PreparedMerkleRelease, PreparedRootPublication,
     SettlementAnchorContentBinding,
 };
-#[cfg(feature = "cognition-market-experimental")]
 pub use finding_enforcement::{
     dispatch_finding_impairment, finding_anchor_checkpoint_statement_sha256,
     finding_enforcement_anchor_parameters, finding_enforcement_anchor_parameters_for_artifact,
     plan_finding_impairment, plan_finding_impairment_for_reconciliation,
-    recheck_finding_bond_observation, reconcile_finding_impairment, reobserve_finding_impairment,
+    recheck_finding_bond_observation, recheck_reconciled_finding_bond_observation,
+    reconcile_finding_impairment, reobserve_finding_impairment,
     reobserve_finding_impairment_for_reconciliation, verify_finding_collateral_snapshot,
     verify_finding_enforcement, verify_finding_enforcement_for_reconciliation,
     ConfirmedFindingImpairmentReconciliation, FindingAnchorCheckpointPublication,

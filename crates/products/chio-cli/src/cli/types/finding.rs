@@ -39,16 +39,23 @@ pub(crate) enum FindingCommands {
         #[arg(long)]
         id: Option<String>,
         /// Pinned verifier trust roots (governance authority, admitted
-        /// verifier profile, admitted kernel keys, collateral authority).
+        /// verifier profile, admitted kernel keys, collateral authority, and
+        /// optional status operator authorization and freshness policy).
         #[arg(long, conflicts_with = "integrity_only")]
         trust_roots: Option<PathBuf>,
         /// Resolved evidence bundle: receipts with inclusion proofs,
-        /// checkpoints, and the collateral allocation snapshot.
+        /// checkpoints, the collateral allocation snapshot, and an optional
+        /// exact canonical status proof encoded as base64.
         #[arg(long, conflicts_with = "integrity_only")]
         evidence: Option<PathBuf>,
         /// Raw replay-recipe preimage bytes the artifact commits to.
         #[arg(long, conflicts_with = "integrity_only")]
         recipe: Option<PathBuf>,
+        /// Durable per-feed status rollback floor. Required whenever the
+        /// evidence bundle carries a portable status proof. This may point to
+        /// the same floor file used by `chio finding status`.
+        #[arg(long, conflicts_with = "integrity_only")]
+        status_rollback_floor: Option<PathBuf>,
         /// Assert artifact integrity alone and name every facet left
         /// unevaluated instead of failing on absent evidence.
         #[arg(long, default_value_t = false)]

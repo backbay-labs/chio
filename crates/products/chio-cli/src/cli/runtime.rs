@@ -1425,7 +1425,6 @@ pub(crate) fn cmd_trust_serve(
         // The finding surfaces stay at 409 until an operator-supplied
         // authority roster is wired through; serving them from defaults
         // would publish a venue nobody pinned.
-        #[cfg(feature = "cognition-market-experimental")]
         finding_market: None,
     })
 }

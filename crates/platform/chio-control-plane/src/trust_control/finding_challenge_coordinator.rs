@@ -42,8 +42,6 @@
 //!   the injected publisher, and settles only on a confirmed
 //!   reconciliation the chain still qualifies.
 //!
-//! Compiled only under the `cognition-market-experimental` feature.
-
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -104,13 +102,14 @@ use chio_open_market::penalty::{
 use chio_settle::{
     dispatch_finding_impairment, plan_finding_impairment,
     plan_finding_impairment_for_reconciliation, recheck_finding_bond_observation,
-    reobserve_finding_impairment, reobserve_finding_impairment_for_reconciliation,
-    verify_finding_collateral_snapshot, verify_finding_enforcement,
-    verify_finding_enforcement_for_reconciliation, ConfirmedFindingImpairmentReconciliation,
-    EvmBondSnapshot, FindingAnchorPublisherEvidence, FindingBondObservationSource,
-    FindingDispatchPolicy, FindingEnforcementPins, FindingFinalityRequirement,
-    FindingImpairmentOutcome, FindingImpairmentPublisher, FindingImpairmentQuarantine,
-    FindingPenaltyAuthorityPolicy, FindingSettlementObserverEvidence, PlannedFindingImpairment,
+    recheck_reconciled_finding_bond_observation, reobserve_finding_impairment,
+    reobserve_finding_impairment_for_reconciliation, verify_finding_collateral_snapshot,
+    verify_finding_enforcement, verify_finding_enforcement_for_reconciliation,
+    ConfirmedFindingImpairmentReconciliation, EvmBondSnapshot, FindingAnchorPublisherEvidence,
+    FindingBondObservationSource, FindingBondObservationVerdict, FindingDispatchPolicy,
+    FindingEnforcementPins, FindingFinalityRequirement, FindingImpairmentOutcome,
+    FindingImpairmentPublisher, FindingImpairmentQuarantine, FindingPenaltyAuthorityPolicy,
+    FindingSettlementObserverEvidence, PlannedFindingImpairment,
     PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement, SettlementChainConfig,
     SignedFindingAnchorCheckpointPublication, VerifiedFindingEnforcement,
 };
@@ -1073,6 +1072,11 @@ impl FindingChallengeCoordinator {
         &self.market_config
     }
 
+    /// Resolver used by read paths to recheck current authority standing.
+    pub(crate) fn authority_status_resolver(&self) -> Arc<dyn FindingAuthorityStatusResolver> {
+        Arc::clone(&self.authority_status)
+    }
+
     /// Authenticate and durably record one challenge, charging the
     /// dispute fee and locking the dispute bond for a buyer submission.
     ///
@@ -1130,7 +1134,7 @@ impl FindingChallengeCoordinator {
                     .filings
                     .audit_policy_for_epoch(&audit.audit_epoch_envelope_sha256)
                     .ok_or(ChallengeCoordinatorError::UnknownAuditAuthorityPolicy)?;
-                self.require_live_role(&historical_policy, body.filed_at, now, "historical audit")?
+                self.require_live_role(&historical_policy, now, now, "historical audit")?
             }
             FindingChallengeAuthorization::BuyerSubmission(_) => self
                 .pins
@@ -2203,6 +2207,12 @@ impl FindingChallengeCoordinator {
                 if record.state != FindingLiabilityState::PendingAppeal {
                     return Err(ChallengeCoordinatorError::LiabilityState("pending_appeal"));
                 }
+                self.require_current_role(
+                    &self.status_feed_operator.authority,
+                    now,
+                    now,
+                    "status feed operator",
+                )?;
                 self.require_live_role(&self.finalization_pin, now, now, "finalization")?;
                 self.require_appeal_window_closed(&record, sanction_case, sanction_case_id, now)?;
                 let penalty_issued_at = record
@@ -2678,6 +2688,8 @@ impl FindingChallengeCoordinator {
                 enforcement,
                 bond_snapshot,
                 &reconciliation,
+                RecoveryObservationAuthority::Reconciled(&reconciled),
+                observations,
                 now,
             );
         }
@@ -2730,7 +2742,6 @@ impl FindingChallengeCoordinator {
             anchor_publisher.evidence(),
         )
         .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-
         let intent_key = planned.intent().intent_id.clone();
         // The intent must already be durable: the publisher contract
         // refuses an unfenced dispatch, and so does this coordinator.
@@ -2759,17 +2770,24 @@ impl FindingChallengeCoordinator {
                 }
             };
             self.require_confirmed_enforcement_root(liability_key, &verified, planned.intent())?;
-            let anchor_key = derive_anchor_evidence_intent_key(&planned.intent().evidence_hash);
-            self.confirm_effect_intent(&anchor_key, now)?;
+            self.recover_anchor_binding(liability_key, &verified, planned.intent(), now)?;
             return self.finish_confirmed_impairment(
                 liability_key,
                 enforcement,
                 bond_snapshot,
                 &reconciliation,
+                RecoveryObservationAuthority::Fresh(&verified),
+                observations,
                 now,
             );
         }
         self.require_sanction_governs(liability_key, &retained.sanction_case_id)?;
+        self.require_current_role(
+            &self.status_feed_operator.authority,
+            now,
+            now,
+            "status feed operator",
+        )?;
         self.bind_enforcement_root(liability_key, &verified, planned.intent(), now)?;
         self.require_confirmed_enforcement_root(liability_key, &verified, planned.intent())?;
         self.fence_anchor_evidence(liability_key, &verified, planned.intent(), now)?;
@@ -3493,7 +3511,7 @@ impl FindingChallengeCoordinator {
         now: u64,
     ) -> Result<(), ChallengeCoordinatorError> {
         let pin = &self.pins.settlement_observer;
-        self.require_live_role(pin, snapshot.body.observed_at, now, "settlement observer")
+        self.require_current_role(pin, snapshot.body.observed_at, now, "settlement observer")
             .map_err(|error| match error {
                 ChallengeCoordinatorError::AuthorityLifecycle { reason, .. } => {
                     ChallengeCoordinatorError::SettlementObserverLifecycle(reason)
@@ -3504,6 +3522,33 @@ impl FindingChallengeCoordinator {
         // vault operator. The envelope signer is authenticated by `pin`; the
         // chain observation validates its own operator identity and epoch.
         Ok(())
+    }
+
+    /// Authenticate a newly consumed live input or newly signed output at
+    /// both its declared action time and the current venue clock. Historical
+    /// artifacts continue to use `require_live_role`; this stronger boundary
+    /// prevents a retired key from backdating new unanchored evidence or
+    /// signing a new artifact under its former lifecycle.
+    fn require_current_role(
+        &self,
+        pin: &FindingAuthorityPin,
+        acted_at: u64,
+        now: u64,
+        role: &'static str,
+    ) -> Result<PublicKey, ChallengeCoordinatorError> {
+        let (key, status) = self.resolve_live_role(pin, acted_at, now, role)?;
+        let reject = |reason| ChallengeCoordinatorError::AuthorityLifecycle { role, reason };
+        if !pin.covers(now) {
+            return Err(reject("authority pin is not live at the venue clock"));
+        }
+        if status
+            .body
+            .revoked_from
+            .is_some_and(|revoked_from| revoked_from <= now)
+        {
+            return Err(reject("key is revoked at the venue clock"));
+        }
+        Ok(key)
     }
 
     /// Authenticate one role's exact lifecycle policy against the
@@ -3547,7 +3592,9 @@ impl FindingChallengeCoordinator {
         verify_pinned_envelope(&signed, &status_key, "authority status")
             .map_err(|_| reject("revocation status signature is invalid"))?;
         let body = &signed.body;
-        if !self.pins.authority_status.covers(body.observed_at) {
+        if !self.pins.authority_status.covers(body.observed_at)
+            || !self.pins.authority_status.covers(now)
+        {
             return Err(reject(
                 "status authority is outside its configured validity window",
             ));
@@ -5978,7 +6025,7 @@ impl FindingChallengeCoordinator {
         issued_at: u64,
         now: u64,
     ) -> Result<FindingPenaltyOutcome, ChallengeCoordinatorError> {
-        self.require_live_role(&self.penalty_pin, issued_at, now, "penalty")?;
+        self.require_current_role(&self.penalty_pin, issued_at, now, "penalty")?;
         let penalty_key = self.penalty_authority.public_key();
         let mut trusted = self.require_pinned_governance(governance, case, prior_penalty, now)?;
         let outcome_envelope_sha256 = self.envelope_digest(outcome)?;
@@ -6303,7 +6350,7 @@ fn canonical_digest_of<T: serde::Serialize>(
     Ok(sha256_hex(&bytes))
 }
 
-fn rail_observation_matches(
+pub(super) fn rail_observation_matches(
     instruction: &FindingRailInstruction,
     instruction_digest: &str,
     observation: &FindingRailObservation,

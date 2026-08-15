@@ -9,7 +9,8 @@
 //!
 //! The default trust-control service does not install an executor. An operator
 //! must inject one explicitly with
-//! [`super::serve_with_finding_purchase_executor`].
+//! [`super::serve_with_finding_purchase_executor`], together with the rail and
+//! authority-status resolver that keep its market views and mutations live.
 
 use std::sync::Arc;
 
@@ -25,11 +26,16 @@ use chio_core::crypto::{sha256_hex, PublicKey};
 use chio_core::receipt::body::ChioReceipt;
 use chio_core::receipt::decision::Decision;
 use chio_finding::{
-    verify_signed_failed_delivery, verify_signed_purchase_record, Finding,
-    FindingHoldReleaseTerminal, SignedFindingFailedDelivery, SignedFindingPurchaseRecord,
+    verify_signed_admission, verify_signed_failed_delivery, verify_signed_purchase_record, Finding,
+    FindingHoldReleaseTerminal, SignedFindingAdmission, SignedFindingFailedDelivery,
+    SignedFindingPurchaseRecord,
 };
 use chio_open_market::purchase_verification::{
     derive_payment_operation_id, derive_purchase_intent_id,
+};
+use chio_store_sqlite::{
+    FindingPublicPurchaseRequestBinding, FindingPublicPurchaseTerminal,
+    FindingPublicPurchaseTerminalKind, SqliteFindingPurchaseStore,
 };
 use serde::{Deserialize, Serialize};
 
@@ -45,8 +51,13 @@ pub const FINDING_PURCHASE_ERROR_SCHEMA: &str = "chio.finding.purchase-error.v1"
 
 /// Maximum canonical request size accepted at the public route.
 pub const FINDING_PURCHASE_MAX_BODY_BYTES: usize = 16 * 1024;
-/// Maximum decoded purchased payload returned through this route.
-pub const FINDING_PURCHASE_MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
+/// Maximum decoded purchased payload returned through this route. This is
+/// intentionally no smaller than the kernel's pre-settlement raw-outcome
+/// ceiling. Any output large enough to violate this route bound is therefore
+/// denied by the kernel before capture, so a captured terminal remains
+/// returnable on its first response and every idempotent replay.
+pub const FINDING_PURCHASE_MAX_OUTPUT_BYTES: usize =
+    chio_kernel::tool_outcome::MAX_RAW_INVOCATION_OUTCOME_BYTES;
 /// Maximum canonical terminal response size, including base64 expansion and
 /// signed settlement evidence.
 pub const FINDING_PURCHASE_MAX_RESULT_BYTES: usize =
@@ -341,11 +352,10 @@ impl FindingPurchaseResult {
         &self,
         request: &FindingPurchaseRequest,
         finding: &Finding,
-        purchase_authority: &PublicKey,
-        failed_delivery_authority: &PublicKey,
+        admission: &SignedFindingAdmission,
     ) -> Result<(), String> {
         self.validate_shape(request)?;
-        if finding.finding_id != self.finding_id {
+        if finding.finding_id != self.finding_id || admission.body.finding_id != self.finding_id {
             return Err("purchase result names a different finding artifact".to_owned());
         }
         match self.verdict {
@@ -373,7 +383,18 @@ impl FindingPurchaseResult {
                     .purchase_record
                     .as_ref()
                     .ok_or_else(|| "captured purchase omitted its purchase record".to_owned())?;
-                verify_signed_purchase_record(record, purchase_authority)
+                if record.body.venue_admission_envelope_sha256
+                    != chio_core::canonical_json_bytes(admission)
+                        .map(|bytes| sha256_hex(&bytes))
+                        .map_err(|_| "retained admission canonicalization failed".to_owned())?
+                    || record.body.recorded_at < admission.body.purchase_authority.valid_from
+                    || record.body.recorded_at >= admission.body.purchase_authority.valid_until
+                {
+                    return Err(
+                        "purchase record is outside its retained admission policy".to_owned()
+                    );
+                }
+                verify_signed_purchase_record(record, &admission.body.purchase_authority.key)
                     .map_err(|_| "purchase record authority verification failed".to_owned())?;
                 if record.body.finding_id != self.finding_id
                     || record.body.purchase_intent_id != self.purchase_intent_id
@@ -392,8 +413,24 @@ impl FindingPurchaseResult {
                 let failed = self.failed_delivery.as_ref().ok_or_else(|| {
                     "released purchase omitted failed-delivery evidence".to_owned()
                 })?;
-                verify_signed_failed_delivery(failed, failed_delivery_authority)
-                    .map_err(|_| "failed-delivery authority verification failed".to_owned())?;
+                if failed.body.venue_admission_envelope_sha256
+                    != chio_core::canonical_json_bytes(admission)
+                        .map(|bytes| sha256_hex(&bytes))
+                        .map_err(|_| "retained admission canonicalization failed".to_owned())?
+                    || failed.body.recorded_at < admission.body.failed_delivery_authority.valid_from
+                    || failed.body.recorded_at
+                        >= admission.body.failed_delivery_authority.valid_until
+                {
+                    return Err(
+                        "failed-delivery terminal is outside its retained admission policy"
+                            .to_owned(),
+                    );
+                }
+                verify_signed_failed_delivery(
+                    failed,
+                    &admission.body.failed_delivery_authority.key,
+                )
+                .map_err(|_| "failed-delivery authority verification failed".to_owned())?;
                 let receipt_sha256 = chio_core::canonical_json_bytes(&self.delivery_receipt)
                     .map(|bytes| sha256_hex(&bytes))
                     .map_err(|_| "delivery receipt canonicalization failed".to_owned())?;
@@ -445,7 +482,9 @@ pub enum FindingPurchaseExecutionError {
 /// or incomplete operation must return `Pending`, never a fabricated terminal.
 /// A new request must revalidate finding liveness and current admission before
 /// reserving. A completed idempotent replay must return its durable terminal
-/// even if either has since expired.
+/// even if either has since expired. Every new public reservation must bind
+/// the complete request policy through `reserve_for_public_request`; returning
+/// an internal or differently bound durable terminal is invalid.
 #[async_trait::async_trait]
 pub trait FindingPurchaseExecutor: Send + Sync {
     /// Active serving fence of the authority store that records purchases.
@@ -507,6 +546,57 @@ fn purchase_terminal_response(result: &FindingPurchaseResult) -> Response {
             "purchase executor returned an invalid terminal",
         ),
     }
+}
+
+fn require_exact_durable_terminal(
+    store: &SqliteFindingPurchaseStore,
+    result: &FindingPurchaseResult,
+) -> Result<(), ()> {
+    match result.verdict {
+        FindingPurchaseVerdict::Allow => {
+            let record = result.purchase_record.as_ref().ok_or(())?;
+            let record_json = chio_core::canonical_json_bytes(record).map_err(|_| ())?;
+            let record_sha256 = sha256_hex(&record_json);
+            let stored = store
+                .get_purchase_record(&record.body.purchase_key)
+                .map_err(|_| ())?
+                .ok_or(())?;
+            if stored.purchase_key != record.body.purchase_key
+                || stored.reservation_id != result.reservation_id
+                || stored.record_json != record_json
+                || stored.record_sha256 != record_sha256
+                || stored.delivery_receipt_id != result.delivery_receipt.id
+                || !retained_at_or_after_terminal(stored.recorded_at, record.body.recorded_at)
+            {
+                return Err(());
+            }
+        }
+        FindingPurchaseVerdict::Deny => {
+            let failed = result.failed_delivery.as_ref().ok_or(())?;
+            let record_json = chio_core::canonical_json_bytes(failed).map_err(|_| ())?;
+            let record_sha256 = sha256_hex(&record_json);
+            let stored = store
+                .get_failed_delivery_record(&failed.body.failed_delivery_id)
+                .map_err(|_| ())?
+                .ok_or(())?;
+            if stored.failed_delivery_id != failed.body.failed_delivery_id
+                || stored.reservation_id != result.reservation_id
+                || stored.record_json != record_json
+                || stored.record_sha256 != record_sha256
+                || stored.deny_receipt_id != result.delivery_receipt.id
+                || !retained_at_or_after_terminal(stored.recorded_at, failed.body.recorded_at)
+            {
+                return Err(());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn retained_at_or_after_terminal(stored_at: u64, terminal_at: u64) -> bool {
+    // The signed JSON fixes the authenticated terminal time. The row time is
+    // the later local transaction time and need not fall in the same second.
+    stored_at >= terminal_at
 }
 
 fn parse_request(raw: &str) -> Result<FindingPurchaseRequest, Response> {
@@ -663,13 +753,13 @@ pub(crate) async fn handle_purchase_finding(
             "purchase path and body name different findings",
         );
     }
-    let Some(config) = state.config.finding_market.as_ref() else {
+    if state.config.finding_market.is_none() {
         return purchase_error(
             StatusCode::CONFLICT,
             "finding_market_unconfigured",
             "finding market is not configured",
         );
-    };
+    }
     let Some(authority) = state.joint_authority_store.as_ref() else {
         return purchase_error(
             StatusCode::CONFLICT,
@@ -678,6 +768,7 @@ pub(crate) async fn handle_purchase_finding(
         );
     };
     let store = authority.finding_market_store();
+    let purchase_store = authority.finding_purchase_store();
     let raw_finding = match store.get_finding_bytes(&finding_id) {
         Ok(Some(raw)) => raw,
         Ok(None) => {
@@ -745,34 +836,102 @@ pub(crate) async fn handle_purchase_finding(
             )
         }
     };
-    let purchase_authority = match config.purchase.key() {
-        Ok(key) => key,
-        Err(_) => {
+    let admission_digest = match result.verdict {
+        FindingPurchaseVerdict::Allow => result
+            .purchase_record
+            .as_ref()
+            .map(|record| record.body.venue_admission_envelope_sha256.as_str()),
+        FindingPurchaseVerdict::Deny => result
+            .failed_delivery
+            .as_ref()
+            .map(|failed| failed.body.venue_admission_envelope_sha256.as_str()),
+    };
+    let Some(admission_digest) = admission_digest else {
+        return purchase_error(
+            StatusCode::BAD_GATEWAY,
+            "purchase_terminal_invalid",
+            "purchase executor returned an invalid terminal",
+        );
+    };
+    let admission_json = match store.get_admission_by_envelope_sha256(admission_digest) {
+        Ok(Some(json)) => json,
+        Ok(None) | Err(_) => {
             return purchase_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "purchase_authority_invalid",
-                "configured purchase authority is invalid",
+                StatusCode::BAD_GATEWAY,
+                "purchase_terminal_invalid",
+                "purchase executor returned an invalid terminal",
             )
         }
     };
-    let failed_delivery_authority = match config.failed_delivery.key() {
-        Ok(key) => key,
+    let admission: SignedFindingAdmission = match serde_json::from_str(&admission_json) {
+        Ok(admission) => admission,
         Err(_) => {
             return purchase_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "failed_delivery_authority_invalid",
-                "configured failed-delivery authority is invalid",
+                StatusCode::BAD_GATEWAY,
+                "purchase_terminal_invalid",
+                "purchase executor returned an invalid terminal",
             )
         }
+    };
+    if verify_signed_admission(&admission, &admission.body.venue, &admission.body.venue_id).is_err()
+    {
+        return purchase_error(
+            StatusCode::BAD_GATEWAY,
+            "purchase_terminal_invalid",
+            "purchase executor returned an invalid terminal",
+        );
+    }
+    let payer_hex = result.payer_key.to_hex();
+    let public_request = FindingPublicPurchaseRequestBinding {
+        request_id: &request.request_id,
+        finding_id: &request.finding_id,
+        requested_payer: request.payer.as_deref(),
+        resolved_payer: &result.payer,
+        payer_hex: &payer_hex,
+        max_price_units: request.max_price.units,
+        currency: &request.max_price.currency,
+        deadline_secs: request.deadline_secs,
+    };
+    let public_terminal = match result.verdict {
+        FindingPurchaseVerdict::Allow => {
+            result
+                .purchase_record
+                .as_ref()
+                .map(|record| FindingPublicPurchaseTerminal {
+                    kind: FindingPublicPurchaseTerminalKind::PurchaseRecord,
+                    terminal_id: record.body.purchase_key.as_str(),
+                    receipt_id: result.delivery_receipt.id.as_str(),
+                })
+        }
+        FindingPurchaseVerdict::Deny => {
+            result
+                .failed_delivery
+                .as_ref()
+                .map(|failed| FindingPublicPurchaseTerminal {
+                    kind: FindingPublicPurchaseTerminalKind::FailedDelivery,
+                    terminal_id: failed.body.failed_delivery_id.as_str(),
+                    receipt_id: result.delivery_receipt.id.as_str(),
+                })
+        }
+    };
+    let Some(public_terminal) = public_terminal else {
+        return purchase_error(
+            StatusCode::BAD_GATEWAY,
+            "purchase_terminal_invalid",
+            "purchase executor returned an invalid terminal",
+        );
     };
     if result
-        .validate_authorized(
-            &request,
-            &finding,
-            &purchase_authority,
-            &failed_delivery_authority,
-        )
+        .validate_authorized(&request, &finding, &admission)
         .is_err()
+        || require_exact_durable_terminal(&purchase_store, &result).is_err()
+        || purchase_store
+            .verify_public_purchase_terminal(
+                &public_request,
+                &result.reservation_id,
+                &public_terminal,
+            )
+            .is_err()
     {
         return purchase_error(
             StatusCode::BAD_GATEWAY,
@@ -814,5 +973,17 @@ fn require_bounded_text(value: &str, max_bytes: usize, field: &str) -> Result<()
         ))
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::retained_at_or_after_terminal;
+
+    #[test]
+    fn durable_terminal_row_may_be_recorded_after_the_signed_terminal() {
+        assert!(retained_at_or_after_terminal(101, 100));
+        assert!(retained_at_or_after_terminal(100, 100));
+        assert!(!retained_at_or_after_terminal(99, 100));
     }
 }

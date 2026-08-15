@@ -672,11 +672,17 @@ WHEN NOT EXISTS (
     WHERE intent_key = NEW.intent_key
       AND liability_key = NEW.liability_key
       AND kind = 'root_intent'
-      AND state = 'pending'
-      AND attempt_count = 0
+      AND (
+          (state = 'pending' AND attempt_count = 0)
+          OR (
+              settlement_required = 0
+              AND state IN ('dispatched', 'confirmed')
+              AND attempt_count = 1
+          )
+      )
 )
 BEGIN
-    SELECT RAISE(ABORT, 'effect root binding requires its pending root intent');
+    SELECT RAISE(ABORT, 'effect root binding requires a bindable root intent');
 END;
 
 CREATE TRIGGER IF NOT EXISTS effect_intents_root_binding_before_dispatch

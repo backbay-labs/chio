@@ -1,5 +1,3 @@
-#![cfg(feature = "cognition-market-experimental")]
-
 //! Feature-gated coverage for the admission-gated bid seam:
 //! `verify_finding_admission` over externally pinned inputs, then
 //! `bid_with_finding_admission` delegating to the REAL marketplace
@@ -14,14 +12,16 @@ use chio_core_types::crypto::sha256_hex;
 use chio_core_types::merkle::MerkleTree;
 use chio_core_types::SigningAlgorithm;
 use chio_finding::{
-    compute_admission_id, compute_allocation_id, compute_finding_id, compute_terms_id,
-    sign_finding, signed_envelope_sha256, Finding, FindingAdmission, FindingAuthorityKeyPolicy,
-    FindingBackingRequirement, FindingBondBacking, FindingBondClass, FindingChallengeBondLimit,
-    FindingCollateralVault, FindingDescriptor, FindingError, FindingEvidenceClass, FindingFeeEvent,
-    FindingFeeTerminalBinding, FindingGuaranteeClass, FindingMarketTerms, FindingOutcomeClass,
-    FindingPoolBinding, SignedFindingAdmission, SignedFindingBondBacking, SignedFindingMarketTerms,
-    FINDING_ADMISSION_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1, FINDING_MARKET_TERMS_SCHEMA_V1,
-    FINDING_SCHEMA_V1,
+    compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
+    compute_terms_id, sign_finding, signed_envelope_sha256, Finding, FindingAdmission,
+    FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBondBacking, FindingBondClass,
+    FindingChallengeBondLimit, FindingCollateralVault, FindingDescriptor, FindingError,
+    FindingEvidenceClass, FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass,
+    FindingMarketTerms, FindingOutcomeClass, FindingPayee, FindingPoolBinding,
+    FindingSellerAuthorization, SignedFindingAdmission, SignedFindingBondBacking,
+    SignedFindingMarketTerms, SignedFindingSellerAuthorization, FINDING_ADMISSION_SCHEMA_V1,
+    FINDING_BOND_BACKING_SCHEMA_V1, FINDING_MARKET_TERMS_SCHEMA_V1, FINDING_SCHEMA_V1,
+    FINDING_SELLER_AUTHORIZATION_SCHEMA_V1,
 };
 use chio_fiscal::{
     FiscalActivationHistory, FiscalAuthorityState, FiscalBootstrapState, FiscalCharterRegistry,
@@ -34,7 +34,7 @@ use chio_open_market::canonical_json_bytes;
 use chio_open_market::{
     bidding::{BidMintContext, BidRequest, RequestedScope, SignedBidRequest, BID_REQUEST_SCHEMA},
     capability::scope::MonetaryAmount,
-    crypto::{Keypair, PublicKey, Signature},
+    crypto::{Keypair, PublicKey},
     evaluation::OpenMarketPenaltyEvaluation,
     evidence::{OpenMarketFinding, OpenMarketFindingCode},
     fee_schedule::{
@@ -47,6 +47,7 @@ use chio_open_market::{
         verify_finding_admission, verify_finding_admission_for_activation, FindingAdmissionContext,
         FindingAdmissionError, FindingAdmissionPenaltyGate, FindingAllocationSnapshot,
         FindingAllocationStatus, FindingConstituentExpiryBounds, FindingFeeScheduleGate,
+        VerifiedFindingPurchaseAsk,
     },
     finding_pheromone::{
         admit_and_resolve_finding_pheromone_hint, finding_pheromone_subject_policy,
@@ -101,6 +102,10 @@ const REQUIREMENT_UNITS: u64 = 5_000;
 
 fn hex64(fill: char) -> String {
     std::iter::repeat_n(fill, 64).collect()
+}
+
+fn finding_artifact_sha256(finding: &Finding) -> String {
+    sha256_hex(&canonical_json_bytes(finding).test_expect("canonical finding"))
 }
 
 fn keypair(seed: u8) -> Keypair {
@@ -271,7 +276,7 @@ fn signed_terms(seller: &Keypair, finding: &Finding, expires_at: u64) -> SignedF
         schema: FINDING_MARKET_TERMS_SCHEMA_V1.to_string(),
         terms_id: String::new(),
         finding_id: finding.finding_id.clone(),
-        finding_artifact_sha256: hex64('d'),
+        finding_artifact_sha256: finding_artifact_sha256(finding),
         listing_id: FINDING_LISTING_ID.to_string(),
         seller: seller.public_key(),
         backing_requirement: FindingBackingRequirement {
@@ -299,10 +304,49 @@ fn signed_terms(seller: &Keypair, finding: &Finding, expires_at: u64) -> SignedF
     SignedFindingMarketTerms::sign(terms, seller).test_expect("sign terms")
 }
 
+fn signed_authorization(
+    issuer: &Keypair,
+    seller: &Keypair,
+    finding: &Finding,
+) -> SignedFindingSellerAuthorization {
+    signed_authorization_at(issuer, seller, finding, ADMISSION_ISSUED_AT)
+}
+
+fn signed_authorization_at(
+    issuer: &Keypair,
+    seller: &Keypair,
+    finding: &Finding,
+    issued_at: u64,
+) -> SignedFindingSellerAuthorization {
+    let mut authorization = FindingSellerAuthorization {
+        schema: FINDING_SELLER_AUTHORIZATION_SCHEMA_V1.to_string(),
+        authorization_id: String::new(),
+        finding_id: finding.finding_id.clone(),
+        finding_artifact_sha256: finding_artifact_sha256(finding),
+        listing_id: FINDING_LISTING_ID.to_string(),
+        issuer: issuer.public_key(),
+        seller: seller.public_key(),
+        provider_server_id: FINDING_SERVER_ID.to_string(),
+        provider_tool: "read_finding".to_string(),
+        payee: FindingPayee::Beneficiary {
+            destination: "rail:venue-ledger:seller-42".to_string(),
+            currency: "USD".to_string(),
+        },
+        revocation_status_ref: "revocations/seller-authorization".to_string(),
+        issued_at,
+        expires_at: WINDOW_EXPIRES_AT,
+    };
+    authorization.authorization_id =
+        compute_authorization_id(&authorization).test_expect("authorization id");
+    SignedFindingSellerAuthorization::sign(authorization, issuer)
+        .test_expect("sign seller authorization")
+}
+
 fn signed_backing(
     collateral: &Keypair,
     seller: &Keypair,
     finding: &Finding,
+    authorization_envelope_sha256: &str,
     fee_schedule_envelope_sha256: &str,
     terms_envelope_sha256: &str,
 ) -> SignedFindingBondBacking {
@@ -310,6 +354,7 @@ fn signed_backing(
         collateral,
         seller,
         finding,
+        authorization_envelope_sha256,
         fee_schedule_envelope_sha256,
         LOCKED_UNITS,
         terms_envelope_sha256,
@@ -320,6 +365,7 @@ fn signed_backing_committing(
     collateral: &Keypair,
     seller: &Keypair,
     finding: &Finding,
+    authorization_envelope_sha256: &str,
     fee_schedule_envelope_sha256: &str,
     locked_units: u64,
     terms_envelope_sha256: &str,
@@ -329,7 +375,7 @@ fn signed_backing_committing(
         allocation_id: String::new(),
         collateral_authority: collateral.public_key(),
         seller: seller.public_key(),
-        authorization_envelope_sha256: hex64('1'),
+        authorization_envelope_sha256: authorization_envelope_sha256.to_string(),
         finding_id: finding.finding_id.clone(),
         listing_id: FINDING_LISTING_ID.to_string(),
         terms_envelope_sha256: terms_envelope_sha256.to_string(),
@@ -355,6 +401,7 @@ fn signed_backing_committing(
 }
 
 struct AdmissionBindings {
+    seller_authorization_envelope_sha256: String,
     listing_envelope_sha256: String,
     pricing_hint_envelope_sha256: String,
     terms_envelope_sha256: String,
@@ -376,8 +423,8 @@ fn signed_admission(
         venue: venue.public_key(),
         venue_id: VENUE_ID.to_string(),
         finding_id: finding.finding_id.clone(),
-        finding_artifact_sha256: hex64('d'),
-        seller_authorization_envelope_sha256: hex64('1'),
+        finding_artifact_sha256: finding_artifact_sha256(finding),
+        seller_authorization_envelope_sha256: bindings.seller_authorization_envelope_sha256.clone(),
         listing_id: FINDING_LISTING_ID.to_string(),
         listing_envelope_sha256: bindings.listing_envelope_sha256.clone(),
         server_id: FINDING_SERVER_ID.to_string(),
@@ -452,6 +499,8 @@ struct Web {
     finding: Finding,
     schedule: SignedOpenMarketFeeSchedule,
     schedule_sha256: String,
+    authorization: SignedFindingSellerAuthorization,
+    authorization_sha256: String,
     terms: SignedFindingMarketTerms,
     terms_sha256: String,
     backing: SignedFindingBondBacking,
@@ -467,14 +516,19 @@ fn web_with_schedule(requirement_units: u64, slashable: bool, currency: &str) ->
     let seller = keypair(2);
     let collateral = keypair(4);
     let finding = sealed_finding();
+    let issuer = keypair(11);
     let schedule = signed_schedule(&operator, requirement_units, slashable, currency);
     let schedule_sha256 = signed_fee_schedule_digest(&schedule).test_expect("schedule digest");
+    let authorization = signed_authorization(&issuer, &seller, &finding);
+    let authorization_sha256 =
+        signed_envelope_sha256(&authorization).test_expect("authorization digest");
     let terms = signed_terms(&seller, &finding, WINDOW_EXPIRES_AT);
     let terms_sha256 = signed_envelope_sha256(&terms).test_expect("terms digest");
     let backing = signed_backing(
         &collateral,
         &seller,
         &finding,
+        &authorization_sha256,
         &schedule_sha256,
         &terms_sha256,
     );
@@ -494,6 +548,7 @@ fn web_with_schedule(requirement_units: u64, slashable: bool, currency: &str) ->
         &venue,
         &finding,
         &AdmissionBindings {
+            seller_authorization_envelope_sha256: authorization_sha256.clone(),
             listing_envelope_sha256: listing_sha256.clone(),
             pricing_hint_envelope_sha256: hint_sha256.clone(),
             terms_envelope_sha256: terms_sha256.clone(),
@@ -514,6 +569,8 @@ fn web_with_schedule(requirement_units: u64, slashable: bool, currency: &str) ->
         finding,
         schedule,
         schedule_sha256,
+        authorization,
+        authorization_sha256,
         terms,
         terms_sha256,
         backing,
@@ -540,6 +597,7 @@ impl Web {
                 binding: None,
             },
             trusted_local_operator_signers: &self.trusted_signers,
+            seller_authorization: &self.authorization,
             terms: &self.terms,
             backing: &self.backing,
             allocation_snapshot: FindingAllocationSnapshot {
@@ -566,6 +624,7 @@ impl Web {
 
     fn bindings(&self) -> AdmissionBindings {
         AdmissionBindings {
+            seller_authorization_envelope_sha256: self.authorization_sha256.clone(),
             listing_envelope_sha256: self.listing_sha256.clone(),
             pricing_hint_envelope_sha256: self.hint_sha256.clone(),
             terms_envelope_sha256: self.terms_sha256.clone(),
@@ -665,29 +724,6 @@ fn finding_listing_entry(
             generated_at: NOW - 20,
         },
     }
-}
-
-fn finding_current_listing_assertion(
-    listing: &Listing,
-    namespace_owner: &Keypair,
-) -> SignedFindingCurrentListingAssertion {
-    SignedFindingCurrentListingAssertion::sign(
-        FindingCurrentListingAssertion {
-            schema: FINDING_CURRENT_LISTING_ASSERTION_SCHEMA_V1.to_owned(),
-            listing_id: listing.listing_id().to_owned(),
-            namespace: listing.listing.body.namespace.clone(),
-            registry_operator_id: listing.publisher.operator_id.clone(),
-            listing_envelope_sha256: signed_envelope_sha256(&listing.listing)
-                .test_expect("listing assertion listing digest"),
-            pricing_hint_envelope_sha256: signed_envelope_sha256(&listing.pricing)
-                .test_expect("listing assertion pricing digest"),
-            generated_at: listing.freshness.generated_at,
-            max_age_secs: listing.freshness.max_age_secs,
-            valid_until: listing.freshness.valid_until,
-        },
-        namespace_owner,
-    )
-    .test_expect("sign current listing assertion")
 }
 
 fn finding_bid_request(finding: &Finding, max_price_units: u64) -> BidRequest {
@@ -958,267 +994,9 @@ fn admitted_finding_clears_the_real_bid_path() {
 
 include!("finding_admission/pheromone_carrier.rs");
 
-#[test]
-fn finding_pheromone_pins_current_listing_to_registry_authority() {
-    with_fiscal(|resolver| {
-        let web = base_web();
-        let passport = keypair(81);
-        let kernel = keypair(82);
-        let registry = keypair(84);
-        let listing = finding_listing_entry(
-            &web.operator,
-            &web.finding,
-            &format!("finding:{}", web.finding.finding_id),
-            900,
-        );
-        let mut convention = finding_pheromone_convention();
-        convention.registry_key = registry.public_key();
-        let registry_assertion = finding_current_listing_assertion(&listing, &registry);
-        admit_and_resolve_finding_pheromone_hint(
-            &InMemoryPheromoneSubstrate::new(),
-            finding_pheromone_deposit(&web, &listing, &passport, "hint-registry-signed", 125),
-            &finding_pheromone_context(&passport, &kernel),
-            &convention,
-            AuthenticatedCurrentFindingListing::new(&listing, &registry_assertion),
-            &web.admission,
-            &web.context(resolver),
-        )
-        .test_expect("pinned registry assertion admits the current listing");
-
-        let provider_assertion = finding_current_listing_assertion(&listing, &web.operator);
-        assert!(matches!(
-            admit_and_resolve_finding_pheromone_hint(
-                &InMemoryPheromoneSubstrate::new(),
-                finding_pheromone_deposit(
-                    &web,
-                    &listing,
-                    &passport,
-                    "hint-provider-self-signed",
-                    125,
-                ),
-                &finding_pheromone_context(&passport, &kernel),
-                &convention,
-                AuthenticatedCurrentFindingListing::new(&listing, &provider_assertion),
-                &web.admission,
-                &web.context(resolver),
-            ),
-            Err(FindingPheromoneError::Listing(_))
-        ));
-    });
-}
-
-#[test]
-fn finding_pheromone_rejects_weak_listing_authority_signatures() {
-    with_fiscal(|resolver| {
-        let web = base_web();
-        let passport = keypair(81);
-        let kernel = keypair(82);
-        let mut listing = finding_listing_entry(
-            &web.operator,
-            &web.finding,
-            &format!("finding:{}", web.finding.finding_id),
-            900,
-        );
-        let weak_key =
-            PublicKey::from_hex("0100000000000000000000000000000000000000000000000000000000000000")
-                .test_expect("construct weak listing authority key");
-        let forged_signature = Signature::from_hex(
-            "0100000000000000000000000000000000000000000000000000000000000000\
-             0000000000000000000000000000000000000000000000000000000000000000",
-        )
-        .test_expect("construct forged weak-key signature");
-        listing.listing.body.namespace_ownership.signer_public_key = weak_key.clone();
-        listing.listing.signer_key = weak_key.clone();
-        listing.listing.signature = forged_signature.clone();
-        listing.pricing.signer_key = weak_key;
-        listing.pricing.signature = forged_signature;
-        let assertion = finding_current_listing_assertion(&listing, &web.operator);
-
-        let error = admit_and_resolve_finding_pheromone_hint(
-            &InMemoryPheromoneSubstrate::new(),
-            finding_pheromone_deposit(&web, &listing, &passport, "hint-weak-owner", 125),
-            &finding_pheromone_context(&passport, &kernel),
-            &finding_pheromone_convention(),
-            AuthenticatedCurrentFindingListing::new(&listing, &assertion),
-            &web.admission,
-            &web.context(resolver),
-        )
-        .test_expect_err("weak listing authority must fail strict verification");
-        assert!(matches!(
-            error,
-            FindingPheromoneError::Listing(message) if message.contains("weak")
-        ));
-    });
-}
-
-#[test]
-fn finding_pheromone_assertion_cannot_predate_pricing_issuance() {
-    with_fiscal(|resolver| {
-        let web = base_web();
-        let passport = keypair(81);
-        let kernel = keypair(82);
-        let mut listing = finding_listing_entry(
-            &web.operator,
-            &web.finding,
-            &format!("finding:{}", web.finding.finding_id),
-            900,
-        );
-        let mut pricing = listing.pricing.body.clone();
-        pricing.issued_at = listing.freshness.generated_at + 1;
-        listing.pricing = SignedListingPricingHint::sign(pricing, &web.operator)
-            .test_expect("sign not-yet-issued pricing hint");
-        let assertion = finding_current_listing_assertion(&listing, &web.operator);
-
-        let error = admit_and_resolve_finding_pheromone_hint(
-            &InMemoryPheromoneSubstrate::new(),
-            finding_pheromone_deposit(&web, &listing, &passport, "hint-pricing-issued-later", 125),
-            &finding_pheromone_context(&passport, &kernel),
-            &finding_pheromone_convention(),
-            AuthenticatedCurrentFindingListing::new(&listing, &assertion),
-            &web.admission,
-            &web.context(resolver),
-        )
-        .test_expect_err("current-listing assertion cannot predate the pricing hint");
-        assert!(matches!(
-            error,
-            FindingPheromoneError::Listing(message) if message.contains("binding is invalid")
-        ));
-    });
-}
-
-#[test]
-fn finding_pheromone_rejects_non_ascii_registry_operator_policy() {
-    with_fiscal(|resolver| {
-        let web = base_web();
-        let passport = keypair(81);
-        let kernel = keypair(82);
-        let listing = finding_listing_entry(
-            &web.operator,
-            &web.finding,
-            &format!("finding:{}", web.finding.finding_id),
-            900,
-        );
-        let assertion = finding_current_listing_assertion(&listing, &web.operator);
-        let mut convention = finding_pheromone_convention();
-        convention.registry_operator_id = "seller-operatör".to_owned();
-
-        assert!(matches!(
-            admit_and_resolve_finding_pheromone_hint(
-                &InMemoryPheromoneSubstrate::new(),
-                finding_pheromone_deposit(
-                    &web,
-                    &listing,
-                    &passport,
-                    "hint-non-ascii-registry",
-                    125,
-                ),
-                &finding_pheromone_context(&passport, &kernel),
-                &convention,
-                AuthenticatedCurrentFindingListing::new(&listing, &assertion),
-                &web.admission,
-                &web.context(resolver),
-            ),
-            Err(FindingPheromoneError::Convention("receiver policy"))
-        ));
-    });
-}
-
-#[test]
-fn finding_pheromone_bounds_listing_assertions_before_signature_verification() {
-    with_fiscal(|resolver| {
-        let web = base_web();
-        let passport = keypair(81);
-        let kernel = keypair(82);
-        let listing = finding_listing_entry(
-            &web.operator,
-            &web.finding,
-            &format!("finding:{}", web.finding.finding_id),
-            900,
-        );
-        let mut assertion = finding_current_listing_assertion(&listing, &web.operator);
-        assertion.body.namespace = "é".repeat(300);
-        let error = admit_and_resolve_finding_pheromone_hint(
-            &InMemoryPheromoneSubstrate::new(),
-            finding_pheromone_deposit(&web, &listing, &passport, "hint-oversized-assertion", 125),
-            &finding_pheromone_context(&passport, &kernel),
-            &finding_pheromone_convention(),
-            AuthenticatedCurrentFindingListing::new(&listing, &assertion),
-            &web.admission,
-            &web.context(resolver),
-        )
-        .test_expect_err("oversized assertion rejects before its stale signature is checked");
-        assert!(matches!(
-            error,
-            FindingPheromoneError::Listing(message) if message.contains("shape is invalid")
-        ));
-    });
-}
-
-#[test]
-fn finding_pheromone_bounds_listing_envelopes_before_hashing() {
-    with_fiscal(|resolver| {
-        let web = base_web();
-        let passport = keypair(81);
-        let kernel = keypair(82);
-        let mut listing = finding_listing_entry(
-            &web.operator,
-            &web.finding,
-            &format!("finding:{}", web.finding.finding_id),
-            900,
-        );
-        let assertion = finding_current_listing_assertion(&listing, &web.operator);
-        listing.listing.body.subject.actor_id = "x".repeat(513);
-
-        let error = admit_and_resolve_finding_pheromone_hint(
-            &InMemoryPheromoneSubstrate::new(),
-            finding_pheromone_deposit(&web, &listing, &passport, "hint-oversized-listing", 125),
-            &finding_pheromone_context(&passport, &kernel),
-            &finding_pheromone_convention(),
-            AuthenticatedCurrentFindingListing::new(&listing, &assertion),
-            &web.admission,
-            &web.context(resolver),
-        )
-        .test_expect_err("oversized listing rejects before hashing its stale envelope");
-        assert!(matches!(
-            error,
-            FindingPheromoneError::Listing(message) if message.contains("bounded printable")
-        ));
-    });
-}
-
-#[test]
-fn finding_pheromone_requires_authenticated_current_listing_freshness() {
-    with_fiscal(|resolver| {
-        let web = base_web();
-        let passport = keypair(81);
-        let kernel = keypair(82);
-        let mut listing = finding_listing_entry(
-            &web.operator,
-            &web.finding,
-            &format!("finding:{}", web.finding.finding_id),
-            900,
-        );
-        let current_listing_assertion = finding_current_listing_assertion(&listing, &web.operator);
-        listing.freshness.generated_at = NOW;
-        listing.freshness.age_secs = 0;
-        listing.freshness.state = GenericListingFreshnessState::Fresh;
-        let deposit =
-            finding_pheromone_deposit(&web, &listing, &passport, "hint-forged-freshness", 125);
-
-        assert!(matches!(
-            admit_and_resolve_finding_pheromone_hint(
-                &InMemoryPheromoneSubstrate::new(),
-                deposit,
-                &finding_pheromone_context(&passport, &kernel),
-                &finding_pheromone_convention(),
-                AuthenticatedCurrentFindingListing::new(&listing, &current_listing_assertion),
-                &web.admission,
-                &web.context(resolver),
-            ),
-            Err(FindingPheromoneError::Listing(_))
-        ));
-    });
-}
+include!("finding_admission/pheromone_freshness.rs");
+include!("finding_admission/fee_schedule_lifecycle.rs");
+include!("finding_admission/review_round_regressions.rs");
 
 #[test]
 fn finding_pheromone_reassesses_immutable_listing_freshness_at_the_current_clock() {
@@ -1641,7 +1419,33 @@ fn expired_admission_rejects() {
 #[test]
 fn future_issued_admission_rejects() {
     with_fiscal(|resolver| {
-        let web = base_web();
+        let mut web = base_web();
+        let authorization = signed_authorization_at(
+            &keypair(11),
+            &web.seller,
+            &web.finding,
+            ADMISSION_ISSUED_AT - 1,
+        );
+        let authorization_sha256 =
+            signed_envelope_sha256(&authorization).test_expect("authorization digest");
+        let backing = signed_backing(
+            &keypair(4),
+            &web.seller,
+            &web.finding,
+            &authorization_sha256,
+            &web.schedule_sha256,
+            &web.terms_sha256,
+        );
+        let backing_sha256 = signed_envelope_sha256(&backing).test_expect("backing digest");
+        let mut bindings = web.bindings();
+        bindings.seller_authorization_envelope_sha256 = authorization_sha256.clone();
+        bindings.backing_envelope_sha256 = backing_sha256.clone();
+        bindings.backing_allocation_id = backing.body.allocation_id.clone();
+        web.admission = signed_admission(&web.venue, &web.finding, &bindings);
+        web.authorization = authorization;
+        web.authorization_sha256 = authorization_sha256;
+        web.backing = backing;
+        web.backing_sha256 = backing_sha256;
         let mut context = web.context(resolver);
         context.now = ADMISSION_ISSUED_AT - 1;
         let error = verify_finding_admission(&web.admission, &context).test_unwrap_err();
@@ -2065,6 +1869,7 @@ fn backing_locked_below_the_promised_sum_rejects() {
             &keypair(4),
             &web.seller,
             &web.finding,
+            &web.authorization_sha256,
             &web.schedule_sha256,
             STAKE_UNITS + EXPOSURE_UNITS - 1,
             &web.terms_sha256,
@@ -2179,6 +1984,7 @@ fn backing_committing_other_terms_rejects() {
             &keypair(4),
             &web.seller,
             &web.finding,
+            &web.authorization_sha256,
             &web.schedule_sha256,
             LOCKED_UNITS,
             &hex64('f'),
@@ -2215,7 +2021,7 @@ fn signed_purchase_ask(
     resolver: &FiscalResolver<'_>,
     agent: &Keypair,
     price_units: u64,
-) -> chio_open_market::bidding::SignedAskResponse {
+) -> VerifiedFindingPurchaseAsk {
     let witness =
         verify_finding_admission(&web.admission, &web.context(resolver)).test_expect("admission");
     let expected_scope = format!("finding:{}", web.finding.finding_id);
@@ -2322,6 +2128,32 @@ fn purchase_mint_rechecks_finding_liveness_at_the_mint_clock() {
 }
 
 #[test]
+fn purchase_mint_rejects_a_modified_signed_finding() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let witness = verify_finding_admission(&web.admission, &web.context(resolver))
+            .test_expect("admission");
+        let scope = format!("finding:{}", web.finding.finding_id);
+        let listing = finding_listing_entry(&web.operator, &web.finding, &scope, 900);
+        let agent = keypair(31);
+        let request = SignedBidRequest::sign(finding_bid_request(&web.finding, 900), &agent)
+            .test_expect("sign purchase bid");
+        let mut modified = web.finding.clone();
+        modified.payload_sha256 = hex64('f');
+
+        assert!(matches!(
+            bid_with_finding_purchase(
+                &request,
+                purchase_mint_context(&listing, &web.operator, &agent),
+                &witness,
+                &modified,
+            ),
+            Err(FindingAdmissionError::FindingArtifact(_))
+        ));
+    });
+}
+
+#[test]
 fn purchase_accept_requires_exact_amounts_and_the_committed_profile() {
     with_fiscal(|resolver| {
         let web = base_web();
@@ -2365,6 +2197,47 @@ fn purchase_accept_requires_exact_amounts_and_the_committed_profile() {
         .test_expect("exact purchase accept");
         assert_eq!(accepted.body.quoted_price, usd(900));
         assert_eq!(accepted.body.bid_receipt_id, "reservation-0001");
+
+        assert_eq!(
+            accept_finding_purchase(
+                &ask,
+                &sign_reservation(900),
+                &agent,
+                witness.expires_at(),
+                &witness,
+                &web.finding,
+            )
+            .err(),
+            Some(FindingAdmissionError::AdmissionExpired),
+            "an ask cannot outlive the admission that authorized its mint"
+        );
+        assert_eq!(
+            accept_finding_purchase(
+                &ask,
+                &sign_reservation(900),
+                &agent,
+                web.finding.expires_at,
+                &witness,
+                &web.finding,
+            )
+            .err(),
+            Some(FindingAdmissionError::FindingExpired),
+            "an ask cannot outlive the signed Finding"
+        );
+
+        let mut modified = web.finding.clone();
+        modified.expires_at = modified.expires_at.saturating_add(1);
+        assert!(matches!(
+            accept_finding_purchase(
+                &ask,
+                &sign_reservation(900),
+                &agent,
+                NOW + 60,
+                &witness,
+                &modified,
+            ),
+            Err(FindingAdmissionError::FindingArtifact(_))
+        ));
 
         assert_eq!(
             accept_finding_purchase(

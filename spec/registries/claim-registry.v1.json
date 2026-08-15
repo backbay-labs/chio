@@ -652,6 +652,38 @@
       "summary": "A V2 presentation challenge carries a domain-separated body digest and verifier signature, and holders reject digest, signer, signature, or unknown-field tampering before disclosure.",
       "introduced_in": "financial-credentials-v1",
       "proof_manifest_ref": "manifest.fincred.presentation_challenge.signed_exact"
+    },
+    {
+      "id": "claim.finding.delivery_digest_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-finding/v1/verifier-report.schema.json",
+      "summary": "The qualified cognition-market verifier report accepts delivery binding only when the Finding, strict receipts, checkpoint membership, and guarantee-consistency facets are verified under pinned authorities.",
+      "introduced_in": "cognition-market-qualified-profile-v1",
+      "proof_manifest_ref": "manifest.finding.delivery_digest_bound"
+    },
+    {
+      "id": "claim.finding.evidence_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-finding/v1/verifier-report.schema.json",
+      "summary": "The qualified cognition-market proof bundle binds a signed Finding-verifier report to the exact canonical replay-recipe attachment and rejects role, schema, digest, or attachment substitution.",
+      "introduced_in": "cognition-market-qualified-profile-v1",
+      "proof_manifest_ref": "manifest.finding.evidence_bound"
+    },
+    {
+      "id": "claim.finding.status_fresh",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-finding/v1/status-proof-input.schema.json",
+      "summary": "The qualified cognition-market verifier authenticates the named status feed, signed epoch, sparse non-inclusion path, Finding binding, and checked-time freshness under a deployment-pinned operator authorization.",
+      "introduced_in": "cognition-market-qualified-profile-v1",
+      "proof_manifest_ref": "manifest.finding.status_fresh"
+    },
+    {
+      "id": "claim.finding.bond_backed",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-finding/v1/verifier-report.schema.json",
+      "summary": "The qualified cognition-market verifier report carries a verified bond-backing facet and exact live allocation id established before report evaluation.",
+      "introduced_in": "cognition-market-qualified-profile-v1",
+      "proof_manifest_ref": "manifest.finding.bond_backed"
     }
   ],
   "proposed_claims": [

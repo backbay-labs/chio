@@ -1,0 +1,1659 @@
+//! Qualified cognition-market proof-bundle verification.
+//!
+//! The signed finding-verifier report is the authority artifact. Replay
+//! recipes and portable status proofs remain unsigned, content-addressed
+//! attachments in the evidence graph's advisory role. This verifier checks
+//! their exact canonical bytes and semantics independently before accepting
+//! any `claim.finding.*` ClaimSet row.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
+
+use chio_core_types::crypto::PublicKey;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
+use chio_core_types::receipt::metadata::{DeliveryResult, FindingMediaTypeCheck};
+use chio_core_types::receipt::MEDIATED_SPEND_PROFILE;
+use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
+use chio_finding::{
+    signed_envelope_sha256, verify_finding, verify_pinned_envelope, verify_signed_authority_status,
+    verify_signed_profile, verify_signed_purchase_record, verify_signed_verifier_report,
+    verify_status_proof_input, Finding, FindingAuthorityKeyPolicy, FindingEvidenceClass,
+    FindingFacetKind, FindingFacetOutcome, FindingGuaranteeClass, FindingReplayRecipeInput,
+    FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization, FindingStatusProofInput,
+    SignedFindingAuthorityStatus, SignedFindingChallengeVerifierProfile,
+    SignedFindingPurchaseRecord, SignedFindingStatusEpoch, SignedFindingVerifierReport,
+    FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1, FINDING_PURCHASE_RECORD_SCHEMA_V1,
+    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1, FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
+    FINDING_VERIFIER_REPORT_SCHEMA_V1,
+};
+use chio_finding_verifier::validate_supported_finding_verifier_profile;
+use chio_open_market::purchase_verification::{
+    derive_payment_operation_id, derive_purchase_intent_id,
+};
+use serde::Deserialize;
+use serde_json::Value;
+
+use crate::{
+    verify_passport_root_and_claim_set_artifacts_with_transparency_anchors, TransactionPassport,
+    TransactionPassportError, TransactionTrustAnchors, TransactionVerifierReport,
+};
+
+pub const COGNITION_MARKET_CLAIMS: [&str; 4] = [
+    "claim.finding.delivery_digest_bound",
+    "claim.finding.evidence_bound",
+    "claim.finding.status_fresh",
+    "claim.finding.bond_backed",
+];
+
+const FINDING_VERIFIER_MODULE: &str = "chio-finding-verifier";
+const PURCHASE_AUTHORITY_STANDING_REQUIRED: &str =
+    "delivery-bound claim requires current authenticated purchase-authority standing";
+
+/// Exact verified status material that must cross a durable trust boundary
+/// before a cognition-market claim can be granted.
+pub struct CognitionMarketStatusObservation<'a> {
+    pub signed_epoch: &'a SignedFindingStatusEpoch,
+    pub signed_epoch_bytes: &'a [u8],
+    pub proof: &'a FindingStatusProofInput,
+    pub proof_bytes: &'a [u8],
+    pub operator_authorization_sha256: &'a str,
+    pub max_epoch_age_secs: u64,
+    pub recorded_at: u64,
+}
+
+/// Deployment-owned durable status memory.
+///
+/// Implementations must atomically enforce a monotonic epoch floor for the
+/// feed and stable operator identity, reject same-epoch conflicts, retain
+/// sticky pending or retracted state, retain authenticated inclusion proofs,
+/// and accept only an exact current-floor non-inclusion proof for a live
+/// Finding.
+pub trait CognitionMarketStatusTrustStore: Send + Sync {
+    fn admit_verified_status(
+        &self,
+        observation: &CognitionMarketStatusObservation<'_>,
+    ) -> Result<(), String>;
+}
+
+/// Deployment-owned roots used to recheck the proof bundle. Neither the
+/// report nor the status proof may self-authorize these keys or time bounds.
+#[derive(Clone)]
+pub struct CognitionMarketProofTrust {
+    pub trusted_passport_signer_keys: Vec<PublicKey>,
+    pub trusted_checkpoint_signer_keys: Vec<PublicKey>,
+    pub profile_governance_authority: FindingAuthorityKeyPolicy,
+    pub profile_governance_authority_status: CognitionMarketVerifierAuthorityStatusTrust,
+    pub finding_verifier_authority: PublicKey,
+    /// Deployment-pinned signer for settled Finding purchase records.
+    pub purchase_authority: PublicKey,
+    /// Fresh, independently signed standing for the purchase-record signer.
+    /// Required whenever the delivery-bound claim is selected.
+    pub purchase_authority_status: Option<CognitionMarketVerifierAuthorityStatusTrust>,
+    pub trusted_verifier_profile_envelope_sha256: String,
+    pub trusted_verifier_profile: SignedFindingChallengeVerifierProfile,
+    pub trusted_trust_root_snapshot_sha256: String,
+    pub trusted_resolver_policy_sha256: String,
+    pub trusted_time_input_sha256: String,
+    pub verifier_authority_status: CognitionMarketVerifierAuthorityStatusTrust,
+    pub status: Option<CognitionMarketStatusTrust>,
+}
+
+/// Deployment-authenticated and freshness-bounded revocation status for the
+/// verifier-report signer pinned by the profile.
+#[derive(Clone)]
+pub struct CognitionMarketVerifierAuthorityStatusTrust {
+    pub signed_status: SignedFindingAuthorityStatus,
+    pub status_authority: FindingAuthorityKeyPolicy,
+    pub checked_at: u64,
+    pub max_age_secs: u64,
+}
+
+/// Deployment-owned trust needed by the status claim or a pinned profile that
+/// requires the status-liveness facet.
+#[derive(Clone)]
+pub struct CognitionMarketStatusTrust {
+    /// Governance-signed operator authorization. The verifier authenticates
+    /// this envelope against the deployment-pinned profile governance key
+    /// before using its body to verify any status proof.
+    pub signed_status_operator_authorization:
+        SignedExportEnvelope<FindingStatusOperatorAuthorization>,
+    /// Digest of the governance-signed authorization envelope retained by
+    /// the durable status floor. This is not the digest of the bare body.
+    pub status_operator_authorization_sha256: String,
+    /// Fresh, independently signed standing for the operator policy above.
+    /// The static authorization alone cannot prove that governance has not
+    /// retired the key since it was issued.
+    pub operator_authority_status: CognitionMarketVerifierAuthorityStatusTrust,
+    pub status_freshness: FindingStatusFreshnessPolicy,
+    pub status_store: Arc<dyn CognitionMarketStatusTrustStore>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClaimSet {
+    schema: String,
+    id: String,
+    issued_at: String,
+    subject: FindingClaimSubject,
+    claims: Vec<Claim>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FindingClaimSubject {
+    kind: String,
+    id: String,
+    artifact_sha256: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Claim {
+    claim_id: String,
+    status: String,
+    #[serde(default)]
+    required_evidence: Vec<String>,
+    #[serde(default)]
+    evidence_refs: Vec<String>,
+    failure_reason: Option<String>,
+    verifier_module: String,
+}
+
+struct GraphNode<'a> {
+    id: &'a str,
+    schema: &'a str,
+    path: &'a str,
+    role: &'a str,
+}
+
+/// Verify the cognition-market ClaimSet, signed report, and both unsigned
+/// attachments from exact persisted artifact bytes.
+pub fn verify_cognition_market_passport_artifacts(
+    passport: &TransactionPassport,
+    passport_path: String,
+    evidence_graph_bytes: &[u8],
+    verifier_policy_bytes: &[u8],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    trust: &CognitionMarketProofTrust,
+) -> Result<TransactionVerifierReport, TransactionPassportError> {
+    verify_cognition_market_passport_artifacts_with_external_claims(
+        passport,
+        passport_path,
+        evidence_graph_bytes,
+        verifier_policy_bytes,
+        artifacts,
+        trust,
+        &[],
+    )
+}
+
+/// Verify cognition-market artifacts while carrying claims already verified
+/// by other authoritative family verifiers into the combined root gate.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_cognition_market_passport_artifacts_with_external_claims(
+    passport: &TransactionPassport,
+    passport_path: String,
+    evidence_graph_bytes: &[u8],
+    verifier_policy_bytes: &[u8],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    trust: &CognitionMarketProofTrust,
+    externally_verified_claims: &[String],
+) -> Result<TransactionVerifierReport, TransactionPassportError> {
+    if trust
+        .trusted_passport_signer_keys
+        .iter()
+        .any(|key| key == &trust.finding_verifier_authority)
+    {
+        return Err(claim_failed(
+            "passport signer and finding verifier authorities must be distinct",
+        ));
+    }
+    if trust
+        .trusted_passport_signer_keys
+        .iter()
+        .any(|key| key == &trust.purchase_authority)
+    {
+        return Err(claim_failed(
+            "passport signer and purchase-record authorities must be distinct",
+        ));
+    }
+    if trust.purchase_authority == trust.finding_verifier_authority
+        || trust.purchase_authority == trust.profile_governance_authority.key
+        || trust.purchase_authority
+            == trust
+                .profile_governance_authority_status
+                .status_authority
+                .key
+        || trust.status.as_ref().is_some_and(|status| {
+            status
+                .signed_status_operator_authorization
+                .body
+                .operator
+                .key
+                == trust.purchase_authority
+                || status.operator_authority_status.status_authority.key == trust.purchase_authority
+        })
+    {
+        return Err(claim_failed(
+            "purchase-record authority must be independent from proof authorities",
+        ));
+    }
+    if trust.profile_governance_authority.key == trust.finding_verifier_authority {
+        return Err(claim_failed(
+            "profile governance and finding verifier authorities must be distinct",
+        ));
+    }
+    if trust
+        .profile_governance_authority_status
+        .status_authority
+        .key
+        == trust.finding_verifier_authority
+    {
+        return Err(claim_failed(
+            "profile-governance status authority and finding verifier authority must be distinct",
+        ));
+    }
+    if trust.status.as_ref().is_some_and(|status| {
+        status
+            .signed_status_operator_authorization
+            .body
+            .operator
+            .key
+            == trust.finding_verifier_authority
+    }) {
+        return Err(claim_failed(
+            "status operator and finding verifier authorities must be distinct",
+        ));
+    }
+    if trust.status.as_ref().is_some_and(|status| {
+        status.operator_authority_status.status_authority.key == trust.finding_verifier_authority
+    }) {
+        return Err(claim_failed(
+            "status-operator standing authority and finding verifier authority must be distinct",
+        ));
+    }
+    if trust.status.as_ref().is_some_and(|status| {
+        status.operator_authority_status.status_authority.key
+            == trust.profile_governance_authority.key
+    }) {
+        return Err(claim_failed(
+            "status-operator standing authority and profile governance authority must be distinct",
+        ));
+    }
+    // Validate the signed root and the complete graph shape before interpreting
+    // cognition-market roles. This also rejects unsupported registered schemas,
+    // dangling/cyclic edges, and advisory authority edges.
+    crate::minimal::verify_minimal_passport_artifacts_with_anchor_inputs(
+        passport,
+        passport_path.clone(),
+        evidence_graph_bytes,
+        verifier_policy_bytes,
+        artifacts,
+        &trust.trusted_checkpoint_signer_keys,
+    )?;
+
+    let graph: Value = serde_json::from_slice(evidence_graph_bytes).map_err(|error| {
+        TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
+    })?;
+    let nodes = graph
+        .get("nodes")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            TransactionPassportError::InvalidEvidenceGraphArtifact(
+                "evidence graph missing nodes".to_string(),
+            )
+        })?;
+    validate_every_graph_artifact(nodes, artifacts)?;
+
+    let claim_set = parse_cognition_claim_set(passport, artifacts)?;
+    let selected_claims = selected_cognition_claims(&claim_set)?;
+    if selected_claims.is_empty() {
+        return Err(claim_failed(
+            "ClaimSet has no verified cognition-market claim",
+        ));
+    }
+
+    let claim_set_node = unique_node(nodes, "claim-set", "chio.transaction.claim-set.v1")?;
+    let finding_node = unique_node(nodes, "external-subject", FINDING_SCHEMA_V1)?;
+    let report_node = unique_node(nodes, "report", FINDING_VERIFIER_REPORT_SCHEMA_V1)?;
+    let purchase_record_node = selected_claims
+        .contains(COGNITION_MARKET_CLAIMS[0])
+        .then(|| {
+            unique_node(
+                nodes,
+                "commerce-order-context",
+                FINDING_PURCHASE_RECORD_SCHEMA_V1,
+            )
+        })
+        .transpose()?;
+    let finding_bytes = artifact_bytes(artifacts, finding_node.path)?;
+    require_exact_canonical_json(finding_node.path, finding_bytes)?;
+    let finding: Finding = serde_json::from_slice(finding_bytes).map_err(|error| {
+        invalid_artifact(
+            finding_node.path,
+            format!("invalid signed Finding: {error}"),
+        )
+    })?;
+    verify_finding(&finding)
+        .map_err(|error| invalid_artifact(finding_node.path, error.to_string()))?;
+
+    let recipe_binding_required = selected_claims.contains(COGNITION_MARKET_CLAIMS[1])
+        || finding.guarantee_class == FindingGuaranteeClass::DeterministicReplay
+        || trust
+            .trusted_verifier_profile
+            .body
+            .required_facets
+            .contains(&FindingFacetKind::RecipeBinding);
+    let recipe_node = recipe_binding_required
+        .then(|| {
+            unique_node(
+                nodes,
+                "advisory-observation",
+                FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
+            )
+        })
+        .transpose()?;
+    let status_liveness_required = selected_claims.contains(COGNITION_MARKET_CLAIMS[2])
+        || trust
+            .trusted_verifier_profile
+            .body
+            .required_facets
+            .contains(&FindingFacetKind::StatusLiveness);
+    let status_node = status_liveness_required
+        .then(|| {
+            unique_node(
+                nodes,
+                "advisory-observation",
+                FINDING_STATUS_PROOF_INPUT_SCHEMA_V1,
+            )
+        })
+        .transpose()?;
+    let attachment_nodes = recipe_node
+        .iter()
+        .chain(status_node.iter())
+        .collect::<Vec<_>>();
+    require_digest_bound_attachment_edges(&graph, &report_node, &attachment_nodes)?;
+    require_digest_bound_edge(&graph, &claim_set_node, &finding_node)?;
+    require_digest_bound_edge(&graph, &report_node, &finding_node)?;
+    if let Some(purchase_record_node) = &purchase_record_node {
+        require_digest_bound_edge(&graph, &claim_set_node, purchase_record_node)?;
+        require_digest_bound_edge(&graph, &report_node, purchase_record_node)?;
+    }
+
+    let report_bytes = artifact_bytes(artifacts, report_node.path)?;
+    require_exact_canonical_json(report_node.path, report_bytes)?;
+    let report: SignedFindingVerifierReport =
+        serde_json::from_slice(report_bytes).map_err(|error| {
+            invalid_artifact(
+                report_node.path,
+                format!("invalid signed verifier report: {error}"),
+            )
+        })?;
+    let typed_report_bytes = canonical_json_bytes(&report).map_err(|error| {
+        invalid_artifact(
+            report_node.path,
+            format!("signed verifier report cannot be canonically serialized: {error}"),
+        )
+    })?;
+    if typed_report_bytes != report_bytes {
+        return Err(invalid_artifact(
+            report_node.path,
+            "signed verifier report bytes do not match the typed canonical encoding",
+        ));
+    }
+    let finding_verifier_signer = &trust.trusted_verifier_profile.body.verifier_report_signer;
+    finding_verifier_signer
+        .validate("finding_verifier_signer")
+        .map_err(|error| {
+            claim_failed(format!(
+                "trusted verifier signer policy is invalid: {error}"
+            ))
+        })?;
+    if finding_verifier_signer.key != trust.finding_verifier_authority {
+        return Err(claim_failed(
+            "pinned verifier profile signer and authority key disagree",
+        ));
+    }
+    let trusted_profile_digest = signed_envelope_sha256(&trust.trusted_verifier_profile)
+        .map_err(|error| claim_failed(format!("trusted verifier profile is invalid: {error}")))?;
+    if trusted_profile_digest != trust.trusted_verifier_profile_envelope_sha256 {
+        return Err(claim_failed(
+            "trusted verifier profile bytes do not match the deployment-pinned digest",
+        ));
+    }
+    trust
+        .profile_governance_authority
+        .validate("profile governance authority")
+        .map_err(|error| {
+            claim_failed(format!(
+                "profile governance authority policy is invalid: {error}"
+            ))
+        })?;
+    if trust.trusted_verifier_profile.body.governance_authority
+        != trust.profile_governance_authority.key
+    {
+        return Err(claim_failed(
+            "trusted verifier profile governance key does not match the deployment-pinned policy",
+        ));
+    }
+    verify_signed_profile(
+        &trust.trusted_verifier_profile,
+        &trust.profile_governance_authority.key,
+    )
+    .map_err(|error| claim_failed(format!("trusted verifier profile is invalid: {error}")))?;
+    if trust.trusted_verifier_profile.body.purchase_authority.key != trust.purchase_authority {
+        return Err(claim_failed(
+            "pinned verifier profile purchase authority and deployment key disagree",
+        ));
+    }
+    let purchase_authority_status = if purchase_record_node.is_some() {
+        let purchase_authority_status = trust
+            .purchase_authority_status
+            .as_ref()
+            .ok_or_else(|| claim_failed(PURCHASE_AUTHORITY_STANDING_REQUIRED))?;
+        if purchase_authority_status.status_authority.key == trust.profile_governance_authority.key
+        {
+            return Err(claim_failed(
+                "purchase standing authority and profile governance authority must be distinct",
+            ));
+        }
+        if purchase_authority_status.status_authority.key == trust.finding_verifier_authority {
+            return Err(claim_failed(
+                "purchase standing authority and finding verifier authority must be distinct",
+            ));
+        }
+        verify_purchase_authority_status(
+            &trust.trusted_verifier_profile.body.purchase_authority,
+            purchase_authority_status,
+            trust.verifier_authority_status.checked_at,
+        )?;
+        Some(purchase_authority_status)
+    } else {
+        None
+    };
+    verify_profile_governance_authority_status(
+        &trust.profile_governance_authority,
+        &trust.profile_governance_authority_status,
+        trust.trusted_verifier_profile.body.issued_at,
+    )?;
+    if trust.profile_governance_authority_status.checked_at
+        != trust.verifier_authority_status.checked_at
+    {
+        return Err(claim_failed(
+            "profile governance and verifier authority status clocks must agree",
+        ));
+    }
+    if trust.trusted_verifier_profile.body.predicate_engine
+        != FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1
+    {
+        return Err(claim_failed(
+            "trusted verifier profile names an unsupported predicate engine",
+        ));
+    }
+    if trust
+        .trusted_verifier_profile
+        .body
+        .required_receipt_semantics
+        != MEDIATED_SPEND_PROFILE
+    {
+        return Err(claim_failed(
+            "trusted verifier profile names unsupported receipt semantics",
+        ));
+    }
+    validate_supported_finding_verifier_profile(&trust.trusted_verifier_profile.body).map_err(
+        |_| claim_failed("trusted verifier profile requires unsupported verifier features"),
+    )?;
+    verify_signed_verifier_report(&report, &trust.finding_verifier_authority)
+        .map_err(|error| invalid_artifact(report_node.path, error.to_string()))?;
+    if report.body.verifier_key_epoch != finding_verifier_signer.key_epoch {
+        return Err(claim_failed(
+            "signed verifier report key epoch does not match the deployment-pinned signer policy",
+        ));
+    }
+    if report.body.evaluation_time < finding_verifier_signer.valid_from
+        || report.body.evaluation_time >= finding_verifier_signer.valid_until
+    {
+        return Err(claim_failed(
+            "signed verifier report evaluation time is outside the deployment-pinned signer lifecycle",
+        ));
+    }
+    verify_verifier_authority_status(
+        finding_verifier_signer,
+        &trust.verifier_authority_status,
+        report.body.evaluation_time,
+    )?;
+    if trust.verifier_authority_status.checked_at >= trust.trusted_verifier_profile.body.expires_at
+    {
+        return Err(claim_failed(
+            "unanchored signed verifier report cannot be accepted after verifier-profile expiration",
+        ));
+    }
+    if report.body.evaluation_time < trust.trusted_verifier_profile.body.issued_at
+        || report.body.evaluation_time >= trust.trusted_verifier_profile.body.expires_at
+    {
+        return Err(claim_failed(
+            "signed verifier report evaluation time is outside the deployment-pinned profile lifecycle",
+        ));
+    }
+    if report.body.evaluation_time < finding.issued_at
+        || report.body.evaluation_time >= finding.expires_at
+    {
+        return Err(claim_failed(
+            "signed verifier report evaluation time is outside the Finding lifecycle",
+        ));
+    }
+    if trust.verifier_authority_status.checked_at >= finding.expires_at {
+        return Err(claim_failed(
+            "unanchored signed verifier report cannot be accepted after Finding expiration",
+        ));
+    }
+    if report.body.verifier_profile_envelope_sha256
+        != trust.trusted_verifier_profile_envelope_sha256
+    {
+        return Err(claim_failed(
+            "signed verifier report does not bind the deployment-pinned verifier profile",
+        ));
+    }
+    if report.body.verifier_profile_id != trust.trusted_verifier_profile.body.profile_id {
+        return Err(claim_failed(
+            "signed verifier report names a different deployment-pinned verifier profile",
+        ));
+    }
+    if report.body.trust_root_snapshot_sha256 != trust.trusted_trust_root_snapshot_sha256 {
+        return Err(claim_failed(
+            "signed verifier report does not bind the deployment-pinned trust-root snapshot",
+        ));
+    }
+    if report.body.resolver_policy_sha256 != trust.trusted_resolver_policy_sha256 {
+        return Err(claim_failed(
+            "signed verifier report does not bind the deployment-pinned resolver policy",
+        ));
+    }
+    if report.body.trusted_time_input_sha256 != trust.trusted_time_input_sha256 {
+        return Err(claim_failed(
+            "signed verifier report does not bind the deployment-pinned trusted-time input",
+        ));
+    }
+    validate_finding_claim_subject(&claim_set.subject, &report, &finding, finding_node.id)?;
+    if let Some(purchase_record_node) = &purchase_record_node {
+        let purchase_record_bytes = artifact_bytes(artifacts, purchase_record_node.path)?;
+        require_exact_canonical_json(purchase_record_node.path, purchase_record_bytes)?;
+        let purchase_record: SignedFindingPurchaseRecord =
+            serde_json::from_slice(purchase_record_bytes).map_err(|error| {
+                invalid_artifact(
+                    purchase_record_node.path,
+                    format!("invalid signed Finding purchase record: {error}"),
+                )
+            })?;
+        let typed_purchase_record_bytes =
+            canonical_json_bytes(&purchase_record).map_err(|error| {
+                invalid_artifact(
+                    purchase_record_node.path,
+                    format!("signed Finding purchase record cannot be serialized: {error}"),
+                )
+            })?;
+        if typed_purchase_record_bytes != purchase_record_bytes {
+            return Err(invalid_artifact(
+                purchase_record_node.path,
+                "signed Finding purchase record bytes do not match the typed canonical encoding",
+            ));
+        }
+        verify_signed_purchase_record(&purchase_record, &trust.purchase_authority)
+            .map_err(|error| invalid_artifact(purchase_record_node.path, error.to_string()))?;
+        let purchase_policy = &trust.trusted_verifier_profile.body.purchase_authority;
+        if purchase_record.body.recorded_at < purchase_policy.valid_from
+            || purchase_record.body.recorded_at >= purchase_policy.valid_until
+        {
+            return Err(claim_failed(
+                "signed Finding purchase record is outside the deployment-pinned purchase-authority lifecycle",
+            ));
+        }
+        let purchase_checked_at = purchase_authority_status
+            .ok_or_else(|| claim_failed(PURCHASE_AUTHORITY_STANDING_REQUIRED))?
+            .checked_at;
+        if purchase_record.body.recorded_at > purchase_checked_at {
+            return Err(claim_failed(
+                "signed Finding purchase record is later than the current trusted verification time",
+            ));
+        }
+        require_delivery_transaction_binding(&report, &purchase_record)?;
+    }
+
+    if let Some(recipe_node) = &recipe_node {
+        let recipe_bytes = artifact_bytes(artifacts, recipe_node.path)?;
+        let recipe = parse_recipe(recipe_node.path, recipe_bytes)?;
+        let recipe_digest = crate::sha256_hex(recipe_bytes);
+        if report.body.replay_recipe_input_sha256.as_deref() != Some(recipe_digest.as_str()) {
+            return Err(claim_failed(
+                "signed verifier report does not bind the exact replay-recipe attachment",
+            ));
+        }
+        // Recompute through the typed artifact too. This catches any future
+        // parser drift even though strict canonical raw bytes already pin the
+        // node.
+        if recipe
+            .canonical_sha256()
+            .map_err(|error| invalid_artifact(recipe_node.path, error.to_string()))?
+            != recipe_digest
+        {
+            return Err(claim_failed("replay-recipe typed digest drift"));
+        }
+        if recipe.verifier_profile_envelope_sha256 != report.body.verifier_profile_envelope_sha256 {
+            return Err(claim_failed(
+                "replay recipe and signed report bind different verifier profiles",
+            ));
+        }
+        verify_recipe_semantics(
+            &finding,
+            &trust.trusted_verifier_profile,
+            &trust.trusted_verifier_profile_envelope_sha256,
+            recipe_bytes,
+            &recipe,
+        )?;
+    }
+
+    let verified_status = if let Some(status_node) = &status_node {
+        let status_trust = trust.status.as_ref().ok_or_else(|| {
+            claim_failed("status-liveness verification has no deployment-pinned status trust")
+        })?;
+        let status_operator_authorization = &status_trust.signed_status_operator_authorization.body;
+        status_operator_authorization.validate().map_err(|error| {
+            claim_failed(format!("status operator authorization is invalid: {error}"))
+        })?;
+        verify_pinned_envelope(
+            &status_trust.signed_status_operator_authorization,
+            &trust.profile_governance_authority.key,
+            "status_operator_authorization",
+        )
+        .map_err(|error| {
+            claim_failed(format!(
+                "status operator authorization envelope is invalid: {error}"
+            ))
+        })?;
+        if crate::validation::validate_sha256_hex(
+            &status_trust.status_operator_authorization_sha256,
+        )
+        .is_err()
+        {
+            return Err(claim_failed(
+                "status operator authorization envelope digest is invalid",
+            ));
+        }
+        let actual_authorization_sha256 = signed_envelope_sha256(
+            &status_trust.signed_status_operator_authorization,
+        )
+        .map_err(|error| {
+            claim_failed(format!(
+                "status operator authorization envelope cannot be hashed: {error}"
+            ))
+        })?;
+        if actual_authorization_sha256 != status_trust.status_operator_authorization_sha256 {
+            return Err(claim_failed(
+                "status operator authorization digest does not bind the signed envelope",
+            ));
+        }
+        let status_bytes = artifact_bytes(artifacts, status_node.path)?;
+        let status = chio_finding::parse_status_proof_input(status_bytes)
+            .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
+        let status_digest = crate::sha256_hex(status_bytes);
+        if report.body.status_proof_input_sha256.as_deref() != Some(status_digest.as_str()) {
+            return Err(claim_failed(
+                "signed verifier report does not bind the exact status-proof attachment",
+            ));
+        }
+        if status.finding_id() != report.body.finding_id {
+            return Err(claim_failed(
+                "status-proof attachment does not name the report Finding",
+            ));
+        }
+        let (status_feed_id, status_checked_at) = status_proof_binding(&status);
+        if status_feed_id != finding.status_feed_ref
+            || status_operator_authorization.feed_id != finding.status_feed_ref
+        {
+            return Err(claim_failed(
+                "status proof and operator authorization do not bind the Finding status feed",
+            ));
+        }
+        if status_checked_at < finding.issued_at {
+            return Err(claim_failed("status proof predates the signed Finding"));
+        }
+        if status_trust.status_freshness.now != trust.verifier_authority_status.checked_at {
+            return Err(claim_failed(
+                "status freshness clock does not match the current trusted verification time",
+            ));
+        }
+        let signed_epoch = verify_status_proof_input(
+            &status,
+            status_operator_authorization,
+            status_trust.status_freshness,
+        )
+        .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
+        verify_status_operator_authority_status(
+            &status_operator_authorization.operator,
+            &status_trust.operator_authority_status,
+            signed_epoch.body.generated_at,
+            status_trust.status_freshness.now,
+        )?;
+        if matches!(status, FindingStatusProofInput::Inclusion(_)) {
+            let signed_epoch_bytes = canonical_json_bytes(&signed_epoch)
+                .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
+            let admission = status_trust.status_store.admit_verified_status(
+                &CognitionMarketStatusObservation {
+                    signed_epoch: &signed_epoch,
+                    signed_epoch_bytes: &signed_epoch_bytes,
+                    proof: &status,
+                    proof_bytes: status_bytes,
+                    operator_authorization_sha256: &status_trust
+                        .status_operator_authorization_sha256,
+                    max_epoch_age_secs: status_trust.status_freshness.max_epoch_age_secs,
+                    recorded_at: status_trust.status_freshness.now,
+                },
+            );
+            return Err(claim_failed(match admission {
+                Ok(()) => "qualified status-liveness verification requires a non-inclusion proof"
+                    .to_owned(),
+                Err(error) => format!("durable finding status trust rejected proof: {error}"),
+            }));
+        }
+        Some((status_node.path, status_bytes, status, signed_epoch))
+    } else {
+        None
+    };
+
+    require_report_facets(
+        &finding,
+        &report,
+        &selected_claims,
+        &trust.trusted_verifier_profile.body.required_facets,
+    )?;
+    validate_selected_cognition_claim_rows(
+        &claim_set,
+        &selected_claims,
+        report_node.path,
+        purchase_record_node.as_ref().map(|node| node.path),
+        recipe_node.as_ref().map(|node| node.path),
+        status_node.as_ref().map(|node| node.path),
+    )?;
+
+    // The generic verifier performs the final passport signature, graph/root,
+    // policy, and ClaimSet digest checks. Cognition-specific semantics above
+    // are what make these four external claims eligible for acceptance.
+    // Generic transaction-integrity claims remain independently verified by
+    // that root verifier and must survive this family projection.
+    let mut report = verify_passport_root_and_claim_set_artifacts_with_transparency_anchors(
+        passport,
+        passport_path,
+        evidence_graph_bytes,
+        verifier_policy_bytes,
+        artifacts,
+        TransactionTrustAnchors {
+            passport_root_signers: &trust.trusted_passport_signer_keys,
+            checkpoint_signers: &trust.trusted_checkpoint_signer_keys,
+        },
+        externally_verified_claims,
+    )?;
+    report
+        .verified_claims
+        .retain(|claim| selected_cognition_report_claim(&selected_claims, claim));
+    report
+        .claim_results
+        .retain(|claim| selected_cognition_report_claim(&selected_claims, &claim.claim_id));
+
+    // Advance durable status memory only after every passport, graph, report,
+    // and ClaimSet check succeeds, but before any claim leaves this verifier.
+    if let Some((status_path, status_bytes, status, signed_epoch)) = verified_status {
+        let status_trust = trust.status.as_ref().ok_or_else(|| {
+            claim_failed("status-liveness verification has no deployment-pinned status trust")
+        })?;
+        let signed_epoch_bytes = canonical_json_bytes(&signed_epoch)
+            .map_err(|error| invalid_artifact(status_path, error.to_string()))?;
+        status_trust
+            .status_store
+            .admit_verified_status(&CognitionMarketStatusObservation {
+                signed_epoch: &signed_epoch,
+                signed_epoch_bytes: &signed_epoch_bytes,
+                proof: &status,
+                proof_bytes: status_bytes,
+                operator_authorization_sha256: &status_trust.status_operator_authorization_sha256,
+                max_epoch_age_secs: status_trust.status_freshness.max_epoch_age_secs,
+                recorded_at: status_trust.status_freshness.now,
+            })
+            .map_err(|error| {
+                claim_failed(format!(
+                    "durable finding status trust rejected proof: {error}"
+                ))
+            })?;
+    }
+    Ok(report)
+}
+
+fn verify_verifier_authority_status(
+    policy: &FindingAuthorityKeyPolicy,
+    trust: &CognitionMarketVerifierAuthorityStatusTrust,
+    report_evaluation_time: u64,
+) -> Result<(), TransactionPassportError> {
+    if trust.checked_at == 0 || trust.max_age_secs == 0 {
+        return Err(claim_failed(
+            "verifier authority status freshness policy is invalid",
+        ));
+    }
+    trust
+        .status_authority
+        .validate("verifier status authority")
+        .map_err(|error| claim_failed(format!("verifier status authority is invalid: {error}")))?;
+    if trust.status_authority.key == policy.key {
+        return Err(claim_failed(
+            "verifier status authority must be independent from the verifier signer",
+        ));
+    }
+    if trust.checked_at < trust.status_authority.valid_from
+        || trust.checked_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "verifier status authority is not live at the current trusted verification time",
+        ));
+    }
+    verify_signed_authority_status(&trust.signed_status, &trust.status_authority.key)
+        .map_err(|error| claim_failed(format!("verifier authority status is invalid: {error}")))?;
+    let status = &trust.signed_status.body;
+    if status.observed_at < trust.status_authority.valid_from
+        || status.observed_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "verifier authority status was signed outside the status-authority lifecycle",
+        ));
+    }
+    if status.status_ref != policy.revocation_status_ref
+        || status.authority_id != policy.authority_id
+        || status.key != policy.key
+        || status.key_epoch != policy.key_epoch
+    {
+        return Err(claim_failed(
+            "verifier authority status does not match the deployment-pinned signer policy",
+        ));
+    }
+    if status.observed_at < report_evaluation_time
+        || status.observed_at > trust.checked_at
+        || trust.checked_at.saturating_sub(status.observed_at) > trust.max_age_secs
+    {
+        return Err(claim_failed(
+            "verifier authority status is stale for the signed report",
+        ));
+    }
+    // The report carries no independently authenticated signing-time anchor.
+    // Once deployment trusted time reaches the key expiry, possession of the
+    // old key would permit a newly created report with a backdated evaluation.
+    if trust.checked_at >= policy.valid_until {
+        return Err(claim_failed(
+            "unanchored signed verifier report cannot be accepted after verifier-key expiration",
+        ));
+    }
+    // The report carries no independently authenticated signing-time anchor.
+    // Once the deployment learns that this key is revoked, a key holder can
+    // backdate evaluation_time, so no report under that key remains admissible.
+    if status.revoked_from.is_some() {
+        return Err(claim_failed(
+            "unanchored signed verifier report cannot be accepted after verifier-key revocation",
+        ));
+    }
+    Ok(())
+}
+
+fn verify_purchase_authority_status(
+    policy: &FindingAuthorityKeyPolicy,
+    trust: &CognitionMarketVerifierAuthorityStatusTrust,
+    expected_checked_at: u64,
+) -> Result<(), TransactionPassportError> {
+    if trust.checked_at == 0 || trust.max_age_secs == 0 || trust.checked_at != expected_checked_at {
+        return Err(claim_failed(
+            "purchase authority standing freshness policy is invalid",
+        ));
+    }
+    policy
+        .validate("purchase authority")
+        .map_err(|error| claim_failed(format!("purchase authority policy is invalid: {error}")))?;
+    trust
+        .status_authority
+        .validate("purchase standing authority")
+        .map_err(|error| {
+            claim_failed(format!("purchase standing authority is invalid: {error}"))
+        })?;
+    if trust.status_authority.key == policy.key {
+        return Err(claim_failed(
+            "purchase standing authority must be independent from the purchase-record signer",
+        ));
+    }
+    if trust.checked_at < trust.status_authority.valid_from
+        || trust.checked_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "purchase standing authority is not live at the current trusted verification time",
+        ));
+    }
+    verify_signed_authority_status(&trust.signed_status, &trust.status_authority.key).map_err(
+        |error| claim_failed(format!("purchase authority standing is invalid: {error}")),
+    )?;
+    let status = &trust.signed_status.body;
+    if status.observed_at < trust.status_authority.valid_from
+        || status.observed_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "purchase authority standing was signed outside the standing-authority lifecycle",
+        ));
+    }
+    if status.status_ref != policy.revocation_status_ref
+        || status.authority_id != policy.authority_id
+        || status.key != policy.key
+        || status.key_epoch != policy.key_epoch
+    {
+        return Err(claim_failed(
+            "purchase authority standing does not match the deployment-pinned purchase policy",
+        ));
+    }
+    if status.observed_at > trust.checked_at
+        || trust.checked_at.saturating_sub(status.observed_at) > trust.max_age_secs
+    {
+        return Err(claim_failed(
+            "purchase authority standing is stale at the current trusted verification time",
+        ));
+    }
+    if trust.checked_at >= policy.valid_until {
+        return Err(claim_failed(
+            "unanchored purchase record cannot be accepted after purchase-authority key expiration",
+        ));
+    }
+    if status.revoked_from.is_some() {
+        return Err(claim_failed(
+            "unanchored purchase record cannot be accepted after purchase-authority key revocation",
+        ));
+    }
+    Ok(())
+}
+
+fn verify_status_operator_authority_status(
+    policy: &FindingAuthorityKeyPolicy,
+    trust: &CognitionMarketVerifierAuthorityStatusTrust,
+    epoch_generated_at: u64,
+    expected_checked_at: u64,
+) -> Result<(), TransactionPassportError> {
+    if trust.checked_at == 0 || trust.max_age_secs == 0 || trust.checked_at != expected_checked_at {
+        return Err(claim_failed(
+            "status operator authority standing freshness policy is invalid",
+        ));
+    }
+    trust
+        .status_authority
+        .validate("status operator standing authority")
+        .map_err(|error| {
+            claim_failed(format!(
+                "status operator standing authority is invalid: {error}"
+            ))
+        })?;
+    if trust.status_authority.key == policy.key {
+        return Err(claim_failed(
+            "status operator standing authority must be independent from the status operator",
+        ));
+    }
+    if trust.checked_at < trust.status_authority.valid_from
+        || trust.checked_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "status operator standing authority is not live at the current trusted verification time",
+        ));
+    }
+    verify_signed_authority_status(&trust.signed_status, &trust.status_authority.key).map_err(
+        |error| {
+            claim_failed(format!(
+                "status operator authority standing is invalid: {error}"
+            ))
+        },
+    )?;
+    let status = &trust.signed_status.body;
+    if status.observed_at < trust.status_authority.valid_from
+        || status.observed_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "status operator authority standing was signed outside the standing-authority lifecycle",
+        ));
+    }
+    if status.status_ref != policy.revocation_status_ref
+        || status.authority_id != policy.authority_id
+        || status.key != policy.key
+        || status.key_epoch != policy.key_epoch
+    {
+        return Err(claim_failed(
+            "status operator authority standing does not match the deployment-pinned operator policy",
+        ));
+    }
+    if status.observed_at < epoch_generated_at
+        || status.observed_at > trust.checked_at
+        || trust.checked_at.saturating_sub(status.observed_at) > trust.max_age_secs
+    {
+        return Err(claim_failed(
+            "status operator authority standing is stale for the signed status epoch",
+        ));
+    }
+    if trust.checked_at >= policy.valid_until {
+        return Err(claim_failed(
+            "unanchored signed status epoch cannot be accepted after status-operator key expiration",
+        ));
+    }
+    if status.revoked_from.is_some() {
+        return Err(claim_failed(
+            "unanchored signed status epoch cannot be accepted after status-operator key revocation",
+        ));
+    }
+    Ok(())
+}
+
+fn verify_profile_governance_authority_status(
+    policy: &FindingAuthorityKeyPolicy,
+    trust: &CognitionMarketVerifierAuthorityStatusTrust,
+    profile_issued_at: u64,
+) -> Result<(), TransactionPassportError> {
+    if trust.checked_at == 0 || trust.max_age_secs == 0 {
+        return Err(claim_failed(
+            "profile governance authority status freshness policy is invalid",
+        ));
+    }
+    if profile_issued_at < policy.valid_from || profile_issued_at >= policy.valid_until {
+        return Err(claim_failed(
+            "trusted verifier profile was signed outside the profile governance authority lifecycle",
+        ));
+    }
+    trust
+        .status_authority
+        .validate("profile governance status authority")
+        .map_err(|error| {
+            claim_failed(format!(
+                "profile governance status authority is invalid: {error}"
+            ))
+        })?;
+    if trust.status_authority.key == policy.key {
+        return Err(claim_failed(
+            "profile governance status authority must be independent from the profile signer",
+        ));
+    }
+    if trust.checked_at < trust.status_authority.valid_from
+        || trust.checked_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "profile governance status authority is not live at the current trusted verification time",
+        ));
+    }
+    verify_signed_authority_status(&trust.signed_status, &trust.status_authority.key).map_err(
+        |error| {
+            claim_failed(format!(
+                "profile governance authority status is invalid: {error}"
+            ))
+        },
+    )?;
+    let status = &trust.signed_status.body;
+    if status.observed_at < trust.status_authority.valid_from
+        || status.observed_at >= trust.status_authority.valid_until
+    {
+        return Err(claim_failed(
+            "profile governance authority status was signed outside the status-authority lifecycle",
+        ));
+    }
+    if status.status_ref != policy.revocation_status_ref
+        || status.authority_id != policy.authority_id
+        || status.key != policy.key
+        || status.key_epoch != policy.key_epoch
+    {
+        return Err(claim_failed(
+            "profile governance authority status does not match the deployment-pinned signer policy",
+        ));
+    }
+    if status.observed_at < profile_issued_at
+        || status.observed_at > trust.checked_at
+        || trust.checked_at.saturating_sub(status.observed_at) > trust.max_age_secs
+    {
+        return Err(claim_failed(
+            "profile governance authority status is stale for the signed profile",
+        ));
+    }
+    // The profile carries no independently authenticated signing-time anchor.
+    // Once trusted time reaches key expiry or revocation is observed, the old
+    // key could mint a newly backdated profile, so no profile remains live.
+    if trust.checked_at >= policy.valid_until {
+        return Err(claim_failed(
+            "unanchored signed verifier profile cannot be accepted after profile-governance key expiration",
+        ));
+    }
+    if status.revoked_from.is_some() {
+        return Err(claim_failed(
+            "unanchored signed verifier profile cannot be accepted after profile-governance key revocation",
+        ));
+    }
+    Ok(())
+}
+
+fn selected_cognition_report_claim(
+    selected_claims: &BTreeSet<&'static str>,
+    claim_id: &str,
+) -> bool {
+    selected_claims.contains(claim_id)
+        || crate::verifier_policy::is_supported_transaction_claim(claim_id)
+}
+
+fn validate_every_graph_artifact(
+    nodes: &[Value],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+) -> Result<(), TransactionPassportError> {
+    for value in nodes {
+        let node = graph_node(value)?;
+        let bytes = artifact_bytes(artifacts, node.path)?;
+        let actual = crate::sha256_hex(bytes);
+        if node.id != actual {
+            return Err(
+                TransactionPassportError::EvidenceGraphArtifactDigestMismatch {
+                    path: node.path.to_string(),
+                    expected: node.id.to_string(),
+                    actual,
+                },
+            );
+        }
+    }
+    Ok(())
+}
+
+fn unique_node<'a>(
+    nodes: &'a [Value],
+    role: &str,
+    schema: &str,
+) -> Result<GraphNode<'a>, TransactionPassportError> {
+    let mut found = None;
+    for value in nodes {
+        let node = graph_node(value)?;
+        if node.role == role && node.schema == schema {
+            if found.is_some() {
+                return Err(claim_failed(format!(
+                    "duplicate {role} node for schema {schema}"
+                )));
+            }
+            found = Some(node);
+        }
+    }
+    found.ok_or_else(|| {
+        TransactionPassportError::MissingCognitionMarketArtifact(format!(
+            "role={role}, schema={schema}"
+        ))
+    })
+}
+
+fn graph_node(value: &Value) -> Result<GraphNode<'_>, TransactionPassportError> {
+    let string = |field: &str| {
+        value
+            .get(field)
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+            .ok_or_else(|| {
+                TransactionPassportError::InvalidEvidenceGraphArtifact(format!(
+                    "evidence graph node missing {field}"
+                ))
+            })
+    };
+    Ok(GraphNode {
+        id: string("id")?,
+        schema: string("schema")?,
+        path: string("path")?,
+        role: string("role")?,
+    })
+}
+
+fn require_digest_bound_attachment_edges(
+    graph: &Value,
+    report: &GraphNode<'_>,
+    attachments: &[&GraphNode<'_>],
+) -> Result<(), TransactionPassportError> {
+    let edges = graph
+        .get("edges")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            TransactionPassportError::InvalidEvidenceGraphArtifact(
+                "evidence graph missing edges".to_string(),
+            )
+        })?;
+    for attachment in attachments {
+        let present = edges.iter().any(|edge| {
+            edge.get("from").and_then(Value::as_str) == Some(report.id)
+                && edge.get("to").and_then(Value::as_str) == Some(attachment.id)
+                && edge.get("predicate").and_then(Value::as_str) == Some("binds")
+                && edge.get("evidence_class").and_then(Value::as_str)
+                    == Some("digest-bound-reference")
+        });
+        if !present {
+            return Err(claim_failed(format!(
+                "signed report has no digest-bound edge to {}",
+                attachment.path
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn require_digest_bound_edge(
+    graph: &Value,
+    from: &GraphNode<'_>,
+    to: &GraphNode<'_>,
+) -> Result<(), TransactionPassportError> {
+    let present = graph
+        .get("edges")
+        .and_then(Value::as_array)
+        .is_some_and(|edges| {
+            edges.iter().any(|edge| {
+                edge.get("from").and_then(Value::as_str) == Some(from.id)
+                    && edge.get("to").and_then(Value::as_str) == Some(to.id)
+                    && edge.get("predicate").and_then(Value::as_str) == Some("binds")
+                    && edge.get("evidence_class").and_then(Value::as_str)
+                        == Some("digest-bound-reference")
+            })
+        });
+    if !present {
+        return Err(claim_failed(format!(
+            "{} has no digest-bound edge to {}",
+            from.path, to.path
+        )));
+    }
+    Ok(())
+}
+
+fn require_report_facets(
+    finding: &Finding,
+    report: &SignedFindingVerifierReport,
+    selected_claims: &BTreeSet<&'static str>,
+    profile_required_facets: &[FindingFacetKind],
+) -> Result<(), TransactionPassportError> {
+    if let Some(failed) = report
+        .body
+        .facets
+        .iter()
+        .find(|facet| facet.outcome == FindingFacetOutcome::Failed)
+    {
+        return Err(claim_failed(format!(
+            "signed verifier report contains failed facet {:?}",
+            failed.facet
+        )));
+    }
+    if report
+        .body
+        .facet_outcome(FindingFacetKind::ArtifactIntegrity)
+        != Some(FindingFacetOutcome::Verified)
+    {
+        return Err(claim_failed(
+            "every cognition-market claim requires verified facet ArtifactIntegrity",
+        ));
+    }
+    for facet in profile_required_facets {
+        if report.body.facet_outcome(*facet) != Some(FindingFacetOutcome::Verified) {
+            return Err(claim_failed(format!(
+                "deployment-pinned verifier profile requires verified facet {facet:?}"
+            )));
+        }
+    }
+    let mut finding_required_facets = BTreeSet::new();
+    if finding.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
+        finding_required_facets.insert(FindingFacetKind::RecipeBinding);
+    }
+    if matches!(
+        finding.evidence_class,
+        FindingEvidenceClass::Verified | FindingEvidenceClass::Observed
+    ) {
+        finding_required_facets.insert(FindingFacetKind::ReceiptAuthenticity);
+        finding_required_facets.insert(FindingFacetKind::CheckpointMembership);
+    }
+    if finding.guarantee_class == FindingGuaranteeClass::MeteredAttested {
+        finding_required_facets.insert(FindingFacetKind::ReceiptAuthenticity);
+        finding_required_facets.insert(FindingFacetKind::CheckpointMembership);
+        finding_required_facets.insert(FindingFacetKind::MeteredExposureBacking);
+    }
+    if finding.runtime_assurance_tier.is_some() {
+        finding_required_facets.insert(FindingFacetKind::RuntimeAssuranceBacking);
+    }
+    for facet in finding_required_facets {
+        if report.body.facet_outcome(facet) != Some(FindingFacetOutcome::Verified) {
+            return Err(claim_failed(format!(
+                "signed Finding requires verified facet {facet:?}"
+            )));
+        }
+    }
+    if selected_claims.contains(COGNITION_MARKET_CLAIMS[0])
+        && (report.body.finding_delivery_receipt_id.is_none()
+            || report.body.finding_delivery.is_none())
+    {
+        return Err(claim_failed(
+            "delivery-digest-bound claim requires a verified Finding delivery receipt",
+        ));
+    }
+    for (claim, required) in [
+        (
+            COGNITION_MARKET_CLAIMS[0],
+            &[
+                FindingFacetKind::ArtifactIntegrity,
+                FindingFacetKind::GuaranteeConsistency,
+                FindingFacetKind::ReceiptAuthenticity,
+                FindingFacetKind::CheckpointMembership,
+            ][..],
+        ),
+        (
+            COGNITION_MARKET_CLAIMS[1],
+            &[
+                FindingFacetKind::ReceiptAuthenticity,
+                FindingFacetKind::CheckpointMembership,
+                FindingFacetKind::RecipeBinding,
+            ][..],
+        ),
+        (
+            COGNITION_MARKET_CLAIMS[2],
+            &[FindingFacetKind::StatusLiveness][..],
+        ),
+        (
+            COGNITION_MARKET_CLAIMS[3],
+            &[FindingFacetKind::BondBacking][..],
+        ),
+    ] {
+        if !selected_claims.contains(claim) {
+            continue;
+        }
+        for facet in required {
+            if report.body.facet_outcome(*facet) != Some(FindingFacetOutcome::Verified) {
+                return Err(claim_failed(format!(
+                    "{claim} requires verified facet {facet:?}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn require_delivery_transaction_binding(
+    report: &SignedFindingVerifierReport,
+    purchase_record: &SignedFindingPurchaseRecord,
+) -> Result<(), TransactionPassportError> {
+    let receipt_id = report
+        .body
+        .finding_delivery_receipt_id
+        .as_deref()
+        .ok_or_else(|| {
+            claim_failed("delivery-bound claim has no authenticated delivery receipt id")
+        })?;
+    let delivery = report.body.finding_delivery.as_ref().ok_or_else(|| {
+        claim_failed("delivery-bound claim has no authenticated delivery transaction overlay")
+    })?;
+    let purchase = &purchase_record.body;
+    if delivery.digest_check != DeliveryResult::Matched
+        || delivery.media_type_check != FindingMediaTypeCheck::Matched
+    {
+        return Err(claim_failed(
+            "delivery-bound claim does not carry a successful delivery overlay",
+        ));
+    }
+    if receipt_id != purchase.delivery_receipt_id
+        || delivery.finding_id != purchase.finding_id
+        || delivery.listing_id != purchase.listing_id
+        || delivery.accepted_bid_envelope_sha256 != purchase.accepted_bid_envelope_sha256
+        || delivery.venue_admission_envelope_sha256 != purchase.venue_admission_envelope_sha256
+        || delivery.purchase_intent_id != purchase.purchase_intent_id
+        || delivery.authoritative_payment_operation_id
+            != purchase.authoritative_payment_operation_id
+        || purchase.payment_reference != purchase.authoritative_payment_operation_id
+        || derive_purchase_intent_id(&delivery.reservation_id) != purchase.purchase_intent_id
+        || derive_payment_operation_id(&delivery.reservation_id)
+            != purchase.authoritative_payment_operation_id
+    {
+        return Err(claim_failed(
+            "signed delivery report does not bind the passport purchase transaction",
+        ));
+    }
+    Ok(())
+}
+
+fn parse_cognition_claim_set(
+    passport: &TransactionPassport,
+    artifacts: &BTreeMap<String, Vec<u8>>,
+) -> Result<ClaimSet, TransactionPassportError> {
+    let bytes = artifact_bytes(artifacts, &passport.claim_set_path)?;
+    let claim_set: ClaimSet = serde_json::from_slice(bytes).map_err(|error| {
+        invalid_artifact(
+            &passport.claim_set_path,
+            format!("invalid ClaimSet: {error}"),
+        )
+    })?;
+    if claim_set.schema != "chio.transaction.claim-set.v1"
+        || claim_set.id.is_empty()
+        || claim_set.issued_at.is_empty()
+    {
+        return Err(claim_failed("invalid cognition-market ClaimSet header"));
+    }
+    for claim in &claim_set.claims {
+        if claim.claim_id.starts_with("claim.finding.")
+            && !COGNITION_MARKET_CLAIMS.contains(&claim.claim_id.as_str())
+        {
+            return Err(claim_failed(format!(
+                "ClaimSet contains unqualified Finding claim {}",
+                claim.claim_id
+            )));
+        }
+    }
+    Ok(claim_set)
+}
+
+fn validate_finding_claim_subject(
+    subject: &FindingClaimSubject,
+    report: &SignedFindingVerifierReport,
+    finding: &Finding,
+    finding_artifact_sha256: &str,
+) -> Result<(), TransactionPassportError> {
+    if subject.kind != "finding" {
+        return Err(claim_failed("ClaimSet subject is not a Finding"));
+    }
+    if subject.id != report.body.finding_id {
+        return Err(claim_failed(
+            "ClaimSet subject names a different Finding than the signed verifier report",
+        ));
+    }
+    if subject.artifact_sha256 != report.body.finding_artifact_sha256 {
+        return Err(claim_failed(
+            "ClaimSet subject artifact digest does not match the signed verifier report",
+        ));
+    }
+    if finding.finding_id != report.body.finding_id
+        || finding_artifact_sha256 != report.body.finding_artifact_sha256
+    {
+        return Err(claim_failed(
+            "resolved Finding does not match the signed verifier report",
+        ));
+    }
+    Ok(())
+}
+
+fn selected_cognition_claims(
+    claim_set: &ClaimSet,
+) -> Result<BTreeSet<&'static str>, TransactionPassportError> {
+    let mut selected = BTreeSet::new();
+    for claim_id in COGNITION_MARKET_CLAIMS {
+        let mut matching = claim_set
+            .claims
+            .iter()
+            .filter(|candidate| candidate.claim_id == claim_id);
+        let first = matching.next();
+        if matching.next().is_some() {
+            return Err(claim_failed(format!(
+                "ClaimSet contains duplicate rows for {claim_id}"
+            )));
+        }
+        if first.is_some_and(|claim| claim.status == "verified") {
+            selected.insert(claim_id);
+        }
+    }
+    Ok(selected)
+}
+
+fn validate_selected_cognition_claim_rows(
+    claim_set: &ClaimSet,
+    selected_claims: &BTreeSet<&'static str>,
+    report_path: &str,
+    purchase_record_path: Option<&str>,
+    recipe_path: Option<&str>,
+    status_path: Option<&str>,
+) -> Result<(), TransactionPassportError> {
+    for claim_id in selected_claims {
+        let mut matching = claim_set
+            .claims
+            .iter()
+            .filter(|candidate| candidate.claim_id == **claim_id);
+        let claim = matching
+            .next()
+            .ok_or_else(|| claim_failed(format!("ClaimSet missing {claim_id}")))?;
+        if matching.next().is_some()
+            || claim.status != "verified"
+            || claim.verifier_module != FINDING_VERIFIER_MODULE
+            || claim.failure_reason.is_some()
+        {
+            return Err(claim_failed(format!(
+                "ClaimSet has invalid verified row for {claim_id}"
+            )));
+        }
+        let expected_paths = match *claim_id {
+            claim if claim == COGNITION_MARKET_CLAIMS[0] => vec![
+                report_path.to_string(),
+                purchase_record_path
+                    .ok_or_else(|| {
+                        claim_failed("delivery-bound claim is missing its purchase record")
+                    })?
+                    .to_string(),
+            ],
+            claim if claim == COGNITION_MARKET_CLAIMS[1] => vec![
+                report_path.to_string(),
+                recipe_path
+                    .ok_or_else(|| claim_failed("evidence-bound claim is missing its recipe"))?
+                    .to_string(),
+            ],
+            claim if claim == COGNITION_MARKET_CLAIMS[2] => vec![
+                report_path.to_string(),
+                status_path
+                    .ok_or_else(|| claim_failed("status-fresh claim is missing its proof"))?
+                    .to_string(),
+            ],
+            claim if claim == COGNITION_MARKET_CLAIMS[3] => vec![report_path.to_string()],
+            _ => {
+                return Err(claim_failed(format!(
+                    "unsupported cognition-market claim {claim_id}"
+                )))
+            }
+        };
+        if claim.required_evidence != expected_paths || claim.evidence_refs != expected_paths {
+            return Err(claim_failed(format!(
+                "ClaimSet evidence pins do not match {claim_id}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn parse_recipe(
+    path: &str,
+    bytes: &[u8],
+) -> Result<FindingReplayRecipeInput, TransactionPassportError> {
+    require_exact_canonical_json(path, bytes)?;
+    let recipe: FindingReplayRecipeInput = serde_json::from_slice(bytes)
+        .map_err(|error| invalid_artifact(path, format!("invalid replay recipe: {error}")))?;
+    recipe
+        .validate()
+        .map_err(|error| invalid_artifact(path, error.to_string()))?;
+    Ok(recipe)
+}
+
+fn verify_recipe_semantics(
+    finding: &Finding,
+    profile: &SignedFindingChallengeVerifierProfile,
+    profile_envelope_sha256: &str,
+    recipe_bytes: &[u8],
+    recipe: &FindingReplayRecipeInput,
+) -> Result<(), TransactionPassportError> {
+    let recipe_sha256 = crate::sha256_hex(recipe_bytes);
+    if finding.replay_recipe_sha256.as_deref() != Some(recipe_sha256.as_str()) {
+        return Err(claim_failed(
+            "replay recipe does not match the signed Finding commitment",
+        ));
+    }
+    if recipe.context_sha256 != finding.descriptor.context_sha256
+        || recipe.payload_sha256 != finding.payload_sha256
+    {
+        return Err(claim_failed(
+            "replay recipe does not bind the signed Finding context and payload",
+        ));
+    }
+    if recipe.verifier_profile_envelope_sha256 != profile_envelope_sha256 {
+        return Err(claim_failed(
+            "replay recipe does not bind the deployment-pinned verifier profile",
+        ));
+    }
+    if recipe_bytes.len() as u64 > recipe.resource_bounds.max_recipe_bytes {
+        return Err(claim_failed(
+            "replay recipe exceeds its committed recipe-size bound",
+        ));
+    }
+    if recipe_bytes.len() as u64 > profile.body.resource_caps.max_recipe_bytes
+        || recipe.resource_bounds.max_runtime_secs > profile.body.resource_caps.max_runtime_secs
+        || recipe.resource_bounds.max_memory_bytes > profile.body.resource_caps.max_memory_bytes
+        || recipe.resource_bounds.max_recipe_bytes > profile.body.resource_caps.max_recipe_bytes
+        || recipe.resource_bounds.max_evidence_receipts
+            > profile.body.resource_caps.max_evidence_receipts
+    {
+        return Err(claim_failed(
+            "replay recipe exceeds the deployment-pinned profile resource caps",
+        ));
+    }
+    if !profile
+        .body
+        .allowed_runner_manifests
+        .contains(&recipe.runner_manifest_sha256)
+        || !profile.body.allowed_predicates.contains(&recipe.predicate)
+    {
+        return Err(claim_failed(
+            "replay recipe is not allowed by the deployment-pinned verifier profile",
+        ));
+    }
+    Ok(())
+}
+
+fn status_proof_binding(proof: &FindingStatusProofInput) -> (&str, u64) {
+    match proof {
+        FindingStatusProofInput::NonInclusion(value) => (&value.feed_id, value.checked_at),
+        FindingStatusProofInput::Inclusion(value) => (&value.feed_id, value.checked_at),
+    }
+}
+
+fn require_exact_canonical_json(path: &str, bytes: &[u8]) -> Result<(), TransactionPassportError> {
+    let text = std::str::from_utf8(bytes)
+        .map_err(|error| invalid_artifact(path, format!("not UTF-8: {error}")))?;
+    let canonical = canonical_json_bytes_from_str(text)
+        .map_err(|error| invalid_artifact(path, format!("not strict canonical JSON: {error}")))?;
+    if canonical != bytes {
+        return Err(invalid_artifact(path, "bytes are not canonical JSON"));
+    }
+    Ok(())
+}
+
+fn artifact_bytes<'a>(
+    artifacts: &'a BTreeMap<String, Vec<u8>>,
+    path: &str,
+) -> Result<&'a [u8], TransactionPassportError> {
+    artifacts
+        .get(path)
+        .map(Vec::as_slice)
+        .ok_or_else(|| TransactionPassportError::MissingCognitionMarketArtifact(path.to_string()))
+}
+
+fn invalid_artifact(path: &str, message: impl Into<String>) -> TransactionPassportError {
+    TransactionPassportError::InvalidCognitionMarketArtifact {
+        path: path.to_string(),
+        message: message.into(),
+    }
+}
+
+fn claim_failed(message: impl Into<String>) -> TransactionPassportError {
+    TransactionPassportError::CognitionMarketClaimFailed(message.into())
+}

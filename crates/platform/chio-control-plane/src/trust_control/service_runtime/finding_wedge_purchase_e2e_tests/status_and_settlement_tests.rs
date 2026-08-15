@@ -1,3 +1,63 @@
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admission_views_hide_revoked_terminal_authorities() -> TestResult {
+    let deployment = provision(RevealCase::honest())?;
+    let authority = deployment.open()?;
+    let mut state = market_state(authority, market_config());
+    deployment.seed_and_activate(&state).await?;
+    let search_uri = format!("/v1/findings/search?contextSha256={HEX64}&limit=50");
+    let admission_uri = format!("/v1/findings/{}/admission", deployment.web.finding_id);
+
+    let (status, body) = send(&state, public_get(&search_uri)?).await?;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json_body(&body)?;
+    let live_row = rows["results"]
+        .as_array()
+        .ok_or_else(|| missing("search results array"))?
+        .iter()
+        .find(|row| row["findingId"] == serde_json::json!(deployment.web.finding_id))
+        .ok_or_else(|| missing("activated finding missing from search"))?;
+    assert!(live_row["admission"].is_object());
+    let (status, _) = send(&state, public_get(&admission_uri)?).await?;
+    assert_eq!(status, StatusCode::OK);
+
+    for authority_id in [
+        deployment
+            .web
+            .admission
+            .body
+            .purchase_authority
+            .authority_id
+            .clone(),
+        deployment
+            .web
+            .admission
+            .body
+            .failed_delivery_authority
+            .authority_id
+            .clone(),
+    ] {
+        state.finding_authority_status_resolver = Some(Arc::new(
+            TestTerminalAuthorityStatusResolver::revoked(&authority_id),
+        ));
+        let (status, body) = send(&state, public_get(&search_uri)?).await?;
+        assert_eq!(status, StatusCode::OK);
+        let rows = json_body(&body)?;
+        let revoked_row = rows["results"]
+            .as_array()
+            .ok_or_else(|| missing("search results array"))?
+            .iter()
+            .find(|row| row["findingId"] == serde_json::json!(deployment.web.finding_id))
+            .ok_or_else(|| missing("activated finding missing from search"))?;
+        assert!(
+            revoked_row["admission"].is_null(),
+            "revoked terminal authority {authority_id} remained discoverable"
+        );
+        let (status, _) = send(&state, public_get(&admission_uri)?).await?;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+    Ok(())
+}
+
 fn deny_reason(response: &ToolCallResponse) -> String {
     response.reason.clone().unwrap_or_default()
 }
@@ -183,7 +243,8 @@ async fn finding_purchase_without_status_verifier_denies_before_effects() -> Tes
         ..LaneOptions::standard()
     })
     .await?;
-    let denied = lane.reveal("m6-missing-status-verifier", "m6-missing-status-nonce")?;
+    let denied =
+        lane.reveal_without_status("m6-missing-status-verifier", "m6-missing-status-nonce")?;
     assert_denied_with(&denied, "configured kernel verifier");
     assert_eq!(lane.calls.authorizations.load(Ordering::SeqCst), 0);
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 0);
@@ -193,6 +254,10 @@ async fn finding_purchase_without_status_verifier_denies_before_effects() -> Tes
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn finding_status_retraction() -> TestResult {
+    run_finding_status_retraction().await
+}
+
+pub(super) async fn run_finding_status_retraction() -> TestResult {
     let lane = open_lane(LaneOptions {
         install_status_verifier: true,
         publish_status_proof: false,
@@ -210,16 +275,24 @@ async fn finding_status_retraction() -> TestResult {
             config.status_max_epoch_age_secs,
         )?;
     let now = unix_timestamp_now();
-    assert_eq!(
-        status_store.list_non_inclusion_enrollment_candidates(
-            &config.status_feed_operator_ref,
-            now,
-            200,
-        )?,
-        vec![lane.deployment.web.finding_id.clone()],
-        "an active admission must enroll its first non-inclusion proof"
+    assert!(
+        status_store
+            .list_non_inclusion_enrollment_candidates(
+                &config.status_feed_operator_ref,
+                now,
+                200,
+            )?
+            .is_empty(),
+        "activation must enroll the admission's first non-inclusion proof"
     );
+    let enrolled = status_store
+        .get_latest_proof(
+            &config.status_feed_operator_ref,
+            &lane.deployment.web.finding_id,
+        )?
+        .ok_or("activation-enrolled non-inclusion proof is durable")?;
     let live = publisher.publish_non_inclusion(&lane.deployment.web.finding_id, &[], now)?;
+    assert_eq!(live.proof_sha256, enrolled.proof_sha256);
     assert!(status_store
         .list_non_inclusion_enrollment_candidates(
             &config.status_feed_operator_ref,
@@ -265,6 +338,7 @@ async fn finding_status_retraction() -> TestResult {
         &lane.deployment,
         &delivered.receipt,
         &lane.buyer,
+        &lane.authority,
         status_store.clone(),
     )?;
 
@@ -365,12 +439,6 @@ async fn finding_status_retraction() -> TestResult {
             config.status_max_epoch_age_secs,
         )?;
     let status_gate_now = unix_timestamp_now();
-    let status_gate_live = status_gate_publisher.publish_non_inclusion(
-        &status_lane.deployment.web.finding_id,
-        &[],
-        status_gate_now,
-    )?;
-    let status_gate_live_b64 = STANDARD.encode(&status_gate_live.proof_bytes);
 
     let intent_id = sha256_hex(b"m6-voluntary-retraction-intent");
     let intent_bytes = canonical_json_bytes(&serde_json::json!({
@@ -414,13 +482,19 @@ async fn finding_status_retraction() -> TestResult {
     let hook_finding_id = lane.deployment.web.finding_id.clone();
     let hook_intent_bytes = intent_bytes.clone();
     let status_gate_intent_now = unix_timestamp_now().max(status_gate_now);
-    let inclusion_deadline =
-        status_gate_intent_now + config.status_feed_service_bond.inclusion_sla_secs;
+    let hook_inclusion_sla_secs = config.status_feed_service_bond.inclusion_sla_secs;
+    let status_gate_live = status_gate_publisher.publish_non_inclusion(
+        &status_lane.deployment.web.finding_id,
+        &[],
+        status_gate_intent_now,
+    )?;
+    let status_gate_live_b64 = STANDARD.encode(&status_gate_live.proof_bytes);
     status_lane
         .kernel
         .set_payment_adapter(Box::new(ReversibleHoldAdapter {
             calls: status_lane.calls.clone(),
             authorize_hook: Some(Arc::new(move || {
+                let hook_now = unix_timestamp_now();
                 hook_store
                     .issue_retraction_intent(&chio_store_sqlite::FindingRetractionIntentInput {
                         intent_id: &hook_intent_id,
@@ -429,9 +503,9 @@ async fn finding_status_retraction() -> TestResult {
                         finding_id: &hook_finding_id,
                         source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
                         intent_bytes: &hook_intent_bytes,
-                        issued_at: status_gate_intent_now,
-                        inclusion_deadline,
-                        created_at: status_gate_intent_now,
+                        issued_at: hook_now,
+                        inclusion_deadline: hook_now + hook_inclusion_sla_secs,
+                        created_at: hook_now,
                     })
                     .map(|_| ())
                     .map_err(|error| error.to_string())
@@ -445,11 +519,18 @@ async fn finding_status_retraction() -> TestResult {
         "m6-pending-nonce-2",
     )?;
     assert_denied_with(&pending, "pending");
+    let pending_intent = status_gate_store
+        .get_retraction_intent(&intent_id)?
+        .ok_or("the payment-boundary hook retains the pending retraction")?;
+    assert_eq!(
+        pending_intent.state,
+        chio_store_sqlite::FindingRetractionIntentState::DispatchEligible
+    );
     assert_eq!(status_lane.calls.authorizations.load(Ordering::SeqCst), 1);
     assert_eq!(status_lane.calls.releases.load(Ordering::SeqCst), 1);
     assert_eq!(status_lane.invocations.load(Ordering::SeqCst), 0);
 
-    let status_gate_retraction_now = unix_timestamp_now().max(status_gate_intent_now);
+    let status_gate_retraction_now = unix_timestamp_now().max(pending_intent.issued_at);
     let included = status_gate_publisher.publish_retraction(
         &intent_id,
         &[],
@@ -1012,19 +1093,20 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
         "nonce-settle-1",
     )?;
     assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
+    let finalized_at = unix_timestamp_now();
 
     let purchase_store = lane.authority.finding_purchase_store();
     purchase_store.register_community_fund_destination(
         &lane.deployment.web.allocation_id,
         COMMUNITY_FUND_DESTINATION,
-        now,
+        finalized_at,
     )?;
     let record = lane.coordinator.finalize_delivery(
         &lane.purchase.handshake.reservation_id,
         &response.receipt,
         &lane.deployment.web.admission,
         &lane.deployment.web.backing,
-        now,
+        finalized_at,
     )?;
     verify_signed_purchase_record(&record, &keypair(16).public_key())?;
     assert_eq!(

@@ -111,9 +111,9 @@ authorization is a market-side mint), and challenge evaluation (M5).
 
 ## Program constraints binding every task
 
-- Ship dark: every surface stays behind `cognition-market-experimental`
-  (control-plane, store, open-market already forward it; `chio-cli` gains the
-  feature). The default build must not link the market.
+- Ship dark until M9 qualification. M9 promotes the qualified surface into
+  the default control-plane, store, open-market, kernel, settlement, and CLI
+  build graph.
 - Fail-closed everywhere; no ambient lookup may fill an omitted authority
   artifact; strict raw-first ingress for every buyer-presented artifact.
 - No em dashes. Clippy `unwrap_used`/`expect_used` deny. Conventional

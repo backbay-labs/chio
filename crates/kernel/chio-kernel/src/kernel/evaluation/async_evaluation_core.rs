@@ -1789,11 +1789,9 @@ impl ChioKernel {
 
         // The pool claim is a durable, idempotent participant in dispatch.
         // Commit it before the admission operation and invocation capture can
-        // become DispatchCommitted. A claim rejection therefore remains a
-        // compensatable pre-dispatch denial. If the process stops after this
+        // become DispatchCommitted, keeping rejection compensatable. A crash after this
         // claim, the admission operation is still pre-dispatch and exact replay
         // resumes against the same payment operation and pool claim.
-        #[cfg(feature = "cognition-market-experimental")]
         let pool_claim = self.claim_finding_pool_immediately_before_dispatch(
             matched_grant,
             request,
@@ -1802,11 +1800,9 @@ impl ChioKernel {
                 .as_ref()
                 .map(|admission| admission.operation().binding().operation_id().as_str()),
         );
-        #[cfg(feature = "cognition-market-experimental")]
         if let Ok(purchase) = &pool_claim {
             verified_finding_admission.purchase.clone_from(purchase);
         }
-        #[cfg(feature = "cognition-market-experimental")]
         if let Err(error) = pool_claim {
             let reason = error.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding pool dispatch claim denied");

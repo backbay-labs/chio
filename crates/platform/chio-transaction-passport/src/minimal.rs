@@ -324,7 +324,7 @@ pub fn verify_minimal_passport_artifacts(
     )
 }
 
-fn verify_minimal_passport_artifacts_with_anchor_inputs(
+pub(crate) fn verify_minimal_passport_artifacts_with_anchor_inputs(
     passport: &TransactionPassport,
     passport_path: String,
     evidence_graph_bytes: &[u8],
@@ -1494,6 +1494,8 @@ struct RootClaimSet {
     schema: String,
     id: String,
     issued_at: String,
+    #[serde(default, rename = "subject")]
+    _subject: Option<serde_json::Value>,
     claims: Vec<RootClaimSetClaim>,
 }
 

@@ -16,6 +16,8 @@ required_assumption_ids = [
   "ASSUME-CHAIN-FINALITY",
   "ASSUME-TRACE-OBSERVER",
   "ASSUME-WASM-ENGINE",
+  "ASSUME-FINDING-STATUS-OPERATOR-COMPLETENESS",
+  "ASSUME-FINDING-SELLER-TOOL-SERVER",
 ]
 
 assumptions = [
@@ -32,6 +34,8 @@ assumptions = [
   "ASSUME-CHAIN-FINALITY|audited_external|External chain and oracle finality are assumed only after the configured confirmation/finality policy accepts the evidence.|P4,P7",
   "ASSUME-TRACE-OBSERVER|audited_observability|An installed synchronous runtime trace observer is assumed to receive exactly once before finalization every successful revocation commit, completed tool-call revocation admission, and receipt append. Kernel-assigned source sequences, checked revocation subject identities, exact revocation-source identities, and other callback fields are not rewritten before recording, and the recorder runs without calibration mutations. Delivery reordering is reconciled from source sequences; detectable omissions, duplicates, inconsistent kernel depth limits, ambiguous admission-to-receipt joins, unmatched revocation sources, and relevant revocations between admission and receipt append fail closed. This assumption does not assert that any observed kernel decision is safe.|P2,P4,P10",
   "ASSUME-WASM-ENGINE|audited_platform|Wasmtime is assumed to enforce its documented i32 return, trap, fuel-metering, memory-limiter, and in-process sandbox semantics for untrusted guest code.|P3",
+  "ASSUME-FINDING-STATUS-OPERATOR-COMPLETENESS|audited_service|The qualified cognition-market profile verifies authentic fresh status-feed state but assumes the external status operator inserts every required retraction into that feed.|P4,P7,P10",
+  "ASSUME-FINDING-SELLER-TOOL-SERVER|audited_service|The qualified cognition-market profile binds kernel-observed seller output bytes and receipts but assumes the seller tool server performs any claimed effect outside Chio's observation boundary.|P3,P6,P10",
 ]
 
 # Retiring an assumption requires named model evidence and a concrete

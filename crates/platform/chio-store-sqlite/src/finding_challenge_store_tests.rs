@@ -64,6 +64,7 @@ fn fixture() -> Fixture {
             LISTING_ID,
             &hex64('d'),
             &hex64('c'),
+            &hex64('5'),
             NOW,
         )
         .expect("install active admission");
@@ -733,6 +734,8 @@ fn reserve_slot(fixture: &Fixture, tag: &str, listing_id: &str, allocation_id: &
             bid_envelope_sha256: &bid,
             ask_digest: &ask,
             admission_envelope_sha256: &admission,
+            fee_schedule_envelope_sha256: &hex64('5'),
+            participation_epoch: 0,
             amount_units: 10,
             currency: "USD",
             expires_at: NOW + 3_600,
@@ -2135,9 +2138,11 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
 
     // No new slot can open above the frozen cutoff.
     let blocked_reservation = "reservation-gamma";
-    fixture
-        .purchases
-        .open_reservation(&FindingPurchaseReservationInput {
+    assert!(
+        matches!(
+            fixture
+                .purchases
+                .open_reservation(&FindingPurchaseReservationInput {
             reservation_id: blocked_reservation,
             purchase_intent_id: "intent-gamma",
             authoritative_payment_operation_id: "payment-gamma",
@@ -2149,6 +2154,8 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
             bid_envelope_sha256: &digest("bid-gamma"),
             ask_digest: &digest("ask-gamma"),
             admission_envelope_sha256: &hex64('c'),
+            fee_schedule_envelope_sha256: &hex64('5'),
+            participation_epoch: 0,
             amount_units: 10,
             currency: "USD",
             expires_at: NOW + 3_600,
@@ -2156,14 +2163,11 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
             allocation_id: &fixture.allocation_id,
             maximum_sale_exposure_units: REGISTERED_EXPOSURE_CAP,
             created_at: NOW,
-        })
-        .expect("open reservation");
-    assert!(
-        matches!(
-            fixture.purchases.reserve_slot(blocked_reservation, NOW + 6),
-            Err(FindingPurchaseStoreError::SalesBlocked(_))
+                }),
+            Err(FindingPurchaseStoreError::Conflict(message))
+                if message == "listing sales are blocked"
         ),
-        "no slot may open once the upheld transaction has blocked the listing"
+        "no reservation may open once the upheld transaction has blocked the listing"
     );
 
     assert_eq!(
@@ -4611,7 +4615,6 @@ fn schema_shape_is_verified_on_every_open() {
             .expect("read on a clean schema")
             .is_none());
     }
-
     // Drop a lifecycle trigger out of band, the way a partial restore or a
     // hand-edited database would, and confirm the open refuses rather than
     // serving a schema that no longer enforces the lifecycle.
@@ -4634,3 +4637,4 @@ fn schema_shape_is_verified_on_every_open() {
     }
     SqliteAuthorityStore::open_serving(&database, &lock_root).expect("reopen with intact schema");
 }
+include!("finding_challenge_store_tests/effect_root_recovery.rs");

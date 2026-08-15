@@ -1,5 +1,3 @@
-#![cfg(feature = "cognition-market-experimental")]
-
 //! Direct coverage for the verifiable audit selection: the deterministic
 //! decision about which listings one published-rate round must audit, and
 //! the independent recheck of the report that round publishes.
@@ -220,12 +218,14 @@ fn verify_audit_report(
     let audit_attempts = audit_attempts_for_report(report, eligible, epoch);
     let resolved_outcomes = resolved_outcomes_for_report(report, eligible, &audit_attempts);
     let evaluator_policies = [audit_evaluator_policy()];
-    let witnesses = report_witnesses(
+    let mut witnesses = report_witnesses(
         epoch,
         &evaluator_policies,
         &audit_attempts,
         &resolved_outcomes,
     );
+    witnesses.audit_status =
+        evaluator_status_observed_at(&audit_authority_policy(), None, report.reported_at);
     let signed_epoch = sign_epoch(epoch);
     assert_eq!(
         signed_envelope_sha256(&signed_epoch).test_expect("epoch digest"),
@@ -1147,10 +1147,17 @@ fn report_verification_requires_fresh_authenticated_evaluator_status() {
     stale_report.reported_at = REPORTED_AT + 3_601;
     reseal(&mut stale_report);
     witnesses.pinned_audit_policy.valid_until = stale_report.reported_at + 1;
-    witnesses.governance_status =
-        evaluator_status_observed_at(&governance_policy(), None, stale_report.reported_at);
-    witnesses.audit_status =
-        evaluator_status_observed_at(&audit_authority_policy(), None, stale_report.reported_at);
+    witnesses.audit_status = evaluator_status_observed_at(
+        &witnesses.pinned_audit_policy,
+        None,
+        stale_report.reported_at,
+    );
+    witnesses.pinned_governance_policy.valid_until = stale_report.reported_at + 1;
+    witnesses.governance_status = evaluator_status_observed_at(
+        &witnesses.pinned_governance_policy,
+        None,
+        stale_report.reported_at,
+    );
     witnesses.seed_witness_status =
         evaluator_status_observed_at(&seed_witness_policy(), None, stale_report.reported_at);
     witnesses.evaluator_statuses = vec![evaluator_status(&policies[0], None)];

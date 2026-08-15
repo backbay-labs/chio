@@ -2,7 +2,8 @@ use super::*;
 
 #[derive(Clone, Default)]
 pub(super) struct AdmissionReceiptProjectionStore {
-    receipt: std::sync::Arc<std::sync::Mutex<Option<ChioReceipt>>>,
+    receipts:
+        std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, ChioReceipt>>>,
     successful_appends: std::sync::Arc<AtomicU64>,
     fail_next_append: std::sync::Arc<AtomicBool>,
 }
@@ -13,10 +14,12 @@ impl AdmissionReceiptProjectionStore {
     }
 
     pub(super) fn receipt(&self) -> Option<ChioReceipt> {
-        self.receipt
+        self.receipts
             .lock()
             .expect("admission receipt projection lock")
-            .clone()
+            .values()
+            .next()
+            .cloned()
     }
 
     pub(super) fn successful_appends(&self) -> u64 {
@@ -31,10 +34,10 @@ impl ReceiptStore for AdmissionReceiptProjectionStore {
                 "injected admission receipt projection failure".to_owned(),
             ));
         }
-        let mut stored = self.receipt.lock().map_err(|_| {
+        let mut stored = self.receipts.lock().map_err(|_| {
             ReceiptStoreError::Conflict("admission receipt projection lock poisoned".to_owned())
         })?;
-        if let Some(existing) = stored.as_ref() {
+        if let Some(existing) = stored.get(&receipt.id) {
             let existing = chio_core::canonical::canonical_json_bytes(existing)
                 .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?;
             let projected = chio_core::canonical::canonical_json_bytes(receipt)
@@ -43,7 +46,7 @@ impl ReceiptStore for AdmissionReceiptProjectionStore {
                 ReceiptStoreError::Conflict("admission receipt projection id conflicts".to_owned())
             });
         }
-        *stored = Some(receipt.clone());
+        stored.insert(receipt.id.clone(), receipt.clone());
         self.successful_appends.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -57,13 +60,12 @@ impl ReceiptStore for AdmissionReceiptProjectionStore {
         receipt_id: &str,
     ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
         Ok(self
-            .receipt
+            .receipts
             .lock()
             .map_err(|_| {
                 ReceiptStoreError::Conflict("admission receipt projection lock poisoned".to_owned())
             })?
-            .as_ref()
-            .filter(|receipt| receipt.id == receipt_id)
+            .get(receipt_id)
             .cloned())
     }
 

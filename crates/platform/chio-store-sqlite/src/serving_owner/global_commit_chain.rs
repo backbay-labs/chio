@@ -125,7 +125,6 @@ struct FindingChallengeProjectionEntry<'a> {
 }
 
 #[derive(Serialize)]
-#[cfg(feature = "cognition-market-experimental")]
 struct FindingStatusProjectionEntry<'a> {
     format: &'static str,
     previous_commit_digest: &'a str,
@@ -358,7 +357,6 @@ pub(crate) fn append_global_commit(
 /// Append the challenge projection and its authority-wide reference when
 /// the current challenge snapshot differs from the latest committed one.
 /// Identical replays produce no phantom history entry.
-#[cfg(feature = "cognition-market-experimental")]
 pub(crate) fn append_finding_challenge_projection_if_changed(
     transaction: &Transaction<'_>,
     fence: &StoreMutationFence,
@@ -439,7 +437,6 @@ pub(crate) fn append_finding_challenge_projection_if_changed(
 /// Append the complete Finding status projection and its authority-wide
 /// reference when durable status state changed. Exact replays do not create
 /// phantom history entries.
-#[cfg(feature = "cognition-market-experimental")]
 pub(crate) fn append_finding_status_projection_if_changed(
     transaction: &Transaction<'_>,
     fence: &StoreMutationFence,
@@ -1340,7 +1337,6 @@ fn finding_challenge_snapshot_digest_v1(
     })
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 fn finding_status_snapshot_digest(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
@@ -2270,7 +2266,6 @@ pub(super) fn verify_finding_challenge_projection_coverage(
     Ok(())
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 fn verify_finding_status_projection_coverage(
     connection: &Connection,
 ) -> Result<(), SqliteServingOwnerError> {
@@ -2400,23 +2395,6 @@ fn verify_finding_status_projection_coverage(
             ));
         }
         _ => {}
-    }
-    Ok(())
-}
-
-#[cfg(not(feature = "cognition-market-experimental"))]
-fn verify_finding_status_projection_coverage(
-    connection: &Connection,
-) -> Result<(), SqliteServingOwnerError> {
-    let global_reference_present = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM authority_global_commits WHERE projection_kind = 'finding_status')",
-        [],
-        |row| row.get::<_, bool>(0),
-    )?;
-    if global_reference_present {
-        return Err(invalid(
-            "finding status projection exists without cognition-market support",
-        ));
     }
     Ok(())
 }

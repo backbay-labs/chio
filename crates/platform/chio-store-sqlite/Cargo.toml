@@ -20,24 +20,13 @@ pq = ["chio-core/pq", "chio-kernel/pq"]
 # byte-equivalent behaviour. Enabling this feature wires the
 # recursive-CTE query layer.
 lineage = []
+# Cross-crate cognition-market tests may seed already-verified sibling
+# records without exposing those fixture helpers in production builds.
+cognition-market-test-support = []
 # Deterministic fault-injection hooks used only by the separate-process chaos
 # harness. Default-off so production store builds expose no environment-driven
 # pause points.
 chaos-test-hooks = []
-# Cognition market: gates the durable finding-market store (published
-# findings, replay-recipe blobs, collateral allocations, fee events,
-# and venue admissions). Default-off so the workspace keeps its
-# byte-equivalent behaviour. Enabling this feature wires the
-# finding-market schema and store atop the serving-owner fence, plus
-# the chio-finding artifact types it persists.
-cognition-market-experimental = [
-    "dep:chio-finding",
-    "chio-kernel/cognition-market-experimental",
-    "chio-settle/cognition-market-experimental",
-]
-# Test-only helpers used by cross-crate cognition-market integration tests.
-cognition-market-test-support = ["cognition-market-experimental"]
-
 [dependencies]
 chacha20poly1305 = { workspace = true }
 chio-agent-web-interop = { workspace = true }
@@ -45,13 +34,14 @@ chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
 chio-credit = { workspace = true }
 chio-federation = { workspace = true }
 chio-federation-authority = { workspace = true }
-chio-finding = { workspace = true, optional = true }
+chio-finding = { workspace = true }
 chio-fiscal = { workspace = true }
 chio-kernel = { workspace = true }
 chio-kernel-core = { workspace = true }
 chio-settle = { workspace = true }
 chio-sqlite-file-identity = { path = "../chio-sqlite-file-identity" }
 chio-supervisor = { workspace = true }
+chio-transaction-passport = { workspace = true }
 hex = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
@@ -74,7 +64,7 @@ async-trait = { workspace = true }
 chio-kernel = { workspace = true, features = ["admission-test-support"] }
 chio-test-support = { workspace = true }
 chio-swarm-authority = { workspace = true }
-chio-open-market = { workspace = true, features = ["cognition-market-experimental"] }
+chio-open-market = { workspace = true }
 criterion = { workspace = true }
 frost-ed25519 = { workspace = true }
 loom = { workspace = true }

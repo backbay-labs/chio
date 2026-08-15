@@ -13,14 +13,17 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use chio_core::{sha256_hex, StoreMutationFence};
+use chio_finding::FindingStatusProofInput;
 use chio_kernel::admission_operation::AdmissionOperationStoreError;
+use chio_transaction_passport::{
+    CognitionMarketStatusObservation, CognitionMarketStatusTrustStore,
+};
 use rusqlite::{
     params, Connection, ErrorCode, OptionalExtension, Row, Transaction, TransactionBehavior,
 };
 use thiserror::Error;
 
 use crate::admission_operation_store::verify_active_owner;
-#[cfg(feature = "cognition-market-experimental")]
 use crate::finding_challenge_store::{
     begin_finalizing_under_sanction_tx, FindingFinalizingAuthorizationInput, FindingLiabilityState,
 };
@@ -394,11 +397,9 @@ impl SqliteFindingStatusStore {
     }
 
     fn commit_write(&self, transaction: Transaction<'_>) -> Result<(), FindingStatusStoreError> {
-        #[cfg(feature = "cognition-market-experimental")]
         self.serving_owner
             .append_finding_challenge_projection_if_changed(&transaction)
             .map_err(|error| FindingStatusStoreError::Unavailable(error.to_string()))?;
-        #[cfg(feature = "cognition-market-experimental")]
         self.serving_owner
             .append_finding_status_projection_if_changed(&transaction)
             .map_err(|error| FindingStatusStoreError::Unavailable(error.to_string()))?;
@@ -602,7 +603,6 @@ impl SqliteFindingStatusStore {
     /// hold cannot call it because the liability must still be in the durable
     /// `pending_appeal` state. Exact replay accepts an already-finalizing head
     /// only when the outbox and sticky row remain consistent.
-    #[cfg(feature = "cognition-market-experimental")]
     pub fn begin_finalizing_with_retraction(
         &self,
         liability_key: &str,
@@ -893,7 +893,8 @@ impl SqliteFindingStatusStore {
             advance.epoch.recorded_at,
         )?;
         let prior_floor = load_floor_tx(&transaction, advance.epoch.feed_id)?;
-        let mut outcome = persist_epoch_tx(&transaction, &advance.epoch, prior_floor.as_ref())?;
+        let mut outcome =
+            persist_epoch_tx(&transaction, &advance.epoch, prior_floor.as_ref(), true)?;
 
         for leaf in advance.leaves {
             if persist_leaf_tx(&transaction, &advance.epoch, leaf)?
@@ -942,6 +943,100 @@ impl SqliteFindingStatusStore {
         })?;
         verify_proof_floor_binding(proof, &floor)?;
         let outcome = persist_proof_tx(&transaction, proof)?;
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(outcome)
+    }
+
+    /// Classify and retain an authenticated inclusion against the durable
+    /// floor while holding one write transaction. A concurrent floor advance
+    /// therefore cannot move a proof between future, current, and retained
+    /// classifications before its sticky tombstone is persisted.
+    fn record_verified_retraction_against_current_floor(
+        &self,
+        epoch: &VerifiedFindingStatusEpochInput<'_>,
+        proof: &VerifiedFindingStatusProofInput<'_>,
+    ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
+        validate_epoch_input(epoch)?;
+        validate_proof_input(proof)?;
+        verify_proof_epoch_binding(proof, epoch)?;
+        if proof.kind != FindingStatusProofKind::Inclusion {
+            return Err(invariant(
+                "atomic retraction API received a non-inclusion proof",
+            ));
+        }
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        ensure_feed_exists_tx(&transaction, epoch.feed_id, epoch.operator_id)?;
+        let floor = load_floor_tx(&transaction, epoch.feed_id)?.ok_or_else(|| {
+            FindingStatusStoreError::MissingFloor {
+                feed_id: epoch.feed_id.to_owned(),
+            }
+        })?;
+        if epoch.operator_id != floor.operator_id
+            || epoch.key_domain_nonce != floor.key_domain_nonce
+        {
+            return Err(invariant(
+                "authenticated retraction changed the durable feed identity",
+            ));
+        }
+        let outcome = match epoch.map_epoch.cmp(&floor.map_epoch) {
+            std::cmp::Ordering::Less => {
+                if epoch.operator_key_epoch > floor.operator_key_epoch
+                    || (epoch.operator_key_epoch == floor.operator_key_epoch
+                        && (epoch.operator_key != floor.operator_key
+                            || epoch.operator_authorization_sha256
+                                != floor.operator_authorization_sha256))
+                {
+                    return Err(invariant(
+                        "retained retraction does not match the floor's operator lineage",
+                    ));
+                }
+                match persist_epoch_record_tx(&transaction, epoch) {
+                    Ok(mut outcome) => {
+                        if persist_proof_tx(&transaction, proof)?
+                            == FindingStatusWriteOutcome::Inserted
+                        {
+                            outcome = FindingStatusWriteOutcome::Inserted;
+                        }
+                        outcome
+                    }
+                    Err(FindingStatusStoreError::Equivocation { .. }) => {
+                        persist_conflicting_retraction_tx(&transaction, proof)?
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            std::cmp::Ordering::Equal => {
+                let retained_epoch =
+                    load_epoch_tx(&transaction, epoch.feed_id, epoch.map_epoch)?
+                        .ok_or_else(|| invariant("status floor points to a missing epoch"))?;
+                let signed_epoch_sha256 = sha256_hex(epoch.signed_epoch_bytes);
+                if epoch_record_matches_input(&retained_epoch, epoch, &signed_epoch_sha256)
+                    && floor.operator_authorization_sha256 == epoch.operator_authorization_sha256
+                {
+                    persist_proof_tx(&transaction, proof)?
+                } else {
+                    persist_conflicting_retraction_tx(&transaction, proof)?
+                }
+            }
+            std::cmp::Ordering::Greater => {
+                match persist_epoch_tx(&transaction, epoch, Some(&floor), false) {
+                    Ok(mut outcome) => {
+                        if persist_proof_tx(&transaction, proof)?
+                            == FindingStatusWriteOutcome::Inserted
+                        {
+                            outcome = FindingStatusWriteOutcome::Inserted;
+                        }
+                        outcome
+                    }
+                    Err(FindingStatusStoreError::Equivocation { .. }) => {
+                        persist_conflicting_retraction_tx(&transaction, proof)?
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+        };
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(outcome)
@@ -1070,46 +1165,24 @@ impl SqliteFindingStatusStore {
         feed_id: &str,
         finding_id: &str,
         trusted_now: u64,
+        max_epoch_age_secs: u64,
     ) -> Result<FindingStatusDecision, FindingStatusStoreError> {
         require_identifier(feed_id, "feed_id")?;
         require_hex64(finding_id, "finding_id")?;
         require_positive(trusted_now, "trusted_now")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_read(&mut connection)?;
-        ensure_feed_registered_tx(&transaction, feed_id)?;
-
-        if let Some(status) = load_status_tx(&transaction, feed_id, finding_id)? {
-            transaction.commit().map_err(sqlite_error)?;
-            return Ok(match status.state {
-                FindingStickyStatus::Pending => FindingStatusDecision::Pending(status),
-                FindingStickyStatus::Retracted => FindingStatusDecision::Retracted(status),
-            });
-        }
-
-        let floor = load_floor_tx(&transaction, feed_id)?.ok_or_else(|| {
-            FindingStatusStoreError::MissingFloor {
-                feed_id: feed_id.to_owned(),
-            }
-        })?;
-        let proof = load_proof_tx(&transaction, feed_id, finding_id, floor.map_epoch)?.ok_or_else(
-            || FindingStatusStoreError::MissingState {
-                finding_id: finding_id.to_owned(),
-            },
+        let decision = status_for_purchase_tx(
+            &transaction,
+            feed_id,
+            finding_id,
+            trusted_now,
+            max_epoch_age_secs,
+            None,
+            None,
         )?;
-        if proof.kind != FindingStatusProofKind::NonInclusion {
-            return Err(invariant(
-                "inclusion proof exists without the required sticky retracted state",
-            ));
-        }
-        verify_proof_record_at_floor(&proof, &floor)?;
-        if trusted_now < proof.checked_at || trusted_now >= proof.valid_until {
-            return Err(FindingStatusStoreError::StaleProof {
-                finding_id: finding_id.to_owned(),
-                trusted_now,
-            });
-        }
         transaction.commit().map_err(sqlite_error)?;
-        Ok(FindingStatusDecision::VerifiedLive(proof))
+        Ok(decision)
     }
 
     /// Load a local retraction intent by id.
@@ -1131,7 +1204,6 @@ impl SqliteFindingStatusStore {
     /// voluntary retraction made the finding sticky first, the unique intent
     /// for the same feed and finding satisfies the effect without replacing
     /// its signed bytes or sticky digest.
-    #[cfg(feature = "cognition-market-experimental")]
     pub fn get_retraction_intent_for_effect(
         &self,
         effect_intent_id: &str,
@@ -1485,6 +1557,217 @@ impl SqliteFindingStatusStore {
         transaction.commit().map_err(sqlite_error)?;
         Ok(leaves)
     }
+}
+
+impl CognitionMarketStatusTrustStore for SqliteFindingStatusStore {
+    fn admit_verified_status(
+        &self,
+        observation: &CognitionMarketStatusObservation<'_>,
+    ) -> Result<(), String> {
+        let epoch = &observation.signed_epoch.body;
+        let (
+            feed_id,
+            key_domain_nonce,
+            map_epoch,
+            epoch_id,
+            root_hash,
+            finding_id,
+            kind,
+            checked_at,
+            status_value_bytes,
+            retraction_intent_sha256,
+        ) = match observation.proof {
+            FindingStatusProofInput::NonInclusion(proof) => (
+                proof.feed_id.as_str(),
+                proof.key_domain_nonce,
+                proof.map_epoch,
+                proof.status_epoch_id.as_str(),
+                proof.root_hash.as_str(),
+                proof.finding_id.as_str(),
+                FindingStatusProofKind::NonInclusion,
+                proof.checked_at,
+                None,
+                None,
+            ),
+            FindingStatusProofInput::Inclusion(proof) => (
+                proof.feed_id.as_str(),
+                proof.key_domain_nonce,
+                proof.map_epoch,
+                proof.status_epoch_id.as_str(),
+                proof.root_hash.as_str(),
+                proof.finding_id.as_str(),
+                FindingStatusProofKind::Inclusion,
+                proof.checked_at,
+                Some(b"retracted".to_vec()),
+                Some(proof.retraction_intent_sha256.as_str()),
+            ),
+        };
+        let verified_proof = VerifiedFindingStatusProofInput {
+            feed_id,
+            operator_id: &epoch.operator_id,
+            key_domain_nonce,
+            map_epoch,
+            epoch_id,
+            root_hash,
+            finding_id,
+            kind,
+            proof_bytes: observation.proof_bytes,
+            status_value_bytes: status_value_bytes.as_deref(),
+            retraction_intent_sha256,
+            checked_at,
+            valid_until: epoch.valid_until,
+            recorded_at: observation.recorded_at,
+        };
+        let operator_key = epoch.operator_key.to_hex();
+        let verified_epoch = VerifiedFindingStatusEpochInput {
+            feed_id: &epoch.feed_id,
+            operator_id: &epoch.operator_id,
+            key_domain_nonce: epoch.key_domain_nonce,
+            map_epoch: epoch.map_epoch,
+            epoch_id: &epoch.status_epoch_id,
+            root_hash: &epoch.root_hash,
+            signed_epoch_bytes: observation.signed_epoch_bytes,
+            operator_key: &operator_key,
+            operator_key_epoch: epoch.operator_key_epoch,
+            operator_authorization_sha256: observation.operator_authorization_sha256,
+            generated_at: epoch.generated_at,
+            valid_until: epoch.valid_until,
+            recorded_at: observation.recorded_at,
+        };
+        if kind == FindingStatusProofKind::Inclusion {
+            self.record_verified_retraction_against_current_floor(&verified_epoch, &verified_proof)
+                .map_err(|error| error.to_string())?;
+        } else {
+            let current_epoch = self
+                .get_current_epoch(feed_id)
+                .map_err(|error| error.to_string())?;
+            if current_epoch.signed_epoch_bytes != observation.signed_epoch_bytes
+                || current_epoch.operator_authorization_sha256
+                    != observation.operator_authorization_sha256
+            {
+                return Err(
+                    "imported finding status point proof does not bind the exact durable feed floor"
+                        .to_owned(),
+                );
+            }
+            self.record_verified_proof(&verified_proof)
+                .map_err(|error| error.to_string())?;
+        }
+
+        let expected_proof_sha256 = sha256_hex(observation.proof_bytes);
+        match self
+            .status_for_purchase(
+                feed_id,
+                finding_id,
+                observation.recorded_at,
+                observation.max_epoch_age_secs,
+            )
+            .map_err(|error| error.to_string())?
+        {
+            FindingStatusDecision::VerifiedLive(record)
+                if kind == FindingStatusProofKind::NonInclusion
+                    && record.proof_sha256 == expected_proof_sha256
+                    && record.map_epoch == map_epoch
+                    && record.epoch_id == epoch_id
+                    && record.root_hash == root_hash =>
+            {
+                Ok(())
+            }
+            FindingStatusDecision::VerifiedLive(_) => {
+                Err("durable finding status evidence differs from the verified proof".to_owned())
+            }
+            FindingStatusDecision::Pending(_) => {
+                Err("finding retraction publication is pending".to_owned())
+            }
+            FindingStatusDecision::Retracted(_) => Err("finding is retracted".to_owned()),
+        }
+    }
+}
+
+/// Resolve one purchase-time status decision inside a caller-owned SQLite
+/// transaction. Purchase reservation uses this sibling-store seam so the
+/// fresh non-inclusion decision and the new financial reservation commit
+/// atomically under the same authority lock.
+pub(crate) fn status_for_purchase_tx(
+    transaction: &Transaction<'_>,
+    feed_id: &str,
+    finding_id: &str,
+    trusted_now: u64,
+    max_epoch_age_secs: u64,
+    expected_operator_authorization_sha256: Option<&str>,
+    operator_status_observed_at: Option<u64>,
+) -> Result<FindingStatusDecision, FindingStatusStoreError> {
+    require_identifier(feed_id, "feed_id")?;
+    require_hex64(finding_id, "finding_id")?;
+    require_positive(trusted_now, "trusted_now")?;
+    require_positive(max_epoch_age_secs, "max_epoch_age_secs")?;
+    ensure_feed_registered_tx(transaction, feed_id)?;
+
+    if let Some(status) = load_status_tx(transaction, feed_id, finding_id)? {
+        return Ok(match status.state {
+            FindingStickyStatus::Pending => FindingStatusDecision::Pending(status),
+            FindingStickyStatus::Retracted => FindingStatusDecision::Retracted(status),
+        });
+    }
+
+    let floor = load_floor_tx(transaction, feed_id)?.ok_or_else(|| {
+        FindingStatusStoreError::MissingFloor {
+            feed_id: feed_id.to_owned(),
+        }
+    })?;
+    if expected_operator_authorization_sha256
+        .is_some_and(|expected| floor.operator_authorization_sha256 != expected)
+    {
+        return Err(FindingStatusStoreError::Conflict(
+            "current status floor does not bind the governance-authorized operator".to_owned(),
+        ));
+    }
+    let proof =
+        load_proof_tx(transaction, feed_id, finding_id, floor.map_epoch)?.ok_or_else(|| {
+            FindingStatusStoreError::MissingState {
+                finding_id: finding_id.to_owned(),
+            }
+        })?;
+    let floor_epoch = load_epoch_tx(transaction, feed_id, floor.map_epoch)?
+        .ok_or_else(|| invariant("status floor points to a missing signed epoch"))?;
+    verify_floor_epoch_consistency(&floor, &floor_epoch)?;
+    if operator_status_observed_at.is_some_and(|observed_at| observed_at < floor_epoch.generated_at)
+    {
+        return Err(FindingStatusStoreError::Conflict(
+            "authenticated operator standing predates the current status epoch".to_owned(),
+        ));
+    }
+    if proof.kind != FindingStatusProofKind::NonInclusion {
+        return Err(invariant(
+            "inclusion proof exists without the required sticky retracted state",
+        ));
+    }
+    verify_proof_record_at_floor(&proof, &floor)?;
+    if trusted_now < proof.checked_at
+        || trusted_now >= proof.valid_until
+        || trusted_now < floor_epoch.generated_at
+        || trusted_now.saturating_sub(floor_epoch.generated_at) > max_epoch_age_secs
+    {
+        return Err(FindingStatusStoreError::StaleProof {
+            finding_id: finding_id.to_owned(),
+            trusted_now,
+        });
+    }
+    Ok(FindingStatusDecision::VerifiedLive(proof))
+}
+
+fn reject_epoch_clock_rollback(
+    epoch: &VerifiedFindingStatusEpochInput<'_>,
+    floor: &FindingStatusFeedFloor,
+) -> Result<(), FindingStatusStoreError> {
+    if epoch.recorded_at >= floor.advanced_at {
+        return Ok(());
+    }
+    Err(FindingStatusStoreError::ClockRollback {
+        feed_id: epoch.feed_id.to_owned(),
+        high_water: floor.advanced_at,
+        observed: epoch.recorded_at,
+    })
 }
 
 include!("finding_status_store/persistence.rs");

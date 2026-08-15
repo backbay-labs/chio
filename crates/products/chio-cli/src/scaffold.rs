@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Component, Path};
 
 use crate::CliError;
 
@@ -65,6 +65,23 @@ pub(crate) fn cmd_init(path: &Path) -> Result<(), CliError> {
 }
 
 fn ensure_target_dir(path: &Path) -> Result<chio_control_plane::PreparedPrivateDirectory, CliError> {
+    let mut reached_named_component = false;
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => reached_named_component = true,
+            Component::ParentDir if reached_named_component => {
+                return Err(CliError::cli_other_error(format!(
+                    "refusing to scaffold into a path with parent components after a named component `{}`",
+                    path.display()
+                )));
+            }
+            Component::Prefix(_)
+            | Component::RootDir
+            | Component::CurDir
+            | Component::ParentDir => {}
+        }
+    }
+
     let directory = chio_control_plane::prepare_private_directory(path).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotADirectory {
             CliError::cli_other_error(format!(

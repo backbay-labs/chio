@@ -3,7 +3,7 @@
 //! per-listing sales block, settled purchase records, failed-delivery
 //! records, and payout destinations.
 //!
-//! Ten tables back the purchase path. `purchase_reservations` is the
+//! Eleven tables back the purchase path. `purchase_reservations` is the
 //! durable fence a coordinator writes before it moves money: the row is
 //! keyed by the reservation id the compatibility receipt carries, and it
 //! is unique on both the purchase intent and the authoritative payment
@@ -25,7 +25,9 @@
 //! listing, raised once and lifted at most once when the liability that
 //! raised it is exonerated; the raise stays on the record either way, so
 //! a lifted listing still shows when and for how long it was blocked.
-//! `purchase_records` and `failed_delivery_records` are the two terminal
+//! `public_purchase_requests` binds a public request's complete buyer policy
+//! to exactly one reservation before execution and advances once to that
+//! reservation's terminal. `purchase_records` and `failed_delivery_records` are the two terminal
 //! outcomes, retained without deletion and content-addressed against their
 //! stored digests. `payout_destinations` is the bounded sixteen-slot settled
 //! EVM destination set per allocation, with the community fund in slot zero
@@ -65,9 +67,27 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBe
 use thiserror::Error;
 
 use crate::admission_operation_store::verify_active_owner;
+use crate::finding_status_store::{status_for_purchase_tx, FindingStatusDecision};
 use crate::serving_owner::SqliteServingOwner;
 
+#[path = "finding_purchase_public_request.rs"]
+mod public_request;
+use public_request::{
+    bind_public_terminal_if_present_tx, carry_prebinding_purchase_terminals,
+    insert_public_request_binding_tx, require_public_request_binding_tx,
+    validate_public_request_binding,
+};
+pub use public_request::{
+    FindingPublicPurchaseRequestBinding, FindingPublicPurchaseTerminal,
+    FindingPublicPurchaseTerminalKind,
+};
+#[path = "finding_purchase_reservation_input.rs"]
+mod reservation_input;
+use reservation_input::{encumbrance_matches, reservation_matches, validate_reservation_input};
+
 const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
+/// Revision 12 retains pre-v11 terminals as undisclosable history; revision 11
+/// binds public policy to a reservation and terminal.
 /// Revision 10 records an immutable capture intent before a payment rail can
 /// move funds, preventing expiry from abandoning a captured purchase; revision
 /// 9 retains pre-EVM payout rows as non-actionable history; revision
@@ -83,7 +103,8 @@ const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
 /// a revision-1 database adopts the new tables on its next open; a
 /// revision-2 database also carries its listing-keyed blocks across in
 /// [`carry_listing_sales_blocks_across`].
-pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 10;
+pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 12;
+const FINDING_PURCHASE_PUBLIC_REQUEST_VERSION: i32 = 11;
 /// Revision whose reservation path eagerly admitted payout destinations.
 #[cfg(test)]
 const FINDING_PURCHASE_EAGER_PAYOUT_VERSION: i32 = 7;
@@ -162,6 +183,8 @@ pub enum FindingPurchaseStoreError {
     DestinationSlotsExhausted(String),
     #[error("new purchases are blocked on listing {0}")]
     SalesBlocked(String),
+    #[error("finding participation is not paid through epoch {0}")]
+    ParticipationUnpaid(u64),
     #[error("finding purchase commit outcome is unknown: {0}")]
     OutcomeUnknown(String),
 }
@@ -223,6 +246,12 @@ pub struct FindingPurchaseReservationInput<'a> {
     pub bid_envelope_sha256: &'a str,
     pub ask_digest: &'a str,
     pub admission_envelope_sha256: &'a str,
+    /// Fee schedule bound by the verified current admission.
+    pub fee_schedule_envelope_sha256: &'a str,
+    /// Participation epoch derived from the retained admitted terms at
+    /// `created_at`. The store requires every epoch through this one to be
+    /// reconciled in the same transaction that opens the reservation.
+    pub participation_epoch: u64,
     pub amount_units: u64,
     pub currency: &'a str,
     pub expires_at: u64,
@@ -431,6 +460,7 @@ impl SqliteFindingPurchaseStore {
     /// Seed the sibling admission table for cross-store unit tests whose
     /// subject is purchase or challenge transactionality, not activation.
     #[cfg(any(test, feature = "cognition-market-test-support"))]
+    #[allow(clippy::too_many_arguments)]
     pub fn install_active_admission_for_tests(
         &self,
         finding_id: &str,
@@ -438,6 +468,7 @@ impl SqliteFindingPurchaseStore {
         listing_id: &str,
         admission_id: &str,
         admission_envelope_sha256: &str,
+        fee_schedule_envelope_sha256: &str,
         activated_at: u64,
     ) -> Result<(), FindingPurchaseStoreError> {
         let mut connection = self.connection()?;
@@ -465,6 +496,29 @@ impl SqliteFindingPurchaseStore {
                     admission_envelope_sha256,
                     1_900_000_000_i64,
                     sqlite_i64(activated_at, "activated_at")?,
+                ],
+            )
+            .map_err(sqlite_error)?;
+        transaction
+            .execute(
+                r#"
+                INSERT OR IGNORE INTO fee_events (
+                    idempotency_key, fee_schedule_envelope_sha256, event_kind,
+                    epoch_index, finding_id, listing_id, payer, amount_units,
+                    currency, pool_principal_id, rail_destination,
+                    instruction_sha256, observation_sha256, state
+                ) VALUES (?1, ?2, 'participation_epoch', 0, ?3, ?4, 'seller', 1,
+                          'USD', 'pool:audit', 'rail:audit', ?5, ?6, 'reconciled')
+                "#,
+                params![
+                    format!(
+                        "{fee_schedule_envelope_sha256}:participation_epoch:0:{finding_id}:{listing_id}"
+                    ),
+                    fee_schedule_envelope_sha256,
+                    finding_id,
+                    listing_id,
+                    "8".repeat(64),
+                    "9".repeat(64),
                 ],
             )
             .map_err(sqlite_error)?;
@@ -502,7 +556,75 @@ impl SqliteFindingPurchaseStore {
         &self,
         input: &FindingPurchaseReservationInput<'_>,
     ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
+        self.open_reservation_inner(input, None, None)
+    }
+
+    /// Open a reservation only while the Finding has current-floor
+    /// non-inclusion evidence whose signed epoch is within the configured
+    /// age ceiling. The status decision and financial mutation share this
+    /// immediate transaction, so a concurrent retraction either commits
+    /// first and denies the sale or commits after this reservation.
+    pub fn open_live_reservation(
+        &self,
+        input: &FindingPurchaseReservationInput<'_>,
+        status_feed_id: &str,
+        status_operator_authorization_sha256: &str,
+        status_operator_observed_at: u64,
+        trusted_now: u64,
+        status_max_epoch_age_secs: u64,
+    ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
+        self.open_reservation_inner(
+            input,
+            None,
+            Some((
+                status_feed_id,
+                status_operator_authorization_sha256,
+                status_operator_observed_at,
+                trusted_now,
+                status_max_epoch_age_secs,
+            )),
+        )
+    }
+
+    /// Report whether the exact reservation and exposure are already
+    /// durable. This read-only replay probe lets an authenticated caller
+    /// recover a committed receipt without requiring current standing that
+    /// is needed only to open new financial state.
+    pub fn is_exact_reservation_replay(
+        &self,
+        input: &FindingPurchaseReservationInput<'_>,
+    ) -> Result<bool, FindingPurchaseStoreError> {
         validate_reservation_input(input)?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let Some(existing) = load_reservation_tx(&transaction, input.reservation_id)? else {
+            if load_encumbrance_tx(&transaction, input.reservation_id)?.is_some() {
+                return Err(invariant(
+                    "exposure encumbrance exists without its reservation",
+                ));
+            }
+            return Ok(false);
+        };
+        let encumbrance = load_encumbrance_tx(&transaction, input.reservation_id)?
+            .ok_or_else(|| invariant("reservation lost its exposure encumbrance"))?;
+        if reservation_matches(&existing, input) && encumbrance_matches(&encumbrance, input) {
+            return Ok(true);
+        }
+        Err(FindingPurchaseStoreError::Conflict(
+            "reservation id is already bound to different purchase parameters".to_owned(),
+        ))
+    }
+
+    fn open_reservation_inner(
+        &self,
+        input: &FindingPurchaseReservationInput<'_>,
+        public_request: Option<&FindingPublicPurchaseRequestBinding<'_>>,
+        status_gate: Option<(&str, &str, u64, u64, u64)>,
+    ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
+        validate_reservation_input(input)?;
+        if let Some(public_request) = public_request {
+            validate_public_request_binding(input, public_request)?;
+        }
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
         assert_allocation_backs_sale(&transaction, input)?;
@@ -511,12 +633,60 @@ impl SqliteFindingPurchaseStore {
             let encumbrance = load_encumbrance_tx(&transaction, input.reservation_id)?
                 .ok_or_else(|| invariant("reservation lost its exposure encumbrance"))?;
             if reservation_matches(&existing, input) && encumbrance_matches(&encumbrance, input) {
+                if let Some(public_request) = public_request {
+                    require_public_request_binding_tx(&transaction, &existing, public_request)?;
+                }
                 return Ok(FindingPurchaseWriteOutcome::ExistingSame);
             }
             return Err(FindingPurchaseStoreError::Conflict(
                 "reservation id is already bound to different purchase parameters".to_owned(),
             ));
         }
+        // The durable sales block and the reservation insert share this
+        // immediate transaction. Exact durable replays returned above remain
+        // recoverable, but a block that commits before a new reservation wins
+        // before either the reservation or its exposure can be inserted.
+        if sales_blocked_tx(&transaction, input.listing_id)? {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "listing sales are blocked".to_owned(),
+            ));
+        }
+        if let Some((
+            feed_id,
+            operator_authorization_sha256,
+            operator_status_observed_at,
+            trusted_now,
+            max_epoch_age_secs,
+        )) = status_gate
+        {
+            match status_for_purchase_tx(
+                &transaction,
+                feed_id,
+                input.finding_id,
+                trusted_now,
+                max_epoch_age_secs,
+                Some(operator_authorization_sha256),
+                Some(operator_status_observed_at),
+            )
+            .map_err(|error| {
+                FindingPurchaseStoreError::Conflict(format!(
+                    "finding is not verified live for reservation: {error}"
+                ))
+            })? {
+                FindingStatusDecision::VerifiedLive(_) => {}
+                FindingStatusDecision::Pending(_) => {
+                    return Err(FindingPurchaseStoreError::Conflict(
+                        "finding retraction publication is pending".to_owned(),
+                    ));
+                }
+                FindingStatusDecision::Retracted(_) => {
+                    return Err(FindingPurchaseStoreError::Conflict(
+                        "finding is retracted".to_owned(),
+                    ));
+                }
+            }
+        }
+        assert_participation_paid(&transaction, input)?;
         reject_bound_identifier(
             &transaction,
             "SELECT reservation_id FROM purchase_reservations WHERE purchase_intent_id = ?1",
@@ -632,6 +802,9 @@ impl SqliteFindingPurchaseStore {
             return Err(invariant(
                 "exposure encumbrance insert did not affect one row",
             ));
+        }
+        if let Some(public_request) = public_request {
+            insert_public_request_binding_tx(&transaction, input, public_request)?;
         }
         self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
@@ -909,6 +1082,15 @@ impl SqliteFindingPurchaseStore {
                             "settled reservation names a different payout destination".to_owned(),
                         ));
                     }
+                    bind_public_terminal_if_present_tx(
+                        &transaction,
+                        input.reservation_id,
+                        &FindingPublicPurchaseTerminal {
+                            kind: FindingPublicPurchaseTerminalKind::PurchaseRecord,
+                            terminal_id: input.purchase_key,
+                            receipt_id: input.delivery_receipt_id,
+                        },
+                    )?;
                     return Ok(FindingPurchaseWriteOutcome::ExistingSame);
                 }
                 return Err(FindingPurchaseStoreError::Conflict(
@@ -1005,6 +1187,15 @@ impl SqliteFindingPurchaseStore {
         if inserted != 1 {
             return Err(invariant("purchase record insert did not affect one row"));
         }
+        bind_public_terminal_if_present_tx(
+            &transaction,
+            input.reservation_id,
+            &FindingPublicPurchaseTerminal {
+                kind: FindingPublicPurchaseTerminalKind::PurchaseRecord,
+                terminal_id: input.purchase_key,
+                receipt_id: input.delivery_receipt_id,
+            },
+        )?;
         self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(FindingPurchaseWriteOutcome::Inserted)
@@ -1044,6 +1235,15 @@ impl SqliteFindingPurchaseStore {
                     && stored.record_sha256 == input.record_sha256
                     && stored.deny_receipt_id == input.deny_receipt_id
                 {
+                    bind_public_terminal_if_present_tx(
+                        &transaction,
+                        input.reservation_id,
+                        &FindingPublicPurchaseTerminal {
+                            kind: FindingPublicPurchaseTerminalKind::FailedDelivery,
+                            terminal_id: input.failed_delivery_id,
+                            receipt_id: input.deny_receipt_id,
+                        },
+                    )?;
                     return Ok(FindingPurchaseWriteOutcome::ExistingSame);
                 }
                 return Err(FindingPurchaseStoreError::Conflict(
@@ -1101,6 +1301,15 @@ impl SqliteFindingPurchaseStore {
                 "failed delivery record insert did not affect one row",
             ));
         }
+        bind_public_terminal_if_present_tx(
+            &transaction,
+            input.reservation_id,
+            &FindingPublicPurchaseTerminal {
+                kind: FindingPublicPurchaseTerminalKind::FailedDelivery,
+                terminal_id: input.failed_delivery_id,
+                receipt_id: input.deny_receipt_id,
+            },
+        )?;
         self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(FindingPurchaseWriteOutcome::Inserted)
@@ -2332,6 +2541,52 @@ fn assert_active_admission(
     Ok(())
 }
 
+/// Require the verified admission's participation fees to be reconciled
+/// contiguously through the epoch containing this reservation's trusted
+/// creation clock. The check shares the reservation's immediate transaction,
+/// so an unpaid sale cannot open durable exposure or payout capacity.
+fn assert_participation_paid(
+    transaction: &Transaction<'_>,
+    input: &FindingPurchaseReservationInput<'_>,
+) -> Result<(), FindingPurchaseStoreError> {
+    let mut statement = transaction
+        .prepare(
+            r#"
+            SELECT DISTINCT epoch_index FROM fee_events
+            WHERE finding_id = ?1 AND listing_id = ?2
+              AND fee_schedule_envelope_sha256 = ?3
+              AND event_kind = 'participation_epoch' AND state = 'reconciled'
+              AND epoch_index <= ?4
+            ORDER BY epoch_index ASC
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let mut rows = statement
+        .query(params![
+            input.finding_id,
+            input.listing_id,
+            input.fee_schedule_envelope_sha256,
+            sqlite_i64(input.participation_epoch, "participation_epoch")?,
+        ])
+        .map_err(sqlite_error)?;
+    let mut expected = 0_u64;
+    while let Some(row) = rows.next().map_err(sqlite_error)? {
+        let epoch = stored_u64(row.get::<_, i64>(0).map_err(sqlite_error)?, "epoch_index")?;
+        if epoch != expected {
+            break;
+        }
+        if epoch == input.participation_epoch {
+            return Ok(());
+        }
+        expected = expected
+            .checked_add(1)
+            .ok_or_else(|| invariant("participation epoch overflowed u64"))?;
+    }
+    Err(FindingPurchaseStoreError::ParticipationUnpaid(
+        input.participation_epoch,
+    ))
+}
+
 /// Reject a natural key already bound to a different reservation. The
 /// unique indexes make this unreachable as a silent overwrite; catching it
 /// here turns a constraint abort into a typed conflict.
@@ -2479,81 +2734,6 @@ fn abandon_reservation_tx(
     Ok(())
 }
 
-/// Whether a stored reservation is the same purchase the caller is
-/// reserving. Identity is what the purchase is: who pays, for which
-/// finding on which listing, under which digests, for how much.
-///
-/// The trusted times are deliberately excluded. A caller derives both
-/// `created_at` and `expires_at` from its clock, so an honest retry of one
-/// reserve carries later values than the durable row; comparing them would
-/// turn every such retry into a conflict and strand the reservation the
-/// caller is trying to recover. Excluding them cannot extend the fence:
-/// the stored row is returned untouched, so the expiry the first call
-/// committed remains the one the store enforces and a later `expires_at`
-/// is ignored rather than applied. A caller that needs the authoritative
-/// deadline reads it back off the reservation.
-fn reservation_matches(
-    existing: &FindingPurchaseReservationRecord,
-    input: &FindingPurchaseReservationInput<'_>,
-) -> bool {
-    existing.purchase_intent_id == input.purchase_intent_id
-        && existing.authoritative_payment_operation_id == input.authoritative_payment_operation_id
-        && existing.payer_hex == input.payer_hex
-        && existing.agent_id == input.agent_id
-        && existing.payout_destination == input.payout_destination
-        && existing.finding_id == input.finding_id
-        && existing.listing_id == input.listing_id
-        && existing.bid_envelope_sha256 == input.bid_envelope_sha256
-        && existing.ask_digest == input.ask_digest
-        && existing.admission_envelope_sha256 == input.admission_envelope_sha256
-        && existing.amount_units == input.amount_units
-        && existing.currency == input.currency
-}
-
-fn encumbrance_matches(
-    existing: &FindingPurchaseEncumbranceRecord,
-    input: &FindingPurchaseReservationInput<'_>,
-) -> bool {
-    existing.encumbrance_id == input.encumbrance_id
-        && existing.allocation_id == input.allocation_id
-        && existing.amount_units == input.amount_units
-        && existing.currency == input.currency
-}
-
-fn validate_reservation_input(
-    input: &FindingPurchaseReservationInput<'_>,
-) -> Result<(), FindingPurchaseStoreError> {
-    require_identifier(input.reservation_id, "reservation_id")?;
-    require_identifier(input.purchase_intent_id, "purchase_intent_id")?;
-    require_identifier(
-        input.authoritative_payment_operation_id,
-        "authoritative_payment_operation_id",
-    )?;
-    require_identifier(input.agent_id, "agent_id")?;
-    require_evm_payout_destination(input.payout_destination)?;
-    require_identifier(input.listing_id, "listing_id")?;
-    require_identifier(input.encumbrance_id, "encumbrance_id")?;
-    require_hex64(input.payer_hex, "payer_hex")?;
-    require_hex64(input.finding_id, "finding_id")?;
-    require_hex64(input.bid_envelope_sha256, "bid_envelope_sha256")?;
-    require_hex64(input.ask_digest, "ask_digest")?;
-    require_hex64(input.admission_envelope_sha256, "admission_envelope_sha256")?;
-    require_hex64(input.allocation_id, "allocation_id")?;
-    require_currency(input.currency)?;
-    if input.amount_units == 0 {
-        return Err(invariant("reservation amount must be nonzero"));
-    }
-    if input.maximum_sale_exposure_units == 0 {
-        return Err(invariant("maximum sale exposure must be nonzero"));
-    }
-    require_trusted_time(input.created_at, "created_at")?;
-    require_trusted_time(input.expires_at, "expires_at")?;
-    if input.expires_at <= input.created_at {
-        return Err(invariant("reservation expiry does not follow creation"));
-    }
-    Ok(())
-}
-
 fn reservation_state_from_name(
     name: &str,
 ) -> Result<FindingPurchaseReservationState, FindingPurchaseStoreError> {
@@ -2619,6 +2799,7 @@ pub(crate) fn initialize_finding_purchase_schema(
     transaction
         .execute_batch(FINDING_PURCHASE_SCHEMA)
         .map_err(sqlite_error)?;
+    carry_prebinding_purchase_terminals(&transaction, on_disk)?;
     carry_listing_sales_blocks_across(&transaction)?;
     carry_payout_destinations_across(&transaction)?;
     carry_legacy_reservation_payout_bindings(&transaction)?;
@@ -3049,6 +3230,10 @@ fn finding_purchase_schema_catalog(
                OR tbl_name GLOB 'purchase_payout_bindings*'
                OR name GLOB 'purchase_capture_intents*'
                OR tbl_name GLOB 'purchase_capture_intents*'
+               OR name GLOB 'public_purchase_requests*'
+               OR tbl_name GLOB 'public_purchase_requests*'
+               OR name GLOB 'prebinding_purchase_terminals*'
+               OR tbl_name GLOB 'prebinding_purchase_terminals*'
                OR name GLOB 'seller_exposure_encumbrances*'
                OR tbl_name GLOB 'seller_exposure_encumbrances*'
                OR name GLOB 'pending_purchase_slots*'

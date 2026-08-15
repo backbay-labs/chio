@@ -11,8 +11,9 @@
 
 use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::PublicKey;
+use chio_core_types::message::SignedExecutionNonce;
 use chio_core_types::receipt::authoritative_spend::{
-    is_authoritative_spend_receipt, BudgetAuthorityReceiptRef, PresentedNonceView,
+    is_authoritative_spend_receipt, BudgetAuthorityReceiptRef,
 };
 use chio_core_types::receipt::body::ChioReceipt;
 use chio_core_types::receipt::economics::SettlementStatus;
@@ -21,8 +22,10 @@ use chio_core_types::receipt::economics::SettlementStatus;
 /// Verification that may run more than once must resolve WITHOUT
 /// consuming; a consuming resolver would self-deny on the second pass.
 pub trait FindingNonceResolver {
-    /// The nonce presented alongside this receipt, if any was resolved.
-    fn nonce_for(&self, receipt: &ChioReceipt) -> Option<&dyn PresentedNonceView>;
+    /// The exact signed nonce envelope presented alongside this receipt, if
+    /// any was resolved. Returning the concrete envelope lets the verifier
+    /// commit the same evidence it uses for authoritative-spend verification.
+    fn nonce_for(&self, receipt: &ChioReceipt) -> Option<&SignedExecutionNonce>;
 }
 
 /// A resolver with no nonce evidence: every metered facet evaluation
@@ -30,7 +33,7 @@ pub trait FindingNonceResolver {
 pub struct NoNonceEvidence;
 
 impl FindingNonceResolver for NoNonceEvidence {
-    fn nonce_for(&self, _receipt: &ChioReceipt) -> Option<&dyn PresentedNonceView> {
+    fn nonce_for(&self, _receipt: &ChioReceipt) -> Option<&SignedExecutionNonce> {
         None
     }
 }

@@ -943,6 +943,7 @@ impl World {
                 authoritative_payment_operation_id: record
                     .authoritative_payment_operation_id
                     .clone(),
+                status_proof: None,
             },
             "financial": {
                 "grant_index": 0,
@@ -1679,7 +1680,7 @@ fn unnamed_production_receipt(world: &World) -> Built<ResolvedReceiptEvidence> {
         None,
     )?;
     let leaves = vec![canonical_json_bytes(&receipt)?];
-    resolve(receipt, &leaves, 0, 1, 100)
+    resolve(receipt, &leaves, 0, 1, 1)
 }
 
 fn clone_resolved(evidence: &ResolvedReceiptEvidence) -> Built<ResolvedReceiptEvidence> {

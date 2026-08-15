@@ -9,6 +9,7 @@ use crate::SqliteAuthorityStore;
 const FEED: &str = "venue-east/finding-status";
 const OPERATOR: &str = "venue-east-status-operator";
 const NOW: u64 = 1_900_000_000;
+const MAX_EPOCH_AGE_SECS: u64 = 300;
 
 struct DurableFixture {
     _temp: TempDir,
@@ -171,12 +172,16 @@ fn floor_epoch_and_non_inclusion_survive_restart_with_exact_bytes() {
     assert_eq!(proof.signed_epoch_bytes, epoch_bytes);
     assert!(matches!(
         store
-            .status_for_purchase(FEED, &finding_id, NOW + 100)
+            .status_for_purchase(FEED, &finding_id, NOW + 100, MAX_EPOCH_AGE_SECS)
             .expect("fresh decision"),
         FindingStatusDecision::VerifiedLive(_)
     ));
     assert!(matches!(
-        store.status_for_purchase(FEED, &finding_id, NOW + 501),
+        store.status_for_purchase(FEED, &finding_id, NOW + 302, MAX_EPOCH_AGE_SECS),
+        Err(FindingStatusStoreError::StaleProof { .. })
+    ));
+    assert!(matches!(
+        store.status_for_purchase(FEED, &finding_id, NOW + 501, MAX_EPOCH_AGE_SECS),
         Err(FindingStatusStoreError::StaleProof { .. })
     ));
 }
@@ -231,6 +236,44 @@ fn trusted_time_high_water_survives_restart_and_rejects_rollback() {
         )),
         Err(FindingStatusStoreError::ClockRollback { .. })
     ));
+}
+
+#[test]
+fn purchase_status_gate_rejects_a_different_operator_authorization() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('4');
+    let epoch_id = hex64('5');
+    let root_hash = hex64('6');
+    store
+        .observe_verified_epoch(&epoch(1, &epoch_id, &root_hash, b"operator-bound-epoch", 1))
+        .expect("persist epoch");
+    store
+        .observe_verified_non_inclusion(&non_inclusion(
+            1,
+            &epoch_id,
+            &root_hash,
+            &finding_id,
+            b"operator-bound-proof",
+        ))
+        .expect("persist non-inclusion");
+
+    let mut connection = store.connection().expect("open status connection");
+    let transaction = store
+        .begin_read(&mut connection)
+        .expect("begin status read");
+    let error = status_for_purchase_tx(
+        &transaction,
+        FEED,
+        &finding_id,
+        NOW + 20,
+        MAX_EPOCH_AGE_SECS,
+        Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+        None,
+    )
+    .expect_err("different operator authorization must fail closed");
+    assert!(matches!(error, FindingStatusStoreError::Conflict(_)));
 }
 
 #[test]
@@ -349,6 +392,260 @@ fn current_inclusion_replaces_the_same_findings_superseded_proof() {
         )
         .expect("read retained point proofs");
     assert_eq!((count, retained_epoch), (1, 2));
+}
+
+#[test]
+fn retained_older_inclusion_becomes_sticky_without_lowering_the_floor() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('8');
+    let intent_sha256 = hex64('9');
+    let epoch_one_id = hex64('a');
+    let epoch_one_root = hex64('b');
+    let epoch_two_id = hex64('c');
+    let epoch_two_root = hex64('d');
+    let epoch_one = epoch(1, &epoch_one_id, &epoch_one_root, b"retained-epoch-one", 1);
+    store
+        .observe_verified_epoch(&epoch_one)
+        .expect("retain older epoch");
+    store
+        .observe_verified_epoch(&epoch(
+            2,
+            &epoch_two_id,
+            &epoch_two_root,
+            b"current-epoch-two",
+            1,
+        ))
+        .expect("advance current floor");
+    let old_retraction = inclusion(
+        1,
+        &epoch_one_id,
+        &epoch_one_root,
+        &finding_id,
+        &intent_sha256,
+        b"authenticated-old-retraction",
+    );
+    store
+        .record_verified_retraction_against_current_floor(&epoch_one, &old_retraction)
+        .expect("retain authenticated retraction tombstone");
+
+    assert_eq!(store.get_feed_floor(FEED).expect("floor").map_epoch, 2);
+    assert!(matches!(
+        store
+            .status_for_purchase(FEED, &finding_id, NOW + 20, MAX_EPOCH_AGE_SECS)
+            .expect("sticky retraction decision"),
+        FindingStatusDecision::Retracted(_)
+    ));
+}
+
+#[test]
+fn conflicting_current_epoch_inclusion_becomes_sticky_without_moving_the_floor() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('8');
+    let intent_sha256 = hex64('9');
+    let retained_epoch_id = hex64('a');
+    let retained_root = hex64('b');
+    let conflicting_epoch_id = hex64('c');
+    let conflicting_root = hex64('d');
+    store
+        .observe_verified_epoch(&epoch(
+            1,
+            &retained_epoch_id,
+            &retained_root,
+            b"retained-epoch-one",
+            1,
+        ))
+        .expect("retain current epoch");
+    let retraction = inclusion(
+        1,
+        &conflicting_epoch_id,
+        &conflicting_root,
+        &finding_id,
+        &intent_sha256,
+        b"authenticated-current-equivocation",
+    );
+    let conflicting_epoch = epoch(
+        1,
+        &conflicting_epoch_id,
+        &conflicting_root,
+        b"authenticated-current-equivocation-epoch",
+        1,
+    );
+    store
+        .record_verified_retraction_against_current_floor(&conflicting_epoch, &retraction)
+        .expect("retain authenticated same-epoch retraction tombstone");
+
+    let floor = store.get_feed_floor(FEED).expect("floor");
+    assert_eq!(floor.map_epoch, 1);
+    assert_eq!(floor.epoch_id, retained_epoch_id);
+    assert_eq!(floor.root_hash, retained_root);
+    let status = store
+        .status_for_purchase(FEED, &finding_id, NOW + 20, MAX_EPOCH_AGE_SECS)
+        .expect("sticky retraction decision");
+    let FindingStatusDecision::Retracted(status) = status else {
+        panic!("same-epoch equivocation must make retraction sticky");
+    };
+    assert_eq!(
+        status.retracted_epoch_id.as_deref(),
+        Some(conflicting_epoch_id.as_str())
+    );
+    assert_eq!(
+        status.retracted_root_hash.as_deref(),
+        Some(conflicting_root.as_str())
+    );
+}
+
+#[test]
+fn future_epoch_inclusion_becomes_sticky_without_advancing_the_floor() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('8');
+    let intent_sha256 = hex64('9');
+    let retained_epoch_id = hex64('a');
+    let retained_root = hex64('b');
+    let future_epoch_id = hex64('c');
+    let future_root = hex64('d');
+    store
+        .observe_verified_epoch(&epoch(
+            1,
+            &retained_epoch_id,
+            &retained_root,
+            b"retained-epoch-one",
+            1,
+        ))
+        .expect("retain current epoch");
+    let future_epoch = epoch(
+        3,
+        &future_epoch_id,
+        &future_root,
+        b"authenticated-future-epoch",
+        1,
+    );
+    let future_retraction = inclusion(
+        3,
+        &future_epoch_id,
+        &future_root,
+        &finding_id,
+        &intent_sha256,
+        b"authenticated-future-retraction",
+    );
+    store
+        .record_verified_retraction_against_current_floor(&future_epoch, &future_retraction)
+        .expect("retain authenticated future retraction tombstone");
+
+    let floor = store.get_feed_floor(FEED).expect("floor");
+    assert_eq!(floor.map_epoch, 1);
+    assert_eq!(floor.epoch_id, retained_epoch_id);
+    assert_eq!(floor.root_hash, retained_root);
+    let status = store
+        .status_for_purchase(FEED, &finding_id, NOW + 20, MAX_EPOCH_AGE_SECS)
+        .expect("sticky future retraction decision");
+    let FindingStatusDecision::Retracted(status) = status else {
+        panic!("future authenticated retraction must be sticky");
+    };
+    assert_eq!(status.retracted_map_epoch, Some(3));
+    assert_eq!(
+        status.retracted_epoch_id.as_deref(),
+        Some(future_epoch_id.as_str())
+    );
+    assert_eq!(
+        status.retracted_root_hash.as_deref(),
+        Some(future_root.as_str())
+    );
+    assert_eq!(
+        store
+            .observe_verified_epoch(&future_epoch)
+            .expect("advance to retained future epoch"),
+        FindingStatusWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store
+            .get_feed_floor(FEED)
+            .expect("advanced floor")
+            .map_epoch,
+        3
+    );
+    assert!(matches!(
+        store
+            .status_for_purchase(FEED, &finding_id, NOW + 20, MAX_EPOCH_AGE_SECS)
+            .expect("sticky retraction after floor advance"),
+        FindingStatusDecision::Retracted(_)
+    ));
+}
+
+#[test]
+fn atomic_retraction_classification_uses_the_latest_durable_floor() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('8');
+    let intent_sha256 = hex64('9');
+    let epoch_one_id = hex64('a');
+    let epoch_one_root = hex64('b');
+    let epoch_two_id = hex64('c');
+    let epoch_two_root = hex64('d');
+    let retained_epoch_two_id = hex64('1');
+    let retained_epoch_two_root = hex64('2');
+    let epoch_three_id = hex64('e');
+    let epoch_three_root = hex64('f');
+    store
+        .observe_verified_epoch(&epoch(
+            1,
+            &epoch_one_id,
+            &epoch_one_root,
+            b"atomic-floor-one",
+            1,
+        ))
+        .expect("retain first floor");
+    let superseded_epoch = epoch(
+        2,
+        &epoch_two_id,
+        &epoch_two_root,
+        b"atomic-superseded-epoch",
+        1,
+    );
+    let retraction = inclusion(
+        2,
+        &epoch_two_id,
+        &epoch_two_root,
+        &finding_id,
+        &intent_sha256,
+        b"atomic-superseded-retraction",
+    );
+    store
+        .observe_verified_epoch(&epoch(
+            2,
+            &retained_epoch_two_id,
+            &retained_epoch_two_root,
+            b"atomic-retained-epoch-two",
+            1,
+        ))
+        .expect("retain a conflicting second epoch");
+    store
+        .observe_verified_epoch(&epoch(
+            3,
+            &epoch_three_id,
+            &epoch_three_root,
+            b"atomic-floor-three",
+            1,
+        ))
+        .expect("advance floor before retraction persistence");
+
+    store
+        .record_verified_retraction_against_current_floor(&superseded_epoch, &retraction)
+        .expect("reclassify and retain authenticated retraction");
+
+    assert_eq!(store.get_feed_floor(FEED).expect("floor").map_epoch, 3);
+    assert!(matches!(
+        store
+            .status_for_purchase(FEED, &finding_id, NOW + 20, MAX_EPOCH_AGE_SECS)
+            .expect("sticky retraction decision"),
+        FindingStatusDecision::Retracted(_)
+    ));
 }
 
 #[test]
@@ -1163,14 +1460,10 @@ fn rollback_and_same_epoch_equivocation_reject_without_moving_floor() {
         ))
         .expect("epoch two");
 
+    let mut rollback_epoch = epoch(1, &epoch_one_id, &epoch_one_root, b"signed-epoch-one", 1);
+    rollback_epoch.recorded_at = NOW + 3;
     let rollback = store
-        .observe_verified_epoch(&epoch(
-            1,
-            &epoch_one_id,
-            &epoch_one_root,
-            b"signed-epoch-one",
-            1,
-        ))
+        .observe_verified_epoch(&rollback_epoch)
         .expect_err("rollback must reject");
     assert!(matches!(
         rollback,
@@ -1239,7 +1532,7 @@ fn pending_and_retracted_are_sticky_across_restart_and_contradiction() {
             .expect("issue voluntary intent");
         assert!(matches!(
             store
-                .status_for_purchase(FEED, &finding_id, NOW + 2)
+                .status_for_purchase(FEED, &finding_id, NOW + 2, MAX_EPOCH_AGE_SECS)
                 .expect("pending decision"),
             FindingStatusDecision::Pending(_)
         ));
@@ -1291,7 +1584,7 @@ fn pending_and_retracted_are_sticky_across_restart_and_contradiction() {
     let store = authority.finding_status_store();
     assert!(matches!(
         store
-            .status_for_purchase(FEED, &finding_id, NOW + 30)
+            .status_for_purchase(FEED, &finding_id, NOW + 30, MAX_EPOCH_AGE_SECS)
             .expect("retracted decision"),
         FindingStatusDecision::Retracted(_)
     ));
@@ -1364,7 +1657,7 @@ fn missing_floor_or_current_status_evidence_fails_closed_after_restart() {
         ));
         assert!(matches!(
             store
-                .status_for_purchase(FEED, &pending_finding, NOW + 10)
+                .status_for_purchase(FEED, &pending_finding, NOW + 10, MAX_EPOCH_AGE_SECS)
                 .expect("sticky pending remains a deny"),
             FindingStatusDecision::Pending(_)
         ));
@@ -1379,7 +1672,7 @@ fn missing_floor_or_current_status_evidence_fails_closed_after_restart() {
     let store = authority.finding_status_store();
     let unknown_finding = hex64('3');
     assert!(matches!(
-        store.status_for_purchase(FEED, &unknown_finding, NOW + 20),
+        store.status_for_purchase(FEED, &unknown_finding, NOW + 20, MAX_EPOCH_AGE_SECS,),
         Err(FindingStatusStoreError::MissingState { .. })
     ));
 }
@@ -1439,7 +1732,7 @@ fn key_rotation_advances_one_floor_and_regression_or_substitution_rejects() {
 }
 
 #[test]
-fn same_key_authorization_state_update_advances_the_floor() {
+fn same_key_authorization_state_update_is_rejected() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();
     let store = authority.finding_status_store();
@@ -1466,15 +1759,18 @@ fn same_key_authorization_state_update_advances_the_floor() {
     );
     updated.operator_authorization_sha256 =
         "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
-    store
+    let error = store
         .observe_verified_epoch(&updated)
-        .expect("same-key authenticated authorization update");
+        .expect_err("same-key authorization equivocation must fail closed");
+    assert!(error
+        .to_string()
+        .contains("authorization changed without key-epoch rotation"));
 
-    let floor = store.get_feed_floor(FEED).expect("updated floor");
-    assert_eq!(floor.map_epoch, 2);
+    let floor = store.get_feed_floor(FEED).expect("original floor");
+    assert_eq!(floor.map_epoch, 1);
     assert_eq!(floor.operator_key_epoch, 1);
     assert_eq!(floor.operator_key, "operator-key-v1");
-    assert_eq!(
+    assert_ne!(
         floor.operator_authorization_sha256,
         updated.operator_authorization_sha256
     );

@@ -33,6 +33,8 @@ pub(crate) const BOUNDED_ENTRYPOINT: &str = "cargo xtask qualify bounded-chio";
 /// longer describes the ship-facing bounded release boundary.
 const BOUNDED_SCOPE: &str = "bounded_chio_release_qualification";
 
+const REQUIRED_COGNITION_MARKET_GATES: [&str; 3] = ["COGM9-01", "COGM9-02", "COGM9-03"];
+
 /// The implemented qualification profiles. Compile-time fail-closed
 /// enumeration: the CLI rejects anything not listed here.
 pub(crate) const KNOWN_PROFILES: [&str; 1] = ["bounded-chio"];
@@ -77,20 +79,49 @@ fn bounded_chio(root: &Path) -> Result<(), XtaskError> {
     // Reject an absolute or escaping profile path before resolving it. A
     // `profile.document` that points outside the repo would make the bounded
     // boundary unverifiable.
-    let profile_path = resolve_repo_relative(root, profile_doc)?;
-    if !profile_path.is_file() {
-        return Err(XtaskError::Validation(format!(
-            "bounded operational profile document is missing on disk: {profile_doc}"
-        )));
-    }
+    resolve_existing_repo_file(root, profile_doc)?;
 
     let conditions = matrix
         .get("gateConditions")
         .and_then(Value::as_array)
-        .map(|c| c.len())
-        .unwrap_or(0);
+        .ok_or_else(|| {
+            XtaskError::Validation("bounded matrix has no gateConditions array".into())
+        })?;
+    for condition in conditions {
+        let id = condition
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("<unknown>");
+        let witnesses = condition
+            .get("witnesses")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                XtaskError::Validation(format!(
+                    "bounded matrix gate condition {id} has no witnesses array"
+                ))
+            })?;
+        if witnesses.is_empty() {
+            return Err(XtaskError::Validation(format!(
+                "bounded matrix gate condition {id} has no witnesses"
+            )));
+        }
+        for witness in witnesses {
+            let path = witness.as_str().ok_or_else(|| {
+                XtaskError::Validation(format!(
+                    "bounded matrix gate condition {id} has a non-string witness"
+                ))
+            })?;
+            resolve_existing_repo_file(root, path).map_err(|error| {
+                XtaskError::Validation(format!(
+                    "bounded matrix gate condition {id} witness is invalid: {path}: {error}"
+                ))
+            })?;
+        }
+    }
+
+    let condition_count = conditions.len();
     println!(
-        "qualify bounded-chio: {} in sync (scope={BOUNDED_SCOPE}, {conditions} gate conditions, entrypoint={BOUNDED_ENTRYPOINT}, profile={profile_doc})",
+        "qualify bounded-chio: {} in sync (scope={BOUNDED_SCOPE}, {condition_count} gate conditions, entrypoint={BOUNDED_ENTRYPOINT}, profile={profile_doc})",
         display(&matrix_path)
     );
     Ok(())
@@ -141,6 +172,16 @@ fn assert_bounded_matrix(matrix: &Value) -> Result<(), XtaskError> {
             )));
         }
     }
+    for required in REQUIRED_COGNITION_MARKET_GATES {
+        if !conditions
+            .iter()
+            .any(|condition| condition.get("id").and_then(Value::as_str) == Some(required))
+        {
+            return Err(XtaskError::Validation(format!(
+                "bounded matrix is missing cognition-market gate {required}"
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -176,6 +217,28 @@ fn resolve_repo_relative(root: &Path, rel: &str) -> Result<PathBuf, XtaskError> 
         )));
     }
     Ok(joined)
+}
+
+/// Resolve an existing repository file and reject a symlink whose canonical
+/// target escapes the canonical workspace root.
+fn resolve_existing_repo_file(root: &Path, rel: &str) -> Result<PathBuf, XtaskError> {
+    let joined = resolve_repo_relative(root, rel)?;
+    let canonical_root =
+        fs::canonicalize(root).map_err(|error| XtaskError::Io(display(root), error))?;
+    let canonical_path = fs::canonicalize(&joined).map_err(|_| {
+        XtaskError::Validation(format!("bounded repository file is missing: {rel}"))
+    })?;
+    if !canonical_path.starts_with(&canonical_root) {
+        return Err(XtaskError::Validation(format!(
+            "bounded repository file resolves outside the repository: {rel}"
+        )));
+    }
+    if !canonical_path.is_file() {
+        return Err(XtaskError::Validation(format!(
+            "bounded repository path is not a file: {rel}"
+        )));
+    }
+    Ok(canonical_path)
 }
 
 fn display(path: &Path) -> String {
@@ -268,6 +331,23 @@ mod tests {
     }
 
     #[test]
+    fn missing_cognition_market_gate_fails_closed() {
+        let matrix = serde_json::json!({
+            "scope": BOUNDED_SCOPE,
+            "entrypoint": BOUNDED_ENTRYPOINT,
+            "gateConditions": [
+                { "id": "COGM9-01", "summary": "flow" },
+                { "id": "COGM9-02", "summary": "proof bundle" }
+            ],
+        });
+        match assert_bounded_matrix(&matrix) {
+            Ok(()) => panic!("matrix missing COGM9-03 passed"),
+            Err(XtaskError::Validation(_)) => {}
+            Err(other) => panic!("expected Validation, got {other}"),
+        }
+    }
+
+    #[test]
     fn resolve_repo_relative_accepts_plain_path() {
         let root = Path::new("/repo");
         let resolved = resolve_repo_relative(root, "docs/standards/PROFILE.md")
@@ -296,6 +376,38 @@ mod tests {
             Err(XtaskError::Validation(_)) => {}
             Err(other) => panic!("expected Validation, got {other}"),
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_existing_repo_file_rejects_symlink_escape() {
+        use std::os::unix::fs::symlink;
+
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_nanos());
+        let base =
+            std::env::temp_dir().join(format!("chio-xtask-qualify-{}-{nonce}", std::process::id()));
+        let root = base.join("repo");
+        let outside = base.join("outside-witness.txt");
+        if let Err(error) = fs::create_dir_all(root.join("docs")) {
+            panic!("test repository could not be created: {error}");
+        }
+        if let Err(error) = fs::write(&outside, b"outside") {
+            panic!("outside witness could not be written: {error}");
+        }
+        if let Err(error) = symlink(&outside, root.join("docs/witness.txt")) {
+            panic!("escape symlink could not be created: {error}");
+        }
+
+        match resolve_existing_repo_file(&root, "docs/witness.txt") {
+            Ok(path) => panic!("symlink escape resolved to {}", path.display()),
+            Err(XtaskError::Validation(error)) => {
+                assert!(error.contains("outside the repository"));
+            }
+            Err(other) => panic!("expected Validation, got {other}"),
+        }
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

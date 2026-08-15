@@ -285,7 +285,7 @@ impl FindingStatusCache for SqliteFindingStatusCache {
         let now = self.clock.now_unix_secs()?;
         let (proof, expected_kind) = match self
             .store
-            .status_for_purchase(&self.feed_id, finding_id, now)
+            .status_for_purchase(&self.feed_id, finding_id, now, self.max_epoch_age_secs)
             .map_err(|error| FindingRetractionResolveError::StatusUnavailable(error.to_string()))?
         {
             FindingStatusDecision::VerifiedLive(proof) => {
@@ -335,7 +335,12 @@ impl FindingStatusCache for SqliteFindingStatusCache {
         .map_err(FindingRetractionResolveError::InvalidStatus)?;
         let final_decision = self
             .store
-            .status_for_purchase(&self.feed_id, finding_id, final_now)
+            .status_for_purchase(
+                &self.feed_id,
+                finding_id,
+                final_now,
+                self.max_epoch_age_secs,
+            )
             .map_err(|error| FindingRetractionResolveError::StatusUnavailable(error.to_string()))?;
         let decision_unchanged = match final_decision {
             FindingStatusDecision::VerifiedLive(final_proof) => {

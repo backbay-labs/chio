@@ -78,7 +78,7 @@ pub(super) fn settled_delivery_evidence(
         Some(metadata),
     )?;
     let leaves = vec![canonical_json_bytes(&receipt)?];
-    let checkpoint = build_checkpoint(1, 1, 1, &leaves, &delivery_kernel())?;
+    let checkpoint = build_checkpoint(1, 1, 1, &leaves, &delivery_log_signer())?;
     let receipt = resolve(receipt, &leaves, 0, 1, 1)?;
     let checkpoint_transparency =
         build_checkpoint_transparency(core::slice::from_ref(&checkpoint))?;
@@ -99,7 +99,7 @@ pub(super) fn settled_delivery_evidence(
             revoked_from: None,
             observed_at: NOW,
         },
-        &keypair(36),
+        &keypair(37),
     )?;
     Ok(SettledDeliveryEvidence {
         receipt,

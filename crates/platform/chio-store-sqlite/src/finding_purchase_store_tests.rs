@@ -12,13 +12,20 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::finding_market_store::{FindingRecordInput, SqliteFindingMarketStore};
-use crate::SqliteAuthorityStore;
+use crate::{
+    FindingStatusProofKind, SqliteAuthorityStore, VerifiedFindingStatusEpochInput,
+    VerifiedFindingStatusProofInput, FINDING_STATUS_KEY_DOMAIN_NONCE,
+};
 
 const LISTING_ID: &str = "purchase-listing-01";
 const OTHER_LISTING_ID: &str = "purchase-listing-02";
 const NOW: u64 = 1_750_000_000;
 const EXPIRES_AT: u64 = NOW + 3_600;
 const PAYOUT_DESTINATION: &str = "0x000000000000000000000000000000000000002a";
+const STATUS_FEED: &str = "status-feed/purchase-store";
+const STATUS_OPERATOR: &str = "purchase-store-status-operator";
+const STATUS_AUTHORIZATION_SHA256: &str =
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 /// The exposure cap `backing_body` registers for every fixture allocation.
 const REGISTERED_EXPOSURE_CAP: u64 = 450;
 
@@ -146,6 +153,28 @@ fn install_active_admission(
             ],
         )
         .expect("insert active admission");
+    let fee_schedule_envelope_sha256 = hex64('5');
+    transaction
+        .execute(
+            r#"
+            INSERT OR IGNORE INTO fee_events (
+                idempotency_key, fee_schedule_envelope_sha256, event_kind,
+                epoch_index, finding_id, listing_id, payer, amount_units,
+                currency, pool_principal_id, rail_destination,
+                instruction_sha256, observation_sha256, state
+            ) VALUES (?1, ?2, 'participation_epoch', 0, ?3, ?4, 'seller', 1,
+                      'USD', 'pool:audit', 'rail:audit', ?5, ?6, 'reconciled')
+            "#,
+            params![
+                format!("{fee_schedule_envelope_sha256}:participation_epoch:0:{finding_id}:{listing_id}"),
+                &fee_schedule_envelope_sha256,
+                &finding_id,
+                listing_id,
+                hex64('8'),
+                hex64('9'),
+            ],
+        )
+        .expect("insert paid participation epoch");
     store
         .commit_write(transaction)
         .expect("commit admission seed");
@@ -246,6 +275,7 @@ struct Purchase {
     bid_envelope_sha256: String,
     ask_digest: String,
     admission_envelope_sha256: String,
+    fee_schedule_envelope_sha256: String,
     amount_units: u64,
     expires_at: u64,
 }
@@ -263,6 +293,7 @@ impl Purchase {
             bid_envelope_sha256: chio_core::sha256_hex(format!("bid-{tag}").as_bytes()),
             ask_digest: chio_core::sha256_hex(format!("ask-{tag}").as_bytes()),
             admission_envelope_sha256: hex64('c'),
+            fee_schedule_envelope_sha256: hex64('5'),
             amount_units,
             expires_at: EXPIRES_AT,
         }
@@ -286,6 +317,8 @@ impl Purchase {
             bid_envelope_sha256: &self.bid_envelope_sha256,
             ask_digest: &self.ask_digest,
             admission_envelope_sha256: &self.admission_envelope_sha256,
+            fee_schedule_envelope_sha256: &self.fee_schedule_envelope_sha256,
+            participation_epoch: 0,
             amount_units: self.amount_units,
             currency: "USD",
             expires_at: self.expires_at,
@@ -304,6 +337,103 @@ fn open_reservation(fixture: &Fixture, purchase: &Purchase) -> FindingPurchaseWr
         .expect("open reservation")
 }
 
+fn install_live_status(fixture: &Fixture, finding_id: &str) {
+    let epoch_id = hex64('d');
+    let root_hash = hex64('e');
+    let status = fixture._authority.finding_status_store();
+    status
+        .observe_verified_epoch(&VerifiedFindingStatusEpochInput {
+            feed_id: STATUS_FEED,
+            operator_id: STATUS_OPERATOR,
+            key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+            map_epoch: 1,
+            epoch_id: &epoch_id,
+            root_hash: &root_hash,
+            signed_epoch_bytes: b"purchase-status-epoch",
+            operator_key: "purchase-status-key",
+            operator_key_epoch: 1,
+            operator_authorization_sha256: STATUS_AUTHORIZATION_SHA256,
+            generated_at: NOW - 2,
+            valid_until: NOW + 600,
+            recorded_at: NOW - 1,
+        })
+        .expect("persist purchase status epoch");
+    status
+        .record_verified_proof(&VerifiedFindingStatusProofInput {
+            feed_id: STATUS_FEED,
+            operator_id: STATUS_OPERATOR,
+            key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+            map_epoch: 1,
+            epoch_id: &epoch_id,
+            root_hash: &root_hash,
+            finding_id,
+            kind: FindingStatusProofKind::NonInclusion,
+            proof_bytes: b"purchase-status-proof",
+            status_value_bytes: None,
+            retraction_intent_sha256: None,
+            checked_at: NOW - 1,
+            valid_until: NOW + 500,
+            recorded_at: NOW,
+        })
+        .expect("persist purchase status proof");
+}
+
+#[test]
+fn stale_status_epoch_atomically_blocks_purchase_reservation() {
+    let fixture = fixture();
+    let purchase = Purchase::new("stale-status", LISTING_ID, 100);
+    install_live_status(&fixture, &purchase.finding_id);
+
+    let result = fixture.store.open_live_reservation(
+        &purchase.input(&fixture.allocation_id),
+        STATUS_FEED,
+        STATUS_AUTHORIZATION_SHA256,
+        NOW,
+        NOW,
+        1,
+    );
+    assert!(matches!(
+        result,
+        Err(FindingPurchaseStoreError::Conflict(ref detail)) if detail.contains("stale")
+    ));
+    assert!(fixture
+        .store
+        .get_reservation(&purchase.reservation_id)
+        .expect("read rejected stale-status reservation")
+        .is_none());
+    assert!(fixture
+        .store
+        .get_encumbrance(&purchase.reservation_id)
+        .expect("read rejected stale-status encumbrance")
+        .is_none());
+}
+
+#[test]
+fn operator_standing_predating_status_epoch_atomically_blocks_purchase_reservation() {
+    let fixture = fixture();
+    let purchase = Purchase::new("pre-epoch-standing", LISTING_ID, 100);
+    install_live_status(&fixture, &purchase.finding_id);
+
+    let result = fixture.store.open_live_reservation(
+        &purchase.input(&fixture.allocation_id),
+        STATUS_FEED,
+        STATUS_AUTHORIZATION_SHA256,
+        NOW - 3,
+        NOW,
+        300,
+    );
+    assert!(matches!(
+        result,
+        Err(FindingPurchaseStoreError::Conflict(ref detail))
+            if detail.contains("standing predates")
+    ));
+    assert!(fixture
+        .store
+        .get_reservation(&purchase.reservation_id)
+        .expect("read rejected pre-epoch-standing reservation")
+        .is_none());
+}
+
 fn mark_capture(fixture: &Fixture, purchase: &Purchase, now: u64) {
     fixture
         .store
@@ -315,8 +445,11 @@ fn mark_capture(fixture: &Fixture, purchase: &Purchase, now: u64) {
         .expect("mark capture pending");
 }
 
-/// Exposure the fixture allocation still carries at `now`, which is the
-/// quantity its registered cap bounds.
+#[path = "finding_purchase_store_tests/public_request_migration.rs"]
+mod public_request_migration;
+#[path = "finding_purchase_store_tests/sales_block.rs"]
+mod sales_block;
+/// Exposure the fixture allocation still carries at `now` under its cap.
 fn outstanding_exposure(fixture: &Fixture, now: u64) -> u64 {
     fixture
         .store
@@ -615,6 +748,24 @@ fn open_reservation_requires_a_matching_active_admission() {
         .store
         .get_encumbrance(&missing.reservation_id)
         .expect("missing-admission encumbrance lookup")
+        .is_none());
+    assert_eq!(outstanding_exposure(&fixture, NOW), 0);
+}
+
+#[test]
+fn open_reservation_requires_contiguous_payment_through_the_current_epoch() {
+    let fixture = fixture();
+    let purchase = Purchase::new("unpaid-participation", LISTING_ID, 10);
+    let mut input = purchase.input(&fixture.allocation_id);
+    input.participation_epoch = 1;
+    assert!(matches!(
+        fixture.store.open_reservation(&input),
+        Err(FindingPurchaseStoreError::ParticipationUnpaid(1))
+    ));
+    assert!(fixture
+        .store
+        .get_reservation(&purchase.reservation_id)
+        .expect("unpaid reservation lookup")
         .is_none());
     assert_eq!(outstanding_exposure(&fixture, NOW), 0);
 }

@@ -1,5 +1,5 @@
 //! Deployment-pinned authority roster for the cognition-market finding
-//! surfaces. Compiled only under `cognition-market-experimental`.
+//! surfaces.
 //!
 //! Every value-moving role is pinned here, independently of whatever keys
 //! artifacts embed: an envelope verifies only against its configured role,
@@ -46,7 +46,7 @@ pub struct FindingAuthorityPin {
 }
 
 impl FindingAuthorityPin {
-    fn validate(&self, label: &str) -> Result<PublicKey, CliError> {
+    pub(crate) fn validate(&self, label: &str) -> Result<PublicKey, CliError> {
         if self.authority_id.trim().is_empty() {
             return Err(CliError::cli_other_error(format!(
                 "finding-market {label} authority id must be non-empty"
@@ -478,7 +478,7 @@ impl FindingMarketConfig {
                 "finding-market venue id must be non-empty".to_string(),
             ));
         }
-        self.roster()?;
+        let roster = self.roster()?;
         self.listing.validate("listing")?;
         self.settlement_finality_requirement
             .validate()
@@ -537,6 +537,7 @@ impl FindingMarketConfig {
                 "finding-market fee schedule operator keys must be non-empty".to_string(),
             ));
         }
+        let mut fee_schedule_operators = Vec::with_capacity(self.fee_schedule_operator_keys.len());
         for key_hex in &self.fee_schedule_operator_keys {
             let key = PublicKey::from_hex(key_hex).map_err(|_| {
                 CliError::cli_other_error(
@@ -552,6 +553,20 @@ impl FindingMarketConfig {
                         .to_string(),
                 ));
             }
+            if let Some((role, _)) = roster.iter().find(|(_, role_key)| role_key == &key) {
+                return Err(CliError::cli_other_error(format!(
+                    "finding-market fee schedule operator and {role} authority must be distinct keys"
+                )));
+            }
+            if fee_schedule_operators
+                .iter()
+                .any(|operator| operator == &key)
+            {
+                return Err(CliError::cli_other_error(
+                    "finding-market fee schedule operator keys must be distinct".to_string(),
+                ));
+            }
+            fee_schedule_operators.push(key);
         }
         Ok(())
     }
@@ -803,9 +818,9 @@ mod status_feed_config_tests {
 
     #[test]
     fn selected_status_nonce_is_i_json_safe_and_fixed() {
-        assert_eq!(FINDING_STATUS_KEY_DOMAIN_NONCE, 3_318_287_169_837_494);
         const {
             assert!(FINDING_STATUS_KEY_DOMAIN_NONCE < (1_u64 << 53));
         }
+        assert_eq!(FINDING_STATUS_KEY_DOMAIN_NONCE, 3_318_287_169_837_494);
     }
 }

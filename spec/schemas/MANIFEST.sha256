@@ -1,4 +1,4 @@
-ddd4c5cbe6eb409167fdd40418928041cc6795f888f992399b624403a00715db  spec/schemas/MANIFEST.sha256
+31c65c0a3d9fd21c2b71e6288822c5779150a3930937457d2e67d77d15312121  spec/schemas/MANIFEST.sha256
 59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03  spec/schemas/VERSION
 e90c7bc3c555c335559650c71f7fda1e3c13d134a5ff8ceaa0041000536c2ea9  spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json
 1cd24132ad8f98fad89bb62aa756304c2dee0b51aacd69c922e0f786dce2abec  spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json
@@ -137,7 +137,7 @@ a4bc54088b6aef5d000ad717275342a966cd55fd0391e6c555aaa93bcc111395  spec/schemas/c
 63c46a632c4ccc94a15dc1bd56f550a6e062fb008200344d68ad09390df2a0c5  spec/schemas/chio-finding/v1/seller-authorization.schema.json
 4498e5306e60b5c38b0b903e8cce7b38e3e6b898523474d4fe6132eb6ef59d86  spec/schemas/chio-finding/v1/status-epoch.schema.json
 70f47c86ccbcc7eae777073a04c9d753116dddc0c2e56193f050eeaa1738ddca  spec/schemas/chio-finding/v1/status-proof-input.schema.json
-ae01c0aa018c45789a9d7b41ff4189d8134c15497dc0f3ade614201ea7f76d3f  spec/schemas/chio-finding/v1/verifier-report.schema.json
+037132137c0f1caeceb1e603abeb08d2f834125efefdd535db6b7e3d88a63048  spec/schemas/chio-finding/v1/verifier-report.schema.json
 1cf7cb29f72bf81ef49a7219cb41050af8647f1fbe4ae8099be1e499eb5d8af3  spec/schemas/chio-fiscal/v1/activation.schema.json
 d3a03422771817cc1c2d4d1848a14eb8ac13fbf427308e4567e6bce3e4f1e5aa  spec/schemas/chio-fiscal/v1/approval.schema.json
 dda44c6c0ead952e77bbc6737811a0f1cf26f8262d538dc3c433204435194e17  spec/schemas/chio-fiscal/v1/charter.schema.json
@@ -334,7 +334,7 @@ b4f06c0986c55d3a4fa5eb026a750374f99b01a09a68e1ac6df34ac66185e7f9  spec/schemas/c
 b0a7fb2015299f86035e6227e35a64c93ed53f0c3f088bc5ec0fbc763a8a6dfa  spec/schemas/chio-swarm/v1/task-graph.schema.json
 cbbbebe35318ac81156267a90be49b07c0ae00740d1fc09f55781c79211d8c42  spec/schemas/chio-swarm/v1/terminal-graph-receipt.schema.json
 eacc476342d36db2d42ec1722ec0c11dc8b6e1ce771e27f1cc44748a44d709db  spec/schemas/chio-transaction/v1/capability-proof.schema.json
-008aa4f510a98b43529a8b462040066dd5e91161df038490df23e84c07c8651c  spec/schemas/chio-transaction/v1/claim-set.schema.json
+b50e3a919313996e1f2047fd9c70670a77f54e40eb27082eb651e2d84b906e44  spec/schemas/chio-transaction/v1/claim-set.schema.json
 bf066678f4f0ef31631c842086ed2569f063b75a8e8c493a3c77ead6cb20efd4  spec/schemas/chio-transaction/v1/evidence-graph.schema.json
 7c995920baeb2785bb6cba6b6cc2dd96ab495704bc4f2721e538a5c7002c77a9  spec/schemas/chio-transaction/v1/guard-decision.schema.json
 289fac57a060b02f1e2c75b6cddc602ab6e23fb41ac2d0970130cc0a3ab4f021  spec/schemas/chio-transaction/v1/policy-bundle.schema.json

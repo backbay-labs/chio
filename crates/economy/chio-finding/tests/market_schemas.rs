@@ -13,18 +13,19 @@ use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_authorization_id, compute_profile_id,
-    compute_report_id, compute_terms_id, signed_envelope_sha256, verify_signed_admission,
-    verify_signed_bond_backing, verify_signed_market_terms, verify_signed_seller_authorization,
-    verify_signed_verifier_report, FindingAdmission, FindingAuthorityKeyPolicy,
-    FindingBackingRequirement, FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass,
-    FindingChallengeBondLimit, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
-    FindingClaimedVerdict, FindingCollateralVault, FindingError, FindingFacetKind,
-    FindingFacetOutcome, FindingFacetResult, FindingFeeEvent, FindingFeeTerminalBinding,
-    FindingGuaranteeClass, FindingMarketTerms, FindingPayee, FindingPoolBinding, FindingPredicate,
-    FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase,
-    FindingRecipePhaseKind, FindingReplayRecipeInput, FindingResourceCaps,
-    FindingSellerAuthorization, FindingVerifierReport, SignedFindingAdmission,
-    SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
+    compute_report_id, compute_terms_id, finding_checkpoint_log_id, signed_envelope_sha256,
+    verify_signed_admission, verify_signed_bond_backing, verify_signed_market_terms,
+    verify_signed_seller_authorization, verify_signed_verifier_report, FindingAdmission,
+    FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBbsIssuerPolicy,
+    FindingBondBacking, FindingBondClass, FindingChallengeBondLimit,
+    FindingChallengeVerifierProfile, FindingCheckpointLogPolicy, FindingClaimedVerdict,
+    FindingCollateralVault, FindingError, FindingFacetKind, FindingFacetOutcome,
+    FindingFacetResult, FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass,
+    FindingMarketTerms, FindingPayee, FindingPoolBinding, FindingPredicate, FindingReceiptRole,
+    FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind,
+    FindingReplayRecipeInput, FindingResourceCaps, FindingSellerAuthorization,
+    FindingVerifierReport, SignedFindingAdmission, SignedFindingBondBacking,
+    SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
     SignedFindingSellerAuthorization, SignedFindingVerifierReport, FINDING_ADMISSION_SCHEMA_V1,
     FINDING_BOND_BACKING_SCHEMA_V1, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
     FINDING_MARKET_TERMS_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
@@ -91,14 +92,17 @@ const GOLDEN_BACKING_RAW: &str =
     include_str!("../../../../fixtures/proof-room/finding/bond-backing-basic/backing.json");
 const GOLDEN_REPORT_RAW: &str =
     include_str!("../../../../fixtures/proof-room/finding/verifier-report-basic/report.json");
+const QUALIFIED_DELIVERY_REPORT_RAW: &str = include_str!(
+    "../../../../fixtures/proof-room/finding/cognition-market-qualified-profile/report.json"
+);
 const GOLDEN_ADMISSION_RAW: &str =
     include_str!("../../../../fixtures/proof-room/finding/venue-admission-basic/admission.json");
 const GOLDEN_RECIPE_RAW: &str =
     include_str!("../../../../fixtures/proof-room/finding/replay-recipe-basic/recipe.json");
 
-const GOLDEN_PROFILE_ID: &str = "26845afc58111332f29b3f5e90766406061d151515e7a0957bafbfc1b1754681";
+const GOLDEN_PROFILE_ID: &str = "9cdfc597044c13602ce86b8acaba8c919daa0faf63545c9ec5e4b9e3464ca987";
 const GOLDEN_PROFILE_ENVELOPE_SHA256: &str =
-    "1cc32ce68d85c5711669e93abf270222796115f4b4a2bc774e457ebb66a04e88";
+    "3979ea22477c391ea192bb263c054f838d6ad31fc40489d7f00acbf20f2ba571";
 const GOLDEN_TERMS_ID: &str = "00e03f40ee7e96c48fa13cf05f8f0d932b47cc4524d5fdd06c524d8aa1142e77";
 const GOLDEN_TERMS_ENVELOPE_SHA256: &str =
     "3a9cf540163aa9547bc39741e14c30df3afa0f64b65780c6eaca8dfa8ab8af24";
@@ -200,7 +204,7 @@ fn profile_body() -> Result<FindingChallengeVerifierProfile, FindingError> {
             },
         ],
         checkpoint_logs: vec![FindingCheckpointLogPolicy {
-            log_id: "local-log-wedge".to_string(),
+            log_id: finding_checkpoint_log_id(&keypair(14).public_key()),
             signer: key_policy(14, "checkpoint"),
         }],
         bbs_projection_issuer: FindingBbsIssuerPolicy {
@@ -372,6 +376,10 @@ fn report_body(verifier: &Keypair) -> Result<FindingVerifierReport, FindingError
         verifier_profile_envelope_sha256: HEX64.to_string(),
         verifier_implementation_id: "chio-finding-verifier/0.1".to_string(),
         resolved_evidence_bundle_sha256: HEX64.to_string(),
+        replay_recipe_input_sha256: None,
+        status_proof_input_sha256: None,
+        finding_delivery_receipt_id: None,
+        finding_delivery: None,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
         trusted_time_input_sha256: HEX64.to_string(),
@@ -910,6 +918,41 @@ fn golden_verifier_report_fixture_validates() -> TestResult {
         signed_envelope_sha256(&signed)?,
         GOLDEN_REPORT_ENVELOPE_SHA256
     );
+    Ok(())
+}
+
+#[test]
+fn qualified_delivery_verifier_report_conforms_to_schema() -> TestResult {
+    let strict_canonical = canonical_json_bytes_from_str(QUALIFIED_DELIVERY_REPORT_RAW)?;
+    let value: Value = serde_json::from_str(QUALIFIED_DELIVERY_REPORT_RAW)?;
+    validate_family_schema(&REPORT, &value)?;
+    let signed: SignedFindingVerifierReport = serde_json::from_str(QUALIFIED_DELIVERY_REPORT_RAW)?;
+    assert_eq!(strict_canonical, canonical_json_bytes(&signed)?);
+    verify_signed_verifier_report(&signed, &signed.body.verifier_authority)?;
+    assert!(signed.body.finding_delivery.is_some());
+    Ok(())
+}
+
+#[test]
+fn signed_verifier_report_rejects_explicit_null_optionals() -> TestResult {
+    for field in [
+        "replay_recipe_input_sha256",
+        "status_proof_input_sha256",
+        "finding_delivery_receipt_id",
+        "finding_delivery",
+        "backing_allocation_id",
+    ] {
+        let mut value: Value = serde_json::from_str(GOLDEN_REPORT_RAW)?;
+        let body = value
+            .get_mut("body")
+            .and_then(Value::as_object_mut)
+            .ok_or("signed verifier report body")?;
+        body.insert(field.to_string(), Value::Null);
+        assert!(
+            serde_json::from_value::<SignedFindingVerifierReport>(value).is_err(),
+            "explicit null was accepted for {field}"
+        );
+    }
     Ok(())
 }
 

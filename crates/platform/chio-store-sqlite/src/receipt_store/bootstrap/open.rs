@@ -28,6 +28,12 @@ const RECEIPT_STORE_LEGACY_ANCHOR_TABLES: &[&str] =
 /// accepted. The Chio-specific `chio_tool_receipts` anchor needs no such check.
 const RECEIPT_STORE_GENERIC_LEGACY_ANCHOR_TABLES: &[&str] = &["http_receipts", "tool_receipts"];
 
+struct QualifiedReceiptSink {
+    durable_sink_id: Option<String>,
+    rollback_anchor: Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
+    receipt_sink_qualification: Option<Arc<ReceiptSinkQualification>>,
+}
+
 fn configure_sqlite_connection(
     connection: &mut Connection,
     max_page_count: Option<u32>,
@@ -176,20 +182,18 @@ fn receipt_sink_filesystem_path(path: &Path) -> Result<PathBuf, ReceiptStoreErro
     Ok(filesystem_path)
 }
 
-type QualifiedReceiptSinkParts = (
-    Option<String>,
-    Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
-    Option<Arc<ReceiptSinkQualification>>,
-);
-
 fn qualify_receipt_sink(
     path: &Path,
     connection: &Connection,
     internal_sink_id: &str,
     rollback_anchor_root: Option<&Path>,
-) -> Result<QualifiedReceiptSinkParts, ReceiptStoreError> {
+) -> Result<QualifiedReceiptSink, ReceiptStoreError> {
     let Some(rollback_anchor_root) = rollback_anchor_root else {
-        return Ok((None, None, None));
+        return Ok(QualifiedReceiptSink {
+            durable_sink_id: None,
+            rollback_anchor: None,
+            receipt_sink_qualification: None,
+        });
     };
     let filesystem_path = receipt_sink_filesystem_path(path)?;
     crate::rollback_generation::require_separate_snapshot_domain(
@@ -229,7 +233,11 @@ fn qualify_receipt_sink(
         ReceiptStoreError::Conflict(format!("receipt rollback protection failed: {error}"))
     })?;
     let durable_sink_id = anchored_receipt_sink_binding(&file_sink_binding, &anchor_instance_id);
-    Ok((Some(durable_sink_id), Some(anchor), Some(qualification)))
+    Ok(QualifiedReceiptSink {
+        durable_sink_id: Some(durable_sink_id),
+        rollback_anchor: Some(anchor),
+        receipt_sink_qualification: Some(qualification),
+    })
 }
 
 fn anchored_receipt_sink_binding(file_sink_binding: &str, anchor_instance_id: &str) -> String {
@@ -476,8 +484,11 @@ impl SqliteReceiptStore {
             super::support::ensure_transparency_projection_guards(&connection)?;
             verify_receipt_cost_projection(&connection)?;
             let internal_sink_id = load_receipt_sink_identity(&connection)?;
-            let (durable_sink_id, rollback_anchor, receipt_sink_qualification) =
-                qualify_receipt_sink(path, &connection, &internal_sink_id, rollback_anchor_root)?;
+            let QualifiedReceiptSink {
+                durable_sink_id,
+                rollback_anchor,
+                receipt_sink_qualification,
+            } = qualify_receipt_sink(path, &connection, &internal_sink_id, rollback_anchor_root)?;
             let settlement_store_binding = settlement_store_binding_if_ready(&connection)?;
             drop(connection);
 
@@ -1519,8 +1530,11 @@ impl SqliteReceiptStore {
         .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
         migration.commit()?;
 
-        let (durable_sink_id, rollback_anchor, receipt_sink_qualification) =
-            qualify_receipt_sink(path, &connection, &internal_sink_id, rollback_anchor_root)?;
+        let QualifiedReceiptSink {
+            durable_sink_id,
+            rollback_anchor,
+            receipt_sink_qualification,
+        } = qualify_receipt_sink(path, &connection, &internal_sink_id, rollback_anchor_root)?;
 
         let settlement_store_binding = settlement_store_binding_if_ready(&connection)?;
 

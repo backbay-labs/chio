@@ -238,11 +238,60 @@ fn require_leaf_proofs(
     }
     Ok(())
 }
+fn persist_epoch_record_tx(
+    transaction: &Transaction<'_>,
+    epoch: &VerifiedFindingStatusEpochInput<'_>,
+) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
+    let signed_epoch_sha256 = sha256_hex(epoch.signed_epoch_bytes);
+    match load_epoch_tx(transaction, epoch.feed_id, epoch.map_epoch)? {
+        Some(existing) if epoch_record_matches_input(&existing, epoch, &signed_epoch_sha256) => {
+            Ok(FindingStatusWriteOutcome::ExactReplay)
+        }
+        Some(_) => Err(FindingStatusStoreError::Equivocation {
+            feed_id: epoch.feed_id.to_owned(),
+            map_epoch: epoch.map_epoch,
+        }),
+        None => {
+            transaction
+                .execute(
+                    r#"
+                    INSERT INTO finding_status_epochs (
+                        feed_id, operator_id, key_domain_nonce, map_epoch, epoch_id,
+                        root_hash, signed_epoch_sha256, signed_epoch_bytes,
+                        operator_key, operator_key_epoch,
+                        operator_authorization_sha256, generated_at, valid_until,
+                        recorded_at
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                              ?11, ?12, ?13, ?14)
+                    "#,
+                    params![
+                        epoch.feed_id,
+                        epoch.operator_id,
+                        sqlite_i64(epoch.key_domain_nonce, "key_domain_nonce")?,
+                        sqlite_i64(epoch.map_epoch, "map_epoch")?,
+                        epoch.epoch_id,
+                        epoch.root_hash,
+                        signed_epoch_sha256,
+                        epoch.signed_epoch_bytes,
+                        epoch.operator_key,
+                        sqlite_i64(epoch.operator_key_epoch, "operator_key_epoch")?,
+                        epoch.operator_authorization_sha256,
+                        sqlite_i64(epoch.generated_at, "generated_at")?,
+                        sqlite_i64(epoch.valid_until, "valid_until")?,
+                        sqlite_i64(epoch.recorded_at, "recorded_at")?,
+                    ],
+                )
+                .map_err(sqlite_error)?;
+            Ok(FindingStatusWriteOutcome::Inserted)
+        }
+    }
+}
 
 fn persist_epoch_tx(
     transaction: &Transaction<'_>,
     epoch: &VerifiedFindingStatusEpochInput<'_>,
     prior_floor: Option<&FindingStatusFeedFloor>,
+    advance_floor: bool,
 ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
     let signed_epoch_sha256 = sha256_hex(epoch.signed_epoch_bytes);
     if prior_floor.is_none() {
@@ -300,13 +349,7 @@ fn persist_epoch_tx(
                 map_epoch: epoch.map_epoch,
             });
         }
-        if epoch.recorded_at < floor.advanced_at {
-            return Err(FindingStatusStoreError::ClockRollback {
-                feed_id: epoch.feed_id.to_owned(),
-                high_water: floor.advanced_at,
-                observed: epoch.recorded_at,
-            });
-        }
+        reject_epoch_clock_rollback(epoch, floor)?;
         if epoch.operator_key_epoch < floor.operator_key_epoch {
             return Err(invariant("operator key epoch regressed across feed epochs"));
         }
@@ -317,42 +360,24 @@ fn persist_epoch_tx(
                 "operator key changed without key-epoch rotation",
             ));
         }
+        if epoch.operator_key_epoch == floor.operator_key_epoch
+            && epoch.operator_authorization_sha256 != floor.operator_authorization_sha256
+        {
+            return Err(invariant(
+                "operator authorization changed without key-epoch rotation",
+            ));
+        }
     } else if feed_has_epochs_tx(transaction, epoch.feed_id)? {
         return Err(FindingStatusStoreError::MissingFloor {
             feed_id: epoch.feed_id.to_owned(),
         });
     }
 
-    transaction
-        .execute(
-            r#"
-            INSERT INTO finding_status_epochs (
-                feed_id, operator_id, key_domain_nonce, map_epoch, epoch_id,
-                root_hash, signed_epoch_sha256, signed_epoch_bytes,
-                operator_key, operator_key_epoch,
-                operator_authorization_sha256, generated_at, valid_until,
-                recorded_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
-                      ?11, ?12, ?13, ?14)
-            "#,
-            params![
-                epoch.feed_id,
-                epoch.operator_id,
-                sqlite_i64(epoch.key_domain_nonce, "key_domain_nonce")?,
-                sqlite_i64(epoch.map_epoch, "map_epoch")?,
-                epoch.epoch_id,
-                epoch.root_hash,
-                signed_epoch_sha256,
-                epoch.signed_epoch_bytes,
-                epoch.operator_key,
-                sqlite_i64(epoch.operator_key_epoch, "operator_key_epoch")?,
-                epoch.operator_authorization_sha256,
-                sqlite_i64(epoch.generated_at, "generated_at")?,
-                sqlite_i64(epoch.valid_until, "valid_until")?,
-                sqlite_i64(epoch.recorded_at, "recorded_at")?,
-            ],
-        )
-        .map_err(sqlite_error)?;
+    let epoch_outcome = persist_epoch_record_tx(transaction, epoch)?;
+
+    if !advance_floor {
+        return Ok(epoch_outcome);
+    }
 
     if prior_floor.is_some() {
         transaction
@@ -597,6 +622,76 @@ fn persist_leaf_tx(
         }
     }
     Ok(outcome)
+}
+
+fn persist_conflicting_retraction_tx(
+    transaction: &Transaction<'_>,
+    proof: &VerifiedFindingStatusProofInput<'_>,
+) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
+    let intent_sha256 = proof
+        .retraction_intent_sha256
+        .ok_or_else(|| invariant("conflicting-epoch retraction lost its intent digest"))?;
+    match load_status_tx(transaction, proof.feed_id, proof.finding_id)? {
+        Some(status) if status.retraction_intent_sha256 != intent_sha256 => {
+            Err(FindingStatusStoreError::Conflict(format!(
+                "finding {} has a different sticky intent digest",
+                proof.finding_id
+            )))
+        }
+        Some(status) if status.state == FindingStickyStatus::Pending => {
+            if proof.recorded_at < status.first_observed_at {
+                return Err(invariant(
+                    "conflicting-epoch retraction predates its pending status",
+                ));
+            }
+            transaction
+                .execute(
+                    r#"
+                    UPDATE finding_status_states
+                    SET state = 'retracted', updated_at = ?3,
+                        retracted_map_epoch = ?4, retracted_epoch_id = ?5,
+                        retracted_root_hash = ?6
+                    WHERE feed_id = ?1 AND finding_id = ?2 AND state = 'pending'
+                    "#,
+                    params![
+                        proof.feed_id,
+                        proof.finding_id,
+                        sqlite_i64(proof.recorded_at, "recorded_at")?,
+                        sqlite_i64(proof.map_epoch, "map_epoch")?,
+                        proof.epoch_id,
+                        proof.root_hash,
+                    ],
+                )
+                .map_err(sqlite_error)?;
+            Ok(FindingStatusWriteOutcome::Inserted)
+        }
+        Some(_) => Ok(FindingStatusWriteOutcome::ExactReplay),
+        None => {
+            transaction
+                .execute(
+                    r#"
+                    INSERT INTO finding_status_states (
+                        feed_id, operator_id, finding_id, state,
+                        retraction_intent_sha256, first_observed_at, updated_at,
+                        retracted_map_epoch, retracted_epoch_id,
+                        retracted_root_hash
+                    ) VALUES (?1, ?2, ?3, 'retracted', ?4, ?5, ?5, ?6, ?7, ?8)
+                    "#,
+                    params![
+                        proof.feed_id,
+                        proof.operator_id,
+                        proof.finding_id,
+                        intent_sha256,
+                        sqlite_i64(proof.recorded_at, "recorded_at")?,
+                        sqlite_i64(proof.map_epoch, "map_epoch")?,
+                        proof.epoch_id,
+                        proof.root_hash,
+                    ],
+                )
+                .map_err(sqlite_error)?;
+            Ok(FindingStatusWriteOutcome::Inserted)
+        }
+    }
 }
 
 fn persist_proof_tx(

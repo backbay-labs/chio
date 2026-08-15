@@ -558,6 +558,36 @@ struct PublishedArtifacts {
     market_terms: BTreeMap<String, SignedFindingMarketTerms>,
 }
 
+fn clone_policy_lock(
+    source: &RwLock<BTreeMap<String, FindingAuthorityPin>>,
+) -> RwLock<BTreeMap<String, FindingAuthorityPin>> {
+    let values = match source.read() {
+        Ok(values) => values.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    };
+    RwLock::new(values)
+}
+
+impl Clone for PublishedArtifacts {
+    fn clone(&self) -> Self {
+        Self {
+            fee_schedules: self.fee_schedules.clone(),
+            audit_rounds: self.audit_rounds.clone(),
+            admissions: self.admissions.clone(),
+            admissions_by_digest: self.admissions_by_digest.clone(),
+            venue_policies: self.venue_policies.clone(),
+            profile_governance_policies: self.profile_governance_policies.clone(),
+            case_governance_policies: clone_policy_lock(&self.case_governance_policies),
+            penalty_policies: clone_policy_lock(&self.penalty_policies),
+            evaluator_policies: clone_policy_lock(&self.evaluator_policies),
+            audit_policies: self.audit_policies.clone(),
+            audit_witness_policies: self.audit_witness_policies.clone(),
+            audit_governance_policies: self.audit_governance_policies.clone(),
+            market_terms: self.market_terms.clone(),
+        }
+    }
+}
+
 impl PublishedArtifacts {
     fn publish_schedule(
         mut self,
@@ -808,6 +838,7 @@ struct Deployment {
     status: chio_store_sqlite::SqliteFindingStatusStore,
     allocation_id: String,
     admission_envelope_sha256: String,
+    fee_schedule_envelope_sha256: String,
     rail: Arc<RecordingRail>,
     filings: Arc<PublishedArtifacts>,
 }
@@ -864,12 +895,14 @@ fn deployment_publishing_terms_and_rounds(
     };
     let admission = signed_admission(&allocation_id, &terms)?;
     let admission_envelope_sha256 = signed_envelope_sha256(&admission)?;
+    let fee_schedule_envelope_sha256 = admission.body.fee_schedule_envelope_sha256.clone();
     purchases.install_active_admission_for_tests(
         &admission.body.finding_id,
         &allocation_id,
         LISTING_ID,
         &admission.body.admission_id,
         &admission_envelope_sha256,
+        &fee_schedule_envelope_sha256,
         NOW,
     )?;
     let config = market_config();
@@ -929,6 +962,7 @@ fn deployment_publishing_terms_and_rounds(
         status,
         allocation_id,
         admission_envelope_sha256,
+        fee_schedule_envelope_sha256,
         rail: Arc::new(RecordingRail::default()),
         filings: Arc::new(filings),
     })
@@ -1023,6 +1057,7 @@ impl Deployment {
             status,
             allocation_id,
             admission_envelope_sha256,
+            fee_schedule_envelope_sha256,
             rail,
             filings,
         } = self;
@@ -1049,6 +1084,7 @@ impl Deployment {
             status,
             allocation_id,
             admission_envelope_sha256,
+            fee_schedule_envelope_sha256,
             rail,
             filings,
         })
@@ -1141,6 +1177,7 @@ fn challenge_route_state(
         cluster_progress: None,
         finding_rail: Some(deployment.rail.clone()),
         finding_purchase_executor: None,
+        finding_authority_status_resolver: Some(Arc::new(TestAuthorityStatusResolver::live())),
         finding_challenge_executor: Some(executor),
     }
 }
@@ -1589,14 +1626,25 @@ enum ProductionShape {
 /// byte for byte identical.
 fn production_receipts(shape: ProductionShape) -> Result<Vec<ChioReceipt>, AnyError> {
     let kernel = production_kernel();
+    let payload_sha256 = hex64('8');
+    let mut delivery_metadata = serde_json::Map::new();
+    delivery_metadata.insert(
+        DELIVERY_CONTRACT_METADATA_KEY.to_string(),
+        serde_json::to_value(DeliveryContract {
+            schema: DELIVERY_CONTRACT_SCHEMA.to_string(),
+            expected_digest: payload_sha256.clone(),
+            observed_digest: payload_sha256.clone(),
+            result: DeliveryResult::Matched,
+        })?,
+    );
     let mut first = signed_receipt(
         &kernel,
         PRODUCTION_FIRST_AT,
         "finding.produce",
         ToolCallAction::from_parameters(serde_json::json!({ "step": 0 }))?,
         Decision::Allow,
-        &hex64('a'),
-        None,
+        &payload_sha256,
+        Some(serde_json::Value::Object(delivery_metadata.clone())),
     )?;
     let second = signed_receipt(
         &kernel,
@@ -1604,8 +1652,8 @@ fn production_receipts(shape: ProductionShape) -> Result<Vec<ChioReceipt>, AnyEr
         "finding.produce",
         ToolCallAction::from_parameters(serde_json::json!({ "step": 1 }))?,
         Decision::Allow,
-        &hex64('b'),
-        None,
+        &payload_sha256,
+        Some(serde_json::Value::Object(delivery_metadata)),
     )?;
     if shape == ProductionShape::ForeignSignature {
         first.signature.clone_from(&second.signature);
@@ -1910,7 +1958,7 @@ fn digest_mismatch_case(
                 media_type_check: shape.media_type_check,
                 settlement_mode: FindingDeliverySettlementMode::LocalReversibleHold,
                 accepted_bid_envelope_sha256: hex64('c'),
-                venue_admission_envelope_sha256: hex64('d'),
+                venue_admission_envelope_sha256: deployment.admission_envelope_sha256.clone(),
                 reservation_id: DENY_RESERVATION_ID.to_string(),
                 purchase_intent_id: DENY_INTENT_ID.to_string(),
                 authoritative_payment_operation_id: DENY_PAYMENT_ID.to_string(),
@@ -2016,6 +2064,8 @@ fn digest_mismatch_case(
             bid_envelope_sha256: &hex64('c'),
             ask_digest: &digest("deny-ask"),
             admission_envelope_sha256: &deployment.admission_envelope_sha256,
+            fee_schedule_envelope_sha256: &deployment.fee_schedule_envelope_sha256,
+            participation_epoch: 0,
             amount_units: 100,
             currency: "USD",
             expires_at: NOW + 3_600,
@@ -2092,6 +2142,7 @@ struct EvidenceInvalidCase {
     checkpoint_transparency: CheckpointTransparencySummary,
     checkpoint_authority_status: SignedFindingAuthorityStatus,
     production_authority_status: SignedFindingAuthorityStatus,
+    unestablished_production_authority_status: SignedFindingAuthorityStatus,
     /// A checkpoint carrying the named identity but not the artifact the
     /// reference names, which is an unresolved input rather than a
     /// contradiction.
@@ -2109,6 +2160,27 @@ impl EvidenceInvalidCase {
             &self.unresolved_checkpoint,
             &self.unresolved_checkpoint_transparency,
         )
+    }
+
+    fn evidence_without_production_status(&self) -> FindingChallengeClassEvidence<'_> {
+        FindingChallengeClassEvidence::EvidenceInvalid(FindingEvidenceInvalidEvidence {
+            purchase_standing: FindingPurchaseStandingEvidence {
+                purchase_record: &self.purchase_record,
+                bid_request: &self.purchase_bid_request,
+                accepted_bid: &self.purchase_accepted_bid,
+                reservation_receipt: &self.purchase_reservation_receipt,
+                delivery_receipt: &self.purchase_delivery_receipt,
+                delivery_checkpoint: &self.purchase_delivery_checkpoint,
+                delivery_checkpoint_transparency: &self.purchase_delivery_checkpoint_transparency,
+                delivery_authority_status: &self.purchase_delivery_authority_status,
+            },
+            challenged_receipts: &self.receipts,
+            challenged_checkpoint: &self.checkpoint,
+            checkpoint_transparency: &self.checkpoint_transparency,
+            checkpoint_authority_status: &self.checkpoint_authority_status,
+            production_authority_status: &self.unestablished_production_authority_status,
+            revoked_keys: &[],
+        })
     }
 
     fn evidence_against<'a>(
@@ -2200,7 +2272,7 @@ fn evidence_invalid_case(
             revoked_from: None,
             observed_at: NOW,
         },
-        &keypair(36),
+        &keypair(37),
     )?;
     let production_policy = challenged
         .profile
@@ -2221,6 +2293,8 @@ fn evidence_invalid_case(
         },
         &keypair(37),
     )?;
+    let unestablished_production_authority_status =
+        SignedExportEnvelope::sign(production_authority_status.body.clone(), &keypair(36))?;
     Ok(EvidenceInvalidCase {
         challenge: challenged.sign_challenge(authorization, branch, affected)?,
         purchase_record: standing.record.clone(),
@@ -2238,6 +2312,7 @@ fn evidence_invalid_case(
         checkpoint_transparency,
         checkpoint_authority_status,
         production_authority_status,
+        unestablished_production_authority_status,
         unresolved_checkpoint,
         unresolved_checkpoint_transparency,
     })
@@ -2720,11 +2795,7 @@ fn settle_purchase_with(
     } else {
         41
     });
-    let withheld_destination = buyer_destination(99);
-    let settlement_destination = match standing {
-        PayoutStanding::Intact => &refund_destination,
-        PayoutStanding::RemovedAfterSettlement => &withheld_destination,
-    };
+    let settlement_destination = &refund_destination;
     let buyer_hex = buyer.public_key().to_hex();
     let ask_digest = digest(&format!("ask-{tag}"));
     let bid_request = SignedExportEnvelope::sign(
@@ -2792,6 +2863,8 @@ fn settle_purchase_with(
             bid_envelope_sha256: &bid,
             ask_digest: &ask_digest,
             admission_envelope_sha256: &deployment.admission_envelope_sha256,
+            fee_schedule_envelope_sha256: &deployment.fee_schedule_envelope_sha256,
+            participation_epoch: 0,
             amount_units: 100,
             currency: "USD",
             expires_at: now + 3_600,
@@ -2923,7 +2996,7 @@ fn governing_keypair() -> Keypair {
 /// The pinned fee-schedule operator. It is deliberately not the
 /// governance root: a schedule authenticates against its own roster.
 fn fee_schedule_keypair() -> Keypair {
-    keypair(24)
+    keypair(39)
 }
 
 fn governance() -> Result<Governance, AnyError> {
@@ -3564,6 +3637,10 @@ fn close_challenge(
     outcome_envelope_json: &[u8],
     now: u64,
 ) -> Result<FindingChallengeState, AnyError> {
+    deployment.filings.retain_evaluator_policy(
+        outcome_envelope_sha256,
+        &market_config().challenge_evaluator,
+    )?;
     deployment.challenges.begin_evaluation(challenge_id, now)?;
     if verdict == FindingChallengeVerdict::Upheld {
         let outcome: SignedFindingChallengeOutcome = serde_json::from_slice(outcome_envelope_json)?;
@@ -3591,6 +3668,27 @@ fn close_challenge(
             now,
         )?)
     }
+}
+
+fn close_upheld_challenge(
+    deployment: &Deployment,
+    challenge: &SignedFindingChallenge,
+    now: u64,
+) -> TestResult {
+    let exposure = deployment
+        .purchases
+        .list_outstanding_exposure_total(&deployment.allocation_id, now)?;
+    let outcome = upheld_outcome(challenge, &deployment.allocation_id, exposure, "USD")?;
+    let outcome_json = canonical_json_bytes(&outcome)?;
+    close_challenge(
+        deployment,
+        &challenge.body.challenge_id,
+        FindingChallengeVerdict::Upheld,
+        &signed_envelope_sha256(&outcome)?,
+        &outcome_json,
+        now,
+    )?;
+    Ok(())
 }
 
 /// The evaluator-signed upheld outcome the uphold transaction consumes.
@@ -3931,14 +4029,7 @@ fn finding_challenge_pool_rotation_preserves_the_admission_pinned_rail() -> Test
     assert_eq!(lock.pool_principal_id, CHALLENGE_POOL_PRINCIPAL);
     assert_eq!(lock.pool_rail_destination, CHALLENGE_POOL_DESTINATION);
     assert_eq!(lock.pool_authority_epoch, 1);
-    close_challenge(
-        &deployment,
-        &challenge.body.challenge_id,
-        FindingChallengeVerdict::Upheld,
-        &digest("rotated-pool-upheld"),
-        b"rotated-pool-upheld",
-        NOW + 1,
-    )?;
+    close_upheld_challenge(&deployment, &challenge, NOW + 1)?;
     assert_eq!(
         coordinator.dispose_dispute_bond(&challenge.body.challenge_id, NOW + 2)?,
         Some(FindingDisputeLockDisposition::Returned)
@@ -5243,14 +5334,7 @@ fn finding_challenge_upheld_verdict_returns_the_dispute_bond() -> TestResult {
     let (_, raw) = finding_artifact()?;
     coordinator.submit(&challenge, &raw, NOW)?;
 
-    close_challenge(
-        &deployment,
-        &challenge.body.challenge_id,
-        FindingChallengeVerdict::Upheld,
-        &digest("upheld-outcome"),
-        b"upheld-outcome",
-        NOW + 10,
-    )?;
+    close_upheld_challenge(&deployment, &challenge, NOW + 10)?;
     assert_eq!(
         coordinator.dispose_dispute_bond(&challenge.body.challenge_id, NOW + 11)?,
         Some(FindingDisputeLockDisposition::Returned)
@@ -5279,14 +5363,7 @@ fn finding_challenge_a_failed_refund_never_reports_the_bond_returned() -> TestRe
     let challenge = buyer_challenge(&keypair(41))?;
     let (_, raw) = finding_artifact()?;
     coordinator.submit(&challenge, &raw, NOW)?;
-    close_challenge(
-        &deployment,
-        &challenge.body.challenge_id,
-        FindingChallengeVerdict::Upheld,
-        &digest("upheld-refund-retry"),
-        b"upheld-refund-retry",
-        NOW + 10,
-    )?;
+    close_upheld_challenge(&deployment, &challenge, NOW + 10)?;
 
     deployment.rail.refuse();
     assert!(matches!(
@@ -5753,7 +5830,7 @@ fn finding_challenge_uphold_rejects_a_different_authoritative_penalty_calculatio
         ChallengeCoordinatorError::PenaltyCalculationMismatch
     ));
     assert_eq!(liability_heads(&deployment, &finding.finding_id)?, 0);
-    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 
@@ -5789,7 +5866,7 @@ fn finding_challenge_a_sanction_for_another_listing_opens_no_liability() -> Test
         ChallengeCoordinatorError::GovernanceBinding("listing_id")
     ));
     assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
-    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 
@@ -5829,20 +5906,20 @@ fn finding_challenge_a_governance_bundle_no_pinned_root_signed_mints_no_penalty(
         0,
         "an unpinned governance bundle opens no liability"
     );
-    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 
 #[test]
-fn finding_challenge_a_bad_signature_under_the_pinned_case_key_blocks_nothing() -> TestResult {
+fn finding_challenge_a_bad_signature_under_the_pinned_case_key_opens_no_liability() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let governance = governance()?;
     let ready = ready_to_uphold(&deployment, &coordinator)?;
 
     // Advertising the pinned key does not make a signature produced by
-    // another key authentic. This must fail before the upheld transaction
-    // raises the durable sales block.
+    // another key authentic. This opens no liability, while the earlier
+    // upheld-verdict fence keeps the listing quarantined.
     let mut forged_case =
         SignedExportEnvelope::sign(governance.sanction_case.body.clone(), &keypair(99))?;
     forged_case.signer_key = governing_keypair().public_key();
@@ -5871,12 +5948,12 @@ fn finding_challenge_a_bad_signature_under_the_pinned_case_key_blocks_nothing() 
         "{refused:?}"
     );
     assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
-    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 
 #[test]
-fn finding_challenge_exhausted_collateral_never_blocks_the_listing() -> TestResult {
+fn finding_challenge_exhausted_collateral_keeps_the_verdict_quarantine() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let governance = governance()?;
@@ -5909,8 +5986,8 @@ fn finding_challenge_exhausted_collateral_never_blocks_the_listing() -> TestResu
         "the penalty artifacts refuse a zero amount, so the head is never opened"
     );
     assert!(
-        !deployment.purchases.sales_blocked(LISTING_ID)?,
-        "a listing is never blocked behind a hold that can never be minted"
+        deployment.purchases.sales_blocked(LISTING_ID)?,
+        "a trusted upheld verdict remains quarantined without minting a hold"
     );
     Ok(())
 }
@@ -5953,8 +6030,8 @@ fn finding_challenge_collateral_facts_for_another_allocation_uphold_nothing() ->
         "a mismatched allocation opens no liability"
     );
     assert!(
-        !deployment.purchases.sales_blocked(LISTING_ID)?,
-        "nothing durable happens before the allocation binding is proven"
+        deployment.purchases.sales_blocked(LISTING_ID)?,
+        "the upheld-verdict quarantine survives rejected allocation facts"
     );
     Ok(())
 }
@@ -5996,8 +6073,8 @@ fn finding_challenge_collateral_facts_must_carry_the_signed_stake() -> TestResul
         "an unsigned stake opens no liability"
     );
     assert!(
-        !deployment.purchases.sales_blocked(LISTING_ID)?,
-        "nothing durable happens before the stake binding is proven"
+        deployment.purchases.sales_blocked(LISTING_ID)?,
+        "the upheld-verdict quarantine survives rejected stake facts"
     );
 
     // Matching the facts to a different, valid seller-signed stake is not
@@ -6026,7 +6103,7 @@ fn finding_challenge_collateral_facts_must_carry_the_signed_stake() -> TestResul
         ChallengeCoordinatorError::TermsBinding("terms_envelope_sha256")
     ));
     assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
-    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 
@@ -6912,6 +6989,56 @@ fn finding_challenge_final_penalty_uses_the_rotated_authority_window() -> TestRe
 }
 
 #[test]
+fn finding_challenge_final_penalty_requires_current_authority_standing() -> TestResult {
+    let case = upheld_liability()?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+    let deadline = case
+        .deployment
+        .challenges
+        .get_liability(&case.upheld.liability_key)?
+        .and_then(|liability| liability.appeal_deadline)
+        .ok_or("the upheld liability carries an appeal deadline")?;
+    let config = market_config();
+    let coordinator = case.deployment.coordinator_under_with_status(
+        &config,
+        Arc::new(TestAuthorityStatusResolver {
+            revoked_authority: Some(config.market_penalty.authority_id.clone()),
+            revoked_from_override: Some(deadline.saturating_add(5)),
+            ..TestAuthorityStatusResolver::live()
+        }),
+        FindingDisputeLockDisposition::Forfeited,
+    )?;
+    let refused = coordinator.resolve_appeal(
+        &case.upheld.liability_key,
+        &case.outcome,
+        &identity,
+        Some(&case.upheld.sealed),
+        &case.governance.context(),
+        &AppealDisposition::Final {
+            sanction_case: &case.governance.sanction_case,
+        },
+        &case.upheld.sanction_case_id,
+        &case.upheld.hold,
+        &hex64('7'),
+        deadline.saturating_add(10),
+    );
+    assert!(matches!(
+        refused,
+        Err(ChallengeCoordinatorError::AuthorityLifecycle {
+            role: "penalty",
+            ..
+        })
+    ));
+    let liability = case
+        .deployment
+        .challenges
+        .get_liability(&case.upheld.liability_key)?
+        .ok_or("the refused finality keeps its liability")?;
+    assert_eq!(liability.state, FindingLiabilityState::PendingAppeal);
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_appeal_finality_uses_the_sanctions_retained_governance_policy() -> TestResult {
     let case = upheld_liability()?;
     let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
@@ -7791,6 +7918,10 @@ fn finding_challenge_quarantined_reconciliation_leaves_purchases_blocked() -> Te
 #[test]
 fn finding_status_retraction_enforced_challenge_stays_pending_until_the_broadcast_lands(
 ) -> TestResult {
+    run_enforced_challenge_status_retraction()
+}
+
+pub(super) fn run_enforced_challenge_status_retraction() -> TestResult {
     let case = finalizing_liability()?;
     let publisher = MiningPublisher::new();
 
@@ -7876,16 +8007,7 @@ fn finding_challenge_a_confirmed_impairment_settles_without_dispatching_again() 
     let case = finalizing_liability()?;
     // An attempt that confirmed the impairment and died before it could
     // settle the head leaves exactly this durable state.
-    case.deployment.challenges.advance_effect_intent(
-        &case.intent_key,
-        FindingEffectIntentState::Dispatched,
-        SETTLEMENT_NOW,
-    )?;
-    case.deployment.challenges.advance_effect_intent(
-        &case.intent_key,
-        FindingEffectIntentState::Confirmed,
-        SETTLEMENT_NOW,
-    )?;
+    case.confirm_impairment(SETTLEMENT_NOW)?;
     case.mark_status_eligible(&chain_hash(0x77), SETTLEMENT_NOW)?;
     case.publish_status(SETTLEMENT_NOW + 1)?;
 
@@ -7904,16 +8026,7 @@ fn finding_challenge_a_confirmed_impairment_settles_without_dispatching_again() 
 #[test]
 fn finding_challenge_confirmed_recovery_reobserves_transaction_finality() -> TestResult {
     let case = finalizing_liability()?;
-    for state in [
-        FindingEffectIntentState::Dispatched,
-        FindingEffectIntentState::Confirmed,
-    ] {
-        case.deployment.challenges.advance_effect_intent(
-            &case.intent_key,
-            state,
-            SETTLEMENT_NOW,
-        )?;
-    }
+    case.confirm_impairment(SETTLEMENT_NOW)?;
 
     let refused = case
         .finalize_observing(
@@ -7932,16 +8045,7 @@ fn finding_challenge_confirmed_recovery_reobserves_transaction_finality() -> Tes
 #[test]
 fn finding_challenge_confirmed_impairment_waits_for_retraction_before_settlement() -> TestResult {
     let case = finalizing_liability_pending_retraction()?;
-    for state in [
-        FindingEffectIntentState::Dispatched,
-        FindingEffectIntentState::Confirmed,
-    ] {
-        case.deployment.challenges.advance_effect_intent(
-            &case.intent_key,
-            state,
-            SETTLEMENT_NOW,
-        )?;
-    }
+    case.confirm_impairment(SETTLEMENT_NOW)?;
 
     let waiting = case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?;
     assert_eq!(waiting, FindingFinalization::AwaitingStatusPublication);
@@ -7991,16 +8095,7 @@ fn finding_challenge_finalization_reuses_pending_voluntary_retraction() -> TestR
         resolved.source,
         chio_store_sqlite::FindingRetractionIntentSource::Voluntary
     );
-    for state in [
-        FindingEffectIntentState::Dispatched,
-        FindingEffectIntentState::Confirmed,
-    ] {
-        case.deployment.challenges.advance_effect_intent(
-            &case.intent_key,
-            state,
-            SETTLEMENT_NOW,
-        )?;
-    }
+    case.confirm_impairment(SETTLEMENT_NOW)?;
 
     assert_eq!(
         case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?,
@@ -8024,21 +8119,8 @@ fn finding_challenge_finalization_reuses_published_voluntary_retraction() -> Tes
         true,
         PriorVoluntaryRetraction::Published,
     )?;
-    for state in [
-        FindingEffectIntentState::Dispatched,
-        FindingEffectIntentState::Confirmed,
-    ] {
-        case.deployment.challenges.advance_effect_intent(
-            &case.intent_key,
-            state,
-            SETTLEMENT_NOW,
-        )?;
-    }
+    case.confirm_impairment(SETTLEMENT_NOW)?;
 
-    assert_eq!(
-        case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?,
-        FindingFinalization::AlreadyConfirmed
-    );
     let settled = case.head()?;
     assert_eq!(settled.state, FindingLiabilityState::Settled);
     assert!(!settled.publication_pending);
@@ -8048,16 +8130,7 @@ fn finding_challenge_finalization_reuses_published_voluntary_retraction() -> Tes
 #[test]
 fn finding_challenge_confirmed_impairment_settles_after_snapshot_expiry() -> TestResult {
     let case = finalizing_liability_pending_retraction()?;
-    for state in [
-        FindingEffectIntentState::Dispatched,
-        FindingEffectIntentState::Confirmed,
-    ] {
-        case.deployment.challenges.advance_effect_intent(
-            &case.intent_key,
-            state,
-            SETTLEMENT_NOW,
-        )?;
-    }
+    case.confirm_impairment(SETTLEMENT_NOW)?;
 
     let stale_at = OBSERVED_AT + MAX_SNAPSHOT_AGE_SECS + 1;
     assert_eq!(
@@ -8088,16 +8161,7 @@ fn finding_challenge_confirmed_impairment_settles_after_snapshot_expiry() -> Tes
 #[test]
 fn finding_challenge_published_retraction_reconciles_after_status_bond_expiry() -> TestResult {
     let mut case = finalizing_liability_pending_retraction()?;
-    for state in [
-        FindingEffectIntentState::Dispatched,
-        FindingEffectIntentState::Confirmed,
-    ] {
-        case.deployment.challenges.advance_effect_intent(
-            &case.intent_key,
-            state,
-            SETTLEMENT_NOW,
-        )?;
-    }
+    case.confirm_impairment(SETTLEMENT_NOW)?;
 
     assert_eq!(
         case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?,
@@ -8300,7 +8364,7 @@ fn finding_challenge_a_reorged_bond_observation_never_reaches_the_publisher() ->
 
 #[test]
 fn finding_challenge_an_observer_cannot_weaken_deployment_finality() -> TestResult {
-    let case = finalizing_liability()?;
+    let case = finalizing_liability_before_root_binding()?;
 
     // The trusted observer signs a self-consistent snapshot at one
     // confirmation, then the finalization authority binds that exact
@@ -8676,7 +8740,7 @@ fn finding_challenge_an_enforcement_naming_another_vault_never_reaches_the_publi
 fn finding_challenge_a_snapshot_from_an_expired_observer_key_authorizes_nothing() -> TestResult {
     let case = finalizing_liability()?;
     let mut config = market_config();
-    config.settlement_observer.valid_until = case.snapshot.body.observed_at;
+    config.settlement_observer.valid_until = case.snapshot.body.observed_at.saturating_add(1);
     let coordinator = case
         .deployment
         .coordinator_under(&config, FindingDisputeLockDisposition::Forfeited)?;
@@ -8702,6 +8766,94 @@ fn finding_challenge_a_snapshot_from_an_expired_observer_key_authorizes_nothing(
         ChallengeCoordinatorError::SettlementObserverLifecycle(_)
     ));
     assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
+
+    let config = market_config();
+    let revoked = case.deployment.coordinator_under_with_status(
+        &config,
+        Arc::new(TestAuthorityStatusResolver {
+            revoked_authority: Some(config.settlement_observer.authority_id.clone()),
+            revoked_from_override: Some(case.snapshot.body.observed_at.saturating_add(1)),
+            ..TestAuthorityStatusResolver::live()
+        }),
+        FindingDisputeLockDisposition::Forfeited,
+    )?;
+    let refused = revoked.finalize(
+        &case.liability_key,
+        &case.enforcement,
+        &case.penalty,
+        &case.snapshot,
+        &case.seller,
+        &settlement_config()?,
+        &settlement_config()?.operator_address,
+        &evm_vault_snapshot(),
+        &anchor_proof()?,
+        &ScriptedObservations::qualified(),
+        &UnreachablePublisher,
+        SETTLEMENT_NOW,
+    );
+    assert!(matches!(
+        refused,
+        Err(ChallengeCoordinatorError::SettlementObserverLifecycle(_))
+    ));
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_revoked_status_operator_blocks_impairment_dispatch() -> TestResult {
+    let case = finalizing_liability()?;
+    let authority_id = market_config().status_feed_operator.authority.authority_id;
+    let coordinator = case
+        .deployment
+        .coordinator_with_revoked_role(&authority_id, FindingDisputeLockDisposition::Forfeited)?;
+
+    let refused = coordinator
+        .finalize(
+            &case.liability_key,
+            &case.enforcement,
+            &case.penalty,
+            &case.snapshot,
+            &case.seller,
+            &settlement_config()?,
+            &settlement_config()?.operator_address,
+            &evm_vault_snapshot(),
+            &enforcement_anchor_proof(&case.enforcement)?,
+            &ScriptedObservations::qualified(),
+            &UnreachablePublisher,
+            SETTLEMENT_NOW,
+        )
+        .expect_err("a revoked status operator cannot precede impairment dispatch");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::AuthorityLifecycle {
+            role: "status feed operator",
+            ..
+        }
+    ));
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_observer_and_vault_operator_epochs_rotate_independently() -> TestResult {
+    let case = finalizing_liability_before_root_binding()?;
+    let authorized = case.authorized()?;
+    let mut body = case.snapshot.body.clone();
+    body.operator_key_epoch = PINNED_KEY_EPOCH + 1;
+    body.snapshot_id = String::new();
+    body.snapshot_id = compute_snapshot_id(&body)?;
+    let independently_rotated = SignedExportEnvelope::sign(body, &keypair(34))?;
+
+    let refreshed = case.coordinator.refresh_finalizing_enforcement(
+        &authorized,
+        &independently_rotated,
+        &case.seller,
+        SETTLEMENT_NOW + 1,
+    )?;
+    assert_eq!(
+        refreshed.enforcement.body.bond_snapshot_envelope_sha256,
+        signed_envelope_sha256(&independently_rotated)?
+    );
     Ok(())
 }
 
@@ -8738,6 +8890,10 @@ fn finding_challenge_rotated_snapshot_cannot_replace_a_bound_enforcement_root() 
 
 #[test]
 fn finding_challenge_digest_mismatch_reaches_an_enforced_sanction() -> TestResult {
+    run_finding_challenge_digest_mismatch()
+}
+
+pub(super) fn run_finding_challenge_digest_mismatch() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let governance = governance()?;
@@ -9212,6 +9368,27 @@ fn finding_challenge_an_evaluator_key_outside_its_pinned_lifecycle_signs_nothing
         ChallengeCoordinatorError::EvaluatorKeyWindow
     ));
 
+    let mut retired_status = market_config();
+    retired_status.authority_status.valid_until = at;
+    let retired_status =
+        deployment.coordinator_under(&retired_status, FindingDisputeLockDisposition::Forfeited)?;
+    let error = retired_status
+        .evaluate(&evaluation_request(
+            &case.challenge,
+            &challenged,
+            &evidence,
+            &collateral,
+            at,
+        ))
+        .err()
+        .ok_or("an expired status authority was accepted")?;
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::EvaluatorRevocation(
+            "status authority is outside its configured validity window"
+        )
+    ));
+
     // None of that consumed an evaluation attempt against the challenge.
     assert_eq!(
         deployment
@@ -9245,12 +9422,12 @@ fn finding_challenge_uphold_uses_the_recorded_historical_evaluator_policy() -> T
     let ready = ready_to_uphold(&deployment, &original)?;
 
     let mut rotated_config = market_config();
-    rotated_config.challenge_evaluator = authority_pin(39, "challenge-evaluator");
+    rotated_config.challenge_evaluator = authority_pin(40, "challenge-evaluator");
     rotated_config.challenge_evaluator.key_epoch = PINNED_KEY_EPOCH + 1;
     rotated_config.challenge_evaluator.valid_from = NOW + 2;
     let rotated = deployment.coordinator_under_with_evaluator_and_status(
         &rotated_config,
-        keypair(39),
+        keypair(40),
         Arc::new(TestAuthorityStatusResolver::live()),
         FindingDisputeLockDisposition::Forfeited,
     )?;
@@ -9457,21 +9634,25 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
         let required = usd(5_000);
         let collateral = collateral_facts(&stake, &required, &deployment.allocation_id, 5_000);
         let evidence = case.evidence();
-        assert!(matches!(
-            revoked
-                .evaluate(&evaluation_request(
-                    &case.challenge,
-                    &challenged,
-                    &evidence,
-                    &collateral,
-                    NOW + 2,
-                ))
-                .expect_err("a revoked venue cannot authorize its admission"),
-            ChallengeCoordinatorError::AuthorityLifecycle {
-                role: "historical venue",
-                ..
-            }
-        ));
+        let error = revoked
+            .evaluate(&evaluation_request(
+                &case.challenge,
+                &challenged,
+                &evidence,
+                &collateral,
+                NOW + 2,
+            ))
+            .expect_err("a revoked venue cannot authorize its admission");
+        assert!(
+            matches!(
+                error,
+                ChallengeCoordinatorError::AuthorityLifecycle {
+                    role: "historical venue",
+                    ..
+                }
+            ),
+            "unexpected error: {error:?}"
+        );
     }
 
     // Bondless audit authorization.
@@ -9494,8 +9675,39 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
         ));
     }
 
+    {
+        let mut deployment = deployment()?;
+        let challenge = venue_audit_challenge()?;
+        let audit_epoch_envelope_sha256 = match &challenge.body.authorization {
+            FindingChallengeAuthorization::VenueAudit(audit) => {
+                audit.audit_epoch_envelope_sha256.clone()
+            }
+            FindingChallengeAuthorization::BuyerSubmission(_) => {
+                return Err("venue audit fixture used the buyer branch".into())
+            }
+        };
+        Arc::make_mut(&mut deployment.filings)
+            .audit_policies
+            .get_mut(&audit_epoch_envelope_sha256)
+            .ok_or("retained audit policy")?
+            .valid_until = NOW + 1;
+        let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+        let (_, raw) = finding_artifact()?;
+        let error = coordinator
+            .submit(&challenge, &raw, NOW + 1)
+            .err()
+            .ok_or("a retired historical audit key filed a new audit")?;
+        assert!(matches!(
+            error,
+            ChallengeCoordinatorError::AuthorityLifecycle {
+                role: "historical audit",
+                reason: "role action is outside the configured validity window",
+            }
+        ));
+    }
+
     // Governance and penalty authorities both fail before a liability is
-    // opened or sales are blocked.
+    // opened, while the upheld-verdict quarantine remains in force.
     for (authority, role) in [
         ("governance", "historical governance case"),
         ("market-penalty", "penalty"),
@@ -9508,39 +9720,38 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
             .coordinator_with_revoked_role(authority, FindingDisputeLockDisposition::Forfeited)?;
         let stake = usd(300);
         let required = usd(5_000);
-        let refused = revoked
-            .uphold(
-                &ready.challenge_id,
-                &ready.challenge,
-                &ready.outcome,
-                &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
-                &market_terms(CLAIM_WINDOW_SECS)?,
-                0,
-                &[],
-                &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
-                &governance.context(),
-                &governance.sanction_case,
-                NOW + 2,
-            )
-            .expect_err("a revoked authority opens no liability");
         assert!(matches!(
-            refused,
+            revoked
+                .uphold(
+                    &ready.challenge_id,
+                    &ready.challenge,
+                    &ready.outcome,
+                    &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+                    &market_terms(CLAIM_WINDOW_SECS)?,
+                    0,
+                    &[],
+                    &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
+                    &governance.context(),
+                    &governance.sanction_case,
+                    NOW + 2,
+                )
+                .expect_err("a revoked authority opens no liability"),
             ChallengeCoordinatorError::AuthorityLifecycle {
                 role: actual,
                 ..
             } if actual == role
         ));
         assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
-        assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+        assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     }
 
-    // Purchase records are authenticated before the sales-blocking
-    // transaction starts.
+    // Purchase records are authenticated before the liability transaction
+    // starts; a rejected record cannot lift the verdict quarantine.
     {
         let deployment = deployment()?;
         let sale = settle_purchase(&deployment, "purchase-life", BUYER_ONE_DESTINATION, 50, NOW)?;
         let live = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
-        let ready = ready_to_uphold(&deployment, &live)?;
+        let ready = ready_to_uphold_with_open_exposure(&deployment, &live, 100)?;
         let governance = governance()?;
         let revoked = deployment.coordinator_with_revoked_role(
             "authority-purchase",
@@ -9570,7 +9781,7 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
             }
         ));
         assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
-        assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+        assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     }
 
     // Finalization signs nothing under a revoked key.
@@ -9607,42 +9818,8 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
     Ok(())
 }
 
-#[test]
-fn finding_challenge_governance_charter_uses_its_retained_pinned_window() -> TestResult {
-    let deployment = deployment()?;
-    let live = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
-    let ready = ready_to_uphold(&deployment, &live)?;
-    let governance = governance()?;
-    let mut config = market_config();
-    config.governance_root.valid_from = NOW - 650;
-    let coordinator =
-        deployment.coordinator_under(&config, FindingDisputeLockDisposition::Forfeited)?;
-    let stake = usd(300);
-    let required = usd(5_000);
-
-    let retry = coordinator
-        .uphold(
-            &ready.challenge_id,
-            &ready.challenge,
-            &ready.outcome,
-            &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
-            &market_terms(CLAIM_WINDOW_SECS)?,
-            0,
-            &[],
-            &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
-            &governance.context(),
-            &governance.sanction_case,
-            NOW + 2,
-        )
-        .expect_err("the first uphold opens the claim window without sealing it");
-    assert!(
-        matches!(&retry, ChallengeCoordinatorError::ClaimWindowOpen),
-        "{retry:?}"
-    );
-    assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 1);
-    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
-    Ok(())
-}
+#[path = "finding_challenge_lifecycle_m9_tests.rs"]
+mod finding_challenge_lifecycle_m9_tests;
 
 #[test]
 fn finding_challenge_listing_ceiling_comes_from_the_signed_schedule() -> TestResult {
@@ -10047,7 +10224,7 @@ fn finding_challenge_a_foreign_recipe_preimage_never_reaches_a_verdict() -> Test
     // A recipe that is canonical and binds the admitted profile, and is
     // not the recipe the finding committed.
     let mut foreign = replay_recipe(&challenged.profile_envelope_sha256);
-    foreign.decision_rule_ref = "decision/replay-v2".to_string();
+    foreign.parameters_sha256 = hex64('d');
     let foreign_preimage = canonical_json_string(&foreign)?;
     assert_ne!(
         sha256_hex(foreign_preimage.as_bytes()),
@@ -10350,7 +10527,8 @@ fn finding_challenge_a_purchase_that_lost_payout_standing_is_refused() -> TestRe
 // ---------------------------------------------------------------------------
 
 #[test]
-fn finding_challenge_a_clean_venue_audit_transfers_nothing() -> TestResult {
+fn finding_challenge_a_clean_venue_audit_without_revocation_status_transfers_nothing() -> TestResult
+{
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let challenged = challenged_finding()?;
@@ -10369,7 +10547,7 @@ fn finding_challenge_a_clean_venue_audit_transfers_nothing() -> TestResult {
     let stake = usd(300);
     let required = usd(5_000);
     let collateral = collateral_facts(&stake, &required, &deployment.allocation_id, 5_000);
-    let evidence = case.evidence();
+    let evidence = case.evidence_without_production_status();
     let evaluated = coordinator
         .evaluate(&evaluation_request(
             &case.challenge,
@@ -10379,8 +10557,14 @@ fn finding_challenge_a_clean_venue_audit_transfers_nothing() -> TestResult {
             NOW + 2,
         ))?
         .ok_or("a resolvable audit is adjudicated")?;
-    assert_eq!(evaluated.state, FindingChallengeState::Rejected);
-    assert_eq!(evaluated.outcome.body.reason, "challenged_evidence_valid");
+    assert_eq!(
+        evaluated.state,
+        FindingChallengeState::IndeterminateRetryable
+    );
+    assert_eq!(
+        evaluated.outcome.body.reason,
+        "evidence_key_revocation_not_established"
+    );
     assert!(evaluated.outcome.body.penalty_calculation.is_none());
     assert_eq!(
         evaluated.bond_disposition, None,
@@ -10408,7 +10592,7 @@ fn finding_challenge_a_clean_venue_audit_transfers_nothing() -> TestResult {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn finding_challenge_an_indeterminate_result_retries_into_a_normal_verdict() -> TestResult {
+fn finding_challenge_an_indeterminate_result_closes_without_revocation_status() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let challenged = challenged_finding()?;
@@ -10466,8 +10650,11 @@ fn finding_challenge_an_indeterminate_result_retries_into_a_normal_verdict() -> 
         "an indeterminate result never forfeits an infrastructure failure"
     );
 
-    // The retry resolves the same challenge against the artifact it names.
-    let resolved = case.evidence();
+    // The retry resolves the checkpoint but still has no authenticated
+    // revocation status for the production key. The bounded retry closes
+    // indeterminate and returns the buyer's lock rather than treating an
+    // unknown authority fact as innocence.
+    let resolved = case.evidence_without_production_status();
     let second = coordinator
         .evaluate(&evaluation_request(
             &case.challenge,
@@ -10477,16 +10664,19 @@ fn finding_challenge_an_indeterminate_result_retries_into_a_normal_verdict() -> 
             NOW + 3,
         ))?
         .ok_or("the retry adjudicates")?;
-    assert_eq!(second.state, FindingChallengeState::Rejected);
-    assert_eq!(second.outcome.body.reason, "challenged_evidence_valid");
+    assert_eq!(second.state, FindingChallengeState::IndeterminateClosed);
+    assert_eq!(
+        second.outcome.body.reason,
+        "evidence_key_revocation_not_established"
+    );
     assert_eq!(
         second.bond_disposition,
-        Some(FindingDisputeLockDisposition::Forfeited)
+        Some(FindingDisputeLockDisposition::Returned)
     );
     assert_eq!(
         deployment.rail.charges().len(),
-        2,
-        "a retry reuses the fee and bond funding identities"
+        3,
+        "the retry adds only the terminal bond return to the original fee and funding"
     );
     Ok(())
 }
@@ -11028,6 +11218,8 @@ fn finding_challenge_an_expired_reservation_neither_wedges_nor_inflates_the_clai
             bid_envelope_sha256: &digest("bid-abandoned"),
             ask_digest: &digest("ask-abandoned"),
             admission_envelope_sha256: &deployment.admission_envelope_sha256,
+            fee_schedule_envelope_sha256: &deployment.fee_schedule_envelope_sha256,
+            participation_epoch: 0,
             amount_units: 100,
             currency: "USD",
             expires_at: NOW + 5,
@@ -11044,13 +11236,16 @@ fn finding_challenge_an_expired_reservation_neither_wedges_nor_inflates_the_clai
     coordinator.submit(&challenge, &raw, NOW + 2)?;
     let outcome = upheld_outcome(&challenge, &deployment.allocation_id, 100, "USD")?;
     let outcome_json = canonical_json_bytes(&outcome)?;
+    deployment
+        .purchases
+        .expire_reservations(NOW + 6, usize::MAX)?;
     close_challenge(
         &deployment,
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Upheld,
         &signed_envelope_sha256(&outcome)?,
         &outcome_json,
-        NOW + 3,
+        NOW + 6,
     )?;
 
     let stake = usd(300);

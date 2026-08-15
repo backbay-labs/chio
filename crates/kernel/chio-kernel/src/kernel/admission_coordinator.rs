@@ -5,7 +5,6 @@ use chio_log_redact::redacted;
 use serde::Serialize;
 use tracing::warn;
 
-#[cfg(feature = "cognition-market-experimental")]
 #[path = "admission_coordinator/finding_pool_recovery.rs"]
 mod finding_pool_recovery;
 #[path = "admission_coordinator/terminal.rs"]
@@ -147,7 +146,6 @@ impl DurableAdmissionRuntime {
     }
 }
 
-#[cfg(feature = "cognition-market-experimental")]
 impl ChioKernel {
     pub(super) fn ensure_finding_pool_configuration_precedes_startup_reconciliation(
         &self,
@@ -376,14 +374,8 @@ impl ChioKernel {
             return Ok(0);
         }
         let operation_count = self.reconcile_recoverable_admissions()?;
-        #[cfg(feature = "cognition-market-experimental")]
         let finding_pool_receipt_count = self.reconcile_finding_pool_mutation_receipts()?;
-        #[cfg(not(feature = "cognition-market-experimental"))]
-        let finding_pool_receipt_count = 0_usize;
-        #[cfg(feature = "cognition-market-experimental")]
         let finding_pool_count = self.reconcile_finding_pool_terminal_claims()?;
-        #[cfg(not(feature = "cognition-market-experimental"))]
-        let finding_pool_count = 0_usize;
         let receipt_count = self.reconcile_durable_admission_receipt_projections()?;
         let total = operation_count
             .checked_add(finding_pool_receipt_count)
@@ -572,7 +564,6 @@ impl ChioKernel {
             store_fence: runtime.fence.clone(),
         };
         let projection = verified_outcome_unknown_after_dispatch_projection(operation, context)?;
-        #[cfg(feature = "cognition-market-experimental")]
         self.finalize_finding_pool_claim_after_unknown_dispatch(
             operation.binding().operation_id().as_str(),
             trusted_now_unix_ms,
@@ -1755,7 +1746,6 @@ impl ChioKernel {
                 ));
             }
         }
-        #[cfg(feature = "cognition-market-experimental")]
         self.release_finding_pool_claim_before_dispatch(
             current.binding().operation_id().as_str(),
             trusted_now_unix_ms,

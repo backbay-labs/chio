@@ -1,5 +1,3 @@
-#![cfg(feature = "cognition-market-experimental")]
-
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;

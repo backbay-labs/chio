@@ -895,6 +895,8 @@ struct MinimalClaimSet {
     schema: String,
     id: String,
     issued_at: String,
+    #[serde(default, rename = "subject")]
+    _subject: Option<serde_json::Value>,
     claims: Vec<MinimalClaimSetClaim>,
 }
 
