@@ -264,10 +264,52 @@
       "schemaFile": "spec/schemas/chio-federation/v1/verifier-trust-bundle.schema.json"
     },
     {
+      "schema": "chio.finding.admission.v1",
+      "artifactKind": "finding_admission",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/admission.schema.json"
+    },
+    {
+      "schema": "chio.finding.bond-backing.v1",
+      "artifactKind": "finding_bond_backing",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/bond-backing.schema.json"
+    },
+    {
+      "schema": "chio.finding.challenge-verifier-profile.v1",
+      "artifactKind": "finding_challenge_verifier_profile",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/challenge-verifier-profile.schema.json"
+    },
+    {
+      "schema": "chio.finding.market-terms.v1",
+      "artifactKind": "finding_market_terms",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/market-terms.schema.json"
+    },
+    {
+      "schema": "chio.finding.replay-recipe-input.v1",
+      "artifactKind": "finding_replay_recipe_input",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/replay-recipe-input.schema.json"
+    },
+    {
+      "schema": "chio.finding.seller-authorization.v1",
+      "artifactKind": "finding_seller_authorization",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/seller-authorization.schema.json"
+    },
+    {
       "schema": "chio.finding.v1",
       "artifactKind": "finding",
       "introducedBy": "finding-market-v1",
       "schemaFile": "spec/schemas/chio-finding/v1/finding.schema.json"
+    },
+    {
+      "schema": "chio.finding.verifier-report.v1",
+      "artifactKind": "finding_verifier_report",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/verifier-report.schema.json"
     },
     {
       "schema": "chio.frost.authorization-slot-checkpoint.v1",

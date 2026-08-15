@@ -3151,6 +3151,8 @@ dependencies = [
  "chio-errors",
  "chio-external-guards",
  "chio-federation",
+ "chio-finding",
+ "chio-finding-verifier",
  "chio-fiscal",
  "chio-guards",
  "chio-http-serve",
@@ -3164,6 +3166,7 @@ dependencies = [
  "chio-reputation",
  "chio-risk-comptroller",
  "chio-settle",
+ "chio-spec-validate",
  "chio-store-sqlite",
  "chio-test-support",
  "chio-transaction-passport",
@@ -3600,6 +3603,19 @@ version = "0.1.0"
 dependencies = [
  "chio-core-types",
  "chio-spec-validate",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "chio-finding-verifier"
+version = "0.1.0"
+dependencies = [
+ "chio-appraisal",
+ "chio-core-types",
+ "chio-finding",
+ "chio-kernel",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -4164,6 +4180,7 @@ dependencies = [
  "chio-listing",
  "chio-test-support",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -4620,6 +4637,7 @@ dependencies = [
  "chio-credit",
  "chio-federation",
  "chio-federation-authority",
+ "chio-finding",
  "chio-fiscal",
  "chio-kernel",
  "chio-kernel-core",

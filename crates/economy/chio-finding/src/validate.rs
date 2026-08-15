@@ -30,8 +30,8 @@ pub enum FindingError {
     UnsupportedIssuerAlgorithm,
     #[error("finding issuer must not be a weak Ed25519 key")]
     WeakIssuerKey,
-    #[error("evidence_cost.currency must be a three-letter uppercase ISO 4217-style code")]
-    InvalidCurrency,
+    #[error("currency must be a three-letter uppercase ISO 4217-style code: {0}")]
+    InvalidCurrency(&'static str),
     #[error("deterministic_replay findings require replay_recipe_sha256")]
     MissingReplayRecipe,
     #[error("non-asserted evidence class requires evidence receipts")]
@@ -48,16 +48,39 @@ pub enum FindingError {
     SignatureInvalid,
     #[error("value exceeds its size bound: {0}")]
     SizeLimitExceeded(&'static str),
+    #[error("content-addressed id does not match the canonical body: {0}")]
+    ArtifactIdMismatch(&'static str),
+    #[error("invalid field: {0}")]
+    InvalidField(&'static str),
+    #[error("duplicate entry: {0}")]
+    DuplicateEntry(&'static str),
+    #[error("missing required entry: {0}")]
+    MissingEntry(&'static str),
+    #[error("value must be nonzero: {0}")]
+    NonZeroRequired(&'static str),
+    #[error("authority key rejected (algorithm or weak-key): {0}")]
+    InvalidAuthorityKey(&'static str),
+    #[error("envelope signer does not match the pinned authority: {0}")]
+    AuthorityMismatch(&'static str),
+    #[error("envelope signature invalid: {0}")]
+    EnvelopeSignatureInvalid(&'static str),
+    #[error("currency mismatch: {0}")]
+    CurrencyMismatch(&'static str),
+    #[error("amount arithmetic overflow: {0}")]
+    AmountOverflow(&'static str),
 }
 
-/// Upper bound on opaque identifiers carried by finding artifacts.
+/// Upper bound on opaque identifiers carried by finding-market artifacts.
 pub const MAX_FINDING_IDENTIFIER_BYTES: usize = 512;
 
-/// Upper bound on searchable or display-oriented text carried by findings.
+/// Upper bound on searchable or display-oriented text carried by finding-market artifacts.
 pub const MAX_FINDING_TEXT_BYTES: usize = 512;
 
 /// Upper bound on receipt references carried by a finding.
 pub const MAX_FINDING_EVIDENCE_RECEIPTS: usize = 256;
+
+/// Upper bound on variable-length collections carried by market artifacts.
+pub const MAX_FINDING_ARTIFACT_ITEMS: usize = 256;
 
 pub(crate) fn is_hex64(value: &str) -> bool {
     value.len() == 64
@@ -66,7 +89,7 @@ pub(crate) fn is_hex64(value: &str) -> bool {
             .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
 }
 
-fn require_non_empty(value: &str, field: &'static str) -> Result<(), FindingError> {
+pub(crate) fn require_non_empty(value: &str, field: &'static str) -> Result<(), FindingError> {
     if value.trim().is_empty() {
         Err(FindingError::EmptyField(field))
     } else {
@@ -86,11 +109,26 @@ fn require_bounded_non_empty(
     Ok(())
 }
 
-fn require_bounded_id(value: &str, field: &'static str) -> Result<(), FindingError> {
+pub(crate) fn require_bounded_id(value: &str, field: &'static str) -> Result<(), FindingError> {
     require_bounded_non_empty(value, field, MAX_FINDING_IDENTIFIER_BYTES)
 }
 
-fn require_hex64(value: &str, field: &'static str) -> Result<(), FindingError> {
+pub(crate) fn require_bounded_text(value: &str, field: &'static str) -> Result<(), FindingError> {
+    require_bounded_non_empty(value, field, MAX_FINDING_TEXT_BYTES)
+}
+
+pub(crate) fn require_max_items(
+    len: usize,
+    field: &'static str,
+    max_items: usize,
+) -> Result<(), FindingError> {
+    if len > max_items {
+        return Err(FindingError::SizeLimitExceeded(field));
+    }
+    Ok(())
+}
+
+pub(crate) fn require_hex64(value: &str, field: &'static str) -> Result<(), FindingError> {
     if is_hex64(value) {
         Ok(())
     } else {
@@ -98,7 +136,7 @@ fn require_hex64(value: &str, field: &'static str) -> Result<(), FindingError> {
     }
 }
 
-fn require_i_json_u64(value: u64, field: &'static str) -> Result<(), FindingError> {
+pub(crate) fn require_i_json_u64(value: u64, field: &'static str) -> Result<(), FindingError> {
     if value <= I_JSON_MAX_SAFE_INTEGER {
         Ok(())
     } else {
@@ -106,13 +144,43 @@ fn require_i_json_u64(value: u64, field: &'static str) -> Result<(), FindingErro
     }
 }
 
+pub(crate) fn require_nonzero(value: u64, field: &'static str) -> Result<(), FindingError> {
+    if value == 0 {
+        Err(FindingError::NonZeroRequired(field))
+    } else {
+        require_i_json_u64(value, field)
+    }
+}
+
+pub(crate) fn require_currency(currency: &str, field: &'static str) -> Result<(), FindingError> {
+    if currency.len() != 3 || !currency.bytes().all(|byte| byte.is_ascii_uppercase()) {
+        return Err(FindingError::InvalidCurrency(field));
+    }
+    Ok(())
+}
+
+pub(crate) fn require_window(
+    issued_at: u64,
+    expires_at: u64,
+    issued_field: &'static str,
+    expires_field: &'static str,
+) -> Result<(), FindingError> {
+    require_i_json_u64(issued_at, issued_field)?;
+    require_i_json_u64(expires_at, expires_field)?;
+    if expires_at <= issued_at {
+        return Err(FindingError::InvalidValidityWindow);
+    }
+    Ok(())
+}
+
 impl Finding {
     /// Structural validation. Signature and cross-artifact checks (bond
-    /// existence, receipt verification, status freshness) live in later
-    /// milestones; this validator is pure over the artifact alone. It is
-    /// also CLOCKLESS by design: it checks the window shape
-    /// (expires_at > issued_at) but not liveness - publish/search (M2)
-    /// and buy (M4) must reject `now >= expires_at` themselves.
+    /// existence, receipt verification, status freshness) are surface
+    /// obligations, not wire-type checks; this validator is pure over the
+    /// artifact alone. It is also CLOCKLESS by design: it checks the
+    /// window shape (expires_at > issued_at) but not liveness - callers
+    /// that resolve a Finding for publish, search, or purchase must
+    /// reject `now >= expires_at` themselves.
     pub fn validate(&self) -> Result<(), FindingError> {
         if self.schema != FINDING_SCHEMA_V1 {
             return Err(FindingError::UnsupportedSchema(self.schema.clone()));
@@ -143,15 +211,7 @@ impl Finding {
             MAX_FINDING_TEXT_BYTES,
         )?;
         require_bounded_id(&self.evidence_checkpoint_ref, "evidence_checkpoint_ref")?;
-        if self.evidence_cost.currency.len() != 3
-            || !self
-                .evidence_cost
-                .currency
-                .bytes()
-                .all(|byte| byte.is_ascii_uppercase())
-        {
-            return Err(FindingError::InvalidCurrency);
-        }
+        require_currency(&self.evidence_cost.currency, "evidence_cost.currency")?;
         require_bounded_id(&self.bond_ref, "bond_ref")?;
         require_bounded_id(&self.status_feed_ref, "status_feed_ref")?;
         if self.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
@@ -163,9 +223,10 @@ impl Finding {
             require_hex64(recipe, "replay_recipe_sha256")?;
         }
         // Any attestation-quality signal requires at least one receipt
-        // reference. This is a structural requirement only: M1 does not
-        // resolve the reference, verify receipt/checkpoint/revocation
-        // evidence, bind issuer lineage, or establish the claimed tier/class.
+        // reference. This is a structural requirement only: this
+        // validator does not resolve the reference, verify
+        // receipt/checkpoint/revocation evidence, bind issuer lineage, or
+        // establish the claimed tier/class.
         let claims_attestation = self.guarantee_class != FindingGuaranteeClass::Asserted
             || self.evidence_class != FindingEvidenceClass::Asserted
             || matches!(
@@ -244,7 +305,7 @@ pub(crate) fn is_hex128(value: &str) -> bool {
 }
 
 /// Verify the inline signature against the embedded issuer, fail-closed.
-/// The exact-encoding precheck matters (review finding):
+/// The exact-encoding precheck matters:
 /// `Signature::from_hex` tolerates `0x` and algorithm prefixes that the
 /// registered JSON schema rejects, and the signature field is cleared
 /// before canonical verification, so without this check an alternate
@@ -271,17 +332,17 @@ pub fn verify_finding_signature(finding: &Finding) -> Result<(), FindingError> {
 /// This does not authenticate evidence receipts or checkpoints, bind the
 /// issuer to evidence lineage, verify bond/status/pricing references, check
 /// wall-clock liveness, or establish the truth of the guarantee/evidence
-/// classes. Market and trust decisions must perform those milestone-specific
-/// checks separately.
+/// classes. Market and trust decisions must perform those checks
+/// separately.
 ///
-/// IMPORTANT (review finding): this operates on an ALREADY-DESERIALIZED
+/// IMPORTANT: this operates on an ALREADY-DESERIALIZED
 /// `Finding` and reserializes canonically to check the signature and id.
 /// It is NOT a substitute for validating the raw request JSON against the
 /// registered `chio.finding.v1` schema: `PublicKey::from_hex` tolerates
 /// `0x`/uppercase and `Option` fields accept explicit `null`, so an
 /// artifact whose only deviation is `issuer: "0x.."` or
 /// `runtime_assurance_tier: null` would pass here (canonicalized to the
-/// accepted form) while failing the schema. The M2 publish boundary MUST
+/// accepted form) while failing the schema. The publish boundary MUST
 /// run `chio-spec-validate` against the raw bytes BEFORE deserializing
 /// and calling this.
 pub fn verify_finding(finding: &Finding) -> Result<(), FindingError> {

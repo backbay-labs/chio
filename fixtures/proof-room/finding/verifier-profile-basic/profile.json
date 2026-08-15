@@ -1,0 +1,123 @@
+{
+  "body": {
+    "schema": "chio.finding.challenge-verifier-profile.v1",
+    "profile_id": "26845afc58111332f29b3f5e90766406061d151515e7a0957bafbfc1b1754681",
+    "governance_authority": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+    "operator": "venue-operator",
+    "receipt_signers": [
+      {
+        "role": "production",
+        "policy": {
+          "authority_id": "authority-production",
+          "key": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+          "key_epoch": 1,
+          "valid_from": 1700000000,
+          "valid_until": 1900000000,
+          "rotation_policy_ref": "rotation-policy-v1",
+          "revocation_status_ref": "revocations/finding-market"
+        }
+      },
+      {
+        "role": "delivery",
+        "policy": {
+          "authority_id": "authority-delivery",
+          "key": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d",
+          "key_epoch": 1,
+          "valid_from": 1700000000,
+          "valid_until": 1900000000,
+          "rotation_policy_ref": "rotation-policy-v1",
+          "revocation_status_ref": "revocations/finding-market"
+        }
+      },
+      {
+        "role": "replay",
+        "policy": {
+          "authority_id": "authority-replay",
+          "key": "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a",
+          "key_epoch": 1,
+          "valid_from": 1700000000,
+          "valid_until": 1900000000,
+          "rotation_policy_ref": "rotation-policy-v1",
+          "revocation_status_ref": "revocations/finding-market"
+        }
+      }
+    ],
+    "checkpoint_logs": [
+      {
+        "log_id": "local-log-wedge",
+        "signer": {
+          "authority_id": "authority-checkpoint",
+          "key": "0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc",
+          "key_epoch": 1,
+          "valid_from": 1700000000,
+          "valid_until": 1900000000,
+          "rotation_policy_ref": "rotation-policy-v1",
+          "revocation_status_ref": "revocations/finding-market"
+        }
+      }
+    ],
+    "bbs_projection_issuer": {
+      "issuer_fingerprint": "bbs-issuer-fp",
+      "key_hex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "registry_ref": "registry/bbs-issuers",
+      "key_epoch": 1,
+      "valid_from": 1700000000,
+      "valid_until": 1900000000,
+      "revocation_status_ref": "revocations/bbs"
+    },
+    "allowed_runner_manifests": [
+      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    ],
+    "required_receipt_semantics": "chio.mediated_spend.v1",
+    "resolver_policy_ref": "resolver-policy-v1",
+    "retention_policy_ref": "retention-forever-v1",
+    "resource_caps": {
+      "max_recipe_bytes": 262144,
+      "max_evidence_receipts": 64,
+      "max_runtime_secs": 900,
+      "max_memory_bytes": 2147483648
+    },
+    "predicate_engine": "chio-replay-v1",
+    "allowed_predicates": [
+      "baseline_fails_candidate_passes_v1"
+    ],
+    "required_facets": [
+      "artifact_integrity",
+      "receipt_authenticity",
+      "checkpoint_membership",
+      "bond_backing",
+      "guarantee_consistency"
+    ],
+    "verifier_report_signer": {
+      "authority_id": "authority-verifier-report",
+      "key": "d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+      "key_epoch": 1,
+      "valid_from": 1700000000,
+      "valid_until": 1900000000,
+      "rotation_policy_ref": "rotation-policy-v1",
+      "revocation_status_ref": "revocations/finding-market"
+    },
+    "purchase_authority": {
+      "authority_id": "authority-purchase",
+      "key": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+      "key_epoch": 1,
+      "valid_from": 1700000000,
+      "valid_until": 1900000000,
+      "rotation_policy_ref": "rotation-policy-v1",
+      "revocation_status_ref": "revocations/finding-market"
+    },
+    "failed_delivery_authority": {
+      "authority_id": "authority-failed-delivery",
+      "key": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "key_epoch": 1,
+      "valid_from": 1700000000,
+      "valid_until": 1900000000,
+      "rotation_policy_ref": "rotation-policy-v1",
+      "revocation_status_ref": "revocations/finding-market"
+    },
+    "issued_at": 1700000000,
+    "expires_at": 1900000000
+  },
+  "signerKey": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+  "signature": "00c937a126b2c3e85d2b2103a31cb56fe1dc09250538b27f1aef98a3eecb1681897a9efe21847818bd53ea93592a2e726e844329ce27f9ab5cb2e48f1c838b09"
+}

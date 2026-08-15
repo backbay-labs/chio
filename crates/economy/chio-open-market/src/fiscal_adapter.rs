@@ -190,7 +190,7 @@ pub fn verify_fiscal_legacy_binding(
     Ok(())
 }
 
-fn verify_legacy_schedule(
+pub(crate) fn verify_legacy_schedule(
     schedule: &SignedOpenMarketFeeSchedule,
     trusted_local_operator_signers: &[PublicKey],
 ) -> Result<(), FiscalOpenMarketError> {
