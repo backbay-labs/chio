@@ -162,6 +162,7 @@ fn append_receipt_batch_commits_multiple_receipts_together(
         &mut VerifiedHead::default(),
         true,
         None,
+        None,
         &requests,
     )?
     .into_iter()
@@ -339,6 +340,7 @@ fn append_receipt_batch_isolates_per_record_error() -> Result<(), Box<dyn std::e
         &mut VerifiedHead::default(),
         true,
         None,
+        None,
         &requests,
     )?;
 
@@ -473,6 +475,7 @@ fn append_receipt_batch_isolates_trailing_invalid_in_full_batch(
         &store.pool,
         &mut VerifiedHead::default(),
         true,
+        None,
         None,
         &requests,
     )?;
@@ -854,6 +857,7 @@ fn batched_duplicate_receipts_commit_without_false_drift() -> Result<(), Box<dyn
         &mut head,
         store.incremental_verification,
         None,
+        None,
         &requests,
     )?;
 
@@ -936,6 +940,7 @@ fn group_commit_isolates_per_record_failure() -> Result<(), Box<dyn std::error::
         &store.pool,
         &mut head,
         store.incremental_verification,
+        None,
         None,
         &requests,
     )?;

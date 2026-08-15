@@ -404,7 +404,7 @@ fn shared_db_background_build_adopts_external_checkpoint() -> Result<(), Box<dyn
         claim_log_max_seq: max_batch,
     };
     let signer_a = signer(&keypair, max_batch);
-    let result = build_due_checkpoints(&store.pool, &mut stale_head, &signer_a, None);
+    let result = build_due_checkpoints(&store.pool, &mut stale_head, &signer_a, None, None);
     assert!(
         result.is_ok(),
         "stale-head background build must adopt the external checkpoint, got {result:?}"
@@ -467,6 +467,7 @@ fn successful_checkpoint_build_clears_stale_error() -> Result<(), Box<dyn std::e
         &mut head,
         &Some(signer(&keypair, max_batch)),
         &health,
+        None,
         None,
     );
     assert!(

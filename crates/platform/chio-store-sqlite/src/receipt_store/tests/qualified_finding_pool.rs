@@ -1,5 +1,87 @@
 use super::super::*;
 use super::support::*;
+use chio_credit::IouEnvelopeStore as _;
+
+#[test]
+fn qualified_receipt_sink_rejects_atomic_database_replacement(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-replacement-anchor")?;
+    #[cfg(unix)]
+    for root in [directory.path(), anchor_directory.path()] {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let database = directory.path().join("qualified-replacement.sqlite3");
+    let replacement = directory.path().join("qualified-replacement-copy.sqlite3");
+    let store = SqliteReceiptStore::open_for_finding_pool(&database, anchor_directory.path())?;
+    let iou_store = crate::SqliteIouEnvelopeStore::open_alongside(&store)?;
+    let receipt = super::support::sample_receipt_with_id("qualified-before-replacement");
+    chio_kernel::ReceiptStore::append_chio_receipt_returning_seq(&store, &receipt)?;
+    store.flush_receipt_writes()?;
+    let connection = rusqlite::Connection::open(&database)?;
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(connection);
+    std::fs::copy(&database, &replacement)?;
+    std::fs::rename(&replacement, &database)?;
+
+    let error = store
+        .max_tool_receipt_seq()
+        .err()
+        .ok_or("atomically replaced qualified receipt database was served")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("filesystem identity changed")),
+        "unexpected replacement error: {error}"
+    );
+    let error = iou_store
+        .get_by_receipt_id("qualified-before-replacement")
+        .err()
+        .ok_or("shared qualified receipt pool served an atomically replaced database")?;
+    assert!(
+        matches!(error, chio_credit::IouEnvelopeStoreError::Backend(ref message) if message.contains("filesystem identity changed")),
+        "unexpected shared-pool replacement error: {error}"
+    );
+    let replacement_receipt = super::support::sample_receipt_with_id("qualified-after-replacement");
+    let error =
+        chio_kernel::ReceiptStore::append_chio_receipt_returning_seq(&store, &replacement_receipt)
+            .err()
+            .ok_or("atomically replaced qualified receipt database accepted a write")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("filesystem identity changed")),
+        "unexpected replacement write error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn qualified_receipt_sink_rejects_internal_sink_identity_change(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-sink-id-anchor")?;
+    #[cfg(unix)]
+    for root in [directory.path(), anchor_directory.path()] {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let database = directory.path().join("qualified-sink-id.sqlite3");
+    let store = SqliteReceiptStore::open_for_finding_pool(&database, anchor_directory.path())?;
+    let connection = rusqlite::Connection::open(&database)?;
+    connection.execute(
+        "UPDATE chio_receipt_sink_identity SET sink_id = ?1 WHERE singleton = 1",
+        [uuid::Uuid::now_v7().to_string()],
+    )?;
+    drop(connection);
+
+    let error = store
+        .max_tool_receipt_seq()
+        .err()
+        .ok_or("qualified receipt store accepted a changed internal sink identity")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("internal sink identity changed")),
+        "unexpected sink identity error: {error}"
+    );
+    Ok(())
+}
 
 #[test]
 fn qualified_receipt_sink_rejects_read_only_sqlite_uris() -> Result<(), Box<dyn std::error::Error>>

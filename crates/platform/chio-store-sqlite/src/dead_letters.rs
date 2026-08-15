@@ -15,6 +15,8 @@
 //! `CREATE INDEX IF NOT EXISTS`, so it can run repeatedly against a
 //! receipt-store database that already holds other tables.
 
+use std::sync::Arc;
+
 use chio_core::canonical::canonical_json_bytes;
 use chio_settle::{DeadLetterRecord, SETTLE_DEAD_LETTER_SCHEMA};
 use r2d2::Pool;
@@ -22,6 +24,8 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, OptionalExtension};
 use serde::Deserialize;
 use thiserror::Error;
+
+use crate::receipt_store::{receipt_pool_connection, ReceiptSinkQualification};
 
 /// SQL migration applied by [`SqliteDeadLetterStore::open_with_pool`]
 /// to create the `settle_dead_letters` table.
@@ -86,6 +90,7 @@ struct DeadLetterSchemaProbe {
 pub struct SqliteDeadLetterStore {
     pool: Pool<SqliteConnectionManager>,
     writer: Option<crate::receipt_store::WriterHandle>,
+    receipt_sink_qualification: Option<Arc<ReceiptSinkQualification>>,
 }
 
 fn encode_dead_letter(record: &DeadLetterRecord) -> Result<(i64, Vec<u8>), DeadLetterStoreError> {
@@ -340,7 +345,11 @@ impl SqliteDeadLetterStore {
         connection
             .execute_batch(SETTLE_DEAD_LETTERS_MIGRATION)
             .map_err(|err| DeadLetterStoreError::Backend(err.to_string()))?;
-        Ok(Self { pool, writer: None })
+        Ok(Self {
+            pool,
+            writer: None,
+            receipt_sink_qualification: None,
+        })
     }
 
     /// Construct the store sharing the connection pool of an existing
@@ -357,7 +366,15 @@ impl SqliteDeadLetterStore {
         Ok(Self {
             pool: store.pool.clone(),
             writer: Some(writer),
+            receipt_sink_qualification: store.receipt_sink_qualification.clone(),
         })
+    }
+
+    fn connection(
+        &self,
+    ) -> Result<r2d2::PooledConnection<SqliteConnectionManager>, DeadLetterStoreError> {
+        receipt_pool_connection(&self.pool, self.receipt_sink_qualification.as_deref())
+            .map_err(dead_letter_error_from_receipt_store)
     }
 
     /// Persist a dead-letter record. Idempotent on byte-identical
@@ -375,10 +392,7 @@ impl SqliteDeadLetterStore {
                     .map_err(dead_letter_error_from_receipt_store)
             }
             None => {
-                let mut connection = self
-                    .pool
-                    .get()
-                    .map_err(|err| DeadLetterStoreError::Backend(err.to_string()))?;
+                let mut connection = self.connection()?;
                 insert_dead_letter_transaction(&mut connection, record)
             }
         }
@@ -386,20 +400,14 @@ impl SqliteDeadLetterStore {
 
     /// Look up a single dead-letter record by `receipt_id`.
     pub fn get(&self, receipt_id: &str) -> Result<Option<DeadLetterRecord>, DeadLetterStoreError> {
-        let connection = self
-            .pool
-            .get()
-            .map_err(|err| DeadLetterStoreError::Backend(err.to_string()))?;
+        let connection = self.connection()?;
         read_dead_letter_on_connection(&connection, receipt_id)
     }
 
     /// List all dead-letter records sorted by finalization time then
     /// receipt id (matching the deterministic settlement ordering).
     pub fn list(&self) -> Result<Vec<DeadLetterRecord>, DeadLetterStoreError> {
-        let connection = self
-            .pool
-            .get()
-            .map_err(|err| DeadLetterStoreError::Backend(err.to_string()))?;
+        let connection = self.connection()?;
         let mut stmt = connection
             .prepare(
                 "SELECT receipt_id, finalized_at, attempts, reason, pipeline_error, canonical_json \
@@ -431,10 +439,7 @@ impl SqliteDeadLetterStore {
                     .map_err(dead_letter_error_from_receipt_store)
             }
             None => {
-                let connection = self
-                    .pool
-                    .get()
-                    .map_err(|err| DeadLetterStoreError::Backend(err.to_string()))?;
+                let connection = self.connection()?;
                 clear_dead_letter_on_connection(&connection, receipt_id)
             }
         }

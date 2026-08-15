@@ -17,6 +17,8 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, OptionalExtension};
 
+use crate::receipt_store::{receipt_pool_connection, ReceiptSinkQualification};
+
 /// SQL migration applied by [`SqliteIouEnvelopeStore::open_with_pool`]
 /// to create the `iou_envelope` table.
 pub const IOU_ENVELOPE_MIGRATION: &str = r#"
@@ -45,6 +47,7 @@ pub struct SqliteIouEnvelopeStore {
     /// serialized through the receipt store's single writer connection.
     /// `None` only for the standalone `open_with_pool` path.
     writer: Option<crate::receipt_store::WriterHandle>,
+    receipt_sink_qualification: Option<Arc<ReceiptSinkQualification>>,
 }
 
 impl SqliteIouEnvelopeStore {
@@ -59,7 +62,11 @@ impl SqliteIouEnvelopeStore {
         connection
             .execute_batch(IOU_ENVELOPE_MIGRATION)
             .map_err(|err| IouEnvelopeStoreError::Backend(err.to_string()))?;
-        Ok(Self { pool, writer: None })
+        Ok(Self {
+            pool,
+            writer: None,
+            receipt_sink_qualification: None,
+        })
     }
 
     /// Construct the store sharing the connection pool of an
@@ -85,7 +92,15 @@ impl SqliteIouEnvelopeStore {
         Ok(Self {
             pool: store.pool.clone(),
             writer: Some(writer),
+            receipt_sink_qualification: store.receipt_sink_qualification.clone(),
         })
+    }
+
+    fn connection(
+        &self,
+    ) -> Result<r2d2::PooledConnection<SqliteConnectionManager>, IouEnvelopeStoreError> {
+        receipt_pool_connection(&self.pool, self.receipt_sink_qualification.as_deref())
+            .map_err(|error| IouEnvelopeStoreError::Backend(error.to_string()))
     }
 }
 
@@ -235,10 +250,7 @@ impl IouEnvelopeStore for SqliteIouEnvelopeStore {
                     })
             }
             None => {
-                let connection = self
-                    .pool
-                    .get()
-                    .map_err(|err| IouEnvelopeStoreError::Backend(err.to_string()))?;
+                let connection = self.connection()?;
                 insert_envelope_on_connection(
                     &connection,
                     envelope.body.receipt_id.as_str(),
@@ -258,10 +270,7 @@ impl IouEnvelopeStore for SqliteIouEnvelopeStore {
         &self,
         receipt_id: &str,
     ) -> Result<Option<IouEnvelope>, IouEnvelopeStoreError> {
-        let connection = self
-            .pool
-            .get()
-            .map_err(|err| IouEnvelopeStoreError::Backend(err.to_string()))?;
+        let connection = self.connection()?;
         let row = connection
             .query_row(
                 "SELECT canonical_json FROM iou_envelope WHERE receipt_id = ?1",

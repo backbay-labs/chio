@@ -102,12 +102,17 @@ use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, OptionalExtension};
 
+use bootstrap::*;
+
+pub(crate) use bootstrap::{receipt_pool_connection, ReceiptSinkQualification};
+
 pub struct SqliteReceiptStore {
     pub(crate) pool: Pool<SqliteConnectionManager>,
     receipt_commit_actor: ReceiptCommitActor,
     rollback_anchor: Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
     settlement_store_binding: Option<chio_settle::SettlementStoreBinding>,
     durable_sink_id: Option<String>,
+    pub(crate) receipt_sink_qualification: Option<Arc<ReceiptSinkQualification>>,
     /// Multi-tenant receipt isolation: when true, tenant-
     /// scoped queries exclude the pre-multitenant NULL-tagged set. When
     /// false, queries with `tenant_filter = Some(id)` return rows where
@@ -594,6 +599,7 @@ impl ReceiptCommitActor {
         pool: Pool<SqliteConnectionManager>,
         incremental_verification: bool,
         rollback_anchor: Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
+        sink_qualification: Option<Arc<ReceiptSinkQualification>>,
     ) -> Self {
         let (sender, receiver) = receipt_commit_channel();
         let health = Arc::new(ReceiptCommitWriterHealth::default());
@@ -616,6 +622,7 @@ impl ReceiptCommitActor {
         // pool and health handle are cheap to clone (an Arc bump each) per attempt.
         let mut checkpoint_signer = None;
         let actor_rollback_anchor = rollback_anchor.clone();
+        let actor_sink_qualification = sink_qualification.clone();
         let supervisor = SupervisedThread::spawn(config, move |_shutdown| {
             let _ = actor_thread_id.set(thread::current().id());
             receipt_commit_actor_loop(
@@ -624,6 +631,7 @@ impl ReceiptCommitActor {
                 Arc::clone(&actor_health),
                 incremental_verification,
                 actor_rollback_anchor.clone(),
+                actor_sink_qualification.clone(),
                 &mut checkpoint_signer,
             )
         });
@@ -1318,14 +1326,6 @@ fn receipt_commit_channel() -> (
     mpsc::sync_channel(RECEIPT_COMMIT_ACTOR_CHANNEL_CAPACITY)
 }
 
-fn receipt_actor_unavailable_error() -> ReceiptStoreError {
-    ReceiptStoreError::Pool("sqlite receipt commit actor is unavailable".to_string())
-}
-
-fn receipt_actor_saturated_error() -> ReceiptStoreError {
-    ReceiptStoreError::Pool("sqlite receipt commit queue saturated".to_string())
-}
-
 fn receipt_actor_flush_timeout_error(timeout: Duration) -> ReceiptStoreError {
     ReceiptStoreError::Timeout {
         operation: "sqlite receipt commit flush".to_string(),
@@ -1358,12 +1358,6 @@ enum WriterHeadState {
     Poisoned(String),
 }
 
-#[derive(Clone, Copy)]
-struct ReceiptWriterQualification<'a> {
-    incremental_verification: bool,
-    rollback_anchor: Option<&'a crate::rollback_generation::RollbackGenerationAnchor>,
-}
-
 fn poisoned_head_error(message: &str) -> ReceiptStoreError {
     ReceiptStoreError::Conflict(format!(
         "receipt store verified head is unavailable ({message}); run `chio receipt audit --repair`"
@@ -1393,11 +1387,10 @@ fn receipt_commit_actor_loop(
     health: Arc<ReceiptCommitWriterHealth>,
     incremental_verification: bool,
     rollback_anchor: Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
+    sink_qualification: Option<Arc<ReceiptSinkQualification>>,
     checkpoint_signer: &mut Option<BackgroundCheckpointSigner>,
 ) -> SupervisedOutcome {
-    let mut head_state = match pool
-        .get()
-        .map_err(|error| ReceiptStoreError::Pool(error.to_string()))
+    let mut head_state = match receipt_pool_connection(&pool, sink_qualification.as_deref())
         .and_then(|connection| {
             if incremental_verification {
                 seed_verified_head(&connection)
@@ -1491,6 +1484,7 @@ fn receipt_commit_actor_loop(
                             &mut head_state,
                             incremental_verification,
                             rollback_anchor.as_deref(),
+                            sink_qualification.as_deref(),
                             requests,
                             &health,
                             completions,
@@ -1540,6 +1534,7 @@ fn receipt_commit_actor_loop(
                             checkpoint_signer,
                             &health,
                             rollback_anchor.as_deref(),
+                            sink_qualification.as_deref(),
                         ) {
                             flush_barrier_error = Some(error);
                         }
@@ -1562,6 +1557,7 @@ fn receipt_commit_actor_loop(
                         ReceiptWriterQualification {
                             incremental_verification,
                             rollback_anchor: rollback_anchor.as_deref(),
+                            sink_qualification: sink_qualification.as_deref(),
                         },
                         &health,
                         checkpoint_signer,
@@ -1586,6 +1582,7 @@ fn receipt_commit_actor_loop(
                     ReceiptWriterQualification {
                         incremental_verification,
                         rollback_anchor: rollback_anchor.as_deref(),
+                        sink_qualification: sink_qualification.as_deref(),
                     },
                     &health,
                     checkpoint_signer,
@@ -1612,6 +1609,7 @@ fn handle_non_append_command(
     let ReceiptWriterQualification {
         incremental_verification,
         rollback_anchor,
+        sink_qualification,
     } = qualification;
     match command {
         ReceiptCommitCommand::Write {
@@ -1638,13 +1636,13 @@ fn handle_non_append_command(
             // caller's recv-Err compensation (actor-thread death) from
             // underflowing.
             let inflight_guard = WriterInflightGuard::new(&health.inflight);
-            let mut connection = match pool.get() {
+            let mut connection = match receipt_pool_connection(pool, sink_qualification) {
                 Ok(connection) => connection,
                 Err(error) => {
                     // No write ran (no connection), so there is no resync to
                     // gate on: send the pool error now (`Ok(())` = nothing to
                     // override). Count the failed outcome.
-                    let (respond, _) = job.reject(ReceiptStoreError::Pool(error.to_string()));
+                    let (respond, _) = job.reject(error);
                     // Decrement before the response reaches the caller.
                     drop(inflight_guard);
                     let committed = respond(Ok(()));
@@ -1833,6 +1831,7 @@ fn handle_non_append_command(
                                     checkpoint_signer,
                                     health,
                                     rollback_anchor,
+                                    sink_qualification,
                                 );
                             }
                         }
@@ -1872,10 +1871,10 @@ fn handle_non_append_command(
                 let _ = response.send(Err(poisoned_head_error(message)));
                 return None;
             }
-            let mut connection = match pool.get() {
+            let mut connection = match receipt_pool_connection(pool, sink_qualification) {
                 Ok(connection) => connection,
                 Err(error) => {
-                    let _ = response.send(Err(ReceiptStoreError::Pool(error.to_string())));
+                    let _ = response.send(Err(error));
                     return None;
                 }
             };
@@ -2005,6 +2004,7 @@ fn handle_non_append_command(
                         checkpoint_signer,
                         health,
                         rollback_anchor,
+                        sink_qualification,
                     );
                 }
             }
@@ -2016,28 +2016,26 @@ fn handle_non_append_command(
                     critical_writer_error_message(health)
                 )))
             } else {
-                pool.get()
-                    .map_err(|error| ReceiptStoreError::Pool(error.to_string()))
-                    .and_then(|connection| {
-                        support::audit_receipt_cost_projection(&connection)?;
-                        // Reseed always runs the FULL verification. This is the
-                        // `chio receipt audit --repair`
-                        // recovery path: it clears a poisoned head and must establish
-                        // a genuinely CLEAN, fully-verified head, so it runs
-                        // `seed_verified_head` (full claim-log validation +
-                        // checkpoint-chain audit) regardless of the hot-path
-                        // `incremental_verification` mode. Using the cheap
-                        // `seed_head_snapshot` here would let `--repair` clear
-                        // `last_error` and mark the head `Verified` while the on-disk
-                        // log is still corrupt (repair theater). This is the recovery
-                        // path, not per-append, so it is a recovery-path cost. NOTE
-                        // the deliberate difference from the InstallSigner catch-up:
-                        // that path DEFERS in
-                        // `incremental_verification = false` because `seed_head_snapshot`
-                        // leaves the head UNVALIDATED; reseed full-verifies, so it does
-                        // not defer.
-                        seed_verified_head(&connection)
-                    })
+                receipt_pool_connection(pool, sink_qualification).and_then(|connection| {
+                    support::audit_receipt_cost_projection(&connection)?;
+                    // Reseed always runs the FULL verification. This is the
+                    // `chio receipt audit --repair`
+                    // recovery path: it clears a poisoned head and must establish
+                    // a genuinely CLEAN, fully-verified head, so it runs
+                    // `seed_verified_head` (full claim-log validation +
+                    // checkpoint-chain audit) regardless of the hot-path
+                    // `incremental_verification` mode. Using the cheap
+                    // `seed_head_snapshot` here would let `--repair` clear
+                    // `last_error` and mark the head `Verified` while the on-disk
+                    // log is still corrupt (repair theater). This is the recovery
+                    // path, not per-append, so it is a recovery-path cost. NOTE
+                    // the deliberate difference from the InstallSigner catch-up:
+                    // that path DEFERS in
+                    // `incremental_verification = false` because `seed_head_snapshot`
+                    // leaves the head UNVALIDATED; reseed full-verifies, so it does
+                    // not defer.
+                    seed_verified_head(&connection)
+                })
             };
             let result = match outcome {
                 Ok(head) => {
@@ -2078,6 +2076,7 @@ fn handle_non_append_command(
                             checkpoint_signer,
                             health,
                             rollback_anchor,
+                            sink_qualification,
                         );
                     }
                     Ok(())
@@ -2106,10 +2105,8 @@ fn handle_non_append_command(
             // already Poisoned by the drift the repair removes, so gating it
             // on `WriterHeadState::Verified` (the Write arm's guard) would
             // make it unusable on exactly the store it exists to fix.
-            let outcome = pool
-                .get()
-                .map_err(|error| ReceiptStoreError::Pool(error.to_string()))
-                .and_then(|mut connection| {
+            let outcome =
+                receipt_pool_connection(pool, sink_qualification).and_then(|mut connection| {
                     evidence_retention::retention_repair_on_writer(&mut connection, &archive_path)
                 });
             if outcome.is_ok() {
@@ -2121,10 +2118,8 @@ fn handle_non_append_command(
                 // committed -- but it does update head_state/health so a
                 // subsequent health check or write surfaces the real cause
                 // instead of a stale poisoned message.
-                let reseed = pool
-                    .get()
-                    .map_err(|error| ReceiptStoreError::Pool(error.to_string()))
-                    .and_then(|connection| {
+                let reseed =
+                    receipt_pool_connection(pool, sink_qualification).and_then(|connection| {
                         if incremental_verification {
                             seed_verified_head(&connection)
                         } else {
@@ -2195,6 +2190,7 @@ fn build_due_checkpoints_and_record(
     checkpoint_signer: &Option<BackgroundCheckpointSigner>,
     health: &ReceiptCommitWriterHealth,
     rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
+    sink_qualification: Option<&ReceiptSinkQualification>,
 ) -> Option<ReceiptStoreError> {
     let signer = checkpoint_signer.as_ref()?;
     // Panic isolation: a panic mid-build
@@ -2202,7 +2198,7 @@ fn build_due_checkpoints_and_record(
     // A committed or peer-adopted checkpoint can advance the verified head
     // before a later panic drops its frontier. Record `last_error` and rebuild.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        build_due_checkpoints(pool, head, signer, rollback_anchor)
+        build_due_checkpoints(pool, head, signer, rollback_anchor, sink_qualification)
     }))
     .unwrap_or_else(|payload| Err(receipt_writer_job_panic_error(&payload)));
     match result {
@@ -2232,13 +2228,12 @@ fn build_due_checkpoints(
     head: &mut VerifiedHead,
     signer: &BackgroundCheckpointSigner,
     rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
+    sink_qualification: Option<&ReceiptSinkQualification>,
 ) -> Result<bool, ReceiptStoreError> {
     if signer.max_batch == 0 {
         return Ok(false); // ADR-0008: batch_size 0 disables checkpointing
     }
-    let mut connection = pool
-        .get()
-        .map_err(|error| ReceiptStoreError::Pool(error.to_string()))?;
+    let mut connection = receipt_pool_connection(pool, sink_qualification)?;
     let checkpoint_seq_before_refresh = head.checkpoint_seq();
     // Shared-file freshness: on a shared receipt DB
     // another writer can commit a checkpoint AFTER this actor's append
@@ -2409,6 +2404,7 @@ fn commit_receipt_batch(
         head_state,
         incremental_verification,
         rollback_anchor,
+        None,
         requests,
         health,
         Vec::new(),
@@ -2420,6 +2416,7 @@ fn commit_receipt_batch_with_completions(
     head_state: &mut WriterHeadState,
     incremental_verification: bool,
     rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
+    sink_qualification: Option<&ReceiptSinkQualification>,
     requests: Vec<ReceiptCommitRequest>,
     health: &ReceiptCommitWriterHealth,
     mut completions: Vec<WriterCommandCompletion>,
@@ -2431,6 +2428,7 @@ fn commit_receipt_batch_with_completions(
                 head,
                 incremental_verification,
                 rollback_anchor,
+                sink_qualification,
                 &requests,
             ) {
                 Ok(results) => {
@@ -3183,11 +3181,10 @@ fn append_receipt_batch(
     head: &mut VerifiedHead,
     incremental_verification: bool,
     rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
+    sink_qualification: Option<&ReceiptSinkQualification>,
     requests: &[ReceiptCommitRequest],
 ) -> Result<Vec<Result<u64, ReceiptStoreError>>, ReceiptStoreError> {
-    let mut connection = pool
-        .get()
-        .map_err(|error| ReceiptStoreError::Pool(error.to_string()))?;
+    let mut connection = receipt_pool_connection(pool, sink_qualification)?;
     ensure_checkpoint_transparency_guards(&connection)?;
     if incremental_verification {
         // O(1) predecessor check (+ bounded catch-up), not a chain rebuild.
@@ -3670,10 +3667,11 @@ impl SqliteReceiptStore {
     /// reader pool is asserted read-only by
     /// `reader_pool_never_begins_a_write_transaction` in tests.
     pub(crate) fn connection(&self) -> Result<SqliteStoreConnection, ReceiptStoreError> {
-        let connection = self
-            .pool
-            .get()
-            .map_err(|error| ReceiptStoreError::Pool(error.to_string()))?;
+        if let Some(qualification) = self.receipt_sink_qualification.as_deref() {
+            qualification.validate_filesystem_identity()?;
+        }
+        let connection =
+            receipt_pool_connection(&self.pool, self.receipt_sink_qualification.as_deref())?;
         if let Some(anchor) = self.rollback_anchor.as_deref() {
             anchor
                 .verify_while(|| {

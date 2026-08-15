@@ -1156,7 +1156,7 @@ fn stale_head_validates_adopted_delta_before_trusting() -> Result<(), Box<dyn st
         ensure_lineage: false,
         response,
     }];
-    let error = append_receipt_batch(&store.pool, &mut stale_head, true, None, &requests)
+    let error = append_receipt_batch(&store.pool, &mut stale_head, true, None, None, &requests)
         .err()
         .ok_or("stale-head append over an out-of-band orphan row must be denied")?;
     match &error {
@@ -1187,7 +1187,7 @@ fn stale_head_validates_adopted_delta_before_trusting() -> Result<(), Box<dyn st
         ensure_lineage: false,
         response,
     }];
-    let results = append_receipt_batch(&store.pool, &mut fresh_head, true, None, &requests)?;
+    let results = append_receipt_batch(&store.pool, &mut fresh_head, true, None, None, &requests)?;
     assert!(
         results.iter().all(|result| result.is_ok()),
         "empty-delta append must add no validation and succeed: {results:?}"

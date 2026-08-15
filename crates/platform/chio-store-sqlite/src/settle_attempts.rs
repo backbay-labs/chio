@@ -1,5 +1,7 @@
 //! SQLite-backed leased settlement work.
 
+use std::sync::Arc;
+
 use chio_core::hashing::sha256;
 use chio_kernel::ReceiptStoreError;
 use chio_settle::{
@@ -16,6 +18,7 @@ use crate::dead_letters::{
     insert_dead_letter_on_connection, read_dead_letter_on_connection, DeadLetterStoreError,
     SETTLE_DEAD_LETTERS_MIGRATION,
 };
+use crate::receipt_store::{receipt_pool_connection, ReceiptSinkQualification};
 
 /// Additive schema for pending and retryable settlement work.
 pub const SETTLE_ATTEMPTS_MIGRATION: &str = r#"
@@ -96,6 +99,7 @@ pub struct SqliteSettlementOutcomeStore {
     pool: Pool<SqliteConnectionManager>,
     writer: Option<crate::receipt_store::WriterHandle>,
     binding: SettlementStoreBinding,
+    receipt_sink_qualification: Option<Arc<ReceiptSinkQualification>>,
 }
 
 impl SqliteSettlementOutcomeStore {
@@ -114,6 +118,7 @@ impl SqliteSettlementOutcomeStore {
             pool,
             writer: None,
             binding: new_store_binding(),
+            receipt_sink_qualification: None,
         })
     }
 
@@ -134,6 +139,7 @@ impl SqliteSettlementOutcomeStore {
             pool: store.pool.clone(),
             writer: Some(writer),
             binding,
+            receipt_sink_qualification: store.receipt_sink_qualification.clone(),
         })
     }
 
@@ -147,7 +153,9 @@ impl SqliteSettlementOutcomeStore {
                 .run_write(move |connection| job(connection).map_err(route_error_to_receipt))
                 .map_err(receipt_error_to_route),
             None => {
-                let mut connection = self.pool.get().map_err(backend_error)?;
+                let mut connection =
+                    receipt_pool_connection(&self.pool, self.receipt_sink_qualification.as_deref())
+                        .map_err(backend_error)?;
                 job(&mut connection)
             }
         }
