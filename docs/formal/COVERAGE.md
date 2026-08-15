@@ -30,6 +30,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 | `chio-eval-receipt::*` | - | - | - | - | - | - | 1 | - | - | - |
 | `chio-federation::*` | - | - | - | - | - | - | 1 | - | - | - |
 | `chio-federation::revocation_gossip.rs` | - | - | - | - | 1 | - | - | - | - | - |
+| `chio-finding::status.rs` | 1 | - | - | - | - | - | - | - | - | - |
 | `chio-guards::*` | - | - | - | - | - | - | 1 | 2 | - | - |
 | `chio-kernel-core::*` | - | - | - | 1 | - | - | 1 | 2 | - | - |
 | `chio-kernel-core::capability_verify.rs` | - | - | 2 | 1 | - | - | - | - | - | - |
@@ -59,6 +60,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 | `chio-store-sqlite::*` | - | - | - | - | - | - | - | - | 3 | - |
 | `chio-store-sqlite::budget_store/composite.rs` | - | - | - | - | - | - | - | - | 2 | - |
 | `chio-store-sqlite::budget_store/composite/transitions/terminal.rs` | - | - | - | - | - | - | - | - | 1 | - |
+| `chio-store-sqlite::finding_status_store.rs` | 2 | - | - | - | - | - | - | - | - | - |
 | `chio-trace-validate::*` | - | - | - | - | 1 | - | - | - | - | - |
 | `chio-underwriting::*` | - | - | - | - | - | - | 1 | - | - | - |
 | `chio-wasm-guards::*` | - | - | - | - | - | - | 4 | - | - | - |
@@ -233,6 +235,12 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 **tla**
 
 - `formal/MAPPING.md::TLA+ named invariants (RevocationPropagation.tla)/RevocationEventuallySeen`
+
+### `chio-finding::status.rs`
+
+**lean**
+
+- `formal/MAPPING.md::Lean finding-status freshness theorems/admitted_non_inclusion_not_past_valid_until`
 
 ### `chio-guards::*`
 
@@ -535,6 +543,13 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 
 - `.loom/harnesses.toml::chio-kernel/loom_concurrency::protocol_primitives_idempotent_compensation` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
 
+### `chio-store-sqlite::finding_status_store.rs`
+
+**lean**
+
+- `formal/MAPPING.md::Lean finding-status freshness theorems/epoch_advance_is_strict`
+- `formal/MAPPING.md::Lean finding-status freshness theorems/same_epoch_equivocation_rejected`
+
 ### `chio-trace-validate::*`
 
 **tla**
@@ -637,6 +652,8 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `formal/MAPPING.md::Distributed revocation invariants/SignerPinnedHighWater` (`tla`): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-federation::revocation_gossip.rs`, `chio-kernel-core::revocation_view.rs`, `chio-revocation-oracle::*`.
 - `formal/MAPPING.md::Distributed revocation invariants/StaleEvaluationDenied` (`tla`): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-kernel::kernel/delegation.rs`, `chio-revocation-oracle::freshness.rs`.
 - `formal/MAPPING.md::Lean delivery-contract theorems (Proofs/DeliveryContract.lean)/settlement_admission_requires_verified_evidence` (`lean`): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-kernel-core::formal_core.rs`, `chio-kernel::kernel/admission_coordinator/terminal.rs`.
+- `formal/MAPPING.md::Lean finding-status freshness theorems/pending_never_accepts_non_inclusion` (`lean`): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-kernel::kernel/purchase_gate.rs`, `chio-store-sqlite::finding_status_store.rs`.
+- `formal/MAPPING.md::Lean finding-status freshness theorems/retracted_never_accepts_non_inclusion` (`lean`): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-kernel::kernel/purchase_gate.rs`, `chio-store-sqlite::finding_status_store.rs`.
 - `formal/MAPPING.md::TLA+ named invariants (RevocationPropagation.tla)/AttenuationPreserving` (`tla`): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-core-types::capability/attenuation.rs`, `chio-core-types::capability/scope.rs`, `chio-kernel-core::normalized.rs`, `chio-kernel::kernel/validation.rs`.
 - `formal/MAPPING.md::TLA+ named invariants (RevocationPropagation.tla)/MonotoneLog` (`tla`): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-kernel::kernel/responses/receipt_persistence.rs`, `chio-store-sqlite::receipt_store.rs`, `chio-store-sqlite::receipt_store/evidence_retention.rs`.
 - `formal/MAPPING.md::TLA+ named invariants (RevocationPropagation.tla)/NoAllowAfterRevoke` (`tla`): MAPPING row contains unresolved Rust references: ChioKernel::check_revocation, DispatchCredentialReservation::requires_post_reservation_revalidation, RevocationView::is_revoked Related surfaces: `chio-kernel-core::revocation_view.rs`, `chio-kernel::kernel/construction.rs`, `chio-kernel::kernel/credential_reservation.rs`, `chio-kernel::kernel/dispatch.rs`, `chio-kernel::kernel/evaluation/async_evaluation_core.rs`, `chio-kernel::kernel/evaluation/nested_flow_evaluation.rs`, `chio-kernel::kernel/responses/receipt_persistence.rs`, `chio-kernel::kernel/validation.rs`.
@@ -970,7 +987,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `e56d2d4bba8668661f67dfaf48ce66b74d4beb97d157738e6d38a44b4aceae16`
+- Input digest: `2c3d15ca3ea28fb4a8e6b66c29ea690cc42a271b553d5276609038ee59459f62`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -1116,7 +1133,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/trust/chio-revocation-oracle/src/api.rs`: `b1bfcf2fa979f132693ef895f40512b53a5797b8ca2dbe609c3524eac58d0375`
 - `crates/trust/chio-revocation-oracle/src/freshness.rs`: `d699d5c59f1c5a660d9c06f294bb2ac1ee2c0fcd00cd9eebbe043df74ba733b8`
 - `docs/fuzzing/trust-boundary-mutants-baseline.toml`: `7331fb69499474ca22b14b6fb5a6f9a966eae2e2a26d3433d9030a4c985efee9`
-- `formal/MAPPING.md`: `df65f667a9aebfd8adb8872d721bd3fc71d18b3903adb3f7c274a88d9ae5467f`
+- `formal/MAPPING.md`: `288a817350c486d8a778f91f5b46823f226ca8dca84d07f087bb44df1acbee16`
 - `formal/aeneas/pilot.toml`: `86627b363717b47ced94caeb826185d400cf70fe357a55fe34d02ea70670956c`
 - `formal/aeneas/production.toml`: `2a3e3189ae4d283ddd6392ca373da61452c55252247be8050e068239745ef93e`
 - `formal/aeneas/verified_core.rs`: `44ef85fbe6c537e8c65a483a67c167f502ca1a108a25293414b27ab2a85046b8`
@@ -1178,6 +1195,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/lean4/Chio/Chio/Capability/Delegation.lean`: `a6a44ca25cb3fec5385b6a2d6703d933236453d8d5b9b336061a42f675d2cfa6`
 - `formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean`: `a75b5101c8c2c7b62d90ea6909558aca59b1e0a8a5960237825f17e527e71d04`
 - `formal/lean4/Chio/Chio/Proofs/DeliveryContract.lean`: `1f638ca47f4ecd6bb976dddb1ac7adfccfc0e7b074ed4ebd038259303b8eace9`
+- `formal/lean4/Chio/Chio/Proofs/FindingStatusFreshness.lean`: `3d57461a0bfe5275d0b8f5c7642aa37ed5a7f252e35ef1ba17530a0ac0c46506`
 - `formal/lean4/Chio/Chio/Proofs/Receipt.lean`: `7472b8ad458021802e598bfab335ffd5511852599f93dd2685c96a98042649b6`
 - `formal/mutation/evidence/proof-mutants-a871396bffd010500f680c035e7b52c1867f38e2.json`: `d51114555cd3c2d3294c1b808d2e061a8611f2ce7f6067b735d725b00f59271c`
 - `formal/mutation/evidence/proof-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json`: `c9322d3e34f3b6390e479df2e0757834ada17e53f1ab60b026673c47d0661a8e`
@@ -1225,7 +1243,3 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `xtask/src/proof_coverage/tests/aeneas.rs`: `9f3d115d348aabc61bc09e4b0babd4236fcd73d4668f7d6f2689e91fafeeafb8`
 - `xtask/src/proof_coverage/tests/mod.rs`: `79285492b4ef4588e4f48cc9f6bfdca5c239d77056aa27cf48a673c8cd6b3705`
 - `xtask/src/proof_coverage/tests/mutation.rs`: `ded4477041bff9ed81da3ba346e96f48b0a8728d2f4d6bf5211cb4d535c113f3`
-
-### Parse Warnings
-
-- line 410: property table missing required columns: Source
