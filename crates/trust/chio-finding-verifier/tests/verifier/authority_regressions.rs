@@ -268,6 +268,34 @@ fn report_signing_key_must_be_distinct_from_governance_and_evidence() -> TestRes
         validate_supported_finding_verifier_profile(&evidence_roles_aliased).err(),
         Some(FindingVerifierError::ProfileInvalid)
     );
+
+    let mut purchase_receipt_aliased = fx.profile.body.clone();
+    purchase_receipt_aliased.purchase_authority.key = purchase_receipt_aliased
+        .receipt_signers
+        .first()
+        .ok_or("fixture receipt signer is missing")?
+        .policy
+        .key
+        .clone();
+    assert_eq!(
+        validate_supported_finding_verifier_profile(&purchase_receipt_aliased).err(),
+        Some(FindingVerifierError::ProfileInvalid)
+    );
+
+    let mut failed_delivery_checkpoint_aliased = fx.profile.body.clone();
+    failed_delivery_checkpoint_aliased
+        .failed_delivery_authority
+        .key = failed_delivery_checkpoint_aliased
+        .checkpoint_logs
+        .first()
+        .ok_or("fixture checkpoint signer is missing")?
+        .signer
+        .key
+        .clone();
+    assert_eq!(
+        validate_supported_finding_verifier_profile(&failed_delivery_checkpoint_aliased).err(),
+        Some(FindingVerifierError::ProfileInvalid)
+    );
     Ok(())
 }
 

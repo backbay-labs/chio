@@ -1818,7 +1818,7 @@ pub(crate) async fn handle_activate_finding(
         fee_schedule: &request.fee_schedule,
         fee_schedule_gate: gate,
         trusted_local_operator_signers: &trusted_signers,
-        provider_tool: &authorization.provider_tool,
+        seller_authorization: &request.seller_authorization,
         terms: &request.terms,
         backing: &request.backing,
         allocation_snapshot: AdmissionAllocationSnapshot {

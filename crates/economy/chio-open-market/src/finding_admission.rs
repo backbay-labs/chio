@@ -14,8 +14,9 @@
 
 use chio_finding::{
     signed_envelope_sha256, verify_finding, verify_signed_admission, verify_signed_bond_backing,
-    verify_signed_market_terms, FindingAdmission, FindingError, SignedFindingAdmission,
-    SignedFindingBondBacking, SignedFindingMarketTerms,
+    verify_signed_market_terms, verify_signed_seller_authorization, FindingAdmission, FindingError,
+    SignedFindingAdmission, SignedFindingBondBacking, SignedFindingMarketTerms,
+    SignedFindingSellerAuthorization,
 };
 use chio_fiscal::FiscalResolver;
 
@@ -133,6 +134,16 @@ pub enum FindingAdmissionError {
     ProviderAuthorityMismatch,
     #[error("purchase scope does not match the admitted provider server and reveal tool")]
     ProviderToolMismatch,
+    #[error("seller authorization envelope digest does not match the admission binding")]
+    SellerAuthorizationDigestMismatch,
+    #[error("seller authorization envelope rejected: {0}")]
+    SellerAuthorizationEnvelope(FindingError),
+    #[error("seller authorization identity does not match the admitted finding or listing")]
+    SellerAuthorizationIdentityMismatch,
+    #[error("seller authorization is not yet live at the verification time")]
+    SellerAuthorizationNotYetLive,
+    #[error("seller authorization has expired at the verification time")]
+    SellerAuthorizationExpired,
     #[error("purchase ask was minted under a different admission")]
     MintingAdmissionMismatch,
     #[error("bid rejected: {0}")]
@@ -230,9 +241,9 @@ pub struct FindingAdmissionContext<'a> {
     pub fee_schedule_gate: FindingFeeScheduleGate<'a>,
     /// Trusted open-market governing authority signers.
     pub trusted_local_operator_signers: &'a [PublicKey],
-    /// Provider tool resolved from the exact authenticated seller
-    /// authorization whose envelope digest the admission binds.
-    pub provider_tool: &'a str,
+    /// Exact issuer-signed seller authorization whose digest the admission
+    /// binds. The provider tool is derived from this authenticated body.
+    pub seller_authorization: &'a SignedFindingSellerAuthorization,
     /// The seller-signed terms envelope the admission binds by digest.
     pub terms: &'a SignedFindingMarketTerms,
     /// The collateral-authority-signed backing envelope the admission
@@ -392,8 +403,26 @@ fn verify_finding_admission_inner(
     verify_signed_admission(signed, context.venue_authority, context.venue_id)
         .map_err(FindingAdmissionError::AdmissionEnvelope)?;
     let admission = &signed.body;
-    if context.provider_tool.is_empty() || context.provider_tool.trim() != context.provider_tool {
-        return Err(FindingAdmissionError::ProviderToolMismatch);
+    let seller_authorization_digest = signed_envelope_sha256(context.seller_authorization)
+        .map_err(FindingAdmissionError::SellerAuthorizationEnvelope)?;
+    if seller_authorization_digest != admission.seller_authorization_envelope_sha256 {
+        return Err(FindingAdmissionError::SellerAuthorizationDigestMismatch);
+    }
+    verify_signed_seller_authorization(context.seller_authorization)
+        .map_err(FindingAdmissionError::SellerAuthorizationEnvelope)?;
+    let seller_authorization = &context.seller_authorization.body;
+    if seller_authorization.finding_id != admission.finding_id
+        || seller_authorization.finding_artifact_sha256 != admission.finding_artifact_sha256
+        || seller_authorization.listing_id != admission.listing_id
+        || seller_authorization.provider_server_id != admission.server_id
+    {
+        return Err(FindingAdmissionError::SellerAuthorizationIdentityMismatch);
+    }
+    if context.now < seller_authorization.issued_at {
+        return Err(FindingAdmissionError::SellerAuthorizationNotYetLive);
+    }
+    if context.now >= seller_authorization.expires_at {
+        return Err(FindingAdmissionError::SellerAuthorizationExpired);
     }
 
     // Liveness at the caller's clock, both bounds.
@@ -437,6 +466,7 @@ fn verify_finding_admission_inner(
         || context.terms.body.finding_artifact_sha256 != admission.finding_artifact_sha256
         || context.terms.body.listing_id != admission.listing_id
         || context.terms.body.verifier_profile_envelope_sha256 != admission.profile_envelope_sha256
+        || context.terms.body.seller != seller_authorization.seller
     {
         return Err(FindingAdmissionError::TermsIdentityMismatch);
     }
@@ -586,7 +616,10 @@ fn verify_finding_admission_inner(
             "pricing_hint",
         ),
         (
-            context.constituent_expiry_bounds.seller_authorization,
+            context
+                .constituent_expiry_bounds
+                .seller_authorization
+                .min(seller_authorization.expires_at),
             "seller_authorization",
         ),
         (context.constituent_expiry_bounds.profile, "profile"),
@@ -610,6 +643,8 @@ fn verify_finding_admission_inner(
         || context.backing.body.profile_envelope_sha256 != admission.profile_envelope_sha256
         || context.backing.body.fee_schedule_envelope_sha256
             != admission.fee_schedule_envelope_sha256
+        || context.backing.body.authorization_envelope_sha256
+            != admission.seller_authorization_envelope_sha256
     {
         return Err(FindingAdmissionError::BackingBindingMismatch);
     }
@@ -619,7 +654,7 @@ fn verify_finding_admission_inner(
     Ok(VerifiedFindingAdmission {
         admission: admission.clone(),
         admission_envelope_sha256,
-        provider_tool: context.provider_tool.to_owned(),
+        provider_tool: seller_authorization.provider_tool.clone(),
     })
 }
 

@@ -29,6 +29,7 @@ fn fee_schedule_issued_after_the_verification_clock_rejects() {
             &keypair(4),
             &web.seller,
             &web.finding,
+            &web.authorization_sha256,
             &web.schedule_sha256,
             &web.terms_sha256,
         );

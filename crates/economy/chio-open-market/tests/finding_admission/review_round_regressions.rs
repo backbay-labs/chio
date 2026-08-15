@@ -154,6 +154,27 @@ fn purchase_mint_requires_the_seller_authorized_reveal_tool() {
 }
 
 #[test]
+fn admission_rejects_a_different_signed_provider_tool_authorization() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let mut authorization = web.authorization.body.clone();
+        authorization.provider_tool = "delete_finding".to_owned();
+        authorization.authorization_id.clear();
+        authorization.authorization_id =
+            compute_authorization_id(&authorization).test_expect("alternate authorization id");
+        let authorization = SignedFindingSellerAuthorization::sign(authorization, &keypair(11))
+            .test_expect("sign alternate authorization");
+        let mut context = web.context(resolver);
+        context.seller_authorization = &authorization;
+
+        assert_eq!(
+            verify_finding_admission(&web.admission, &context).err(),
+            Some(FindingAdmissionError::SellerAuthorizationDigestMismatch)
+        );
+    });
+}
+
+#[test]
 fn purchase_accept_requires_the_exact_minting_admission() {
     with_fiscal(|resolver| {
         let web = base_web();

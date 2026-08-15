@@ -292,17 +292,29 @@ pub(crate) const fn policy_covers(policy: &FindingAuthorityKeyPolicy, instant: u
 pub fn validate_supported_finding_verifier_profile(
     profile: &FindingChallengeVerifierProfile,
 ) -> Result<(), FindingVerifierError> {
+    let authority_role_keys = [
+        &profile.governance_authority,
+        &profile.verifier_report_signer.key,
+        &profile.purchase_authority.key,
+        &profile.failed_delivery_authority.key,
+    ];
+    let authority_roles_alias = authority_role_keys.iter().enumerate().any(|(index, key)| {
+        authority_role_keys
+            .iter()
+            .skip(index.saturating_add(1))
+            .any(|candidate| candidate == key)
+    });
     if profile.required_receipt_semantics != MEDIATED_SPEND_PROFILE
         || profile.predicate_engine != FINDING_PREDICATE_ENGINE_CHIO_REPLAY_V1
-        || profile.verifier_report_signer.key == profile.governance_authority
-        || profile.receipt_signers.iter().any(|signer| {
-            signer.policy.key == profile.verifier_report_signer.key
-                || signer.policy.key == profile.governance_authority
-        })
-        || profile.checkpoint_logs.iter().any(|log| {
-            log.signer.key == profile.verifier_report_signer.key
-                || log.signer.key == profile.governance_authority
-        })
+        || authority_roles_alias
+        || profile
+            .receipt_signers
+            .iter()
+            .any(|signer| authority_role_keys.contains(&&signer.policy.key))
+        || profile
+            .checkpoint_logs
+            .iter()
+            .any(|log| authority_role_keys.contains(&&log.signer.key))
         || profile.receipt_signers.iter().any(|receipt| {
             profile.checkpoint_logs.iter().any(|checkpoint| {
                 receipt.policy.key == checkpoint.signer.key

@@ -398,8 +398,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/trust/chio-finding-verifier/src/verify.rs": allow(
         "2026-08-31",
-        "cognition finding verifier with current authority standing and receipt-checkpoint role separation; capped to current M9 size until split",
-        max_lines=2_098,
+        "cognition finding verifier with current authority standing and terminal-receipt-checkpoint role separation; capped to current M9 size until split",
+        max_lines=2_107,
     ),
     "crates/platform/chio-control-plane/src/trust_control/finding_challenge_coordinator.rs": allow(
         "2026-08-31",

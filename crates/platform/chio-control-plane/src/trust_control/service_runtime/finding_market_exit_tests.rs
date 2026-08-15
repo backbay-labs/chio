@@ -2617,7 +2617,7 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
         fee_schedule: &web.schedule,
         fee_schedule_gate: FindingFeeScheduleGate::Legacy,
         trusted_local_operator_signers: &trusted_signers,
-        provider_tool: &web.authorization.body.provider_tool,
+        seller_authorization: &web.authorization,
         terms: &web.terms,
         backing: &web.backing,
         allocation_snapshot: SeamAllocationSnapshot {

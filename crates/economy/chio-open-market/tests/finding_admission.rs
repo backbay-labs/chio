@@ -12,14 +12,16 @@ use chio_core_types::crypto::sha256_hex;
 use chio_core_types::merkle::MerkleTree;
 use chio_core_types::SigningAlgorithm;
 use chio_finding::{
-    compute_admission_id, compute_allocation_id, compute_finding_id, compute_terms_id,
-    sign_finding, signed_envelope_sha256, Finding, FindingAdmission, FindingAuthorityKeyPolicy,
-    FindingBackingRequirement, FindingBondBacking, FindingBondClass, FindingChallengeBondLimit,
-    FindingCollateralVault, FindingDescriptor, FindingError, FindingEvidenceClass, FindingFeeEvent,
-    FindingFeeTerminalBinding, FindingGuaranteeClass, FindingMarketTerms, FindingOutcomeClass,
-    FindingPoolBinding, SignedFindingAdmission, SignedFindingBondBacking, SignedFindingMarketTerms,
-    FINDING_ADMISSION_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1, FINDING_MARKET_TERMS_SCHEMA_V1,
-    FINDING_SCHEMA_V1,
+    compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
+    compute_terms_id, sign_finding, signed_envelope_sha256, Finding, FindingAdmission,
+    FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBondBacking, FindingBondClass,
+    FindingChallengeBondLimit, FindingCollateralVault, FindingDescriptor, FindingError,
+    FindingEvidenceClass, FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass,
+    FindingMarketTerms, FindingOutcomeClass, FindingPayee, FindingPoolBinding,
+    FindingSellerAuthorization, SignedFindingAdmission, SignedFindingBondBacking,
+    SignedFindingMarketTerms, SignedFindingSellerAuthorization, FINDING_ADMISSION_SCHEMA_V1,
+    FINDING_BOND_BACKING_SCHEMA_V1, FINDING_MARKET_TERMS_SCHEMA_V1, FINDING_SCHEMA_V1,
+    FINDING_SELLER_AUTHORIZATION_SCHEMA_V1,
 };
 use chio_fiscal::{
     FiscalActivationHistory, FiscalAuthorityState, FiscalBootstrapState, FiscalCharterRegistry,
@@ -302,10 +304,40 @@ fn signed_terms(seller: &Keypair, finding: &Finding, expires_at: u64) -> SignedF
     SignedFindingMarketTerms::sign(terms, seller).test_expect("sign terms")
 }
 
+fn signed_authorization(
+    issuer: &Keypair,
+    seller: &Keypair,
+    finding: &Finding,
+) -> SignedFindingSellerAuthorization {
+    let mut authorization = FindingSellerAuthorization {
+        schema: FINDING_SELLER_AUTHORIZATION_SCHEMA_V1.to_string(),
+        authorization_id: String::new(),
+        finding_id: finding.finding_id.clone(),
+        finding_artifact_sha256: finding_artifact_sha256(finding),
+        listing_id: FINDING_LISTING_ID.to_string(),
+        issuer: issuer.public_key(),
+        seller: seller.public_key(),
+        provider_server_id: FINDING_SERVER_ID.to_string(),
+        provider_tool: "read_finding".to_string(),
+        payee: FindingPayee::Beneficiary {
+            destination: "rail:venue-ledger:seller-42".to_string(),
+            currency: "USD".to_string(),
+        },
+        revocation_status_ref: "revocations/seller-authorization".to_string(),
+        issued_at: ADMISSION_ISSUED_AT,
+        expires_at: WINDOW_EXPIRES_AT,
+    };
+    authorization.authorization_id =
+        compute_authorization_id(&authorization).test_expect("authorization id");
+    SignedFindingSellerAuthorization::sign(authorization, issuer)
+        .test_expect("sign seller authorization")
+}
+
 fn signed_backing(
     collateral: &Keypair,
     seller: &Keypair,
     finding: &Finding,
+    authorization_envelope_sha256: &str,
     fee_schedule_envelope_sha256: &str,
     terms_envelope_sha256: &str,
 ) -> SignedFindingBondBacking {
@@ -313,6 +345,7 @@ fn signed_backing(
         collateral,
         seller,
         finding,
+        authorization_envelope_sha256,
         fee_schedule_envelope_sha256,
         LOCKED_UNITS,
         terms_envelope_sha256,
@@ -323,6 +356,7 @@ fn signed_backing_committing(
     collateral: &Keypair,
     seller: &Keypair,
     finding: &Finding,
+    authorization_envelope_sha256: &str,
     fee_schedule_envelope_sha256: &str,
     locked_units: u64,
     terms_envelope_sha256: &str,
@@ -332,7 +366,7 @@ fn signed_backing_committing(
         allocation_id: String::new(),
         collateral_authority: collateral.public_key(),
         seller: seller.public_key(),
-        authorization_envelope_sha256: hex64('1'),
+        authorization_envelope_sha256: authorization_envelope_sha256.to_string(),
         finding_id: finding.finding_id.clone(),
         listing_id: FINDING_LISTING_ID.to_string(),
         terms_envelope_sha256: terms_envelope_sha256.to_string(),
@@ -358,6 +392,7 @@ fn signed_backing_committing(
 }
 
 struct AdmissionBindings {
+    seller_authorization_envelope_sha256: String,
     listing_envelope_sha256: String,
     pricing_hint_envelope_sha256: String,
     terms_envelope_sha256: String,
@@ -380,7 +415,7 @@ fn signed_admission(
         venue_id: VENUE_ID.to_string(),
         finding_id: finding.finding_id.clone(),
         finding_artifact_sha256: finding_artifact_sha256(finding),
-        seller_authorization_envelope_sha256: hex64('1'),
+        seller_authorization_envelope_sha256: bindings.seller_authorization_envelope_sha256.clone(),
         listing_id: FINDING_LISTING_ID.to_string(),
         listing_envelope_sha256: bindings.listing_envelope_sha256.clone(),
         server_id: FINDING_SERVER_ID.to_string(),
@@ -455,6 +490,8 @@ struct Web {
     finding: Finding,
     schedule: SignedOpenMarketFeeSchedule,
     schedule_sha256: String,
+    authorization: SignedFindingSellerAuthorization,
+    authorization_sha256: String,
     terms: SignedFindingMarketTerms,
     terms_sha256: String,
     backing: SignedFindingBondBacking,
@@ -470,14 +507,19 @@ fn web_with_schedule(requirement_units: u64, slashable: bool, currency: &str) ->
     let seller = keypair(2);
     let collateral = keypair(4);
     let finding = sealed_finding();
+    let issuer = keypair(11);
     let schedule = signed_schedule(&operator, requirement_units, slashable, currency);
     let schedule_sha256 = signed_fee_schedule_digest(&schedule).test_expect("schedule digest");
+    let authorization = signed_authorization(&issuer, &seller, &finding);
+    let authorization_sha256 =
+        signed_envelope_sha256(&authorization).test_expect("authorization digest");
     let terms = signed_terms(&seller, &finding, WINDOW_EXPIRES_AT);
     let terms_sha256 = signed_envelope_sha256(&terms).test_expect("terms digest");
     let backing = signed_backing(
         &collateral,
         &seller,
         &finding,
+        &authorization_sha256,
         &schedule_sha256,
         &terms_sha256,
     );
@@ -497,6 +539,7 @@ fn web_with_schedule(requirement_units: u64, slashable: bool, currency: &str) ->
         &venue,
         &finding,
         &AdmissionBindings {
+            seller_authorization_envelope_sha256: authorization_sha256.clone(),
             listing_envelope_sha256: listing_sha256.clone(),
             pricing_hint_envelope_sha256: hint_sha256.clone(),
             terms_envelope_sha256: terms_sha256.clone(),
@@ -517,6 +560,8 @@ fn web_with_schedule(requirement_units: u64, slashable: bool, currency: &str) ->
         finding,
         schedule,
         schedule_sha256,
+        authorization,
+        authorization_sha256,
         terms,
         terms_sha256,
         backing,
@@ -543,7 +588,7 @@ impl Web {
                 binding: None,
             },
             trusted_local_operator_signers: &self.trusted_signers,
-            provider_tool: "read_finding",
+            seller_authorization: &self.authorization,
             terms: &self.terms,
             backing: &self.backing,
             allocation_snapshot: FindingAllocationSnapshot {
@@ -570,6 +615,7 @@ impl Web {
 
     fn bindings(&self) -> AdmissionBindings {
         AdmissionBindings {
+            seller_authorization_envelope_sha256: self.authorization_sha256.clone(),
             listing_envelope_sha256: self.listing_sha256.clone(),
             pricing_hint_envelope_sha256: self.hint_sha256.clone(),
             terms_envelope_sha256: self.terms_sha256.clone(),
@@ -1788,6 +1834,7 @@ fn backing_locked_below_the_promised_sum_rejects() {
             &keypair(4),
             &web.seller,
             &web.finding,
+            &web.authorization_sha256,
             &web.schedule_sha256,
             STAKE_UNITS + EXPOSURE_UNITS - 1,
             &web.terms_sha256,
@@ -1902,6 +1949,7 @@ fn backing_committing_other_terms_rejects() {
             &keypair(4),
             &web.seller,
             &web.finding,
+            &web.authorization_sha256,
             &web.schedule_sha256,
             LOCKED_UNITS,
             &hex64('f'),
