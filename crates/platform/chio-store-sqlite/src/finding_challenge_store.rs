@@ -74,7 +74,15 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use chio_core::canonical::canonical_json_bytes;
+use chio_core::crypto::PublicKey;
 use chio_core::{sha256_hex, StoreMutationFence};
+use chio_finding::{
+    verify_signed_challenge_outcome,
+    FindingChallengeAuthorizationKind as ArtifactAuthorizationKind,
+    FindingChallengeEvidenceKind as ArtifactEvidenceKind,
+    FindingChallengeVerdict as ArtifactVerdict, SignedFindingChallengeOutcome,
+};
 use chio_kernel::admission_operation::AdmissionOperationStoreError;
 use chio_settle::ConfirmedFindingImpairmentReconciliation;
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
@@ -813,8 +821,8 @@ impl SqliteFindingChallengeStore {
         Ok(outcome)
     }
 
-    /// Close one evaluation against its signed outcome, returning the
-    /// state the challenge landed in.
+    /// Close one evaluation against its authenticated signed outcome,
+    /// returning the state the challenge landed in.
     ///
     /// `Upheld` and `Rejected` are terminal immediately. `Indeterminate`
     /// grants at most one retry, and only when the caller carries a signed
@@ -826,7 +834,32 @@ impl SqliteFindingChallengeStore {
     /// Idempotent: replaying one verdict under the same outcome digest
     /// returns the state that verdict produced; a different verdict or a
     /// different outcome digest against a closed challenge rejects.
-    pub fn record_verdict(
+    pub fn record_authenticated_verdict(
+        &self,
+        challenge_id: &str,
+        signed_outcome: &SignedFindingChallengeOutcome,
+        pinned_evaluator_authority: &PublicKey,
+        now: u64,
+    ) -> Result<FindingChallengeState, FindingChallengeStoreError> {
+        let (verdict, outcome_envelope_sha256, outcome_envelope_json) =
+            self.authenticate_outcome(challenge_id, signed_outcome, pinned_evaluator_authority)?;
+        if verdict == FindingChallengeVerdict::Upheld {
+            return Err(FindingChallengeStoreError::Conflict(
+                "upheld verdicts require the atomic exposure fence".to_owned(),
+            ));
+        }
+        self.record_verdict(
+            challenge_id,
+            verdict,
+            &outcome_envelope_sha256,
+            &outcome_envelope_json,
+            now,
+        )
+    }
+
+    /// Internal raw verdict transition used by this crate's storage tests.
+    /// Production callers must enter through [`Self::record_authenticated_verdict`].
+    pub(crate) fn record_verdict(
         &self,
         challenge_id: &str,
         verdict: FindingChallengeVerdict,
@@ -866,16 +899,56 @@ impl SqliteFindingChallengeStore {
         Ok(target)
     }
 
-    /// Atomically close an upheld evaluation only while the evaluator's
-    /// signed exposure still matches the authoritative allocation, and
-    /// raise the listing sales block in the same transaction.
+    /// Atomically close an authenticated upheld evaluation only while the
+    /// evaluator's signed exposure still matches the authoritative allocation,
+    /// and raise the listing sales block in the same transaction.
     ///
     /// If a purchase reservation races the evaluator's earlier read, the
     /// exposure mismatch rolls back both the block and the verdict. The
     /// challenge remains evaluating and a retry can sign the refreshed
     /// calculation. Once the transaction commits, no new reservation can
     /// change the exposure behind the terminal outcome.
-    pub fn record_upheld_verdict_with_exposure_fence(
+    pub fn record_authenticated_upheld_verdict_with_exposure_fence(
+        &self,
+        challenge_id: &str,
+        signed_outcome: &SignedFindingChallengeOutcome,
+        pinned_evaluator_authority: &PublicKey,
+        allocation_id: &str,
+        expected_open_exposure_units: u64,
+        now: u64,
+    ) -> Result<FindingChallengeState, FindingChallengeStoreError> {
+        let (verdict, outcome_envelope_sha256, outcome_envelope_json) =
+            self.authenticate_outcome(challenge_id, signed_outcome, pinned_evaluator_authority)?;
+        if verdict != FindingChallengeVerdict::Upheld {
+            return Err(FindingChallengeStoreError::Conflict(
+                "the upheld exposure fence requires an upheld signed outcome".to_owned(),
+            ));
+        }
+        let calculation = signed_outcome
+            .body
+            .penalty_calculation
+            .as_ref()
+            .ok_or_else(|| invariant("upheld signed outcome has no penalty calculation"))?;
+        if signed_outcome.body.backing_allocation_id != allocation_id
+            || calculation.open_per_sale_encumbrance_units != expected_open_exposure_units
+        {
+            return Err(FindingChallengeStoreError::Conflict(
+                "signed outcome does not bind the exposure fence".to_owned(),
+            ));
+        }
+        self.record_upheld_verdict_with_exposure_fence(
+            challenge_id,
+            &outcome_envelope_sha256,
+            &outcome_envelope_json,
+            allocation_id,
+            expected_open_exposure_units,
+            now,
+        )
+    }
+
+    /// Internal raw upheld transition used by this crate's storage tests.
+    /// Production callers must use the authenticated entrypoint above.
+    pub(crate) fn record_upheld_verdict_with_exposure_fence(
         &self,
         challenge_id: &str,
         outcome_envelope_sha256: &str,
@@ -914,6 +987,81 @@ impl SqliteFindingChallengeStore {
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(target)
+    }
+
+    fn authenticate_outcome(
+        &self,
+        challenge_id: &str,
+        signed_outcome: &SignedFindingChallengeOutcome,
+        pinned_evaluator_authority: &PublicKey,
+    ) -> Result<(FindingChallengeVerdict, String, Vec<u8>), FindingChallengeStoreError> {
+        require_identifier(challenge_id, "challenge_id")?;
+        verify_signed_challenge_outcome(signed_outcome, pinned_evaluator_authority).map_err(
+            |_| {
+                FindingChallengeStoreError::Conflict(
+                    "challenge outcome is not authenticated by the pinned evaluator".to_owned(),
+                )
+            },
+        )?;
+        let challenge = self
+            .get_challenge(challenge_id)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        let body = &signed_outcome.body;
+        let expected_authorization = match challenge.authorization_branch {
+            FindingChallengeAuthorizationBranch::BuyerSubmission => {
+                ArtifactAuthorizationKind::BuyerSubmission
+            }
+            FindingChallengeAuthorizationBranch::VenueAudit => {
+                ArtifactAuthorizationKind::VenueAudit
+            }
+        };
+        let expected_evidence = match challenge.evidence_class {
+            FindingChallengeEvidenceClass::DigestMismatch => ArtifactEvidenceKind::DigestMismatch,
+            FindingChallengeEvidenceClass::EvidenceInvalid => ArtifactEvidenceKind::EvidenceInvalid,
+            FindingChallengeEvidenceClass::ReplayContradiction => {
+                ArtifactEvidenceKind::ReplayContradiction
+            }
+        };
+        if body.challenge_envelope_sha256 != challenge.challenge_envelope_sha256
+            || body.finding_id != challenge.finding_id
+            || body.listing_id != challenge.listing_id
+            || body.authorization != expected_authorization
+            || body.evidence_kind != expected_evidence
+        {
+            return Err(FindingChallengeStoreError::Conflict(
+                "signed outcome does not bind the recorded challenge".to_owned(),
+            ));
+        }
+        let verdict = match body.verdict {
+            ArtifactVerdict::Upheld => FindingChallengeVerdict::Upheld,
+            ArtifactVerdict::Rejected => FindingChallengeVerdict::Rejected,
+            ArtifactVerdict::Indeterminate => FindingChallengeVerdict::Indeterminate {
+                retry_deadline: body.retry_deadline,
+            },
+        };
+        let outcome_envelope_json = canonical_json_bytes(signed_outcome)
+            .map_err(|_| invariant("signed challenge outcome is not canonicalizable"))?;
+        let outcome_envelope_sha256 = sha256_hex(&outcome_envelope_json);
+        Ok((verdict, outcome_envelope_sha256, outcome_envelope_json))
+    }
+
+    /// Raw verdict transition for cross-crate integration fixtures only.
+    #[cfg(feature = "cognition-market-test-support")]
+    pub fn record_test_verdict(
+        &self,
+        challenge_id: &str,
+        verdict: FindingChallengeVerdict,
+        outcome_envelope_sha256: &str,
+        outcome_envelope_json: &[u8],
+        now: u64,
+    ) -> Result<FindingChallengeState, FindingChallengeStoreError> {
+        self.record_verdict(
+            challenge_id,
+            verdict,
+            outcome_envelope_sha256,
+            outcome_envelope_json,
+            now,
+        )
     }
 
     /// One challenge by its id.

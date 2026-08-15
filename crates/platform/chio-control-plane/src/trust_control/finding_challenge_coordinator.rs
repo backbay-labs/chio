@@ -119,12 +119,12 @@ use chio_store_sqlite::{
     dispute_bond_funding_intent_digest, dispute_bond_return_intent_digest,
     FindingChallengeAuthorizationBranch, FindingChallengeEvaluationStart,
     FindingChallengeEvidenceClass, FindingChallengeState, FindingChallengeSubmission,
-    FindingChallengeVerdict as StoreVerdict, FindingChallengeWriteOutcome,
-    FindingClaimSnapshotInput, FindingDisputeLockDisposition, FindingDisputeLockInput,
-    FindingDisputeLockRecord, FindingDisputeLockState, FindingEffectIntentKind,
-    FindingEffectIntentState, FindingFinalizingAuthorizationInput, FindingGovernanceCaseInput,
-    FindingGovernanceCaseKind, FindingLiabilityInput, FindingLiabilityRecord,
-    FindingLiabilityState, SqliteFindingChallengeStore, SqliteFindingPurchaseStore,
+    FindingChallengeWriteOutcome, FindingClaimSnapshotInput, FindingDisputeLockDisposition,
+    FindingDisputeLockInput, FindingDisputeLockRecord, FindingDisputeLockState,
+    FindingEffectIntentKind, FindingEffectIntentState, FindingFinalizingAuthorizationInput,
+    FindingGovernanceCaseInput, FindingGovernanceCaseKind, FindingLiabilityInput,
+    FindingLiabilityRecord, FindingLiabilityState, SqliteFindingChallengeStore,
+    SqliteFindingPurchaseStore,
 };
 use serde::{Deserialize, Serialize};
 
@@ -1546,19 +1546,20 @@ impl FindingChallengeCoordinator {
             .map_err(ChallengeCoordinatorError::EvaluatorPolicyRetention)?;
 
         let state = match signed.body.penalty_calculation.as_ref() {
-            Some(calculation) => self.challenges.record_upheld_verdict_with_exposure_fence(
+            Some(calculation) => self
+                .challenges
+                .record_authenticated_upheld_verdict_with_exposure_fence(
+                    &body.challenge_id,
+                    &signed,
+                    &self.evaluator_authority.public_key(),
+                    &admission.body.backing_allocation_id,
+                    calculation.open_per_sale_encumbrance_units,
+                    request.now,
+                ),
+            None => self.challenges.record_authenticated_verdict(
                 &body.challenge_id,
-                &outcome_envelope_sha256,
-                &outcome_envelope_json,
-                &admission.body.backing_allocation_id,
-                calculation.open_per_sale_encumbrance_units,
-                request.now,
-            ),
-            None => self.challenges.record_verdict(
-                &body.challenge_id,
-                store_verdict(verdict, signed.body.retry_deadline),
-                &outcome_envelope_sha256,
-                &outcome_envelope_json,
+                &signed,
+                &self.evaluator_authority.public_key(),
                 request.now,
             ),
         }
@@ -6418,21 +6419,6 @@ const fn evidence_class_of(kind: FindingChallengeEvidenceKind) -> FindingChallen
         }
         FindingChallengeEvidenceKind::ReplayContradiction => {
             FindingChallengeEvidenceClass::ReplayContradiction
-        }
-    }
-}
-
-/// Map the adjudicated verdict onto the durable one. Only indeterminate
-/// carries a retry window, and only when the caller holds a signed one.
-const fn store_verdict(
-    verdict: chio_finding::FindingChallengeVerdict,
-    retry_deadline: Option<u64>,
-) -> StoreVerdict {
-    match verdict {
-        chio_finding::FindingChallengeVerdict::Upheld => StoreVerdict::Upheld,
-        chio_finding::FindingChallengeVerdict::Rejected => StoreVerdict::Rejected,
-        chio_finding::FindingChallengeVerdict::Indeterminate => {
-            StoreVerdict::Indeterminate { retry_deadline }
         }
     }
 }

@@ -3491,7 +3491,7 @@ fn close_challenge(
     now: u64,
 ) -> Result<FindingChallengeState, AnyError> {
     deployment.challenges.begin_evaluation(challenge_id, now)?;
-    Ok(deployment.challenges.record_verdict(
+    Ok(deployment.challenges.record_test_verdict(
         challenge_id,
         verdict,
         outcome_envelope_sha256,

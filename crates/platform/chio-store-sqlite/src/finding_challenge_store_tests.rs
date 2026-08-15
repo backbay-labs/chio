@@ -1126,6 +1126,87 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
 }
 
 #[test]
+fn terminal_verdict_requires_the_pinned_evaluator_signature() {
+    let fixture = fixture();
+    let challenge = Challenge::buyer("authenticated-outcome");
+    submit(&fixture, &challenge);
+    fixture
+        .store
+        .begin_evaluation(&challenge.challenge_id, NOW + 1)
+        .expect("begin evaluation");
+
+    let pinned_evaluator = keypair(90);
+    let forged_evaluator = keypair(91);
+    let mut outcome = chio_finding::FindingChallengeOutcome {
+        schema: chio_finding::FINDING_CHALLENGE_OUTCOME_SCHEMA_V1.to_owned(),
+        outcome_id: String::new(),
+        challenge_envelope_sha256: challenge.envelope_sha256.clone(),
+        finding_id: challenge.finding_id.clone(),
+        listing_id: challenge.listing_id.clone(),
+        backing_allocation_id: fixture.allocation_id.clone(),
+        authorization: chio_finding::FindingChallengeAuthorizationKind::BuyerSubmission,
+        audit_epoch_envelope_sha256: None,
+        evidence_kind: chio_finding::FindingChallengeEvidenceKind::EvidenceInvalid,
+        verifier_profile_envelope_sha256: hex64('c'),
+        evidence_bundle_digest: hex64('d'),
+        verdict: chio_finding::FindingChallengeVerdict::Rejected,
+        facet: chio_finding::FindingChallengeFacet::EvidenceInvalid(
+            chio_finding::FindingEvidenceInvalidFacet {
+                challenged_receipt_ids: vec!["receipt-authenticated-outcome".to_owned()],
+                invalidity: chio_finding::FindingEvidenceInvalidity::NoAffirmativeInvalidity,
+            },
+        ),
+        reason: "evidence_valid".to_owned(),
+        trigger_digest: hex64('e'),
+        retry_deadline: None,
+        penalty_calculation: None,
+        evaluator_authority_id: "challenge-evaluator".to_owned(),
+        evaluator_key: forged_evaluator.public_key(),
+        evaluator_key_epoch: 1,
+        evaluator_valid_from: 1,
+        evaluator_valid_until: 9_007_199_254_740_991,
+        evaluator_revocation_status_ref: "status://challenge-evaluator/1".to_owned(),
+        evaluated_at: NOW + 1,
+    };
+    outcome.outcome_id = chio_finding::derive_outcome_id(&outcome).expect("derive outcome id");
+    let forged =
+        chio_finding::SignedFindingChallengeOutcome::sign(outcome.clone(), &forged_evaluator)
+            .expect("sign forged outcome");
+    assert!(matches!(
+        fixture.store.record_authenticated_verdict(
+            &challenge.challenge_id,
+            &forged,
+            &pinned_evaluator.public_key(),
+            NOW + 1,
+        ),
+        Err(FindingChallengeStoreError::Conflict(_))
+    ));
+    assert_eq!(
+        challenge_state(&fixture, &challenge.challenge_id),
+        FindingChallengeState::Evaluating,
+        "a forged outcome cannot close the challenge"
+    );
+
+    outcome.evaluator_key = pinned_evaluator.public_key();
+    outcome.outcome_id = chio_finding::derive_outcome_id(&outcome).expect("rederive outcome id");
+    let authenticated =
+        chio_finding::SignedFindingChallengeOutcome::sign(outcome, &pinned_evaluator)
+            .expect("sign authenticated outcome");
+    assert_eq!(
+        fixture
+            .store
+            .record_authenticated_verdict(
+                &challenge.challenge_id,
+                &authenticated,
+                &pinned_evaluator.public_key(),
+                NOW + 1,
+            )
+            .expect("record authenticated verdict"),
+        FindingChallengeState::Rejected
+    );
+}
+
+#[test]
 fn compensated_close_rederives_every_challenge_scoped_intent() {
     let fixture = fixture();
     let challenge = Challenge::buyer("compensated-close");
