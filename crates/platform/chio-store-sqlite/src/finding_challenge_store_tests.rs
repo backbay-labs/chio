@@ -3606,10 +3606,32 @@ fn settlement_waits_for_every_required_effect_confirmation() {
             .expect("replay atomic confirmation and quarantine"),
         FindingChallengeWriteOutcome::ExistingSame
     );
+    assert!(matches!(
+        fixture
+            .store
+            .reconcile_seller_impairment_quarantine_for_tests(
+                &required[0].0,
+                &head.liability_key,
+                &retained_reconciliation.tx_hash,
+                &hex64('f'),
+                NOW + 10,
+            ),
+        Err(FindingChallengeStoreError::Conflict(_))
+    ));
+    assert!(
+        liability(&fixture, &head.liability_key).quarantined,
+        "a mismatched current reconciliation must retain quarantine"
+    );
     fixture
         .store
-        .set_liability_quarantine(&head.liability_key, false, NOW + 10)
-        .expect("clear reconciled quarantine");
+        .reconcile_seller_impairment_quarantine_for_tests(
+            &required[0].0,
+            &head.liability_key,
+            &retained_reconciliation.tx_hash,
+            &retained_reconciliation.reconciliation_sha256,
+            NOW + 10,
+        )
+        .expect("atomically validate reconciliation and clear quarantine");
     fixture
         .store
         .advance_effect_intent(

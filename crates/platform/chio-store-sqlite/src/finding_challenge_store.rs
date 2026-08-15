@@ -3045,6 +3045,90 @@ impl SqliteFindingChallengeStore {
         )
     }
 
+    /// Validate the current observation against the exact reconciliation
+    /// retained with a confirmed seller impairment, then clear quarantine in
+    /// the same write transaction. A mismatched reobservation leaves the
+    /// liability quarantined.
+    pub fn reconcile_seller_impairment_quarantine(
+        &self,
+        reconciliation: &ConfirmedFindingImpairmentReconciliation,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        self.reconcile_seller_impairment_quarantine_with_evidence(
+            &SellerImpairmentReconciliationEvidence {
+                intent_key: reconciliation.intent_id(),
+                liability_key: reconciliation.liability_key(),
+                tx_hash: reconciliation.tx_hash(),
+                reconciliation_sha256: reconciliation.reconciliation_sha256(),
+            },
+            now,
+        )
+    }
+
+    fn reconcile_seller_impairment_quarantine_with_evidence(
+        &self,
+        evidence: &SellerImpairmentReconciliationEvidence<'_>,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        require_hex64(evidence.intent_key, "intent_key")?;
+        require_hex64(evidence.liability_key, "liability_key")?;
+        require_chain_hash(evidence.tx_hash, "reconciliation.tx_hash")?;
+        require_hex64(
+            evidence.reconciliation_sha256,
+            "reconciliation.reconciliation_sha256",
+        )?;
+        require_trusted_time(now, "now")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let intent = load_effect_intent_tx(&transaction, evidence.intent_key)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        let retained = load_seller_impairment_reconciliation_tx(&transaction, evidence.intent_key)?
+            .ok_or_else(|| {
+                invariant("confirmed seller impairment has no retained reconciliation")
+            })?;
+        if intent.kind != FindingEffectIntentKind::SellerImpair
+            || intent.state != FindingEffectIntentState::Confirmed
+            || !intent.settlement_required
+            || intent.liability_key.as_deref() != Some(evidence.liability_key)
+            || retained.liability_key != evidence.liability_key
+            || retained.intent_digest != intent.intent_digest
+            || retained.tx_hash != evidence.tx_hash
+            || retained.reconciliation_sha256 != evidence.reconciliation_sha256
+        {
+            return Err(FindingChallengeStoreError::Conflict(
+                "reobserved seller impairment does not match its retained reconciliation"
+                    .to_owned(),
+            ));
+        }
+        let liability = load_liability_tx(&transaction, evidence.liability_key)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        if liability.state != FindingLiabilityState::Finalizing {
+            return Err(FindingChallengeStoreError::Conflict(format!(
+                "liability is in state {}, not the expected finalizing",
+                liability_state_name(liability.state)
+            )));
+        }
+        if !liability.quarantined {
+            return Ok(FindingChallengeWriteOutcome::ExistingSame);
+        }
+        let updated = transaction
+            .execute(
+                r#"
+                UPDATE liability_heads
+                SET quarantined = 0, updated_at = ?2
+                WHERE liability_key = ?1 AND state = 'finalizing' AND quarantined = 1
+                "#,
+                params![evidence.liability_key, sqlite_i64(now, "now")?],
+            )
+            .map_err(sqlite_error)?;
+        if updated != 1 {
+            return Err(invariant("liability quarantine did not affect one row"));
+        }
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(FindingChallengeWriteOutcome::Inserted)
+    }
+
     fn confirm_seller_impairment_with_evidence(
         &self,
         evidence: &SellerImpairmentReconciliationEvidence<'_>,
@@ -3218,6 +3302,26 @@ impl SqliteFindingChallengeStore {
                 reconciliation_sha256: &reconciliation_sha256,
             },
             true,
+            now,
+        )
+    }
+
+    #[cfg(test)]
+    fn reconcile_seller_impairment_quarantine_for_tests(
+        &self,
+        intent_key: &str,
+        liability_key: &str,
+        tx_hash: &str,
+        reconciliation_sha256: &str,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        self.reconcile_seller_impairment_quarantine_with_evidence(
+            &SellerImpairmentReconciliationEvidence {
+                intent_key,
+                liability_key,
+                tx_hash,
+                reconciliation_sha256,
+            },
             now,
         )
     }

@@ -288,29 +288,11 @@ impl FindingChallengeCoordinator {
                 now,
             )
             .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
-            self.challenges
-                .set_liability_quarantine(liability_key, false, now)
-                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         }
-        let retained_reconciliation = self
+        self
             .challenges
-            .get_seller_impairment_reconciliation(reconciliation.intent_id())
-            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
-            .ok_or_else(|| {
-                ChallengeCoordinatorError::Settlement(
-                    "confirmed seller impairment has no retained reconciliation".to_owned(),
-                )
-            })?;
-        if retained_reconciliation.liability_key != liability_key
-            || retained_reconciliation.tx_hash != reconciliation.tx_hash()
-            || retained_reconciliation.reconciliation_sha256
-                != reconciliation.reconciliation_sha256()
-        {
-            return Err(ChallengeCoordinatorError::Settlement(
-                "reobserved seller impairment does not match its retained reconciliation"
-                    .to_owned(),
-            ));
-        }
+            .reconcile_seller_impairment_quarantine(reconciliation, now)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         self.confirm_fenced_anchor_effect(liability_key, now)?;
         self.mark_retraction_dispatch_eligible(enforcement, reconciliation.tx_hash(), now)?;
         if self.reconcile_status_publication_and_settle(liability_key, enforcement, now)? {
