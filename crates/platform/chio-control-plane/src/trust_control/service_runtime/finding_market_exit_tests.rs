@@ -20,6 +20,7 @@ use chio_core::receipt::decision::{Decision, ToolCallAction};
 use chio_core::receipt::kinds::TrustLevel;
 use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_core::sha256_hex;
+use chio_core::AnchorInclusionProof;
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
     compute_profile_id, compute_report_id, compute_terms_id, sign_finding, Finding,
@@ -65,6 +66,10 @@ use chio_open_market::listing::{
     GenericNamespaceOwnership, GenericRegistryPublisher, GenericRegistryPublisherRole, Listing,
     ListingPricingHint, ListingSla, SignedGenericListing, SignedListingPricingHint,
     GENERIC_LISTING_ARTIFACT_SCHEMA, LISTING_PRICING_HINT_SCHEMA,
+};
+use chio_settle::{
+    finding_anchor_checkpoint_statement_sha256, FindingAnchorCheckpointPublication,
+    SignedFindingAnchorCheckpointPublication, FINDING_ANCHOR_CHECKPOINT_PUBLICATION_SCHEMA_V1,
 };
 use chio_store_sqlite::finding_market_store::{
     finding_fee_idempotency_key, FindingActivationAttemptState, FindingAllocationState,
@@ -289,6 +294,24 @@ fn signed_status_operator_authority_status(
     )?)
 }
 
+fn signed_checkpoint_publication(
+    proof: &AnchorInclusionProof,
+    now: u64,
+) -> Result<SignedFindingAnchorCheckpointPublication, String> {
+    SignedExportEnvelope::sign(
+        FindingAnchorCheckpointPublication {
+            schema: FINDING_ANCHOR_CHECKPOINT_PUBLICATION_SCHEMA_V1.to_string(),
+            checkpoint_statement_sha256: finding_anchor_checkpoint_statement_sha256(proof)
+                .map_err(|error| error.to_string())?,
+            checkpoint_seq: proof.checkpoint_statement.checkpoint_seq,
+            published_at: proof.checkpoint_statement.issued_at,
+            observed_at: now,
+        },
+        &keypair(37),
+    )
+    .map_err(|error| error.to_string())
+}
+
 #[derive(Default)]
 struct TestStatusOperatorAuthorityResolver {
     revoked_from: AtomicU64,
@@ -322,6 +345,14 @@ impl crate::trust_control::finding_challenge_coordinator::FindingAuthorityStatus
             &keypair(37),
         )
         .map_err(|error| error.to_string())
+    }
+
+    fn checkpoint_publication(
+        &self,
+        proof: &AnchorInclusionProof,
+        now: u64,
+    ) -> Result<SignedFindingAnchorCheckpointPublication, String> {
+        signed_checkpoint_publication(proof, now)
     }
 }
 
@@ -360,6 +391,14 @@ impl crate::trust_control::finding_challenge_coordinator::FindingAuthorityStatus
             &keypair(37),
         )
         .map_err(|error| error.to_string())
+    }
+
+    fn checkpoint_publication(
+        &self,
+        proof: &AnchorInclusionProof,
+        now: u64,
+    ) -> Result<SignedFindingAnchorCheckpointPublication, String> {
+        signed_checkpoint_publication(proof, now)
     }
 }
 
@@ -404,6 +443,14 @@ impl crate::trust_control::finding_challenge_coordinator::FindingAuthorityStatus
             &keypair(37),
         )
         .map_err(|error| error.to_string())
+    }
+
+    fn checkpoint_publication(
+        &self,
+        proof: &AnchorInclusionProof,
+        now: u64,
+    ) -> Result<SignedFindingAnchorCheckpointPublication, String> {
+        signed_checkpoint_publication(proof, now)
     }
 }
 

@@ -44,6 +44,7 @@ use chio_core::receipt::metadata::{
     FINDING_DELIVERY_SCHEMA, FINDING_RECOVERY_METADATA_KEY,
 };
 use chio_core::sha256_hex;
+use chio_core::AnchorInclusionProof;
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
     compute_profile_id, compute_terms_id, derive_finding_recovery_id, derive_purchase_key,
@@ -115,6 +116,10 @@ use chio_open_market::purchase_verification::{
 use chio_open_market::recovery::{
     mint_verified_finding_recovery_grant, verify_finding_recovery_context,
     RecoveryVerificationAuthorities, RecoveryVerificationInputs,
+};
+use chio_settle::{
+    finding_anchor_checkpoint_statement_sha256, FindingAnchorCheckpointPublication,
+    SignedFindingAnchorCheckpointPublication, FINDING_ANCHOR_CHECKPOINT_PUBLICATION_SCHEMA_V1,
 };
 use chio_store_sqlite::finding_market_store::FindingAllocationState;
 use chio_store_sqlite::{
@@ -424,6 +429,25 @@ impl FindingAuthorityStatusResolver for TestTerminalAuthorityStatusResolver {
                 revoked_from: (self.revoked_authority_id.as_deref()
                     == Some(pin.authority_id.as_str()))
                 .then_some(now),
+                observed_at: now.saturating_sub(self.observed_at_lag_secs),
+            },
+            &keypair(37),
+        )
+        .map_err(|error| error.to_string())
+    }
+
+    fn checkpoint_publication(
+        &self,
+        proof: &AnchorInclusionProof,
+        now: u64,
+    ) -> Result<SignedFindingAnchorCheckpointPublication, String> {
+        SignedExportEnvelope::sign(
+            FindingAnchorCheckpointPublication {
+                schema: FINDING_ANCHOR_CHECKPOINT_PUBLICATION_SCHEMA_V1.to_string(),
+                checkpoint_statement_sha256: finding_anchor_checkpoint_statement_sha256(proof)
+                    .map_err(|error| error.to_string())?,
+                checkpoint_seq: proof.checkpoint_statement.checkpoint_seq,
+                published_at: proof.checkpoint_statement.issued_at,
                 observed_at: now.saturating_sub(self.observed_at_lag_secs),
             },
             &keypair(37),

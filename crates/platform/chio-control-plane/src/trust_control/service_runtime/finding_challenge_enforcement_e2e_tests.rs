@@ -579,6 +579,7 @@ impl Clone for PublishedArtifacts {
             profile_governance_policies: self.profile_governance_policies.clone(),
             case_governance_policies: clone_policy_lock(&self.case_governance_policies),
             penalty_policies: clone_policy_lock(&self.penalty_policies),
+            evaluator_policies: clone_policy_lock(&self.evaluator_policies),
             audit_policies: self.audit_policies.clone(),
             audit_witness_policies: self.audit_witness_policies.clone(),
             audit_governance_policies: self.audit_governance_policies.clone(),
@@ -2176,6 +2177,7 @@ impl EvidenceInvalidCase {
             challenged_receipts: &self.receipts,
             challenged_checkpoint: &self.checkpoint,
             checkpoint_transparency: &self.checkpoint_transparency,
+            checkpoint_authority_status: &self.checkpoint_authority_status,
             production_authority_status: &self.unestablished_production_authority_status,
             revoked_keys: &[],
         })
