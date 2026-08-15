@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS authority_global_commits (
     commit_sequence INTEGER PRIMARY KEY CHECK (commit_sequence > 0),
     mutation_kind TEXT NOT NULL CHECK (mutation_kind <> ''),
     projection_kind TEXT NOT NULL CHECK (
-        projection_kind IN ('baseline', 'admission', 'budget', 'revocation', 'frost', 'payment', 'economic', 'channel_release_publication', 'factor_assignment_authority_set', 'fiscal')
+        projection_kind IN ('baseline', 'admission', 'budget', 'revocation', 'frost', 'payment', 'economic', 'channel_release_publication', 'factor_assignment_authority_set', 'fiscal', 'finding_challenge')
     ),
     projection_key TEXT NOT NULL,
     projection_sequence INTEGER NOT NULL CHECK (projection_sequence >= 0),
@@ -115,6 +115,15 @@ struct ProjectionRootEntry<'a> {
     projection_reference_digest: &'a str,
 }
 
+#[derive(Serialize)]
+struct FindingChallengeProjectionEntry<'a> {
+    format: &'static str,
+    previous_commit_digest: &'a str,
+    projection_sequence: u64,
+    mutation_kind: &'a str,
+    snapshot_digest: &'a str,
+}
+
 struct CommitRow {
     sequence: u64,
     mutation_kind: String,
@@ -193,8 +202,41 @@ pub(crate) fn initialize_global_commit_schema(
     )?;
     if !table_exists {
         connection.execute_batch(GLOBAL_COMMIT_SCHEMA)?;
+    } else if verify_global_commit_schema(connection).is_err() {
+        migrate_previous_global_commit_schema(connection)?;
     }
     verify_global_commit_schema(connection)
+}
+
+fn migrate_previous_global_commit_schema(
+    connection: &Connection,
+) -> Result<(), SqliteServingOwnerError> {
+    let previous_schema = GLOBAL_COMMIT_SCHEMA.replace(", 'finding_challenge'", "");
+    let expected_previous = Connection::open_in_memory()?;
+    expected_previous.execute_batch(&previous_schema)?;
+    if global_schema_catalog(connection)? != global_schema_catalog(&expected_previous)? {
+        return Err(invalid("global authority commit schema is not canonical"));
+    }
+    let transaction = connection.unchecked_transaction()?;
+    transaction.execute_batch(
+        r#"
+        DROP TRIGGER authority_global_commits_immutable;
+        DROP TRIGGER authority_global_commits_no_delete;
+        DROP INDEX authority_global_commits_projection;
+        ALTER TABLE authority_global_commits
+            RENAME TO authority_global_commits_previous;
+        "#,
+    )?;
+    transaction.execute_batch(GLOBAL_COMMIT_SCHEMA)?;
+    transaction.execute_batch(
+        r#"
+        INSERT INTO authority_global_commits
+        SELECT * FROM authority_global_commits_previous;
+        DROP TABLE authority_global_commits_previous;
+        "#,
+    )?;
+    transaction.commit()?;
+    Ok(())
 }
 
 pub(crate) fn verify_global_commit_schema(
@@ -295,6 +337,87 @@ pub(crate) fn append_global_commit(
         Some(&fence.lease_id),
         fence.owner_epoch,
     )
+}
+
+/// Append the challenge projection and its authority-wide reference when
+/// the current challenge snapshot differs from the latest committed one.
+/// Identical replays produce no phantom history entry.
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) fn append_finding_challenge_projection_if_changed(
+    transaction: &Transaction<'_>,
+    fence: &StoreMutationFence,
+) -> Result<bool, SqliteServingOwnerError> {
+    let snapshot_digest = finding_market_snapshot_digest(transaction)?;
+    let latest = transaction
+        .query_row(
+            r#"
+            SELECT projection_sequence, snapshot_digest, commit_digest
+            FROM finding_challenge_projection_commits
+            ORDER BY projection_sequence DESC LIMIT 1
+            "#,
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .optional()?;
+    if latest
+        .as_ref()
+        .is_some_and(|(_, committed_snapshot, _)| committed_snapshot == &snapshot_digest)
+    {
+        return Ok(false);
+    }
+    let (previous_sequence, previous_commit_digest) = match latest {
+        Some((sequence, _, commit_digest)) => (
+            read_u64(sequence, "finding challenge projection sequence")?,
+            commit_digest,
+        ),
+        None => (0, GLOBAL_GENESIS_DIGEST.to_owned()),
+    };
+    let projection_sequence = previous_sequence
+        .checked_add(1)
+        .ok_or_else(|| invalid("finding challenge projection sequence overflowed"))?;
+    let mutation_kind = "finding_challenge_write";
+    let commit_digest = digest(&FindingChallengeProjectionEntry {
+        format: "chio.sqlite-finding-challenge-projection.v1",
+        previous_commit_digest: &previous_commit_digest,
+        projection_sequence,
+        mutation_kind,
+        snapshot_digest: &snapshot_digest,
+    })?;
+    let inserted = transaction.execute(
+        r#"
+        INSERT INTO finding_challenge_projection_commits (
+            projection_sequence, mutation_kind, snapshot_digest,
+            previous_commit_digest, commit_digest
+        ) VALUES (?1, ?2, ?3, ?4, ?5)
+        "#,
+        params![
+            sqlite_u64(projection_sequence, "finding challenge projection sequence")?,
+            mutation_kind,
+            snapshot_digest,
+            previous_commit_digest,
+            commit_digest,
+        ],
+    )?;
+    if inserted != 1 {
+        return Err(invalid(
+            "finding challenge projection did not advance exactly once",
+        ));
+    }
+    append_global_commit(
+        transaction,
+        mutation_kind,
+        "finding_challenge",
+        "market",
+        projection_sequence,
+        fence,
+    )?;
+    Ok(true)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -741,6 +864,25 @@ fn projection_reference_digest(
             )
             .optional()?
             .ok_or_else(|| invalid("fiscal projection reference is absent")),
+        "finding_challenge" => {
+            if key != "market" {
+                return Err(invalid("finding challenge projection key is invalid"));
+            }
+            connection
+                .query_row(
+                    r#"
+                    SELECT commit_digest FROM finding_challenge_projection_commits
+                    WHERE projection_sequence = ?1
+                    "#,
+                    [sqlite_u64(
+                        sequence,
+                        "finding challenge projection sequence",
+                    )?],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .ok_or_else(|| invalid("finding challenge projection reference is absent"))
+        }
         _ => Err(invalid("unknown global authority projection kind")),
     }
 }
@@ -1059,6 +1201,317 @@ fn baseline_projection_digest(connection: &Connection) -> Result<String, SqliteS
     baseline_projection_digest_for_tables(connection, table_names(connection, false)?)
 }
 
+fn finding_challenge_snapshot_digest_v1(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    let tables = [
+        "challenges",
+        "dispute_locks",
+        "liability_heads",
+        "governance_case_index",
+        "claim_snapshots",
+        "effect_intents",
+        "listing_sales_blocks",
+    ];
+    let mut snapshots = Vec::with_capacity(tables.len());
+    for table in tables {
+        snapshots.push(if table == "liability_heads" {
+            table_snapshot_without_column(connection, table, "seller_hex")?
+        } else {
+            table_snapshot(connection, table, None)?
+        });
+    }
+    digest(&AuthoritySnapshot {
+        format: "chio.sqlite-finding-challenge-snapshot.v1",
+        tables: snapshots,
+    })
+}
+
+/// Current rollback-protected cognition-market snapshot. Purchase claims
+/// and every durable relation used to admit them share the challenge
+/// projection, so restoring a database from before a settled purchase
+/// cannot silently shrink a later sealed distribution.
+fn finding_market_snapshot_digest(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, true, true, true, true, true, true, true, true,
+    )
+}
+
+fn finding_market_snapshot_digest_v12(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, true, true, true, true, true, true, true, false,
+    )
+}
+
+fn finding_market_snapshot_digest_v11(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, true, true, true, true, true, true, false, false,
+    )
+}
+
+fn finding_market_snapshot_digest_v10(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, true, true, true, true, true, false, false, false,
+    )
+}
+
+fn finding_market_snapshot_digest_v9(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, true, true, true, true, false, false, false, false,
+    )
+}
+
+fn finding_market_snapshot_digest_v8(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, true, true, true, false, false, false, false, false,
+    )
+}
+
+fn finding_market_snapshot_digest_v7(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, true, true, false, false, false, false, false, false,
+    )
+}
+
+fn finding_market_snapshot_digest_v6(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, true, false, false, false, false, false, false, false,
+    )
+}
+
+fn finding_market_snapshot_digest_v5(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(
+        connection, true, true, true, false, false, false, false, false, false, false, false,
+    )
+}
+
+fn finding_market_snapshot_digest_v4(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(
+        connection, true, true, false, false, false, false, false, false, false, false, false,
+    )
+}
+
+fn finding_market_snapshot_digest_v3(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(
+        connection, true, false, false, false, false, false, false, false, false, false, false,
+    )
+}
+
+fn finding_market_snapshot_digest_v2(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    finding_market_snapshot_digest_version(
+        connection, false, false, false, false, false, false, false, false, false, false, false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finding_market_snapshot_digest_version(
+    connection: &Connection,
+    include_lock_reservations: bool,
+    include_liability_seller: bool,
+    include_inflight_purchases: bool,
+    include_root_bindings: bool,
+    include_outcomes: bool,
+    include_capture_intents: bool,
+    include_failed_deliveries: bool,
+    include_finalizing_authorizations: bool,
+    include_finalizing_authorization_refreshes: bool,
+    include_terminal_reservations: bool,
+    include_seller_impairment_reconciliations: bool,
+) -> Result<String, SqliteServingOwnerError> {
+    let mut challenge_tables = vec![
+        "challenges",
+        "dispute_locks",
+        "liability_heads",
+        "governance_case_index",
+        "claim_snapshots",
+        "effect_intents",
+        "listing_sales_blocks",
+    ];
+    if include_root_bindings {
+        challenge_tables.push("effect_root_bindings");
+    }
+    if include_outcomes {
+        challenge_tables.push("finding_challenge_outcomes");
+    }
+    if include_finalizing_authorizations {
+        challenge_tables.push("finding_finalizing_authorizations");
+    }
+    if include_finalizing_authorization_refreshes {
+        challenge_tables.push("finding_finalizing_authorization_refreshes");
+    }
+    if include_seller_impairment_reconciliations {
+        challenge_tables.push("finding_seller_impairment_reconciliations");
+    }
+    let mut snapshots = Vec::with_capacity(if include_lock_reservations { 18 } else { 17 });
+    for table in challenge_tables {
+        snapshots.push(if table == "liability_heads" && !include_liability_seller {
+            table_snapshot_without_column(connection, table, "seller_hex")?
+        } else {
+            table_snapshot(connection, table, None)?
+        });
+        if include_lock_reservations && table == "challenges" {
+            snapshots.push(table_snapshot(
+                connection,
+                "dispute_lock_reservations",
+                None,
+            )?);
+        }
+    }
+    snapshots.push(table_snapshot(connection, "purchase_records", None)?);
+    if include_capture_intents {
+        snapshots.push(table_snapshot(
+            connection,
+            "purchase_capture_intents",
+            None,
+        )?);
+    }
+    if include_failed_deliveries {
+        snapshots.push(table_snapshot(connection, "failed_delivery_records", None)?);
+    }
+    for table in [
+        "purchase_reservations",
+        "purchase_payout_bindings",
+        "seller_exposure_encumbrances",
+        "pending_purchase_slots",
+    ] {
+        snapshots.push(table_snapshot_where(
+            connection,
+            table,
+            if include_terminal_reservations {
+                "1 = 1"
+            } else if include_failed_deliveries {
+                r#"
+                reservation_id IN (
+                    SELECT reservation_id FROM purchase_records
+                    UNION
+                    SELECT reservation_id FROM failed_delivery_records
+                    UNION
+                    SELECT reservation_id FROM purchase_reservations
+                    WHERE state IN ('open', 'slot_reserved')
+                )
+                "#
+            } else if include_inflight_purchases {
+                r#"
+                reservation_id IN (
+                    SELECT reservation_id FROM purchase_records
+                    UNION
+                    SELECT reservation_id FROM purchase_reservations
+                    WHERE state IN ('open', 'slot_reserved')
+                )
+                "#
+            } else {
+                "reservation_id IN (SELECT reservation_id FROM purchase_records)"
+            },
+        )?);
+    }
+    snapshots.push(table_snapshot_where(
+        connection,
+        "payout_destinations",
+        if include_finalizing_authorizations {
+            // The current public admission API can create a buyer slot
+            // before any purchase binding exists. Every such actionable row
+            // affects collision and capacity decisions and must therefore be
+            // committed even while it is unattached.
+            "1 = 1"
+        } else if include_failed_deliveries {
+            r#"
+            slot_index = 0 OR EXISTS (
+                SELECT 1
+                FROM purchase_payout_bindings AS bindings
+                JOIN seller_exposure_encumbrances AS encumbrances
+                  ON encumbrances.reservation_id = bindings.reservation_id
+                WHERE bindings.reservation_id IN (
+                    SELECT reservation_id FROM purchase_records
+                    UNION
+                    SELECT reservation_id FROM failed_delivery_records
+                    UNION
+                    SELECT reservation_id FROM purchase_reservations
+                    WHERE state IN ('open', 'slot_reserved')
+                )
+                  AND encumbrances.allocation_id = payout_destinations.allocation_id
+                  AND bindings.destination = payout_destinations.destination
+            )
+            "#
+        } else if include_inflight_purchases {
+            r#"
+            slot_index = 0 OR EXISTS (
+                SELECT 1
+                FROM purchase_payout_bindings AS bindings
+                JOIN seller_exposure_encumbrances AS encumbrances
+                  ON encumbrances.reservation_id = bindings.reservation_id
+                WHERE bindings.reservation_id IN (
+                    SELECT reservation_id FROM purchase_records
+                    UNION
+                    SELECT reservation_id FROM purchase_reservations
+                    WHERE state IN ('open', 'slot_reserved')
+                )
+                  AND encumbrances.allocation_id = payout_destinations.allocation_id
+                  AND bindings.destination = payout_destinations.destination
+            )
+            "#
+        } else {
+            r#"
+            slot_index = 0 OR EXISTS (
+                SELECT 1
+                FROM purchase_records AS records
+                JOIN purchase_payout_bindings AS bindings
+                  ON bindings.reservation_id = records.reservation_id
+                JOIN seller_exposure_encumbrances AS encumbrances
+                  ON encumbrances.reservation_id = records.reservation_id
+                WHERE encumbrances.allocation_id = payout_destinations.allocation_id
+                  AND bindings.destination = payout_destinations.destination
+            )
+            "#
+        },
+    )?);
+    digest(&AuthoritySnapshot {
+        format: if include_terminal_reservations {
+            "chio.sqlite-finding-market-snapshot.v12"
+        } else if include_failed_deliveries {
+            "chio.sqlite-finding-market-snapshot.v9"
+        } else if include_capture_intents {
+            "chio.sqlite-finding-market-snapshot.v8"
+        } else if include_outcomes {
+            "chio.sqlite-finding-market-snapshot.v7"
+        } else if include_root_bindings {
+            "chio.sqlite-finding-market-snapshot.v6"
+        } else if include_inflight_purchases {
+            "chio.sqlite-finding-market-snapshot.v5"
+        } else if include_liability_seller {
+            "chio.sqlite-finding-market-snapshot.v4"
+        } else if include_lock_reservations {
+            "chio.sqlite-finding-market-snapshot.v3"
+        } else {
+            "chio.sqlite-finding-market-snapshot.v2"
+        },
+        tables: snapshots,
+    })
+}
+
 /// Refuses any authority table that already carries rows, which a global baseline
 /// cannot adopt. Enumerated from `sqlite_schema`, so tables that do not exist yet
 /// are simply absent and provisioning can run this before it creates anything.
@@ -1332,6 +1785,7 @@ fn verify_global_projection_coverage(
     connection: &Connection,
 ) -> Result<(), SqliteServingOwnerError> {
     verify_channel_release_projection_coverage(connection)?;
+    verify_finding_challenge_projection_coverage(connection)?;
     let incomplete = connection.query_row(
         r#"
         SELECT
@@ -1434,6 +1888,247 @@ fn verify_global_projection_coverage(
     )?;
     if incomplete {
         return Err(invalid("global authority projection coverage is not exact"));
+    }
+    Ok(())
+}
+
+pub(super) fn verify_finding_challenge_projection_coverage(
+    connection: &Connection,
+) -> Result<(), SqliteServingOwnerError> {
+    let projection_table_present = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'finding_challenge_projection_commits')",
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if !projection_table_present {
+        let global_reference_present = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM authority_global_commits WHERE projection_kind = 'finding_challenge')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )?;
+        return if global_reference_present {
+            Err(invalid("finding challenge projection table is absent"))
+        } else {
+            Ok(())
+        };
+    }
+    let mut statement = connection.prepare(
+        r#"
+        SELECT projection_sequence, mutation_kind, snapshot_digest,
+               previous_commit_digest, commit_digest
+        FROM finding_challenge_projection_commits
+        ORDER BY projection_sequence
+        "#,
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut previous = GLOBAL_GENESIS_DIGEST.to_owned();
+    let mut expected_sequence = 1_u64;
+    for (stored_sequence, mutation_kind, snapshot_digest, previous_digest, commit_digest) in &rows {
+        let sequence = read_u64(*stored_sequence, "finding challenge projection sequence")?;
+        if sequence != expected_sequence
+            || mutation_kind != "finding_challenge_write"
+            || previous_digest != &previous
+            || !is_digest(snapshot_digest)
+            || !is_digest(commit_digest)
+        {
+            return Err(invalid("finding challenge projection chain is malformed"));
+        }
+        let expected_digest = digest(&FindingChallengeProjectionEntry {
+            format: "chio.sqlite-finding-challenge-projection.v1",
+            previous_commit_digest: &previous,
+            projection_sequence: sequence,
+            mutation_kind,
+            snapshot_digest,
+        })?;
+        if expected_digest != *commit_digest {
+            return Err(invalid("finding challenge projection digest mismatch"));
+        }
+        let global_count = connection.query_row(
+            r#"
+            SELECT COUNT(*) FROM authority_global_commits
+            WHERE projection_kind = 'finding_challenge'
+              AND projection_key = 'market' AND projection_sequence = ?1
+            "#,
+            [sqlite_u64(
+                sequence,
+                "finding challenge projection sequence",
+            )?],
+            |row| row.get::<_, i64>(0),
+        )?;
+        if global_count != 1 {
+            return Err(invalid(
+                "finding challenge global projection coverage is not exact",
+            ));
+        }
+        previous.clone_from(commit_digest);
+        expected_sequence = expected_sequence
+            .checked_add(1)
+            .ok_or_else(|| invalid("finding challenge projection sequence overflowed"))?;
+    }
+    let orphaned_global = connection.query_row(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM authority_global_commits AS global
+            WHERE global.projection_kind = 'finding_challenge'
+              AND (
+                  global.projection_key <> 'market'
+                  OR NOT EXISTS(
+                      SELECT 1 FROM finding_challenge_projection_commits AS local
+                      WHERE local.projection_sequence = global.projection_sequence
+                  )
+              )
+        )
+        "#,
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if orphaned_global {
+        return Err(invalid(
+            "finding challenge global projection reference is orphaned",
+        ));
+    }
+    let has_state = connection.query_row(
+        r#"
+        SELECT EXISTS(SELECT 1 FROM challenges)
+            OR EXISTS(SELECT 1 FROM dispute_lock_reservations)
+            OR EXISTS(SELECT 1 FROM dispute_locks)
+            OR EXISTS(SELECT 1 FROM liability_heads)
+            OR EXISTS(SELECT 1 FROM finding_finalizing_authorizations)
+            OR EXISTS(SELECT 1 FROM finding_finalizing_authorization_refreshes)
+            OR EXISTS(SELECT 1 FROM governance_case_index)
+            OR EXISTS(SELECT 1 FROM claim_snapshots)
+            OR EXISTS(SELECT 1 FROM effect_intents)
+            OR EXISTS(SELECT 1 FROM finding_seller_impairment_reconciliations)
+            OR EXISTS(SELECT 1 FROM effect_root_bindings)
+            OR EXISTS(SELECT 1 FROM finding_challenge_outcomes)
+            OR EXISTS(SELECT 1 FROM listing_sales_blocks)
+            OR EXISTS(SELECT 1 FROM purchase_records)
+            OR EXISTS(SELECT 1 FROM failed_delivery_records)
+            OR EXISTS(SELECT 1 FROM purchase_reservations)
+            OR EXISTS(SELECT 1 FROM payout_destinations)
+        "#,
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    match rows.last() {
+        Some((_, _, snapshot_digest, _, _)) => {
+            let current_market = finding_market_snapshot_digest(connection)?;
+            let current_market_v12 = finding_market_snapshot_digest_v12(connection)?;
+            let current_market_v11 = finding_market_snapshot_digest_v11(connection)?;
+            let current_market_v10 = finding_market_snapshot_digest_v10(connection)?;
+            let current_market_v9 = finding_market_snapshot_digest_v9(connection)?;
+            let current_market_v8 = finding_market_snapshot_digest_v8(connection)?;
+            let current_market_v7 = finding_market_snapshot_digest_v7(connection)?;
+            let current_market_v6 = finding_market_snapshot_digest_v6(connection)?;
+            let current_market_v5 = finding_market_snapshot_digest_v5(connection)?;
+            let current_market_v4 = finding_market_snapshot_digest_v4(connection)?;
+            let current_market_v3 = finding_market_snapshot_digest_v3(connection)?;
+            let current_market_v2 = finding_market_snapshot_digest_v2(connection)?;
+            let current_legacy = finding_challenge_snapshot_digest_v1(connection)?;
+            let has_uncommitted_purchase_state = connection.query_row(
+                r#"
+                SELECT EXISTS(
+                    SELECT 1 FROM purchase_reservations
+                    WHERE state IN ('open', 'slot_reserved')
+                      AND reservation_id NOT IN (
+                          SELECT reservation_id FROM purchase_records
+                      )
+                )
+                "#,
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
+            let has_v6_root_binding = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM effect_root_bindings)",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
+            let has_v7_outcome = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM finding_challenge_outcomes)",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
+            let has_v8_capture_intent = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM purchase_capture_intents)",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
+            let has_v9_failed_delivery = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM failed_delivery_records)",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
+            let has_v10_finalizing_authorization = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM finding_finalizing_authorizations)",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
+            let has_v10_actionable_payout_slot = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM payout_destinations WHERE slot_index > 0)",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
+            let has_v11_finalizing_authorization_refresh = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM finding_finalizing_authorization_refreshes)",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
+            let has_v12_terminal_reservation = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM purchase_reservations WHERE state IN ('released', 'expired'))",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
+            let has_v13_seller_impairment_reconciliation = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM finding_seller_impairment_reconciliations)",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
+            let uncovered_before_v10 = current_market_v9 != *snapshot_digest
+                && (has_v9_failed_delivery
+                    || (current_market_v8 != *snapshot_digest
+                        && (has_v8_capture_intent
+                            || (current_market_v7 != *snapshot_digest
+                                && (has_uncommitted_purchase_state
+                                    || has_v7_outcome
+                                    || (current_market_v6 != *snapshot_digest
+                                        && (has_v6_root_binding
+                                            || (current_market_v4 != *snapshot_digest
+                                                && current_market_v5 != *snapshot_digest
+                                                && current_market_v3 != *snapshot_digest
+                                                && current_market_v2 != *snapshot_digest
+                                                && current_legacy != *snapshot_digest))))))));
+            let uncovered_before_v11 = current_market_v10 != *snapshot_digest
+                && (has_v10_finalizing_authorization
+                    || has_v10_actionable_payout_slot
+                    || uncovered_before_v10);
+            let uncovered_before_v12 = current_market_v11 != *snapshot_digest
+                && (has_v11_finalizing_authorization_refresh || uncovered_before_v11);
+            let uncovered_before_v13 = current_market_v12 != *snapshot_digest
+                && (has_v12_terminal_reservation || uncovered_before_v12);
+            if current_market != *snapshot_digest
+                && (has_v13_seller_impairment_reconciliation || uncovered_before_v13)
+            {
+                return Err(invalid(
+                    "finding challenge projection does not cover current state",
+                ));
+            }
+        }
+        None if has_state => {
+            return Err(invalid(
+                "finding challenge state has no authenticated projection",
+            ));
+        }
+        None => {}
     }
     Ok(())
 }
@@ -1602,6 +2297,93 @@ fn table_snapshot(
     })
 }
 
+/// Reproduce an older snapshot after a schema revision adds one column.
+/// This is verification-only compatibility for an authenticated prior
+/// head; every new commit uses the complete current table shape.
+fn table_snapshot_without_column(
+    connection: &Connection,
+    table: &str,
+    excluded: &str,
+) -> Result<TableSnapshot, SqliteServingOwnerError> {
+    let table_identifier = quote_identifier(table);
+    let probe = connection.prepare(&format!("SELECT * FROM {table_identifier} LIMIT 0"))?;
+    let columns = probe
+        .column_names()
+        .into_iter()
+        .filter(|column| *column != excluded)
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    drop(probe);
+    if columns.is_empty() {
+        return Err(invalid(format!(
+            "projection table `{table}` has no retained columns"
+        )));
+    }
+    let order = columns
+        .iter()
+        .map(|column| quote_identifier(column))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut statement = connection.prepare(&format!(
+        "SELECT {order} FROM {table_identifier} ORDER BY {order}"
+    ))?;
+    let mut rows = statement.query([])?;
+    let mut row_digests = Vec::new();
+    while let Some(row) = rows.next()? {
+        let mut values = Vec::with_capacity(columns.len());
+        for index in 0..columns.len() {
+            values.push(snapshot_value(row.get_ref(index)?));
+        }
+        row_digests.push(digest(&values)?);
+    }
+    Ok(TableSnapshot {
+        name: table.to_owned(),
+        columns,
+        row_digests,
+    })
+}
+
+/// Snapshot one table under a fixed internal predicate. Callers supply
+/// only static predicates defined beside a projection, never external
+/// input; table identifiers are still quoted and rows retain the same
+/// canonical full-column ordering as an unfiltered snapshot.
+fn table_snapshot_where(
+    connection: &Connection,
+    table: &str,
+    predicate: &'static str,
+) -> Result<TableSnapshot, SqliteServingOwnerError> {
+    let table_identifier = quote_identifier(table);
+    let probe = connection.prepare(&format!("SELECT * FROM {table_identifier} LIMIT 0"))?;
+    let columns = probe
+        .column_names()
+        .into_iter()
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    drop(probe);
+    let order = columns
+        .iter()
+        .map(|column| quote_identifier(column))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut statement = connection.prepare(&format!(
+        "SELECT * FROM {table_identifier} WHERE {predicate} ORDER BY {order}"
+    ))?;
+    let mut rows = statement.query([])?;
+    let mut row_digests = Vec::new();
+    while let Some(row) = rows.next()? {
+        let mut values = Vec::with_capacity(columns.len());
+        for index in 0..columns.len() {
+            values.push(snapshot_value(row.get_ref(index)?));
+        }
+        row_digests.push(digest(&values)?);
+    }
+    Ok(TableSnapshot {
+        name: table.to_string(),
+        columns,
+        row_digests,
+    })
+}
+
 fn snapshot_value(value: ValueRef<'_>) -> SnapshotValue {
     match value {
         ValueRef::Null => SnapshotValue::Null,
@@ -1690,6 +2472,18 @@ fn invalid(detail: impl Into<String>) -> SqliteServingOwnerError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn immediately_previous_global_schema_migrates_to_finding_challenge_kind(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let connection = Connection::open_in_memory()?;
+        let previous_schema = GLOBAL_COMMIT_SCHEMA.replace(", 'finding_challenge'", "");
+        connection.execute_batch(&previous_schema)?;
+        assert!(verify_global_commit_schema(&connection).is_err());
+        initialize_global_commit_schema(&connection)?;
+        verify_global_commit_schema(&connection)?;
+        Ok(())
+    }
 
     fn projection_fixture() -> Result<Connection, rusqlite::Error> {
         let connection = Connection::open_in_memory()?;

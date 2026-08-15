@@ -305,6 +305,12 @@ mod config_and_public;
 #[path = "trust_control/credit_and_loss.rs"]
 mod credit_and_loss;
 #[cfg(feature = "cognition-market-experimental")]
+#[path = "trust_control/finding_challenge_coordinator.rs"]
+pub mod finding_challenge_coordinator;
+#[cfg(feature = "cognition-market-experimental")]
+#[path = "trust_control/finding_challenge_handlers.rs"]
+mod finding_challenge_handlers;
+#[cfg(feature = "cognition-market-experimental")]
 #[path = "trust_control/finding_handlers.rs"]
 mod finding_handlers;
 #[cfg(feature = "cognition-market-experimental")]
@@ -354,10 +360,27 @@ pub use self::capital_and_liability::*;
 pub(crate) use self::certification_handlers::*;
 pub(crate) use self::credit_and_loss::*;
 #[cfg(feature = "cognition-market-experimental")]
+pub(crate) use self::finding_challenge_handlers::handle_submit_finding_challenge;
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) use self::finding_challenge_handlers::FindingChallengeSubmissionExecutor;
+#[cfg(feature = "cognition-market-experimental")]
+pub use self::finding_challenge_handlers::{
+    FindingChallengeSubmissionAuthorization, FindingChallengeSubmissionRequest,
+    FindingChallengeSubmissionResponse, FindingChallengeSubmissionRuntime,
+    FindingChallengeSubmissionWrite,
+};
+#[cfg(feature = "cognition-market-experimental")]
 pub(crate) use self::finding_handlers::*;
 #[cfg(feature = "cognition-market-experimental")]
 pub(crate) use self::finding_purchase_routes::{
     handle_purchase_finding, FINDING_PURCHASE_MAX_BODY_BYTES,
+};
+// The evidenced-rail seam is part of the finding lane's deployment
+// surface: the dispute-fee charge takes it by injection exactly as the
+// admission and participation charges do.
+#[cfg(feature = "cognition-market-experimental")]
+pub use self::finding_handlers::{
+    FindingRailInstruction, FindingRailObservation, FindingRailObserver, VenueLedgerRailObserver,
 };
 pub(crate) use self::fiscal_handlers::*;
 pub(crate) use self::fiscal_runtime::*;

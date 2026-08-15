@@ -32,6 +32,7 @@ harness_groups = [
   "verify inclusion step production-extraction equivalence",
   "verify relying-party inclusion walk soundness under ASSUME-SHA256",
   "verify delivery-contract settlement admission soundness",
+  "verify cognition-market challenge award bond cap and exact-sum distribution",
 ]
 
 # Public Rust symbols witnessed by the harnesses above.
@@ -58,6 +59,7 @@ covered_symbols = [
   "chio_core_types::merkle_steps::inclusion_step",
   "chio_kernel_core::formal_core::delivery_contract_admits",
   "chio_kernel_core::formal_core::delivery_denies_settlement",
+  "chio_open_market::finding_slash_amount::compute_slash_allocation",
 ]
 
 # Lane assignment.

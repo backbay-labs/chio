@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Barrier};
 
 use chio_core::capability::scope::MonetaryAmount;
+#[cfg(feature = "cognition-market-experimental")]
+use chio_core::sha256_hex;
 use chio_kernel::budget_store::{
     BudgetAdmissionBinding, BudgetAuthorizationOutcome, BudgetAuthorizeCumulativeApprovalRequest,
     BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetCaptureInvocationRequest,
@@ -26,6 +28,25 @@ fn fixture() -> (TempDir, PathBuf, PathBuf) {
     let lock_root = temp.path().join("locks");
     create_lock_root(&lock_root);
     (temp, database, lock_root)
+}
+
+#[test]
+fn live_store_verifies_the_configured_database_identity() {
+    let (temp, database, lock_root) = fixture();
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision");
+    let authority =
+        SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open serving");
+
+    authority
+        .verify_database_path(&database)
+        .expect("configured database matches the serving owner");
+
+    let foreign = temp.path().join("foreign.db");
+    File::create(&foreign).expect("create foreign database path");
+    assert!(matches!(
+        authority.verify_database_path(&foreign),
+        Err(SqliteServingOwnerError::Invalid(_))
+    ));
 }
 
 /// Tightens a fixture directory to owner-only access. Both `tempfile::tempdir` and
@@ -201,7 +222,7 @@ fn a_legacy_global_projection_constraint_is_rejected_rather_than_migrated() {
         )
         .expect("global commit table SQL");
     let legacy_table_sql = table_sql.replace(
-        "'baseline', 'admission', 'budget', 'revocation', 'frost', 'payment', 'economic', 'channel_release_publication', 'factor_assignment_authority_set', 'fiscal'",
+        "'baseline', 'admission', 'budget', 'revocation', 'frost', 'payment', 'economic', 'channel_release_publication', 'factor_assignment_authority_set', 'fiscal', 'finding_challenge'",
         "'baseline', 'admission', 'budget', 'revocation'",
     );
     let transaction = connection
@@ -291,6 +312,230 @@ fn revocation_only_snapshot_rollback_is_rejected_by_the_global_anchor() {
     drop(authority);
 
     restore_database_in_place(&database, &snapshot);
+    assert!(matches!(
+        SqliteAuthorityStore::open_serving(&database, &lock_root),
+        Err(SqliteServingOwnerError::Invalid(_))
+    ));
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
+fn finding_challenge_snapshot_rollback_is_rejected_by_the_global_anchor() {
+    use crate::finding_challenge_store::{
+        FindingChallengeAuthorizationBranch, FindingChallengeEvidenceClass,
+        FindingChallengeSubmission,
+    };
+
+    let (temp, database, lock_root) = fixture();
+    let snapshot = temp.path().join("before-finding-challenge.db");
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision");
+    let authority = SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open");
+    database_snapshot(&authority, &database, &snapshot);
+    authority
+        .finding_challenge_store()
+        .submit_challenge(&FindingChallengeSubmission {
+            challenge_id: "rollback-challenge",
+            finding_id: &"a".repeat(64),
+            listing_id: "rollback-listing",
+            challenge_envelope_sha256: &sha256_hex(b"rollback-challenge-envelope"),
+            authorization_branch: FindingChallengeAuthorizationBranch::BuyerSubmission,
+            evidence_class: FindingChallengeEvidenceClass::EvidenceInvalid,
+            challenger_hex: Some(&"b".repeat(64)),
+            submitted_at: 1_750_000_000,
+        })
+        .expect("challenge mutation");
+    drop(authority);
+
+    restore_database_in_place(&database, &snapshot);
+    assert!(matches!(
+        SqliteAuthorityStore::open_serving(&database, &lock_root),
+        Err(SqliteServingOwnerError::Invalid(_))
+    ));
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
+fn finding_market_projection_commits_manually_admitted_buyer_slots() {
+    let (_temp, database, lock_root) = fixture();
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision");
+    let authority = SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open");
+    let purchases = authority.finding_purchase_store();
+    let allocation_id = "a".repeat(64);
+    purchases
+        .register_community_fund_destination(
+            &allocation_id,
+            "0xcccccccccccccccccccccccccccccccccccccccc",
+            1_750_000_000,
+        )
+        .expect("register community fund");
+    let before: String = Connection::open(&database)
+        .expect("open projection reader")
+        .query_row(
+            r#"
+            SELECT authority_projection_digest FROM authority_global_commits
+            WHERE projection_kind = 'finding_challenge'
+            ORDER BY commit_sequence DESC LIMIT 1
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .expect("read projection before buyer slot");
+
+    purchases
+        .admit_payout_destination(
+            &allocation_id,
+            "0x000000000000000000000000000000000000002a",
+            1_750_000_001,
+        )
+        .expect("admit buyer payout slot");
+    let after: String = Connection::open(&database)
+        .expect("open projection reader")
+        .query_row(
+            r#"
+            SELECT authority_projection_digest FROM authority_global_commits
+            WHERE projection_kind = 'finding_challenge'
+            ORDER BY commit_sequence DESC LIMIT 1
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .expect("read projection after buyer slot");
+
+    assert_ne!(
+        before, after,
+        "an actionable buyer slot must change the committed market projection"
+    );
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
+fn finding_market_projection_rejects_v9_snapshot_with_uncommitted_manual_slot() {
+    let (_temp, database, lock_root) = fixture();
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision");
+    let authority = SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open");
+    let allocation_id = "a".repeat(64);
+    authority
+        .finding_purchase_store()
+        .register_community_fund_destination(
+            &allocation_id,
+            "0xcccccccccccccccccccccccccccccccccccccccc",
+            1_750_000_000,
+        )
+        .expect("register community fund");
+    drop(authority);
+
+    // A v9 digest excludes unattached buyer slots, so inserting one offline
+    // leaves that legacy digest unchanged even though the current projection
+    // must reject the newly capacity-consuming row.
+    Connection::open(&database)
+        .expect("open authority offline")
+        .execute(
+            r#"
+            INSERT INTO payout_destinations (
+                allocation_id, destination, slot_index, admitted_at
+            ) VALUES (?1, ?2, 1, ?3)
+            "#,
+            params![
+                allocation_id,
+                "0x000000000000000000000000000000000000002a",
+                1_750_000_001_i64,
+            ],
+        )
+        .expect("insert uncommitted manual buyer slot");
+
+    assert!(matches!(
+        SqliteAuthorityStore::open_serving(&database, &lock_root),
+        Err(SqliteServingOwnerError::Invalid(_))
+    ));
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
+fn finding_challenge_projection_rejects_offline_state_tampering() {
+    use crate::finding_challenge_store::{
+        FindingChallengeAuthorizationBranch, FindingChallengeEvidenceClass,
+        FindingChallengeSubmission,
+    };
+
+    let (_temp, database, lock_root) = fixture();
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision");
+    let authority = SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open");
+    authority
+        .finding_challenge_store()
+        .submit_challenge(&FindingChallengeSubmission {
+            challenge_id: "tamper-challenge",
+            finding_id: &"a".repeat(64),
+            listing_id: "tamper-listing",
+            challenge_envelope_sha256: &sha256_hex(b"tamper-challenge-envelope"),
+            authorization_branch: FindingChallengeAuthorizationBranch::BuyerSubmission,
+            evidence_class: FindingChallengeEvidenceClass::EvidenceInvalid,
+            challenger_hex: Some(&"b".repeat(64)),
+            submitted_at: 1_750_000_000,
+        })
+        .expect("challenge mutation");
+    drop(authority);
+
+    let connection = Connection::open(&database).expect("open authority offline");
+    assert_eq!(
+        connection
+            .execute(
+                "UPDATE challenges SET updated_at = updated_at + 1 WHERE challenge_id = ?1",
+                ["tamper-challenge"],
+            )
+            .expect("tamper challenge state"),
+        1
+    );
+    drop(connection);
+    assert!(matches!(
+        SqliteAuthorityStore::open_serving(&database, &lock_root),
+        Err(SqliteServingOwnerError::Invalid(_))
+    ));
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+#[test]
+fn finding_challenge_projection_covers_retained_outcome_bytes() {
+    use crate::finding_challenge_store::{
+        FindingChallengeAuthorizationBranch, FindingChallengeEvidenceClass,
+        FindingChallengeSubmission,
+    };
+
+    let (_temp, database, lock_root) = fixture();
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision");
+    let authority = SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open");
+    authority
+        .finding_challenge_store()
+        .submit_challenge(&FindingChallengeSubmission {
+            challenge_id: "outcome-tamper-challenge",
+            finding_id: &"a".repeat(64),
+            listing_id: "outcome-tamper-listing",
+            challenge_envelope_sha256: &sha256_hex(b"outcome-tamper-challenge-envelope"),
+            authorization_branch: FindingChallengeAuthorizationBranch::BuyerSubmission,
+            evidence_class: FindingChallengeEvidenceClass::EvidenceInvalid,
+            challenger_hex: Some(&"b".repeat(64)),
+            submitted_at: 1_750_000_000,
+        })
+        .expect("challenge mutation");
+    drop(authority);
+
+    let outcome = br#"{"outcome":"offline-tamper"}"#;
+    Connection::open(&database)
+        .expect("open authority offline")
+        .execute(
+            r#"
+            INSERT INTO finding_challenge_outcomes (
+                outcome_envelope_sha256, challenge_id,
+                outcome_envelope_json, recorded_at
+            ) VALUES (?1, ?2, ?3, ?4)
+            "#,
+            params![
+                sha256_hex(outcome),
+                "outcome-tamper-challenge",
+                outcome.as_slice(),
+                1_750_000_001_i64,
+            ],
+        )
+        .expect("tamper retained outcome");
     assert!(matches!(
         SqliteAuthorityStore::open_serving(&database, &lock_root),
         Err(SqliteServingOwnerError::Invalid(_))

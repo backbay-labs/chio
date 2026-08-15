@@ -745,6 +745,12 @@ fn finding_market_routes() -> Router<TrustServiceState> {
             post(handle_purchase_finding)
                 .layer(DefaultBodyLimit::max(FINDING_PURCHASE_MAX_BODY_BYTES)),
         )
+        .route(
+            FINDING_CHALLENGES_PATH,
+            post(handle_submit_finding_challenge).layer(DefaultBodyLimit::max(
+                super::super::finding_challenge_handlers::FINDING_CHALLENGE_SUBMIT_MAX_BODY_BYTES,
+            )),
+        )
 }
 
 #[cfg(not(feature = "cognition-market-experimental"))]
@@ -763,3 +769,8 @@ mod finding_market_exit_tests;
 #[cfg(all(test, feature = "cognition-market-experimental"))]
 #[path = "finding_wedge_purchase_e2e_tests.rs"]
 mod finding_wedge_purchase_e2e_tests;
+
+#[cfg(all(test, feature = "cognition-market-experimental"))]
+#[path = "finding_challenge_enforcement_e2e_tests.rs"]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod finding_challenge_enforcement_e2e_tests;

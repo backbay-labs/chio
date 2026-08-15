@@ -75,6 +75,53 @@ BEGIN
     SELECT RAISE(ABORT, 'purchase reservation must be retained');
 END;
 
+CREATE TABLE IF NOT EXISTS purchase_capture_intents (
+    reservation_id TEXT NOT NULL PRIMARY KEY
+        REFERENCES purchase_reservations(reservation_id),
+    authoritative_payment_operation_id TEXT NOT NULL UNIQUE
+        CHECK (length(authoritative_payment_operation_id) BETWEEN 1 AND 512),
+    marked_at INTEGER NOT NULL CHECK (marked_at > 0)
+);
+
+CREATE TRIGGER IF NOT EXISTS purchase_capture_intents_immutable
+BEFORE UPDATE ON purchase_capture_intents
+BEGIN
+    SELECT RAISE(ABORT, 'purchase capture intent is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS purchase_capture_intents_no_delete
+BEFORE DELETE ON purchase_capture_intents
+BEGIN
+    SELECT RAISE(ABORT, 'purchase capture intent must be retained');
+END;
+
+CREATE TABLE IF NOT EXISTS purchase_payout_bindings (
+    reservation_id TEXT NOT NULL PRIMARY KEY
+        REFERENCES purchase_reservations(reservation_id),
+    destination TEXT NOT NULL CHECK (length(destination) BETWEEN 1 AND 512),
+    binding_kind TEXT NOT NULL CHECK (binding_kind IN ('evm', 'legacy_terminal')),
+    CHECK (
+        (binding_kind = 'evm'
+         AND length(destination) = 42
+         AND substr(destination, 1, 2) = '0x'
+         AND substr(destination, 3) NOT GLOB '*[^0-9a-f]*'
+         AND destination <> '0x0000000000000000000000000000000000000000')
+        OR binding_kind = 'legacy_terminal'
+    )
+);
+
+CREATE TRIGGER IF NOT EXISTS purchase_payout_bindings_immutable
+BEFORE UPDATE ON purchase_payout_bindings
+BEGIN
+    SELECT RAISE(ABORT, 'purchase payout binding is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS purchase_payout_bindings_no_delete
+BEFORE DELETE ON purchase_payout_bindings
+BEGIN
+    SELECT RAISE(ABORT, 'purchase payout binding must be retained');
+END;
+
 CREATE TABLE IF NOT EXISTS seller_exposure_encumbrances (
     encumbrance_id TEXT NOT NULL PRIMARY KEY
         CHECK (length(encumbrance_id) BETWEEN 1 AND 512),
@@ -162,6 +209,44 @@ BEGIN
     SELECT RAISE(ABORT, 'pending purchase slot must be retained');
 END;
 
+CREATE TABLE IF NOT EXISTS listing_sales_blocks (
+    listing_id TEXT NOT NULL CHECK (length(listing_id) BETWEEN 1 AND 512),
+    block_ordinal INTEGER NOT NULL CHECK (block_ordinal > 0),
+    state TEXT NOT NULL CHECK (state IN ('blocked', 'lifted')),
+    blocked_at INTEGER NOT NULL CHECK (blocked_at > 0),
+    lifted_at INTEGER CHECK (lifted_at IS NULL OR lifted_at >= blocked_at),
+    PRIMARY KEY (listing_id, block_ordinal),
+    CHECK ((state = 'blocked') = (lifted_at IS NULL))
+);
+
+-- One listing carries at most one live block, so the episode a lift closes
+-- is never ambiguous.
+CREATE UNIQUE INDEX IF NOT EXISTS listing_sales_blocks_live
+    ON listing_sales_blocks(listing_id)
+    WHERE state = 'blocked';
+
+CREATE TRIGGER IF NOT EXISTS listing_sales_blocks_immutable_identity
+BEFORE UPDATE ON listing_sales_blocks
+WHEN NEW.listing_id <> OLD.listing_id
+  OR NEW.block_ordinal <> OLD.block_ordinal
+  OR NEW.blocked_at <> OLD.blocked_at
+BEGIN
+    SELECT RAISE(ABORT, 'listing sales block identity is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS listing_sales_blocks_lifecycle
+BEFORE UPDATE OF state, lifted_at ON listing_sales_blocks
+WHEN NOT (OLD.state = 'blocked' AND NEW.state = 'lifted')
+BEGIN
+    SELECT RAISE(ABORT, 'listing sales block lifts exactly once');
+END;
+
+CREATE TRIGGER IF NOT EXISTS listing_sales_blocks_no_delete
+BEFORE DELETE ON listing_sales_blocks
+BEGIN
+    SELECT RAISE(ABORT, 'listing sales block must be retained');
+END;
+
 CREATE TABLE IF NOT EXISTS purchase_records (
     purchase_key TEXT NOT NULL PRIMARY KEY
         CHECK (length(purchase_key) = 64 AND purchase_key NOT GLOB '*[^0-9a-f]*'),
@@ -221,13 +306,16 @@ END;
 CREATE TABLE IF NOT EXISTS payout_destinations (
     allocation_id TEXT NOT NULL
         CHECK (length(allocation_id) = 64 AND allocation_id NOT GLOB '*[^0-9a-f]*'),
-    destination TEXT NOT NULL CHECK (
-        length(destination) BETWEEN 3 AND 512
-        AND destination GLOB '?*:?*'
-    ),
+    destination TEXT NOT NULL,
     slot_index INTEGER NOT NULL CHECK (slot_index BETWEEN 0 AND 15),
     admitted_at INTEGER NOT NULL CHECK (admitted_at > 0),
-    PRIMARY KEY (allocation_id, destination)
+    PRIMARY KEY (allocation_id, destination),
+    CHECK (
+        slot_index BETWEEN 0 AND 15
+        AND length(destination) = 42
+        AND substr(destination, 1, 2) = '0x'
+        AND substr(destination, 3) NOT GLOB '*[^0-9a-f]*'
+    )
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS payout_destinations_slot
@@ -243,4 +331,30 @@ CREATE TRIGGER IF NOT EXISTS payout_destinations_no_delete
 BEFORE DELETE ON payout_destinations
 BEGIN
     SELECT RAISE(ABORT, 'admitted payout destination must be retained');
+END;
+
+-- Retained pre-EVM payout rows are historical evidence only. They are never
+-- returned by the actionable destination API or accepted for a new purchase.
+CREATE TABLE IF NOT EXISTS legacy_payout_destinations (
+    allocation_id TEXT NOT NULL
+        CHECK (length(allocation_id) = 64 AND allocation_id NOT GLOB '*[^0-9a-f]*'),
+    destination TEXT NOT NULL CHECK (length(destination) BETWEEN 3 AND 512),
+    slot_index INTEGER NOT NULL CHECK (slot_index BETWEEN 0 AND 15),
+    admitted_at INTEGER NOT NULL CHECK (admitted_at > 0),
+    PRIMARY KEY (allocation_id, destination)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS legacy_payout_destinations_slot
+    ON legacy_payout_destinations(allocation_id, slot_index);
+
+CREATE TRIGGER IF NOT EXISTS legacy_payout_destinations_immutable
+BEFORE UPDATE ON legacy_payout_destinations
+BEGIN
+    SELECT RAISE(ABORT, 'legacy payout destination is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS legacy_payout_destinations_no_delete
+BEFORE DELETE ON legacy_payout_destinations
+BEGIN
+    SELECT RAISE(ABORT, 'legacy payout destination must be retained');
 END;

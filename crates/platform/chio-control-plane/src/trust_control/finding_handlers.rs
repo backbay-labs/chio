@@ -27,7 +27,7 @@ use chio_finding::{
 };
 use chio_open_market::fee_schedule::SignedOpenMarketFeeSchedule;
 use chio_open_market::finding_admission::{
-    verify_finding_admission_for_activation, FindingAdmissionContext,
+    verify_finding_admission_for_activation, FindingAdmissionContext, FindingAdmissionPenaltyGate,
     FindingAllocationSnapshot as AdmissionAllocationSnapshot, FindingAllocationStatus,
     FindingConstituentExpiryBounds, FindingFeeScheduleGate,
 };
@@ -65,12 +65,18 @@ const PROFILE_SCHEMA_JSON: &str = include_str!(
 /// binds.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) struct FindingRailInstruction {
+pub struct FindingRailInstruction {
     pub idempotency_key: String,
+    /// Principal debited by the instruction. For a bond return this is
+    /// the challenge-administration pool rather than the original buyer.
     pub payer: String,
     pub amount_units: u64,
     pub currency: String,
+    /// Governed pool participating in the movement. It is the destination
+    /// for a collection and the source for a return.
     pub pool_principal_id: String,
+    /// Credited rail destination. A bond return names the durable lock
+    /// owner here.
     pub rail_destination: String,
 }
 
@@ -79,7 +85,7 @@ pub(crate) struct FindingRailInstruction {
 /// a fee event requires it to match exactly.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) struct FindingRailObservation {
+pub struct FindingRailObservation {
     pub instruction_sha256: String,
     pub amount_units: u64,
     pub currency: String,
@@ -98,7 +104,7 @@ struct PreparedFindingFeeCharge {
 /// failed charge cannot admit. Implementations must treat the
 /// instruction idempotency key as the replay key: retrying the same
 /// instruction may recover its observation but must not move money twice.
-pub(crate) trait FindingRailObserver: Send + Sync {
+pub trait FindingRailObserver: Send + Sync {
     fn dispatch(
         &self,
         instruction: &FindingRailInstruction,
@@ -108,7 +114,7 @@ pub(crate) trait FindingRailObserver: Send + Sync {
 /// Deterministic venue-ledger rail: the venue's own evidenced ledger
 /// acknowledges the exact instruction. Observation digests are therefore
 /// computable when the venue signs the admission, before activation runs.
-pub(crate) struct VenueLedgerRailObserver;
+pub struct VenueLedgerRailObserver;
 
 impl FindingRailObserver for VenueLedgerRailObserver {
     fn dispatch(
@@ -131,7 +137,7 @@ fn canonical_digest_of<T: serde::Serialize>(value: &T) -> Result<String, String>
     Ok(chio_core::sha256_hex(&bytes))
 }
 
-fn finding_market_context(
+pub(super) fn finding_market_context(
     state: &TrustServiceState,
 ) -> Result<(FindingMarketConfig, SqliteFindingMarketStore), Response> {
     let Some(config) = state.config.finding_market.clone() else {
@@ -154,7 +160,7 @@ fn finding_market_context(
 }
 
 /// The strict raw-first ingress pipeline for one registered artifact.
-fn strict_artifact_ingress<T: serde::de::DeserializeOwned + serde::Serialize>(
+pub(super) fn strict_artifact_ingress<T: serde::de::DeserializeOwned + serde::Serialize>(
     raw: &str,
     max_bytes: usize,
     schema_json: &str,
@@ -886,6 +892,26 @@ pub(crate) async fn handle_activate_finding(
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
 
+    let purchase_store = match state.joint_authority_store.as_ref() {
+        Some(authority) => authority.finding_purchase_store(),
+        None => {
+            return plain_http_error(
+                StatusCode::CONFLICT,
+                "finding market requires the joint authority store",
+            )
+        }
+    };
+    match purchase_store.sales_blocked(&admission.listing_id) {
+        Ok(true) => {
+            return plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "listing admission is blocked by an enforced penalty",
+            )
+        }
+        Ok(false) => {}
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+    }
+
     // The published finding is the root of every binding.
     let artifact_json = match store.get_finding_bytes(&finding_id) {
         Ok(Some(bytes)) => bytes,
@@ -949,6 +975,13 @@ pub(crate) async fn handle_activate_finding(
         return plain_http_error(StatusCode::BAD_REQUEST, "finding listing is not active");
     }
     if completed_replay {
+        if let Err(error) = purchase_store.register_community_fund_destination(
+            &admission.backing_allocation_id,
+            &admission.community_fund_destination,
+            now,
+        ) {
+            return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+        }
         return Json(serde_json::json!({
             "admissionId": admission.admission_id,
             "outcome": "ExactReplay",
@@ -1108,6 +1141,17 @@ pub(crate) async fn handle_activate_finding(
         }
         None => FindingFeeScheduleGate::Legacy,
     };
+    if let Err(error) =
+        verify_report_authority_lifecycle(&request.verifier_report, &profile, &config)
+    {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
+    }
+    // The report's affirmative bond claim, if any, feeds the admission
+    // seam's report-before-backing ordering check.
+    let report = &request.verifier_report.body;
+    let bond_backing_observed_at = (report.facet_outcome(FindingFacetKind::BondBacking)
+        == Some(FindingFacetOutcome::Verified))
+    .then_some(report.evaluation_time);
     let admission_context = FindingAdmissionContext {
         venue_authority: &venue_key,
         venue_id: &config.venue_id,
@@ -1131,6 +1175,10 @@ pub(crate) async fn handle_activate_finding(
             prepared_admission_id: prepared_replay.then(|| admission.admission_id.clone()),
             accepted_at: allocation.accepted_at,
         },
+        bond_backing_observed_at,
+        // The HTTP surface gates on the durable sales block above. It
+        // never accepts a caller-supplied penalty evaluation.
+        penalty_gate: FindingAdmissionPenaltyGate::Ungoverned,
         collateral_authority: &collateral_key,
         constituent_expiry_bounds: FindingConstituentExpiryBounds {
             finding: finding.expires_at,
@@ -1383,11 +1431,20 @@ pub(crate) async fn handle_activate_finding(
     // the active admission, supersedes the prior active row, and marks
     // the durable prepare complete.
     match store.activate_listing(&admission_json, admission, now) {
-        Ok(outcome) => Json(serde_json::json!({
-            "admissionId": admission.admission_id,
-            "outcome": format!("{outcome:?}"),
-        }))
-        .into_response(),
+        Ok(outcome) => {
+            if let Err(error) = purchase_store.register_community_fund_destination(
+                &admission.backing_allocation_id,
+                &admission.community_fund_destination,
+                now,
+            ) {
+                return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+            }
+            Json(serde_json::json!({
+                "admissionId": admission.admission_id,
+                "outcome": format!("{outcome:?}"),
+            }))
+            .into_response()
+        }
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
 }

@@ -1,5 +1,4 @@
-//! End-to-end coverage for a purchased finding reveal: an admitted listing
-//! is discovered through the serve router, bid on through the real
+//! End-to-end coverage for a purchased finding reveal: an admitted listing is discovered through the serve router, bid on through the real
 //! marketplace path, reserved by the authoritative purchase coordinator,
 //! revealed through the mediating kernel under a delivery-committed grant,
 //! settled into a signed purchase record, and recorded into buyer memory
@@ -48,13 +47,13 @@ use chio_core::sha256_hex;
 use chio_finding::{
     compute_admission_id, compute_allocation_id, compute_authorization_id, compute_finding_id,
     compute_profile_id, compute_terms_id, derive_finding_recovery_id, derive_purchase_key,
-    sign_finding, verify_signed_failed_delivery, verify_signed_purchase_record, Finding,
-    FindingAdmission, FindingAuthorityKeyPolicy, FindingBackingRequirement, FindingBbsIssuerPolicy,
-    FindingBondBacking, FindingBondClass, FindingChallengeBondLimit,
-    FindingChallengeVerifierProfile, FindingCheckpointLogPolicy, FindingClaimedVerdict,
-    FindingCollateralVault, FindingDescriptor, FindingEvidenceClass, FindingFacetKind,
-    FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass, FindingMarketTerms,
-    FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate,
+    sign_finding, signed_envelope_sha256, verify_signed_failed_delivery,
+    verify_signed_purchase_record, Finding, FindingAdmission, FindingAuthorityKeyPolicy,
+    FindingBackingRequirement, FindingBbsIssuerPolicy, FindingBondBacking, FindingBondClass,
+    FindingChallengeBondLimit, FindingChallengeVerifierProfile, FindingCheckpointLogPolicy,
+    FindingClaimedVerdict, FindingCollateralVault, FindingDescriptor, FindingEvidenceClass,
+    FindingFacetKind, FindingFeeEvent, FindingFeeTerminalBinding, FindingGuaranteeClass,
+    FindingMarketTerms, FindingOutcomeClass, FindingPayee, FindingPoolBinding, FindingPredicate,
     FindingPurchaseContext, FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment,
     FindingRecipePhase, FindingRecipePhaseKind, FindingRecoveryContext, FindingReplayRecipeInput,
     FindingResourceCaps, FindingSellerAuthorization, SignedFindingAdmission,
@@ -96,9 +95,9 @@ use chio_open_market::fee_schedule::{
 };
 use chio_open_market::finding_admission::{
     accept_finding_purchase, bid_with_finding_purchase, verify_finding_admission,
-    FindingAdmissionContext, FindingAllocationSnapshot as SeamAllocationSnapshot,
-    FindingAllocationStatus, FindingConstituentExpiryBounds, FindingFeeScheduleGate,
-    VerifiedFindingAdmission,
+    FindingAdmissionContext, FindingAdmissionPenaltyGate,
+    FindingAllocationSnapshot as SeamAllocationSnapshot, FindingAllocationStatus,
+    FindingConstituentExpiryBounds, FindingFeeScheduleGate, VerifiedFindingAdmission,
 };
 use chio_open_market::fiscal_adapter::signed_fee_schedule_digest;
 use chio_open_market::listing::{
@@ -147,7 +146,7 @@ const SERVER_ID: &str = "finding-server.seller.example";
 const PUBLISHER_OPERATOR_ID: &str = "seller-operator";
 const AUDIT_POOL_PRINCIPAL: &str = "pool:audit";
 const AUDIT_POOL_DESTINATION: &str = "rail:venue-ledger:audit-pool";
-const COMMUNITY_FUND_DESTINATION: &str = "rail:venue-ledger:community-fund";
+const COMMUNITY_FUND_DESTINATION: &str = "0xcccccccccccccccccccccccccccccccccccccccc";
 const PAYOUT_DESTINATION: &str = "rail:venue-ledger:seller-42";
 const HEX64: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const ISSUED_AT: u64 = 1_700_000_000;
@@ -164,14 +163,14 @@ const PRICE_UNITS: u64 = 300;
 const RESERVATION_TTL_SECS: u64 = 3_600;
 const LIABILITY_RETENTION_SECS: u64 = 604_800 + 2_592_000 + 259_200 + 86_400;
 const TOKEN_ID: &str = "finding-purchase-token-0001";
+const BUYER_PAYOUT: &str = "0x1111111111111111111111111111111111111111";
+const OTHER_BUYER_PAYOUT: &str = "0x2222222222222222222222222222222222222222";
 const REVEAL_MEDIA_TYPE: &str = "application/json";
 const SEALED_PAYLOAD: &[u8] = br#"{"repro":"baseline fails, candidate passes"}"#;
 const OTHER_PAYLOAD: &[u8] = br#"{"repro":"a different payload entirely"}"#;
-
 // ---------------------------------------------------------------------------
 // Shared artifact builders
 // ---------------------------------------------------------------------------
-
 fn keypair(seed: u8) -> Keypair {
     Keypair::from_seed(&[seed; 32])
 }
@@ -238,10 +237,22 @@ fn market_config() -> FindingMarketConfig {
         venue: authority_pin(6, "venue"),
         listing: listing_authority_pin(),
         governance_root: authority_pin(1, "governance"),
+        authority_status: authority_pin(36, "authority-status"),
         verifier_report: authority_pin(15, "verifier-report"),
         collateral: authority_pin(4, "collateral"),
         purchase: authority_pin(16, "purchase"),
         failed_delivery: authority_pin(17, "failed-delivery"),
+        challenge_evaluator: authority_pin(31, "challenge-evaluator"),
+        venue_finalization: authority_pin(32, "venue-finalization"),
+        market_penalty: authority_pin(33, "market-penalty"),
+        settlement_observer: authority_pin(34, "settlement-observer"),
+        anchor_publisher: authority_pin(7, "anchor-publisher"),
+        max_snapshot_age_secs: 3_600,
+        settlement_finality_requirement: chio_settle::FindingFinalityRequirement::Confirmations {
+            min_depth: 64,
+        },
+        audit_authority: authority_pin(35, "audit-authority"),
+        audit_randomness_witness: authority_pin(37, "audit-randomness-witness"),
         audit_pool: FindingPoolPin {
             principal_id: AUDIT_POOL_PRINCIPAL.to_string(),
             rail_destination: AUDIT_POOL_DESTINATION.to_string(),
@@ -310,6 +321,7 @@ fn market_state(
         cluster_progress: None,
         finding_rail: Some(Arc::new(VenueLedgerRailObserver)),
         finding_purchase_executor: None,
+        finding_challenge_executor: None,
     }
 }
 
@@ -839,9 +851,10 @@ fn make_signed_report(
     };
     let draft = verify_finding_evidence(inputs.raw_finding, &trust, &bundle)?;
     if !draft.satisfies_required_facets(&trust.profile.body) {
-        return Err(missing(
-            "draft does not satisfy the required profile facets",
-        ));
+        return Err(Box::new(std::io::Error::other(format!(
+            "draft does not satisfy the required profile facets: {:?}",
+            draft.facets
+        ))));
     }
     Ok(sign_finding_verifier_report(
         &draft,
@@ -991,8 +1004,8 @@ impl MarketWeb {
         let tree = MerkleTree::from_leaves(&[first_bytes.clone(), second_bytes.clone()])?;
         let checkpoint = build_checkpoint(
             1,
-            100,
-            101,
+            1,
+            2,
             &[first_bytes.clone(), second_bytes.clone()],
             &kernel,
         )?;
@@ -1002,12 +1015,12 @@ impl MarketWeb {
             ResolvedReceiptEvidence {
                 receipt: first.clone(),
                 canonical_receipt_bytes: first_bytes,
-                inclusion_proof: build_inclusion_proof(&tree, 0, 1, 100)?,
+                inclusion_proof: build_inclusion_proof(&tree, 0, 1, 1)?,
             },
             ResolvedReceiptEvidence {
                 receipt: second.clone(),
                 canonical_receipt_bytes: second_bytes,
-                inclusion_proof: build_inclusion_proof(&tree, 1, 1, 101)?,
+                inclusion_proof: build_inclusion_proof(&tree, 1, 1, 2)?,
             },
         ];
 
@@ -1368,6 +1381,8 @@ fn admission_witness(
             prepared_admission_id: None,
             accepted_at,
         },
+        bond_backing_observed_at: None,
+        penalty_gate: FindingAdmissionPenaltyGate::Ungoverned,
         collateral_authority: &collateral_key,
         constituent_expiry_bounds: FindingConstituentExpiryBounds {
             finding: web.finding.expires_at,
@@ -1722,7 +1737,7 @@ fn handshake(
     web: &MarketWeb,
     witness: &VerifiedFindingAdmission,
     buyer: &Keypair,
-    agent_id: &str,
+    payout_destination: &str,
     token_id: &str,
 ) -> Result<Handshake, AnyError> {
     let now = unix_timestamp_now();
@@ -1730,7 +1745,7 @@ fn handshake(
         web,
         witness,
         buyer,
-        agent_id,
+        payout_destination,
         token_id,
         now,
         usd(PRICE_UNITS),
@@ -1743,7 +1758,7 @@ fn handshake_at(
     web: &MarketWeb,
     witness: &VerifiedFindingAdmission,
     buyer: &Keypair,
-    agent_id: &str,
+    payout_destination: &str,
     token_id: &str,
     now: u64,
     max_price_per_call: MonetaryAmount,
@@ -1752,7 +1767,8 @@ fn handshake_at(
     let bid = SignedBidRequest::sign(
         BidRequest {
             schema: BID_REQUEST_SCHEMA.to_string(),
-            agent_id: agent_id.to_string(),
+            agent_id: buyer.public_key().to_hex(),
+            payout_destination: Some(payout_destination.to_string()),
             listing_id: LISTING_ID.to_string(),
             max_price_per_call,
             window_seconds,
@@ -2108,7 +2124,7 @@ async fn open_lane(options: LaneOptions) -> Result<Lane, AnyError> {
 
     let buyer = keypair(31);
     let coordinator = coordinator(&authority)?;
-    let exchange = handshake(&deployment.web, &witness, &buyer, "buyer-agent-7", TOKEN_ID)?;
+    let exchange = handshake(&deployment.web, &witness, &buyer, BUYER_PAYOUT, TOKEN_ID)?;
     let purchase = reserve_and_accept(&deployment.web, &witness, &coordinator, &buyer, exchange)?;
     Ok(Lane {
         deployment,
@@ -2162,6 +2178,10 @@ impl RoutedPurchaseExecutor {
 
 #[async_trait::async_trait]
 impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
+    fn mutation_fence(&self) -> chio_kernel::admission_operation::StoreMutationFence {
+        self.authority.mutation_fence()
+    }
+
     async fn execute(
         &self,
         request: FindingPurchaseRequest,
@@ -2188,7 +2208,7 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
             &self.web,
             &self.witness,
             &self.buyer,
-            &payer,
+            BUYER_PAYOUT,
             TOKEN_ID,
             self.exchange_now,
             request.max_price.clone(),
@@ -2335,6 +2355,14 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| Self::execution_error("reveal payload missing"))?
             .to_owned();
+        self.authority
+            .finding_purchase_store()
+            .register_community_fund_destination(
+                &self.web.allocation_id,
+                COMMUNITY_FUND_DESTINATION,
+                now,
+            )
+            .map_err(Self::execution_error)?;
         let record = coordinator
             .finalize_delivery(
                 &exchange.reservation_id,
@@ -2577,7 +2605,7 @@ async fn cognition_market_wedge_purchase_e2e() -> TestResult {
         assert_eq!(witness.finding_id(), deployment.web.finding_id);
         assert_eq!(witness.listing_id(), LISTING_ID);
 
-        let exchange = handshake(&deployment.web, &witness, &buyer, "buyer-agent-7", TOKEN_ID)?;
+        let exchange = handshake(&deployment.web, &witness, &buyer, BUYER_PAYOUT, TOKEN_ID)?;
 
         // The provider, not the buyer, authored the delivery bindings.
         let grant = exchange
@@ -2767,6 +2795,11 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
 
     let purchase_store = lane.authority.finding_purchase_store();
     let now = unix_timestamp_now();
+    purchase_store.register_community_fund_destination(
+        &lane.deployment.web.allocation_id,
+        COMMUNITY_FUND_DESTINATION,
+        now,
+    )?;
     let record = lane.coordinator.finalize_delivery(
         &lane.purchase.handshake.reservation_id,
         &response.receipt,
@@ -2790,13 +2823,15 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
     assert_eq!(record.body.accepted_price, usd(PRICE_UNITS));
     assert_eq!(record.body.realized_spend, usd(PRICE_UNITS));
     assert_eq!(record.body.delivery_receipt_id, response.receipt.id);
-    assert_eq!(record.body.payout_destination, PAYOUT_DESTINATION);
+    let refund_destination = BUYER_PAYOUT.to_owned();
+    assert_eq!(record.body.payout_destination, refund_destination);
 
     let reservation = purchase_store
         .get_reservation(&lane.purchase.handshake.reservation_id)?
         .ok_or_else(|| missing("settled reservation"))?;
     assert_eq!(reservation.state, FindingPurchaseReservationState::Consumed);
-    assert_eq!(record.body.recorded_at, reservation.created_at);
+    assert_eq!(record.body.recorded_at, response.receipt.timestamp);
+    assert!(record.body.recorded_at >= reservation.created_at);
     assert!(
         lane.deployment
             .web
@@ -2808,7 +2843,7 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
     );
     assert!(
         record.body.recorded_at
-            <= lane
+            < lane
                 .deployment
                 .web
                 .admission
@@ -2826,12 +2861,14 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
     assert_eq!(encumbrance.state, FindingPurchaseEncumbranceState::Retained);
     assert_eq!(
         encumbrance.retention_expires_at,
-        Some(reservation.created_at + LIABILITY_RETENTION_SECS)
+        Some(record.body.recorded_at + LIABILITY_RETENTION_SECS)
     );
     assert_eq!(
         purchase_store.list_payout_destinations(&lane.deployment.web.allocation_id)?,
-        vec![(1_u8, PAYOUT_DESTINATION.to_string())],
-        "the community fund pays from configuration, never from an admitted slot"
+        vec![
+            (0_u8, COMMUNITY_FUND_DESTINATION.to_string()),
+            (1_u8, refund_destination),
+        ]
     );
     assert!(purchase_store
         .get_purchase_record(&record.body.purchase_key)?
@@ -3051,7 +3088,15 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
             .get_reservation(&lane.purchase.handshake.reservation_id)?
             .ok_or_else(|| missing("denied reservation"))?;
         assert_eq!(reservation.state, FindingPurchaseReservationState::Released);
-        assert_eq!(failed.body.recorded_at, reservation.created_at);
+        assert_eq!(failed.body.recorded_at, response.receipt.timestamp);
+        assert_eq!(
+            failed.body.venue_admission_envelope_sha256,
+            signed_envelope_sha256(&lane.deployment.web.admission)?
+        );
+        assert_eq!(
+            failed.body.seller_backing_envelope_sha256,
+            lane.deployment.web.admission.body.backing_envelope_sha256
+        );
         assert!(
             lane.deployment
                 .web
@@ -3126,6 +3171,140 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_denial_receipt_cannot_predate_its_reservation() -> TestResult {
+    let lane = open_lane(LaneOptions {
+        case: RevealCase::digest_mismatch(),
+        ..LaneOptions::standard()
+    })
+    .await?;
+    let response = lane.reveal("wedge-backdated-denial-1", "nonce-backdated-denial-1")?;
+    assert_denied_with(&response, "committed output digest");
+
+    let reservation = lane
+        .coordinator
+        .resolve(&lane.purchase.handshake.reservation_id)?;
+    let mut body = response.receipt.body();
+    body.timestamp = reservation.created_at.saturating_sub(1);
+    let receipt = ChioReceipt::sign(body, &keypair(40))?;
+    let (checkpoint, inclusion_proof) = denial_checkpoint(&receipt)?;
+
+    let error = lane
+        .coordinator
+        .finalize_denial(
+            &lane.purchase.handshake.reservation_id,
+            &receipt,
+            &lane.deployment.web.admission,
+            &checkpoint,
+            &inclusion_proof,
+            unix_timestamp_now(),
+        )
+        .err()
+        .ok_or_else(|| missing("backdated denial receipt was accepted"))?;
+    assert!(
+        matches!(
+        &error,
+        PurchaseCoordinatorError::TerminalEvidence(reason)
+            if reason.contains("predates the purchase reservation")
+        ),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_denial_cannot_outlive_its_authority_bound_reservation() -> TestResult {
+    let lane = open_lane(LaneOptions {
+        case: RevealCase::digest_mismatch(),
+        ..LaneOptions::standard()
+    })
+    .await?;
+    let response = lane.reveal("wedge-expired-denial-1", "nonce-expired-denial-1")?;
+    assert_denied_with(&response, "committed output digest");
+    let reservation = lane
+        .coordinator
+        .resolve(&lane.purchase.handshake.reservation_id)?;
+    assert!(
+        reservation.expires_at
+            <= lane
+                .deployment
+                .web
+                .admission
+                .body
+                .failed_delivery_authority
+                .valid_until
+    );
+
+    let mut body = response.receipt.body();
+    body.timestamp = reservation.expires_at;
+    let receipt = ChioReceipt::sign(body, &keypair(40))?;
+    let (checkpoint, inclusion_proof) = denial_checkpoint(&receipt)?;
+    let error = lane
+        .coordinator
+        .finalize_denial(
+            &lane.purchase.handshake.reservation_id,
+            &receipt,
+            &lane.deployment.web.admission,
+            &checkpoint,
+            &inclusion_proof,
+            reservation.expires_at,
+        )
+        .err()
+        .ok_or_else(|| missing("denial after the authority-bound reservation was accepted"))?;
+    assert!(
+        matches!(
+            &error,
+            PurchaseCoordinatorError::TerminalEvidence(reason)
+                if reason.contains("outside the reservation settlement window")
+        ),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_delivery_cannot_outlive_its_authority_bound_reservation() -> TestResult {
+    let lane = open_lane(LaneOptions::standard()).await?;
+    let response = lane.reveal("wedge-expired-delivery-1", "nonce-expired-delivery-1")?;
+    let reservation = lane
+        .coordinator
+        .resolve(&lane.purchase.handshake.reservation_id)?;
+    assert!(
+        reservation.expires_at
+            <= lane
+                .deployment
+                .web
+                .admission
+                .body
+                .purchase_authority
+                .valid_until
+    );
+
+    let mut body = response.receipt.body();
+    body.timestamp = reservation.expires_at;
+    let receipt = ChioReceipt::sign(body, &keypair(40))?;
+    let error = lane
+        .coordinator
+        .finalize_delivery(
+            &lane.purchase.handshake.reservation_id,
+            &receipt,
+            &lane.deployment.web.admission,
+            &lane.deployment.web.backing,
+            reservation.expires_at,
+        )
+        .err()
+        .ok_or_else(|| missing("delivery after the authority-bound reservation was accepted"))?;
+    assert!(
+        matches!(
+            &error,
+            PurchaseCoordinatorError::TerminalEvidence(reason)
+                if reason.contains("outside the reservation settlement window")
+        ),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn wedge_purchase_media_type_mismatch_denies() -> TestResult {
     let lane = open_lane(LaneOptions {
         case: RevealCase::media_mismatch(),
@@ -3194,7 +3373,7 @@ async fn wedge_purchase_alternate_token_denies() -> TestResult {
         &lane.deployment.web,
         &lane.witness,
         &lane.buyer,
-        "buyer-agent-7",
+        BUYER_PAYOUT,
         "finding-purchase-token-0002",
     )?;
     assert_ne!(
@@ -3352,6 +3531,13 @@ async fn wedge_purchase_recovery_grant_redelivers_without_charging() -> TestResu
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 1);
 
     let now = unix_timestamp_now();
+    lane.authority
+        .finding_purchase_store()
+        .register_community_fund_destination(
+            &lane.deployment.web.allocation_id,
+            COMMUNITY_FUND_DESTINATION,
+            now,
+        )?;
     let purchase_record = lane.coordinator.finalize_delivery(
         &lane.purchase.handshake.reservation_id,
         &response.receipt,
@@ -3610,7 +3796,7 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
     let witness = admission_witness(&deployment.web, accepted_at)?;
     let buyer = keypair(31);
     let coordinator = coordinator(&authority)?;
-    let exchange = handshake(&deployment.web, &witness, &buyer, "buyer-agent-7", TOKEN_ID)?;
+    let exchange = handshake(&deployment.web, &witness, &buyer, BUYER_PAYOUT, TOKEN_ID)?;
 
     // A signature by a key that is not the token subject never reserves.
     let interloper = keypair(9).sign(exchange.ask_digest.as_bytes()).to_hex();
@@ -3660,6 +3846,13 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
         canonical_json_bytes(&second)?
     );
     assert_eq!(first.body.receipt_id, exchange.reservation_id);
+    let stored = authority
+        .finding_purchase_store()
+        .get_reservation(&exchange.reservation_id)?
+        .ok_or_else(|| missing("reserved purchase"))?;
+    assert_eq!(stored.agent_id, buyer.public_key().to_hex());
+    assert_eq!(stored.payout_destination, BUYER_PAYOUT);
+    assert_ne!(stored.agent_id, stored.payout_destination);
     Ok(())
 }
 
@@ -3679,7 +3872,7 @@ async fn wedge_purchase_second_reservation_overcommits_the_allocation() -> TestR
         &deployment.web,
         &witness,
         &first_buyer,
-        "buyer-agent-7",
+        BUYER_PAYOUT,
         TOKEN_ID,
     )?;
     coordinator.reserve(
@@ -3699,7 +3892,7 @@ async fn wedge_purchase_second_reservation_overcommits_the_allocation() -> TestR
         &deployment.web,
         &witness,
         &second_buyer,
-        "buyer-agent-8",
+        OTHER_BUYER_PAYOUT,
         "finding-purchase-token-0003",
     )?;
     let overcommitted = coordinator.reserve(
@@ -3752,7 +3945,7 @@ async fn open_reserve_fixture() -> Result<ReserveFixture, AnyError> {
         &deployment.web,
         &witness,
         &keypair(31),
-        "buyer-agent-7",
+        BUYER_PAYOUT,
         TOKEN_ID,
     )?;
     Ok(ReserveFixture {
@@ -4083,6 +4276,8 @@ async fn wedge_purchase_reserve_refuses_a_self_minted_ask() -> TestResult {
 /// for a sale the reveal gate would never admit.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn wedge_purchase_reserve_refuses_a_malformed_purchase_grant() -> TestResult {
+    type MalformedGrantCase = (&'static str, &'static str, fn(&mut ToolGrant));
+
     let fixture = open_reserve_fixture().await?;
     let now = unix_timestamp_now();
     let buyer = keypair(31);
@@ -4104,8 +4299,7 @@ async fn wedge_purchase_reserve_refuses_a_malformed_purchase_grant() -> TestResu
         Ok((signed, signature))
     };
 
-    type GrantMutationCase = (&'static str, &'static str, fn(&mut ToolGrant));
-    let cases: [GrantMutationCase; 8] = [
+    let cases: [MalformedGrantCase; 8] = [
         ("max_invocations", "max_invocations", |grant| {
             grant.max_invocations = Some(2);
         }),
@@ -4393,7 +4587,7 @@ async fn wedge_purchase_superseded_admission_stops_transacting() -> TestResult {
         web,
         &lane.witness,
         &second_buyer,
-        "buyer-agent-8",
+        OTHER_BUYER_PAYOUT,
         "finding-purchase-token-0004",
     )?;
     let now = unix_timestamp_now();
@@ -4466,6 +4660,11 @@ async fn wedge_purchase_finalization_uses_the_durable_verdict_and_capture() -> T
     let allocation_id = lane.deployment.web.allocation_id.clone();
     let reservation_id = lane.purchase.handshake.reservation_id.clone();
     let now = unix_timestamp_now();
+    purchase_store.register_community_fund_destination(
+        &allocation_id,
+        COMMUNITY_FUND_DESTINATION,
+        now,
+    )?;
 
     let (checkpoint, inclusion_proof) = denial_checkpoint(&response.receipt)?;
     let refused = lane.coordinator.finalize_denial(
@@ -4481,11 +4680,13 @@ async fn wedge_purchase_finalization_uses_the_durable_verdict_and_capture() -> T
         Err(PurchaseCoordinatorError::TerminalEvidence(_))
     ));
 
-    // The refusal preceded every durable step: no destination took a slot,
-    // the purchase slot is still reserved, and no record exists.
-    assert!(purchase_store
-        .list_payout_destinations(&allocation_id)?
-        .is_empty());
+    // The refusal preceded every purchase-side durable step: no buyer
+    // destination took a slot, the purchase slot is still reserved, and
+    // no record exists.
+    assert_eq!(
+        purchase_store.list_payout_destinations(&allocation_id)?,
+        vec![(0_u8, COMMUNITY_FUND_DESTINATION.to_string())]
+    );
     let slot = purchase_store
         .get_slot(&reservation_id)?
         .ok_or_else(|| missing("slot after the refused settlement"))?;
@@ -4523,8 +4724,14 @@ async fn wedge_purchase_settlement_replays_byte_identically_across_clocks() -> T
     let response = lane.reveal("wedge-clock-replay-1", "nonce-clock-replay-1")?;
     assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
 
+    let purchase_store = lane.authority.finding_purchase_store();
     let reservation_id = lane.purchase.handshake.reservation_id.clone();
     let now = unix_timestamp_now();
+    purchase_store.register_community_fund_destination(
+        &lane.deployment.web.allocation_id,
+        COMMUNITY_FUND_DESTINATION,
+        now,
+    )?;
     let first = lane.coordinator.finalize_delivery(
         &reservation_id,
         &response.receipt,
@@ -4592,6 +4799,11 @@ async fn wedge_purchase_refuses_to_persist_an_unvalidatable_artifact() -> TestRe
     let allocation_id = lane.deployment.web.allocation_id.clone();
     let reservation_id = lane.purchase.handshake.reservation_id.clone();
     let now = unix_timestamp_now();
+    purchase_store.register_community_fund_destination(
+        &allocation_id,
+        COMMUNITY_FUND_DESTINATION,
+        now,
+    )?;
 
     let mut tampered_backing = lane.deployment.web.backing.clone();
     tampered_backing.body.maximum_sale_exposure.units = tampered_backing
@@ -4625,10 +4837,11 @@ async fn wedge_purchase_refuses_to_persist_an_unvalidatable_artifact() -> TestRe
         Err(PurchaseCoordinatorError::TerminalEvidence(_))
     ));
 
-    // Neither refusal moved the purchase or admitted a destination.
-    assert!(purchase_store
-        .list_payout_destinations(&allocation_id)?
-        .is_empty());
+    // Neither refusal moved the purchase or admitted a buyer destination.
+    assert_eq!(
+        purchase_store.list_payout_destinations(&allocation_id)?,
+        vec![(0_u8, COMMUNITY_FUND_DESTINATION.to_string())]
+    );
     let slot = purchase_store
         .get_slot(&reservation_id)?
         .ok_or_else(|| missing("slot after the refused artifacts"))?;

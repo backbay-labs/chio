@@ -1461,25 +1461,46 @@ perform those checks separately before relying on the corresponding claim.
 
 #### 6.4.7.1 Market envelope discipline
 
-Eight families travel as signed export envelopes
+Seventeen families travel as signed export envelopes
 (`{body, signerKey, signature}`): `chio.finding.challenge-verifier-profile.v1`,
 `chio.finding.market-terms.v1`, `chio.finding.seller-authorization.v1`,
 `chio.finding.bond-backing.v1`, `chio.finding.verifier-report.v1`,
-`chio.finding.admission.v1`, `chio.finding.purchase-record.v1`, and
-`chio.finding.failed-delivery.v1`. This differs from the inline-signed
+`chio.finding.admission.v1`, `chio.finding.purchase-record.v1`,
+`chio.finding.failed-delivery.v1`, `chio.finding.challenge.v1`,
+`chio.finding.challenge-outcome.v1`,
+`chio.finding.challenge-enforcement.v1`,
+`chio.finding.finalized-bond-snapshot.v1`,
+`chio.finding.audit-epoch.v1`, `chio.finding.audit-report.v1`,
+`chio.finding.audit-round-authorization.v1`,
+`chio.finding.key-revocation.v1`, and
+`chio.finding.authority-status.v1`. This
+differs from the inline-signed
 `chio.finding.v1` and from the unsigned
-`chio.finding.replay-recipe-input.v1` and
-`chio.finding.purchase-context.v1`, which carry no envelope at all. Each of
-the eight envelope bodies is strict snake_case JSON that rejects unknown
-members and carries a stable identifier. Seven of them are
-content-addressed exactly like `finding_id`: the SHA-256 digest of
+`chio.finding.replay-recipe-input.v1`,
+`chio.finding.purchase-context.v1`, and
+`chio.finding.replay-observation.v1`, and
+`chio.finding.recovery-context.v1`, which carry no envelope at all. Each
+of the seventeen envelope bodies is strict snake_case JSON that rejects
+unknown members. Fourteen carry a stable identifier, and twelve of those
+are content-addressed exactly like `finding_id`: the SHA-256 digest of
 canonical JSON for the body after setting only the id member to the empty
-JSON string `""`, with every other member present.
-`chio.finding.purchase-record.v1` is the exception and derives its
-`purchase_key` from a domain-separated preimage instead (6.4.7.10). The
-first six additionally name their own signing authority in the body; the
-two purchase terminals name the buyer and are authorized only by the
-external pin. Envelope verification
+JSON string `""`, with every other member present. Two are exceptions:
+`chio.finding.purchase-record.v1` derives its `purchase_key` from a
+domain-separated preimage over two members (6.4.7.10), and
+`chio.finding.challenge-outcome.v1` derives its `outcome_id` from a
+domain-separated preimage over the whole canonical body (6.4.7.13).
+`chio.finding.key-revocation.v1`,
+`chio.finding.audit-round-authorization.v1`, and
+`chio.finding.authority-status.v1` carry no identifier at all: each
+is named by the envelope digest of the statement itself (6.4.7.20,
+6.4.7.21, and 6.4.7.23). The
+first six additionally name their own signing authority in the body, as
+does a `buyer_submission` challenge through its `challenger`; the two
+purchase terminals, a `venue_audit` challenge, the six remaining
+challenge and audit artifacts, the key revocation, and the authority status
+name other subjects
+and are authorized only by the external role pin. Envelope
+verification
 MUST verify strictly against an EXTERNALLY pinned authority key, MUST
 reject weak Ed25519 keys, MUST require the embedded `signerKey` to equal
 the pinned authority, and MUST require the body's authority member, where
@@ -1596,7 +1617,8 @@ digest, settled fee terminals
 schedule, event, payer, amount, pool principal, rail destination, and the
 rail evidence digests), the distinct audit-pool and
 challenge-administration-pool principals with rail-tagged destinations and
-authority epochs, the community-fund destination, the status-feed
+authority epochs, the canonical lowercase 20-byte EVM community-fund
+destination, the status-feed
 operator reference, the purchase and failed-delivery authority snapshots,
 and a validity window. The body venue identity and the envelope signer
 MUST both equal the externally configured venue authority. Admission
@@ -1631,7 +1653,8 @@ intent, the authoritative payment operation, buyer and payer keys, the exact
 finding, listing, accepted-bid envelope, venue-admission envelope, and
 seller-backing envelope digests, the accepted price and the realized spend
 in one currency, the encumbrance, the delivery receipt, the payment
-reference, a rail-tagged payout destination, and the record time. Its
+reference, a canonical lowercase 20-byte EVM payout destination (`0x`
+followed by 40 lowercase hexadecimal digits), and the record time. Its
 `purchase_key` is the SHA-256 digest of the domain-separated preimage
 `"chio.finding.purchase.v1\0"` followed by the accepted-bid envelope digest,
 a NUL byte, and the authoritative payment operation identifier. That key is
@@ -1644,21 +1667,396 @@ capture but MUST NOT exceed it, and both amounts MUST share one currency.
 
 The failed-delivery-authority-signed terminal for a reveal denied before any
 value moved. It binds the buyer, the exact finding, listing, and
-accepted-bid envelope digest, the reservation, purchase intent, and
-authoritative payment operation, the exact hold attempt and its release
-terminal (`released` or `cancelled_before_authorization`; unknown terminals
-reject), both halves of the deny evidence (receipt identifier and digest,
-checkpoint reference and digest), the currency, and the record time. Its
-`realized_spend_units` MUST be zero and its `payout_eligible` MUST be false;
-both are encoded rather than implied so a spend on this path is a
-schema-level rejection rather than a reconciliation surprise. Silence is not
-evidence: without this signed terminal a released hold is indistinguishable
-from a captured one.
+accepted-bid envelope digest, the exact venue-admission envelope digest, the
+seller-backing envelope digest retained by that admission, the reservation,
+purchase intent, and authoritative payment operation, the exact hold attempt
+and its release terminal (`released` or `cancelled_before_authorization`;
+unknown terminals reject), both halves of the deny evidence (receipt
+identifier and digest, checkpoint reference and digest), the currency, and
+the record time. The venue-admission digest MUST equal the admission retained
+by the reservation, and the seller-backing digest MUST equal that admission's
+`backing_envelope_sha256`; challenge evaluation MUST cross-check both digests
+against the challenged admission and backing. Its `realized_spend_units` MUST
+be zero and its `payout_eligible` MUST be false; both are encoded rather than
+implied so a spend on this path is a schema-level rejection rather than a
+reconciliation surprise. Silence is not evidence: without this signed
+terminal a released hold is indistinguishable from a captured one.
 
-The finding family registers `chio.finding.v1`, the eight signed market
-artifacts above, and the two unsigned carriers at this stage. Challenge and
-status-epoch artifacts remain unsupported until a future revision of this
-specification defines and registers them.
+#### 6.4.7.12 `chio.finding.challenge.v1`
+
+The signed submission that opens a dispute against one admitted listing.
+Common members bind the challenge, the finding and its artifact digest, the
+listing, the admitted terms, verifier-profile, and seller-backing envelope
+digests, the filing time, and a size-bounded `affected_deliveries` set whose
+entries are atomic `{receipt_id, receipt_sha256, checkpoint_ref,
+checkpoint_sha256}` tuples. Those entries MUST NOT carry a buyer identity,
+an amount, or a payout address: they establish standing, and the payout set
+is derived from the authoritative purchase index at the frozen cutoff.
+
+Two independent closed unions gate the submission, and both MUST be enforced
+by the registered schema and by artifact validation. The authorization union
+is exactly one of `buyer_submission`, naming the challenger that MUST equal
+the envelope signer, the settled dispute-fee terminal payable to the
+admission-pinned challenge-administration pool, the live exclusive `dispute`
+lock, and class-specific standing, or `venue_audit`, naming the signed audit
+epoch envelope digest, the selection digest, and the authorization digest.
+A `venue_audit` has no challenger, lock, fee, forfeiture, or reward member
+at all, and a `buyer_submission` has no audit member; a cross-branch member
+rejects at parse time. A `buyer_submission` MUST carry at least one affected
+delivery, and its standing branch MUST match its evidence class and name the
+same artifact digest that class binds: `failed_delivery` standing pairs only
+with `digest_mismatch`, and `finalized_purchase` standing only with
+`evidence_invalid` or `replay_contradiction`.
+
+The evidence union is exactly one of `digest_mismatch`, naming the signed
+failed-delivery envelope digest plus the deny receipt and checkpoint
+references, `evidence_invalid`, naming the contested receipt subset, the
+challenged checkpoint reference, and the finalized purchase-record envelope
+digest, or `replay_contradiction`, naming an ordered size-bounded
+reproduction set, the strict canonical
+`chio.finding.replay-recipe-input.v1` preimage, and the purchase-record
+envelope digest. Every reproduction tuple is
+`{receipt_ref, checkpoint_ref, observation_bytes}`; the observation bytes
+MUST be strict canonical `chio.finding.replay-observation.v1`, every tuple
+MUST share one `replay_run_id`, and every observation MUST commit the
+digest of the carried recipe preimage and the verifier profile the
+challenge names. Loose identifiers, a single checkpoint for unrelated
+receipts, non-canonical preimages, and digest mismatches reject before
+evaluation.
+
+The guarantee/evidence compatibility matrix is closed and normative, and it
+requires the challenged finding, which this artifact binds only by digest:
+`digest_mismatch` admits any guarantee and evidence class because its
+standing is the signed failed-delivery terminal; `evidence_invalid` requires
+an `observed` or `verified` evidence class; `replay_contradiction` requires
+`deterministic_replay` and `verified`. Every other pairing MUST reject
+before evaluation.
+
+#### 6.4.7.13 `chio.finding.challenge-outcome.v1`
+
+The evaluator-signed verdict. The class-independent `verdict` is exactly
+`upheld`, `rejected`, or `indeterminate`, and the third member is required
+whenever authority, retention, resolver, or infrastructure inputs cannot be
+established. An indeterminate outcome MUST create no hold, sanction,
+liability transition, audit reward, or forfeiture, and only `upheld` may
+enter the penalty lane. The body binds the exact signed challenge ENVELOPE
+digest; a digest over the challenge body alone is a different identity and
+MUST reject. It further binds the finding, listing, and backing allocation,
+the authorization branch and evidence class tags, the verifier-profile
+envelope and evidence-bundle digests, the nested class facet, a reason, the
+trigger digest, the evaluator authority identifier and public key, the key
+epoch and validity interval, the revocation-status reference, and the
+evaluation time. The durable outcome-envelope digest pins that historical
+evaluator policy at adjudication. Later liability and appeal processing MUST
+verify the exact pinned envelope under that historical key and a fresh signed
+status reading covering the evaluation time; rotation of the deployment's
+current evaluator key MUST NOT invalidate an authentic recorded outcome.
+
+The facet is nested beneath the evidence branch that produced it and MUST
+match the class tag. The `digest_mismatch` facet carries the committed and
+delivered digests, a `transform_profile` of exactly `identity`, and a zero
+realized spend, so generic mismatch and operator-policy transform denials
+can never sanction the seller; an `upheld` verdict additionally requires the
+two digests to differ. The `evidence_invalid` facet carries the contested
+receipt identifiers and a closed invalidity result, where only affirmative
+invalidity upholds, a resolved and valid subset rejects, and unavailable
+inputs are indeterminate. The `replay_contradiction` facet carries the run,
+the recipe digest, the committed predicate, its
+`confirmed_contradiction | consistent | indeterminate` result, and the
+observation digests; that result maps in that order onto `upheld`,
+`rejected`, and `indeterminate`, and the body's verdict MUST equal the
+mapped value.
+
+An indeterminate outcome MAY carry `retry_deadline` only when the signed
+filing policy grants another attempt. The evaluator MUST derive that
+absolute deadline from the challenge-bound seller terms, cap it at the
+terms expiry and at the buyer's signed dispute-lock expiry when present,
+and include it before deriving `outcome_id` and signing. The deadline MUST
+be strictly later than `evaluated_at`. A terminal verdict, an exhausted
+retry, or a closed policy window MUST omit it.
+
+A checked penalty calculation is present exactly when the verdict is
+`upheld`. It records the base stake, the open per-sale encumbrances, the
+computed exposure, the signed listing requirement, the live allocated
+collateral, and the resulting amount and currency:
+`computed_exposure = base + encumbrances` with checked arithmetic, an
+exposure above the signed requirement MUST reject rather than clamp, and the
+amount MUST equal `min(live_allocated_collateral, computed_exposure)`.
+
+`outcome_id` is the SHA-256 digest of the domain-separated preimage
+`"chio.finding.challenge-outcome.v1\0"` followed by the canonical JSON of
+the body with only `outcome_id` set to `""`. The envelope signature lives
+outside the body and is excluded by construction, which is what lets the
+penalty lane bind `reference_id` to `outcome_id` and `sha256` to the signed
+envelope digest as two independent facts.
+
+#### 6.4.7.14 `chio.finding.challenge-enforcement.v1`
+
+The venue finalization authority's signed instruction to impair one seller
+allocation. It binds the liability key, the finding and listing, the exact
+outcome id and outcome, penalty, and bond-snapshot envelope digests, the
+sealed purchase-snapshot and deterministic-allocation digests, the seller
+allocation, the vault (`chain_id`, `vault_contract`, `vault_id`), the total
+amount, the ordered destination list, the semantic effect-intent
+identifiers, and the finalization time. Destinations MUST be distinct, MUST
+carry nonzero shares in the one enforcement currency, and MUST sum EXACTLY
+to the total. Exact-sum checking alone does not prove harmed-party
+destinations; the settlement choke point applies the operator policy
+allowlist on top.
+
+Effect intents are domain-keyed and carry at most one entry per kind. The
+`seller_impair`, `root_intent`, and `retraction` intents MUST all be present,
+because each must be durable before any external impairment; `challenge_bond`
+and `fee` are present only when the lane collected them.
+
+The instruction MUST carry the complete historical penalty-authority policy:
+`penalty_authority_id`, `penalty_key`, `penalty_key_epoch`,
+`penalty_valid_from`, `penalty_valid_until`, and
+`penalty_revocation_status_ref`. These fields MUST be copied from the policy
+that authorized the exact signed penalty, and `penalty_key` MUST match the
+penalty envelope signer. A verifier MUST validate the penalty signature and
+the policy window at the penalty's signed update time, then resolve the named
+revocation status through the independently pinned status authority. It MUST
+NOT substitute the deployment's current penalty key or require the historical
+key to remain current. Missing, inconsistent, expired-at-action, revoked-at-
+action, or unavailable policy evidence MUST fail closed.
+
+Publisher-only state is EXCLUDED by construction: this artifact has no
+member for an assigned operator sequence, an attempt key, prepared calldata,
+or a transaction nonce. Those values are chosen after this artifact is
+signed, when the publisher acquires the strict-next sequence lease, and the
+attempt key derives from the root intent id and the assigned sequence at
+publication time.
+
+#### 6.4.7.15 `chio.finding.finalized-bond-snapshot.v1`
+
+The settlement observer's signed reading of one allocation at one finalized
+block: chain, vault contract and id, seller, allocation, the locked, held,
+and slashed amounts in one currency, the block number and hash, the finality
+policy and the observed finality (`finalized`, or a nonzero confirmation
+depth), the observing operator's identity registry record, key hash, and key
+epoch, and the observation time. The block number MUST be nonzero, hashes
+MUST be 32 bytes of lowercase hex with an optional `0x` prefix, and
+`held + slashed` MUST NOT exceed `locked`. A signed allocation states what
+was promised; only this snapshot states what the chain held.
+
+#### 6.4.7.16 `chio.finding.audit-epoch.v1`
+
+The venue's signed precommitment for one audit round, published BEFORE any
+listing is selected: the epoch index, the eligible listing snapshot digest
+and count, the fee-schedule envelope digest, the seed COMMITMENT, the
+selection algorithm, the published rate in basis points (nonzero and at most
+10000), the available budget, the governance authorization digest, and the
+commitment time. The seed itself has no encoding in this artifact and MUST
+NOT be published with its commitment.
+
+The venue MUST fix the eligible snapshot before the independent randomness
+witness generates the seed. `eligible_snapshot_at` MUST be strictly before
+`seed_witnessed_at`. The witness MUST control and withhold the seed until the
+report, and its signature MUST bind the audit authority, epoch index, exact
+eligible snapshot digest and time, seed commitment, and witness time. A
+witness statement that omits the snapshot or precedes it does not prevent a
+venue that knows the seed from shaping eligibility and MUST be rejected.
+
+The `authorization_digest` MUST be the SHA-256 digest of the exact signed
+`chio.finding.audit-round-authorization.v1` envelope. Its precommitment digest
+is computed over the canonical epoch body after clearing only
+`audit_epoch_id` and `authorization_digest`. This breaks the hash cycle while
+binding every independently chosen round input before the final epoch is
+content-addressed.
+
+Under the selection algorithm `chio.finding.audit-selection.weighted-draw.v1`
+each eligible listing draws the SHA-256 digest of the domain-separated
+preimage `"chio.finding.audit-draw.v1\0"` followed by the revealed seed, a
+NUL, the finding identifier, a NUL, and the listing identifier. Listings are
+ordered by the rational priority `draw / weight`, smallest first, where an
+absent weight is exactly 1 and the draw is the WHOLE digest read big-endian.
+Implementations MUST compare by cross multiplication over every bit of both
+draws rather than over any prefix of them, and MUST break an exact tie by
+ascending finding identifier. The round takes the first targets, counting the
+published rate over the eligible count rounded UP. A prefix comparison would
+make distinct draws tie, settle those rounds on the finding identifier
+instead, and shrink the target a venue that also chooses the weights has to
+grind for from the whole digest down to that prefix.
+
+#### 6.4.7.17 `chio.finding.audit-report.v1`
+
+The venue's signed result for the same round, published AFTER the reveal: the
+exact signed epoch ENVELOPE digest, the revealed seed, the selected finding
+identifiers, the SHA-256 digests of the exact signed attempt challenge
+envelopes, the missed attempts with their reasons, the outcome envelope
+digests, and the report time. The revealed seed
+MUST reproduce the epoch's commitment as the SHA-256 digest of the
+domain-separated preimage `"chio.finding.audit-seed.v1\0"` followed by the
+seed. Every missed attempt MUST name a selected finding, and a round with a
+selection that is not fully accounted for by misses MUST carry at least one
+signed attempt-envelope digest. These values are envelope identities, not
+kernel receipt identifiers. The epoch and the report are two artifacts, never
+one mutable one: without both, a published audit rate is an operator
+assumption rather than an enforceable one.
+
+An independent report verifier MUST also receive the exact signed
+`chio.finding.audit-round-authorization.v1` envelope and the externally
+pinned audit-authority and governance lifecycle policies. Each policy binds
+an authority identifier, signing key, key epoch, validity interval, and
+revocation-status reference. The audit-authority policy MUST cover the epoch
+commitment through report publication, and the epoch and report signatures
+MUST verify under that externally pinned key. A verifier MUST receive a status
+reading signed by its externally pinned status authority for the exact audit
+policy. That reading MUST bind the policy's status reference, authority, key,
+and key epoch, MUST be observed at or after report publication and no more
+than 3,600 seconds later, and MUST reject when `revoked_from` is at or before
+report publication.
+
+The verifier MUST additionally receive a governance-pinned lifecycle policy
+for the independent seed-witness key and a status reading signed by the same
+externally pinned status authority. The seed-witness policy MUST cover the
+epoch's `seed_witnessed_at` instant and MUST name the key that signed the seed
+commitment. The status reading MUST bind that policy's status reference,
+authority, key, and key epoch, MUST be observed at or after
+`seed_witnessed_at` and no later than report publication, and MUST be no more
+than 3,600 seconds old at publication. It MUST reject when `revoked_from` is
+at or before `seed_witnessed_at`. Missing, stale, self-asserted, or mismatched
+seed-witness lifecycle evidence fails closed.
+
+The governance policy MUST cover the authorization time. The verifier MUST
+verify the authorization signature under its key, re-derive the epoch
+precommitment, require the epoch's `authorization_digest` to equal the exact
+authorization envelope digest, and require the authorization to cover the
+epoch commitment time. A governance status reading signed by the same pinned
+status authority MUST bind the exact governance policy, cover the
+authorization time, be observed no later than report publication, and be no
+more than 3,600 seconds old at publication. It MUST reject when
+`revoked_from` is at or before authorization. For every signed evaluator
+outcome, the verifier MUST likewise resolve an independently signed status
+reading for the outcome's exact historical evaluator policy. The reading MUST
+bind the policy's status reference, authority, key, and key epoch, MUST be
+observed after the evaluation and no later than report publication, MUST be no
+more than 3,600 seconds old at publication, and MUST reject when
+`revoked_from` is at or before the evaluation time. Missing, stale,
+self-asserted, or mismatched lifecycle evidence fails closed.
+
+Every signed audit-attempt challenge MUST carry venue-audit authorization for
+the exact signed epoch envelope, the exact deterministic draw of its selected
+finding and listing, and the exact round-authorization envelope digest. A
+report verifier MUST recompute and compare all three bindings before treating
+the attempt as accounting for a selected target.
+
+#### 6.4.7.18 `chio.finding.replay-observation.v1`
+
+The UNSIGNED strict preimage one replay execution emits for one phase. Like
+the replay-recipe input, it registers in the public schema registry and
+manifest but MUST NOT enter the signed-artifact allowlist. It binds the
+recipe and verifier-profile digests, the committed phase (`baseline` or
+`candidate`), the runner manifest, resolved input bundle, and environment
+digests, the terminal result (`completed`, `failed`, `timed_out`,
+`resource_exhausted`, or `runner_error`), the process exit status, the
+report digest, and the `replay_run_id` shared by every phase of one run. The
+mediated replay receipt's `content_hash` MUST equal the canonical digest of
+these bytes. Only a `completed` observation may feed a predicate; every other
+terminal is an infrastructure fact and MUST resolve indeterminate rather than
+seller fraud. The observation has no member for a claimed verdict: the
+predicate belongs to the committed recipe.
+
+The `environment_digest` binds the execution environment the recipe
+committed, and its derivation is normative so that a producer and a verifier
+cannot disagree about the value. It is the SHA-256 digest of the canonical
+JSON bytes of the committed `chio.finding.replay-recipe-input.v1`
+`environment` member, the same derivation the pre-run template digest uses
+over its own canonical body. A digest over the whole recipe, over the
+runtime image alone, or over any runner-local rendering of the environment
+is a different value and MUST reject. An observation whose
+`environment_digest` does not equal that commitment ran outside the
+committed environment, so it is NOT evidence of seller fraud: like a
+non-`completed` terminal it MUST NOT feed a predicate and MUST resolve
+indeterminate.
+
+#### 6.4.7.19 `chio.registry.market-penalty.v1`
+
+The open-market penalty artifact, registered publicly by the finding
+challenge lane without any change to its frozen fields or enums. Unlike the
+finding families, its body is camelCase and TOLERATES unknown members, so
+the registered schema uses camelCase member names and MUST NOT close the
+body; the envelope around it remains strict. An `upheld` challenge outcome
+maps to `abuse_class` `fraudulent_listing` with exactly one `external`
+evidence reference whose `reference_id` equals the `outcome_id` and whose
+`sha256` equals the canonical signed-outcome ENVELOPE digest. A body-only
+digest, an absent `sha256`, a generic or duplicated external reference, a
+wrong abuse class, untyped evidence, and signer substitution all reject. The
+envelope signer, the body `issued_by`, and the configured governing operator
+MUST all name the same profile-authorized penalty authority; a generic
+caller-supplied trusted signer is not authorization.
+
+#### 6.4.7.20 `chio.finding.key-revocation.v1`
+
+The governance-signed statement that a pinned authority key stopped being
+trustworthy from a stated instant. The body names the revocation feed the
+statement is published on (`revocation_status_ref`), the pinned authority
+(`authority_id`), the `key` and the `key_epoch` the statement withdraws, the
+venue trusted time it holds from (`revoked_from`), and `recorded_at`.
+
+A verifier MUST accept a revocation as evidence about a key only when the
+envelope verifies against the SAME externally pinned governance root that
+authorized the profile, and when the body's `revocation_status_ref`,
+`authority_id`, `key`, and `key_epoch` all equal the members of the key
+policy that profile pins for the key under test. A statement published on a
+feed the policy does not name, or covering an epoch the policy does not pin,
+is a statement about a different key and MUST NOT be read as evidence about
+this one.
+
+`revoked_from` is compared against the timestamp of the artifact under test,
+never against the verifier's clock: whether a key was trustworthy when it
+signed is a fact about that instant. A verifier that cannot establish a
+revocation offered for a key MUST leave the question open rather than
+resolve it in either direction.
+
+#### 6.4.7.21 `chio.finding.audit-round-authorization.v1`
+
+The governance-root-signed authorization for one exact audit round. Its body
+contains the schema identifier, `epoch_precommitment_sha256`, `authorized_at`,
+and `expires_at`. Both timestamps MUST be positive I-JSON safe integers,
+`expires_at` MUST be strictly later than `authorized_at`, and the exact signed
+envelope MUST verify against the governance authority pinned for the round.
+The authorization MUST be live when the epoch is committed.
+
+`epoch_precommitment_sha256` is the SHA-256 digest of the canonical
+`chio.finding.audit-epoch.v1` body after clearing only `audit_epoch_id` and
+`authorization_digest`. The final epoch's `authorization_digest` is the
+SHA-256 digest of this exact signed authorization envelope. Implementations
+MUST re-derive both bindings. This two-step construction avoids a hash cycle
+without permitting the venue to alter the eligible snapshot, fee schedule,
+randomness commitment, selection algorithm, rate, budget, authority, or time
+after governance authorization.
+
+#### 6.4.7.22 `chio.finding.recovery-context.v1`
+
+The UNSIGNED evidence carrier for bounded no-charge redelivery of one already
+settled finding. It contains `recovery_id` and the exact canonical JSON bytes
+of the original signed capability, purchase context, purchase-authority-signed
+settled record, and trusted-kernel-signed original Allow receipt. The carrier
+is evidence transport, never bearer authority. A recovery verifier MUST
+strict-parse and independently authenticate every embedded artifact, re-derive
+their identities and cross-bindings, and mint only a bounded recovery grant.
+Unknown members, noncanonical embedded bytes, an identity mismatch, or an
+unverifiable signature MUST reject before any recovery admission mutation.
+
+#### 6.4.7.23 `chio.finding.authority-status.v1`
+
+The independently signed reading of one exact authority policy's revocation
+source. The body names the policy's `status_ref`, `authority_id`, `key`, and
+`key_epoch`, the optional `revoked_from` instant, and the trusted
+`observed_at` instant. The envelope MUST verify against the deployment's
+externally pinned status authority. A consumer MUST bind all four policy
+members to the authority role under test and MUST reject a reading observed
+before the role action it authenticates. If `revoked_from` is present and is
+at or before that action, the role was not live for the action. A missing,
+unverifiable, stale, cross-policy, or pre-action reading establishes no
+non-revocation claim.
+
+The finding family registers `chio.finding.v1`, the seventeen signed
+artifacts above, the four unsigned carriers, and the open-market penalty
+envelope at this stage. Status-epoch artifacts remain unsupported until a
+future revision of this specification defines and registers them.
 
 ### 6.5 Checkpoints
 

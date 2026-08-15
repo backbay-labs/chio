@@ -20,6 +20,8 @@
         "finding_id",
         "listing_id",
         "accepted_bid_envelope_sha256",
+        "venue_admission_envelope_sha256",
+        "seller_backing_envelope_sha256",
         "reservation_id",
         "purchase_intent_id",
         "authoritative_payment_operation_id",
@@ -51,6 +53,12 @@
           "$ref": "#/$defs/boundedIdentifier"
         },
         "accepted_bid_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "venue_admission_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "seller_backing_envelope_sha256": {
           "$ref": "#/$defs/sha256"
         },
         "reservation_id": {

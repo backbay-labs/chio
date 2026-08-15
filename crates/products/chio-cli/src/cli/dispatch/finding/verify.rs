@@ -148,7 +148,9 @@ pub(super) fn cmd_finding_verify(
 }
 
 /// Fetch one stored artifact by its content address and run the strict
-/// raw-first ingress over the exact bytes the venue served.
+/// raw-first ingress over the exact bytes the venue served. The venue
+/// serves what it accepted verbatim, so the ingress runs against wire
+/// bytes and never against a local reserialization of them.
 pub(super) fn accept_finding_from_venue(
     control_url: &str,
     finding_id: &str,

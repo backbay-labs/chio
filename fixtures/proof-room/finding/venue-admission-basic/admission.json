@@ -1,7 +1,7 @@
 {
   "body": {
     "schema": "chio.finding.admission.v1",
-    "admission_id": "d54f98cf25f7e4ae5812ad1a38ee4b25fe0d007014d09e99c0d7d6f70ef883be",
+    "admission_id": "5953afeb3fefbb921a3b61db01a5c494f4a85f30da87ca6a607c517b928fe3de",
     "venue": "8a875fff1eb38451577acd5afee405456568dd7c89e090863a0557bc7af49f17",
     "venue_id": "venue-wedge",
     "finding_id": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -66,7 +66,7 @@
       "currency": "USD",
       "authority_epoch": 1
     },
-    "community_fund_destination": "rail:venue-ledger:community-fund",
+    "community_fund_destination": "0xcccccccccccccccccccccccccccccccccccccccc",
     "status_feed_operator_ref": "status-feed/venue-wedge",
     "purchase_authority": {
       "authority_id": "authority-purchase",
@@ -90,5 +90,5 @@
     "expires_at": 1800000000
   },
   "signerKey": "8a875fff1eb38451577acd5afee405456568dd7c89e090863a0557bc7af49f17",
-  "signature": "691679c646d39709213561a166a230b4fe430b34b16c574db7512b527d3a1ff7387addf3b221b70815177c9ef1bd2136c5d508a51d3292f2b184374cfccab50b"
+  "signature": "8f667b97ddb95c81572c7f59bd77f4bf9c265d936301d36342fdc647d2d34ea6accf3dbb7759e6b19323ef0f7f1870bc0ba5af8a61956caad9c5131cc81d1000"
 }

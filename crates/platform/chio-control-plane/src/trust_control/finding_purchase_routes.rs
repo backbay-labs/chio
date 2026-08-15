@@ -448,6 +448,11 @@ pub enum FindingPurchaseExecutionError {
 /// even if either has since expired.
 #[async_trait::async_trait]
 pub trait FindingPurchaseExecutor: Send + Sync {
+    /// Active serving fence of the authority store that records purchases.
+    /// The combined market runtime rejects an executor whose fence differs
+    /// from the challenge runtime before either route is installed.
+    fn mutation_fence(&self) -> chio_kernel::admission_operation::StoreMutationFence;
+
     async fn execute(
         &self,
         request: FindingPurchaseRequest,

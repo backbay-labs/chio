@@ -91,6 +91,7 @@ struct DurablePaymentSettlementInput<'a> {
     journal: crate::payment::PaymentJournalRecord,
     disposition: &'a SettlementDispositionV1,
     context: &'a AdmissionProjectionContext,
+    purchase: Option<&'a crate::finding_purchase::VerifiedFindingPurchase>,
     trusted_now_unix_ms: u64,
 }
 
@@ -1335,6 +1336,7 @@ impl ChioKernel {
             mut journal,
             disposition,
             context,
+            purchase,
             trusted_now_unix_ms,
         } = input;
         let (amount_units, settle_action) = match disposition {
@@ -1456,6 +1458,22 @@ impl ChioKernel {
             return Err(KernelError::DurableAdmission(
                 "payment journal conflicts with the pricing disposition".to_owned(),
             ));
+        }
+        if settle_action == crate::payment::PaymentSettleAction::Capture {
+            if let Some(purchase) = purchase {
+                let verifier = self.finding_purchase_verifier.as_ref().ok_or_else(|| {
+                    KernelError::DurableAdmission(
+                        "purchase capture lost its configured verifier".to_owned(),
+                    )
+                })?;
+                verifier
+                    .mark_capture_pending(purchase, trusted_now_unix_ms / 1_000)
+                    .map_err(|error| {
+                        KernelError::DurableAdmission(format!(
+                            "purchase capture fence failed: {error}"
+                        ))
+                    })?;
+            }
         }
         journal = self
             .continue_durable_payment_settlement(
@@ -1818,6 +1836,7 @@ impl ChioKernel {
                     journal,
                     disposition: &settlement_disposition,
                     context: &context,
+                    purchase: purchase.as_ref(),
                     trusted_now_unix_ms,
                 })
             })

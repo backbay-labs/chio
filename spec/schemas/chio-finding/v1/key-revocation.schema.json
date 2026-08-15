@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/key-revocation.schema.json",
+  "title": "Chio Finding Key Revocation (signed envelope)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "revocation_status_ref",
+        "authority_id",
+        "key",
+        "key_epoch",
+        "revoked_from",
+        "recorded_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.key-revocation.v1"
+        },
+        "revocation_status_ref": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "authority_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "key": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "key_epoch": {
+          "$ref": "#/$defs/iJsonU64Nonzero"
+        },
+        "revoked_from": {
+          "$ref": "#/$defs/iJsonU64Nonzero"
+        },
+        "recorded_at": {
+          "$ref": "#/$defs/iJsonU64Nonzero"
+        }
+      }
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "boundedIdentifier": {
+      "type": "string",
+      "pattern": "\\S",
+      "maxLength": 512
+    },
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "iJsonU64Nonzero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    }
+  }
+}

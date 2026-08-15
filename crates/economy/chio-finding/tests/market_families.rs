@@ -322,7 +322,7 @@ fn admission_body(venue: &Keypair) -> Result<FindingAdmission, FindingError> {
             currency: "USD".to_string(),
             authority_epoch: 1,
         },
-        community_fund_destination: "rail:venue-ledger:community-fund".to_string(),
+        community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc".to_string(),
         status_feed_operator_ref: "status-feed/venue-wedge".to_string(),
         purchase_authority: key_policy(16, "purchase"),
         failed_delivery_authority: key_policy(17, "failed-delivery"),
@@ -598,6 +598,19 @@ fn terms_reject_currency_mismatch_and_overflow() -> TestResult {
     assert_eq!(
         terms.backing_requirement.required_backing_units(),
         Err(FindingError::AmountOverflow("backing_requirement"))
+    );
+    Ok(())
+}
+
+#[test]
+fn terms_reject_a_payout_policy_the_settlement_math_does_not_implement() -> TestResult {
+    let seller = keypair(2);
+    let mut terms = terms_body(&seller)?;
+    terms.payout_policy = "winner_takes_all_v1".to_string();
+    terms.terms_id = (compute_terms_id(&terms))?;
+    assert_eq!(
+        terms.validate(),
+        Err(FindingError::InvalidField("payout_policy"))
     );
     Ok(())
 }

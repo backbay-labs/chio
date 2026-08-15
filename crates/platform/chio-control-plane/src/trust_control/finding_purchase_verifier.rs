@@ -44,6 +44,13 @@ pub trait PurchaseReservationReader: Send + Sync {
         expectation: &ReservationExpectation<'_>,
         now_unix_secs: u64,
     ) -> Result<(), String>;
+
+    fn mark_capture_pending(
+        &self,
+        reservation_id: &str,
+        authoritative_payment_operation_id: &str,
+        now_unix_secs: u64,
+    ) -> Result<(), String>;
 }
 
 /// Production purchase verifier: pure market verification plus the
@@ -143,6 +150,18 @@ impl FindingPurchaseVerifier for MarketFindingPurchaseVerifier {
                 amount_units: verified.accepted_price.units,
                 currency: &verified.accepted_price.currency,
             },
+            now_unix_secs,
+        )
+    }
+
+    fn mark_capture_pending(
+        &self,
+        verified: &VerifiedFindingPurchase,
+        now_unix_secs: u64,
+    ) -> Result<(), String> {
+        self.reservations.mark_capture_pending(
+            &verified.reservation_id,
+            &verified.authoritative_payment_operation_id,
             now_unix_secs,
         )
     }

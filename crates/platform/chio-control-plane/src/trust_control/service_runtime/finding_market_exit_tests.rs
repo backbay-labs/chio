@@ -60,8 +60,8 @@ use chio_open_market::fee_schedule::{
 };
 use chio_open_market::finding_admission::{
     bid_with_finding_admission, verify_finding_admission, FindingAdmissionContext,
-    FindingAllocationSnapshot as SeamAllocationSnapshot, FindingAllocationStatus,
-    FindingConstituentExpiryBounds, FindingFeeScheduleGate,
+    FindingAdmissionPenaltyGate, FindingAllocationSnapshot as SeamAllocationSnapshot,
+    FindingAllocationStatus, FindingConstituentExpiryBounds, FindingFeeScheduleGate,
 };
 use chio_open_market::fiscal_adapter::signed_fee_schedule_digest;
 use chio_open_market::listing::{
@@ -171,10 +171,22 @@ fn market_config() -> FindingMarketConfig {
         venue: authority_pin(6, "venue"),
         listing: listing_authority_pin(),
         governance_root: authority_pin(1, "governance"),
+        authority_status: authority_pin(36, "authority-status"),
         verifier_report: authority_pin(15, "verifier-report"),
         collateral: authority_pin(4, "collateral"),
         purchase: authority_pin(16, "purchase"),
         failed_delivery: authority_pin(17, "failed-delivery"),
+        challenge_evaluator: authority_pin(31, "challenge-evaluator"),
+        venue_finalization: authority_pin(32, "venue-finalization"),
+        market_penalty: authority_pin(33, "market-penalty"),
+        settlement_observer: authority_pin(34, "settlement-observer"),
+        anchor_publisher: authority_pin(7, "anchor-publisher"),
+        max_snapshot_age_secs: 3_600,
+        settlement_finality_requirement: chio_settle::FindingFinalityRequirement::Confirmations {
+            min_depth: 64,
+        },
+        audit_authority: authority_pin(35, "audit-authority"),
+        audit_randomness_witness: authority_pin(37, "audit-randomness-witness"),
         audit_pool: FindingPoolPin {
             principal_id: AUDIT_POOL_PRINCIPAL.to_string(),
             rail_destination: AUDIT_POOL_DESTINATION.to_string(),
@@ -187,14 +199,13 @@ fn market_config() -> FindingMarketConfig {
             currency: "USD".to_string(),
             authority_epoch: 1,
         },
-        community_fund_destination: "rail:venue-ledger:community-fund".to_string(),
+        community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc".to_string(),
         status_feed_operator_ref: "status-feed/venue-wedge".to_string(),
         fee_schedule_operator_keys: vec![keypair(24).public_key().to_hex()],
     }
 }
 
-/// Rail observer that always refuses to settle, driving the
-/// crash-before-observation activation leg.
+/// Rail observer that always refuses the crash-before-observation activation leg.
 struct FailingRail;
 
 impl FindingRailObserver for FailingRail {
@@ -257,6 +268,7 @@ fn market_state(
         cluster_progress: None,
         finding_rail: Some(rail),
         finding_purchase_executor: None,
+        finding_challenge_executor: None,
     }
 }
 
@@ -423,7 +435,7 @@ fn build_recipe(
 fn build_profile(
     governance: &Keypair,
     log_id: String,
-    runner_manifest_sha256: &str,
+    allowed_runner_manifest: &str,
 ) -> Result<SignedFindingChallengeVerifierProfile, AnyError> {
     let mut profile = FindingChallengeVerifierProfile {
         schema: FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1.to_string(),
@@ -457,7 +469,7 @@ fn build_profile(
             valid_until: WINDOW_EXPIRES_AT,
             revocation_status_ref: "revocations/bbs".to_string(),
         },
-        allowed_runner_manifests: vec![runner_manifest_sha256.to_string()],
+        allowed_runner_manifests: vec![allowed_runner_manifest.to_string()],
         required_receipt_semantics: "chio.mediated_spend.v1".to_string(),
         resolver_policy_ref: "resolver-policy-v1".to_string(),
         retention_policy_ref: "retention-forever-v1".to_string(),
@@ -796,11 +808,10 @@ fn make_signed_report(
     };
     let draft = verify_finding_evidence(inputs.raw_finding, &trust, &bundle)?;
     if !draft.satisfies_required_facets(&trust.profile.body) {
-        return Err(format!(
+        return Err(Box::new(std::io::Error::other(format!(
             "draft does not satisfy the required profile facets: {:?}",
             draft.facets
-        )
-        .into());
+        ))));
     }
     Ok(sign_finding_verifier_report(
         &draft,
@@ -913,7 +924,7 @@ fn admission_body_from(
             currency: "USD".to_string(),
             authority_epoch: 1,
         },
-        community_fund_destination: "rail:venue-ledger:community-fund".to_string(),
+        community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc".to_string(),
         status_feed_operator_ref: "status-feed/venue-wedge".to_string(),
         purchase_authority: key_policy(16, "purchase"),
         failed_delivery_authority: key_policy(17, "failed-delivery"),
@@ -1761,6 +1772,17 @@ async fn finding_publish_discover_admission() -> TestResult {
     let (status, body) = stack.activate().await?;
     assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
     assert_eq!(json_body(&body)?["outcome"], serde_json::json!("Activated"));
+    let purchase_store = stack
+        .state
+        .joint_authority_store
+        .as_ref()
+        .ok_or_else(|| missing("joint authority store"))?
+        .finding_purchase_store();
+    assert_eq!(
+        purchase_store.list_payout_destinations(&web.allocation_id)?,
+        vec![(0_u8, web.admission.body.community_fund_destination.clone())],
+        "activation must pin the admission-signed community fund before purchases"
+    );
 
     let publication_terminal = web
         .admission
@@ -1852,6 +1874,11 @@ async fn finding_publish_discover_admission() -> TestResult {
         );
     }
     assert_eq!(stack.allocation_state()?, FindingAllocationState::Consumed);
+    assert_eq!(
+        purchase_store.list_payout_destinations(&web.allocation_id)?,
+        vec![(0_u8, web.admission.body.community_fund_destination.clone())],
+        "exact activation replay must preserve one community-fund registration"
+    );
 
     // Consumed collateral cannot back a second admission.
     let reuse_body =
@@ -1900,6 +1927,8 @@ async fn finding_publish_discover_admission() -> TestResult {
             prepared_admission_id: None,
             accepted_at: allocation.accepted_at,
         },
+        bond_backing_observed_at: None,
+        penalty_gate: FindingAdmissionPenaltyGate::Ungoverned,
         collateral_authority: &collateral_key,
         constituent_expiry_bounds: FindingConstituentExpiryBounds {
             finding: web.finding.expires_at,
@@ -1938,6 +1967,7 @@ async fn finding_publish_discover_admission() -> TestResult {
         BidRequest {
             schema: BID_REQUEST_SCHEMA.to_string(),
             agent_id: "buyer-agent-7".to_string(),
+            payout_destination: None,
             listing_id: LISTING_ID.to_string(),
             max_price_per_call: usd(900),
             window_seconds: 3_600,
@@ -1998,6 +2028,29 @@ async fn finding_publish_discover_admission() -> TestResult {
         Some(1)
     );
     Ok(())
+}
+
+#[tokio::test]
+async fn enforced_penalty_block_refuses_a_fresh_activation() -> TestResult {
+    let stack = provision_stack(LONG_EPOCH_SECS, ADMISSION_EXPIRES_AT)?;
+    stack.seed_market().await?;
+    let authority = stack
+        .state
+        .joint_authority_store
+        .as_ref()
+        .ok_or_else(|| missing("joint authority store"))?;
+    authority
+        .finding_purchase_store()
+        .block_new_slots(LISTING_ID, ISSUED_AT)?;
+
+    assert_activation_rejected(
+        &stack,
+        stack
+            .web
+            .activate_request(&stack.web.admission, &stack.web.schedule, &stack.web.report)?,
+        "listing admission is blocked by an enforced penalty",
+    )
+    .await
 }
 
 #[tokio::test]

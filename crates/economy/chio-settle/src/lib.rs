@@ -13,6 +13,8 @@ mod ccip;
 pub mod channel;
 mod config;
 mod evm;
+#[cfg(feature = "cognition-market-experimental")]
+mod finding_enforcement;
 mod hook;
 mod observe;
 mod ops;
@@ -55,6 +57,27 @@ pub use evm::{
     PreparedErc20Approval, PreparedEscrowCreate, PreparedEscrowRefund, PreparedEvmCall,
     PreparedEvmSubmission, PreparedMerkleRelease, PreparedRootPublication,
     SettlementAnchorContentBinding,
+};
+#[cfg(feature = "cognition-market-experimental")]
+pub use finding_enforcement::{
+    dispatch_finding_impairment, finding_anchor_checkpoint_statement_sha256,
+    finding_enforcement_anchor_parameters, finding_enforcement_anchor_parameters_for_artifact,
+    plan_finding_impairment, plan_finding_impairment_for_reconciliation,
+    recheck_finding_bond_observation, reconcile_finding_impairment, reobserve_finding_impairment,
+    reobserve_finding_impairment_for_reconciliation, verify_finding_collateral_snapshot,
+    verify_finding_enforcement, verify_finding_enforcement_for_reconciliation,
+    ConfirmedFindingImpairmentReconciliation, FindingAnchorCheckpointPublication,
+    FindingAnchorPublisherEvidence, FindingBondObservationRecheck, FindingBondObservationSource,
+    FindingBondObservationVerdict, FindingDispatchPolicy, FindingEnforcementPins,
+    FindingFinalityRequirement, FindingImpairmentAttempt, FindingImpairmentDestination,
+    FindingImpairmentIntent, FindingImpairmentOutcome, FindingImpairmentPublishError,
+    FindingImpairmentPublisher, FindingImpairmentQuarantine, FindingOperatorQualification,
+    FindingPenaltyAuthorityPolicy, FindingSettlementObserverEvidence, FindingVaultRejection,
+    PlannedFindingImpairment, PlannedFindingImpairmentReconciliation, ReconciledFindingEnforcement,
+    SignedFindingAnchorCheckpointPublication, StoredImpairmentTransaction,
+    VerifiedFindingEnforcement, FINDING_ANCHOR_CHECKPOINT_PUBLICATION_SCHEMA_V1,
+    FINDING_ENFORCEMENT_ANCHOR_SCHEMA_V1, FINDING_ENFORCEMENT_ANCHOR_TOOL_NAME,
+    FINDING_ENFORCEMENT_ANCHOR_TOOL_SERVER,
 };
 pub use hook::{
     SettlementFailureClass, SettlementFailureCode, SettlementFailureCodeParseError,

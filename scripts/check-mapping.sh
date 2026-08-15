@@ -5,8 +5,7 @@
 # TLA+ safety/liveness invariant in the revocation propagation models,
 # every required leaf invariant in its model's aggregate SafetyInv,
 # every drop-guard invariant in formal/apalache/PostAdmissionDropGuard.tla,
-# every #[kani::proof] harness in
-# crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs, every registered
+# every #[kani::proof] harness in the public Kani source list, every registered
 # Loom model, and every deterministic simulation harness has a corresponding
 # row in formal/MAPPING.md. Exits non-zero with a human-readable diff if any
 # property is unmapped.
@@ -24,7 +23,10 @@ tla="formal/tla/RevocationPropagation.tla"
 distributed_tla="formal/tla/DistributedRevocation.tla"
 distributed_temporal_tla="formal/tla/DistributedRevocationTemporal.tla"
 drop_guard_tla="formal/apalache/PostAdmissionDropGuard.tla"
-kani="crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs"
+kani_sources=(
+  "crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs"
+  "crates/economy/chio-open-market/src/kani_public_harnesses.rs"
+)
 loom_manifest=".loom/harnesses.toml"
 loom_runner="scripts/run-loom-manifest.sh"
 dst_manifest=".dst/harnesses.toml"
@@ -42,7 +44,7 @@ required_model_invariants=(
 
 # --- Sanity: source files must exist ----------------------------------------
 missing_inputs=0
-for f in "${mapping}" "${tla}" "${distributed_tla}" "${drop_guard_tla}" "${kani}" "${loom_manifest}" "${loom_runner}" "${dst_manifest}" "${dst_runner}" "${required_model_files[@]}"; do
+for f in "${mapping}" "${tla}" "${distributed_tla}" "${drop_guard_tla}" "${kani_sources[@]}" "${loom_manifest}" "${loom_runner}" "${dst_manifest}" "${dst_runner}" "${required_model_files[@]}"; do
   if [[ ! -f "${f}" ]]; then
     echo "check-mapping: required input is missing: ${f}" >&2
     missing_inputs=1
@@ -191,7 +193,8 @@ done
 # That rules out `mapfile` and the gawk-only 3-arg `match()`. We use a
 # state machine in awk and sub() to strip everything except the identifier.
 kani_harness_list="$(
-  awk '
+  for kani in "${kani_sources[@]}"; do
+    awk '
     /^#\[kani::proof\]/ { want = 1; next }
     want {
       line = $0
@@ -220,7 +223,8 @@ kani_harness_list="$(
       }
       want = 0
     }
-  ' "${kani}" | LC_ALL=C sort
+    ' "${kani}"
+  done | LC_ALL=C sort -u
 )"
 
 kani_harnesses=()
@@ -292,7 +296,10 @@ echo "  Drop-guard invariants enforced (${#defined_drop_guard_invariants[@]} of 
 for name in "${defined_drop_guard_invariants[@]}"; do
   echo "    - ${name}"
 done
-echo "  Kani harnesses enforced (${#kani_harnesses[@]} from ${kani}):"
+echo "  Kani harnesses enforced (${#kani_harnesses[@]} across ${#kani_sources[@]} source files):"
+for source in "${kani_sources[@]}"; do
+  echo "    source: ${source}"
+done
 for name in "${kani_harnesses[@]}"; do
   if [[ -n "${name}" ]]; then
     echo "    - ${name}"
@@ -361,7 +368,7 @@ fi
 if [[ "${#unmapped_kani[@]}" -gt 0 ]]; then
   failures=$((failures + ${#unmapped_kani[@]}))
   echo ""
-  echo "check-mapping: FAIL - ${#unmapped_kani[@]} Kani harness(es) defined in ${kani} but not cited in ${mapping}:" >&2
+  echo "check-mapping: FAIL - ${#unmapped_kani[@]} public Kani harness(es) are not cited in ${mapping}:" >&2
   for name in "${unmapped_kani[@]}"; do
     echo "  - ${name}" >&2
   done

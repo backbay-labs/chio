@@ -18,7 +18,7 @@ const LISTING_ID: &str = "purchase-listing-01";
 const OTHER_LISTING_ID: &str = "purchase-listing-02";
 const NOW: u64 = 1_750_000_000;
 const EXPIRES_AT: u64 = NOW + 3_600;
-const PAYOUT_DESTINATION: &str = "rail:venue-ledger:buyer-42";
+const PAYOUT_DESTINATION: &str = "0x000000000000000000000000000000000000002a";
 /// The exposure cap `backing_body` registers for every fixture allocation.
 const REGISTERED_EXPOSURE_CAP: u64 = 450;
 
@@ -280,6 +280,7 @@ impl Purchase {
             authoritative_payment_operation_id: &self.payment_operation_id,
             payer_hex: &self.payer_hex,
             agent_id: "agent-buyer-01",
+            payout_destination: PAYOUT_DESTINATION,
             finding_id: &self.finding_id,
             listing_id: &self.listing_id,
             bid_envelope_sha256: &self.bid_envelope_sha256,
@@ -301,6 +302,17 @@ fn open_reservation(fixture: &Fixture, purchase: &Purchase) -> FindingPurchaseWr
         .store
         .open_reservation(&purchase.input(&fixture.allocation_id))
         .expect("open reservation")
+}
+
+fn mark_capture(fixture: &Fixture, purchase: &Purchase, now: u64) {
+    fixture
+        .store
+        .mark_capture_pending(
+            &purchase.reservation_id,
+            &purchase.payment_operation_id,
+            now,
+        )
+        .expect("mark capture pending");
 }
 
 /// Exposure the fixture allocation still carries at `now`, which is the
@@ -362,6 +374,7 @@ fn open_reservation_inserts_replays_and_rejects_conflicts() {
             authoritative_payment_operation_id: purchase.payment_operation_id.clone(),
             payer_hex: purchase.payer_hex.clone(),
             agent_id: "agent-buyer-01".to_string(),
+            payout_destination: PAYOUT_DESTINATION.to_string(),
             finding_id: purchase.finding_id.clone(),
             listing_id: LISTING_ID.to_string(),
             bid_envelope_sha256: purchase.bid_envelope_sha256.clone(),
@@ -401,6 +414,15 @@ fn open_reservation_inserts_replays_and_rejects_conflicts() {
             Err(FindingPurchaseStoreError::Conflict(_))
         ),
         "conflicting parameters under an existing reservation id must reject"
+    );
+    let mut conflicting_payout = purchase.input(&fixture.allocation_id);
+    conflicting_payout.payout_destination = "0x000000000000000000000000000000000000002b";
+    assert!(
+        matches!(
+            fixture.store.open_reservation(&conflicting_payout),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "a replay cannot rebind the buyer-signed payout destination"
     );
 
     let mut reused_intent = Purchase::new("beta", LISTING_ID, 10);
@@ -449,6 +471,103 @@ fn open_reservation_inserts_replays_and_rejects_conflicts() {
         .get_reservation("reservation-absent")
         .expect("absent reservation lookup")
         .is_none());
+}
+
+#[test]
+fn purchase_writes_advance_the_rollback_protected_market_projection() {
+    let fixture = fixture();
+    let purchase = Purchase::new("rollback-projection", LISTING_ID, 100);
+    open_reservation(&fixture, &purchase);
+    assert_eq!(
+        finding_projection_counts(&fixture.store),
+        (1, 1),
+        "the pre-dispatch reservation is rollback protected"
+    );
+    fixture
+        .store
+        .reserve_slot(&purchase.reservation_id, NOW + 1)
+        .expect("reserve slot");
+    assert_eq!(
+        finding_projection_counts(&fixture.store),
+        (2, 2),
+        "the reserved purchase is protected before delivery closes"
+    );
+    let bytes = record_bytes("rollback-projection");
+    let record_sha256 = chio_core::sha256_hex(&bytes);
+    mark_capture(&fixture, &purchase, NOW + 2);
+    fixture
+        .store
+        .close_slot_with_record(&FindingPurchaseDeliveryInput {
+            reservation_id: &purchase.reservation_id,
+            purchase_key: &hex64('d'),
+            record_json: &bytes,
+            record_sha256: &record_sha256,
+            delivery_receipt_id: "receipt-rollback-projection",
+            payout_destination: PAYOUT_DESTINATION,
+            retention_expires_at: NOW + 100_000,
+            now: NOW + 3,
+        })
+        .expect("settle purchase");
+    let pending = Purchase::new("pending-after-settlement", LISTING_ID, 25);
+    let pending_destination = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    let mut pending_input = pending.input(&fixture.allocation_id);
+    pending_input.payout_destination = pending_destination;
+    fixture
+        .store
+        .open_reservation(&pending_input)
+        .expect("open a later pending reservation");
+
+    assert_eq!(
+        finding_projection_counts(&fixture.store),
+        (5, 5),
+        "every settlement-capable lifecycle change advances both chains"
+    );
+}
+
+#[test]
+fn terminal_reservation_identity_is_rollback_protected() {
+    let fixture = fixture();
+    let purchase = Purchase::new("terminal-projection", LISTING_ID, 10);
+    open_reservation(&fixture, &purchase);
+    fixture
+        .store
+        .release_reservation(&purchase.reservation_id, NOW + 1)
+        .expect("release reservation");
+
+    let connection = fixture.store.connection().expect("purchase connection");
+    connection
+        .execute_batch("DROP TRIGGER purchase_reservations_immutable_identity;")
+        .expect("disable identity trigger for offline tamper");
+    assert_eq!(
+        connection
+            .execute(
+                "UPDATE purchase_reservations SET purchase_intent_id = ?1 WHERE reservation_id = ?2",
+                ["purchase-intent-substituted", purchase.reservation_id.as_str()],
+            )
+            .expect("substitute terminal identity"),
+        1
+    );
+    assert!(
+        crate::serving_owner::verify_finding_market_projection_for_tests(&connection).is_err(),
+        "terminal reservation identity must remain committed after release"
+    );
+}
+
+fn finding_projection_counts(store: &SqliteFindingPurchaseStore) -> (i64, i64) {
+    let connection = store.connection.lock().expect("purchase lock");
+    connection
+        .query_row(
+            r#"
+            SELECT
+                (SELECT COUNT(*) FROM finding_challenge_projection_commits),
+                (SELECT COUNT(*) FROM authority_global_commits
+                 WHERE projection_kind = 'finding_challenge'
+                   AND projection_key = 'market')
+            "#,
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read cognition-market projection coverage")
 }
 
 #[test]
@@ -796,11 +915,41 @@ fn close_slot_with_record_settles_atomically_and_replays() {
         ),
         "record bytes that do not match the claimed digest must reject"
     );
-    assert!(fixture
-        .store
-        .list_payout_destinations(&fixture.allocation_id)
-        .expect("destinations after rejected close")
-        .is_empty());
+    assert!(
+        fixture
+            .store
+            .list_payout_destinations(&fixture.allocation_id)
+            .expect("destinations after rejected close")
+            .is_empty(),
+        "a rejected close must not promote the provisional destination"
+    );
+    assert!(matches!(
+        fixture.store.close_slot_with_record(&delivery),
+        Err(FindingPurchaseStoreError::Conflict(_))
+    ));
+
+    assert_eq!(
+        fixture
+            .store
+            .mark_capture_pending(
+                &purchase.reservation_id,
+                &purchase.payment_operation_id,
+                NOW + 2,
+            )
+            .expect("mark capture pending"),
+        FindingPurchaseWriteOutcome::Inserted
+    );
+    assert_eq!(
+        fixture
+            .store
+            .mark_capture_pending(
+                &purchase.reservation_id,
+                &purchase.payment_operation_id,
+                NOW + 50,
+            )
+            .expect("replay capture marker"),
+        FindingPurchaseWriteOutcome::ExistingSame
+    );
 
     assert_eq!(
         fixture
@@ -871,7 +1020,7 @@ fn close_slot_with_record_settles_atomically_and_replays() {
     );
 
     let mut conflicting_destination = delivery;
-    conflicting_destination.payout_destination = "rail:venue-ledger:buyer-other";
+    conflicting_destination.payout_destination = "0x000000000000000000000000000000000000002b";
     assert!(
         matches!(
             fixture
@@ -953,6 +1102,7 @@ fn retained_exposure_counts_until_its_retention_horizon_lapses() {
     let bytes = record_bytes("alpha");
     let digest = chio_core::sha256_hex(&bytes);
     let horizon = NOW + 1_000;
+    mark_capture(&fixture, &settled, NOW + 2);
     fixture
         .store
         .close_slot_with_record(&FindingPurchaseDeliveryInput {
@@ -1233,6 +1383,88 @@ fn close_slot_with_deny_releases_exposure_and_retains_the_denial() {
     );
 }
 
+fn denied_projection_fixture(label: &str) -> (Fixture, String) {
+    let fixture = fixture();
+    let purchase = Purchase::new(label, LISTING_ID, 100);
+    open_reservation(&fixture, &purchase);
+    fixture
+        .store
+        .reserve_slot(&purchase.reservation_id, NOW + 1)
+        .expect("reserve denied slot");
+    let bytes = record_bytes(label);
+    let digest = chio_core::sha256_hex(&bytes);
+    fixture
+        .store
+        .close_slot_with_deny(&FindingPurchaseDenyInput {
+            reservation_id: &purchase.reservation_id,
+            failed_delivery_id: &format!("failed-delivery-{label}"),
+            record_json: &bytes,
+            record_sha256: &digest,
+            deny_receipt_id: &format!("receipt-deny-{label}"),
+            now: NOW + 2,
+        })
+        .expect("deny delivery");
+    (fixture, purchase.reservation_id)
+}
+
+#[test]
+fn failed_delivery_bytes_are_covered_by_the_market_projection() {
+    let (fixture, reservation_id) = denied_projection_fixture("projection-record");
+    let connection = fixture.store.connection().expect("purchase connection");
+    connection
+        .execute_batch("DROP TRIGGER failed_delivery_records_immutable")
+        .expect("disable offline immutability trigger");
+    assert_eq!(
+        connection
+            .execute(
+                "UPDATE failed_delivery_records SET deny_receipt_id = deny_receipt_id || '-tampered' WHERE reservation_id = ?1",
+                [&reservation_id],
+            )
+            .expect("tamper failed delivery"),
+        1
+    );
+    assert!(crate::serving_owner::verify_finding_market_projection_for_tests(&connection).is_err());
+}
+
+#[test]
+fn failed_delivery_standing_relations_are_covered_by_the_market_projection() {
+    for (label, setup, mutation) in [
+        (
+            "projection-reservation",
+            "",
+            "UPDATE purchase_reservations SET updated_at = updated_at + 1 WHERE reservation_id = ?1",
+        ),
+        (
+            "projection-slot",
+            "DROP TRIGGER pending_purchase_slots_lifecycle",
+            "UPDATE pending_purchase_slots SET closed_at = closed_at + 1 WHERE reservation_id = ?1",
+        ),
+        (
+            "projection-encumbrance",
+            "",
+            "UPDATE seller_exposure_encumbrances SET updated_at = updated_at + 1 WHERE reservation_id = ?1",
+        ),
+    ] {
+        let (fixture, reservation_id) = denied_projection_fixture(label);
+        let connection = fixture.store.connection().expect("purchase connection");
+        if !setup.is_empty() {
+            connection
+                .execute_batch(setup)
+                .expect("prepare offline relation tamper");
+        }
+        assert_eq!(
+            connection
+                .execute(mutation, [&reservation_id])
+                .expect("tamper failed delivery relation"),
+            1
+        );
+        assert!(
+            crate::serving_owner::verify_finding_market_projection_for_tests(&connection).is_err(),
+            "{label} must be committed by the failed-delivery projection"
+        );
+    }
+}
+
 #[test]
 fn release_and_expiry_never_leave_a_slot_reserved() {
     let fixture = fixture();
@@ -1294,6 +1526,7 @@ fn release_and_expiry_never_leave_a_slot_reserved() {
         .expect("reserve slot");
     let bytes = record_bytes("gamma");
     let digest = chio_core::sha256_hex(&bytes);
+    mark_capture(&fixture, &settled, NOW + 6);
     fixture
         .store
         .close_slot_with_record(&FindingPurchaseDeliveryInput {
@@ -1374,9 +1607,1166 @@ fn release_and_expiry_never_leave_a_slot_reserved() {
 }
 
 #[test]
+fn capture_intent_survives_expiry_until_delivery_finalization() {
+    let fixture = fixture();
+    let purchase = Purchase::new("captured-crash", LISTING_ID, 100).expiring_at(NOW + 10);
+    open_reservation(&fixture, &purchase);
+    fixture
+        .store
+        .reserve_slot(&purchase.reservation_id, NOW + 1)
+        .expect("reserve capture slot");
+    mark_capture(&fixture, &purchase, NOW + 2);
+
+    assert_eq!(
+        fixture
+            .store
+            .expire_reservations(NOW + 10, 16)
+            .expect("sweep around captured reservation"),
+        0,
+        "a durable capture intent is never classified as abandonment"
+    );
+    assert_eq!(
+        reservation_state(&fixture, &purchase.reservation_id),
+        FindingPurchaseReservationState::SlotReserved
+    );
+    assert_eq!(
+        slot(&fixture, &purchase.reservation_id).state,
+        FindingPurchaseSlotState::Reserved
+    );
+    assert_eq!(outstanding_exposure(&fixture, NOW + 10), 100);
+    assert!(matches!(
+        fixture
+            .store
+            .release_reservation(&purchase.reservation_id, NOW + 11),
+        Err(FindingPurchaseStoreError::Conflict(_))
+    ));
+
+    let bytes = record_bytes("captured-crash");
+    let digest = chio_core::sha256_hex(&bytes);
+    fixture
+        .store
+        .close_slot_with_record(&FindingPurchaseDeliveryInput {
+            reservation_id: &purchase.reservation_id,
+            purchase_key: &hex64('d'),
+            record_json: &bytes,
+            record_sha256: &digest,
+            delivery_receipt_id: "receipt-captured-crash",
+            payout_destination: PAYOUT_DESTINATION,
+            retention_expires_at: NOW + 100_000,
+            now: NOW + 12,
+        })
+        .expect("recover delivery finalization after expiry");
+    assert_eq!(
+        reservation_state(&fixture, &purchase.reservation_id),
+        FindingPurchaseReservationState::Consumed
+    );
+}
+
+#[test]
+fn a_lapsed_reservation_stops_encumbering_the_allocation_at_the_next_reserve() {
+    let fixture = fixture();
+    // A reservation that takes most of the cap and a slot, then is
+    // abandoned: nothing settles it, denies it, or sweeps it.
+    let abandoned = Purchase::new("alpha", LISTING_ID, 400);
+    open_reservation(&fixture, &abandoned);
+    fixture
+        .store
+        .reserve_slot(&abandoned.reservation_id, NOW + 1)
+        .expect("reserve slot");
+
+    // While the reservation is live its exposure occupies the cap.
+    let crowded = Purchase::new("beta", LISTING_ID, 200);
+    assert!(
+        matches!(
+            fixture
+                .store
+                .open_reservation(&crowded.input(&fixture.allocation_id)),
+            Err(FindingPurchaseStoreError::ExposureOvercommitted { .. })
+        ),
+        "live exposure keeps occupying the cap"
+    );
+
+    // Past its expiry the reservation is dead weight: the next reserve
+    // expires it in the same transaction and checks the cap against live
+    // exposure only, so an abandoned purchase cannot lock the seller out.
+    let next = Purchase::new("gamma", LISTING_ID, 200);
+    let mut input = next.input(&fixture.allocation_id);
+    input.created_at = EXPIRES_AT;
+    input.expires_at = EXPIRES_AT + 3_600;
+    assert_eq!(
+        fixture
+            .store
+            .open_reservation(&input)
+            .expect("a lapsed reservation must not encumber the seller"),
+        FindingPurchaseWriteOutcome::Inserted
+    );
+    assert_eq!(
+        reservation_state(&fixture, &abandoned.reservation_id),
+        FindingPurchaseReservationState::Expired
+    );
+    assert_eq!(
+        encumbrance(&fixture, &abandoned.reservation_id).state,
+        FindingPurchaseEncumbranceState::Released
+    );
+    assert_eq!(
+        slot(&fixture, &abandoned.reservation_id).state,
+        FindingPurchaseSlotState::ClosedDeny
+    );
+    assert_eq!(outstanding_exposure(&fixture, EXPIRES_AT), 200);
+}
+
+#[test]
+fn the_exposure_query_follows_reservation_expiry_without_a_sweep() {
+    let fixture = fixture();
+    // One abandoned open reservation and one purchase holding a slot,
+    // both carrying the same expiry, and no sweep ever runs.
+    let abandoned = Purchase::new("alpha", LISTING_ID, 100);
+    open_reservation(&fixture, &abandoned);
+    let in_flight = Purchase::new("beta", LISTING_ID, 150);
+    open_reservation(&fixture, &in_flight);
+    fixture
+        .store
+        .reserve_slot(&in_flight.reservation_id, NOW + 1)
+        .expect("reserve slot");
+    assert_eq!(
+        outstanding_exposure(&fixture, NOW + 2),
+        250,
+        "live reservations encumber in full"
+    );
+
+    // Past the expiry the open reservation can never take a slot, so it
+    // stops counting even though nothing has swept it. The slot-holding
+    // purchase may still settle, so it must keep counting: dropping it
+    // here would let a new reservation overcommit against exposure that
+    // can still be retained.
+    assert_eq!(outstanding_exposure(&fixture, EXPIRES_AT), 150);
+    assert_eq!(
+        reservation_state(&fixture, &abandoned.reservation_id),
+        FindingPurchaseReservationState::Open,
+        "the figure moved on expiry alone, not on a sweep"
+    );
+
+    // The in-flight purchase settles past its expiry, exactly the path
+    // the query kept counting for: its exposure survives as a retained
+    // encumbrance through the settlement's own horizon.
+    let bytes = record_bytes("beta");
+    let digest = chio_core::sha256_hex(&bytes);
+    let purchase_key = hex64('d');
+    mark_capture(&fixture, &in_flight, EXPIRES_AT);
+    fixture
+        .store
+        .close_slot_with_record(&FindingPurchaseDeliveryInput {
+            reservation_id: &in_flight.reservation_id,
+            purchase_key: &purchase_key,
+            record_json: &bytes,
+            record_sha256: &digest,
+            delivery_receipt_id: "receipt-delivery-beta",
+            payout_destination: PAYOUT_DESTINATION,
+            retention_expires_at: EXPIRES_AT + 100_000,
+            now: EXPIRES_AT,
+        })
+        .expect("settle the in-flight purchase past its expiry");
+    assert_eq!(
+        outstanding_exposure(&fixture, EXPIRES_AT + 1),
+        150,
+        "settlement carries the exposure into retention without a gap"
+    );
+}
+
+#[test]
+fn an_overcommitted_retry_advances_past_each_expiry_batch() {
+    const LARGE_CAP: u64 = 1_024;
+
+    let fixture = fixture();
+    let mut backing = backing_body("vault:expiry-batch", LISTING_ID);
+    backing.locked_amount = usd(LARGE_CAP + 50);
+    backing.maximum_sale_exposure = usd(LARGE_CAP);
+    backing.allocation_id = String::new();
+    backing.allocation_id = compute_allocation_id(&backing).expect("large allocation id");
+    let allocation_id = backing.allocation_id.clone();
+    let envelope = envelope_string(&backing, &keypair(21));
+    fixture
+        .market
+        .register_allocation(&envelope, &backing, NOW)
+        .expect("register large allocation");
+    fixture
+        .market
+        .consume_allocation(&allocation_id)
+        .expect("consume large allocation");
+
+    for index in 0..=MAX_EXPIRY_BATCH {
+        let purchase =
+            Purchase::new(&format!("expiry-batch-{index}"), LISTING_ID, 1).expiring_at(NOW + 1);
+        let mut input = purchase.input(&allocation_id);
+        input.maximum_sale_exposure_units = LARGE_CAP;
+        fixture
+            .store
+            .open_reservation(&input)
+            .expect("open batch reservation");
+        fixture
+            .store
+            .reserve_slot(&purchase.reservation_id, NOW)
+            .expect("reserve batch slot");
+    }
+
+    let next = Purchase::new("after-expiry-batch", LISTING_ID, LARGE_CAP);
+    let mut input = next.input(&allocation_id);
+    input.maximum_sale_exposure_units = LARGE_CAP;
+    input.created_at = NOW + 1;
+    let first = fixture
+        .store
+        .open_reservation(&input)
+        .expect_err("one expired row remains after the bounded cleanup");
+    assert!(matches!(
+        first,
+        FindingPurchaseStoreError::ExposureOvercommitted {
+            outstanding: 1,
+            requested: LARGE_CAP,
+            maximum: LARGE_CAP,
+            ..
+        }
+    ));
+
+    assert_eq!(
+        fixture
+            .store
+            .open_reservation(&input)
+            .expect("the retry advances to the remaining expired row"),
+        FindingPurchaseWriteOutcome::Inserted
+    );
+    assert_eq!(
+        fixture
+            .store
+            .list_outstanding_exposure_total(&allocation_id, NOW + 1)
+            .expect("large allocation exposure"),
+        LARGE_CAP
+    );
+}
+
+#[test]
+fn blocking_sales_stops_the_slot_line_and_the_wait_predicate_is_exact() {
+    let fixture = fixture();
+    let first = Purchase::new("alpha", LISTING_ID, 10);
+    let second = Purchase::new("beta", LISTING_ID, 10);
+    let third = Purchase::new("gamma", LISTING_ID, 10);
+    for purchase in [&first, &second, &third] {
+        open_reservation(&fixture, purchase);
+    }
+    assert_eq!(
+        fixture
+            .store
+            .reserve_slot(&first.reservation_id, NOW + 1)
+            .expect("first slot"),
+        1
+    );
+    assert_eq!(
+        fixture
+            .store
+            .reserve_slot(&second.reservation_id, NOW + 1)
+            .expect("second slot"),
+        2
+    );
+    assert!(
+        !fixture
+            .store
+            .sales_blocked(LISTING_ID)
+            .expect("sales blocked"),
+        "a listing sells until it is blocked"
+    );
+
+    // The wait predicate counts only the slots at or below the cutoff.
+    assert!(
+        fixture
+            .store
+            .all_slots_closed_at_or_below(LISTING_ID, 0)
+            .expect("wait predicate"),
+        "slot ordinals start at one, so a zero cutoff waits for nothing"
+    );
+    assert!(
+        !fixture
+            .store
+            .all_slots_closed_at_or_below(LISTING_ID, 1)
+            .expect("wait predicate"),
+        "slot one is still reserved"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .closed_settled_purchase_keys_at_or_below(LISTING_ID, &fixture.allocation_id, 2,)
+            .expect("atomic closure and claim enumeration"),
+        None,
+        "an open slot cannot be observed beside an apparently complete claim set"
+    );
+
+    assert_eq!(
+        fixture
+            .store
+            .block_new_slots(LISTING_ID, NOW + 2)
+            .expect("block sales"),
+        FindingPurchaseWriteOutcome::Inserted
+    );
+    assert_eq!(
+        fixture
+            .store
+            .block_new_slots(LISTING_ID, NOW + 3)
+            .expect("replay block"),
+        FindingPurchaseWriteOutcome::ExistingSame
+    );
+    assert!(fixture
+        .store
+        .sales_blocked(LISTING_ID)
+        .expect("sales blocked"));
+    assert!(
+        matches!(
+            fixture.store.reserve_slot(&third.reservation_id, NOW + 4),
+            Err(FindingPurchaseStoreError::SalesBlocked(_))
+        ),
+        "no reservation may take a fresh slot once the listing is blocked"
+    );
+    assert!(
+        fixture
+            .store
+            .get_slot(&third.reservation_id)
+            .expect("slot lookup")
+            .is_none(),
+        "a refused reserve leaves no durable slot"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .reserve_slot(&first.reservation_id, NOW + 4)
+            .expect("idempotent slot"),
+        1,
+        "a reservation already holding a slot keeps it, because it opens nothing new"
+    );
+
+    // A blocked listing still closes the purchases already in flight, and
+    // the predicate flips exactly when the last pre-cutoff slot closes.
+    let bytes = record_bytes("alpha");
+    let digest = chio_core::sha256_hex(&bytes);
+    mark_capture(&fixture, &first, NOW + 5);
+    fixture
+        .store
+        .close_slot_with_record(&FindingPurchaseDeliveryInput {
+            reservation_id: &first.reservation_id,
+            purchase_key: &hex64('d'),
+            record_json: &bytes,
+            record_sha256: &digest,
+            delivery_receipt_id: "receipt-delivery-alpha",
+            payout_destination: PAYOUT_DESTINATION,
+            retention_expires_at: NOW + 100_000,
+            now: NOW + 5,
+        })
+        .expect("settle under a block");
+    assert!(fixture
+        .store
+        .all_slots_closed_at_or_below(LISTING_ID, 1)
+        .expect("wait predicate"));
+    assert!(
+        !fixture
+            .store
+            .all_slots_closed_at_or_below(LISTING_ID, 2)
+            .expect("wait predicate"),
+        "slot two is still reserved"
+    );
+    fixture
+        .store
+        .release_reservation(&second.reservation_id, NOW + 6)
+        .expect("abort under a block");
+    assert!(
+        fixture
+            .store
+            .all_slots_closed_at_or_below(LISTING_ID, 2)
+            .expect("wait predicate"),
+        "an aborted purchase closes its slot exactly as a settled one does"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .closed_settled_purchase_keys_at_or_below(LISTING_ID, &fixture.allocation_id, 2,)
+            .expect("atomic closure and claim enumeration"),
+        Some(vec![hex64('d')]),
+        "the complete set is returned from the same snapshot that proves closure"
+    );
+
+    // Blocks are per listing.
+    assert!(
+        !fixture
+            .store
+            .sales_blocked(OTHER_LISTING_ID)
+            .expect("sales blocked"),
+        "blocking one listing must not block another"
+    );
+    assert!(fixture
+        .store
+        .all_slots_closed_at_or_below(OTHER_LISTING_ID, 9)
+        .expect("wait predicate"));
+}
+
+#[test]
+fn a_sales_block_episode_lifts_once_and_is_never_erased() {
+    let connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("purchase schema");
+    connection
+        .execute_batch(
+            r#"
+            INSERT INTO listing_sales_blocks (
+                listing_id, block_ordinal, state, blocked_at, lifted_at
+            ) VALUES ('listing-01', 1, 'blocked', 10, NULL);
+            "#,
+        )
+        .expect("raise a block");
+
+    assert!(
+        connection
+            .execute_batch(
+                r#"
+                INSERT INTO listing_sales_blocks (
+                    listing_id, block_ordinal, state, blocked_at, lifted_at
+                ) VALUES ('listing-01', 2, 'blocked', 11, NULL);
+                "#,
+            )
+            .is_err(),
+        "a listing carries at most one live block, so a lift is never ambiguous"
+    );
+    assert!(
+        connection
+            .execute_batch(
+                "UPDATE listing_sales_blocks SET blocked_at = 99 WHERE block_ordinal = 1;"
+            )
+            .is_err(),
+        "the raise is frozen at the time it was recorded"
+    );
+    assert!(
+        connection
+            .execute_batch("DELETE FROM listing_sales_blocks;")
+            .is_err(),
+        "a block episode is retained, never deleted"
+    );
+
+    connection
+        .execute_batch(
+            r#"
+            UPDATE listing_sales_blocks SET state = 'lifted', lifted_at = 20
+            WHERE block_ordinal = 1;
+            "#,
+        )
+        .expect("lift the block");
+    assert!(
+        connection
+            .execute_batch(
+                r#"
+                UPDATE listing_sales_blocks SET state = 'blocked', lifted_at = NULL
+                WHERE block_ordinal = 1;
+                "#,
+            )
+            .is_err(),
+        "a released episode is never reblocked in place"
+    );
+    assert!(
+        connection
+            .execute_batch(
+                "UPDATE listing_sales_blocks SET lifted_at = 30 WHERE block_ordinal = 1;"
+            )
+            .is_err(),
+        "a lift is stamped exactly once"
+    );
+
+    // The listing may be blocked again, and the released episode keeps its
+    // own raise and release beside the new one.
+    connection
+        .execute_batch(
+            r#"
+            INSERT INTO listing_sales_blocks (
+                listing_id, block_ordinal, state, blocked_at, lifted_at
+            ) VALUES ('listing-01', 2, 'blocked', 40, NULL);
+            "#,
+        )
+        .expect("raise a second block");
+    let retained: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM listing_sales_blocks WHERE listing_id = 'listing-01'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count episodes");
+    assert_eq!(retained, 2);
+}
+
+#[test]
+fn a_listing_keyed_sales_block_carries_across_to_the_episode_line() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("purchase schema");
+    // Rewind the sales block to the listing-keyed shape the earlier
+    // revision provisioned, carrying two listings blocked under it.
+    connection
+        .execute_batch(
+            r#"
+            DROP TABLE listing_sales_blocks;
+
+            CREATE TABLE listing_sales_blocks (
+                listing_id TEXT NOT NULL PRIMARY KEY
+                    CHECK (length(listing_id) BETWEEN 1 AND 512),
+                blocked_at INTEGER NOT NULL CHECK (blocked_at > 0)
+            );
+
+            CREATE TRIGGER listing_sales_blocks_immutable
+            BEFORE UPDATE ON listing_sales_blocks
+            BEGIN
+                SELECT RAISE(ABORT, 'listing sales block is immutable');
+            END;
+
+            CREATE TRIGGER listing_sales_blocks_no_delete
+            BEFORE DELETE ON listing_sales_blocks
+            BEGIN
+                SELECT RAISE(ABORT, 'listing sales block must be retained');
+            END;
+
+            INSERT INTO listing_sales_blocks (listing_id, blocked_at)
+            VALUES ('listing-01', 10), ('listing-02', 11);
+            "#,
+        )
+        .expect("rewind to the listing-keyed block");
+    connection
+        .execute_batch(&format!(
+            "PRAGMA application_id = {};",
+            crate::CHIO_SQLITE_APPLICATION_ID
+        ))
+        .expect("stamp the application id");
+    crate::stamp_schema_version(
+        &connection,
+        FINDING_PURCHASE_SCHEMA_KEY,
+        FINDING_PURCHASE_LISTING_KEYED_BLOCK_VERSION,
+    )
+    .expect("stamp the earlier revision");
+
+    initialize_finding_purchase_schema(&mut connection).expect("open across the revision");
+
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT listing_id, block_ordinal, state, blocked_at, lifted_at
+            FROM listing_sales_blocks ORDER BY listing_id ASC
+            "#,
+        )
+        .expect("prepare episode read");
+    let episodes = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, Option<i64>>(4)?,
+            ))
+        })
+        .expect("read episodes")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("episode rows");
+    assert_eq!(
+        episodes,
+        vec![
+            ("listing-01".to_owned(), 1, "blocked".to_owned(), 10, None),
+            ("listing-02".to_owned(), 1, "blocked".to_owned(), 11, None),
+        ],
+        "a block that was never lifted stays live across the upgrade, at the time it was raised"
+    );
+
+    // The open re-verifies the schema shape, so the parked table is gone
+    // and reopening is a no-op.
+    drop(statement);
+    initialize_finding_purchase_schema(&mut connection).expect("reopen at the current revision");
+}
+
+fn rewind_to_rail_only_payout_destinations(connection: &Connection) {
+    connection
+        .execute_batch(
+            r#"
+            DROP TABLE payout_destinations;
+
+            CREATE TABLE payout_destinations (
+                allocation_id TEXT NOT NULL
+                    CHECK (length(allocation_id) = 64 AND allocation_id NOT GLOB '*[^0-9a-f]*'),
+                destination TEXT NOT NULL CHECK (
+                    length(destination) BETWEEN 3 AND 512
+                    AND destination GLOB '?*:?*'
+                ),
+                slot_index INTEGER NOT NULL CHECK (slot_index BETWEEN 0 AND 15),
+                admitted_at INTEGER NOT NULL CHECK (admitted_at > 0),
+                PRIMARY KEY (allocation_id, destination)
+            );
+
+            CREATE UNIQUE INDEX payout_destinations_slot
+                ON payout_destinations(allocation_id, slot_index);
+
+            CREATE TRIGGER payout_destinations_immutable
+            BEFORE UPDATE ON payout_destinations
+            BEGIN
+                SELECT RAISE(ABORT, 'admitted payout destination is immutable');
+            END;
+
+            CREATE TRIGGER payout_destinations_no_delete
+            BEFORE DELETE ON payout_destinations
+            BEGIN
+                SELECT RAISE(ABORT, 'admitted payout destination must be retained');
+            END;
+            "#,
+        )
+        .expect("rewind to the rail-only payout table");
+}
+
+#[test]
+fn rail_only_community_destination_is_retained_as_non_actionable_history() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("purchase schema");
+    rewind_to_rail_only_payout_destinations(&connection);
+    connection
+        .execute(
+            r#"
+            INSERT INTO payout_destinations (
+                allocation_id, destination, slot_index, admitted_at
+            ) VALUES (?1, 'rail:venue-ledger:community-fund', 0, ?2)
+            "#,
+            params![hex64('a'), i64::try_from(NOW).expect("test time fits")],
+        )
+        .expect("insert legacy community destination");
+    connection
+        .execute_batch(&format!(
+            "PRAGMA application_id = {};",
+            crate::CHIO_SQLITE_APPLICATION_ID
+        ))
+        .expect("stamp the application id");
+    crate::stamp_schema_version(&connection, FINDING_PURCHASE_SCHEMA_KEY, 3)
+        .expect("stamp the earlier revision");
+
+    initialize_finding_purchase_schema(&mut connection).expect("retain legacy community payout");
+    let destination: String = connection
+        .query_row(
+            "SELECT destination FROM legacy_payout_destinations WHERE slot_index = 0",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read retained community destination");
+    assert_eq!(destination, "rail:venue-ledger:community-fund");
+    let actionable: i64 = connection
+        .query_row("SELECT COUNT(*) FROM payout_destinations", [], |row| {
+            row.get(0)
+        })
+        .expect("count actionable destinations");
+    assert_eq!(actionable, 0);
+}
+
+#[test]
+fn rail_only_buyer_destination_is_retained_as_non_actionable_history() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("purchase schema");
+    rewind_to_rail_only_payout_destinations(&connection);
+    connection
+        .execute(
+            r#"
+            INSERT INTO payout_destinations (
+                allocation_id, destination, slot_index, admitted_at
+            ) VALUES (?1, 'rail:venue-ledger:legacy-buyer', 1, ?2)
+            "#,
+            params![hex64('a'), i64::try_from(NOW).expect("test time fits")],
+        )
+        .expect("insert legacy buyer destination");
+    connection
+        .execute_batch(&format!(
+            "PRAGMA application_id = {};",
+            crate::CHIO_SQLITE_APPLICATION_ID
+        ))
+        .expect("stamp the application id");
+    crate::stamp_schema_version(&connection, FINDING_PURCHASE_SCHEMA_KEY, 3)
+        .expect("stamp the earlier revision");
+
+    initialize_finding_purchase_schema(&mut connection).expect("retain legacy buyer payout");
+    let retained: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM legacy_payout_destinations WHERE slot_index = 1",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read retained legacy destination");
+    assert_eq!(retained, 1, "the migration preserves the legacy row");
+    let parked: bool = connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM sqlite_schema
+                WHERE type = 'table' AND name = 'payout_destinations_legacy'
+            )
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .expect("check migration rollback");
+    assert!(!parked, "the temporary migration table is removed");
+    initialize_finding_purchase_schema(&mut connection).expect("reopen retained legacy payout");
+}
+
+fn insert_revision_four_reservation(connection: &Connection, agent_id: &str) {
+    connection
+        .execute(
+            r#"
+            INSERT INTO purchase_reservations (
+                reservation_id, purchase_intent_id,
+                authoritative_payment_operation_id, payer_hex, agent_id,
+                finding_id, listing_id, bid_envelope_sha256, ask_digest,
+                admission_envelope_sha256, amount_units, currency,
+                expires_at, state, created_at, updated_at
+            ) VALUES (
+                'reservation-v4', 'intent-v4', 'payment-v4', ?1, ?2, ?3,
+                'listing-v4', ?4, ?5, ?6, 10, 'USD', ?7, 'open', ?8, ?8
+            )
+            "#,
+            params![
+                hex64('b'),
+                agent_id,
+                hex64('a'),
+                hex64('c'),
+                hex64('d'),
+                hex64('e'),
+                i64::try_from(EXPIRES_AT).expect("test expiry fits"),
+                i64::try_from(NOW).expect("test time fits"),
+            ],
+        )
+        .expect("insert revision-four reservation");
+}
+
+fn rewind_to_revision_four_payout_binding(connection: &Connection, agent_id: &str) {
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("purchase schema");
+    connection
+        .execute_batch("DROP TABLE purchase_payout_bindings;")
+        .expect("remove the separate payout binding");
+    insert_revision_four_reservation(connection, agent_id);
+    connection
+        .execute_batch(&format!(
+            "PRAGMA application_id = {};",
+            crate::CHIO_SQLITE_APPLICATION_ID
+        ))
+        .expect("stamp the application id");
+    crate::stamp_schema_version(connection, FINDING_PURCHASE_SCHEMA_KEY, 4)
+        .expect("stamp revision four");
+}
+
+#[test]
+fn revision_four_evm_agent_value_moves_to_separate_payout_binding() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    let destination = "0x000000000000000000000000000000000000002a";
+    rewind_to_revision_four_payout_binding(&connection, destination);
+
+    initialize_finding_purchase_schema(&mut connection).expect("migrate revision-four binding");
+
+    let binding: String = connection
+        .query_row(
+            "SELECT destination FROM purchase_payout_bindings WHERE reservation_id = 'reservation-v4'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read migrated payout binding");
+    assert_eq!(binding, destination);
+    initialize_finding_purchase_schema(&mut connection).expect("reopen at revision six");
+}
+
+#[test]
+fn revision_four_opaque_agent_id_cannot_invent_a_payout_binding() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    rewind_to_revision_four_payout_binding(&connection, "agent-buyer-01");
+
+    assert!(
+        initialize_finding_purchase_schema(&mut connection).is_err(),
+        "an opaque agent identity supplies no authenticated payout address"
+    );
+    let reservation: i64 = connection
+        .query_row("SELECT COUNT(*) FROM purchase_reservations", [], |row| {
+            row.get(0)
+        })
+        .expect("read rolled-back reservation");
+    assert_eq!(reservation, 1);
+    let binding_table: bool = connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM sqlite_schema
+                WHERE type = 'table' AND name = 'purchase_payout_bindings'
+            )
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .expect("check migration rollback");
+    assert!(
+        !binding_table,
+        "the failed migration rolls back table creation"
+    );
+}
+
+#[test]
+fn pre_v5_terminal_opaque_reservation_reopens_without_inventing_an_evm_address() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    rewind_to_revision_four_payout_binding(&connection, "agent-buyer-legacy");
+    connection
+        .execute(
+            r#"
+            UPDATE purchase_reservations
+            SET state = 'expired', updated_at = ?2
+            WHERE reservation_id = ?1
+            "#,
+            params![
+                "reservation-v4",
+                i64::try_from(NOW + 1).expect("test time fits")
+            ],
+        )
+        .expect("expire the retained legacy reservation");
+
+    initialize_finding_purchase_schema(&mut connection)
+        .expect("migrate a terminal opaque reservation");
+    let binding: (String, String) = connection
+        .query_row(
+            r#"
+            SELECT destination, binding_kind FROM purchase_payout_bindings
+            WHERE reservation_id = 'reservation-v4'
+            "#,
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read retained terminal binding");
+    assert_eq!(
+        binding,
+        (
+            "agent-buyer-legacy".to_owned(),
+            "legacy_terminal".to_owned()
+        )
+    );
+    initialize_finding_purchase_schema(&mut connection).expect("reopen at current revision");
+}
+
+#[test]
+fn revision_seven_preserves_a_manual_slot_reused_by_a_released_reservation() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("purchase schema");
+    let allocation_id = hex64('a');
+    let abandoned = "0x000000000000000000000000000000000000002a";
+    let settled = "0x000000000000000000000000000000000000002b";
+    let community = "0xcccccccccccccccccccccccccccccccccccccccc";
+    connection
+        .execute_batch(&format!(
+            r#"
+            INSERT INTO purchase_reservations (
+                reservation_id, purchase_intent_id,
+                authoritative_payment_operation_id, payer_hex, agent_id,
+                finding_id, listing_id, bid_envelope_sha256, ask_digest,
+                admission_envelope_sha256, amount_units, currency,
+                expires_at, state, created_at, updated_at
+            ) VALUES
+                ('reservation-abandoned', 'intent-abandoned', 'payment-abandoned',
+                 '{payer}', 'agent-abandoned', '{finding}', 'listing-v7',
+                 '{bid_a}', '{ask_a}', '{admission_a}', 1, 'USD', {expires},
+                 'released', {now}, {now}),
+                ('reservation-settled', 'intent-settled', 'payment-settled',
+                 '{payer}', 'agent-settled', '{finding}', 'listing-v7',
+                 '{bid_b}', '{ask_b}', '{admission_b}', 1, 'USD', {expires},
+                 'consumed', {now}, {now});
+
+            INSERT INTO purchase_payout_bindings (
+                reservation_id, destination, binding_kind
+            ) VALUES
+                ('reservation-abandoned', '{abandoned}', 'evm'),
+                ('reservation-settled', '{settled}', 'evm');
+
+            INSERT INTO seller_exposure_encumbrances (
+                encumbrance_id, allocation_id, reservation_id, amount_units,
+                currency, state, retention_expires_at, opened_at, updated_at
+            ) VALUES
+                ('encumbrance-abandoned', '{allocation_id}',
+                 'reservation-abandoned', 1, 'USD', 'released', NULL, {now}, {now}),
+                ('encumbrance-settled', '{allocation_id}',
+                 'reservation-settled', 1, 'USD', 'retained', {expires}, {now}, {now});
+
+            INSERT INTO payout_destinations (
+                allocation_id, destination, slot_index, admitted_at
+            ) VALUES
+                ('{allocation_id}', '{community}', 0, {now}),
+                ('{allocation_id}', '{abandoned}', 1, {manual_admitted_at}),
+                ('{allocation_id}', '{settled}', 2, {now});
+
+            PRAGMA application_id = {application_id};
+            "#,
+            payer = hex64('b'),
+            finding = hex64('c'),
+            bid_a = hex64('d'),
+            ask_a = hex64('e'),
+            admission_a = hex64('f'),
+            bid_b = hex64('1'),
+            ask_b = hex64('2'),
+            admission_b = hex64('3'),
+            expires = NOW + 100,
+            now = NOW,
+            manual_admitted_at = NOW - 10,
+            application_id = crate::CHIO_SQLITE_APPLICATION_ID,
+        ))
+        .expect("seed revision-seven mixed destinations");
+    crate::stamp_schema_version(
+        &connection,
+        FINDING_PURCHASE_SCHEMA_KEY,
+        FINDING_PURCHASE_EAGER_PAYOUT_VERSION,
+    )
+    .expect("stamp revision seven");
+
+    initialize_finding_purchase_schema(&mut connection).expect("migrate revision seven");
+
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT slot_index, destination FROM payout_destinations
+            WHERE allocation_id = ?1 ORDER BY slot_index
+            "#,
+        )
+        .expect("prepare migrated destinations");
+    let destinations = statement
+        .query_map([&allocation_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .expect("read migrated destinations")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect migrated destinations");
+    assert_eq!(
+        destinations,
+        vec![
+            (0, community.to_owned()),
+            (1, abandoned.to_owned()),
+            (2, settled.to_owned()),
+        ],
+        "an earlier manual admission remains immutable after a later reservation reuses and releases it"
+    );
+    drop(statement);
+    initialize_finding_purchase_schema(&mut connection).expect("reopen at current revision");
+}
+
+#[test]
+fn revision_six_preserves_slots_without_origin_provenance() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("purchase schema");
+    let allocation_id = hex64('a');
+    let abandoned = "0x000000000000000000000000000000000000002a";
+    let community = "0xcccccccccccccccccccccccccccccccccccccccc";
+    connection
+        .execute_batch(&format!(
+            r#"
+            INSERT INTO purchase_reservations (
+                reservation_id, purchase_intent_id,
+                authoritative_payment_operation_id, payer_hex, agent_id,
+                finding_id, listing_id, bid_envelope_sha256, ask_digest,
+                admission_envelope_sha256, amount_units, currency,
+                expires_at, state, created_at, updated_at
+            ) VALUES (
+                'reservation-abandoned-v6', 'intent-abandoned-v6',
+                'payment-abandoned-v6', '{payer}', 'agent-abandoned-v6',
+                '{finding}', 'listing-v6', '{bid}', '{ask}', '{admission}',
+                1, 'USD', {expires}, 'released', {now}, {now}
+            );
+
+            INSERT INTO purchase_payout_bindings (
+                reservation_id, destination, binding_kind
+            ) VALUES ('reservation-abandoned-v6', '{abandoned}', 'evm');
+
+            INSERT INTO seller_exposure_encumbrances (
+                encumbrance_id, allocation_id, reservation_id, amount_units,
+                currency, state, retention_expires_at, opened_at, updated_at
+            ) VALUES (
+                'encumbrance-abandoned-v6', '{allocation_id}',
+                'reservation-abandoned-v6', 1, 'USD', 'released', NULL,
+                {now}, {now}
+            );
+
+            INSERT INTO payout_destinations (
+                allocation_id, destination, slot_index, admitted_at
+            ) VALUES
+                ('{allocation_id}', '{community}', 0, {now}),
+                ('{allocation_id}', '{abandoned}', 1, {now});
+
+            DROP TRIGGER purchase_payout_bindings_immutable;
+            DROP TRIGGER purchase_payout_bindings_no_delete;
+            ALTER TABLE purchase_payout_bindings
+                RENAME TO purchase_payout_bindings_typed;
+            CREATE TABLE purchase_payout_bindings (
+                reservation_id TEXT NOT NULL PRIMARY KEY
+                    REFERENCES purchase_reservations(reservation_id),
+                destination TEXT NOT NULL CHECK (length(destination) BETWEEN 1 AND 512)
+            );
+            INSERT INTO purchase_payout_bindings (reservation_id, destination)
+            SELECT reservation_id, destination
+            FROM purchase_payout_bindings_typed;
+            DROP TABLE purchase_payout_bindings_typed;
+
+            PRAGMA application_id = {application_id};
+            "#,
+            payer = hex64('b'),
+            finding = hex64('c'),
+            bid = hex64('d'),
+            ask = hex64('e'),
+            admission = hex64('f'),
+            expires = NOW + 100,
+            now = NOW,
+            application_id = crate::CHIO_SQLITE_APPLICATION_ID,
+        ))
+        .expect("seed revision-six eager destination");
+    crate::stamp_schema_version(
+        &connection,
+        FINDING_PURCHASE_SCHEMA_KEY,
+        FINDING_PURCHASE_UNTYPED_EAGER_PAYOUT_VERSION,
+    )
+    .expect("stamp revision six");
+
+    initialize_finding_purchase_schema(&mut connection).expect("migrate revision six");
+
+    let destinations = connection
+        .prepare(
+            r#"
+            SELECT slot_index, destination FROM payout_destinations
+            WHERE allocation_id = ?1 ORDER BY slot_index
+            "#,
+        )
+        .expect("prepare migrated destinations")
+        .query_map([&allocation_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .expect("read migrated destinations")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect migrated destinations");
+    assert_eq!(
+        destinations,
+        vec![(0, community.to_owned()), (1, abandoned.to_owned())],
+        "revision six recorded no provenance that would make deleting the buyer slot safe"
+    );
+    initialize_finding_purchase_schema(&mut connection).expect("reopen at current revision");
+}
+
+#[test]
+fn revision_eight_adds_legacy_history_without_rewriting_actionable_payouts() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("install current purchase schema");
+    connection
+        .execute(
+            r#"
+            INSERT INTO payout_destinations (
+                allocation_id, destination, slot_index, admitted_at
+            ) VALUES (?1, '0x000000000000000000000000000000000000002a', 1, ?2)
+            "#,
+            params![hex64('a'), sqlite_i64(NOW, "now").expect("time")],
+        )
+        .expect("insert actionable revision-eight payout");
+    connection
+        .execute_batch("DROP TABLE legacy_payout_destinations;")
+        .expect("rewind legacy-history table");
+    crate::stamp_schema_version(&connection, FINDING_PURCHASE_SCHEMA_KEY, 8)
+        .expect("stamp revision eight");
+
+    initialize_finding_purchase_schema(&mut connection).expect("migrate revision eight");
+
+    let version: i32 = connection
+        .query_row(
+            "SELECT version FROM chio_store_schema_versions WHERE store_key = ?1",
+            [FINDING_PURCHASE_SCHEMA_KEY],
+            |row| row.get(0),
+        )
+        .expect("read migrated version");
+    assert_eq!(version, FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION);
+    let actionable: i64 = connection
+        .query_row("SELECT COUNT(*) FROM payout_destinations", [], |row| {
+            row.get(0)
+        })
+        .expect("count actionable payouts");
+    assert_eq!(actionable, 1);
+    assert!(connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'legacy_payout_destinations')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .expect("inspect legacy-history table"));
+    verify_finding_purchase_invariants(&connection).expect("verify canonical schema");
+}
+
+#[test]
+fn revision_nine_adds_the_immutable_capture_intent_fence() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("install current purchase schema");
+    connection
+        .execute_batch(
+            r#"
+            DROP TRIGGER purchase_capture_intents_immutable;
+            DROP TRIGGER purchase_capture_intents_no_delete;
+            DROP TABLE purchase_capture_intents;
+            "#,
+        )
+        .expect("rewind capture intent fence");
+    crate::stamp_schema_version(&connection, FINDING_PURCHASE_SCHEMA_KEY, 9)
+        .expect("stamp revision nine");
+
+    initialize_finding_purchase_schema(&mut connection).expect("migrate revision nine");
+
+    assert!(connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'purchase_capture_intents')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .expect("inspect capture intent table"));
+    verify_finding_purchase_invariants(&connection).expect("verify canonical schema");
+}
+
+#[test]
 fn payout_destination_slots_are_bounded_and_idempotent() {
     let fixture = fixture();
     let allocation_id = &fixture.allocation_id;
+    let community = "0xcccccccccccccccccccccccccccccccccccccccc";
+    let admitted = fixture
+        .store
+        .register_community_fund_destination(allocation_id, community, NOW)
+        .expect("register community fund");
+    assert_eq!(admitted.slot_index, 0);
+    assert_eq!(admitted.outcome, FindingPurchaseWriteOutcome::Inserted);
+    let replay = fixture
+        .store
+        .register_community_fund_destination(allocation_id, community, NOW + 1)
+        .expect("replay community fund");
+    assert_eq!(replay.slot_index, 0);
+    assert_eq!(replay.outcome, FindingPurchaseWriteOutcome::ExistingSame);
+    assert_eq!(
+        replay.admitted_at, NOW,
+        "a replay reports the original admission time"
+    );
+    assert!(
+        matches!(
+            fixture.store.register_community_fund_destination(
+                allocation_id,
+                "0xdddddddddddddddddddddddddddddddddddddddd",
+                NOW + 2
+            ),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "the reserved community slot cannot be rebound"
+    );
     assert!(
         matches!(
             fixture
@@ -1384,11 +2774,20 @@ fn payout_destination_slots_are_bounded_and_idempotent() {
                 .admit_payout_destination(allocation_id, "untagged-destination", NOW),
             Err(FindingPurchaseStoreError::Invariant(_))
         ),
-        "a destination without a rail tag cannot be routed"
+        "a destination without an EVM address cannot be routed"
+    );
+    assert!(
+        matches!(
+            fixture
+                .store
+                .admit_payout_destination(allocation_id, community, NOW),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "the community fund cannot also be admitted as a buyer payout"
     );
 
     for index in 1..=15_u8 {
-        let destination = format!("rail:venue-ledger:buyer-{index}");
+        let destination = format!("0x{index:040x}");
         let slot = fixture
             .store
             .admit_payout_destination(allocation_id, &destination, NOW + u64::from(index))
@@ -1398,7 +2797,11 @@ fn payout_destination_slots_are_bounded_and_idempotent() {
     }
     let repeat = fixture
         .store
-        .admit_payout_destination(allocation_id, "rail:venue-ledger:buyer-7", NOW + 100)
+        .admit_payout_destination(
+            allocation_id,
+            "0x0000000000000000000000000000000000000007",
+            NOW + 100,
+        )
         .expect("repeat destination");
     assert_eq!(repeat.slot_index, 7);
     assert_eq!(repeat.outcome, FindingPurchaseWriteOutcome::ExistingSame);
@@ -1406,20 +2809,38 @@ fn payout_destination_slots_are_bounded_and_idempotent() {
         matches!(
             fixture.store.admit_payout_destination(
                 allocation_id,
-                "rail:venue-ledger:buyer-16",
+                "0x0000000000000000000000000000000000000010",
                 NOW + 101
             ),
             Err(FindingPurchaseStoreError::DestinationSlotsExhausted(_))
         ),
         "the sixteenth distinct destination has no slot left"
     );
+    let blocked_purchase = Purchase::new("slot-exhausted", LISTING_ID, 100);
+    let mut blocked_input = blocked_purchase.input(allocation_id);
+    blocked_input.payout_destination = "0x0000000000000000000000000000000000000010";
+    assert!(
+        matches!(
+            fixture.store.open_reservation(&blocked_input),
+            Err(FindingPurchaseStoreError::DestinationSlotsExhausted(_))
+        ),
+        "slot exhaustion rejects before a reservation or exposure is committed"
+    );
+    assert!(fixture
+        .store
+        .get_reservation(&blocked_purchase.reservation_id)
+        .expect("read rejected reservation")
+        .is_none());
     let listed = fixture
         .store
         .list_payout_destinations(allocation_id)
         .expect("list destinations");
-    assert_eq!(listed.len(), 15, "slot zero is never admitted");
-    assert_eq!(listed[0], (1, "rail:venue-ledger:buyer-1".to_string()));
-    assert_eq!(listed[14], (15, "rail:venue-ledger:buyer-15".to_string()));
+    assert_eq!(listed.len(), 16);
+    assert_eq!(listed[0], (0, community.to_string()));
+    assert_eq!(
+        listed[15],
+        (15, "0x000000000000000000000000000000000000000f".to_string())
+    );
 
     // Slots are per allocation, so a second allocation starts empty.
     let other = consume_allocation(&fixture.market, "vault:finding-collateral-2", LISTING_ID);
@@ -1431,10 +2852,118 @@ fn payout_destination_slots_are_bounded_and_idempotent() {
     assert_eq!(
         fixture
             .store
-            .admit_payout_destination(&other, "rail:venue-ledger:buyer-1", NOW)
+            .admit_payout_destination(&other, "0x0000000000000000000000000000000000000001", NOW)
             .expect("admit on a fresh allocation")
             .slot_index,
         1
+    );
+}
+
+#[test]
+fn abandoned_reservations_release_provisional_payout_capacity() {
+    let fixture = fixture();
+    let community = "0xcccccccccccccccccccccccccccccccccccccccc";
+    fixture
+        .store
+        .register_community_fund_destination(&fixture.allocation_id, community, NOW)
+        .expect("register community fund");
+
+    let community_purchase = Purchase::new("community-payout", LISTING_ID, 1);
+    let mut community_input = community_purchase.input(&fixture.allocation_id);
+    community_input.payout_destination = community;
+    assert!(
+        matches!(
+            fixture.store.open_reservation(&community_input),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "the community fund cannot be selected as a buyer payout"
+    );
+
+    let mut reservations = Vec::new();
+    for index in 1..=15_u8 {
+        let purchase =
+            Purchase::new(&format!("provisional-{index}"), LISTING_ID, 1).expiring_at(NOW + 10);
+        let destination = format!("0x{index:040x}");
+        let mut input = purchase.input(&fixture.allocation_id);
+        input.payout_destination = &destination;
+        assert_eq!(
+            fixture
+                .store
+                .open_reservation(&input)
+                .expect("reserve provisional payout capacity"),
+            FindingPurchaseWriteOutcome::Inserted
+        );
+        reservations.push(purchase);
+    }
+    assert_eq!(
+        fixture
+            .store
+            .list_payout_destinations(&fixture.allocation_id)
+            .expect("list before settlement"),
+        vec![(0, community.to_owned())],
+        "live reservations consume capacity without becoming settled destinations"
+    );
+
+    let blocked = Purchase::new("provisional-16-blocked", LISTING_ID, 1);
+    let blocked_destination = "0x0000000000000000000000000000000000000010";
+    let mut blocked_input = blocked.input(&fixture.allocation_id);
+    blocked_input.payout_destination = blocked_destination;
+    assert!(matches!(
+        fixture.store.open_reservation(&blocked_input),
+        Err(FindingPurchaseStoreError::DestinationSlotsExhausted(_))
+    ));
+    assert!(matches!(
+        fixture.store.admit_payout_destination(
+            &fixture.allocation_id,
+            blocked_destination,
+            NOW + 1,
+        ),
+        Err(FindingPurchaseStoreError::DestinationSlotsExhausted(_))
+    ));
+
+    assert_eq!(
+        fixture
+            .store
+            .expire_reservations(NOW + 10, 16)
+            .expect("expire abandoned reservations"),
+        reservations.len()
+    );
+    let replacement = Purchase::new("provisional-16-replacement", LISTING_ID, 1);
+    let mut replacement_input = replacement.input(&fixture.allocation_id);
+    replacement_input.payout_destination = blocked_destination;
+    fixture
+        .store
+        .open_reservation(&replacement_input)
+        .expect("reuse released provisional capacity");
+    fixture
+        .store
+        .reserve_slot(&replacement.reservation_id, NOW + 11)
+        .expect("reserve replacement slot");
+    let record = record_bytes("provisional-16-replacement");
+    mark_capture(&fixture, &replacement, NOW + 12);
+    fixture
+        .store
+        .close_slot_with_record(&FindingPurchaseDeliveryInput {
+            reservation_id: &replacement.reservation_id,
+            purchase_key: &hex64('9'),
+            record_json: &record,
+            record_sha256: &chio_core::sha256_hex(&record),
+            delivery_receipt_id: "receipt-provisional-16-replacement",
+            payout_destination: blocked_destination,
+            retention_expires_at: NOW + 100_000,
+            now: NOW + 12,
+        })
+        .expect("settle replacement");
+    assert_eq!(
+        fixture
+            .store
+            .list_payout_destinations(&fixture.allocation_id)
+            .expect("list after settlement"),
+        vec![
+            (0, community.to_owned()),
+            (1, blocked_destination.to_owned())
+        ],
+        "only settlement promotes a buyer destination into the immutable roster"
     );
 }
 

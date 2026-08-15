@@ -102,7 +102,7 @@ production surface half-wired.
 | M2 | Publish and discover | descriptor search surface; listing publish path; bond-proof admission gate | M1 | implemented dark behind `cognition-market-experimental`; plan [plans/2026-07-28-M2-publish-and-discover.md](plans/2026-07-28-M2-publish-and-discover.md) |
 | M3 | Kernel delivery contract | candidate `Constraint::OutputDigestSha256`; durable and legacy digest enforcement; generic `chio.delivery-contract.v1` receipt block; verdict-matrix rotation; bounded Lean settlement-admission model | M1 | implemented on `codex/cognition-market-m3`; ADR-A landed as [ADR-0019](../../adr/ADR-0019-kernel-delivery-contract.md); plan and recorded results [plans/2026-07-28-M3-kernel-delivery-contract.md](plans/2026-07-28-M3-kernel-delivery-contract.md) |
 | M4 | Wedge purchase E2E | reference finding server; ADR-A-selected output-aware durable hold/capture; `chio finding` CLI (publish/search/verify/buy) | M2, M3 | implemented on `codex/cognition-market-m4`, including authenticated live purchase route exit; plan and recorded results [plans/2026-07-28-M4-wedge-purchase-e2e.md](plans/2026-07-28-M4-wedge-purchase-e2e.md) |
-| M5 | Challenge and audit lane | frozen-v1 `FraudulentListing` mapping plus signed finding challenge outcome; challenge evaluator; verifiable audit schedule; slash wiring | M4 | plan after M4 |
+| M5 | Challenge and audit lane | frozen-v1 `FraudulentListing` mapping plus signed finding challenge outcome; challenge evaluator; verifiable audit schedule; slash wiring | M4 | implemented on `codex/cognition-market-m5`; plan and recorded results [plans/2026-07-30-M5-challenge-and-audit-lane.md](plans/2026-07-30-M5-challenge-and-audit-lane.md) |
 | M6 | Status feed and retraction | oracle instance; control-plane root/proof surfaces; purchase-time non-inclusion; challenge-outcome outbox; quarantine guard rule; ops runbook | M4, M5 | plan after M5 |
 | M7 | Cross-org escrow path | delivery-receipt settlement-authority bridge; bilateral evidence flow; funded escrow and watchdog runbook | M4, M5, M6 | blocked pending bilateral demand and ADR-C |
 | M8 | Pool purchasing and SDK | swarm purchasing convention; elicitation ceiling in SDKs; pheromone hint convention | M4 | plan after M4 |
@@ -782,7 +782,8 @@ normative scope statement.
   challenge-envelope digest, Finding/listing/backing, source authorization
   branch, class, verifier-profile and evidence-bundle digests, nested facet
   result, reason, trigger digest, checked penalty calculation, evaluator key
-  epoch, and evaluation time. Derive `outcome_id` from a domain-separated
+  identity, key, epoch, validity interval, revocation-status reference, and
+  evaluation time. Derive `outcome_id` from a domain-separated
   canonical body preimage excluding only `outcome_id` and the envelope
   signature. Only an evaluator key authorized for that role by the committed
   profile, valid in its epoch, and not revoked at evaluation may sign.

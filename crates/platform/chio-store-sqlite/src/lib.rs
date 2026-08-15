@@ -42,6 +42,8 @@ pub mod encrypted_blob;
 pub mod evidence_export;
 pub mod execution_nonce_store;
 #[cfg(feature = "cognition-market-experimental")]
+pub mod finding_challenge_store;
+#[cfg(feature = "cognition-market-experimental")]
 pub mod finding_market_store;
 #[cfg(feature = "cognition-market-experimental")]
 pub mod finding_purchase_store;
@@ -238,6 +240,23 @@ pub use encrypted_blob::{
     EncryptedBlob, SqliteEncryptedBlobStore, TenantId, TenantKey,
 };
 pub use execution_nonce_store::{SqliteExecutionNonceStore, SqliteExecutionNonceStoreError};
+#[cfg(feature = "cognition-market-experimental")]
+pub use finding_challenge_store::{
+    derive_dispute_bond_funding_intent_key, derive_dispute_bond_return_intent_key,
+    derive_dispute_fee_collection_intent_key, derive_dispute_fee_return_intent_key,
+    dispute_bond_funding_intent_digest, dispute_bond_return_intent_digest,
+    FindingChallengeAuthorizationBranch, FindingChallengeEvaluationStart,
+    FindingChallengeEvidenceClass, FindingChallengeRecord, FindingChallengeState,
+    FindingChallengeStoreError, FindingChallengeSubmission, FindingChallengeVerdict,
+    FindingChallengeWriteOutcome, FindingClaimSnapshotInput, FindingClaimSnapshotRecord,
+    FindingDisputeLockDisposition, FindingDisputeLockInput, FindingDisputeLockRecord,
+    FindingDisputeLockState, FindingEffectIntentKind, FindingEffectIntentRecord,
+    FindingEffectIntentState, FindingEffectRootBindingRecord, FindingFinalizingAuthorizationInput,
+    FindingFinalizingAuthorizationRecord, FindingGovernanceCaseInput, FindingGovernanceCaseKind,
+    FindingGovernanceCaseRecord, FindingLiabilityInput, FindingLiabilityRecord,
+    FindingLiabilityState, FindingSellerImpairmentReconciliationRecord,
+    SqliteFindingChallengeStore,
+};
 #[cfg(feature = "cognition-market-experimental")]
 pub use finding_market_store::{
     finding_fee_idempotency_key, FindingActivationAttemptSnapshot, FindingActivationAttemptState,

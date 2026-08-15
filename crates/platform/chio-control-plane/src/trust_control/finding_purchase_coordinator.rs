@@ -27,10 +27,11 @@ use chio_core::receipt::metadata::{
     FINDING_DELIVERY_METADATA_KEY,
 };
 use chio_finding::{
-    compute_failed_delivery_id, derive_purchase_key, verify_finding, verify_signed_bond_backing,
-    verify_signed_seller_authorization, Finding, FindingFailedDelivery, FindingHoldReleaseTerminal,
-    FindingPurchaseRecord, SignedFindingAdmission, SignedFindingBondBacking,
-    SignedFindingFailedDelivery, SignedFindingPurchaseRecord, SignedFindingSellerAuthorization,
+    compute_failed_delivery_id, derive_purchase_key, validate_evm_payout_destination,
+    verify_finding, verify_signed_bond_backing, verify_signed_seller_authorization, Finding,
+    FindingFailedDelivery, FindingHoldReleaseTerminal, FindingPurchaseRecord,
+    SignedFindingAdmission, SignedFindingBondBacking, SignedFindingFailedDelivery,
+    SignedFindingPurchaseRecord, SignedFindingSellerAuthorization,
     FINDING_FAILED_DELIVERY_SCHEMA_V1, FINDING_PURCHASE_RECORD_SCHEMA_V1,
 };
 use chio_kernel::admission_operation::{
@@ -130,6 +131,8 @@ pub enum PurchaseCoordinatorError {
     AmountMismatch,
     #[error("realized spend exceeds the accepted price")]
     RealizedSpendAboveAcceptedPrice,
+    #[error("reservation settlement window is empty or unrepresentable")]
+    ReservationWindow,
     #[error("durable kernel terminal evidence rejected: {0}")]
     TerminalEvidence(String),
     #[error("deny checkpoint evidence rejected: {0}")]
@@ -265,6 +268,18 @@ impl FindingPurchaseCoordinator {
         {
             return Err(PurchaseCoordinatorError::BidBinding);
         }
+        // Agent identity remains the capability subject. Cognition-market
+        // bids separately carry the buyer's settlement address inside the
+        // signed bid body, which the reservation retains through terminal
+        // settlement. Reject an absent or unusable address before funds or
+        // seller exposure are reserved.
+        let payout_destination = bid.body.payout_destination.as_deref().ok_or_else(|| {
+            PurchaseCoordinatorError::PayoutDestination(
+                "signed bid omits payout_destination".to_owned(),
+            )
+        })?;
+        let payout_destination = chio_finding::canonical_evm_payout_destination(payout_destination)
+            .map_err(|error| PurchaseCoordinatorError::PayoutDestination(error.to_string()))?;
         let payer = &ask.body.token_offer.subject;
         if bid.signer_key != *payer {
             return Err(PurchaseCoordinatorError::BidBinding);
@@ -310,7 +325,7 @@ impl FindingPurchaseCoordinator {
             if policy.key != signing_key {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(role));
             }
-            if now < policy.valid_from || now > policy.valid_until {
+            if now < policy.valid_from || now >= policy.valid_until {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(role));
             }
         }
@@ -457,12 +472,26 @@ impl FindingPurchaseCoordinator {
         let bid_envelope_sha256 = canonical_json_bytes(bid)
             .map(|bytes| sha256_hex(&bytes))
             .map_err(|_| PurchaseCoordinatorError::Canonical)?;
+        let requested_expiry = now
+            .checked_add(reservation_ttl_secs)
+            .ok_or(PurchaseCoordinatorError::ReservationWindow)?;
+        let expires_at = requested_expiry
+            .min(ask.body.expires_at)
+            .min(ask.body.token_offer.expires_at)
+            .min(admission.body.expires_at)
+            .min(admission.body.purchase_authority.valid_until)
+            .min(admission.body.failed_delivery_authority.valid_until)
+            .min(authorization.expires_at);
+        if expires_at <= now {
+            return Err(PurchaseCoordinatorError::ReservationWindow);
+        }
         let input = FindingPurchaseReservationInput {
             reservation_id: &reservation_id,
             purchase_intent_id: &derive_purchase_intent_id(&reservation_id),
             authoritative_payment_operation_id: &derive_payment_operation_id(&reservation_id),
             payer_hex: &payer_hex,
             agent_id: &ask.body.agent_id,
+            payout_destination: &payout_destination,
             finding_id: &admission.body.finding_id,
             listing_id: &ask.body.listing_id,
             bid_envelope_sha256: &bid_envelope_sha256,
@@ -470,7 +499,7 @@ impl FindingPurchaseCoordinator {
             admission_envelope_sha256: &admission_envelope_sha256,
             amount_units: ask.body.quoted_price.units,
             currency: &ask.body.quoted_price.currency,
-            expires_at: now.saturating_add(reservation_ttl_secs),
+            expires_at,
             encumbrance_id: &encumbrance_id,
             allocation_id: &admission.body.backing_allocation_id,
             maximum_sale_exposure_units,
@@ -547,7 +576,7 @@ impl FindingPurchaseCoordinator {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(role));
             }
             if reservation.created_at < policy.valid_from
-                || reservation.created_at > policy.valid_until
+                || reservation.created_at >= policy.valid_until
             {
                 return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(role));
             }
@@ -733,6 +762,24 @@ impl FindingPurchaseCoordinator {
         })
     }
 
+    fn verify_terminal_chronology(
+        reservation: &FindingPurchaseReservationRecord,
+        receipt: &ChioReceipt,
+        terminal: &'static str,
+    ) -> Result<(), PurchaseCoordinatorError> {
+        if receipt.timestamp < reservation.created_at {
+            return Err(PurchaseCoordinatorError::TerminalEvidence(format!(
+                "{terminal} receipt predates the purchase reservation"
+            )));
+        }
+        if receipt.timestamp >= reservation.expires_at {
+            return Err(PurchaseCoordinatorError::TerminalEvidence(format!(
+                "{terminal} receipt is outside the reservation settlement window"
+            )));
+        }
+        Ok(())
+    }
+
     /// Close the purchase only after a durable kernel Allow whose resolved
     /// outcome captured funds. Every record fact comes from the durable
     /// reservation, signed receipt, venue admission, or admission-bound
@@ -748,8 +795,17 @@ impl FindingPurchaseCoordinator {
     ) -> Result<SignedFindingPurchaseRecord, PurchaseCoordinatorError> {
         let reservation = self.resolve(reservation_id)?;
         self.verify_reservation_admission(&reservation, admission)?;
+        Self::verify_terminal_chronology(&reservation, receipt, "delivery")?;
         let terminal =
             self.verify_terminal(&reservation, receipt, ExpectedPurchaseTerminal::Delivered)?;
+        let purchase_policy = &admission.body.purchase_authority;
+        if receipt.timestamp < purchase_policy.valid_from
+            || receipt.timestamp >= purchase_policy.valid_until
+        {
+            return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(
+                "purchase",
+            ));
+        }
         let SettlementDispositionV1::Capture { amount } = terminal.settlement else {
             return Err(PurchaseCoordinatorError::TerminalEvidence(
                 "Allow terminal did not durably capture the purchase".to_owned(),
@@ -802,8 +858,8 @@ impl FindingPurchaseCoordinator {
                     "liability retention horizon overflowed".to_owned(),
                 )
             })?;
-        let retention_expires_at = reservation
-            .created_at
+        let retention_expires_at = receipt
+            .timestamp
             .checked_add(liability_horizon_secs)
             .ok_or_else(|| {
                 PurchaseCoordinatorError::SellerBacking(
@@ -817,9 +873,11 @@ impl FindingPurchaseCoordinator {
         }
         let accepted_bid_envelope_sha256 = &terminal.delivery.accepted_bid_envelope_sha256;
         let delivery_receipt_id = &receipt.id;
-        let payout_destination = &admission.body.payee_destination;
         let buyer = PublicKey::from_hex(&reservation.payer_hex)
             .map_err(|_| PurchaseCoordinatorError::Store("payer key malformed".to_owned()))?;
+        let payout_destination = reservation.payout_destination.clone();
+        validate_evm_payout_destination(&payout_destination)
+            .map_err(|error| PurchaseCoordinatorError::PayoutDestination(error.to_string()))?;
         let record = FindingPurchaseRecord {
             schema: FINDING_PURCHASE_RECORD_SCHEMA_V1.to_owned(),
             purchase_key: derive_purchase_key(
@@ -851,13 +909,10 @@ impl FindingPurchaseCoordinator {
             delivery_receipt_id: delivery_receipt_id.clone(),
             payment_reference: reservation.authoritative_payment_operation_id.clone(),
             payout_destination: payout_destination.clone(),
-            // The record's instant is the reservation instant, a durable
-            // fact fixed when the funds were committed. The store compares
-            // retained bytes against a retry's bytes, so a finalize clock
-            // inside the body would turn an honest crash-retry into an
-            // unresolvable conflict; the reservation instant replays
-            // byte-identically and does not move however long delivery took.
-            recorded_at: reservation.created_at,
+            // The signed receipt fixes the settlement instant. It replays
+            // byte-identically across crash recovery while binding standing
+            // to the purchase authority lifecycle when capture completed.
+            recorded_at: receipt.timestamp,
         };
         // The store retains these bytes forever and the close is one-shot,
         // so a body that fails its own validator must never be signed: it
@@ -877,7 +932,7 @@ impl FindingPurchaseCoordinator {
                 record_json: &record_json,
                 record_sha256: &record_sha256,
                 delivery_receipt_id,
-                payout_destination,
+                payout_destination: &payout_destination,
                 retention_expires_at,
                 now,
             })
@@ -902,6 +957,7 @@ impl FindingPurchaseCoordinator {
     ) -> Result<SignedFindingFailedDelivery, PurchaseCoordinatorError> {
         let reservation = self.resolve(reservation_id)?;
         self.verify_reservation_admission(&reservation, admission)?;
+        Self::verify_terminal_chronology(&reservation, receipt, "denial")?;
         let terminal =
             self.verify_terminal(&reservation, receipt, ExpectedPurchaseTerminal::Denied)?;
         let (currency, release_terminal) = match terminal.settlement {
@@ -972,6 +1028,8 @@ impl FindingPurchaseCoordinator {
             finding_id: reservation.finding_id.clone(),
             listing_id: reservation.listing_id.clone(),
             accepted_bid_envelope_sha256: accepted_bid_envelope_sha256.clone(),
+            venue_admission_envelope_sha256: reservation.admission_envelope_sha256.clone(),
+            seller_backing_envelope_sha256: admission.body.backing_envelope_sha256.clone(),
             reservation_id: reservation.reservation_id.clone(),
             purchase_intent_id: reservation.purchase_intent_id.clone(),
             authoritative_payment_operation_id: reservation
@@ -986,10 +1044,10 @@ impl FindingPurchaseCoordinator {
             realized_spend_units: 0,
             currency: reservation.currency.clone(),
             payout_eligible: false,
-            // The reservation instant, not the close clock: the terminal id
-            // is content-addressed over this body, so a clock here would
-            // give every crash-retry a different identity for one denial.
-            recorded_at: reservation.created_at,
+            // The authenticated denial receipt fixes the closure instant, so
+            // crash retries reproduce one content-addressed terminal while
+            // the authority remains accountable through the denial time.
+            recorded_at: receipt.timestamp,
         };
         artifact.failed_delivery_id = compute_failed_delivery_id(&artifact)
             .map_err(|_| PurchaseCoordinatorError::Canonical)?;
@@ -1093,5 +1151,21 @@ impl PurchaseReservationReader for CoordinatorReservationReader {
             return Err("reservation admission is superseded or retired".to_owned());
         }
         Ok(())
+    }
+
+    fn mark_capture_pending(
+        &self,
+        reservation_id: &str,
+        authoritative_payment_operation_id: &str,
+        now_unix_secs: u64,
+    ) -> Result<(), String> {
+        self.store
+            .mark_capture_pending(
+                reservation_id,
+                authoritative_payment_operation_id,
+                now_unix_secs,
+            )
+            .map(|_| ())
+            .map_err(|error| error.to_string())
     }
 }

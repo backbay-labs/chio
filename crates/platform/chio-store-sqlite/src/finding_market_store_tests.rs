@@ -211,7 +211,7 @@ fn admission_body(
             currency: "USD".to_string(),
             authority_epoch: 1,
         },
-        community_fund_destination: "rail:venue-ledger:community-fund".to_string(),
+        community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc".to_string(),
         status_feed_operator_ref: "status-feed/venue-wedge".to_string(),
         purchase_authority: key_policy(16, "purchase"),
         failed_delivery_authority: key_policy(17, "failed-delivery"),
@@ -978,10 +978,26 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
     );
     assert_eq!(
         fixture
+            ._authority
+            .finding_purchase_store()
+            .block_new_slots(LISTING_ID, NOW + 21)
+            .expect("block after activation preparation"),
+        crate::finding_purchase_store::FindingPurchaseWriteOutcome::Inserted
+    );
+    assert_eq!(
+        fixture
             .store
-            .activate_listing(&second_envelope, &second_admission, NOW + 20)
-            .expect("superseding activation"),
+            .activate_listing(&second_envelope, &second_admission, NOW + 22)
+            .expect("prepared activation survives a later sales block"),
         FindingActivationOutcome::Activated
+    );
+    assert!(
+        fixture
+            ._authority
+            .finding_purchase_store()
+            .sales_blocked(LISTING_ID)
+            .expect("read sales block"),
+        "the later block remains effective after the prepared activation completes"
     );
     let superseding = fixture
         .store
@@ -1012,6 +1028,53 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
     assert_eq!(
         new_allocation.active_admission_id.as_deref(),
         Some(second_admission.admission_id.as_str())
+    );
+
+    // (v) Admission and the sales block contend under the same immediate
+    // transaction. Once the block lands, a fresh activation cannot
+    // consume its collateral or replace the active admission.
+    let third_backing = backing_body(&finding_id, "vault:finding-collateral-3");
+    let third_backing_envelope = envelope_string(&third_backing, &collateral);
+    let third_backing_sha256 = chio_core::sha256_hex(third_backing_envelope.as_bytes());
+    fixture
+        .store
+        .register_allocation(&third_backing_envelope, &third_backing, NOW + 22)
+        .expect("register third allocation");
+    let third_admission = admission_body(
+        &finding_id,
+        &artifact_sha256,
+        &third_backing,
+        &third_backing_sha256,
+    );
+    let third_envelope = envelope_string(&third_admission, &venue);
+    assert!(
+        matches!(
+            fixture
+                .store
+                .prepare_listing_activation(&third_envelope, &third_admission, NOW + 23),
+            Err(FindingMarketStoreError::Conflict(_))
+        ),
+        "a live sales block must refuse fresh activation"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .get_allocation(&third_backing.allocation_id)
+            .expect("get third allocation")
+            .expect("third allocation present")
+            .state,
+        FindingAllocationState::Live,
+        "the refused activation cannot consume collateral"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .get_current_admission(&finding_id)
+            .expect("get current admission")
+            .expect("active admission remains")
+            .admission_id,
+        second_admission.admission_id,
+        "the refused activation cannot supersede the active row"
     );
 }
 

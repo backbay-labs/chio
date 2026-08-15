@@ -28,6 +28,14 @@ pub(crate) struct TrustServiceState {
     #[cfg(feature = "cognition-market-experimental")]
     pub(crate) finding_purchase_executor:
         Option<super::super::finding_purchase_routes::SharedFindingPurchaseExecutor>,
+    /// Explicit durable challenge-submission dependency. It is absent in the
+    /// default runtime because public configuration does not carry the private
+    /// signing keys or published-artifact resolver required to construct the
+    /// coordinator. The HTTP route fails closed while it is absent.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) finding_challenge_executor: Option<
+        Arc<dyn super::super::finding_challenge_handlers::FindingChallengeSubmissionExecutor>,
+    >,
 }
 
 /// Coordinates the single background cluster-sync loop with budget-write

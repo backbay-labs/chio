@@ -1,23 +1,36 @@
 //! Durable storage for single-operator finding purchases: reservations,
-//! seller exposure, the per-listing pending-purchase slot line, settled
-//! purchase records, failed-delivery records, and payout destinations.
+//! seller exposure, the per-listing pending-purchase slot line, the
+//! per-listing sales block, settled purchase records, failed-delivery
+//! records, and payout destinations.
 //!
-//! Six tables back the purchase path. `purchase_reservations` is the
+//! Ten tables back the purchase path. `purchase_reservations` is the
 //! durable fence a coordinator writes before it moves money: the row is
 //! keyed by the reservation id the compatibility receipt carries, and it
 //! is unique on both the purchase intent and the authoritative payment
 //! operation, so no two reservations can name one payment.
+//! `purchase_payout_bindings` retains the separately buyer-signed EVM
+//! settlement address without overloading the agent's capability identity.
+//! A live reservation counts that binding against provisional payout
+//! capacity, but only a settled purchase promotes it into the immutable
+//! payout roster.
 //! `seller_exposure_encumbrances` holds the exposure that reservation
 //! places against a consumed collateral allocation, which is what bounds a
 //! seller's liability: exposure counts while the reservation is live and
 //! keeps counting once the sale settles, through the retention horizon the
 //! settlement pins. `pending_purchase_slots` is the monotonic per-listing
-//! slot line the cutoff wait reads.
+//! slot line the cutoff wait reads, and `listing_sales_blocks` is the
+//! switch that stops that line growing: while a listing carries a live
+//! block no reservation can take a fresh slot, so a frozen cutoff stays
+//! the high-water mark it was frozen at. A block is an episode on that
+//! listing, raised once and lifted at most once when the liability that
+//! raised it is exonerated; the raise stays on the record either way, so
+//! a lifted listing still shows when and for how long it was blocked.
 //! `purchase_records` and `failed_delivery_records` are the two terminal
 //! outcomes, retained without deletion and content-addressed against their
-//! stored digests. `payout_destinations` is the bounded sixteen-slot
-//! destination set per allocation, with slot zero reserved for the
-//! community fund.
+//! stored digests. `payout_destinations` is the bounded sixteen-slot settled
+//! EVM destination set per allocation, with the community fund in slot zero
+//! and buyer destinations in the remaining slots. Pre-EVM rail destinations
+//! survive upgrades in `legacy_payout_destinations` as non-actionable history.
 //!
 //! Writes run under `TransactionBehavior::Immediate` behind the
 //! serving-owner fence; reads run `Deferred`; a commit whose outcome
@@ -30,9 +43,10 @@
 //! those surfaces rely on: one reservation per payment operation, exposure
 //! that never exceeds the allocation's registered cap, an allocation that
 //! backs the finding and listing it is charged for, a slot line that only
-//! ever grows, terminal records that cannot be edited or deleted, and the
-//! atomic close transaction that moves reservation, slot, encumbrance, and
-//! record together or not at all.
+//! ever grows and stops growing while sales are blocked, terminal
+//! records that cannot be edited or deleted, and the atomic close
+//! transaction that moves reservation, slot, encumbrance, and record
+//! together or not at all.
 //!
 //! Every mutation is idempotent by its natural key following the durable
 //! fee-intent fence: a replay carrying the same identity succeeds without
@@ -44,7 +58,8 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use chio_core::sha256_hex;
+use chio_core::{sha256_hex, StoreMutationFence};
+use chio_finding::validate_evm_payout_destination;
 use chio_kernel::admission_operation::AdmissionOperationStoreError;
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use thiserror::Error;
@@ -53,7 +68,40 @@ use crate::admission_operation_store::verify_active_owner;
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
-pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 1;
+/// Revision 10 records an immutable capture intent before a payment rail can
+/// move funds, preventing expiry from abandoning a captured purchase; revision
+/// 9 retains pre-EVM payout rows as non-actionable history; revision
+/// 8 makes new reservation payout capacity provisional until a settlement-capable
+/// purchase promotes it. Buyer slots already present in revisions 6 and 7 are
+/// retained because those schemas did not record whether a public admission or
+/// an eager reservation created them; revision 7 distinguishes retained legacy terminal
+/// bindings from live EVM bindings; revision 6 made every payout slot an EVM
+/// destination and reserved a buyer destination before funds can move; revision 5 separated the
+/// buyer-signed payout address from agent identity;
+/// revision 4 gave community-fund and buyer payout slots their distinct
+/// durable shapes. The schema batch is a sequence of idempotent guards, so
+/// a revision-1 database adopts the new tables on its next open; a
+/// revision-2 database also carries its listing-keyed blocks across in
+/// [`carry_listing_sales_blocks_across`].
+pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 10;
+/// Revision whose reservation path eagerly admitted payout destinations.
+#[cfg(test)]
+const FINDING_PURCHASE_EAGER_PAYOUT_VERSION: i32 = 7;
+/// First revision with eager reservation payout admission. Its payout-binding
+/// table did not yet carry the revision-7 binding kind.
+#[cfg(test)]
+const FINDING_PURCHASE_UNTYPED_EAGER_PAYOUT_VERSION: i32 = 6;
+/// Revision that introduced the listing-keyed, never-lifted sales block.
+const FINDING_PURCHASE_LISTING_KEYED_BLOCK_VERSION: i32 = 2;
+/// Name the listing-keyed block table is parked under while the episode
+/// line is created beside it.
+const LEGACY_SALES_BLOCK_TABLE: &str = "listing_sales_blocks_legacy";
+/// Name the rail-only payout table is parked under while the slot-aware
+/// definition is created beside it.
+const LEGACY_PAYOUT_DESTINATIONS_TABLE: &str = "payout_destinations_legacy";
+/// Name the pre-v7 payout-binding table is parked under while its explicit
+/// binding-kind representation is created beside it.
+const LEGACY_PURCHASE_PAYOUT_BINDINGS_TABLE: &str = "purchase_payout_bindings_legacy";
 const FINDING_PURCHASE_SCHEMA_ANCHORS: &[&str] = &[
     "purchase_reservations",
     "admission_operations",
@@ -67,11 +115,11 @@ const MAX_TERMINAL_RECORD_BYTES: usize = 256 * 1024;
 /// Upper bound on every opaque identifier this store persists. An
 /// unbounded identifier is an amplification vector rather than a name.
 const MAX_IDENTIFIER_BYTES: usize = 512;
-/// Payout destinations per allocation, slot zero included. Slot zero is
-/// never admitted: the community fund pays from deployment configuration
-/// rather than from an admitted slot, and keeping the slot reserved means
-/// a buyer destination can never occupy the index that convention names.
+/// Payout destinations per allocation, slot zero included.
 const PAYOUT_DESTINATION_SLOTS: u8 = 16;
+/// Slot zero is reserved at store level for the community fund, so a buyer
+/// destination can never displace it.
+const COMMUNITY_FUND_SLOT_INDEX: u8 = 0;
 /// Batch clamp for the expiry sweep, keeping one transaction bounded.
 const MAX_EXPIRY_BATCH: usize = 512;
 
@@ -112,6 +160,8 @@ pub enum FindingPurchaseStoreError {
     },
     #[error("payout destination slots are exhausted for allocation {0}")]
     DestinationSlotsExhausted(String),
+    #[error("new purchases are blocked on listing {0}")]
+    SalesBlocked(String),
     #[error("finding purchase commit outcome is unknown: {0}")]
     OutcomeUnknown(String),
 }
@@ -167,6 +217,7 @@ pub struct FindingPurchaseReservationInput<'a> {
     pub authoritative_payment_operation_id: &'a str,
     pub payer_hex: &'a str,
     pub agent_id: &'a str,
+    pub payout_destination: &'a str,
     pub finding_id: &'a str,
     pub listing_id: &'a str,
     pub bid_envelope_sha256: &'a str,
@@ -189,6 +240,7 @@ pub struct FindingPurchaseReservationRecord {
     pub authoritative_payment_operation_id: String,
     pub payer_hex: String,
     pub agent_id: String,
+    pub payout_destination: String,
     pub finding_id: String,
     pub listing_id: String,
     pub bid_envelope_sha256: String,
@@ -304,6 +356,12 @@ impl SqliteFindingPurchaseStore {
         }
     }
 
+    /// Serving identity shared by every store opened alongside this one.
+    #[must_use]
+    pub fn mutation_fence(&self) -> StoreMutationFence {
+        self.serving_owner.fence.clone()
+    }
+
     fn connection(&self) -> Result<MutexGuard<'_, Connection>, FindingPurchaseStoreError> {
         self.connection.lock().map_err(|_| {
             FindingPurchaseStoreError::Unavailable(
@@ -352,10 +410,66 @@ impl SqliteFindingPurchaseStore {
         })
     }
 
+    /// Commit every settlement-capable purchase lifecycle mutation and
+    /// its complete projection under the authority-wide rollback anchor.
+    fn commit_market_write(
+        &self,
+        transaction: Transaction<'_>,
+    ) -> Result<(), FindingPurchaseStoreError> {
+        self.serving_owner
+            .append_finding_challenge_projection_if_changed(&transaction)
+            .map_err(|error| FindingPurchaseStoreError::Unavailable(error.to_string()))?;
+        self.commit_write(transaction)
+    }
+
     fn sync_after_write(&self, connection: &Connection) -> Result<(), FindingPurchaseStoreError> {
         self.serving_owner
             .sync_authority_anchor(connection)
             .map_err(|error| FindingPurchaseStoreError::Unavailable(error.to_string()))
+    }
+
+    /// Seed the sibling admission table for cross-store unit tests whose
+    /// subject is purchase or challenge transactionality, not activation.
+    #[cfg(any(test, feature = "cognition-market-test-support"))]
+    pub fn install_active_admission_for_tests(
+        &self,
+        finding_id: &str,
+        allocation_id: &str,
+        listing_id: &str,
+        admission_id: &str,
+        admission_envelope_sha256: &str,
+        activated_at: u64,
+    ) -> Result<(), FindingPurchaseStoreError> {
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        transaction
+            .execute(
+                "UPDATE admissions SET state = 'superseded' WHERE state = 'active' AND finding_id = ?1",
+                [finding_id],
+            )
+            .map_err(sqlite_error)?;
+        transaction
+            .execute(
+                r#"
+                INSERT INTO admissions (
+                    admission_id, finding_id, listing_id, backing_allocation_id,
+                    admission_envelope_sha256, admission_envelope_json,
+                    expires_at, activated_at, state
+                ) VALUES (?1, ?2, ?3, ?4, ?5, '{}', ?6, ?7, 'active')
+                "#,
+                params![
+                    admission_id,
+                    finding_id,
+                    listing_id,
+                    allocation_id,
+                    admission_envelope_sha256,
+                    1_900_000_000_i64,
+                    sqlite_i64(activated_at, "activated_at")?,
+                ],
+            )
+            .map_err(sqlite_error)?;
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)
     }
 
     /// Fence one purchase before its payment dispatches. In one immediate
@@ -366,6 +480,16 @@ impl SqliteFindingPurchaseStore {
     /// admission, and the new exposure plus every exposure still
     /// outstanding against that allocation at `created_at` stays within
     /// `maximum_sale_exposure_units`.
+    ///
+    /// Reservations encumbering this allocation whose expiry has passed
+    /// are expired inside the same transaction before the cap is checked,
+    /// so the cap bounds live exposure only: an abandoned reservation
+    /// releases its encumbrance here rather than occupying the seller's
+    /// capacity forever.
+    /// If a bounded cleanup pass still leaves the request overcommitted,
+    /// the cleanup commits before the refusal is returned. A retry then
+    /// advances to the next batch instead of rolling back and revisiting
+    /// the same expired rows forever.
     ///
     /// Idempotent on the reservation id: a replay carrying the same
     /// purchase identity returns
@@ -414,18 +538,23 @@ impl SqliteFindingPurchaseStore {
             input.encumbrance_id,
             "encumbrance id",
         )?;
+        assert_allocation_backs_sale(&transaction, input)?;
+        expire_due_allocation_reservations_tx(&transaction, input.allocation_id, input.created_at)?;
         let outstanding =
             outstanding_exposure_total_tx(&transaction, input.allocation_id, input.created_at)?;
         let committed = outstanding
             .checked_add(input.amount_units)
             .ok_or_else(|| invariant("seller exposure total overflowed u64"))?;
         if committed > input.maximum_sale_exposure_units {
-            return Err(FindingPurchaseStoreError::ExposureOvercommitted {
+            let error = FindingPurchaseStoreError::ExposureOvercommitted {
                 allocation_id: input.allocation_id.to_owned(),
                 outstanding,
                 requested: input.amount_units,
                 maximum: input.maximum_sale_exposure_units,
-            });
+            };
+            self.commit_market_write(transaction)?;
+            self.sync_after_write(&connection)?;
+            return Err(error);
         }
         let created_at = sqlite_i64(input.created_at, "created_at")?;
         let inserted = transaction
@@ -463,6 +592,24 @@ impl SqliteFindingPurchaseStore {
         if inserted != 1 {
             return Err(invariant("reservation insert did not affect one row"));
         }
+        // Reserve bounded provisional capacity in the same transaction that
+        // encumbers seller exposure. Abandoning this reservation releases
+        // that capacity because only settlement promotes the destination to
+        // the immutable roster.
+        reserve_payout_destination_tx(&transaction, input.allocation_id, input.payout_destination)?;
+        let payout_bound = transaction
+            .execute(
+                r#"
+                INSERT INTO purchase_payout_bindings (
+                    reservation_id, destination, binding_kind
+                ) VALUES (?1, ?2, 'evm')
+                "#,
+                params![input.reservation_id, input.payout_destination],
+            )
+            .map_err(sqlite_error)?;
+        if payout_bound != 1 {
+            return Err(invariant("purchase payout binding did not affect one row"));
+        }
         let encumbered = transaction
             .execute(
                 r#"
@@ -486,7 +633,7 @@ impl SqliteFindingPurchaseStore {
                 "exposure encumbrance insert did not affect one row",
             ));
         }
-        self.commit_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(FindingPurchaseWriteOutcome::Inserted)
     }
@@ -537,7 +684,9 @@ impl SqliteFindingPurchaseStore {
     /// transaction, and slots are never deleted, so an ordinal is never
     /// reused. Idempotent: a reservation already holding a slot returns
     /// that ordinal. A reservation at or past its expiry cannot take a
-    /// fresh slot.
+    /// fresh slot, and neither can any reservation once the listing's
+    /// sales are blocked: the block is read inside this transaction, so a
+    /// reserve racing the block either commits before it or sees it.
     pub fn reserve_slot(
         &self,
         reservation_id: &str,
@@ -565,6 +714,11 @@ impl SqliteFindingPurchaseStore {
         if now >= reservation.expires_at {
             return Err(FindingPurchaseStoreError::Conflict(
                 "reservation has reached its expiry".to_owned(),
+            ));
+        }
+        if sales_blocked_tx(&transaction, &reservation.listing_id)? {
+            return Err(FindingPurchaseStoreError::SalesBlocked(
+                reservation.listing_id.clone(),
             ));
         }
         let highest: i64 = transaction
@@ -600,14 +754,101 @@ impl SqliteFindingPurchaseStore {
             return Err(invariant("slot insert did not affect one row"));
         }
         advance_reservation_tx(&transaction, reservation_id, "open", "slot_reserved", now)?;
-        self.commit_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(ordinal)
     }
 
+    /// Durably fence a purchase whose payment journal has selected capture.
+    ///
+    /// The kernel calls this after sealing its replayable capture intent and
+    /// before invoking the payment rail. Once present, the marker is retained
+    /// forever and excludes the reservation from expiry, explicit release,
+    /// and denial close. This makes a crash after rail capture recoverable by
+    /// the ordinary delivery finalizer instead of converting paid value into
+    /// an expired reservation. Idempotent for the exact reservation/payment
+    /// binding.
+    pub fn mark_capture_pending(
+        &self,
+        reservation_id: &str,
+        authoritative_payment_operation_id: &str,
+        now: u64,
+    ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
+        require_identifier(reservation_id, "reservation_id")?;
+        require_identifier(
+            authoritative_payment_operation_id,
+            "authoritative_payment_operation_id",
+        )?;
+        require_trusted_time(now, "now")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let reservation = load_reservation_tx(&transaction, reservation_id)?
+            .ok_or(FindingPurchaseStoreError::NotFound)?;
+        if reservation.authoritative_payment_operation_id != authoritative_payment_operation_id {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "capture intent names another payment operation".to_owned(),
+            ));
+        }
+        if !matches!(
+            reservation.state,
+            FindingPurchaseReservationState::SlotReserved
+                | FindingPurchaseReservationState::Consumed
+        ) {
+            return Err(FindingPurchaseStoreError::Conflict(format!(
+                "reservation cannot begin capture from state {}",
+                reservation_state_name(reservation.state)
+            )));
+        }
+        let existing: Option<(String, u64)> = transaction
+            .query_row(
+                r#"
+                SELECT authoritative_payment_operation_id, marked_at
+                FROM purchase_capture_intents WHERE reservation_id = ?1
+                "#,
+                [reservation_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(sqlite_error)?
+            .map(|(operation_id, marked_at): (String, i64)| {
+                stored_u64(marked_at, "capture intent marked_at")
+                    .map(|marked_at| (operation_id, marked_at))
+            })
+            .transpose()?;
+        if let Some((operation_id, _)) = existing {
+            if operation_id == authoritative_payment_operation_id {
+                return Ok(FindingPurchaseWriteOutcome::ExistingSame);
+            }
+            return Err(FindingPurchaseStoreError::Conflict(
+                "reservation is already capture-fenced under another payment operation".to_owned(),
+            ));
+        }
+        let inserted = transaction
+            .execute(
+                r#"
+                INSERT INTO purchase_capture_intents (
+                    reservation_id, authoritative_payment_operation_id, marked_at
+                ) VALUES (?1, ?2, ?3)
+                "#,
+                params![
+                    reservation_id,
+                    authoritative_payment_operation_id,
+                    sqlite_i64(now, "now")?,
+                ],
+            )
+            .map_err(sqlite_error)?;
+        if inserted != 1 {
+            return Err(invariant("capture intent insert did not affect one row"));
+        }
+        self.commit_market_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(FindingPurchaseWriteOutcome::Inserted)
+    }
+
     /// Settle one purchase. In one immediate transaction this closes the
-    /// slot against the record, admits the payout destination against the
-    /// reservation's durable allocation, moves the reservation
+    /// slot against the record, rechecks the payout destination reserved
+    /// before payment against the reservation's durable allocation, moves
+    /// the reservation
     /// `slot_reserved` to `consumed`, retains the exposure encumbrance
     /// through `retention_expires_at`, and inserts the retained purchase
     /// record.
@@ -623,7 +864,7 @@ impl SqliteFindingPurchaseStore {
         require_hex64(input.record_sha256, "record_sha256")?;
         require_identifier(input.reservation_id, "reservation_id")?;
         require_identifier(input.delivery_receipt_id, "delivery_receipt_id")?;
-        require_rail_destination(input.payout_destination)?;
+        require_evm_payout_destination(input.payout_destination)?;
         require_terminal_record(input.record_json, input.record_sha256)?;
         require_trusted_time(input.now, "now")?;
         require_trusted_time(input.retention_expires_at, "retention_expires_at")?;
@@ -631,6 +872,12 @@ impl SqliteFindingPurchaseStore {
         let transaction = self.begin_write(&mut connection)?;
         let reservation = load_reservation_tx(&transaction, input.reservation_id)?
             .ok_or(FindingPurchaseStoreError::NotFound)?;
+        if reservation.payout_destination != input.payout_destination {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "delivery payout destination differs from the buyer-signed reservation binding"
+                    .to_owned(),
+            ));
+        }
         let encumbrance = load_encumbrance_tx(&transaction, input.reservation_id)?
             .ok_or_else(|| invariant("reservation lost its exposure encumbrance"))?;
         match reservation.state {
@@ -669,6 +916,11 @@ impl SqliteFindingPurchaseStore {
                 ));
             }
             FindingPurchaseReservationState::SlotReserved => {
+                require_capture_intent_tx(
+                    &transaction,
+                    input.reservation_id,
+                    &reservation.authoritative_payment_operation_id,
+                )?;
                 if encumbrance.state != FindingPurchaseEncumbranceState::Open {
                     return Err(invariant(
                         "slot-reserved reservation does not hold open exposure",
@@ -693,6 +945,9 @@ impl SqliteFindingPurchaseStore {
             input.purchase_key,
             "purchase key",
         )?;
+        // Promotion happens in the same transaction as the settlement
+        // record. A denial, expiry, or explicit release therefore never
+        // consumes an immutable buyer slot.
         admit_payout_destination_tx(
             &transaction,
             &encumbrance.allocation_id,
@@ -750,7 +1005,7 @@ impl SqliteFindingPurchaseStore {
         if inserted != 1 {
             return Err(invariant("purchase record insert did not affect one row"));
         }
-        self.commit_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(FindingPurchaseWriteOutcome::Inserted)
     }
@@ -803,6 +1058,11 @@ impl SqliteFindingPurchaseStore {
                 )));
             }
         }
+        if capture_intent_exists_tx(&transaction, input.reservation_id)? {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "capture-fenced reservation cannot close as a delivery denial".to_owned(),
+            ));
+        }
         reject_bound_identifier(
             &transaction,
             "SELECT reservation_id FROM failed_delivery_records WHERE failed_delivery_id = ?1",
@@ -841,7 +1101,7 @@ impl SqliteFindingPurchaseStore {
                 "failed delivery record insert did not affect one row",
             ));
         }
-        self.commit_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(FindingPurchaseWriteOutcome::Inserted)
     }
@@ -872,8 +1132,13 @@ impl SqliteFindingPurchaseStore {
                 )));
             }
         };
+        if capture_intent_exists_tx(&transaction, reservation_id)? {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "capture-fenced reservation cannot be released".to_owned(),
+            ));
+        }
         abandon_reservation_tx(&transaction, reservation_id, from, "released", now)?;
-        self.commit_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(())
     }
@@ -894,7 +1159,7 @@ impl SqliteFindingPurchaseStore {
         for (reservation_id, state) in &due {
             abandon_reservation_tx(&transaction, reservation_id, state, "expired", now)?;
         }
-        self.commit_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(due.len())
     }
@@ -921,6 +1186,68 @@ impl SqliteFindingPurchaseStore {
         floor
             .map(|ordinal| stored_u64(ordinal, "slot_ordinal"))
             .transpose()
+    }
+
+    /// Block every new pending-purchase slot on one listing. While the
+    /// block stands it is never rewritten, so a cutoff frozen against it
+    /// can only ever be the listing's high-water mark. Idempotent, and a
+    /// repeat keeps the trusted time the first block recorded.
+    ///
+    /// Slots already reserved are untouched. Blocking stops the line
+    /// growing; it does not retract a purchase already in flight, which
+    /// still has to reach a settled record or a denial.
+    ///
+    /// Nothing on this surface lifts a block. The one transition that
+    /// does is the liability reversal that exonerates the seller, and it
+    /// is composed into that reversal's own transaction rather than
+    /// offered to a caller.
+    pub fn block_new_slots(
+        &self,
+        listing_id: &str,
+        now: u64,
+    ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
+        require_identifier(listing_id, "listing_id")?;
+        require_trusted_time(now, "now")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let outcome = block_new_slots_tx(&transaction, listing_id, now)?;
+        self.commit_market_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(outcome)
+    }
+
+    /// Whether new purchases are blocked on one listing.
+    pub fn sales_blocked(&self, listing_id: &str) -> Result<bool, FindingPurchaseStoreError> {
+        require_identifier(listing_id, "listing_id")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        sales_blocked_tx(&transaction, listing_id)
+    }
+
+    /// Whether every slot on one listing at or below `cutoff` has closed,
+    /// against a settled record or against a denial. This is the exact
+    /// predicate a claim snapshot waits on: slots above the cutoff are
+    /// irrelevant to it, and a cutoff of zero is trivially satisfied
+    /// because slot ordinals start at one.
+    pub fn all_slots_closed_at_or_below(
+        &self,
+        listing_id: &str,
+        cutoff: u64,
+    ) -> Result<bool, FindingPurchaseStoreError> {
+        require_identifier(listing_id, "listing_id")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let open: i64 = transaction
+            .query_row(
+                r#"
+                SELECT COUNT(*) FROM pending_purchase_slots
+                WHERE listing_id = ?1 AND slot_ordinal <= ?2 AND state = 'reserved'
+                "#,
+                params![listing_id, sqlite_i64(cutoff, "cutoff")?],
+                |row| row.get(0),
+            )
+            .map_err(sqlite_error)?;
+        Ok(open == 0)
     }
 
     /// Exposure still outstanding against one collateral allocation at
@@ -951,6 +1278,58 @@ impl SqliteFindingPurchaseStore {
         load_purchase_record_tx(&transaction, "purchase_key", purchase_key)
     }
 
+    /// Every settled purchase charged to one allocation on one listing at
+    /// or below a frozen slot cutoff. This is the authoritative claim set:
+    /// callers may use hints to select work, but they cannot omit a retained
+    /// settled record from the snapshot that determines buyer compensation.
+    pub fn list_settled_purchase_keys_at_or_below(
+        &self,
+        listing_id: &str,
+        allocation_id: &str,
+        cutoff: u64,
+    ) -> Result<Vec<String>, FindingPurchaseStoreError> {
+        require_identifier(listing_id, "listing_id")?;
+        require_hex64(allocation_id, "allocation_id")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        settled_purchase_keys_at_or_below_tx(&transaction, listing_id, allocation_id, cutoff)
+    }
+
+    /// Return the complete settled claim set only when every slot at or
+    /// below the cutoff is terminal in the same database snapshot.
+    ///
+    /// The closure predicate and enumeration deliberately share one read
+    /// transaction. A purchase that settles concurrently is therefore
+    /// either still visible as reserved (and this returns `None`) or is
+    /// included in the returned key set. Once the listing sales block is
+    /// raised, a successful result cannot be invalidated by a new slot.
+    pub fn closed_settled_purchase_keys_at_or_below(
+        &self,
+        listing_id: &str,
+        allocation_id: &str,
+        cutoff: u64,
+    ) -> Result<Option<Vec<String>>, FindingPurchaseStoreError> {
+        require_identifier(listing_id, "listing_id")?;
+        require_hex64(allocation_id, "allocation_id")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let open: i64 = transaction
+            .query_row(
+                r#"
+                SELECT COUNT(*) FROM pending_purchase_slots
+                WHERE listing_id = ?1 AND slot_ordinal <= ?2 AND state = 'reserved'
+                "#,
+                params![listing_id, sqlite_i64(cutoff, "cutoff")?],
+                |row| row.get(0),
+            )
+            .map_err(sqlite_error)?;
+        if open != 0 {
+            return Ok(None);
+        }
+        settled_purchase_keys_at_or_below_tx(&transaction, listing_id, allocation_id, cutoff)
+            .map(Some)
+    }
+
     /// One retained failed-delivery record, re-checked against its stored
     /// digest on the read path.
     pub fn get_failed_delivery_record(
@@ -963,8 +1342,66 @@ impl SqliteFindingPurchaseStore {
         load_failed_delivery_tx(&transaction, "failed_delivery_id", failed_delivery_id)
     }
 
-    /// Admit one buyer payout destination for an allocation, returning the
-    /// slot it occupies. An already-admitted destination replays with its
+    /// Bind the community-fund destination at the reserved slot zero for
+    /// one allocation. Idempotent on the same destination; a different
+    /// destination for an allocation whose slot zero is already bound
+    /// rejects, as does a destination already admitted as a buyer slot.
+    pub fn register_community_fund_destination(
+        &self,
+        allocation_id: &str,
+        destination: &str,
+        admitted_at: u64,
+    ) -> Result<FindingPayoutDestinationAdmission, FindingPurchaseStoreError> {
+        require_hex64(allocation_id, "allocation_id")?;
+        require_evm_payout_destination(destination)?;
+        require_trusted_time(admitted_at, "admitted_at")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        if let Some(existing) = load_destination_tx(&transaction, allocation_id, destination)? {
+            if existing.slot_index != COMMUNITY_FUND_SLOT_INDEX {
+                return Err(FindingPurchaseStoreError::Conflict(
+                    "destination is already admitted as a buyer payout slot".to_owned(),
+                ));
+            }
+            return Ok(FindingPayoutDestinationAdmission {
+                outcome: FindingPurchaseWriteOutcome::ExistingSame,
+                ..existing
+            });
+        }
+        let occupant: Option<String> = transaction
+            .query_row(
+                r#"
+                SELECT destination FROM payout_destinations
+                WHERE allocation_id = ?1 AND slot_index = ?2
+                "#,
+                params![allocation_id, i64::from(COMMUNITY_FUND_SLOT_INDEX)],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(sqlite_error)?;
+        if occupant.is_some() {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "the community fund slot is already bound to a different destination".to_owned(),
+            ));
+        }
+        insert_destination_tx(
+            &transaction,
+            allocation_id,
+            destination,
+            COMMUNITY_FUND_SLOT_INDEX,
+            admitted_at,
+        )?;
+        self.commit_market_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(FindingPayoutDestinationAdmission {
+            slot_index: COMMUNITY_FUND_SLOT_INDEX,
+            admitted_at,
+            outcome: FindingPurchaseWriteOutcome::Inserted,
+        })
+    }
+
+    /// Admit one EVM buyer payout destination for an allocation, returning
+    /// the slot it occupies. An already-admitted destination replays with its
     /// existing slot; otherwise the lowest free slot in 1..=15 is taken,
     /// and an allocation whose buyer slots are full rejects.
     pub fn admit_payout_destination(
@@ -974,7 +1411,7 @@ impl SqliteFindingPurchaseStore {
         admitted_at: u64,
     ) -> Result<FindingPayoutDestinationAdmission, FindingPurchaseStoreError> {
         require_hex64(allocation_id, "allocation_id")?;
-        require_rail_destination(destination)?;
+        require_evm_payout_destination(destination)?;
         require_trusted_time(admitted_at, "admitted_at")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
@@ -983,13 +1420,13 @@ impl SqliteFindingPurchaseStore {
         if admission.outcome == FindingPurchaseWriteOutcome::ExistingSame {
             return Ok(admission);
         }
-        self.commit_write(transaction)?;
+        self.commit_market_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(admission)
     }
 
-    /// Every payout destination admitted for one allocation, in slot
-    /// order.
+    /// Every payout destination admitted for one allocation, ordered by
+    /// slot with the community fund first.
     pub fn list_payout_destinations(
         &self,
         allocation_id: &str,
@@ -1067,6 +1504,7 @@ fn map_reservation(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawReservation> 
 
 fn reservation_from_raw(
     raw: RawReservation,
+    payout_destination: String,
 ) -> Result<FindingPurchaseReservationRecord, FindingPurchaseStoreError> {
     Ok(FindingPurchaseReservationRecord {
         reservation_id: raw.reservation_id,
@@ -1074,6 +1512,7 @@ fn reservation_from_raw(
         authoritative_payment_operation_id: raw.authoritative_payment_operation_id,
         payer_hex: raw.payer_hex,
         agent_id: raw.agent_id,
+        payout_destination,
         finding_id: raw.finding_id,
         listing_id: raw.listing_id,
         bid_envelope_sha256: raw.bid_envelope_sha256,
@@ -1110,7 +1549,19 @@ fn load_reservation_row_tx(
         )
         .optional()
         .map_err(sqlite_error)?;
-    raw.map(reservation_from_raw).transpose()
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let payout_destination = transaction
+        .query_row(
+            "SELECT destination FROM purchase_payout_bindings WHERE reservation_id = ?1",
+            [&raw.reservation_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?
+        .ok_or_else(|| invariant("reservation lost its buyer-signed payout binding"))?;
+    reservation_from_raw(raw, payout_destination).map(Some)
 }
 
 fn load_encumbrance_tx(
@@ -1355,6 +1806,63 @@ fn load_destination_tx(
     }))
 }
 
+/// Reserve one distinct buyer-destination position while a purchase is live.
+///
+/// The binding row is retained for replay, but only bindings whose reservation
+/// is still live count here. Settled destinations already occupy immutable
+/// slots, while released and expired reservations release provisional
+/// capacity without deleting their audit history.
+fn reserve_payout_destination_tx(
+    transaction: &Transaction<'_>,
+    allocation_id: &str,
+    destination: &str,
+) -> Result<(), FindingPurchaseStoreError> {
+    if let Some(existing) = load_destination_tx(transaction, allocation_id, destination)? {
+        if existing.slot_index == COMMUNITY_FUND_SLOT_INDEX {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "community fund destination cannot be used as a buyer payout".to_owned(),
+            ));
+        }
+        return Ok(());
+    }
+    let (occupied, already_provisional): (i64, i64) = transaction
+        .query_row(
+            r#"
+            WITH occupied(destination) AS (
+                SELECT destination
+                FROM payout_destinations
+                WHERE allocation_id = ?1 AND slot_index BETWEEN 1 AND 15
+                UNION
+                SELECT bindings.destination
+                FROM purchase_payout_bindings AS bindings
+                JOIN purchase_reservations AS reservations
+                  ON reservations.reservation_id = bindings.reservation_id
+                JOIN seller_exposure_encumbrances AS encumbrances
+                  ON encumbrances.reservation_id = reservations.reservation_id
+                WHERE encumbrances.allocation_id = ?1
+                  AND bindings.binding_kind = 'evm'
+                  AND reservations.state IN ('open', 'slot_reserved')
+            )
+            SELECT
+                COUNT(*),
+                EXISTS(SELECT 1 FROM occupied WHERE destination = ?2)
+            FROM occupied
+            "#,
+            params![allocation_id, destination],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(sqlite_error)?;
+    if already_provisional != 0 {
+        return Ok(());
+    }
+    if occupied >= i64::from(PAYOUT_DESTINATION_SLOTS - 1) {
+        return Err(FindingPurchaseStoreError::DestinationSlotsExhausted(
+            allocation_id.to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn admit_payout_destination_tx(
     transaction: &Transaction<'_>,
     allocation_id: &str,
@@ -1362,11 +1870,17 @@ fn admit_payout_destination_tx(
     admitted_at: u64,
 ) -> Result<FindingPayoutDestinationAdmission, FindingPurchaseStoreError> {
     if let Some(existing) = load_destination_tx(transaction, allocation_id, destination)? {
+        if existing.slot_index == COMMUNITY_FUND_SLOT_INDEX {
+            return Err(FindingPurchaseStoreError::Conflict(
+                "community fund destination cannot be used as a buyer payout".to_owned(),
+            ));
+        }
         return Ok(FindingPayoutDestinationAdmission {
             outcome: FindingPurchaseWriteOutcome::ExistingSame,
             ..existing
         });
     }
+    reserve_payout_destination_tx(transaction, allocation_id, destination)?;
     let mut taken = [false; PAYOUT_DESTINATION_SLOTS as usize];
     {
         let mut statement = transaction
@@ -1435,6 +1949,171 @@ fn insert_destination_tx(
     Ok(())
 }
 
+fn settled_purchase_keys_at_or_below_tx(
+    transaction: &Transaction<'_>,
+    listing_id: &str,
+    allocation_id: &str,
+    cutoff: u64,
+) -> Result<Vec<String>, FindingPurchaseStoreError> {
+    let mut statement = transaction
+        .prepare(
+            r#"
+            SELECT records.purchase_key
+            FROM purchase_records AS records
+            JOIN pending_purchase_slots AS slots
+              ON slots.reservation_id = records.reservation_id
+            JOIN seller_exposure_encumbrances AS encumbrances
+              ON encumbrances.reservation_id = records.reservation_id
+            WHERE slots.listing_id = ?1
+              AND slots.slot_ordinal <= ?2
+              AND slots.state = 'closed_record'
+              AND encumbrances.allocation_id = ?3
+            ORDER BY records.purchase_key ASC
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let keys = statement
+        .query_map(
+            params![listing_id, sqlite_i64(cutoff, "cutoff")?, allocation_id],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(keys)
+}
+
+/// Raise one listing's sales block inside a caller-supplied transaction.
+/// This is the seam the challenge lane composes with: the liability CAS
+/// that freezes a purchase cutoff and the block that stops the slot line
+/// growing past it are one transaction on one connection, so no slot can
+/// open between them.
+///
+/// Episodes are numbered strictly monotonically per listing and are never
+/// deleted, so a listing blocked, exonerated, and blocked again keeps both
+/// raises on the record. A listing that already carries a live block
+/// replays: the second liability to reach it holds the same episode the
+/// first raised, and that episode outlives either of them.
+pub(crate) fn block_new_slots_tx(
+    transaction: &Transaction<'_>,
+    listing_id: &str,
+    now: u64,
+) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
+    if sales_blocked_tx(transaction, listing_id)? {
+        return Ok(FindingPurchaseWriteOutcome::ExistingSame);
+    }
+    let highest: i64 = transaction
+        .query_row(
+            r#"
+            SELECT COALESCE(MAX(block_ordinal), 0) FROM listing_sales_blocks
+            WHERE listing_id = ?1
+            "#,
+            [listing_id],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    let ordinal = stored_u64(highest, "block_ordinal")?
+        .checked_add(1)
+        .ok_or_else(|| invariant("block ordinal overflowed u64"))?;
+    let inserted = transaction
+        .execute(
+            r#"
+            INSERT INTO listing_sales_blocks (
+                listing_id, block_ordinal, state, blocked_at, lifted_at
+            ) VALUES (?1, ?2, 'blocked', ?3, NULL)
+            "#,
+            params![
+                listing_id,
+                sqlite_i64(ordinal, "block_ordinal")?,
+                sqlite_i64(now, "now")?,
+            ],
+        )
+        .map_err(sqlite_error)?;
+    if inserted != 1 {
+        return Err(invariant("listing sales block did not affect one row"));
+    }
+    Ok(FindingPurchaseWriteOutcome::Inserted)
+}
+
+/// Lift one listing's live sales block inside a caller-supplied
+/// transaction, stamping when it was lifted and leaving the raise itself
+/// untouched.
+///
+/// This is the counterpart seam to [`block_new_slots_tx`], and it exists
+/// for exactly one caller: the liability reversal that exonerates the
+/// seller before anything was impaired. The store cannot see what
+/// authorizes a lift, so it is deliberately not reachable from the public
+/// surface; the challenge lane composes it into the same transaction as
+/// the compare-and-set that reaches the reversed terminal, and only once
+/// no other liability still holds the listing.
+///
+/// Idempotent: a listing with no live block is already where the caller
+/// wants it, whether it was never blocked or the lift already committed.
+pub(crate) fn lift_sales_block_tx(
+    transaction: &Transaction<'_>,
+    listing_id: &str,
+    now: u64,
+) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
+    let lifted = transaction
+        .execute(
+            r#"
+            UPDATE listing_sales_blocks SET state = 'lifted', lifted_at = ?2
+            WHERE listing_id = ?1 AND state = 'blocked'
+            "#,
+            params![listing_id, sqlite_i64(now, "now")?],
+        )
+        .map_err(sqlite_error)?;
+    match lifted {
+        0 => Ok(FindingPurchaseWriteOutcome::ExistingSame),
+        1 => Ok(FindingPurchaseWriteOutcome::Inserted),
+        _ => Err(invariant("listing sales block lift affected several rows")),
+    }
+}
+
+/// The highest slot ordinal ever allocated on one listing, read inside a
+/// caller-supplied transaction. Zero means the listing has never sold.
+/// Ordinals are monotonic and slots are never deleted, so this is the
+/// listing's high-water mark and, once its sales are blocked, its final
+/// one.
+pub(crate) fn highest_slot_ordinal_tx(
+    transaction: &Transaction<'_>,
+    listing_id: &str,
+) -> Result<u64, FindingPurchaseStoreError> {
+    let highest: i64 = transaction
+        .query_row(
+            r#"
+            SELECT COALESCE(MAX(slot_ordinal), 0) FROM pending_purchase_slots
+            WHERE listing_id = ?1
+            "#,
+            [listing_id],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    stored_u64(highest, "slot_ordinal")
+}
+
+/// Whether one listing's sales are blocked, read inside a caller-supplied
+/// transaction. A listing sells again once its live block episode is
+/// lifted; the lifted episodes it retains do not block anything.
+pub(crate) fn sales_blocked_tx(
+    transaction: &Transaction<'_>,
+    listing_id: &str,
+) -> Result<bool, FindingPurchaseStoreError> {
+    let blocked: bool = transaction
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM listing_sales_blocks
+                WHERE listing_id = ?1 AND state = 'blocked'
+            )
+            "#,
+            [listing_id],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    Ok(blocked)
+}
+
 /// The live reservations whose expiry has passed, oldest first, bounded
 /// by `limit`, paired with the state each is leaving.
 fn due_reservations_tx(
@@ -1449,6 +2128,10 @@ fn due_reservations_tx(
             r#"
             SELECT reservation_id, state FROM purchase_reservations
             WHERE state IN ('open', 'slot_reserved') AND expires_at <= ?1
+              AND NOT EXISTS (
+                  SELECT 1 FROM purchase_capture_intents AS capture
+                  WHERE capture.reservation_id = purchase_reservations.reservation_id
+              )
             ORDER BY expires_at ASC, reservation_id ASC
             LIMIT ?2
             "#,
@@ -1464,12 +2147,70 @@ fn due_reservations_tx(
     Ok(due)
 }
 
+/// Expire the due reservations still holding an open encumbrance against
+/// one allocation, inside the caller's transaction, bounded by
+/// [`MAX_EXPIRY_BATCH`]. This runs before the allocation's exposure cap is
+/// checked so the cap bounds live exposure only; a residue past the batch
+/// bound keeps counting until a later pass reaches it, which can only
+/// deny a reservation, never overcommit one.
+fn expire_due_allocation_reservations_tx(
+    transaction: &Transaction<'_>,
+    allocation_id: &str,
+    now: u64,
+) -> Result<(), FindingPurchaseStoreError> {
+    let mut statement = transaction
+        .prepare(
+            r#"
+            SELECT reservations.reservation_id, reservations.state
+            FROM purchase_reservations AS reservations
+            JOIN seller_exposure_encumbrances AS encumbrances
+              ON encumbrances.reservation_id = reservations.reservation_id
+            WHERE encumbrances.allocation_id = ?1
+              AND encumbrances.state = 'open'
+              AND reservations.state IN ('open', 'slot_reserved')
+              AND reservations.expires_at <= ?2
+              AND NOT EXISTS (
+                  SELECT 1 FROM purchase_capture_intents AS capture
+                  WHERE capture.reservation_id = reservations.reservation_id
+              )
+            ORDER BY reservations.expires_at ASC, reservations.reservation_id ASC
+            LIMIT ?3
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let due = statement
+        .query_map(
+            params![
+                allocation_id,
+                sqlite_i64(now, "now")?,
+                sqlite_i64(u64::try_from(MAX_EXPIRY_BATCH).unwrap_or(u64::MAX), "limit")?,
+            ],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    drop(statement);
+    for (reservation_id, state) in &due {
+        abandon_reservation_tx(transaction, reservation_id, state, "expired", now)?;
+    }
+    Ok(())
+}
+
 /// Exposure booked against one allocation that is still outstanding at
 /// `now`. A settled sale's exposure does not vanish when the money moves:
 /// it stays encumbered until the retention horizon the settlement pinned
 /// lapses, so one allocation can never back more concurrent plus retained
 /// liability than the cap it registered.
-fn outstanding_exposure_total_tx(
+///
+/// An open encumbrance follows its reservation's own expiry semantics. A
+/// reservation still `open` past its expiry can never take a slot, so it
+/// can never become a sale: counting it would let an abandoned reservation
+/// encumber the cap forever. A `slot_reserved` reservation past its expiry
+/// keeps counting, because its delivery may still settle into a retained
+/// encumbrance until the expiry sweep closes it; dropping it early would
+/// undercount against exposure that can still materialize.
+pub(crate) fn outstanding_exposure_total_tx(
     transaction: &Transaction<'_>,
     allocation_id: &str,
     now: u64,
@@ -1477,11 +2218,17 @@ fn outstanding_exposure_total_tx(
     let total: i64 = transaction
         .query_row(
             r#"
-            SELECT COALESCE(SUM(amount_units), 0) FROM seller_exposure_encumbrances
-            WHERE allocation_id = ?1
+            SELECT COALESCE(SUM(enc.amount_units), 0)
+            FROM seller_exposure_encumbrances AS enc
+            JOIN purchase_reservations AS res
+              ON res.reservation_id = enc.reservation_id
+            WHERE enc.allocation_id = ?1
               AND (
-                state = 'open'
-                OR (state = 'retained' AND retention_expires_at > ?2)
+                (
+                    enc.state = 'open'
+                    AND NOT (res.state = 'open' AND res.expires_at <= ?2)
+                )
+                OR (enc.state = 'retained' AND enc.retention_expires_at > ?2)
               )
             "#,
             params![allocation_id, sqlite_i64(now, "now")?],
@@ -1631,6 +2378,46 @@ fn advance_reservation_tx(
     Ok(())
 }
 
+fn capture_intent_exists_tx(
+    transaction: &Transaction<'_>,
+    reservation_id: &str,
+) -> Result<bool, FindingPurchaseStoreError> {
+    transaction
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM purchase_capture_intents WHERE reservation_id = ?1)",
+            [reservation_id],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)
+}
+
+fn require_capture_intent_tx(
+    transaction: &Transaction<'_>,
+    reservation_id: &str,
+    authoritative_payment_operation_id: &str,
+) -> Result<(), FindingPurchaseStoreError> {
+    let operation_id: Option<String> = transaction
+        .query_row(
+            r#"
+            SELECT authoritative_payment_operation_id
+            FROM purchase_capture_intents WHERE reservation_id = ?1
+            "#,
+            [reservation_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    match operation_id {
+        Some(operation_id) if operation_id == authoritative_payment_operation_id => Ok(()),
+        Some(_) => Err(invariant(
+            "capture intent conflicts with the reservation payment operation",
+        )),
+        None => Err(FindingPurchaseStoreError::Conflict(
+            "purchase delivery has no durable pre-capture intent".to_owned(),
+        )),
+    }
+}
+
 fn close_reserved_slot_tx(
     transaction: &Transaction<'_>,
     reservation_id: &str,
@@ -1713,6 +2500,7 @@ fn reservation_matches(
         && existing.authoritative_payment_operation_id == input.authoritative_payment_operation_id
         && existing.payer_hex == input.payer_hex
         && existing.agent_id == input.agent_id
+        && existing.payout_destination == input.payout_destination
         && existing.finding_id == input.finding_id
         && existing.listing_id == input.listing_id
         && existing.bid_envelope_sha256 == input.bid_envelope_sha256
@@ -1742,6 +2530,7 @@ fn validate_reservation_input(
         "authoritative_payment_operation_id",
     )?;
     require_identifier(input.agent_id, "agent_id")?;
+    require_evm_payout_destination(input.payout_destination)?;
     require_identifier(input.listing_id, "listing_id")?;
     require_identifier(input.encumbrance_id, "encumbrance_id")?;
     require_hex64(input.payer_hex, "payer_hex")?;
@@ -1824,9 +2613,15 @@ pub(crate) fn initialize_finding_purchase_schema(
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(sqlite_error)?;
+    park_listing_keyed_sales_blocks(&transaction, on_disk)?;
+    park_rail_only_payout_destinations(&transaction)?;
+    park_untyped_purchase_payout_bindings(&transaction)?;
     transaction
         .execute_batch(FINDING_PURCHASE_SCHEMA)
         .map_err(sqlite_error)?;
+    carry_listing_sales_blocks_across(&transaction)?;
+    carry_payout_destinations_across(&transaction)?;
+    carry_legacy_reservation_payout_bindings(&transaction)?;
     crate::stamp_schema_version(
         &transaction,
         FINDING_PURCHASE_SCHEMA_KEY,
@@ -1835,6 +2630,382 @@ pub(crate) fn initialize_finding_purchase_schema(
     .map_err(|error| invariant(error.to_string()))?;
     verify_finding_purchase_invariants(&transaction)?;
     transaction.commit().map_err(sqlite_error)
+}
+
+/// Park a listing-keyed sales block table beside the schema batch so the
+/// batch can create the episode line under the canonical name.
+///
+/// `CREATE TABLE IF NOT EXISTS` leaves an existing definition alone and
+/// SQLite cannot re-key a table in place, so a database provisioned when a
+/// block was a single never-lifted row per listing keeps that shape until
+/// its rows are carried across. The two legacy triggers go with it: they
+/// are attached to the parked table under names the episode line reuses,
+/// and a surviving trigger would make the batch's `IF NOT EXISTS` guard
+/// skip the definition that replaces it.
+///
+/// Gated structurally as well as by revision, so it applies at most once
+/// and never touches a database that already carries the episode line.
+fn park_listing_keyed_sales_blocks(
+    transaction: &Transaction<'_>,
+    on_disk_version: i32,
+) -> Result<(), FindingPurchaseStoreError> {
+    if on_disk_version != FINDING_PURCHASE_LISTING_KEYED_BLOCK_VERSION {
+        return Ok(());
+    }
+    let definition: Option<String> = transaction
+        .query_row(
+            r#"
+            SELECT sql FROM sqlite_schema
+            WHERE type = 'table' AND name = 'listing_sales_blocks'
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let Some(definition) = definition else {
+        return Ok(());
+    };
+    if definition.contains("block_ordinal") {
+        return Ok(());
+    }
+    transaction
+        .execute_batch(&format!(
+            r#"
+            DROP TRIGGER IF EXISTS listing_sales_blocks_immutable;
+            DROP TRIGGER IF EXISTS listing_sales_blocks_no_delete;
+            ALTER TABLE listing_sales_blocks RENAME TO {LEGACY_SALES_BLOCK_TABLE};
+            "#
+        ))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+/// Move every parked block onto the episode line as that listing's first
+/// episode, still blocked, and drop the parked table once its rows are
+/// across.
+///
+/// A listing-keyed block was raised and never lifted, so carrying it as a
+/// live episode is what the listing's sales state already is: no listing
+/// silently starts selling again across the upgrade, and none is stranded
+/// under a block the reversal transition cannot reach. The copy is a plain
+/// `INSERT`, so a row the episode line's constraints reject aborts the
+/// open rather than being dropped.
+fn carry_listing_sales_blocks_across(
+    transaction: &Transaction<'_>,
+) -> Result<(), FindingPurchaseStoreError> {
+    let parked: bool = transaction
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?1
+            )
+            "#,
+            [LEGACY_SALES_BLOCK_TABLE],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    if !parked {
+        return Ok(());
+    }
+    let expected: i64 = transaction
+        .query_row(
+            &format!("SELECT COUNT(*) FROM {LEGACY_SALES_BLOCK_TABLE}"),
+            [],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    let carried = transaction
+        .execute(
+            &format!(
+                r#"
+                INSERT INTO listing_sales_blocks (
+                    listing_id, block_ordinal, state, blocked_at, lifted_at
+                )
+                SELECT listing_id, 1, 'blocked', blocked_at, NULL
+                FROM {LEGACY_SALES_BLOCK_TABLE}
+                "#
+            ),
+            [],
+        )
+        .map_err(sqlite_error)?;
+    if i64::try_from(carried).unwrap_or(i64::MAX) != expected {
+        return Err(invariant(format!(
+            "listing sales block migration carried {carried} of {expected} rows"
+        )));
+    }
+    transaction
+        .execute_batch(&format!("DROP TABLE {LEGACY_SALES_BLOCK_TABLE};"))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+/// Park an earlier payout table so the schema batch can create the
+/// all-EVM slot-aware definition under the canonical name.
+///
+/// The migration is gated by shape rather than only by revision because
+/// unstamped legacy databases also report revision zero. Dropping the
+/// explicit index and triggers before the rename releases the names the
+/// canonical table reuses. All of this runs in the schema transaction, so
+/// a later copy failure restores the old table and its protections.
+fn park_rail_only_payout_destinations(
+    transaction: &Transaction<'_>,
+) -> Result<(), FindingPurchaseStoreError> {
+    let definition: Option<String> = transaction
+        .query_row(
+            r#"
+            SELECT sql FROM sqlite_schema
+            WHERE type = 'table' AND name = 'payout_destinations'
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let Some(definition) = definition else {
+        return Ok(());
+    };
+    if definition.contains("slot_index BETWEEN 0 AND 15")
+        && definition.contains("substr(destination, 1, 2) = '0x'")
+        && definition.contains("substr(destination, 3) NOT GLOB '*[^0-9a-f]*'")
+    {
+        return Ok(());
+    }
+    transaction
+        .execute_batch(&format!(
+            r#"
+            DROP TRIGGER IF EXISTS payout_destinations_immutable;
+            DROP TRIGGER IF EXISTS payout_destinations_no_delete;
+            DROP INDEX IF EXISTS payout_destinations_slot;
+            ALTER TABLE payout_destinations RENAME TO {LEGACY_PAYOUT_DESTINATIONS_TABLE};
+            "#
+        ))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+/// Retain every destination parked from a pre-EVM schema as non-actionable
+/// history. Syntax alone cannot authenticate an old row as an EVM payout, so
+/// none is promoted into the actionable roster. The parked table is dropped
+/// only after every row is retained.
+fn carry_payout_destinations_across(
+    transaction: &Transaction<'_>,
+) -> Result<(), FindingPurchaseStoreError> {
+    let parked: bool = transaction
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?1
+            )
+            "#,
+            [LEGACY_PAYOUT_DESTINATIONS_TABLE],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    if !parked {
+        return Ok(());
+    }
+    let expected: i64 = transaction
+        .query_row(
+            &format!("SELECT COUNT(*) FROM {LEGACY_PAYOUT_DESTINATIONS_TABLE}"),
+            [],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    let carried = transaction
+        .execute(
+            &format!(
+                r#"
+                INSERT INTO legacy_payout_destinations (
+                    allocation_id, destination, slot_index, admitted_at
+                )
+                SELECT allocation_id, destination, slot_index, admitted_at
+                FROM {LEGACY_PAYOUT_DESTINATIONS_TABLE}
+                "#
+            ),
+            [],
+        )
+        .map_err(sqlite_error)?;
+    if i64::try_from(carried).unwrap_or(i64::MAX) != expected {
+        return Err(invariant(format!(
+            "payout destination migration carried {carried} of {expected} rows"
+        )));
+    }
+    transaction
+        .execute_batch(&format!("DROP TABLE {LEGACY_PAYOUT_DESTINATIONS_TABLE};"))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+/// Park the pre-v7 binding table so the new representation can distinguish
+/// actionable EVM bindings from opaque values retained only for terminal
+/// history.
+fn park_untyped_purchase_payout_bindings(
+    transaction: &Transaction<'_>,
+) -> Result<(), FindingPurchaseStoreError> {
+    let definition: Option<String> = transaction
+        .query_row(
+            r#"
+            SELECT sql FROM sqlite_schema
+            WHERE type = 'table' AND name = 'purchase_payout_bindings'
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let Some(definition) = definition else {
+        return Ok(());
+    };
+    if definition.contains("binding_kind") {
+        return Ok(());
+    }
+    transaction
+        .execute_batch(&format!(
+            r#"
+            DROP TRIGGER IF EXISTS purchase_payout_bindings_immutable;
+            DROP TRIGGER IF EXISTS purchase_payout_bindings_no_delete;
+            ALTER TABLE purchase_payout_bindings
+                RENAME TO {LEGACY_PURCHASE_PAYOUT_BINDINGS_TABLE};
+            "#
+        ))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+/// Recover both the short-lived revision-4 EVM-in-`agent_id` shape and
+/// older retained terminal reservations whose opaque agent identity cannot
+/// supply a live payout address.
+///
+/// Live `open` or `slot_reserved` rows without an authenticated EVM value
+/// still abort the upgrade: they could capture value later, so inventing a
+/// destination would be unsafe. Terminal rows cannot move value again and
+/// retain their historical representation explicitly as `legacy_terminal`.
+fn carry_legacy_reservation_payout_bindings(
+    transaction: &Transaction<'_>,
+) -> Result<(), FindingPurchaseStoreError> {
+    let parked: bool = transaction
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?1
+            )
+            "#,
+            [LEGACY_PURCHASE_PAYOUT_BINDINGS_TABLE],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    if parked {
+        transaction
+            .execute(
+                &format!(
+                    r#"
+                    INSERT INTO purchase_payout_bindings (
+                        reservation_id, destination, binding_kind
+                    )
+                    SELECT bindings.reservation_id, lower(bindings.destination), 'evm'
+                    FROM {LEGACY_PURCHASE_PAYOUT_BINDINGS_TABLE} AS bindings
+                    WHERE length(bindings.destination) = 42
+                      AND substr(bindings.destination, 1, 2) = '0x'
+                      AND substr(bindings.destination, 3) NOT GLOB '*[^0-9A-Fa-f]*'
+                      AND lower(bindings.destination)
+                          <> '0x0000000000000000000000000000000000000000'
+                    "#
+                ),
+                [],
+            )
+            .map_err(sqlite_error)?;
+        transaction
+            .execute(
+                &format!(
+                    r#"
+                    INSERT INTO purchase_payout_bindings (
+                        reservation_id, destination, binding_kind
+                    )
+                    SELECT bindings.reservation_id, bindings.destination, 'legacy_terminal'
+                    FROM {LEGACY_PURCHASE_PAYOUT_BINDINGS_TABLE} AS bindings
+                    JOIN purchase_reservations AS reservations
+                      ON reservations.reservation_id = bindings.reservation_id
+                    WHERE reservations.state IN ('consumed', 'released', 'expired')
+                      AND NOT (
+                          length(bindings.destination) = 42
+                          AND substr(bindings.destination, 1, 2) = '0x'
+                          AND substr(bindings.destination, 3) NOT GLOB '*[^0-9A-Fa-f]*'
+                          AND lower(bindings.destination)
+                              <> '0x0000000000000000000000000000000000000000'
+                      )
+                    "#
+                ),
+                [],
+            )
+            .map_err(sqlite_error)?;
+        transaction
+            .execute_batch(&format!(
+                "DROP TABLE {LEGACY_PURCHASE_PAYOUT_BINDINGS_TABLE};"
+            ))
+            .map_err(sqlite_error)?;
+    }
+    transaction
+        .execute(
+            r#"
+            INSERT OR IGNORE INTO purchase_payout_bindings (
+                reservation_id, destination, binding_kind
+            )
+            SELECT
+                reservations.reservation_id,
+                CASE
+                    WHEN length(reservations.agent_id) = 42
+                     AND substr(reservations.agent_id, 1, 2) = '0x'
+                     AND substr(reservations.agent_id, 3) NOT GLOB '*[^0-9A-Fa-f]*'
+                     AND lower(reservations.agent_id)
+                         <> '0x0000000000000000000000000000000000000000'
+                    THEN lower(reservations.agent_id)
+                    WHEN reservations.state = 'consumed'
+                    THEN COALESCE(
+                        json_extract(CAST(records.record_json AS TEXT), '$.body.payout_destination'),
+                        reservations.agent_id
+                    )
+                    ELSE reservations.agent_id
+                END,
+                CASE
+                    WHEN length(reservations.agent_id) = 42
+                     AND substr(reservations.agent_id, 1, 2) = '0x'
+                     AND substr(reservations.agent_id, 3) NOT GLOB '*[^0-9A-Fa-f]*'
+                     AND lower(reservations.agent_id)
+                         <> '0x0000000000000000000000000000000000000000'
+                    THEN 'evm'
+                    ELSE 'legacy_terminal'
+                END
+            FROM purchase_reservations AS reservations
+            LEFT JOIN purchase_records AS records
+              ON records.reservation_id = reservations.reservation_id
+            WHERE (
+                length(reservations.agent_id) = 42
+                AND substr(reservations.agent_id, 1, 2) = '0x'
+                AND substr(reservations.agent_id, 3) NOT GLOB '*[^0-9A-Fa-f]*'
+                AND lower(reservations.agent_id)
+                    <> '0x0000000000000000000000000000000000000000'
+            ) OR reservations.state IN ('consumed', 'released', 'expired')
+            "#,
+            [],
+        )
+        .map_err(sqlite_error)?;
+    let reservations: i64 = transaction
+        .query_row("SELECT COUNT(*) FROM purchase_reservations", [], |row| {
+            row.get(0)
+        })
+        .map_err(sqlite_error)?;
+    let bindings: i64 = transaction
+        .query_row("SELECT COUNT(*) FROM purchase_payout_bindings", [], |row| {
+            row.get(0)
+        })
+        .map_err(sqlite_error)?;
+    if bindings != reservations {
+        return Err(invariant(format!(
+            "purchase payout migration bound {bindings} of {reservations} reservations; unresolved live legacy reservations require operator recovery"
+        )));
+    }
+    Ok(())
 }
 
 /// Verify the purchase schema's shape: this database's table, index, and
@@ -1874,6 +3045,10 @@ fn finding_purchase_schema_catalog(
             FROM sqlite_schema
             WHERE name GLOB 'purchase_reservations*'
                OR tbl_name GLOB 'purchase_reservations*'
+               OR name GLOB 'purchase_payout_bindings*'
+               OR tbl_name GLOB 'purchase_payout_bindings*'
+               OR name GLOB 'purchase_capture_intents*'
+               OR tbl_name GLOB 'purchase_capture_intents*'
                OR name GLOB 'seller_exposure_encumbrances*'
                OR tbl_name GLOB 'seller_exposure_encumbrances*'
                OR name GLOB 'pending_purchase_slots*'
@@ -1883,6 +3058,10 @@ fn finding_purchase_schema_catalog(
                OR tbl_name GLOB 'failed_delivery_records*'
                OR name GLOB 'payout_destinations*'
                OR tbl_name GLOB 'payout_destinations*'
+               OR name GLOB 'legacy_payout_destinations*'
+               OR tbl_name GLOB 'legacy_payout_destinations*'
+               OR name GLOB 'listing_sales_blocks*'
+               OR tbl_name GLOB 'listing_sales_blocks*'
                ORDER BY type, name, tbl_name
             "#,
         )
@@ -1948,15 +3127,9 @@ fn require_identifier(value: &str, field: &'static str) -> Result<(), FindingPur
     Ok(())
 }
 
-/// A payout destination is rail-tagged: a nonempty rail prefix, a colon,
-/// and a nonempty account. An untagged destination cannot be routed, so it
-/// is refused rather than stored.
-fn require_rail_destination(value: &str) -> Result<(), FindingPurchaseStoreError> {
-    require_identifier(value, "destination")?;
-    match value.split_once(':') {
-        Some((rail, account)) if !rail.is_empty() && !account.is_empty() => Ok(()),
-        _ => Err(invariant("payout destination is not rail-tagged")),
-    }
+fn require_evm_payout_destination(value: &str) -> Result<(), FindingPurchaseStoreError> {
+    validate_evm_payout_destination(value)
+        .map_err(|_| invariant("payout destination is not a valid EVM address"))
 }
 
 fn require_currency(currency: &str) -> Result<(), FindingPurchaseStoreError> {

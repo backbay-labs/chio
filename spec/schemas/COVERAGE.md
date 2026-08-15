@@ -185,7 +185,7 @@ the per-file schemas live in their respective subtrees.
 | `chio-attest/v1/`       |   10  | Buyer-attestation packets, proof packages, selective-disclosure proofs, and verifier reports. |
 | `chio-comptroller/v1/`  |    1  | `surface-report.schema.json`: unified spend/exposure contract; the signed `ComptrollerSurfaceReport` projection used by the flagship proof demo. |
 | `chio-federation/v1/`   |   22  | Treaty scopes, capability leases, issuance bundles, governance receipts, peer pins, and revocation publication artifacts. |
-| `chio-finding/v1/`      |   11  | Cognition-market finding family: the inline-signed finding, the eight envelope-signed market artifacts (verifier profile, market terms, seller authorization, bond backing, verifier report, venue admission, purchase record, failed delivery), and the two unsigned carriers (replay-recipe verifier input, buyer purchase context). |
+| `chio-finding/v1/`      |   19  | Cognition-market finding family: the inline-signed finding, the fourteen envelope-signed artifacts (verifier profile, market terms, seller authorization, bond backing, verifier report, venue admission, purchase record, failed delivery, challenge, challenge outcome, challenge enforcement, finalized bond snapshot, audit epoch, audit report), the three unsigned carriers (replay-recipe verifier input, buyer purchase context, replay observation), and the open-market penalty envelope the challenge lane registers. |
 | `chio-frost/v1/`        |    4  | Signed rosters, rollback-independent epoch and authorization-slot checkpoints, and threshold authorizations. |
 | `chio-pheromone/v1/`    |   85  | Pheromone deposits, gossip and catchup envelopes, relay configuration, relay-alert and relay-assurance reports, and observation-cost telemetry. |
 | `chio-runtime/v1/`      |   36  | Admission profiles and reports, orchestration plans and run reports, evidence manifests, proof parity and regeneration reports, and trust-floor state. |
@@ -202,7 +202,7 @@ Loose schema files at the root of `spec/schemas/`.
 | `model-card.v1.json`          |    68 | Signed declaration binding a model's loaded weights to an allowed capability set, banned tools, and training-data class. |
 | `receipt-provenance-v1.json`  |    29 | Receipt-provenance record shape. |
 | `chio-tee-frame-v1.json`      |   151 | Capture frame emitted by the chio-tee shadow runner per kernel evaluation. |
-| `registry.json`               |  2097 | Verifier-facing registry of signed artifact schema IDs and their schema files. |
+| `registry.json`               |  2169 | Verifier-facing registry of signed artifact schema IDs and their schema files. |
 
 ## Conformance and vector coverage
 

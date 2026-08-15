@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/market-penalty.schema.json",
+  "title": "Chio Open Market Penalty (signed envelope)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "required": [
+        "schema",
+        "penaltyId",
+        "feeScheduleId",
+        "charterId",
+        "caseId",
+        "governingOperatorId",
+        "namespace",
+        "listingId",
+        "abuseClass",
+        "bondClass",
+        "action",
+        "state",
+        "penaltyAmount",
+        "openedAt",
+        "updatedAt",
+        "evidenceRefs",
+        "issuedBy"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.registry.market-penalty.v1"
+        },
+        "penaltyId": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "feeScheduleId": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "charterId": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "caseId": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "governingOperatorId": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "namespace": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "listingId": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "activationId": {
+          "type": "string"
+        },
+        "subjectOperatorId": {
+          "type": "string"
+        },
+        "abuseClass": {
+          "enum": [
+            "spam_publication",
+            "fraudulent_listing",
+            "replay_publication",
+            "unverifiable_listing_behavior"
+          ]
+        },
+        "bondClass": {
+          "enum": [
+            "publication",
+            "listing",
+            "dispute"
+          ]
+        },
+        "action": {
+          "enum": [
+            "hold_bond",
+            "slash_bond",
+            "reverse_slash"
+          ]
+        },
+        "state": {
+          "enum": [
+            "proposed",
+            "enforced",
+            "reversed",
+            "denied",
+            "superseded"
+          ]
+        },
+        "penaltyAmount": {
+          "$ref": "#/$defs/monetaryAmount"
+        },
+        "openedAt": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidenceReference"
+          }
+        },
+        "supersedesPenaltyId": {
+          "type": "string"
+        },
+        "issuedBy": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evidenceReference": {
+      "type": "object",
+      "required": [
+        "kind",
+        "referenceId"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "governance_case",
+            "trust_activation",
+            "listing",
+            "portable_negative_event",
+            "external"
+          ]
+        },
+        "referenceId": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "uri": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        }
+      }
+    },
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "monetaryAmount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "units",
+        "currency"
+      ],
+      "properties": {
+        "units": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "currency": {
+          "$ref": "#/$defs/nonBlankString"
+        }
+      }
+    },
+    "nonBlankString": {
+      "type": "string",
+      "pattern": "\\S"
+    }
+  }
+}

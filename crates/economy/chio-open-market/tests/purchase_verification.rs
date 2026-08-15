@@ -372,7 +372,7 @@ fn signed_admission(signer: &Keypair, spec: &AdmissionSpec<'_>) -> SignedFinding
             currency: "USD".to_string(),
             authority_epoch: 1,
         },
-        community_fund_destination: "rail:venue-ledger:community-fund".to_string(),
+        community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc".to_string(),
         status_feed_operator_ref: "status-feed/venue-wedge".to_string(),
         purchase_authority: key_policy(16, "purchase"),
         failed_delivery_authority: key_policy(17, "failed-delivery"),
@@ -399,6 +399,7 @@ fn bid_request_body(spec: &BidSpec<'_>) -> BidRequest {
     BidRequest {
         schema: BID_REQUEST_SCHEMA.to_string(),
         agent_id: AGENT_ID.to_string(),
+        payout_destination: None,
         listing_id: spec.listing_id.to_string(),
         max_price_per_call: usd(PRICE_UNITS),
         window_seconds: 3_600,

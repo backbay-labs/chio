@@ -26,11 +26,21 @@ thiserror = { workspace = true }
 # The finding admission seam compiles only when this feature is enabled,
 # so default builds omit it entirely and keep byte-identical behavior.
 cognition-market-experimental = ["dep:base64", "dep:chio-finding", "dep:serde_json"]
+# Opts in to the cognition-market surface exercised by the
+# `#[cfg(kani)]` public proof harness. Production builds never compile the
+# harness module because cargo-kani alone supplies that cfg.
+kani = ["cognition-market-experimental"]
 
 [dev-dependencies]
 chio-finding = { workspace = true }
 chio-test-support = { workspace = true }
 serde_json = { workspace = true }
 
-[lints]
-workspace = true
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[lints.rust]
+# `cfg(kani)` is set automatically by cargo-kani. Register it so normal
+# Cargo and Clippy builds keep the conditional proof module warning-free.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

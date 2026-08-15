@@ -58,7 +58,9 @@ pub struct FindingPurchaseRecord {
     pub encumbrance_id: String,
     pub delivery_receipt_id: String,
     pub payment_reference: String,
-    /// Rail-tagged payout destination.
+    /// Buyer-selected EVM destination for a later harm payout. The purchase
+    /// authority copies this from the buyer-signed bid before signing the
+    /// record, so neither the seller nor a challenge can redirect it.
     pub payout_destination: String,
     pub recorded_at: u64,
 }
@@ -106,7 +108,7 @@ impl FindingPurchaseRecord {
         require_bounded_id(&self.encumbrance_id, "encumbrance_id")?;
         require_bounded_id(&self.delivery_receipt_id, "delivery_receipt_id")?;
         require_bounded_id(&self.payment_reference, "payment_reference")?;
-        require_bounded_id(&self.payout_destination, "payout_destination")?;
+        validate_evm_payout_destination(&self.payout_destination)?;
         require_nonzero(self.recorded_at, "recorded_at")?;
         self.verify_purchase_key()
     }
@@ -123,6 +125,44 @@ impl FindingPurchaseRecord {
             Err(FindingError::ArtifactIdMismatch("purchase_key"))
         }
     }
+}
+
+/// Validate the EVM address shape consumed by the enforcement rail.
+///
+/// Control of the address is established by the buyer-signed bid and the
+/// purchase-authority-signed record. This helper checks only the portable
+/// representation so an otherwise valid purchase cannot become impossible
+/// to settle after a challenge is upheld.
+pub fn validate_evm_payout_destination(destination: &str) -> Result<(), FindingError> {
+    require_bounded_id(destination, "payout_destination")?;
+    let Some(hex) = destination.strip_prefix("0x") else {
+        return Err(FindingError::InvalidField("payout_destination"));
+    };
+    if hex.len() != 40
+        || !hex
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        || hex.bytes().all(|byte| byte == b'0')
+    {
+        return Err(FindingError::InvalidField("payout_destination"));
+    }
+    Ok(())
+}
+
+/// Canonicalize a buyer-signed EVM destination before it occupies a
+/// bounded payout slot. Address comparison on the enforcement rail is
+/// case-insensitive, while the durable store is byte-keyed, so retaining
+/// lowercase prevents one address consuming several immutable slots.
+pub fn canonical_evm_payout_destination(destination: &str) -> Result<String, FindingError> {
+    let Some(hex) = destination.strip_prefix("0x") else {
+        return Err(FindingError::InvalidField("payout_destination"));
+    };
+    if hex.len() != 40 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(FindingError::InvalidField("payout_destination"));
+    }
+    let canonical = format!("0x{}", hex.to_ascii_lowercase());
+    validate_evm_payout_destination(&canonical)?;
+    Ok(canonical)
 }
 
 /// Derive the purchase key: sha256 over the domain-separated preimage of the

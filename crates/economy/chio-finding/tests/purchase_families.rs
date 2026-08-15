@@ -13,12 +13,12 @@ use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes, canonical_json_string};
 use chio_finding::{
-    compute_failed_delivery_id, decode_purchase_context_b64, derive_purchase_key,
-    parse_purchase_context, verify_signed_failed_delivery, verify_signed_purchase_record,
-    FindingError, FindingFailedDelivery, FindingHoldReleaseTerminal, FindingPurchaseContext,
-    FindingPurchaseRecord, FINDING_FAILED_DELIVERY_SCHEMA_V1, FINDING_PURCHASE_RECORD_SCHEMA_V1,
-    PURCHASE_CONTEXT_MAX_CANONICAL_BYTES, PURCHASE_CONTEXT_MAX_ENCODED_BYTES,
-    PURCHASE_CONTEXT_SCHEMA,
+    canonical_evm_payout_destination, compute_failed_delivery_id, decode_purchase_context_b64,
+    derive_purchase_key, parse_purchase_context, verify_signed_failed_delivery,
+    verify_signed_purchase_record, FindingError, FindingFailedDelivery, FindingHoldReleaseTerminal,
+    FindingPurchaseContext, FindingPurchaseRecord, FINDING_FAILED_DELIVERY_SCHEMA_V1,
+    FINDING_PURCHASE_RECORD_SCHEMA_V1, PURCHASE_CONTEXT_MAX_CANONICAL_BYTES,
+    PURCHASE_CONTEXT_MAX_ENCODED_BYTES, PURCHASE_CONTEXT_SCHEMA,
 };
 use serde_json::{json, Value};
 
@@ -121,7 +121,7 @@ fn purchase_record_body(buyer: &Keypair, payer: &Keypair) -> FindingPurchaseReco
         encumbrance_id: "encumbrance-42".to_string(),
         delivery_receipt_id: "delivery-receipt-42".to_string(),
         payment_reference: "rail:venue-ledger:payment-42".to_string(),
-        payout_destination: "rail:venue-ledger:seller-42".to_string(),
+        payout_destination: "0x1111111111111111111111111111111111111111".to_owned(),
         recorded_at: 1_750_000_000,
     }
 }
@@ -134,6 +134,8 @@ fn failed_delivery_body(buyer: &Keypair) -> Result<FindingFailedDelivery, Findin
         finding_id: HEX64.to_string(),
         listing_id: "finding-listing-01".to_string(),
         accepted_bid_envelope_sha256: HEX64.to_string(),
+        venue_admission_envelope_sha256: HEX64_ALT.to_string(),
+        seller_backing_envelope_sha256: HEX64.to_string(),
         reservation_id: "reservation-42".to_string(),
         purchase_intent_id: "purchase-intent-42".to_string(),
         authoritative_payment_operation_id: "payment-operation-42".to_string(),
@@ -370,6 +372,40 @@ fn purchase_record_rejects_unbounded_identifiers() -> TestResult {
     assert_eq!(
         record.validate(),
         Err(FindingError::SizeLimitExceeded("payout_destination"))
+    );
+    Ok(())
+}
+
+#[test]
+fn purchase_record_rejects_a_seller_controlled_harm_destination() {
+    let buyer = keypair(21);
+    let payer = keypair(22);
+    let mut record = purchase_record_body(&buyer, &payer);
+    record.payout_destination = "rail:venue-ledger:seller-42".to_owned();
+    assert_eq!(
+        record.validate(),
+        Err(FindingError::InvalidField("payout_destination"))
+    );
+}
+
+#[test]
+fn payout_destination_canonicalization_prevents_case_slot_aliases() -> TestResult {
+    let mixed = "0xAAbbCcDdEeFf00112233445566778899AaBbCcDd";
+    assert_eq!(
+        canonical_evm_payout_destination(mixed)?,
+        "0xaabbccddeeff00112233445566778899aabbccdd"
+    );
+    let buyer = keypair(21);
+    let payer = keypair(22);
+    let mut record = purchase_record_body(&buyer, &payer);
+    record.payout_destination = mixed.to_owned();
+    assert_eq!(
+        record.validate(),
+        Err(FindingError::InvalidField("payout_destination"))
+    );
+    assert_eq!(
+        canonical_evm_payout_destination("0x0000000000000000000000000000000000000000"),
+        Err(FindingError::InvalidField("payout_destination"))
     );
     Ok(())
 }

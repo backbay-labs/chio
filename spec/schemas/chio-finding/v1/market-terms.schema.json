@@ -153,7 +153,7 @@
           ]
         },
         "payout_policy": {
-          "$ref": "#/$defs/nonBlankString"
+          "const": "pro_rata_capped_v1"
         },
         "issued_at": {
           "$ref": "#/$defs/iJsonU64"

@@ -51,6 +51,10 @@ pub struct FindingFailedDelivery {
     pub finding_id: String,
     pub listing_id: String,
     pub accepted_bid_envelope_sha256: String,
+    /// Exact venue admission retained by the reservation this denial closed.
+    pub venue_admission_envelope_sha256: String,
+    /// Exact seller backing retained by that admission.
+    pub seller_backing_envelope_sha256: String,
     pub reservation_id: String,
     pub purchase_intent_id: String,
     pub authoritative_payment_operation_id: String,
@@ -84,6 +88,14 @@ impl FindingFailedDelivery {
         require_hex64(
             &self.accepted_bid_envelope_sha256,
             "accepted_bid_envelope_sha256",
+        )?;
+        require_hex64(
+            &self.venue_admission_envelope_sha256,
+            "venue_admission_envelope_sha256",
+        )?;
+        require_hex64(
+            &self.seller_backing_envelope_sha256,
+            "seller_backing_envelope_sha256",
         )?;
         require_bounded_id(&self.reservation_id, "reservation_id")?;
         require_bounded_id(&self.purchase_intent_id, "purchase_intent_id")?;

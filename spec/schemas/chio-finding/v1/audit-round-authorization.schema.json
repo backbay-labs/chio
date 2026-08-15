@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/audit-round-authorization.schema.json",
+  "title": "Chio Finding Audit Round Authorization (signed envelope)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "epoch_precommitment_sha256",
+        "authorized_at",
+        "expires_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.audit-round-authorization.v1"
+        },
+        "epoch_precommitment_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "authorized_at": {
+          "$ref": "#/$defs/iJsonU64Nonzero"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/iJsonU64Nonzero"
+        }
+      }
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "iJsonU64Nonzero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}
