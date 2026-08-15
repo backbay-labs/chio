@@ -86,13 +86,21 @@ fn finalizing_liability_with_options(
     deployment
         .challenges
         .begin_evaluation(&challenge.body.challenge_id, NOW + 1)?;
+    let allocation_id = byte_hex64(0xa1);
+    let outcome = upheld_outcome(&challenge, &allocation_id, 0, "USD")?;
+    let outcome_json = canonical_json_bytes(&outcome)?;
+    let outcome_envelope_sha256 = signed_envelope_sha256(&outcome)?;
+    deployment.filings.retain_evaluator_policy(
+        &outcome_envelope_sha256,
+        &market_config().challenge_evaluator,
+    )?;
     deployment
         .challenges
         .record_test_upheld_verdict_with_exposure_fence(
             &challenge.body.challenge_id,
-            &digest("upheld-outcome"),
-            b"upheld-outcome",
-            &byte_hex64(0xa1),
+            &outcome_envelope_sha256,
+            &outcome_json,
+            &allocation_id,
             0,
             NOW + 1,
         )?;
@@ -107,7 +115,7 @@ fn finalizing_liability_with_options(
             defect_key: &derive_defect_key(&finding.finding_id),
             finding_id: &finding.finding_id,
             listing_id: LISTING_ID,
-            allocation_id: &byte_hex64(0xa1),
+            allocation_id: &allocation_id,
             seller_hex: &seller_hex,
             venue_id: VENUE_ID,
             chain_id: &settlement_config()?.chain_id,
@@ -124,10 +132,10 @@ fn finalizing_liability_with_options(
     )?;
     deployment
         .purchases
-        .register_community_fund_destination(&byte_hex64(0xa1), EVM_COMMUNITY_FUND, NOW + 2)?;
+        .register_community_fund_destination(&allocation_id, EVM_COMMUNITY_FUND, NOW + 2)?;
     deployment
         .purchases
-        .admit_payout_destination(&byte_hex64(0xa1), EVM_BUYER_DESTINATION, NOW + 2)?;
+        .admit_payout_destination(&allocation_id, EVM_BUYER_DESTINATION, NOW + 2)?;
     // The sanction the impairment settles under. Dispatch requires it to
     // still be the live case head, exactly as the coordinator records it
     // when it upholds a liability.
@@ -515,6 +523,19 @@ impl FinalizingLiability {
             .challenges
             .get_effect_intent(&self.intent_key)?
             .ok_or("the impairment intent is durable")?)
+    }
+
+    /// Drive the fixture through the real settlement reconciliation choke
+    /// point so a recovered confirmed intent carries its authenticated
+    /// transaction evidence.
+    fn confirm_impairment(&self, now: u64) -> Result<(), AnyError> {
+        let publisher = MiningPublisher::new();
+        let _pending = self.finalize(&publisher, now)?;
+        let _confirmed = self.finalize(&publisher, now + 1)?;
+        if self.intent_state()? != FindingEffectIntentState::Confirmed {
+            return Err("the fixture impairment reaches confirmed".into());
+        }
+        Ok(())
     }
 
     fn head(&self) -> Result<chio_store_sqlite::FindingLiabilityRecord, AnyError> {

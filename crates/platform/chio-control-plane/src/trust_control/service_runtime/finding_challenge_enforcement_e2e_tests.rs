@@ -2272,7 +2272,7 @@ fn evidence_invalid_case(
             revoked_from: None,
             observed_at: NOW,
         },
-        &keypair(36),
+        &keypair(37),
     )?;
     let production_policy = challenged
         .profile
@@ -3637,6 +3637,10 @@ fn close_challenge(
     outcome_envelope_json: &[u8],
     now: u64,
 ) -> Result<FindingChallengeState, AnyError> {
+    deployment.filings.retain_evaluator_policy(
+        outcome_envelope_sha256,
+        &market_config().challenge_evaluator,
+    )?;
     deployment.challenges.begin_evaluation(challenge_id, now)?;
     if verdict == FindingChallengeVerdict::Upheld {
         let outcome: SignedFindingChallengeOutcome = serde_json::from_slice(outcome_envelope_json)?;
@@ -8003,16 +8007,7 @@ fn finding_challenge_a_confirmed_impairment_settles_without_dispatching_again() 
     let case = finalizing_liability()?;
     // An attempt that confirmed the impairment and died before it could
     // settle the head leaves exactly this durable state.
-    case.deployment.challenges.advance_effect_intent(
-        &case.intent_key,
-        FindingEffectIntentState::Dispatched,
-        SETTLEMENT_NOW,
-    )?;
-    case.deployment.challenges.advance_effect_intent(
-        &case.intent_key,
-        FindingEffectIntentState::Confirmed,
-        SETTLEMENT_NOW,
-    )?;
+    case.confirm_impairment(SETTLEMENT_NOW)?;
     case.mark_status_eligible(&chain_hash(0x77), SETTLEMENT_NOW)?;
     case.publish_status(SETTLEMENT_NOW + 1)?;
 
@@ -8031,16 +8026,7 @@ fn finding_challenge_a_confirmed_impairment_settles_without_dispatching_again() 
 #[test]
 fn finding_challenge_confirmed_recovery_reobserves_transaction_finality() -> TestResult {
     let case = finalizing_liability()?;
-    for state in [
-        FindingEffectIntentState::Dispatched,
-        FindingEffectIntentState::Confirmed,
-    ] {
-        case.deployment.challenges.advance_effect_intent(
-            &case.intent_key,
-            state,
-            SETTLEMENT_NOW,
-        )?;
-    }
+    case.confirm_impairment(SETTLEMENT_NOW)?;
 
     let refused = case
         .finalize_observing(
@@ -8059,16 +8045,7 @@ fn finding_challenge_confirmed_recovery_reobserves_transaction_finality() -> Tes
 #[test]
 fn finding_challenge_confirmed_impairment_waits_for_retraction_before_settlement() -> TestResult {
     let case = finalizing_liability_pending_retraction()?;
-    for state in [
-        FindingEffectIntentState::Dispatched,
-        FindingEffectIntentState::Confirmed,
-    ] {
-        case.deployment.challenges.advance_effect_intent(
-            &case.intent_key,
-            state,
-            SETTLEMENT_NOW,
-        )?;
-    }
+    case.confirm_impairment(SETTLEMENT_NOW)?;
 
     let waiting = case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?;
     assert_eq!(waiting, FindingFinalization::AwaitingStatusPublication);
@@ -8118,16 +8095,7 @@ fn finding_challenge_finalization_reuses_pending_voluntary_retraction() -> TestR
         resolved.source,
         chio_store_sqlite::FindingRetractionIntentSource::Voluntary
     );
-    for state in [
-        FindingEffectIntentState::Dispatched,
-        FindingEffectIntentState::Confirmed,
-    ] {
-        case.deployment.challenges.advance_effect_intent(
-            &case.intent_key,
-            state,
-            SETTLEMENT_NOW,
-        )?;
-    }
+    case.confirm_impairment(SETTLEMENT_NOW)?;
 
     assert_eq!(
         case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?,
@@ -8151,21 +8119,8 @@ fn finding_challenge_finalization_reuses_published_voluntary_retraction() -> Tes
         true,
         PriorVoluntaryRetraction::Published,
     )?;
-    for state in [
-        FindingEffectIntentState::Dispatched,
-        FindingEffectIntentState::Confirmed,
-    ] {
-        case.deployment.challenges.advance_effect_intent(
-            &case.intent_key,
-            state,
-            SETTLEMENT_NOW,
-        )?;
-    }
+    case.confirm_impairment(SETTLEMENT_NOW)?;
 
-    assert_eq!(
-        case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?,
-        FindingFinalization::AlreadyConfirmed
-    );
     let settled = case.head()?;
     assert_eq!(settled.state, FindingLiabilityState::Settled);
     assert!(!settled.publication_pending);
@@ -8175,16 +8130,7 @@ fn finding_challenge_finalization_reuses_published_voluntary_retraction() -> Tes
 #[test]
 fn finding_challenge_confirmed_impairment_settles_after_snapshot_expiry() -> TestResult {
     let case = finalizing_liability_pending_retraction()?;
-    for state in [
-        FindingEffectIntentState::Dispatched,
-        FindingEffectIntentState::Confirmed,
-    ] {
-        case.deployment.challenges.advance_effect_intent(
-            &case.intent_key,
-            state,
-            SETTLEMENT_NOW,
-        )?;
-    }
+    case.confirm_impairment(SETTLEMENT_NOW)?;
 
     let stale_at = OBSERVED_AT + MAX_SNAPSHOT_AGE_SECS + 1;
     assert_eq!(
@@ -8215,16 +8161,7 @@ fn finding_challenge_confirmed_impairment_settles_after_snapshot_expiry() -> Tes
 #[test]
 fn finding_challenge_published_retraction_reconciles_after_status_bond_expiry() -> TestResult {
     let mut case = finalizing_liability_pending_retraction()?;
-    for state in [
-        FindingEffectIntentState::Dispatched,
-        FindingEffectIntentState::Confirmed,
-    ] {
-        case.deployment.challenges.advance_effect_intent(
-            &case.intent_key,
-            state,
-            SETTLEMENT_NOW,
-        )?;
-    }
+    case.confirm_impairment(SETTLEMENT_NOW)?;
 
     assert_eq!(
         case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?,
@@ -10287,7 +10224,7 @@ fn finding_challenge_a_foreign_recipe_preimage_never_reaches_a_verdict() -> Test
     // A recipe that is canonical and binds the admitted profile, and is
     // not the recipe the finding committed.
     let mut foreign = replay_recipe(&challenged.profile_envelope_sha256);
-    foreign.decision_rule_ref = "decision/replay-v2".to_string();
+    foreign.parameters_sha256 = hex64('d');
     let foreign_preimage = canonical_json_string(&foreign)?;
     assert_ne!(
         sha256_hex(foreign_preimage.as_bytes()),

@@ -439,12 +439,6 @@ pub(super) async fn run_finding_status_retraction() -> TestResult {
             config.status_max_epoch_age_secs,
         )?;
     let status_gate_now = unix_timestamp_now();
-    let status_gate_live = status_gate_publisher.publish_non_inclusion(
-        &status_lane.deployment.web.finding_id,
-        &[],
-        status_gate_now,
-    )?;
-    let status_gate_live_b64 = STANDARD.encode(&status_gate_live.proof_bytes);
 
     let intent_id = sha256_hex(b"m6-voluntary-retraction-intent");
     let intent_bytes = canonical_json_bytes(&serde_json::json!({
@@ -488,13 +482,19 @@ pub(super) async fn run_finding_status_retraction() -> TestResult {
     let hook_finding_id = lane.deployment.web.finding_id.clone();
     let hook_intent_bytes = intent_bytes.clone();
     let status_gate_intent_now = unix_timestamp_now().max(status_gate_now);
-    let inclusion_deadline =
-        status_gate_intent_now + config.status_feed_service_bond.inclusion_sla_secs;
+    let hook_inclusion_sla_secs = config.status_feed_service_bond.inclusion_sla_secs;
+    let status_gate_live = status_gate_publisher.publish_non_inclusion(
+        &status_lane.deployment.web.finding_id,
+        &[],
+        status_gate_intent_now,
+    )?;
+    let status_gate_live_b64 = STANDARD.encode(&status_gate_live.proof_bytes);
     status_lane
         .kernel
         .set_payment_adapter(Box::new(ReversibleHoldAdapter {
             calls: status_lane.calls.clone(),
             authorize_hook: Some(Arc::new(move || {
+                let hook_now = unix_timestamp_now();
                 hook_store
                     .issue_retraction_intent(&chio_store_sqlite::FindingRetractionIntentInput {
                         intent_id: &hook_intent_id,
@@ -503,9 +503,9 @@ pub(super) async fn run_finding_status_retraction() -> TestResult {
                         finding_id: &hook_finding_id,
                         source: chio_store_sqlite::FindingRetractionIntentSource::Voluntary,
                         intent_bytes: &hook_intent_bytes,
-                        issued_at: status_gate_intent_now,
-                        inclusion_deadline,
-                        created_at: status_gate_intent_now,
+                        issued_at: hook_now,
+                        inclusion_deadline: hook_now + hook_inclusion_sla_secs,
+                        created_at: hook_now,
                     })
                     .map(|_| ())
                     .map_err(|error| error.to_string())
@@ -519,11 +519,18 @@ pub(super) async fn run_finding_status_retraction() -> TestResult {
         "m6-pending-nonce-2",
     )?;
     assert_denied_with(&pending, "pending");
+    let pending_intent = status_gate_store
+        .get_retraction_intent(&intent_id)?
+        .ok_or("the payment-boundary hook retains the pending retraction")?;
+    assert_eq!(
+        pending_intent.state,
+        chio_store_sqlite::FindingRetractionIntentState::DispatchEligible
+    );
     assert_eq!(status_lane.calls.authorizations.load(Ordering::SeqCst), 1);
     assert_eq!(status_lane.calls.releases.load(Ordering::SeqCst), 1);
     assert_eq!(status_lane.invocations.load(Ordering::SeqCst), 0);
 
-    let status_gate_retraction_now = unix_timestamp_now().max(status_gate_intent_now);
+    let status_gate_retraction_now = unix_timestamp_now().max(pending_intent.issued_at);
     let included = status_gate_publisher.publish_retraction(
         &intent_id,
         &[],
