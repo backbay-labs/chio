@@ -176,19 +176,18 @@ fn receipt_sink_filesystem_path(path: &Path) -> Result<PathBuf, ReceiptStoreErro
     Ok(filesystem_path)
 }
 
+type QualifiedReceiptSinkParts = (
+    Option<String>,
+    Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
+    Option<Arc<ReceiptSinkQualification>>,
+);
+
 fn qualify_receipt_sink(
     path: &Path,
     connection: &Connection,
     internal_sink_id: &str,
     rollback_anchor_root: Option<&Path>,
-) -> Result<
-    (
-        Option<String>,
-        Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
-        Option<Arc<ReceiptSinkQualification>>,
-    ),
-    ReceiptStoreError,
-> {
+) -> Result<QualifiedReceiptSinkParts, ReceiptStoreError> {
     let Some(rollback_anchor_root) = rollback_anchor_root else {
         return Ok((None, None, None));
     };

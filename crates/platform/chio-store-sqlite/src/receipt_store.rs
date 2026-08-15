@@ -1047,6 +1047,7 @@ impl WriterHandle {
     /// Fail-closed and inflight-preserving on expiry exactly like
     /// [`run_write_receipt_with_timeout`], so a hot-path metadata write cannot
     /// hang the caller on a wedged writer.
+    #[cfg(test)]
     pub(crate) fn run_write_with_timeout<T, F>(
         &self,
         job: F,
@@ -1059,6 +1060,7 @@ impl WriterHandle {
         self.run_write_kind_with_timeout(job, false, timeout)
     }
 
+    #[cfg(test)]
     fn run_write_kind_with_timeout<T, F>(
         &self,
         job: F,
@@ -1506,8 +1508,10 @@ fn receipt_commit_actor_loop(
                             &pool,
                             &mut head_state,
                             incremental_verification,
-                            rollback_anchor.as_deref(),
-                            sink_qualification.as_deref(),
+                            ReceiptBatchDurability {
+                                rollback_anchor: rollback_anchor.as_deref(),
+                                sink_qualification: sink_qualification.as_deref(),
+                            },
                             requests,
                             &health,
                             completions,
@@ -2432,20 +2436,26 @@ fn commit_receipt_batch(
         pool,
         head_state,
         incremental_verification,
-        rollback_anchor,
-        None,
+        ReceiptBatchDurability {
+            rollback_anchor,
+            sink_qualification: None,
+        },
         requests,
         health,
         Vec::new(),
     )
 }
 
+struct ReceiptBatchDurability<'a> {
+    rollback_anchor: Option<&'a crate::rollback_generation::RollbackGenerationAnchor>,
+    sink_qualification: Option<&'a ReceiptSinkQualification>,
+}
+
 fn commit_receipt_batch_with_completions(
     pool: &Pool<SqliteConnectionManager>,
     head_state: &mut WriterHeadState,
     incremental_verification: bool,
-    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
-    sink_qualification: Option<&ReceiptSinkQualification>,
+    durability: ReceiptBatchDurability<'_>,
     requests: Vec<ReceiptCommitRequest>,
     health: &ReceiptCommitWriterHealth,
     mut completions: Vec<WriterCommandCompletion>,
@@ -2456,8 +2466,8 @@ fn commit_receipt_batch_with_completions(
                 pool,
                 head,
                 incremental_verification,
-                rollback_anchor,
-                sink_qualification,
+                durability.rollback_anchor,
+                durability.sink_qualification,
                 &requests,
             ) {
                 Ok(results) => {
