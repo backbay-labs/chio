@@ -165,45 +165,7 @@ fn audit_pool_binding() -> FindingPoolBinding {
     }
 }
 
-fn market_config() -> FindingMarketConfig {
-    FindingMarketConfig {
-        venue_id: VENUE_ID.to_string(),
-        venue: authority_pin(6, "venue"),
-        listing: listing_authority_pin(),
-        governance_root: authority_pin(1, "governance"),
-        authority_status: authority_pin(36, "authority-status"),
-        verifier_report: authority_pin(15, "verifier-report"),
-        collateral: authority_pin(4, "collateral"),
-        purchase: authority_pin(16, "purchase"),
-        failed_delivery: authority_pin(17, "failed-delivery"),
-        challenge_evaluator: authority_pin(31, "challenge-evaluator"),
-        venue_finalization: authority_pin(32, "venue-finalization"),
-        market_penalty: authority_pin(33, "market-penalty"),
-        settlement_observer: authority_pin(34, "settlement-observer"),
-        anchor_publisher: authority_pin(7, "anchor-publisher"),
-        max_snapshot_age_secs: 3_600,
-        settlement_finality_requirement: chio_settle::FindingFinalityRequirement::Confirmations {
-            min_depth: 64,
-        },
-        audit_authority: authority_pin(35, "audit-authority"),
-        audit_randomness_witness: authority_pin(37, "audit-randomness-witness"),
-        audit_pool: FindingPoolPin {
-            principal_id: AUDIT_POOL_PRINCIPAL.to_string(),
-            rail_destination: AUDIT_POOL_DESTINATION.to_string(),
-            currency: "USD".to_string(),
-            authority_epoch: 1,
-        },
-        challenge_administration_pool: FindingPoolPin {
-            principal_id: "pool:challenge-admin".to_string(),
-            rail_destination: "rail:venue-ledger:challenge-admin".to_string(),
-            currency: "USD".to_string(),
-            authority_epoch: 1,
-        },
-        community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc".to_string(),
-        status_feed_operator_ref: "status-feed/venue-wedge".to_string(),
-        fee_schedule_operator_keys: vec![keypair(24).public_key().to_hex()],
-    }
-}
+include!("finding_market_exit_tests/market_config.rs");
 
 /// Rail observer that always refuses the crash-before-observation activation leg.
 struct FailingRail;
@@ -999,8 +961,8 @@ impl MarketWeb {
         let tree = MerkleTree::from_leaves(&[first_bytes.clone(), second_bytes.clone()])?;
         let checkpoint = build_checkpoint(
             1,
-            100,
-            101,
+            1,
+            2,
             &[first_bytes.clone(), second_bytes.clone()],
             &kernel,
         )?;
@@ -1010,12 +972,12 @@ impl MarketWeb {
             ResolvedReceiptEvidence {
                 receipt: first.clone(),
                 canonical_receipt_bytes: first_bytes,
-                inclusion_proof: build_inclusion_proof(&tree, 0, 1, 100)?,
+                inclusion_proof: build_inclusion_proof(&tree, 0, 1, 1)?,
             },
             ResolvedReceiptEvidence {
                 receipt: second.clone(),
                 canonical_receipt_bytes: second_bytes,
-                inclusion_proof: build_inclusion_proof(&tree, 1, 1, 101)?,
+                inclusion_proof: build_inclusion_proof(&tree, 1, 1, 2)?,
             },
         ];
 

@@ -1,8 +1,11 @@
 use chio_core::canonical::CanonicalBytes;
 use chio_core::capability::token::CapabilityToken;
 use chio_core::credit::CreditBondRow;
-use chio_core::crypto::Keypair;
-use chio_core::receipt::{body::ChioReceipt, lineage::ChildRequestReceipt};
+use chio_core::crypto::{Keypair, PublicKey};
+use chio_core::receipt::{
+    body::ChioReceipt,
+    lineage::{ChildRequestReceipt, ReceiptLineageStatement},
+};
 use chio_log_redact::redacted;
 
 use crate::capability_lineage::CapabilitySnapshot;
@@ -488,6 +491,30 @@ pub trait ReceiptStore: Send + Sync {
     ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
         Ok(None)
     }
+    /// Load a receipt from the store's complete retained history. Stores with
+    /// no separate retention tier inherit the live point lookup. A store that
+    /// archives receipts must override this method and authenticate the archive
+    /// before returning an archived row.
+    fn load_retained_chio_receipt(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        self.load_chio_receipt(receipt_id)
+    }
+    /// Load the independent append-only commitment for a retained tool receipt.
+    ///
+    /// A store that implements this method must derive the commitment from its
+    /// authenticated receipt log, not from the mutable point-lookup row or a
+    /// caller-supplied lineage statement. The default is unsupported so callers
+    /// that require a durable commitment fail closed on stores without one.
+    fn load_retained_chio_receipt_commitment(
+        &self,
+        _receipt_id: &str,
+    ) -> Result<Option<RetainedReceiptCommitment>, ReceiptStoreError> {
+        Err(ReceiptStoreError::Unsupported(
+            "retained append-only receipt commitments".to_string(),
+        ))
+    }
     /// Load a child-request receipt by id. Provided default returns `None`; a
     /// store used for a store-authoritative deployment must override both this
     /// and `load_chio_receipt`. A miss is a fail-closed deny
@@ -835,11 +862,40 @@ pub trait ReceiptStore: Send + Sync {
         Ok(None)
     }
 
+    /// Load lineage verification from the complete retained history. The
+    /// default preserves the live-only behavior for stores without archival.
+    fn get_retained_receipt_lineage_verification(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ReceiptLineageVerification>, ReceiptStoreError> {
+        self.get_receipt_lineage_verification(receipt_id)
+    }
+
     fn list_receipt_lineage_statement_links(
         &self,
         _receipt_id: &str,
     ) -> Result<Vec<ReceiptLineageStatementLink>, ReceiptStoreError> {
         Ok(Vec::new())
+    }
+
+    /// Load the signed lineage statement whose child is `receipt_id`.
+    /// Stores that cannot return the exact typed statement leave the default
+    /// miss, which makes typed Finding quarantine resolution deny.
+    fn load_receipt_lineage_statement(
+        &self,
+        _receipt_id: &str,
+    ) -> Result<Option<ReceiptLineageStatement>, ReceiptStoreError> {
+        Ok(None)
+    }
+
+    /// Load the signed lineage statement from the complete retained history.
+    /// The default preserves the live-only behavior for stores without
+    /// archival.
+    fn load_retained_receipt_lineage_statement(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ReceiptLineageStatement>, ReceiptStoreError> {
+        self.load_receipt_lineage_statement(receipt_id)
     }
 
     fn as_any_mut(&self) -> Option<&dyn std::any::Any> {
@@ -1491,6 +1547,15 @@ pub struct StoredToolReceipt {
 pub struct StoredChildReceipt {
     pub seq: u64,
     pub receipt: ChildRequestReceipt,
+}
+
+/// Independent append-only log commitment for one retained tool receipt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetainedReceiptCommitment {
+    pub entry_seq: u64,
+    pub receipt_id: String,
+    pub receipt_sha256: String,
+    pub kernel_key: PublicKey,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]

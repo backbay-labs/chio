@@ -10,7 +10,8 @@
 //! terminal, and the challenge and audit lane: the class-gated challenge,
 //! its signed outcome and enforcement instruction, the finalized bond
 //! snapshot, the audit epoch, report, and round authorization, the
-//! governance-signed authority key revocation, the unsigned replay observation
+//! governance-signed authority key revocation, the signed sparse status
+//! epoch and unsigned portable status proof, the unsigned replay observation
 //! preimage, and the unsigned recovery evidence carrier.
 //! Status-feed artifacts have no resolver in this crate; callers that need
 //! them resolve the feeds a profile pins and supply what they find. Design:
@@ -41,6 +42,7 @@ mod recipe;
 mod recovery_context;
 mod replay_observation;
 mod report;
+mod status;
 mod terms;
 mod types;
 mod validate;
@@ -65,6 +67,7 @@ pub use recipe::*;
 pub use recovery_context::*;
 pub use replay_observation::*;
 pub use report::*;
+pub use status::*;
 pub use terms::*;
 pub use types::*;
 pub use validate::*;

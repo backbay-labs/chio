@@ -326,6 +326,7 @@ struct AdmissionSpec<'a> {
     seller_authorization_sha256: String,
     verifier_profile_sha256: String,
     verifier_report_sha256: String,
+    status_feed_operator_ref: &'a str,
 }
 
 fn signed_admission(signer: &Keypair, spec: &AdmissionSpec<'_>) -> SignedFindingAdmission {
@@ -373,7 +374,7 @@ fn signed_admission(signer: &Keypair, spec: &AdmissionSpec<'_>) -> SignedFinding
             authority_epoch: 1,
         },
         community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc".to_string(),
-        status_feed_operator_ref: "status-feed/venue-wedge".to_string(),
+        status_feed_operator_ref: spec.status_feed_operator_ref.to_string(),
         purchase_authority: key_policy(16, "purchase"),
         failed_delivery_authority: key_policy(17, "failed-delivery"),
         issued_at: ISSUED_AT,
@@ -514,6 +515,7 @@ struct Web {
     admission_venue_id: String,
     admission_finding_id: String,
     admission_listing_id: String,
+    admission_status_feed_operator_ref: String,
 
     finding: Finding,
     listing: SignedGenericListing,
@@ -573,6 +575,7 @@ fn base_web() -> Web {
             seller_authorization_sha256: digest_of(&authorization),
             verifier_profile_sha256: digest_text(&verifier_profile_json),
             verifier_report_sha256: digest_text(&verifier_report_json),
+            status_feed_operator_ref: &finding.status_feed_ref,
         },
     );
 
@@ -605,6 +608,7 @@ fn base_web() -> Web {
         admission_venue_id: VENUE_ID.to_string(),
         admission_finding_id: finding.finding_id.clone(),
         admission_listing_id: LISTING_ID.to_string(),
+        admission_status_feed_operator_ref: finding.status_feed_ref.clone(),
         issuer,
         operator,
         agent,
@@ -673,6 +677,7 @@ impl Web {
                 ),
                 verifier_profile_sha256: digest_text(&context.verifier_profile_envelope_json),
                 verifier_report_sha256: digest_text(&context.verifier_report_envelope_json),
+                status_feed_operator_ref: &self.admission_status_feed_operator_ref,
             },
         );
         context.venue_admission_envelope_json = canonical_text(&admission);
@@ -1020,6 +1025,18 @@ fn an_admission_issued_for_another_sale_rejects() {
     assert_eq!(
         web.reject_context(&context),
         PurchaseVerificationError::MarkerMismatch
+    );
+}
+
+#[test]
+fn admission_status_feed_must_match_the_signed_finding() {
+    let mut web = base_web();
+    web.admission_status_feed_operator_ref = "status-feed/elsewhere".to_string();
+    let mut context = web.context();
+    web.rebind_admission(&mut context);
+    assert_eq!(
+        web.reject_context(&context),
+        PurchaseVerificationError::AdmissionBindingMismatch("status_feed")
     );
 }
 

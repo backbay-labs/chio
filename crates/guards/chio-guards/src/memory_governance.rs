@@ -31,16 +31,19 @@
 //!   denied (fail-closed on counter mutex poisoning).
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use chio_core::capability::scope::Constraint;
-use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, ToolServerOutput};
 
 use crate::action::{extract_action_checked, ToolAction};
+use crate::finding_retraction::{
+    FindingRetractionQuery, FindingRetractionResolver, FindingStatusValue,
+};
 
 /// Errors produced when building a [`MemoryGovernanceGuard`].
 #[derive(Debug, thiserror::Error)]
@@ -52,6 +55,29 @@ pub enum MemoryGovernanceError {
         #[source]
         source: regex::Error,
     },
+    /// The opt-in Finding quarantine profile was enabled without its
+    /// synchronous resolver.
+    #[error("finding retraction policy requires an injected resolver")]
+    MissingFindingRetractionResolver,
+    /// A resolver was supplied while the opt-in profile remained disabled.
+    #[error("finding retraction resolver supplied without an enabled policy")]
+    UnexpectedFindingRetractionResolver,
+    /// The injected resolver is not the deployment-pinned instance.
+    #[error("finding retraction resolver identity does not match policy")]
+    FindingRetractionResolverIdentity,
+    /// The injected resolver serves another status feed.
+    #[error("finding retraction resolver feed does not match policy")]
+    FindingRetractionResolverFeed,
+}
+
+/// Opt-in Finding quarantine policy for governed memory reads.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct FindingRetractionGuardConfig {
+    /// Deployment-pinned resolver instance identity.
+    pub resolver_id: String,
+    /// Admission-pinned status feed expected from the resolver.
+    pub feed_id: String,
 }
 
 /// Configuration for [`MemoryGovernanceGuard`].
@@ -82,6 +108,10 @@ pub struct MemoryGovernanceConfig {
     /// Extra regex patterns that deny a write when the content matches.
     #[serde(default)]
     pub deny_patterns: Vec<String>,
+    /// Require every exact-key memory read to resolve through verified Finding
+    /// delivery lineage and a fresh authenticated status cache.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finding_retraction: Option<FindingRetractionGuardConfig>,
 }
 
 fn default_true() -> bool {
@@ -97,12 +127,19 @@ impl Default for MemoryGovernanceConfig {
             max_retention_ttl_secs: None,
             max_content_size_bytes: None,
             deny_patterns: Vec::new(),
+            finding_retraction: None,
         }
     }
 }
 
 /// Session key used for per-session memory-entry counting.
 type SessionKey = (String, String); // (agent_id, capability_id)
+
+struct FindingRetractionBinding {
+    resolver_id: String,
+    feed_id: String,
+    resolver: Arc<dyn FindingRetractionResolver>,
+}
 
 /// Guard implementing memory governance.
 pub struct MemoryGovernanceGuard {
@@ -113,6 +150,7 @@ pub struct MemoryGovernanceGuard {
     max_content_size_bytes: Option<u64>,
     deny_patterns: Vec<Regex>,
     counters: Mutex<HashMap<SessionKey, u64>>,
+    finding_retraction: Option<FindingRetractionBinding>,
 }
 
 impl MemoryGovernanceGuard {
@@ -128,11 +166,28 @@ impl MemoryGovernanceGuard {
             max_content_size_bytes: None,
             deny_patterns: Vec::new(),
             counters: Mutex::new(HashMap::new()),
+            finding_retraction: None,
         })
     }
 
     /// Build a guard with explicit configuration.
     pub fn with_config(config: MemoryGovernanceConfig) -> Result<Self, MemoryGovernanceError> {
+        Self::build(config, None)
+    }
+
+    /// Build the opt-in Finding quarantine profile with a synchronous,
+    /// deployment-pinned resolver.
+    pub fn with_config_and_retraction_resolver(
+        config: MemoryGovernanceConfig,
+        resolver: Arc<dyn FindingRetractionResolver>,
+    ) -> Result<Self, MemoryGovernanceError> {
+        Self::build(config, Some(resolver))
+    }
+
+    fn build(
+        config: MemoryGovernanceConfig,
+        resolver: Option<Arc<dyn FindingRetractionResolver>>,
+    ) -> Result<Self, MemoryGovernanceError> {
         let mut deny_patterns = Vec::with_capacity(config.deny_patterns.len());
         for pat in &config.deny_patterns {
             let re = Regex::new(pat).map_err(|e| MemoryGovernanceError::InvalidPattern {
@@ -141,6 +196,28 @@ impl MemoryGovernanceGuard {
             })?;
             deny_patterns.push(re);
         }
+        let finding_retraction = match (&config.finding_retraction, resolver) {
+            (None, None) => None,
+            (Some(_), None) => {
+                return Err(MemoryGovernanceError::MissingFindingRetractionResolver);
+            }
+            (None, Some(_)) => {
+                return Err(MemoryGovernanceError::UnexpectedFindingRetractionResolver);
+            }
+            (Some(policy), Some(resolver)) => {
+                if resolver.resolver_id() != policy.resolver_id {
+                    return Err(MemoryGovernanceError::FindingRetractionResolverIdentity);
+                }
+                if resolver.feed_id() != policy.feed_id {
+                    return Err(MemoryGovernanceError::FindingRetractionResolverFeed);
+                }
+                Some(FindingRetractionBinding {
+                    resolver_id: policy.resolver_id.clone(),
+                    feed_id: policy.feed_id.clone(),
+                    resolver,
+                })
+            }
+        };
         Ok(Self {
             enabled: config.enabled,
             store_allowlist: config.store_allowlist,
@@ -149,6 +226,7 @@ impl MemoryGovernanceGuard {
             max_content_size_bytes: config.max_content_size_bytes,
             deny_patterns,
             counters: Mutex::new(HashMap::new()),
+            finding_retraction,
         })
     }
 
@@ -221,7 +299,9 @@ impl Guard for MemoryGovernanceGuard {
 
         match action {
             ToolAction::MemoryWrite { store, .. } => self.evaluate_write(ctx, &store),
-            ToolAction::MemoryRead { store, .. } => self.evaluate_read(ctx, &store),
+            ToolAction::MemoryRead { store, key } => {
+                self.evaluate_read(ctx, &store, key.as_deref())
+            }
             _ => Ok(GuardDecision::allow()),
         }
     }
@@ -230,8 +310,136 @@ impl Guard for MemoryGovernanceGuard {
         true
     }
 
-    fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
+    fn revalidate_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        let action = extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments)
+            .map_err(|_| {
+                KernelError::GuardDenied(
+                    "memory-governance dispatch revalidation rejected malformed input".to_owned(),
+                )
+            })?;
+        let decision = match action {
+            ToolAction::MemoryRead { store, key } => {
+                self.evaluate_read(ctx, &store, key.as_deref())?
+            }
+            _ => return Ok(()),
+        };
+        match decision.verdict {
+            chio_kernel::Verdict::Allow | chio_kernel::Verdict::PendingApproval => Ok(()),
+            chio_kernel::Verdict::Deny => Err(KernelError::GuardDenied(
+                "memory-governance dispatch revalidation denied".to_owned(),
+            )),
+        }
+    }
+
+    fn required_finding_status_feed_id(
+        &self,
+        ctx: &GuardContext,
+    ) -> Result<Option<String>, KernelError> {
+        if !self.enabled
+            || ctx
+                .request
+                .arguments
+                .get(chio_kernel::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT)
+                .is_none()
+        {
+            return Ok(None);
+        }
+        let Some(binding) = &self.finding_retraction else {
+            return Ok(None);
+        };
+        if !matches!(
+            extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments),
+            Ok(ToolAction::MemoryWrite { .. })
+        ) {
+            return Ok(None);
+        }
+        if binding.resolver.resolver_id() != binding.resolver_id
+            || binding.resolver.feed_id() != binding.feed_id
+        {
+            return Err(KernelError::GuardDenied(
+                "Finding memory write resolver identity changed".to_owned(),
+            ));
+        }
+        Ok(Some(binding.feed_id.clone()))
+    }
+
+    fn validate_output_before_release(
+        &self,
+        ctx: &GuardContext,
+        output: &ToolServerOutput,
+    ) -> Result<(), KernelError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        let Some(binding) = &self.finding_retraction else {
+            return Ok(());
+        };
+        let action = extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments)
+            .map_err(|_| {
+                KernelError::GuardDenied(
+                    "memory-governance output validation rejected malformed input".to_owned(),
+                )
+            })?;
+        let ToolAction::MemoryRead { store, key } = action else {
+            return Ok(());
+        };
+        let key = key.ok_or_else(|| {
+            KernelError::GuardDenied(
+                "Finding memory read output requires an exact memory key".to_owned(),
+            )
+        })?;
+        if binding.resolver.resolver_id() != binding.resolver_id
+            || binding.resolver.feed_id() != binding.feed_id
+        {
+            return Err(KernelError::GuardDenied(
+                "Finding memory read resolver identity changed".to_owned(),
+            ));
+        }
+        let resolution = binding
+            .resolver
+            .resolve(FindingRetractionQuery {
+                store: &store,
+                key: &key,
+            })
+            .map_err(|error| {
+                KernelError::GuardDenied(format!(
+                    "Finding memory read output provenance rejected: {error}"
+                ))
+            })?;
+        if resolution.feed_id != binding.feed_id || resolution.value != FindingStatusValue::Live {
+            return Err(KernelError::GuardDenied(
+                "Finding memory read output is not live under the pinned feed".to_owned(),
+            ));
+        }
+        let ToolServerOutput::Value(value) = output else {
+            return Err(KernelError::GuardDenied(
+                "Finding memory read output must be one canonical value".to_owned(),
+            ));
+        };
+        let canonical = chio_core::canonical::canonical_json_bytes(value).map_err(|error| {
+            KernelError::GuardDenied(format!(
+                "Finding memory read output is not canonicalizable: {error}"
+            ))
+        })?;
+        if chio_core::crypto::sha256_hex(&canonical) != resolution.memory_content_sha256 {
+            return Err(KernelError::GuardDenied(
+                "Finding memory read output differs from verified write provenance".to_owned(),
+            ));
+        }
         Ok(())
+    }
+
+    fn requires_exact_released_output(&self, ctx: &GuardContext) -> bool {
+        if !self.enabled || self.finding_retraction.is_none() {
+            return false;
+        }
+        matches!(
+            extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments),
+            Ok(ToolAction::MemoryRead { .. })
+        )
     }
 }
 
@@ -241,6 +449,17 @@ impl MemoryGovernanceGuard {
         ctx: &GuardContext,
         store: &str,
     ) -> Result<GuardDecision, KernelError> {
+        if self.finding_retraction.is_some()
+            && ctx
+                .request
+                .arguments
+                .get(chio_kernel::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT)
+                .and_then(Value::as_str)
+                .is_none_or(|receipt_id| receipt_id.trim().is_empty())
+        {
+            return Ok(GuardDecision::deny(Vec::new()));
+        }
+
         // 1. Store allowlist (capability + guard config).
         if let Some(allow) = self.effective_store_allowlist(ctx) {
             if !allow.iter().any(|s| store_matches(s, store)) {
@@ -302,11 +521,37 @@ impl MemoryGovernanceGuard {
         Ok(GuardDecision::allow())
     }
 
-    fn evaluate_read(&self, ctx: &GuardContext, store: &str) -> Result<GuardDecision, KernelError> {
+    fn evaluate_read(
+        &self,
+        ctx: &GuardContext,
+        store: &str,
+        key: Option<&str>,
+    ) -> Result<GuardDecision, KernelError> {
         // Reads respect the store allowlist so an agent cannot read from
         // a forbidden store even when the write path is blocked.
         if let Some(allow) = self.effective_store_allowlist(ctx) {
             if !allow.iter().any(|s| store_matches(s, store)) {
+                return Ok(GuardDecision::deny(Vec::new()));
+            }
+        }
+        if let Some(binding) = &self.finding_retraction {
+            let Some(key) = key else {
+                return Ok(GuardDecision::deny(Vec::new()));
+            };
+            if binding.resolver.resolver_id() != binding.resolver_id
+                || binding.resolver.feed_id() != binding.feed_id
+            {
+                return Ok(GuardDecision::deny(Vec::new()));
+            }
+            let resolution = binding
+                .resolver
+                .resolve(FindingRetractionQuery { store, key });
+            if !matches!(
+                resolution,
+                Ok(value)
+                    if value.feed_id == binding.feed_id
+                        && value.value == FindingStatusValue::Live
+            ) {
                 return Ok(GuardDecision::deny(Vec::new()));
             }
         }

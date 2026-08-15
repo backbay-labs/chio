@@ -22,6 +22,9 @@ pub(crate) struct DurableToolReturnInput<'a> {
     pub(crate) extra_receipt_metadata: Option<serde_json::Value>,
     pub(crate) pre_invocation_guard_evidence: &'a [chio_core::receipt::metadata::GuardEvidence],
     pub(crate) verified_payee_binding: Option<&'a VerifiedGovernedPayeeBinding>,
+    pub(crate) verified_purchase: Option<&'a crate::finding_purchase::VerifiedFindingPurchase>,
+    pub(crate) verified_recovery:
+        Option<&'a crate::kernel::recovery_gate::VerifiedFindingRecoveryAdmission>,
     pub(crate) trusted_now_unix_ms: u64,
 }
 
@@ -174,8 +177,15 @@ impl ChioKernel {
             extra_receipt_metadata,
             pre_invocation_guard_evidence,
             verified_payee_binding,
+            verified_purchase,
+            verified_recovery,
             trusted_now_unix_ms,
         } = input;
+        self.validate_guarded_output(request, matched_grant_index, output, false)?;
+        let purchase_replay_metadata =
+            self.capture_purchase_replay_metadata(request, matched_grant_index, verified_purchase)?;
+        let recovery_replay_metadata =
+            self.capture_recovery_replay_metadata(request, matched_grant_index, verified_recovery)?;
         let runtime = self.durable_runtime()?;
         let _mutation_guard = runtime.lock_mutations()?;
         let trusted_now_unix_ms = runtime.refresh_trusted_time(trusted_now_unix_ms);
@@ -254,14 +264,21 @@ impl ChioKernel {
         let receipt_metadata_snapshot = merge_metadata_objects(
             merge_metadata_objects(
                 merge_metadata_objects(
-                    merge_metadata_objects(request_metadata, extra_receipt_metadata),
-                    receipt_attribution_metadata(
-                        &request.capability,
-                        Some(matched_grant_index_usize),
+                    merge_metadata_objects(
+                        merge_metadata_objects(request_metadata, extra_receipt_metadata),
+                        receipt_attribution_metadata(
+                            &request.capability,
+                            Some(matched_grant_index_usize),
+                        ),
                     ),
+                    memory_read_metadata,
                 ),
-                memory_read_metadata,
+                purchase_replay_metadata,
             ),
+            recovery_replay_metadata,
+        );
+        let receipt_metadata_snapshot = merge_metadata_objects(
+            receipt_metadata_snapshot,
             Some(serde_json::json!({
                 "receipt_context": {
                     "request_id": request.request_id.as_str()
@@ -461,6 +478,7 @@ impl ChioKernel {
                     .to_owned(),
             ));
         }
+        self.validate_guarded_output(request, matched_grant_index, &handling.output, true)?;
         let (output, transformed_incomplete_reason) =
             Self::terminal_tool_call_output(handling.output);
         let incomplete_reason = materialized_incomplete_reason.or(transformed_incomplete_reason);
@@ -494,6 +512,7 @@ struct DurableEvaluationContract {
     expected_output_digest: Option<String>,
     purchase: Option<crate::finding_purchase::VerifiedFindingPurchase>,
     recovery: Option<crate::finding_recovery::VerifiedFindingRecovery>,
+    recovery_status: Option<crate::finding_purchase::VerifiedFindingStatusProof>,
 }
 
 impl ChioKernel {
@@ -574,24 +593,24 @@ impl ChioKernel {
             .map_err(|error| KernelError::DurableAdmission(error.to_string()))?,
         )
         .map_err(tool_outcome_error)?;
-        // The purchase binding is re-derived deterministically from the
-        // frozen request: the marker and carrier are both covered by the
-        // immutable request hash revalidated above, so a divergent result
-        // here is a configuration fault, not a delivery verdict.
-        let purchase = self
-            .verify_purchase_context(selected_grant.grant, request)
-            .map_err(|reason| {
-                KernelError::DurableAdmission(format!(
-                    "purchase binding could not be re-derived: {reason}"
-                ))
-            })?;
-        let recovery = self
-            .verify_recovery_context(selected_grant.grant, request)
-            .map_err(|reason| {
-                KernelError::DurableAdmission(format!(
-                    "recovery binding could not be re-derived: {reason}"
-                ))
-            })?;
+        // The purchase binding was verified when the authenticated raw tool
+        // return was recorded. Reuse that frozen result so a later
+        // status-operator rotation cannot strand an already-dispatched
+        // operation. The raw outcome and immutable request hash bind the
+        // snapshot to this exact request.
+        let purchase = self.restore_purchase_replay_snapshot(
+            selected_grant.grant,
+            request,
+            raw.receipt_metadata_snapshot(),
+        )?;
+        let recovery_snapshot = self.restore_recovery_replay_snapshot(
+            selected_grant.grant,
+            request,
+            raw.receipt_metadata_snapshot(),
+        )?;
+        let (recovery, recovery_status) = recovery_snapshot.map_or((None, None), |admission| {
+            (Some(admission.recovery), Some(admission.status))
+        });
         Ok(DurableEvaluationContract {
             matched_grant_index,
             plan,
@@ -599,6 +618,7 @@ impl ChioKernel {
             expected_output_digest,
             purchase,
             recovery,
+            recovery_status,
         })
     }
 
@@ -616,6 +636,7 @@ impl ChioKernel {
             expected_output_digest,
             purchase,
             recovery,
+            recovery_status,
         } = self.durable_evaluation_contract(admission, request, &tool_return.raw)?;
         let DurableEvaluatedOutput {
             output,
@@ -634,16 +655,36 @@ impl ChioKernel {
             _ => None,
         };
         let receipt_content = receipt_content_for_output(Some(&output), expected_chunks)?;
-        // Reproduce the delivery verdict deterministically so the replay
-        // byte-matches the persisted receipt, whether it was an Allow or a
-        // delivery-denial Deny.
-        let delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
+        let receipt_id = match admission.operation.terminal_replay() {
+            Some(AdmissionTerminalReplay::Receipt { receipt_id, .. }) => receipt_id,
+            _ => {
+                return Err(KernelError::DurableAdmission(
+                    "completed admission has no receipt replay reference".to_owned(),
+                ));
+            }
+        };
+        let receipt = runtime
+            .store
+            .load_chio_receipt(receipt_id.as_str())
+            .map_err(|error| KernelError::DurableAdmission(error.to_string()))?
+            .ok_or_else(|| {
+                KernelError::DurableAdmission("projected receipt disappeared".to_owned())
+            })?;
+        let mut delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
             expected_output_digest.as_deref(),
             &receipt_content.content_hash,
             matches!(output, ToolCallOutput::Value(_)),
             &receipt_content.canonical_content,
             purchase.as_ref(),
         );
+        if let Some(reason) = self.revalidate_replayed_purchase_delivery(
+            receipt.decision.as_ref(),
+            &mut delivery_evaluation,
+            purchase.as_ref(),
+            current_unix_timestamp_ms() / 1_000,
+        ) {
+            warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase replay output withheld");
+        }
         let receipt_visible_content = receipt_visible_delivery_content(
             &receipt_content,
             delivery_evaluation.digest_mismatched,
@@ -729,21 +770,6 @@ impl ChioKernel {
                 "completed output conflicts with its retained preimage".to_owned(),
             ));
         }
-        let receipt_id = match admission.operation.terminal_replay() {
-            Some(AdmissionTerminalReplay::Receipt { receipt_id, .. }) => receipt_id,
-            _ => {
-                return Err(KernelError::DurableAdmission(
-                    "completed admission has no receipt replay reference".to_owned(),
-                ));
-            }
-        };
-        let receipt = runtime
-            .store
-            .load_chio_receipt(receipt_id.as_str())
-            .map_err(|error| KernelError::DurableAdmission(error.to_string()))?
-            .ok_or_else(|| {
-                KernelError::DurableAdmission("projected receipt disappeared".to_owned())
-            })?;
         let retained_financial_metadata = receipt
             .metadata
             .as_ref()
@@ -811,6 +837,18 @@ impl ChioKernel {
             },
             &receipt,
         )?;
+        self.revalidate_completed_recovery_status(
+            matched_grant_index,
+            request,
+            recovery.as_ref(),
+            recovery_status.as_ref(),
+            current_unix_timestamp_ms() / 1_000,
+        )
+        .map_err(|reason| {
+            KernelError::DurableAdmission(format!(
+                "finding recovery terminal status revalidation failed: {reason}"
+            ))
+        })?;
         self.materialize_durable_admission_receipt(&receipt)?;
         self.mirror_durable_admission_receipt(&receipt)?;
         if let Some(binding) = recovery.as_ref() {
@@ -856,13 +894,7 @@ impl ChioKernel {
             crate::memory_provenance::classify_memory_action(&request.tool_name, &request.arguments)
                 .as_ref()
         {
-            self.append_memory_provenance_for_write(
-                store,
-                key,
-                &request.capability.id,
-                &receipt.id,
-                receipt.timestamp,
-            )?;
+            self.append_memory_provenance_for_write(store, key, request, &receipt)?;
         }
         let (verdict, reason, terminal_state) =
             if let Some(denial) = delivery_evaluation.denial.as_ref() {
@@ -1529,6 +1561,7 @@ impl ChioKernel {
             expected_output_digest,
             purchase,
             recovery,
+            recovery_status,
         } = self.durable_evaluation_contract(admission, request, &tool_return.raw)?;
         let DurableEvaluatedOutput {
             output,
@@ -1565,39 +1598,23 @@ impl ChioKernel {
                 "purchase-marked delivery requires the frozen identity output plan".to_owned(),
             ));
         }
-        let delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
+        let mut delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
             expected_output_digest.as_deref(),
             resolved_output_digest.as_str(),
             matches!(output, ToolCallOutput::Value(_)),
             &receipt_content.canonical_content,
             purchase.as_ref(),
         );
-        let delivery_denied = delivery_evaluation.denial.is_some();
-        let projected_terminal_state = if delivery_denied {
-            AdmissionOperationState::DeniedAfterDelivery
-        } else {
-            AdmissionOperationState::Completed
-        };
-        let receipt_visible_content = receipt_visible_delivery_content(
-            &receipt_content,
-            delivery_evaluation.digest_mismatched,
-            expected_output_digest.as_deref(),
-        );
-        let receipt_visible_digest = AdmissionDigest::try_new(
-            "receipt_visible_output_digest",
-            receipt_visible_content.content_hash.clone(),
-        )?;
-        let terminal_decision = match &delivery_evaluation.denial {
-            Some(denial) => Decision::Deny {
-                reason: denial.message.to_owned(),
-                guard: denial.guard.to_owned(),
-            },
-            None => incomplete_reason
-                .as_ref()
-                .map_or(Decision::Allow, |reason| Decision::Incomplete {
-                    reason: reason.clone(),
-                }),
-        };
+        if delivery_evaluation.denial.is_none() {
+            if let Err(reason) = self.revalidate_completed_purchase_status(
+                purchase.as_ref(),
+                current_unix_timestamp_ms() / 1_000,
+            ) {
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase terminal output withheld");
+                delivery_evaluation.denial =
+                    Some(crate::kernel::purchase_gate::finding_status_delivery_denial());
+            }
+        }
         let stored_outcome = runtime
             .outcome_store
             .lookup_by_operation(admission.operation.binding().operation_id())
@@ -1664,6 +1681,55 @@ impl ChioKernel {
                 evaluation.validate_replay_contract(&plan.frozen_steps, &normalized_context)
             })
             .map_err(tool_outcome_error)?;
+        if delivery_evaluation.denial.is_none() {
+            if let Err(reason) = self.revalidate_completed_purchase_status(
+                purchase.as_ref(),
+                current_unix_timestamp_ms() / 1_000,
+            ) {
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase final terminal output withheld");
+                delivery_evaluation.denial =
+                    Some(crate::kernel::purchase_gate::finding_status_delivery_denial());
+            }
+        }
+        if delivery_evaluation.denial.is_none() {
+            if let Err(reason) = self.revalidate_completed_recovery_status(
+                matched_grant_index,
+                request,
+                recovery.as_ref(),
+                recovery_status.as_ref(),
+                current_unix_timestamp_ms() / 1_000,
+            ) {
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding recovery final terminal output withheld");
+                delivery_evaluation.denial =
+                    Some(crate::kernel::purchase_gate::finding_status_delivery_denial());
+            }
+        }
+        let delivery_denied = delivery_evaluation.denial.is_some();
+        let projected_terminal_state = if delivery_denied {
+            AdmissionOperationState::DeniedAfterDelivery
+        } else {
+            AdmissionOperationState::Completed
+        };
+        let receipt_visible_content = receipt_visible_delivery_content(
+            &receipt_content,
+            delivery_evaluation.digest_mismatched,
+            expected_output_digest.as_deref(),
+        );
+        let receipt_visible_digest = AdmissionDigest::try_new(
+            "receipt_visible_output_digest",
+            receipt_visible_content.content_hash.clone(),
+        )?;
+        let terminal_decision = match &delivery_evaluation.denial {
+            Some(denial) => Decision::Deny {
+                reason: denial.message.to_owned(),
+                guard: denial.guard.to_owned(),
+            },
+            None => incomplete_reason
+                .as_ref()
+                .map_or(Decision::Allow, |reason| Decision::Incomplete {
+                    reason: reason.clone(),
+                }),
+        };
         let post_guard_decision_digest = admission_digest(
             "post_guard_decision_digest",
             &KernelOutputGuardDecision {
@@ -2265,13 +2331,7 @@ impl ChioKernel {
         if let Some(crate::memory_provenance::MemoryActionKind::Write { store, key }) =
             memory_action_kind.as_ref()
         {
-            self.append_memory_provenance_for_write(
-                store,
-                key,
-                &request.capability.id,
-                &projected_receipt.id,
-                projected_receipt.timestamp,
-            )?;
+            self.append_memory_provenance_for_write(store, key, request, &projected_receipt)?;
         }
         let (verdict, reason, terminal_state, execution_nonce) =
             if let Some(denial) = delivery_evaluation.denial.as_ref() {

@@ -8,12 +8,15 @@ use chio_core::capability::scope::{
 use serde::Deserialize;
 
 use crate::finding_purchase::{
-    FindingPurchaseContextView, VerifiedFindingPurchase, FINDING_ESCROW_WITNESS_CONTEXT_KEY,
-    FINDING_PURCHASE_CONTEXT_KEY,
+    FindingCurrentStatusContextView, FindingPurchaseContextView, FindingPurchaseReplaySnapshotV1,
+    FindingStatusProofContextView, VerifiedFindingPurchase, FINDING_ESCROW_WITNESS_CONTEXT_KEY,
+    FINDING_PURCHASE_CONTEXT_KEY, FINDING_PURCHASE_REPLAY_SNAPSHOT_SCHEMA,
+    FINDING_STATUS_PROOF_CONTEXT_KEY, MAX_FINDING_STATUS_PROOF_B64_BYTES,
 };
+use crate::request_matching::resolve_required_matching_grants;
 use crate::runtime::ToolCallRequest;
 
-use super::ChioKernel;
+use super::{ChioKernel, KernelError};
 
 /// Strict two-field reveal envelope a purchased delivery must resolve to.
 #[derive(Deserialize)]
@@ -68,6 +71,32 @@ pub(crate) struct DeliveryDenial {
     pub(crate) reason: crate::admission_operation::DeliveryDenialReason,
     pub(crate) message: &'static str,
     pub(crate) guard: &'static str,
+}
+
+pub(crate) fn finding_status_delivery_denial() -> DeliveryDenial {
+    DeliveryDenial {
+        reason: crate::admission_operation::DeliveryDenialReason::FindingStatusChanged,
+        message: "finding status changed before durable output release",
+        guard: "finding_status",
+    }
+}
+
+/// Make a persisted delivery denial monotonic across replay. Deterministic
+/// delivery checks are recomputed first; if they now allow while the signed
+/// terminal receipt denied, the only mutable gate was current finding status.
+/// Preserve that denial instead of upgrading the terminal to Allow.
+pub(crate) fn preserve_terminal_delivery_denial(
+    retained_decision: Option<&chio_core::receipt::decision::Decision>,
+    evaluation: &mut DeliveryEvaluation,
+) {
+    if evaluation.denial.is_none()
+        && matches!(
+            retained_decision,
+            Some(chio_core::receipt::decision::Decision::Deny { .. })
+        )
+    {
+        evaluation.denial = Some(finding_status_delivery_denial());
+    }
 }
 
 /// The complete delivery verdict for one resolved output, shared by the
@@ -185,6 +214,17 @@ pub(crate) fn finding_delivery_block(
         reservation_id: binding.reservation_id.clone(),
         purchase_intent_id: binding.purchase_intent_id.clone(),
         authoritative_payment_operation_id: binding.authoritative_payment_operation_id.clone(),
+        status_proof: binding.status_proof.as_ref().map(|status| {
+            chio_core::receipt::metadata::FindingStatusProofMetadata {
+                feed_id: status.feed_id.clone(),
+                key_domain_nonce: status.key_domain_nonce,
+                map_epoch: status.map_epoch,
+                status_epoch_artifact_sha256: status.status_epoch_artifact_sha256.clone(),
+                proof_sha256: status.proof_sha256.clone(),
+                root_hash: status.root_hash.clone(),
+                non_inclusion_checked_at: status.non_inclusion_checked_at,
+            }
+        }),
     }
 }
 
@@ -193,6 +233,45 @@ pub(crate) fn finding_delivery_block(
 pub(crate) struct PurchaseMarkedGrant<'a> {
     pub(crate) marker: &'a FindingPurchaseMarkerV1,
     pub(crate) expected_output_digest: &'a str,
+}
+
+fn validate_verified_purchase_binding(
+    marked: &PurchaseMarkedGrant<'_>,
+    grant: &ToolGrant,
+    request: &ToolCallRequest,
+    verified: &VerifiedFindingPurchase,
+) -> Result<(), String> {
+    if verified.finding_id != marked.marker.finding_id
+        || verified.listing_id != marked.marker.listing_id
+    {
+        return Err("purchase context does not bind the marked finding sale".to_owned());
+    }
+    if verified.payload_sha256 != marked.expected_output_digest {
+        return Err("purchase context commits a different payload digest".to_owned());
+    }
+    if verified.payload_media_type.is_empty() {
+        return Err("purchase context omits the advertised reveal media type".to_owned());
+    }
+    if verified.payer_key_hex != request.capability.subject.to_hex() {
+        return Err("purchase reservation binds a different payer".to_owned());
+    }
+    let exact = |amount: &Option<MonetaryAmount>| {
+        amount.as_ref().is_some_and(|amount| {
+            amount.units == verified.accepted_price.units
+                && amount.currency == verified.accepted_price.currency
+        })
+    };
+    if !exact(&grant.max_cost_per_invocation) || !exact(&grant.max_total_cost) {
+        return Err("purchase grant ceilings do not equal the accepted price".to_owned());
+    }
+    Ok(())
+}
+
+fn is_lower_hex64(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 /// Recover the purchase marker from a selected grant, enforcing the
@@ -299,33 +378,204 @@ impl ChioKernel {
             arguments: &request.arguments,
             expected_output_digest: marked.expected_output_digest,
         };
-        let verified = verifier
+        let mut verified = verifier
             .verify_purchase(&view)
             .map_err(|error| format!("purchase context rejected: {error}"))?;
-        if verified.finding_id != marked.marker.finding_id
-            || verified.listing_id != marked.marker.listing_id
-        {
-            return Err("purchase context does not bind the marked finding sale".to_owned());
-        }
-        if verified.payload_sha256 != marked.expected_output_digest {
-            return Err("purchase context commits a different payload digest".to_owned());
-        }
-        if verified.payload_media_type.is_empty() {
-            return Err("purchase context omits the advertised reveal media type".to_owned());
-        }
-        if verified.payer_key_hex != request.capability.subject.to_hex() {
-            return Err("purchase reservation binds a different payer".to_owned());
-        }
-        let exact = |amount: &Option<MonetaryAmount>| {
-            amount.as_ref().is_some_and(|amount| {
-                amount.units == verified.accepted_price.units
-                    && amount.currency == verified.accepted_price.currency
+        validate_verified_purchase_binding(&marked, grant, request, &verified)?;
+        let status_proof_b64 = context
+            .get(FINDING_STATUS_PROOF_CONTEXT_KEY)
+            .map(|value| {
+                value.as_str().ok_or_else(|| {
+                    "finding status proof carrier must be a base64 string".to_owned()
+                })
             })
-        };
-        if !exact(&grant.max_cost_per_invocation) || !exact(&grant.max_total_cost) {
-            return Err("purchase grant ceilings do not equal the accepted price".to_owned());
+            .transpose()?;
+        match (
+            self.finding_status_proof_verifier.as_ref(),
+            status_proof_b64,
+        ) {
+            (Some(status_verifier), Some(proof_b64)) => {
+                if proof_b64.is_empty() || proof_b64.len() > MAX_FINDING_STATUS_PROOF_B64_BYTES {
+                    return Err(
+                        "finding status proof carrier exceeds the kernel size bound".to_owned()
+                    );
+                }
+                let status = status_verifier
+                    .verify_status_proof(&FindingStatusProofContextView {
+                        proof_b64,
+                        expected_finding_id: &verified.finding_id,
+                        expected_feed_id: &verified.expected_status_feed_id,
+                    })
+                    .map_err(|error| format!("finding status proof rejected: {error}"))?;
+                verified.status_proof = Some(status);
+            }
+            (Some(_), None) => {
+                return Err(
+                    "M6-qualified finding purchase requires a portable status proof".to_owned(),
+                );
+            }
+            (None, Some(_)) => {
+                return Err("finding status proof requires a configured kernel verifier".to_owned());
+            }
+            (None, None) => {
+                return Err(
+                    "purchase-marked delivery requires a configured finding status verifier"
+                        .to_owned(),
+                );
+            }
         }
         Ok(Some(verified))
+    }
+
+    /// Validate an admission-verified purchase snapshot recovered from the
+    /// authenticated raw tool return. This path deliberately does not consult
+    /// the current status verifier: authority rotation after dispatch cannot
+    /// invalidate the historical authorization captured with that return.
+    pub(crate) fn validate_purchase_replay_snapshot(
+        &self,
+        grant: &ToolGrant,
+        request: &ToolCallRequest,
+        snapshot: FindingPurchaseReplaySnapshotV1,
+    ) -> Result<Option<VerifiedFindingPurchase>, String> {
+        let Some(marked) = purchase_marked_grant(grant)? else {
+            return Err("an unmarked durable return carries a purchase snapshot".to_owned());
+        };
+        if snapshot.schema != FINDING_PURCHASE_REPLAY_SNAPSHOT_SCHEMA {
+            return Err("durable purchase snapshot schema is invalid".to_owned());
+        }
+        let verified = snapshot.purchase;
+        validate_verified_purchase_binding(&marked, grant, request, &verified)?;
+        let status = verified.status_proof.as_ref().ok_or_else(|| {
+            "M6 durable purchase snapshot has no verified status binding".to_owned()
+        })?;
+        if status.feed_id != verified.expected_status_feed_id
+            || status.key_domain_nonce == 0
+            || status.map_epoch == 0
+            || status.non_inclusion_checked_at == 0
+            || !is_lower_hex64(&status.status_epoch_id)
+            || !is_lower_hex64(&status.status_epoch_artifact_sha256)
+            || !is_lower_hex64(&status.proof_sha256)
+            || !is_lower_hex64(&status.root_hash)
+            || !is_lower_hex64(&status.operator_authorization_sha256)
+            || !is_lower_hex64(&status.service_bond_evidence_sha256)
+        {
+            return Err("durable purchase status snapshot is malformed".to_owned());
+        }
+        let proof_b64 = request
+            .governed_intent
+            .as_ref()
+            .and_then(|intent| intent.context.as_ref())
+            .and_then(serde_json::Value::as_object)
+            .and_then(|context| context.get(FINDING_STATUS_PROOF_CONTEXT_KEY))
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "durable purchase request lost its status proof".to_owned())?;
+        if proof_b64.is_empty() || proof_b64.len() > MAX_FINDING_STATUS_PROOF_B64_BYTES {
+            return Err("durable purchase status proof exceeds the kernel size bound".to_owned());
+        }
+        let proof_bytes = base64::engine::general_purpose::STANDARD
+            .decode(proof_b64)
+            .map_err(|_| "durable purchase status proof is not valid base64".to_owned())?;
+        if chio_core::crypto::sha256_hex(&proof_bytes) != status.proof_sha256 {
+            return Err("durable purchase snapshot binds a different status proof".to_owned());
+        }
+        Ok(Some(verified))
+    }
+
+    pub(crate) fn capture_purchase_replay_metadata(
+        &self,
+        request: &ToolCallRequest,
+        matched_grant_index: usize,
+        verified_purchase: Option<&VerifiedFindingPurchase>,
+    ) -> Result<Option<serde_json::Value>, KernelError> {
+        let matching_grants = resolve_required_matching_grants(
+            &request.capability,
+            &request.tool_name,
+            &request.server_id,
+            &request.arguments,
+            request.model_metadata.as_ref(),
+        )
+        .map_err(|error| KernelError::DurableAdmission(error.to_string()))?;
+        let selected_grant = matching_grants
+            .iter()
+            .find(|matching| matching.index == matched_grant_index)
+            .ok_or_else(|| {
+                KernelError::DurableAdmission(
+                    "durable tool return lost its matched grant".to_owned(),
+                )
+            })?;
+        let is_purchase = purchase_marked_grant(selected_grant.grant)
+            .map_err(KernelError::DurableAdmission)?
+            .is_some();
+        match (is_purchase, verified_purchase) {
+            (true, Some(purchase)) => {
+                let snapshot = FindingPurchaseReplaySnapshotV1::new(purchase.clone());
+                self.validate_purchase_replay_snapshot(
+                    selected_grant.grant,
+                    request,
+                    snapshot.clone(),
+                )
+                .map_err(|reason| {
+                    KernelError::DurableAdmission(format!(
+                        "purchase replay snapshot could not be captured: {reason}"
+                    ))
+                })?;
+                serde_json::to_value(snapshot)
+                    .map(|snapshot| {
+                        Some(serde_json::json!({
+                            crate::finding_purchase::FINDING_PURCHASE_REPLAY_SNAPSHOT_METADATA_KEY:
+                                snapshot
+                        }))
+                    })
+                    .map_err(|error| KernelError::DurableAdmission(error.to_string()))
+            }
+            (true, None) => Err(KernelError::DurableAdmission(
+                "M6 durable purchase return has no frozen dispatch snapshot".to_owned(),
+            )),
+            (false, Some(_)) => Err(KernelError::DurableAdmission(
+                "unmarked durable return carries a frozen purchase snapshot".to_owned(),
+            )),
+            (false, None) => Ok(None),
+        }
+    }
+
+    pub(crate) fn restore_purchase_replay_snapshot(
+        &self,
+        grant: &ToolGrant,
+        request: &ToolCallRequest,
+        metadata: Option<&serde_json::Value>,
+    ) -> Result<Option<VerifiedFindingPurchase>, KernelError> {
+        let snapshot = metadata
+            .and_then(serde_json::Value::as_object)
+            .and_then(|metadata| {
+                metadata.get(crate::finding_purchase::FINDING_PURCHASE_REPLAY_SNAPSHOT_METADATA_KEY)
+            })
+            .cloned();
+        let is_purchase = purchase_marked_grant(grant)
+            .map_err(KernelError::DurableAdmission)?
+            .is_some();
+        match (is_purchase, snapshot) {
+            (true, Some(snapshot)) => {
+                let snapshot: FindingPurchaseReplaySnapshotV1 = serde_json::from_value(snapshot)
+                    .map_err(|error| {
+                        KernelError::DurableAdmission(format!(
+                            "durable purchase snapshot is malformed: {error}"
+                        ))
+                    })?;
+                self.validate_purchase_replay_snapshot(grant, request, snapshot)
+                    .map_err(|reason| {
+                        KernelError::DurableAdmission(format!(
+                            "durable purchase snapshot was rejected: {reason}"
+                        ))
+                    })
+            }
+            (true, None) => Err(KernelError::DurableAdmission(
+                "M6 durable purchase return has no frozen authority snapshot".to_owned(),
+            )),
+            (false, Some(_)) => Err(KernelError::DurableAdmission(
+                "unmarked durable return carries a purchase snapshot".to_owned(),
+            )),
+            (false, None) => Ok(None),
+        }
     }
 
     /// Full admission gate for a purchase-marked grant: the deterministic
@@ -376,15 +626,276 @@ impl ChioKernel {
         verifier
             .verify_purchase_admission(&view, &verified, now_unix_secs)
             .map_err(|error| format!("purchase admission rejected: {error}"))?;
+        if let Some(status) = verified.status_proof.as_ref() {
+            let proof_b64 = request
+                .governed_intent
+                .as_ref()
+                .and_then(|intent| intent.context.as_ref())
+                .and_then(serde_json::Value::as_object)
+                .and_then(|context| context.get(FINDING_STATUS_PROOF_CONTEXT_KEY))
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "verified finding status proof carrier disappeared".to_owned())?;
+            let Some(status_verifier) = self.finding_status_proof_verifier.as_ref() else {
+                return Err("finding status verifier disappeared during admission".to_owned());
+            };
+            status_verifier
+                .verify_status_admission(
+                    &FindingStatusProofContextView {
+                        proof_b64,
+                        expected_finding_id: &verified.finding_id,
+                        expected_feed_id: &verified.expected_status_feed_id,
+                    },
+                    status,
+                    now_unix_secs,
+                )
+                .map_err(|error| format!("finding status admission rejected: {error}"))?;
+        }
         Ok(Some(verified))
+    }
+
+    /// Recheck the purchased Finding against the current authenticated feed
+    /// floor before a durable terminal captures payment or releases output.
+    pub(crate) fn revalidate_completed_purchase_status(
+        &self,
+        purchase: Option<&VerifiedFindingPurchase>,
+        now_unix_secs: u64,
+    ) -> Result<(), String> {
+        let Some(purchase) = purchase else {
+            return Ok(());
+        };
+        let status = purchase.status_proof.as_ref().ok_or_else(|| {
+            "completed purchase has no admission-verified status binding".to_owned()
+        })?;
+        if status.feed_id != purchase.expected_status_feed_id {
+            return Err("completed purchase status feed changed after admission".to_owned());
+        }
+        let verifier = self.finding_status_proof_verifier.as_ref().ok_or_else(|| {
+            "finding status verifier disappeared before terminalization".to_owned()
+        })?;
+        verifier
+            .verify_current_status_admission(
+                &FindingCurrentStatusContextView {
+                    expected_finding_id: &purchase.finding_id,
+                    expected_feed_id: &purchase.expected_status_feed_id,
+                    minimum_map_epoch: status.map_epoch,
+                    minimum_non_inclusion_checked_at: status.non_inclusion_checked_at,
+                },
+                now_unix_secs,
+            )
+            .map_err(|error| format!("completed purchase status admission rejected: {error}"))
+    }
+
+    /// Preserve a retained terminal denial and apply the current status gate
+    /// before replaying a purchased delivery.
+    pub(crate) fn revalidate_replayed_purchase_delivery(
+        &self,
+        retained_decision: Option<&chio_core::receipt::decision::Decision>,
+        evaluation: &mut DeliveryEvaluation,
+        purchase: Option<&VerifiedFindingPurchase>,
+        now_unix_secs: u64,
+    ) -> Option<String> {
+        preserve_terminal_delivery_denial(retained_decision, evaluation);
+        if evaluation.denial.is_some() {
+            return None;
+        }
+        self.revalidate_completed_purchase_status(purchase, now_unix_secs)
+            .err()
+            .inspect(|_| evaluation.denial = Some(finding_status_delivery_denial()))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Arc;
+
+    use chio_core::capability::governance::{
+        GovernedTransactionIntent, GovernedTransactionIntentBody,
+    };
+    use chio_core::capability::scope::{ChioScope, Operation};
+    use chio_core::crypto::Keypair;
+
+    use crate::finding_purchase::{FindingStatusProofVerifier, VerifiedFindingStatusProof};
+    use crate::{HotPathDeadlineConfig, KernelConfig, MemoryBudgetConfig};
 
     const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    struct RotatedStatusVerifier {
+        calls: AtomicU64,
+    }
+
+    impl FindingStatusProofVerifier for RotatedStatusVerifier {
+        fn verify_status_proof(
+            &self,
+            _view: &FindingStatusProofContextView<'_>,
+        ) -> Result<VerifiedFindingStatusProof, String> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err("the prior status operator is no longer current".to_owned())
+        }
+
+        fn verify_status_admission(
+            &self,
+            _view: &FindingStatusProofContextView<'_>,
+            _verified: &VerifiedFindingStatusProof,
+            _now_unix_secs: u64,
+        ) -> Result<(), String> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err("the prior status operator is no longer current".to_owned())
+        }
+
+        fn verify_current_status_admission(
+            &self,
+            _view: &FindingCurrentStatusContextView<'_>,
+            _now_unix_secs: u64,
+        ) -> Result<(), String> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err("finding is pending retraction".to_owned())
+        }
+    }
+
+    #[test]
+    fn durable_purchase_snapshot_survives_status_operator_rotation() {
+        let kernel_key = Keypair::from_seed(&[91; 32]);
+        let buyer = Keypair::from_seed(&[92; 32]);
+        let marker = FindingPurchaseMarkerV1 {
+            finding_id: "finding-1".to_owned(),
+            listing_id: "listing-1".to_owned(),
+            settlement: FindingSettlementSelector::LocalReversibleHold,
+        };
+        let price = MonetaryAmount {
+            units: 7,
+            currency: "USD".to_owned(),
+        };
+        let grant = ToolGrant {
+            server_id: "finding-server".to_owned(),
+            tool_name: "finding.reveal".to_owned(),
+            operations: vec![Operation::Invoke],
+            constraints: vec![
+                Constraint::RequireFindingPurchase(Box::new(marker)),
+                Constraint::OutputDigestSha256(DIGEST.to_owned()),
+            ],
+            max_invocations: Some(1),
+            max_cost_per_invocation: Some(price.clone()),
+            max_total_cost: Some(price.clone()),
+            dpop_required: Some(true),
+        };
+        let mut kernel = ChioKernel::new(KernelConfig {
+            keypair: kernel_key,
+            ca_public_keys: Vec::new(),
+            max_delegation_depth: 5,
+            policy_hash: "purchase-snapshot-test".to_owned(),
+            allow_sampling: false,
+            allow_sampling_tool_use: false,
+            allow_elicitation: false,
+            max_stream_duration_secs: crate::DEFAULT_MAX_STREAM_DURATION_SECS,
+            max_stream_total_bytes: crate::DEFAULT_MAX_STREAM_TOTAL_BYTES,
+            require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
+            allow_ephemeral_revocation_store: true,
+            checkpoint_batch_size: 0,
+            retention_config: None,
+            memory_budget: MemoryBudgetConfig::defaults(),
+            deadlines: HotPathDeadlineConfig::default(),
+        });
+        let capability = kernel
+            .issue_capability(
+                &buyer.public_key(),
+                ChioScope {
+                    grants: vec![grant.clone()],
+                    ..ChioScope::default()
+                },
+                300,
+            )
+            .expect("issue purchase capability");
+        let proof_bytes = b"frozen-prior-operator-status-proof";
+        let proof_b64 = base64::engine::general_purpose::STANDARD.encode(proof_bytes);
+        let request = ToolCallRequest {
+            request_id: "purchase-snapshot-rotation".to_owned(),
+            capability: capability.clone(),
+            tool_name: "finding.reveal".to_owned(),
+            server_id: "finding-server".to_owned(),
+            agent_id: capability.subject.to_hex(),
+            arguments: serde_json::json!({"finding_id": "finding-1"}),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: Some(GovernedTransactionIntent {
+                id: "intent-purchase-snapshot-rotation".to_owned(),
+                server_id: "finding-server".to_owned(),
+                tool_name: "finding.reveal".to_owned(),
+                purpose: "complete an admitted purchase after key rotation".to_owned(),
+                max_amount: None,
+                commerce: None,
+                metered_billing: None,
+                runtime_attestation: None,
+                call_chain: None,
+                autonomy: None,
+                context: Some(serde_json::json!({
+                    FINDING_STATUS_PROOF_CONTEXT_KEY: proof_b64,
+                })),
+                body: GovernedTransactionIntentBody::ToolInvocation,
+            }),
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        };
+        let frozen_purchase = VerifiedFindingPurchase {
+            finding_id: "finding-1".to_owned(),
+            listing_id: "listing-1".to_owned(),
+            payload_sha256: DIGEST.to_owned(),
+            payload_media_type: "application/json".to_owned(),
+            expected_status_feed_id: "status-feed/market".to_owned(),
+            accepted_price: price,
+            payer_key_hex: buyer.public_key().to_hex(),
+            reservation_id: "reservation-1".to_owned(),
+            purchase_intent_id: "purchase-intent-1".to_owned(),
+            authoritative_payment_operation_id: "payment-operation-1".to_owned(),
+            accepted_bid_envelope_sha256: "1".repeat(64),
+            venue_admission_envelope_sha256: "2".repeat(64),
+            status_proof: Some(VerifiedFindingStatusProof {
+                feed_id: "status-feed/market".to_owned(),
+                key_domain_nonce: 3_318_287_169_837_494,
+                map_epoch: 7,
+                status_epoch_id: "3".repeat(64),
+                status_epoch_artifact_sha256: "4".repeat(64),
+                proof_sha256: chio_core::crypto::sha256_hex(proof_bytes),
+                root_hash: "5".repeat(64),
+                non_inclusion_checked_at: 1_750_000_000,
+                operator_authorization_sha256: "6".repeat(64),
+                service_bond_evidence_sha256: "7".repeat(64),
+            }),
+        };
+        let rotated = Arc::new(RotatedStatusVerifier {
+            calls: AtomicU64::new(0),
+        });
+        kernel.set_finding_status_proof_verifier(rotated.clone());
+
+        let recovered = kernel
+            .validate_purchase_replay_snapshot(
+                &grant,
+                &request,
+                FindingPurchaseReplaySnapshotV1::new(frozen_purchase.clone()),
+            )
+            .expect("frozen historical authority remains replayable")
+            .expect("purchase snapshot remains present");
+        assert_eq!(recovered, frozen_purchase);
+        let captured = kernel
+            .capture_purchase_replay_metadata(&request, 0, Some(&frozen_purchase))
+            .expect("the dispatch-frozen purchase remains recordable")
+            .expect("the durable return carries a purchase snapshot");
+        assert!(captured
+            .get(crate::finding_purchase::FINDING_PURCHASE_REPLAY_SNAPSHOT_METADATA_KEY)
+            .is_some());
+        assert_eq!(rotated.calls.load(Ordering::SeqCst), 0);
+        let error = kernel
+            .revalidate_completed_purchase_status(Some(&frozen_purchase), 1_800_000_000)
+            .expect_err("terminal release must consult the current status floor");
+        assert!(error.contains("pending retraction"));
+        assert_eq!(rotated.calls.load(Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn a_committed_digest_admits_only_a_matching_value_delivery() {
@@ -409,5 +920,24 @@ mod tests {
             denial.is_some_and(|denial| denial.message.contains("single value delivery")),
             "a stream delivery must deny under a committed digest"
         );
+    }
+
+    #[test]
+    fn retained_terminal_deny_never_replays_as_allow() {
+        let mut evaluation = evaluate_delivery(None, DIGEST, true, b"{}", None);
+        assert!(evaluation.denial.is_none());
+        preserve_terminal_delivery_denial(
+            Some(&chio_core::receipt::decision::Decision::Deny {
+                reason: "finding status changed before durable output release".to_owned(),
+                guard: "finding_status".to_owned(),
+            }),
+            &mut evaluation,
+        );
+        let denial = evaluation.denial.expect("retained denial");
+        assert_eq!(
+            denial.message,
+            "finding status changed before durable output release"
+        );
+        assert_eq!(denial.guard, "finding_status");
     }
 }

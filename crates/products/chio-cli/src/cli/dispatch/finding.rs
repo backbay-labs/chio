@@ -16,6 +16,10 @@ use finding_verify::cmd_finding_verify;
 mod finding_challenge;
 use finding_challenge::cmd_finding_challenge;
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine as _;
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+
 /// Authenticated canonical-artifact ingress.
 const FINDING_PUBLISH_PATH: &str = "/v1/findings/publish";
 /// Public bounded descriptor index.
@@ -25,6 +29,19 @@ const FINDING_SEARCH_PATH: &str = "/v1/findings/search";
 /// layer; checking it here turns a truncated upload into a local
 /// diagnostic instead of a remote 413.
 const FINDING_PUBLISH_MAX_BODY_BYTES: usize = 256 * 1024;
+/// Out-of-band status operator authorization file cap.
+const FINDING_STATUS_AUTHORIZATION_MAX_BYTES: usize = 64 * 1024;
+/// Out-of-band status service-bond file cap.
+const FINDING_STATUS_SERVICE_BOND_MAX_BYTES: usize = 64 * 1024;
+/// Aggregate status response cap, including the portable proof and the
+/// separately projected signed epoch carrier.
+const FINDING_STATUS_RESPONSE_MAX_BYTES: usize = 512 * 1024;
+
+#[path = "finding/status_floor.rs"]
+mod status_floor;
+use status_floor::{FindingStatusFloorLock, FindingStatusFloorObservation};
+#[cfg(test)]
+use status_floor::read_status_floor;
 
 pub(crate) fn dispatch_finding(
     command: FindingCommands,
@@ -84,6 +101,23 @@ pub(crate) fn dispatch_finding(
             json_output,
             control_url.as_deref(),
             control_token.as_deref(),
+        ),
+        FindingCommands::Status {
+            id,
+            feed,
+            operator_authorization,
+            service_bond,
+            rollback_floor,
+            max_epoch_age_secs,
+        } => cmd_finding_status(
+            &id,
+            &feed,
+            &operator_authorization,
+            &service_bond,
+            &rollback_floor,
+            max_epoch_age_secs,
+            json_output,
+            control_url.as_deref(),
         ),
         FindingCommands::Challenge {
             finding,
@@ -583,6 +617,434 @@ fn emit_purchase_result(result: &FindingPurchaseResult, json_output: bool) -> Re
     if let Some(output) = result.output.as_ref() {
         println!("media_type:        {}", output.media_type);
         println!("payload_b64:       {}", output.payload_b64);
+    }
+    Ok(())
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct FindingStatusProofResponse {
+    feed_id: String,
+    key_domain_nonce: u64,
+    map_epoch: u64,
+    epoch_id: String,
+    root_hash: String,
+    finding_id: String,
+    proof_kind: String,
+    proof_sha256: String,
+    proof_input_b64: String,
+    signed_epoch_sha256: String,
+    signed_epoch_b64: String,
+    service_bond_evidence_sha256: String,
+    checked_at: u64,
+    valid_until: u64,
+}
+
+impl FindingStatusProofResponse {
+    fn floor_observation(&self) -> FindingStatusFloorObservation<'_> {
+        FindingStatusFloorObservation {
+            feed_id: &self.feed_id,
+            key_domain_nonce: self.key_domain_nonce,
+            map_epoch: self.map_epoch,
+            epoch_id: &self.epoch_id,
+            root_hash: &self.root_hash,
+            finding_id: &self.finding_id,
+            is_retracted: self.proof_kind == "inclusion",
+        }
+    }
+}
+
+#[cfg(test)]
+fn advance_status_floor(
+    path: &Path,
+    status: &FindingStatusProofResponse,
+    authorization: &chio_finding::FindingStatusOperatorAuthorization,
+    authorization_sha256: &str,
+    trusted_now: u64,
+) -> Result<(), CliError> {
+    status_floor::advance_status_floor(
+        path,
+        &status.floor_observation(),
+        authorization,
+        authorization_sha256,
+        trusted_now,
+    )
+}
+
+fn require_feed_id(feed_id: &str) -> Result<&str, CliError> {
+    if feed_id.is_empty()
+        || feed_id.len() > 512
+        || !feed_id.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-' | b'/')
+        })
+    {
+        return Err(CliError::cli_other_error(
+            "status feed id contains characters outside [A-Za-z0-9._:/-]".to_string(),
+        ));
+    }
+    Ok(feed_id)
+}
+
+fn load_status_operator_authorization(
+    path: &Path,
+    expected_feed: &str,
+) -> Result<chio_finding::FindingStatusOperatorAuthorization, CliError> {
+    let mut reader = std::fs::File::open(path)?
+        .take((FINDING_STATUS_AUTHORIZATION_MAX_BYTES as u64).saturating_add(1));
+    let mut bytes = Vec::with_capacity(FINDING_STATUS_AUTHORIZATION_MAX_BYTES.saturating_add(1));
+    reader.read_to_end(&mut bytes)?;
+    if bytes.len() > FINDING_STATUS_AUTHORIZATION_MAX_BYTES {
+        return Err(CliError::cli_other_error(format!(
+            "{} exceeds the finding status operator authorization bound",
+            path.display()
+        )));
+    }
+    let raw = std::str::from_utf8(&bytes).map_err(|error| {
+        CliError::cli_other_error(format!("{} is not valid UTF-8: {error}", path.display()))
+    })?;
+    let canonical = chio_core::canonical::canonical_json_bytes_from_str(raw).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{} is not strict canonical I-JSON: {error}",
+            path.display()
+        ))
+    })?;
+    if canonical != bytes {
+        return Err(CliError::cli_other_error(format!(
+            "{} is not the canonical authorization serialization",
+            path.display()
+        )));
+    }
+    let authorization: chio_finding::FindingStatusOperatorAuthorization =
+        serde_json::from_slice(&bytes)?;
+    authorization.validate().map_err(|error| {
+        CliError::cli_other_error(format!(
+            "finding status operator authorization is invalid: {error}"
+        ))
+    })?;
+    if authorization.feed_id != expected_feed {
+        return Err(CliError::cli_other_error(
+            "finding status operator authorization binds a different feed".to_owned(),
+        ));
+    }
+    Ok(authorization)
+}
+
+fn load_status_service_bond(
+    path: &Path,
+    expected_feed: &str,
+    authorization: &chio_finding::FindingStatusOperatorAuthorization,
+    authorization_sha256: &str,
+    now: u64,
+) -> Result<chio_control_plane::trust_control::FindingStatusServiceBond, CliError> {
+    let mut reader = std::fs::File::open(path)?
+        .take((FINDING_STATUS_SERVICE_BOND_MAX_BYTES as u64).saturating_add(1));
+    let mut bytes = Vec::with_capacity(FINDING_STATUS_SERVICE_BOND_MAX_BYTES.saturating_add(1));
+    reader.read_to_end(&mut bytes)?;
+    if bytes.len() > FINDING_STATUS_SERVICE_BOND_MAX_BYTES {
+        return Err(CliError::cli_other_error(format!(
+            "{} exceeds the finding status service-bond bound",
+            path.display()
+        )));
+    }
+    let raw = std::str::from_utf8(&bytes).map_err(|error| {
+        CliError::cli_other_error(format!("{} is not valid UTF-8: {error}", path.display()))
+    })?;
+    let canonical = chio_core::canonical::canonical_json_bytes_from_str(raw).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "{} is not strict canonical I-JSON: {error}",
+            path.display()
+        ))
+    })?;
+    if canonical != bytes {
+        return Err(CliError::cli_other_error(format!(
+            "{} is not the canonical service-bond serialization",
+            path.display()
+        )));
+    }
+    let bond: chio_control_plane::trust_control::FindingStatusServiceBond =
+        serde_json::from_slice(&bytes)?;
+    let operator = chio_control_plane::trust_control::FindingStatusOperatorPin {
+        feed_id: authorization.feed_id.clone(),
+        role: chio_control_plane::trust_control::FINDING_STATUS_OPERATOR_ROLE.to_owned(),
+        authority: chio_control_plane::trust_control::FindingAuthorityPin {
+            authority_id: authorization.operator.authority_id.clone(),
+            key_hex: authorization.operator.key.to_hex(),
+            key_epoch: authorization.operator.key_epoch,
+            valid_from: authorization.operator.valid_from,
+            valid_until: authorization.operator.valid_until,
+            revocation_status_ref: authorization.operator.revocation_status_ref.clone(),
+        },
+        rotation_policy_ref: authorization.operator.rotation_policy_ref.clone(),
+        authorization_sha256: authorization_sha256.to_owned(),
+        revoked_from: authorization.revoked_from,
+    };
+    bond.validate(&operator).map_err(|error| {
+        CliError::cli_other_error(format!("finding status service bond is invalid: {error}"))
+    })?;
+    operator.require_live(expected_feed, now).map_err(|error| {
+        CliError::cli_other_error(format!("finding status operator is not current: {error}"))
+    })?;
+    if !bond.covers(now) {
+        return Err(CliError::cli_other_error(
+            "finding status service bond is not current".to_owned(),
+        ));
+    }
+    Ok(bond)
+}
+
+fn verify_status_projection(
+    response: &FindingStatusProofResponse,
+    expected_feed: &str,
+    expected_finding: &str,
+    authorization: &chio_finding::FindingStatusOperatorAuthorization,
+    expected_service_bond_evidence_sha256: &str,
+    max_epoch_age_secs: u64,
+    trusted_now: u64,
+) -> Result<(), CliError> {
+    if response.feed_id != expected_feed || response.finding_id != expected_finding {
+        return Err(CliError::cli_other_error(
+            "finding status response binds a different feed or finding".to_string(),
+        ));
+    }
+    if response.service_bond_evidence_sha256 != expected_service_bond_evidence_sha256 {
+        return Err(CliError::cli_other_error(
+            "finding status response binds different service-bond evidence".to_owned(),
+        ));
+    }
+    let max_proof_b64 = (chio_finding::MAX_FINDING_STATUS_PROOF_BYTES.saturating_add(2) / 3)
+        .saturating_mul(4);
+    let max_epoch_b64 = (chio_finding::MAX_FINDING_STATUS_EPOCH_BYTES.saturating_add(2) / 3)
+        .saturating_mul(4);
+    if response.proof_input_b64.len() > max_proof_b64
+        || response.signed_epoch_b64.len() > max_epoch_b64
+    {
+        return Err(CliError::transport_shape_error(
+            "finding status response carries an oversized encoded proof or epoch".to_owned(),
+        ));
+    }
+    let proof_bytes = STANDARD.decode(&response.proof_input_b64).map_err(|_| {
+        CliError::cli_other_error("finding status proof is not valid base64".to_string())
+    })?;
+    if chio_core::sha256_hex(&proof_bytes) != response.proof_sha256 {
+        return Err(CliError::cli_other_error(
+            "finding status proof digest does not match its exact bytes".to_string(),
+        ));
+    }
+    let proof = chio_finding::parse_status_proof_input(&proof_bytes).map_err(|error| {
+        CliError::cli_other_error(format!("finding status proof is not strict canonical input: {error}"))
+    })?;
+    let (
+        proof_kind,
+        feed_id,
+        key_domain_nonce,
+        map_epoch,
+        finding_id,
+        epoch_id,
+        epoch_sha256,
+        epoch_b64,
+        root_hash,
+        checked_at,
+    ) = match &proof {
+        chio_finding::FindingStatusProofInput::NonInclusion(value) => (
+            "non_inclusion",
+            value.feed_id.as_str(),
+            value.key_domain_nonce,
+            value.map_epoch,
+            value.finding_id.as_str(),
+            value.status_epoch_id.as_str(),
+            value.status_epoch_sha256.as_str(),
+            value.signed_status_epoch_b64.as_str(),
+            value.root_hash.as_str(),
+            value.checked_at,
+        ),
+        chio_finding::FindingStatusProofInput::Inclusion(value) => (
+            "inclusion",
+            value.feed_id.as_str(),
+            value.key_domain_nonce,
+            value.map_epoch,
+            value.finding_id.as_str(),
+            value.status_epoch_id.as_str(),
+            value.status_epoch_sha256.as_str(),
+            value.signed_status_epoch_b64.as_str(),
+            value.root_hash.as_str(),
+            value.checked_at,
+        ),
+    };
+    if response.proof_kind != proof_kind
+        || response.feed_id != feed_id
+        || response.key_domain_nonce != key_domain_nonce
+        || response.map_epoch != map_epoch
+        || response.finding_id != finding_id
+        || response.epoch_id != epoch_id
+        || response.signed_epoch_sha256 != epoch_sha256
+        || response.signed_epoch_b64 != epoch_b64
+        || response.root_hash != root_hash
+        || response.checked_at != checked_at
+    {
+        return Err(CliError::cli_other_error(
+            "finding status response fields differ from the strict portable proof".to_string(),
+        ));
+    }
+    let epoch_bytes = STANDARD.decode(&response.signed_epoch_b64).map_err(|_| {
+        CliError::cli_other_error("finding status epoch is not valid base64".to_string())
+    })?;
+    if chio_core::sha256_hex(&epoch_bytes) != response.signed_epoch_sha256 {
+        return Err(CliError::cli_other_error(
+            "finding status epoch digest does not match its exact bytes".to_string(),
+        ));
+    }
+    let epoch = chio_finding::parse_signed_status_epoch(&epoch_bytes).map_err(|error| {
+        CliError::cli_other_error(format!("finding status epoch is not strict canonical input: {error}"))
+    })?;
+    if epoch.body.feed_id != response.feed_id
+        || epoch.body.key_domain_nonce != response.key_domain_nonce
+        || epoch.body.map_epoch != response.map_epoch
+        || epoch.body.status_epoch_id != response.epoch_id
+        || epoch.body.root_hash != response.root_hash
+        || epoch.body.valid_until != response.valid_until
+        || epoch.signer_key != epoch.body.operator_key
+        || !epoch.verify_signature().map_err(|error| {
+            CliError::cli_other_error(format!("finding status epoch signature check failed: {error}"))
+        })?
+    {
+        return Err(CliError::cli_other_error(
+            "finding status epoch signature or response binding is invalid".to_string(),
+        ));
+    }
+    let verified_epoch = chio_finding::verify_status_proof_input(
+        &proof,
+        authorization,
+        chio_finding::FindingStatusFreshnessPolicy {
+            now: trusted_now,
+            max_epoch_age_secs,
+        },
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "finding status signature, freshness, or sparse path is invalid: {error}"
+        ))
+    })?;
+    if verified_epoch != epoch {
+        return Err(CliError::cli_other_error(
+            "finding status proof resolved a different signed epoch".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn cmd_finding_status(
+    finding_id: &str,
+    feed_id: &str,
+    operator_authorization: &Path,
+    service_bond: &Path,
+    rollback_floor: &Path,
+    max_epoch_age_secs: u64,
+    json_output: bool,
+    control_url: Option<&str>,
+) -> Result<(), CliError> {
+    let url = require_control_url(control_url)?;
+    let finding_id = require_finding_id(finding_id)?;
+    let feed_id = require_feed_id(feed_id)?;
+    if max_epoch_age_secs == 0 {
+        return Err(CliError::cli_other_error(
+            "--max-epoch-age-secs must be greater than zero".to_owned(),
+        ));
+    }
+    let authorization = load_status_operator_authorization(operator_authorization, feed_id)?;
+    let authorization_sha256 = chio_core::sha256_hex(&chio_core::canonical_json_bytes(&authorization)?);
+    let _floor_lock = FindingStatusFloorLock::acquire(rollback_floor)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| CliError::cli_other_error(format!("system clock is invalid: {error}")))?
+        .as_secs();
+    status_floor::advance_trusted_time_locked(rollback_floor, now)?;
+    let service_bond = load_status_service_bond(
+        service_bond,
+        feed_id,
+        &authorization,
+        &authorization_sha256,
+        now,
+    )?;
+    let encoded_feed = utf8_percent_encode(feed_id, NON_ALPHANUMERIC);
+    let endpoint = finding_endpoint(
+        url,
+        &format!("/v1/findings/status/{encoded_feed}/proof/{finding_id}"),
+    );
+    let response = match ureq::get(&endpoint).call() {
+        Ok(response) => response,
+        Err(ureq::Error::Status(status, response)) => {
+            return Err(http_status_error(status, response))
+        }
+        Err(ureq::Error::Transport(error)) => {
+            return Err(CliError::transport_error(format!(
+                "transport request failed: {error}"
+            )))
+        }
+    };
+    let raw_status = read_bounded_response(
+        response,
+        FINDING_STATUS_RESPONSE_MAX_BYTES,
+        "finding status response",
+    )?;
+    let status: FindingStatusProofResponse = serde_json::from_str(&raw_status)?;
+    let post_fetch_now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| CliError::cli_other_error(format!("system clock is invalid: {error}")))?
+        .as_secs();
+    if post_fetch_now < now {
+        return Err(CliError::cli_other_error(
+            "finding status host clock rolled back during proof retrieval".to_owned(),
+        ));
+    }
+    status_floor::advance_trusted_time_locked(rollback_floor, post_fetch_now)?;
+    if !service_bond.covers(post_fetch_now) {
+        return Err(CliError::cli_other_error(
+            "finding status service bond expired while fetching the proof".to_owned(),
+        ));
+    }
+    verify_status_projection(
+        &status,
+        feed_id,
+        finding_id,
+        &authorization,
+        &service_bond.evidence_sha256,
+        max_epoch_age_secs,
+        post_fetch_now,
+    )?;
+    status_floor::advance_status_floor_locked(
+        rollback_floor,
+        &status.floor_observation(),
+        &authorization,
+        &authorization_sha256,
+        post_fetch_now,
+    )?;
+    if json_output {
+        let mut verified = serde_json::to_value(&status)?;
+        verified
+            .as_object_mut()
+            .ok_or_else(|| {
+                CliError::cli_other_error("finding status output is not an object".to_owned())
+            })?
+            .insert(
+                "verified_service_bond_evidence_sha256".to_owned(),
+                serde_json::Value::String(service_bond.evidence_sha256.clone()),
+            );
+        println!("{}", serde_json::to_string_pretty(&verified)?);
+    } else {
+        let finding_status = if status.proof_kind == "non_inclusion" {
+            "live"
+        } else {
+            "retracted"
+        };
+        println!("finding_id:      {}", status.finding_id);
+        println!("feed_id:         {}", status.feed_id);
+        println!("status:          {finding_status}");
+        println!("map_epoch:       {}", status.map_epoch);
+        println!("root_hash:       {}", status.root_hash);
+        println!("checked_at:      {}", status.checked_at);
+        println!("valid_until:     {}", status.valid_until);
+        println!("proof_sha256:    {}", status.proof_sha256);
+        println!("service_bond:    {}", service_bond.evidence_sha256);
     }
     Ok(())
 }

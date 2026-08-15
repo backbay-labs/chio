@@ -57,6 +57,11 @@ pub enum EdgeKind {
     ReceiptToChildRequest,
     RequestToRequest,
     ReceiptLineageParent,
+    /// A governed memory-write receipt depends on the verified Finding
+    /// delivery receipt whose content it ingested. Direction is dependent
+    /// write -> source delivery so reverse traversal from the source reports
+    /// the complete bounded blast radius.
+    FindingMemoryWriteToDelivery,
 }
 
 /// A graph node. Stable id, kind, evidence class, and optional projection
@@ -194,6 +199,13 @@ mod tests {
         assert!(marker.get("truncated").is_some());
         assert!(marker.get("depth_reached").is_some());
         assert!(marker.get("limit").is_some());
+        let edge_kinds = v["definitions"]["EdgeKind"]["enum"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert!(edge_kinds.iter().any(|kind| {
+            kind == &serde_json::Value::String("finding_memory_write_to_delivery".to_owned())
+        }));
     }
 
     #[test]

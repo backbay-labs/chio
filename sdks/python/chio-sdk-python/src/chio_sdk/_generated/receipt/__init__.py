@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: d7264a73c6278a903994c0945d1fc7ba5300063d0cc3a6b8666fdf08f66175e5
+# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from .admission_metadata_schema import ChioDurableAdmissionReceiptMetadata, CompensationStatus, Digest, DispatchCommit, Identifier, PositiveIJsonInteger, ProjectedDispatchState, ProjectedState, ProviderAttempt, StoreFence
 from .delivery_contract_schema import ChioDeliveryContractReceiptMetadata, Digest, Result
-from .finding_delivery_schema import ChioFindingDeliveryReceiptMetadata, Digest, DigestCheck, Identifier, MediaTypeCheck, SettlementMode, TransformProfile
+from .finding_delivery_schema import ChioFindingDeliveryReceiptMetadata, Digest, DigestCheck, HierarchicalIdentifier, IJsonU64NonZero, Identifier, MediaTypeCheck, SettlementMode, StatusProof, TransformProfile
 from .inclusion_proof_schema import ChioReceiptMerkleInclusionProof
 from .lineage_statement_schema import ChioReceiptLineageStatement, EvidenceClass, RelationKind, SessionAnchorReference
 from .record_schema import ActorRef, Algorithm, BbsReceiptSignature, BoundaryClass, ChioReceiptRecord, Decision, Decision1, Decision2, Decision3, Decision4, GuardEvidence, ObservationOutcome, ReceiptKind, RedactionMode, ToolCallAction, ToolOrigin, TrustLevel
@@ -39,6 +39,8 @@ __all__ = [
     "DispatchCommit",
     "EvidenceClass",
     "GuardEvidence",
+    "HierarchicalIdentifier",
+    "IJsonU64NonZero",
     "Identifier",
     "MediaTypeCheck",
     "ObservationOutcome",
@@ -52,6 +54,7 @@ __all__ = [
     "Result",
     "SessionAnchorReference",
     "SettlementMode",
+    "StatusProof",
     "StoreFence",
     "ToolCallAction",
     "ToolOrigin",

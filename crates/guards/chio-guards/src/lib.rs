@@ -78,6 +78,7 @@ pub mod remote_desktop;
 pub mod browser_automation;
 pub mod code_execution;
 pub mod content_review;
+pub mod finding_retraction;
 pub mod memory_governance;
 
 pub use advisory::{
@@ -204,4 +205,14 @@ pub use code_execution::{
 pub use content_review::{
     ContentReviewConfig, ContentReviewError, ContentReviewGuard, ContentReviewRules,
 };
-pub use memory_governance::{MemoryGovernanceConfig, MemoryGovernanceError, MemoryGovernanceGuard};
+pub use finding_retraction::{
+    AuthenticatedFindingStatus, FindingDeliveryLineageResolver, FindingRetractionClock,
+    FindingRetractionQuery, FindingRetractionResolution, FindingRetractionResolveError,
+    FindingRetractionResolver, FindingStatusCache, FindingStatusValue,
+    VerifiedFindingDeliveryLineage, VerifiedFindingRetractionResolver,
+    FINDING_RETRACTION_RESOLVER_PROFILE,
+};
+pub use memory_governance::{
+    FindingRetractionGuardConfig, MemoryGovernanceConfig, MemoryGovernanceError,
+    MemoryGovernanceGuard,
+};

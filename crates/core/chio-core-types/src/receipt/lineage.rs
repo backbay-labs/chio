@@ -220,6 +220,9 @@ fn default_receipt_lineage_evidence_class() -> ProvenanceEvidenceClass {
 pub enum ReceiptLineageRelationKind {
     LocalChild,
     Continued,
+    /// A governed memory-write receipt depends on a verified Finding
+    /// delivery receipt. The direction is child write -> parent delivery.
+    FindingMemoryWriteToDelivery,
 }
 
 /// Signable receipt-lineage statement body.

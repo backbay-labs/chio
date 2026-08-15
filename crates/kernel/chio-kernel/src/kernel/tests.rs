@@ -9,6 +9,7 @@ use crate::budget_store::{
 };
 
 include!("tests/support.rs");
+include!("tests/support_receipt_store_extensions.rs");
 include!("tests/support_delegation_plain.rs");
 include!("tests/support_budget_store_impls.rs");
 include!("tests/support_monetary.rs");

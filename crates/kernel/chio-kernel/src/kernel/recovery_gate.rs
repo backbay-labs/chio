@@ -1,10 +1,17 @@
 //! First-class no-charge finding-recovery admission and receipt metadata.
 
+use base64::Engine as _;
 use chio_core::capability::scope::{Constraint, FindingRecoveryMarkerV1, ToolGrant};
 
-use crate::finding_recovery::{
-    FindingRecoveryContextView, VerifiedFindingRecovery, FINDING_RECOVERY_CONTEXT_ARGUMENT,
+use crate::finding_purchase::{
+    FindingCurrentStatusContextView, FindingStatusProofContextView, VerifiedFindingStatusProof,
+    FINDING_STATUS_PROOF_CONTEXT_KEY, MAX_FINDING_STATUS_PROOF_B64_BYTES,
 };
+use crate::finding_recovery::{
+    FindingRecoveryContextView, FindingRecoveryReplaySnapshotV1, VerifiedFindingRecovery,
+    FINDING_RECOVERY_CONTEXT_ARGUMENT, FINDING_RECOVERY_REPLAY_SNAPSHOT_SCHEMA,
+};
+use crate::request_matching::resolve_required_matching_grants;
 use crate::runtime::ToolCallRequest;
 
 use super::ChioKernel;
@@ -12,6 +19,60 @@ use super::ChioKernel;
 pub(crate) struct RecoveryMarkedGrant<'a> {
     marker: &'a FindingRecoveryMarkerV1,
     expected_output_digest: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct VerifiedFindingRecoveryAdmission {
+    pub(crate) recovery: VerifiedFindingRecovery,
+    pub(crate) status: VerifiedFindingStatusProof,
+}
+
+impl crate::kernel::dispatch::VerifiedFindingDispatchAdmission {
+    pub(crate) fn recovery_binding(&self) -> Option<&VerifiedFindingRecovery> {
+        self.recovery.as_ref().map(|admission| &admission.recovery)
+    }
+
+    pub(crate) fn recovery_status(&self) -> Option<&VerifiedFindingStatusProof> {
+        self.recovery.as_ref().map(|admission| &admission.status)
+    }
+}
+
+#[derive(serde::Serialize)]
+struct FindingRecoveryRequestBinding<'a> {
+    schema: &'static str,
+    selected_grant: &'a ToolGrant,
+    request: &'a ToolCallRequest,
+}
+
+const FINDING_RECOVERY_REQUEST_BINDING_SCHEMA: &str = "chio.finding.recovery-request-binding.v1";
+
+fn is_lower_hex64(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn recovery_status_proof_view<'a>(
+    request: &'a ToolCallRequest,
+    verified: &'a VerifiedFindingRecovery,
+) -> Result<FindingStatusProofContextView<'a>, String> {
+    let proof_b64 = request
+        .governed_intent
+        .as_ref()
+        .and_then(|intent| intent.context.as_ref())
+        .and_then(serde_json::Value::as_object)
+        .and_then(|context| context.get(FINDING_STATUS_PROOF_CONTEXT_KEY))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "finding recovery requires a portable status proof".to_owned())?;
+    if proof_b64.is_empty() || proof_b64.len() > MAX_FINDING_STATUS_PROOF_B64_BYTES {
+        return Err("finding status proof carrier exceeds the kernel size bound".to_owned());
+    }
+    Ok(FindingStatusProofContextView {
+        proof_b64,
+        expected_finding_id: &verified.finding_id,
+        expected_feed_id: &verified.expected_status_feed_id,
+    })
 }
 
 /// Recover and validate the closed recovery grant profile.
@@ -109,6 +170,64 @@ fn validate_recovery_capability_profile(
     Ok(())
 }
 
+fn recovery_request_binding_sha256(
+    grant: &ToolGrant,
+    request: &ToolCallRequest,
+) -> Result<String, String> {
+    let bytes = crate::canonical_json_bytes(&FindingRecoveryRequestBinding {
+        schema: FINDING_RECOVERY_REQUEST_BINDING_SCHEMA,
+        selected_grant: grant,
+        request,
+    })
+    .map_err(|error| format!("finding recovery request binding is not canonical: {error}"))?;
+    Ok(chio_core::crypto::sha256_hex(&bytes))
+}
+
+fn validate_frozen_recovery_binding(
+    grant: &ToolGrant,
+    request: &ToolCallRequest,
+    expected: &VerifiedFindingRecovery,
+) -> Result<(), String> {
+    validate_recovery_capability_profile(&request.capability)?;
+    let Some(marked) = recovery_marked_grant(grant)? else {
+        return Err("durable recovery snapshot has no marked grant".to_owned());
+    };
+    let arguments = request
+        .arguments
+        .as_object()
+        .ok_or_else(|| "finding recovery requires a top-level argument object".to_owned())?;
+    let finding_id = arguments
+        .get("finding_id")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "finding recovery requires a top-level finding_id".to_owned())?;
+    if finding_id != marked.marker.finding_id {
+        return Err("finding recovery targets a different finding".to_owned());
+    }
+    let context_b64 = arguments
+        .get(FINDING_RECOVERY_CONTEXT_ARGUMENT)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "finding recovery requires its evidence carrier".to_owned())?;
+    if context_b64.is_empty() {
+        return Err("finding recovery evidence carrier is empty".to_owned());
+    }
+    if expected.recovery_id != marked.marker.recovery_id
+        || expected.finding_id != marked.marker.finding_id
+        || expected.listing_id != marked.marker.listing_id
+        || expected.original_capability_id != marked.marker.original_capability_id
+        || expected.original_delivery_receipt_id != marked.marker.original_delivery_receipt_id
+        || expected.purchase_key != marked.marker.purchase_key
+    {
+        return Err("durable recovery snapshot does not match its signed marker".to_owned());
+    }
+    if expected.payload_sha256 != marked.expected_output_digest {
+        return Err("durable recovery snapshot commits a different payload digest".to_owned());
+    }
+    if expected.original_subject_key_hex != request.capability.subject.to_hex() {
+        return Err("durable recovery snapshot binds a different original subject".to_owned());
+    }
+    Ok(())
+}
+
 impl ChioKernel {
     /// Deterministically re-derive a recovery binding from the frozen request.
     pub(crate) fn verify_recovery_context(
@@ -178,9 +297,12 @@ impl ChioKernel {
         request: &ToolCallRequest,
         now_unix_secs: u64,
     ) -> Result<Option<VerifiedFindingRecovery>, String> {
-        let Some(verified) = self.verify_recovery_context(grant, request)? else {
+        let Some(admission) =
+            self.verify_recovery_status_admission(grant, request, now_unix_secs)?
+        else {
             return Ok(None);
         };
+        let verified = admission.recovery;
         let Some(marked) = recovery_marked_grant(grant)? else {
             return Err("finding recovery marker disappeared during admission".to_owned());
         };
@@ -197,6 +319,263 @@ impl ChioKernel {
             .map_err(|error| format!("finding recovery quota rejected: {error}"))?;
         Ok(Some(verified))
     }
+
+    /// Recheck mutable finding status without consuming recovery quota.
+    ///
+    /// Initial admission calls this before reserving an attempt. The dispatch
+    /// boundary calls it again so a concurrent pending or retracted transition
+    /// cannot redeliver quarantined bytes using an earlier live proof.
+    pub(crate) fn verify_recovery_status_admission(
+        &self,
+        grant: &ToolGrant,
+        request: &ToolCallRequest,
+        now_unix_secs: u64,
+    ) -> Result<Option<VerifiedFindingRecoveryAdmission>, String> {
+        let Some(verified) = self.verify_recovery_context(grant, request)? else {
+            return Ok(None);
+        };
+        // Recovery is another delivery of the purchased bytes, so it must
+        // cross the same current status floor before consuming retry quota.
+        let Some(status_verifier) = self.finding_status_proof_verifier.as_ref() else {
+            return Err(
+                "finding recovery requires a configured finding status verifier".to_owned(),
+            );
+        };
+        let status_view = recovery_status_proof_view(request, &verified)?;
+        let status = status_verifier
+            .verify_status_proof(&status_view)
+            .map_err(|error| format!("finding recovery status proof rejected: {error}"))?;
+        status_verifier
+            .verify_status_admission(&status_view, &status, now_unix_secs)
+            .map_err(|error| format!("finding recovery status admission rejected: {error}"))?;
+        Ok(Some(VerifiedFindingRecoveryAdmission {
+            recovery: verified,
+            status,
+        }))
+    }
+
+    fn validate_recovery_replay_snapshot(
+        &self,
+        grant: &ToolGrant,
+        request: &ToolCallRequest,
+        snapshot: FindingRecoveryReplaySnapshotV1,
+    ) -> Result<Option<VerifiedFindingRecoveryAdmission>, String> {
+        if snapshot.schema != FINDING_RECOVERY_REPLAY_SNAPSHOT_SCHEMA {
+            return Err("durable recovery snapshot schema is unsupported".to_owned());
+        }
+        if !self.post_invocation_pipeline.is_empty() {
+            return Err("finding recovery requires an empty post-invocation pipeline".to_owned());
+        }
+        if !is_lower_hex64(&snapshot.request_binding_sha256)
+            || snapshot.request_binding_sha256 != recovery_request_binding_sha256(grant, request)?
+        {
+            return Err("durable recovery snapshot binds a different request or grant".to_owned());
+        }
+        validate_frozen_recovery_binding(grant, request, &snapshot.recovery)?;
+        let status = &snapshot.status;
+        if status.feed_id != snapshot.recovery.expected_status_feed_id
+            || status.map_epoch == 0
+            || status.non_inclusion_checked_at == 0
+            || !is_lower_hex64(&status.status_epoch_id)
+            || !is_lower_hex64(&status.status_epoch_artifact_sha256)
+            || !is_lower_hex64(&status.proof_sha256)
+            || !is_lower_hex64(&status.root_hash)
+            || !is_lower_hex64(&status.operator_authorization_sha256)
+            || !is_lower_hex64(&status.service_bond_evidence_sha256)
+        {
+            return Err("durable recovery status snapshot is malformed".to_owned());
+        }
+        let proof_b64 = request
+            .governed_intent
+            .as_ref()
+            .and_then(|intent| intent.context.as_ref())
+            .and_then(serde_json::Value::as_object)
+            .and_then(|context| context.get(FINDING_STATUS_PROOF_CONTEXT_KEY))
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "durable recovery request lost its status proof".to_owned())?;
+        if proof_b64.is_empty() || proof_b64.len() > MAX_FINDING_STATUS_PROOF_B64_BYTES {
+            return Err("durable recovery status proof exceeds the kernel size bound".to_owned());
+        }
+        let proof_bytes = base64::engine::general_purpose::STANDARD
+            .decode(proof_b64)
+            .map_err(|_| "durable recovery status proof is not valid base64".to_owned())?;
+        if chio_core::crypto::sha256_hex(&proof_bytes) != status.proof_sha256 {
+            return Err("durable recovery snapshot binds a different status proof".to_owned());
+        }
+        Ok(Some(VerifiedFindingRecoveryAdmission {
+            recovery: snapshot.recovery,
+            status: snapshot.status,
+        }))
+    }
+
+    pub(crate) fn capture_recovery_replay_metadata(
+        &self,
+        request: &ToolCallRequest,
+        matched_grant_index: usize,
+        verified_recovery: Option<&VerifiedFindingRecoveryAdmission>,
+    ) -> Result<Option<serde_json::Value>, super::KernelError> {
+        let matching_grants = resolve_required_matching_grants(
+            &request.capability,
+            &request.tool_name,
+            &request.server_id,
+            &request.arguments,
+            request.model_metadata.as_ref(),
+        )
+        .map_err(|error| super::KernelError::DurableAdmission(error.to_string()))?;
+        let selected_grant = matching_grants
+            .iter()
+            .find(|matching| matching.index == matched_grant_index)
+            .ok_or_else(|| {
+                super::KernelError::DurableAdmission(
+                    "durable tool return lost its matched grant".to_owned(),
+                )
+            })?;
+        let is_recovery = recovery_marked_grant(selected_grant.grant)
+            .map_err(super::KernelError::DurableAdmission)?
+            .is_some();
+        match (is_recovery, verified_recovery) {
+            (true, Some(admission)) => {
+                let snapshot = FindingRecoveryReplaySnapshotV1::new(
+                    recovery_request_binding_sha256(selected_grant.grant, request)
+                        .map_err(super::KernelError::DurableAdmission)?,
+                    admission.recovery.clone(),
+                    admission.status.clone(),
+                );
+                self.validate_recovery_replay_snapshot(
+                    selected_grant.grant,
+                    request,
+                    snapshot.clone(),
+                )
+                .map_err(|reason| {
+                    super::KernelError::DurableAdmission(format!(
+                        "recovery replay snapshot could not be captured: {reason}"
+                    ))
+                })?;
+                serde_json::to_value(snapshot)
+                    .map(|snapshot| {
+                        Some(serde_json::json!({
+                            crate::finding_recovery::FINDING_RECOVERY_REPLAY_SNAPSHOT_METADATA_KEY:
+                                snapshot
+                        }))
+                    })
+                    .map_err(|error| super::KernelError::DurableAdmission(error.to_string()))
+            }
+            (true, None) => Err(super::KernelError::DurableAdmission(
+                "M6 durable recovery return has no frozen dispatch snapshot".to_owned(),
+            )),
+            (false, Some(_)) => Err(super::KernelError::DurableAdmission(
+                "unmarked durable return carries a frozen recovery snapshot".to_owned(),
+            )),
+            (false, None) => Ok(None),
+        }
+    }
+
+    pub(crate) fn restore_recovery_replay_snapshot(
+        &self,
+        grant: &ToolGrant,
+        request: &ToolCallRequest,
+        metadata: Option<&serde_json::Value>,
+    ) -> Result<Option<VerifiedFindingRecoveryAdmission>, super::KernelError> {
+        let snapshot = metadata
+            .and_then(serde_json::Value::as_object)
+            .and_then(|metadata| {
+                metadata.get(crate::finding_recovery::FINDING_RECOVERY_REPLAY_SNAPSHOT_METADATA_KEY)
+            })
+            .cloned();
+        let is_recovery = recovery_marked_grant(grant)
+            .map_err(super::KernelError::DurableAdmission)?
+            .is_some();
+        match (is_recovery, snapshot) {
+            (true, Some(snapshot)) => {
+                let snapshot: FindingRecoveryReplaySnapshotV1 = serde_json::from_value(snapshot)
+                    .map_err(|error| {
+                        super::KernelError::DurableAdmission(format!(
+                            "durable recovery snapshot is malformed: {error}"
+                        ))
+                    })?;
+                self.validate_recovery_replay_snapshot(grant, request, snapshot)
+                    .map_err(|reason| {
+                        super::KernelError::DurableAdmission(format!(
+                            "durable recovery snapshot was rejected: {reason}"
+                        ))
+                    })
+            }
+            (true, None) => Err(super::KernelError::DurableAdmission(
+                "M6 durable recovery return has no frozen status snapshot".to_owned(),
+            )),
+            (false, Some(_)) => Err(super::KernelError::DurableAdmission(
+                "unmarked durable return carries a recovery snapshot".to_owned(),
+            )),
+            (false, None) => Ok(None),
+        }
+    }
+
+    /// Recheck mutable status before any durable recovery response releases
+    /// its retained payload. This does not reserve another recovery attempt.
+    pub(crate) fn revalidate_completed_recovery_status(
+        &self,
+        matched_grant_index: usize,
+        request: &ToolCallRequest,
+        expected: Option<&VerifiedFindingRecovery>,
+        admitted_status: Option<&VerifiedFindingStatusProof>,
+        now_unix_secs: u64,
+    ) -> Result<(), String> {
+        let (Some(expected), Some(admitted_status)) = (expected, admitted_status) else {
+            return if expected.is_none() && admitted_status.is_none() {
+                Ok(())
+            } else {
+                Err("completed recovery lost its dispatch-frozen status baseline".to_owned())
+            };
+        };
+        let grant = request
+            .capability
+            .scope
+            .grants
+            .get(matched_grant_index)
+            .ok_or_else(|| "completed recovery grant index is out of bounds".to_owned())?;
+        if !self.post_invocation_pipeline.is_empty() {
+            return Err("finding recovery requires an empty post-invocation pipeline".to_owned());
+        }
+        validate_frozen_recovery_binding(grant, request, expected)?;
+        let Some(status_verifier) = self.finding_status_proof_verifier.as_ref() else {
+            return Err(
+                "finding recovery requires a configured finding status verifier".to_owned(),
+            );
+        };
+        if admitted_status.feed_id != expected.expected_status_feed_id {
+            return Err("completed recovery status feed changed after dispatch".to_owned());
+        }
+        status_verifier
+            .verify_current_status_admission(
+                &FindingCurrentStatusContextView {
+                    expected_finding_id: &expected.finding_id,
+                    expected_feed_id: &expected.expected_status_feed_id,
+                    minimum_map_epoch: admitted_status.map_epoch,
+                    minimum_non_inclusion_checked_at: admitted_status.non_inclusion_checked_at,
+                },
+                now_unix_secs,
+            )
+            .map_err(|error| {
+                format!("finding recovery current status admission rejected: {error}")
+            })?;
+        Ok(())
+    }
+}
+
+pub(crate) fn attach_finding_recovery_metadata(
+    metadata: Option<serde_json::Value>,
+    recovery: Option<&VerifiedFindingRecovery>,
+) -> Option<serde_json::Value> {
+    let Some(recovery) = recovery else {
+        return metadata;
+    };
+    crate::receipt_support::merge_metadata_objects(
+        metadata,
+        Some(serde_json::json!({
+            chio_core::receipt::metadata::FINDING_RECOVERY_METADATA_KEY:
+                finding_recovery_block(recovery)
+        })),
+    )
 }
 
 pub(crate) fn finding_recovery_block(
@@ -215,12 +594,127 @@ pub(crate) fn finding_recovery_block(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::finding_purchase::{FindingStatusProofVerifier, VerifiedFindingStatusProof};
+    use crate::finding_recovery::{FindingRecoveryVerifier, VerifiedFindingRecovery};
+    use crate::{HotPathDeadlineConfig, KernelConfig, MemoryBudgetConfig};
+    use chio_core::capability::governance::GovernedTransactionIntent;
     use chio_core::capability::scope::{
         ChioScope, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount, Operation,
         PromptGrant, ResourceGrant,
     };
     use chio_core::capability::token::{CapabilityToken, CapabilityTokenBody};
     use chio_core::crypto::Keypair;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::Arc;
+
+    struct TestRecoveryVerifier {
+        reservations: Arc<AtomicU64>,
+        receipts: Arc<AtomicU64>,
+        deny_verification: Arc<AtomicBool>,
+        fail_receipts: Arc<AtomicBool>,
+    }
+
+    impl FindingRecoveryVerifier for TestRecoveryVerifier {
+        fn verify_recovery(
+            &self,
+            view: &FindingRecoveryContextView<'_>,
+        ) -> Result<VerifiedFindingRecovery, String> {
+            if self.deny_verification.load(Ordering::SeqCst) {
+                return Err("historical recovery authority has rotated".to_owned());
+            }
+            Ok(VerifiedFindingRecovery {
+                recovery_id: view.marker.recovery_id.clone(),
+                finding_id: view.marker.finding_id.clone(),
+                listing_id: view.marker.listing_id.clone(),
+                payload_sha256: view.expected_output_digest.to_owned(),
+                expected_status_feed_id: "feed-1".to_owned(),
+                original_capability_id: view.marker.original_capability_id.clone(),
+                original_delivery_receipt_id: view.marker.original_delivery_receipt_id.clone(),
+                purchase_key: view.marker.purchase_key.clone(),
+                original_subject_key_hex: view.recovery_capability.subject.to_hex(),
+            })
+        }
+
+        fn reserve_recovery_attempt(
+            &self,
+            _verified: &VerifiedFindingRecovery,
+            _request_id: &str,
+            _max_recoveries: u32,
+            _now_unix_secs: u64,
+        ) -> Result<(), String> {
+            self.reservations.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn record_recovery_receipt(
+            &self,
+            _verified: &VerifiedFindingRecovery,
+            _recovery_receipt_id: &str,
+            _recorded_at: u64,
+        ) -> Result<(), String> {
+            self.receipts.fetch_add(1, Ordering::SeqCst);
+            if self.fail_receipts.load(Ordering::SeqCst) {
+                Err("recovery lineage backend unavailable".to_owned())
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    struct MutableStatusVerifier {
+        portable_deny: Arc<AtomicBool>,
+        current_deny: Arc<AtomicBool>,
+        current_checks: Arc<AtomicU64>,
+    }
+
+    impl FindingStatusProofVerifier for MutableStatusVerifier {
+        fn verify_status_proof(
+            &self,
+            _view: &FindingStatusProofContextView<'_>,
+        ) -> Result<VerifiedFindingStatusProof, String> {
+            if self.portable_deny.load(Ordering::SeqCst) {
+                return Err("finding is pending retraction under the old operator".to_owned());
+            }
+            Ok(VerifiedFindingStatusProof {
+                feed_id: "feed-1".to_owned(),
+                key_domain_nonce: 1,
+                map_epoch: 1,
+                status_epoch_id: "6".repeat(64),
+                status_epoch_artifact_sha256: "1".repeat(64),
+                proof_sha256: chio_core::crypto::sha256_hex(b"status-proof"),
+                root_hash: "3".repeat(64),
+                non_inclusion_checked_at: 1,
+                operator_authorization_sha256: "4".repeat(64),
+                service_bond_evidence_sha256: "5".repeat(64),
+            })
+        }
+
+        fn verify_status_admission(
+            &self,
+            _view: &FindingStatusProofContextView<'_>,
+            _verified: &VerifiedFindingStatusProof,
+            _now_unix_secs: u64,
+        ) -> Result<(), String> {
+            if self.portable_deny.load(Ordering::SeqCst) {
+                Err("finding is pending retraction".to_owned())
+            } else {
+                Ok(())
+            }
+        }
+
+        fn verify_current_status_admission(
+            &self,
+            _view: &FindingCurrentStatusContextView<'_>,
+            _now_unix_secs: u64,
+        ) -> Result<(), String> {
+            self.current_checks.fetch_add(1, Ordering::SeqCst);
+            if self.current_deny.load(Ordering::SeqCst) {
+                Err("finding is pending retraction".to_owned())
+            } else {
+                Ok(())
+            }
+        }
+    }
 
     fn marker() -> FindingRecoveryMarkerV1 {
         FindingRecoveryMarkerV1 {
@@ -272,6 +766,194 @@ mod tests {
             &key,
         )
         .expect("sign recovery capability")
+    }
+
+    fn kernel() -> ChioKernel {
+        ChioKernel::new(KernelConfig {
+            keypair: Keypair::from_seed(&[8; 32]),
+            ca_public_keys: Vec::new(),
+            max_delegation_depth: 5,
+            policy_hash: "test-policy".to_owned(),
+            allow_sampling: false,
+            allow_sampling_tool_use: false,
+            allow_elicitation: false,
+            max_stream_duration_secs: 60,
+            max_stream_total_bytes: 1_048_576,
+            require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
+            allow_ephemeral_revocation_store: true,
+            checkpoint_batch_size: 100,
+            retention_config: None,
+            memory_budget: MemoryBudgetConfig::defaults(),
+            deadlines: HotPathDeadlineConfig::default(),
+        })
+    }
+
+    fn recovery_request() -> ToolCallRequest {
+        let capability = capability();
+        ToolCallRequest {
+            request_id: "recovery-request".to_owned(),
+            capability: capability.clone(),
+            tool_name: "read_finding".to_owned(),
+            server_id: "srv".to_owned(),
+            agent_id: capability.subject.to_hex(),
+            arguments: serde_json::json!({
+                "finding_id": marker().finding_id,
+                FINDING_RECOVERY_CONTEXT_ARGUMENT: "recovery-carrier"
+            }),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: Some(GovernedTransactionIntent {
+                id: "recovery-intent".to_owned(),
+                server_id: "srv".to_owned(),
+                tool_name: "read_finding".to_owned(),
+                purpose: "recover purchased finding".to_owned(),
+                max_amount: None,
+                commerce: None,
+                metered_billing: None,
+                runtime_attestation: None,
+                call_chain: None,
+                autonomy: None,
+                context: Some(serde_json::json!({
+                    FINDING_STATUS_PROOF_CONTEXT_KEY:
+                        base64::engine::general_purpose::STANDARD.encode(b"status-proof")
+                })),
+                body: Default::default(),
+            }),
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        }
+    }
+
+    #[test]
+    fn dispatch_status_recheck_denies_without_reserving_again() {
+        let portable_deny = Arc::new(AtomicBool::new(false));
+        let current_deny = Arc::new(AtomicBool::new(false));
+        let current_checks = Arc::new(AtomicU64::new(0));
+        let reservations = Arc::new(AtomicU64::new(0));
+        let receipts = Arc::new(AtomicU64::new(0));
+        let deny_verification = Arc::new(AtomicBool::new(false));
+        let mut kernel = kernel();
+        kernel.set_finding_recovery_verifier(Arc::new(TestRecoveryVerifier {
+            reservations: Arc::clone(&reservations),
+            receipts,
+            deny_verification,
+            fail_receipts: Arc::new(AtomicBool::new(false)),
+        }));
+        kernel.set_finding_status_proof_verifier(Arc::new(MutableStatusVerifier {
+            portable_deny: Arc::clone(&portable_deny),
+            current_deny: Arc::clone(&current_deny),
+            current_checks: Arc::clone(&current_checks),
+        }));
+        let request = recovery_request();
+        let grant = &request.capability.scope.grants[0];
+        let admitted = kernel
+            .verify_recovery_status_admission(grant, &request, 1)
+            .expect("dispatch status snapshot")
+            .expect("recovery marker");
+
+        assert!(kernel
+            .verify_recovery_admission(grant, &request, 1)
+            .expect("initial live admission")
+            .is_some());
+        assert_eq!(reservations.load(Ordering::SeqCst), 1);
+
+        portable_deny.store(true, Ordering::SeqCst);
+        let error = kernel
+            .verify_recovery_status_admission(grant, &request, 1)
+            .expect_err("dispatch boundary must observe pending retraction");
+        assert!(error.contains("pending retraction"));
+        assert_eq!(reservations.load(Ordering::SeqCst), 1);
+
+        let expected = kernel
+            .verify_recovery_context(grant, &request)
+            .expect("rederive recovery binding")
+            .expect("recovery marker remains present");
+        current_deny.store(true, Ordering::SeqCst);
+        let terminal_error = kernel
+            .revalidate_completed_recovery_status(
+                0,
+                &request,
+                Some(&expected),
+                Some(&admitted.status),
+                1,
+            )
+            .expect_err("a durable completed replay must recheck mutable status");
+        assert!(terminal_error.contains("pending retraction"));
+        assert_eq!(current_checks.load(Ordering::SeqCst), 1);
+        assert_eq!(reservations.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn terminal_recovery_resolves_current_status_instead_of_reusing_the_admission_floor() {
+        let portable_deny = Arc::new(AtomicBool::new(false));
+        let current_deny = Arc::new(AtomicBool::new(false));
+        let current_checks = Arc::new(AtomicU64::new(0));
+        let reservations = Arc::new(AtomicU64::new(0));
+        let receipts = Arc::new(AtomicU64::new(0));
+        let deny_verification = Arc::new(AtomicBool::new(false));
+        let mut kernel = kernel();
+        kernel.set_finding_recovery_verifier(Arc::new(TestRecoveryVerifier {
+            reservations: Arc::clone(&reservations),
+            receipts,
+            deny_verification: Arc::clone(&deny_verification),
+            fail_receipts: Arc::new(AtomicBool::new(false)),
+        }));
+        kernel.set_finding_status_proof_verifier(Arc::new(MutableStatusVerifier {
+            portable_deny: Arc::clone(&portable_deny),
+            current_deny,
+            current_checks: Arc::clone(&current_checks),
+        }));
+        let request = recovery_request();
+        let grant = &request.capability.scope.grants[0];
+        let admitted = kernel
+            .verify_recovery_status_admission(grant, &request, 1)
+            .expect("dispatch status snapshot")
+            .expect("recovery marker");
+        let expected = kernel
+            .verify_recovery_admission(grant, &request, 1)
+            .expect("initial live admission")
+            .expect("recovery binding");
+        assert_eq!(admitted.recovery, expected);
+        let metadata = kernel
+            .capture_recovery_replay_metadata(&request, 0, Some(&admitted))
+            .expect("capture dispatch-frozen recovery status")
+            .expect("recovery metadata");
+
+        // Model an unrelated feed advance: the frozen portable proof is now
+        // behind the floor and no longer validates under the rotated operator,
+        // but the target has a fresh current-floor proof.
+        portable_deny.store(true, Ordering::SeqCst);
+        deny_verification.store(true, Ordering::SeqCst);
+        let mut changed_request = request.clone();
+        changed_request.arguments["unexpected"] = serde_json::json!(true);
+        let changed_grant = &changed_request.capability.scope.grants[0];
+        let changed_error = kernel
+            .restore_recovery_replay_snapshot(changed_grant, &changed_request, Some(&metadata))
+            .expect_err("a changed durable request must not inherit the frozen facts");
+        assert!(changed_error
+            .to_string()
+            .contains("different request or grant"));
+        let restored = kernel
+            .restore_recovery_replay_snapshot(grant, &request, Some(&metadata))
+            .expect("restore authenticated raw-outcome snapshot")
+            .expect("recovery snapshot");
+        kernel
+            .revalidate_completed_recovery_status(
+                0,
+                &request,
+                Some(&restored.recovery),
+                Some(&restored.status),
+                2,
+            )
+            .expect("current-floor status keeps the recovery live");
+
+        assert_eq!(current_checks.load(Ordering::SeqCst), 1);
+        assert_eq!(reservations.load(Ordering::SeqCst), 1);
     }
 
     #[test]
@@ -326,6 +1008,7 @@ mod tests {
             finding_id: "b".repeat(64),
             listing_id: "listing-1".to_owned(),
             payload_sha256: "d".repeat(64),
+            expected_status_feed_id: "feed-1".to_owned(),
             original_capability_id: "capability-original".to_owned(),
             original_delivery_receipt_id: "receipt-original".to_owned(),
             purchase_key: "c".repeat(64),
@@ -339,6 +1022,89 @@ mod tests {
             verified.original_delivery_receipt_id
         );
         assert_eq!(block.purchase_key, verified.purchase_key);
+    }
+
+    #[test]
+    fn recovery_receipt_metadata_keeps_typed_original_lineage() {
+        let verified = VerifiedFindingRecovery {
+            recovery_id: "a".repeat(64),
+            finding_id: "b".repeat(64),
+            listing_id: "listing-1".to_owned(),
+            payload_sha256: "d".repeat(64),
+            expected_status_feed_id: "feed-1".to_owned(),
+            original_capability_id: "capability-original".to_owned(),
+            original_delivery_receipt_id: "receipt-original".to_owned(),
+            purchase_key: "c".repeat(64),
+            original_subject_key_hex: "e".repeat(64),
+        };
+        let metadata = attach_finding_recovery_metadata(
+            Some(serde_json::json!({"existing": true})),
+            Some(&verified),
+        )
+        .expect("recovery metadata");
+        assert_eq!(metadata["existing"], serde_json::json!(true));
+        let block: chio_core::receipt::metadata::FindingRecovery = serde_json::from_value(
+            metadata[chio_core::receipt::metadata::FINDING_RECOVERY_METADATA_KEY].clone(),
+        )
+        .expect("typed recovery block");
+        assert_eq!(block.recovery_id, verified.recovery_id);
+        assert_eq!(
+            block.original_delivery_receipt_id,
+            verified.original_delivery_receipt_id
+        );
+    }
+
+    #[test]
+    fn ordinary_recovery_refuses_non_atomic_terminalization() {
+        let receipts = Arc::new(AtomicU64::new(0));
+        let mut kernel = kernel();
+        kernel.set_finding_recovery_verifier(Arc::new(TestRecoveryVerifier {
+            reservations: Arc::new(AtomicU64::new(0)),
+            receipts: Arc::clone(&receipts),
+            deny_verification: Arc::new(AtomicBool::new(false)),
+            fail_receipts: Arc::new(AtomicBool::new(false)),
+        }));
+        let mut request = recovery_request();
+        let output = serde_json::json!({"payload": "recovered"});
+        let output_bytes = chio_core::canonical::canonical_json_bytes(&output)
+            .expect("recovery output is canonical");
+        request.capability.scope.grants[0].constraints[0] =
+            Constraint::OutputDigestSha256(chio_core::crypto::sha256_hex(&output_bytes));
+        let verified = VerifiedFindingRecovery {
+            recovery_id: marker().recovery_id,
+            finding_id: marker().finding_id,
+            listing_id: marker().listing_id,
+            payload_sha256: chio_core::crypto::sha256_hex(&output_bytes),
+            expected_status_feed_id: "feed-1".to_owned(),
+            original_capability_id: marker().original_capability_id,
+            original_delivery_receipt_id: marker().original_delivery_receipt_id,
+            purchase_key: marker().purchase_key,
+            original_subject_key_hex: request.capability.subject.to_hex(),
+        };
+        let error = kernel
+            .finalize_ordinary_recovery_response(
+                crate::kernel::evaluation::evaluation_helpers::OrdinaryRecoveryFinalization {
+                    request: &request,
+                    output: crate::runtime::ToolServerOutput::Value(output),
+                    elapsed: std::time::Duration::ZERO,
+                    timestamp: 1,
+                    matched_grant_index: 0,
+                    cost: crate::kernel::responses::FinalizeToolOutputCostContext {
+                        charge_result: None,
+                        reported_cost: None,
+                        payment_authorization: None,
+                        cap: &request.capability,
+                    },
+                    metadata: None,
+                    guard_evidence: &[],
+                    payee_binding: None,
+                    recovery: Some(&verified),
+                },
+            )
+            .expect_err("ordinary recovery must require a durable terminal projection");
+        assert!(error.to_string().contains("atomic durable admission"));
+        assert_eq!(receipts.load(Ordering::SeqCst), 0);
+        assert!(kernel.receipt_log().is_empty());
     }
 
     #[test]

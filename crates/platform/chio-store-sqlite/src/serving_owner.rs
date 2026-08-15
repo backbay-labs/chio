@@ -26,7 +26,9 @@ mod path_identity;
 mod rollback_anchor;
 
 #[cfg(feature = "cognition-market-experimental")]
-use global_commit_chain::append_finding_challenge_projection_if_changed;
+use global_commit_chain::{
+    append_finding_challenge_projection_if_changed, append_finding_status_projection_if_changed,
+};
 use global_commit_chain::{
     append_global_commit, initialize_global_commit_schema, reset_derived_budget_ack_cache,
     seed_global_baseline, verify_global_commit_schema, verify_pristine_authority_tables,
@@ -204,6 +206,14 @@ impl SqliteServingOwner {
         append_finding_challenge_projection_if_changed(transaction, &self.fence)
     }
 
+    #[cfg(feature = "cognition-market-experimental")]
+    pub(crate) fn append_finding_status_projection_if_changed(
+        &self,
+        transaction: &Transaction<'_>,
+    ) -> Result<bool, SqliteServingOwnerError> {
+        append_finding_status_projection_if_changed(transaction, &self.fence)
+    }
+
     pub(crate) fn sync_authority_anchor(
         &self,
         connection: &Connection,
@@ -329,6 +339,9 @@ impl SqliteAuthorityStore {
                 .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
             #[cfg(feature = "cognition-market-experimental")]
             crate::finding_challenge_store::initialize_finding_challenge_schema(&mut connection)
+                .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
+            #[cfg(feature = "cognition-market-experimental")]
+            crate::finding_status_store::initialize_finding_status_schema(&mut connection)
                 .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
             initialize_global_commit_schema(&connection)?;
             seed_global_baseline(&mut connection)?;
@@ -483,6 +496,9 @@ impl SqliteAuthorityStore {
         #[cfg(feature = "cognition-market-experimental")]
         crate::finding_challenge_store::initialize_finding_challenge_schema(&mut connection)
             .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
+        #[cfg(feature = "cognition-market-experimental")]
+        crate::finding_status_store::initialize_finding_status_schema(&mut connection)
+            .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
         initialize_global_commit_schema(&connection)?;
         seed_global_baseline(&mut connection)?;
         reset_derived_budget_ack_cache(&connection)?;
@@ -569,6 +585,9 @@ impl SqliteAuthorityStore {
             .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
         #[cfg(feature = "cognition-market-experimental")]
         crate::finding_challenge_store::initialize_finding_challenge_schema(&mut connection)
+            .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
+        #[cfg(feature = "cognition-market-experimental")]
+        crate::finding_status_store::initialize_finding_status_schema(&mut connection)
             .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
         verify_global_commit_schema(&connection)?;
         reset_derived_budget_ack_cache(&connection)?;
@@ -840,6 +859,15 @@ impl SqliteAuthorityStore {
         &self,
     ) -> crate::finding_challenge_store::SqliteFindingChallengeStore {
         crate::finding_challenge_store::SqliteFindingChallengeStore::open_alongside(
+            self.connection.clone(),
+            self.owner.clone(),
+        )
+    }
+
+    #[cfg(feature = "cognition-market-experimental")]
+    #[must_use]
+    pub fn finding_status_store(&self) -> crate::finding_status_store::SqliteFindingStatusStore {
+        crate::finding_status_store::SqliteFindingStatusStore::open_alongside(
             self.connection.clone(),
             self.owner.clone(),
         )

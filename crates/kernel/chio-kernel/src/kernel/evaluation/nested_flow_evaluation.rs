@@ -1,3 +1,4 @@
+use super::evaluation_helpers::OrdinaryRecoveryFinalization;
 use super::evaluation_helpers::PreDispatchCleanupDeny;
 use super::*;
 use crate::budget_store::BudgetInvocationCaptureDecision;
@@ -149,6 +150,12 @@ impl ChioKernel {
         if let Err(error) = request.validate_authorization_extensions() {
             let msg = error.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "authorization extension rejected");
+            return self.build_deny_response(request, &msg, now, None);
+        }
+
+        if let Err(error) = self.validate_finding_memory_write_admission(request) {
+            let msg = error.to_string();
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "Finding memory write rejected pre-dispatch (nested flow)");
             return self.build_deny_response(request, &msg, now, None);
         }
 
@@ -1071,6 +1078,11 @@ impl ChioKernel {
             ),
             Err(error) => Err(error),
         };
+        let mut verified_finding_admission = final_dispatch_admission
+            .as_ref()
+            .ok()
+            .cloned()
+            .unwrap_or_default();
         if let Err(error) = final_dispatch_admission {
             let mut reason = dispatch_admission_error_reason(&error);
             if let Err(rollback_error) = credential_reservation.rollback_before_dispatch() {
@@ -1326,7 +1338,7 @@ impl ChioKernel {
 
         if payment_authorization.is_some() {
             let post_payment_now_unix_ms = current_unix_timestamp_ms();
-            if let Err(error) = self.revalidate_immediately_before_dispatch(
+            let post_payment_admission = self.revalidate_immediately_before_dispatch(
                 request,
                 dpop_required,
                 matched_grant,
@@ -1340,7 +1352,11 @@ impl ChioKernel {
                 force_dispatch_revalidation,
                 post_payment_now_unix_ms / 1000,
                 post_payment_now_unix_ms,
-            ) {
+            );
+            if let Ok(admission) = &post_payment_admission {
+                verified_finding_admission.clone_from(admission);
+            }
+            if let Err(error) = post_payment_admission {
                 let reason = dispatch_admission_error_reason(&error);
                 warn!(request_id = %request.request_id, reason = %redacted!(&reason), "post-payment dispatch revalidation denied (nested flow)");
                 return self.with_pre_invocation_guard_evidence(
@@ -1838,6 +1854,8 @@ impl ChioKernel {
                     extra_receipt_metadata: runtime_admission_metadata.clone(),
                     pre_invocation_guard_evidence: &pre_invocation_guard_evidence,
                     verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                    verified_purchase: verified_finding_admission.purchase.as_ref(),
+                    verified_recovery: verified_finding_admission.recovery.as_ref(),
                     trusted_now_unix_ms: recorded_at_unix_ms,
                 },
             ) {
@@ -1877,22 +1895,45 @@ impl ChioKernel {
         {
             return self.finalize_durable_tool_return(admission, request, outcome);
         }
-        self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
-            self.finalize_budgeted_tool_output_with_cost_and_metadata(
-                request,
-                tool_output,
-                tool_elapsed,
-                now,
-                matched_grant_index,
-                FinalizeToolOutputCostContext {
-                    charge_result: budget_mutation.into_charge_result(),
-                    reported_cost,
-                    payment_authorization,
-                    cap,
-                },
-                runtime_admission_metadata,
-                verified_governed_payee_binding.as_ref(),
-            )
+        let recovery_status = self.revalidate_completed_recovery_status(
+            matched_grant_index,
+            request,
+            verified_finding_admission.recovery_binding(),
+            verified_finding_admission.recovery_status(),
+            current_unix_timestamp_ms() / 1_000,
+        );
+        if let Err(reason) = recovery_status {
+            let reason = format!(
+                "finding recovery status changed before ordinary output finalization: {reason}"
+            );
+            warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding recovery output withheld");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_deny_response_with_metadata_and_payee_binding(
+                    request,
+                    &reason,
+                    current_unix_timestamp_ms() / 1_000,
+                    Some(matched_grant_index),
+                    runtime_admission_metadata,
+                    verified_governed_payee_binding.as_ref(),
+                )
+            });
+        }
+        self.finalize_ordinary_recovery_response(OrdinaryRecoveryFinalization {
+            request,
+            output: tool_output,
+            elapsed: tool_elapsed,
+            timestamp: now,
+            matched_grant_index,
+            cost: FinalizeToolOutputCostContext {
+                charge_result: budget_mutation.into_charge_result(),
+                reported_cost,
+                payment_authorization,
+                cap,
+            },
+            metadata: runtime_admission_metadata,
+            guard_evidence: &pre_invocation_guard_evidence,
+            payee_binding: verified_governed_payee_binding.as_ref(),
+            recovery: verified_finding_admission.recovery_binding(),
         })
     }
 }

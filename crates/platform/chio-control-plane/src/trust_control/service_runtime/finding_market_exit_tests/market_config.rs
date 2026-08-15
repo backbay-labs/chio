@@ -1,0 +1,71 @@
+fn market_config() -> FindingMarketConfig {
+    FindingMarketConfig {
+        venue_id: VENUE_ID.to_string(),
+        venue: authority_pin(6, "venue"),
+        listing: listing_authority_pin(),
+        governance_root: authority_pin(1, "governance"),
+        authority_status: authority_pin(37, "authority-status"),
+        verifier_report: authority_pin(15, "verifier-report"),
+        collateral: authority_pin(4, "collateral"),
+        purchase: authority_pin(16, "purchase"),
+        failed_delivery: authority_pin(17, "failed-delivery"),
+        challenge_evaluator: authority_pin(31, "challenge-evaluator"),
+        venue_finalization: authority_pin(32, "venue-finalization"),
+        market_penalty: authority_pin(33, "market-penalty"),
+        settlement_observer: authority_pin(34, "settlement-observer"),
+        anchor_publisher: authority_pin(7, "anchor-publisher"),
+        max_snapshot_age_secs: 3_600,
+        settlement_finality_requirement: chio_settle::FindingFinalityRequirement::Confirmations {
+            min_depth: 64,
+        },
+        audit_authority: authority_pin(35, "audit-authority"),
+        audit_randomness_witness: authority_pin(38, "audit-randomness-witness"),
+        audit_pool: FindingPoolPin {
+            principal_id: AUDIT_POOL_PRINCIPAL.to_string(),
+            rail_destination: AUDIT_POOL_DESTINATION.to_string(),
+            currency: "USD".to_string(),
+            authority_epoch: 1,
+        },
+        challenge_administration_pool: FindingPoolPin {
+            principal_id: "pool:challenge-admin".to_string(),
+            rail_destination: "rail:venue-ledger:challenge-admin".to_string(),
+            currency: "USD".to_string(),
+            authority_epoch: 1,
+        },
+        community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc".to_string(),
+        status_feed_operator_ref: "status-feed/venue-wedge".to_string(),
+        status_feed_operator: FindingStatusOperatorPin {
+            feed_id: "status-feed/venue-wedge".to_string(),
+            role: FINDING_STATUS_OPERATOR_ROLE.to_string(),
+            authority: authority_pin(36, "status-operator"),
+            rotation_policy_ref: "rotation-policy/status-feed-v1".to_string(),
+            authorization_sha256: sha256_hex(b"status-operator-authorization"),
+            revoked_from: None,
+        },
+        status_feed_service_bond: FindingStatusServiceBond {
+            bond_id: "status-bond-venue-wedge".to_string(),
+            feed_id: "status-feed/venue-wedge".to_string(),
+            operator_id: "authority-status-operator".to_string(),
+            locked_units: 1_000,
+            currency: "USD".to_string(),
+            valid_from: ISSUED_AT,
+            valid_until: WINDOW_EXPIRES_AT,
+            inclusion_sla_secs: 3_600,
+            missed_inclusion_slash_units: 100,
+            equivocation_slash_units: 1_000,
+            evidence_sha256: sha256_hex(b"status-bond-venue-wedge"),
+        },
+        status_max_epoch_age_secs: 300,
+        fee_schedule_operator_keys: vec![keypair(24).public_key().to_hex()],
+    }
+}
+
+#[test]
+fn finding_market_config_rejects_non_ijson_status_freshness() {
+    let mut config = market_config();
+    config.status_max_epoch_age_secs = 1_u64 << 53;
+    assert!(config.validate().is_err());
+
+    config.status_max_epoch_age_secs = (1_u64 << 53) - 1;
+    assert!(config.validate().is_ok());
+}

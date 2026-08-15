@@ -8,13 +8,19 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use std::sync::{Arc, Mutex};
+
 use chio_core::capability::{
     scope::{ChioScope, Constraint, Operation, ToolGrant},
     token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
-use chio_guards::{MemoryGovernanceConfig, MemoryGovernanceGuard};
-use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
+use chio_guards::{
+    FindingRetractionGuardConfig, FindingRetractionQuery, FindingRetractionResolution,
+    FindingRetractionResolveError, FindingRetractionResolver, FindingStatusValue,
+    MemoryGovernanceConfig, MemoryGovernanceGuard,
+};
+use chio_kernel::{Guard, GuardContext, ToolCallRequest, ToolServerOutput, Verdict};
 
 fn signed_cap(kp: &Keypair, scope: &ChioScope) -> CapabilityToken {
     let body = CapabilityTokenBody {
@@ -374,4 +380,296 @@ fn invalid_regex_fails_initialization() {
         ..MemoryGovernanceConfig::default()
     };
     assert!(MemoryGovernanceGuard::with_config(cfg).is_err());
+}
+
+struct StubFindingResolver {
+    resolver_id: &'static str,
+    feed_id: &'static str,
+    outcome: Result<FindingStatusValue, FindingRetractionResolveError>,
+}
+
+impl FindingRetractionResolver for StubFindingResolver {
+    fn resolver_id(&self) -> &str {
+        self.resolver_id
+    }
+
+    fn feed_id(&self) -> &str {
+        self.feed_id
+    }
+
+    fn resolve(
+        &self,
+        _query: FindingRetractionQuery<'_>,
+    ) -> Result<FindingRetractionResolution, FindingRetractionResolveError> {
+        self.outcome
+            .clone()
+            .map(|value| FindingRetractionResolution {
+                delivery_receipt_id: "delivery-1".to_owned(),
+                finding_id: "finding-1".to_owned(),
+                feed_id: self.feed_id.to_owned(),
+                map_epoch: 3,
+                epoch_id: "a".repeat(64),
+                root_hash: "b".repeat(64),
+                value,
+                memory_content_sha256: "c".repeat(64),
+            })
+    }
+}
+
+fn finding_quarantine_config() -> MemoryGovernanceConfig {
+    MemoryGovernanceConfig {
+        finding_retraction: Some(FindingRetractionGuardConfig {
+            resolver_id: "resolver-1".to_owned(),
+            feed_id: "feed-1".to_owned(),
+        }),
+        ..MemoryGovernanceConfig::default()
+    }
+}
+
+fn finding_guard(
+    outcome: Result<FindingStatusValue, FindingRetractionResolveError>,
+) -> MemoryGovernanceGuard {
+    MemoryGovernanceGuard::with_config_and_retraction_resolver(
+        finding_quarantine_config(),
+        Arc::new(StubFindingResolver {
+            resolver_id: "resolver-1",
+            feed_id: "feed-1",
+            outcome,
+        }),
+    )
+    .expect("build finding quarantine guard")
+}
+
+#[test]
+fn finding_quarantine_allows_only_fresh_live_exact_key_reads() {
+    let scope = ChioScope::default();
+    let kp = Keypair::generate();
+    let live = eval_at(
+        &finding_guard(Ok(FindingStatusValue::Live)),
+        &kp,
+        &scope,
+        "vector_query",
+        serde_json::json!({"collection": "memory", "id": "key-1"}),
+        None,
+    );
+    assert!(matches!(live, Verdict::Allow));
+
+    for value in [FindingStatusValue::Pending, FindingStatusValue::Retracted] {
+        let denied = eval_at(
+            &finding_guard(Ok(value)),
+            &kp,
+            &scope,
+            "vector_query",
+            serde_json::json!({"collection": "memory", "id": "key-1"}),
+            None,
+        );
+        assert!(matches!(denied, Verdict::Deny));
+    }
+
+    let no_key = eval_at(
+        &finding_guard(Ok(FindingStatusValue::Live)),
+        &kp,
+        &scope,
+        "vector_query",
+        serde_json::json!({"collection": "memory"}),
+        None,
+    );
+    assert!(matches!(no_key, Verdict::Deny));
+}
+
+#[test]
+fn finding_quarantine_denies_writes_without_delivery_lineage() {
+    let scope = ChioScope::default();
+    let kp = Keypair::generate();
+    let guard = finding_guard(Ok(FindingStatusValue::Live));
+    let unbound = eval_at(
+        &guard,
+        &kp,
+        &scope,
+        "vector_upsert",
+        serde_json::json!({
+            "collection": "memory",
+            "id": "key-1",
+            "content": "replacement"
+        }),
+        None,
+    );
+    assert!(matches!(unbound, Verdict::Deny));
+
+    let bound = eval_at(
+        &guard,
+        &kp,
+        &scope,
+        "vector_upsert",
+        serde_json::json!({
+            "collection": "memory",
+            "id": "key-1",
+            "content": "replacement",
+            "finding_delivery_receipt_id": "delivery-1"
+        }),
+        None,
+    );
+    assert!(matches!(bound, Verdict::Allow));
+}
+
+#[test]
+fn finding_quarantine_denies_unavailable_state_and_resolver_substitution() {
+    let scope = ChioScope::default();
+    let kp = Keypair::generate();
+    let unavailable = eval_at(
+        &finding_guard(Err(FindingRetractionResolveError::StatusUnavailable(
+            "offline".to_owned(),
+        ))),
+        &kp,
+        &scope,
+        "vector_query",
+        serde_json::json!({"collection": "memory", "id": "key-1"}),
+        None,
+    );
+    assert!(matches!(unavailable, Verdict::Deny));
+
+    let substituted = MemoryGovernanceGuard::with_config_and_retraction_resolver(
+        finding_quarantine_config(),
+        Arc::new(StubFindingResolver {
+            resolver_id: "other-resolver",
+            feed_id: "feed-1",
+            outcome: Ok(FindingStatusValue::Live),
+        }),
+    );
+    assert!(substituted.is_err());
+
+    let missing = MemoryGovernanceGuard::with_config(finding_quarantine_config());
+    assert!(missing.is_err());
+}
+
+struct MutableFindingResolver {
+    value: Mutex<FindingStatusValue>,
+    memory_content_sha256: Mutex<String>,
+}
+
+impl FindingRetractionResolver for MutableFindingResolver {
+    fn resolver_id(&self) -> &str {
+        "resolver-1"
+    }
+
+    fn feed_id(&self) -> &str {
+        "feed-1"
+    }
+
+    fn resolve(
+        &self,
+        _query: FindingRetractionQuery<'_>,
+    ) -> Result<FindingRetractionResolution, FindingRetractionResolveError> {
+        let value = *self
+            .value
+            .lock()
+            .map_err(|_| FindingRetractionResolveError::StatusUnavailable("poisoned".to_owned()))?;
+        Ok(FindingRetractionResolution {
+            delivery_receipt_id: "delivery-1".to_owned(),
+            finding_id: "finding-1".to_owned(),
+            feed_id: "feed-1".to_owned(),
+            map_epoch: 3,
+            epoch_id: "a".repeat(64),
+            root_hash: "b".repeat(64),
+            value,
+            memory_content_sha256: self
+                .memory_content_sha256
+                .lock()
+                .map_err(|_| {
+                    FindingRetractionResolveError::StatusUnavailable("poisoned".to_owned())
+                })?
+                .clone(),
+        })
+    }
+}
+
+#[test]
+fn finding_quarantine_rechecks_status_immediately_before_dispatch() {
+    let resolver = Arc::new(MutableFindingResolver {
+        value: Mutex::new(FindingStatusValue::Live),
+        memory_content_sha256: Mutex::new("c".repeat(64)),
+    });
+    let guard = MemoryGovernanceGuard::with_config_and_retraction_resolver(
+        finding_quarantine_config(),
+        resolver.clone(),
+    )
+    .expect("build finding quarantine guard");
+    let scope = ChioScope::default();
+    let kp = Keypair::generate();
+    let (request, agent_id, server_id) = make_request_in_scope(
+        &kp,
+        &scope,
+        "vector_query",
+        serde_json::json!({"collection": "memory", "id": "key-1"}),
+    );
+    let ctx = GuardContext {
+        request: &request,
+        scope: &scope,
+        agent_id: &agent_id,
+        server_id: &server_id,
+        session_filesystem_roots: None,
+        matched_grant_index: None,
+    };
+    assert!(matches!(
+        guard.evaluate(&ctx).expect("initial evaluation").verdict,
+        Verdict::Allow
+    ));
+    *resolver.value.lock().expect("status lock") = FindingStatusValue::Retracted;
+    assert!(matches!(
+        guard.revalidate_before_dispatch(&ctx),
+        Err(chio_kernel::KernelError::GuardDenied(_))
+    ));
+}
+
+#[test]
+fn finding_quarantine_binds_the_released_value_to_latest_write_provenance() {
+    let admitted_value = serde_json::json!({"payload": "admitted"});
+    let admitted_bytes = chio_core::canonical::canonical_json_bytes(&admitted_value)
+        .expect("canonical admitted value");
+    let resolver = Arc::new(MutableFindingResolver {
+        value: Mutex::new(FindingStatusValue::Live),
+        memory_content_sha256: Mutex::new(chio_core::crypto::sha256_hex(&admitted_bytes)),
+    });
+    let guard = MemoryGovernanceGuard::with_config_and_retraction_resolver(
+        finding_quarantine_config(),
+        resolver.clone(),
+    )
+    .expect("build finding quarantine guard");
+    let scope = ChioScope::default();
+    let kp = Keypair::generate();
+    let (request, agent_id, server_id) = make_request_in_scope(
+        &kp,
+        &scope,
+        "vector_query",
+        serde_json::json!({"collection": "memory", "id": "key-1"}),
+    );
+    let ctx = GuardContext {
+        request: &request,
+        scope: &scope,
+        agent_id: &agent_id,
+        server_id: &server_id,
+        session_filesystem_roots: None,
+        matched_grant_index: None,
+    };
+
+    assert!(guard
+        .validate_output_before_release(&ctx, &ToolServerOutput::Value(admitted_value.clone()),)
+        .is_ok());
+    assert!(guard
+        .validate_output_before_release(
+            &ctx,
+            &ToolServerOutput::Value(serde_json::json!({"payload": "substituted"})),
+        )
+        .is_err());
+
+    let overwritten = serde_json::json!({"payload": "newer-write"});
+    let overwritten_bytes = chio_core::canonical::canonical_json_bytes(&overwritten)
+        .expect("canonical overwritten value");
+    *resolver
+        .memory_content_sha256
+        .lock()
+        .expect("content digest lock") = chio_core::crypto::sha256_hex(&overwritten_bytes);
+    assert!(guard
+        .validate_output_before_release(&ctx, &ToolServerOutput::Value(admitted_value))
+        .is_err());
 }

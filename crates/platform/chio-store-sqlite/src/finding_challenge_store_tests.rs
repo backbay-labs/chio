@@ -3009,6 +3009,7 @@ fn finalizing_wins_the_race_against_appeal_supersession() {
     );
 
     let seller_intent = digest("seller-impair-finality-race");
+    let root_intent = digest("root-intent-finality-race");
     fixture
         .store
         .record_effect_intent(
@@ -3020,6 +3021,27 @@ fn finalizing_wins_the_race_against_appeal_supersession() {
             NOW + 5,
         )
         .expect("fence seller impairment");
+    fixture
+        .store
+        .record_effect_intent(
+            &root_intent,
+            FindingEffectIntentKind::RootIntent,
+            &digest("root-intent-instruction"),
+            Some(&head.liability_key),
+            true,
+            NOW + 5,
+        )
+        .expect("fence root publication");
+    let pending_seller = fixture
+        .store
+        .get_effect_intent(&seller_intent)
+        .expect("read seller intent")
+        .expect("seller intent exists");
+    let pending_root = fixture
+        .store
+        .get_effect_intent(&root_intent)
+        .expect("read root intent")
+        .expect("root intent exists");
     let refreshed_json = br#"{"refresh":1}"#;
     let refreshed_sha256 = sha256_hex(refreshed_json);
     assert_eq!(
@@ -3033,6 +3055,9 @@ fn finalizing_wins_the_race_against_appeal_supersession() {
                     authorization_sha256: &refreshed_sha256,
                     recorded_at: NOW + 6,
                 },
+                &pending_seller,
+                &pending_root,
+                None,
             )
             .expect("append pre-dispatch authorization refresh"),
         FindingChallengeWriteOutcome::Inserted
@@ -3045,14 +3070,64 @@ fn finalizing_wins_the_race_against_appeal_supersession() {
     assert_eq!(retained.authorization_json, refreshed_json);
     assert_eq!(retained.authorization_sha256, refreshed_sha256);
 
+    let merkle_root = format!("0x{}", digest("root-finality-race-merkle"));
+    let evidence_hash = format!("0x{}", digest("root-finality-race-evidence"));
+    fixture
+        .store
+        .bind_effect_root(
+            &root_intent,
+            &head.liability_key,
+            &merkle_root,
+            &evidence_hash,
+            NOW + 7,
+        )
+        .expect("bind the first root proof");
+    fixture
+        .store
+        .advance_effect_intent(&root_intent, FindingEffectIntentState::Dispatched, NOW + 8)
+        .expect("dispatch root publication");
+    fixture
+        .store
+        .confirm_effect_root(&root_intent, &merkle_root, &evidence_hash, NOW + 9)
+        .expect("confirm root publication");
+    assert!(matches!(
+        fixture.store.refresh_finalizing_authorization(
+            &retained.authorization_sha256,
+            &FindingFinalizingAuthorizationInput {
+                liability_key: &head.liability_key,
+                authorization_json: br#"{"refresh":"stale-root"}"#,
+                authorization_sha256: &sha256_hex(br#"{"refresh":"stale-root"}"#),
+                recorded_at: NOW + 10,
+            },
+            &pending_seller,
+            &pending_root,
+            None,
+        ),
+        Err(FindingChallengeStoreError::Conflict(_))
+    ));
     fixture
         .store
         .advance_effect_intent(
             &seller_intent,
             FindingEffectIntentState::Dispatched,
-            NOW + 7,
+            NOW + 10,
         )
         .expect("seller impairment leaves pending");
+    let dispatched_seller = fixture
+        .store
+        .get_effect_intent(&seller_intent)
+        .expect("read dispatched seller")
+        .expect("seller intent exists");
+    let confirmed_root = fixture
+        .store
+        .get_effect_intent(&root_intent)
+        .expect("read confirmed root")
+        .expect("root intent exists");
+    let bound_root = fixture
+        .store
+        .get_effect_root_binding(&root_intent)
+        .expect("read bound root")
+        .expect("root binding exists");
     assert!(
         matches!(
             fixture.store.refresh_finalizing_authorization(
@@ -3061,8 +3136,11 @@ fn finalizing_wins_the_race_against_appeal_supersession() {
                     liability_key: &head.liability_key,
                     authorization_json: br#"{"refresh":2}"#,
                     authorization_sha256: &sha256_hex(br#"{"refresh":2}"#),
-                    recorded_at: NOW + 8,
+                    recorded_at: NOW + 11,
                 },
+                &dispatched_seller,
+                &confirmed_root,
+                Some(&bound_root),
             ),
             Err(FindingChallengeStoreError::Conflict(_))
         ),
@@ -3070,8 +3148,13 @@ fn finalizing_wins_the_race_against_appeal_supersession() {
     );
     fixture
         .store
-        .advance_effect_intent(&seller_intent, FindingEffectIntentState::Failed, NOW + 9)
+        .advance_effect_intent(&seller_intent, FindingEffectIntentState::Failed, NOW + 12)
         .expect("retryable dispatch returns the intent to failed");
+    let failed_seller = fixture
+        .store
+        .get_effect_intent(&seller_intent)
+        .expect("read failed seller")
+        .expect("seller intent exists");
     let retry_refresh_json = br#"{"refresh":3}"#;
     assert_eq!(
         fixture
@@ -3082,8 +3165,11 @@ fn finalizing_wins_the_race_against_appeal_supersession() {
                     liability_key: &head.liability_key,
                     authorization_json: retry_refresh_json,
                     authorization_sha256: &sha256_hex(retry_refresh_json),
-                    recorded_at: NOW + 10,
+                    recorded_at: NOW + 13,
                 },
+                &failed_seller,
+                &confirmed_root,
+                Some(&bound_root),
             )
             .expect("a retryable failed impairment can refresh"),
         FindingChallengeWriteOutcome::Inserted
@@ -3520,10 +3606,32 @@ fn settlement_waits_for_every_required_effect_confirmation() {
             .expect("replay atomic confirmation and quarantine"),
         FindingChallengeWriteOutcome::ExistingSame
     );
+    assert!(matches!(
+        fixture
+            .store
+            .reconcile_seller_impairment_quarantine_for_tests(
+                &required[0].0,
+                &head.liability_key,
+                &retained_reconciliation.tx_hash,
+                &hex64('f'),
+                NOW + 10,
+            ),
+        Err(FindingChallengeStoreError::Conflict(_))
+    ));
+    assert!(
+        liability(&fixture, &head.liability_key).quarantined,
+        "a mismatched current reconciliation must retain quarantine"
+    );
     fixture
         .store
-        .set_liability_quarantine(&head.liability_key, false, NOW + 10)
-        .expect("clear reconciled quarantine");
+        .reconcile_seller_impairment_quarantine_for_tests(
+            &required[0].0,
+            &head.liability_key,
+            &retained_reconciliation.tx_hash,
+            &retained_reconciliation.reconciliation_sha256,
+            NOW + 10,
+        )
+        .expect("atomically validate reconciliation and clear quarantine");
     fixture
         .store
         .advance_effect_intent(
@@ -4301,7 +4409,7 @@ fn v10_schema_adds_append_only_finalizing_authorization_refreshes() {
 }
 
 #[test]
-fn v11_schema_adds_authenticated_seller_impairment_reconciliations() {
+fn v12_schema_adds_authenticated_seller_impairment_reconciliations() {
     let mut connection = Connection::open_in_memory().expect("open previous database");
     connection
         .execute_batch(FINDING_CHALLENGE_SCHEMA)
@@ -4316,10 +4424,10 @@ fn v11_schema_adds_authenticated_seller_impairment_reconciliations() {
             "#,
         )
         .expect("rewind seller impairment reconciliation schema objects");
-    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 11)
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 12)
         .expect("stamp previous schema");
 
-    initialize_finding_challenge_schema(&mut connection).expect("migrate revision eleven");
+    initialize_finding_challenge_schema(&mut connection).expect("migrate revision twelve");
 
     let version: i32 = connection
         .query_row(
@@ -4374,6 +4482,7 @@ fn empty_v4_schema_adds_authenticated_projection_history() {
     )
     .expect("inspect projection history"));
 }
+include!("finding_challenge_store_root_refresh_tests.rs");
 
 #[test]
 fn nonempty_v4_schema_is_not_adopted_without_projection_history() {

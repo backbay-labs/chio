@@ -12,7 +12,10 @@ use crate::error::{Error, Result};
 
 use super::decision::Decision;
 use super::kinds::{BoundaryClass, ObservationOutcome, ReceiptKind, RedactionMode, ToolOrigin};
-use super::validation::{require_exact, require_lowercase_hex_chars, require_wire_identifier};
+use super::validation::{
+    require_exact, require_lowercase_hex_chars, require_wire_hierarchical_identifier,
+    require_wire_identifier,
+};
 
 /// Actor reference carried by signed receipt semantics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -317,6 +320,71 @@ pub enum FindingDeliverySettlementMode {
     LocalReversibleHold,
 }
 
+/// Kernel-verified live-status evidence attached to an M6-qualified finding
+/// delivery. All digest and root fields derive from the exact canonical
+/// portable proof and its embedded signed epoch, never from caller metadata.
+pub const FINDING_STATUS_KEY_DOMAIN_NONCE: u64 = 3_318_287_169_837_494;
+const I_JSON_MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingStatusProofMetadata {
+    /// Governance-pinned feed identity.
+    pub feed_id: String,
+    /// Fixed numeric key domain used by the sparse map.
+    pub key_domain_nonce: u64,
+    /// Monotonic signed map generation accepted by the durable floor.
+    pub map_epoch: u64,
+    /// Digest of the exact canonical signed status epoch envelope.
+    pub status_epoch_artifact_sha256: String,
+    /// Digest of the exact canonical portable proof input.
+    pub proof_sha256: String,
+    /// Sparse root committed by the signed epoch.
+    pub root_hash: String,
+    /// Trusted-time observation bound by the verified non-inclusion proof.
+    pub non_inclusion_checked_at: u64,
+}
+
+impl FindingStatusProofMetadata {
+    /// Validate the closed receipt-side representation.
+    pub fn validate(&self) -> Result<()> {
+        require_wire_hierarchical_identifier(
+            &self.feed_id,
+            512,
+            "finding_delivery.status_proof.feed_id",
+        )?;
+        if self.key_domain_nonce != FINDING_STATUS_KEY_DOMAIN_NONCE {
+            return Err(Error::CanonicalJson(format!(
+                "finding delivery status proof key_domain_nonce must equal {FINDING_STATUS_KEY_DOMAIN_NONCE}"
+            )));
+        }
+        if self.map_epoch == 0
+            || self.map_epoch > I_JSON_MAX_SAFE_INTEGER
+            || self.non_inclusion_checked_at == 0
+            || self.non_inclusion_checked_at > I_JSON_MAX_SAFE_INTEGER
+        {
+            return Err(Error::CanonicalJson(
+                "finding delivery status proof numeric fields must be positive I-JSON safe integers"
+                    .to_string(),
+            ));
+        }
+        for (value, field) in [
+            (
+                &self.status_epoch_artifact_sha256,
+                "finding_delivery.status_proof.status_epoch_artifact_sha256",
+            ),
+            (
+                &self.proof_sha256,
+                "finding_delivery.status_proof.proof_sha256",
+            ),
+            (&self.root_hash, "finding_delivery.status_proof.root_hash"),
+        ] {
+            require_lowercase_hex_chars(value, 64, field)?;
+        }
+        Ok(())
+    }
+}
+
 /// Finding-specific delivery overlay for a receipt whose grant carried a
 /// provider-signed purchase marker (`Constraint::RequireFindingPurchase`).
 ///
@@ -355,6 +423,10 @@ pub struct FindingDelivery {
     pub purchase_intent_id: String,
     /// Coordinator-preallocated payment operation identity.
     pub authoritative_payment_operation_id: String,
+    /// Portable non-inclusion evidence for M6-qualified receipts. Optional
+    /// only so previously issued M4 receipts continue to decode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_proof: Option<FindingStatusProofMetadata>,
 }
 
 impl FindingDelivery {
@@ -394,6 +466,9 @@ impl FindingDelivery {
             ),
         ] {
             require_wire_identifier(value, 512, field)?;
+        }
+        if let Some(status_proof) = self.status_proof.as_ref() {
+            status_proof.validate()?;
         }
         Ok(())
     }
@@ -474,4 +549,39 @@ pub struct ReceiptAttributionMetadata {
     /// Index of the matched grant when the request resolved to a specific grant.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grant_index: Option<u32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn status_proof() -> FindingStatusProofMetadata {
+        FindingStatusProofMetadata {
+            feed_id: "status-feed/test".to_owned(),
+            key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+            map_epoch: 1,
+            status_epoch_artifact_sha256: "1".repeat(64),
+            proof_sha256: "2".repeat(64),
+            root_hash: "3".repeat(64),
+            non_inclusion_checked_at: 1,
+        }
+    }
+
+    #[test]
+    fn finding_status_metadata_requires_the_protocol_key_domain() {
+        let mut proof = status_proof();
+        proof.key_domain_nonce = 1;
+        assert!(proof.validate().is_err());
+        assert!(status_proof().validate().is_ok());
+    }
+
+    #[test]
+    fn finding_status_metadata_rejects_non_i_json_integers() {
+        let mut proof = status_proof();
+        proof.map_epoch = I_JSON_MAX_SAFE_INTEGER + 1;
+        assert!(proof.validate().is_err());
+        proof = status_proof();
+        proof.non_inclusion_checked_at = I_JSON_MAX_SAFE_INTEGER + 1;
+        assert!(proof.validate().is_err());
+    }
 }

@@ -25,16 +25,56 @@ pub struct FindingRecoveryContextView<'a> {
 }
 
 /// Facts recovered from the fully verified carrier.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VerifiedFindingRecovery {
     pub recovery_id: String,
     pub finding_id: String,
     pub listing_id: String,
     pub payload_sha256: String,
+    pub expected_status_feed_id: String,
     pub original_capability_id: String,
     pub original_delivery_receipt_id: String,
     pub purchase_key: String,
     pub original_subject_key_hex: String,
+}
+
+/// Receipt-metadata key carrying the durable recovery binding and the exact
+/// live-status floor admitted immediately before dispatch.
+pub(crate) const FINDING_RECOVERY_REPLAY_SNAPSHOT_METADATA_KEY: &str =
+    "finding_recovery_replay_snapshot";
+pub(crate) const FINDING_RECOVERY_REPLAY_SNAPSHOT_SCHEMA: &str =
+    "chio.finding.recovery-replay-snapshot.v1";
+
+/// Dispatch-frozen recovery facts used only as minima for a new current-floor
+/// lookup. Terminal replay never re-authenticates this old proof under a newly
+/// rotated operator key.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FindingRecoveryReplaySnapshotV1 {
+    pub(crate) schema: String,
+    /// Canonical digest of the exact durable request and selected grant that
+    /// produced these verified facts. Replay can therefore reject mutation
+    /// without re-authenticating historical evidence under rotated keys.
+    pub(crate) request_binding_sha256: String,
+    pub(crate) recovery: VerifiedFindingRecovery,
+    pub(crate) status: crate::finding_purchase::VerifiedFindingStatusProof,
+}
+
+impl FindingRecoveryReplaySnapshotV1 {
+    #[must_use]
+    pub(crate) fn new(
+        request_binding_sha256: String,
+        recovery: VerifiedFindingRecovery,
+        status: crate::finding_purchase::VerifiedFindingStatusProof,
+    ) -> Self {
+        Self {
+            schema: FINDING_RECOVERY_REPLAY_SNAPSHOT_SCHEMA.to_owned(),
+            request_binding_sha256,
+            recovery,
+            status,
+        }
+    }
 }
 
 /// Injected recovery verification, durable quota, and receipt-lineage seam.

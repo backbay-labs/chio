@@ -49,7 +49,8 @@
     "venue_admission_envelope_sha256": { "$ref": "#/$defs/digest" },
     "reservation_id": { "$ref": "#/$defs/identifier" },
     "purchase_intent_id": { "$ref": "#/$defs/identifier" },
-    "authoritative_payment_operation_id": { "$ref": "#/$defs/identifier" }
+    "authoritative_payment_operation_id": { "$ref": "#/$defs/identifier" },
+    "status_proof": { "$ref": "#/$defs/statusProof" }
   },
   "$defs": {
     "digest": {
@@ -59,6 +60,37 @@
     "identifier": {
       "type": "string",
       "pattern": "^[A-Za-z0-9._:-]{1,512}$"
+    },
+    "hierarchicalIdentifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:/-]{1,512}$"
+    },
+    "iJsonU64NonZero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "statusProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "feed_id",
+        "key_domain_nonce",
+        "map_epoch",
+        "status_epoch_artifact_sha256",
+        "proof_sha256",
+        "root_hash",
+        "non_inclusion_checked_at"
+      ],
+      "properties": {
+        "feed_id": { "$ref": "#/$defs/hierarchicalIdentifier" },
+        "key_domain_nonce": { "const": 3318287169837494 },
+        "map_epoch": { "$ref": "#/$defs/iJsonU64NonZero" },
+        "status_epoch_artifact_sha256": { "$ref": "#/$defs/digest" },
+        "proof_sha256": { "$ref": "#/$defs/digest" },
+        "root_hash": { "$ref": "#/$defs/digest" },
+        "non_inclusion_checked_at": { "$ref": "#/$defs/iJsonU64NonZero" }
+      }
     }
   }
 }

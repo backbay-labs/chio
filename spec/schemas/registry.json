@@ -396,6 +396,18 @@
       "schemaFile": "spec/schemas/chio-finding/v1/seller-authorization.schema.json"
     },
     {
+      "schema": "chio.finding.status-epoch.v1",
+      "artifactKind": "finding_status_epoch",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/status-epoch.schema.json"
+    },
+    {
+      "schema": "chio.finding.status-proof-input.v1",
+      "artifactKind": "finding_status_proof_input",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/status-proof-input.schema.json"
+    },
+    {
       "schema": "chio.finding.v1",
       "artifactKind": "finding",
       "introducedBy": "finding-market-v1",

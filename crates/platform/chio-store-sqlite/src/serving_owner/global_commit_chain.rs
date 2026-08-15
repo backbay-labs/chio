@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS authority_global_commits (
     commit_sequence INTEGER PRIMARY KEY CHECK (commit_sequence > 0),
     mutation_kind TEXT NOT NULL CHECK (mutation_kind <> ''),
     projection_kind TEXT NOT NULL CHECK (
-        projection_kind IN ('baseline', 'admission', 'budget', 'revocation', 'frost', 'payment', 'economic', 'channel_release_publication', 'factor_assignment_authority_set', 'fiscal', 'finding_challenge')
+        projection_kind IN ('baseline', 'admission', 'budget', 'revocation', 'frost', 'payment', 'economic', 'channel_release_publication', 'factor_assignment_authority_set', 'fiscal', 'finding_challenge', 'finding_status')
     ),
     projection_key TEXT NOT NULL,
     projection_sequence INTEGER NOT NULL CHECK (projection_sequence >= 0),
@@ -124,6 +124,16 @@ struct FindingChallengeProjectionEntry<'a> {
     snapshot_digest: &'a str,
 }
 
+#[derive(Serialize)]
+#[cfg(feature = "cognition-market-experimental")]
+struct FindingStatusProjectionEntry<'a> {
+    format: &'static str,
+    previous_commit_digest: &'a str,
+    projection_sequence: u64,
+    mutation_kind: &'a str,
+    snapshot_digest: &'a str,
+}
+
 struct CommitRow {
     sequence: u64,
     mutation_kind: String,
@@ -211,10 +221,16 @@ pub(crate) fn initialize_global_commit_schema(
 fn migrate_previous_global_commit_schema(
     connection: &Connection,
 ) -> Result<(), SqliteServingOwnerError> {
-    let previous_schema = GLOBAL_COMMIT_SCHEMA.replace(", 'finding_challenge'", "");
+    let previous_schema = GLOBAL_COMMIT_SCHEMA.replace(", 'finding_status'", "");
+    let legacy_schema = previous_schema.replace(", 'finding_challenge'", "");
     let expected_previous = Connection::open_in_memory()?;
     expected_previous.execute_batch(&previous_schema)?;
-    if global_schema_catalog(connection)? != global_schema_catalog(&expected_previous)? {
+    let expected_legacy = Connection::open_in_memory()?;
+    expected_legacy.execute_batch(&legacy_schema)?;
+    let actual = global_schema_catalog(connection)?;
+    if actual != global_schema_catalog(&expected_previous)?
+        && actual != global_schema_catalog(&expected_legacy)?
+    {
         return Err(invalid("global authority commit schema is not canonical"));
     }
     let transaction = connection.unchecked_transaction()?;
@@ -414,6 +430,87 @@ pub(crate) fn append_finding_challenge_projection_if_changed(
         mutation_kind,
         "finding_challenge",
         "market",
+        projection_sequence,
+        fence,
+    )?;
+    Ok(true)
+}
+
+/// Append the complete Finding status projection and its authority-wide
+/// reference when durable status state changed. Exact replays do not create
+/// phantom history entries.
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) fn append_finding_status_projection_if_changed(
+    transaction: &Transaction<'_>,
+    fence: &StoreMutationFence,
+) -> Result<bool, SqliteServingOwnerError> {
+    let snapshot_digest = finding_status_snapshot_digest(transaction)?;
+    let latest = transaction
+        .query_row(
+            r#"
+            SELECT projection_sequence, snapshot_digest, commit_digest
+            FROM finding_status_projection_commits
+            ORDER BY projection_sequence DESC LIMIT 1
+            "#,
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .optional()?;
+    if latest
+        .as_ref()
+        .is_some_and(|(_, committed_snapshot, _)| committed_snapshot == &snapshot_digest)
+    {
+        return Ok(false);
+    }
+    let (previous_sequence, previous_commit_digest) = match latest {
+        Some((sequence, _, commit_digest)) => (
+            read_u64(sequence, "finding status projection sequence")?,
+            commit_digest,
+        ),
+        None => (0, GLOBAL_GENESIS_DIGEST.to_owned()),
+    };
+    let projection_sequence = previous_sequence
+        .checked_add(1)
+        .ok_or_else(|| invalid("finding status projection sequence overflowed"))?;
+    let mutation_kind = "finding_status_write";
+    let commit_digest = digest(&FindingStatusProjectionEntry {
+        format: "chio.sqlite-finding-status-projection.v1",
+        previous_commit_digest: &previous_commit_digest,
+        projection_sequence,
+        mutation_kind,
+        snapshot_digest: &snapshot_digest,
+    })?;
+    let inserted = transaction.execute(
+        r#"
+        INSERT INTO finding_status_projection_commits (
+            projection_sequence, mutation_kind, snapshot_digest,
+            previous_commit_digest, commit_digest
+        ) VALUES (?1, ?2, ?3, ?4, ?5)
+        "#,
+        params![
+            sqlite_u64(projection_sequence, "finding status projection sequence")?,
+            mutation_kind,
+            snapshot_digest,
+            previous_commit_digest,
+            commit_digest,
+        ],
+    )?;
+    if inserted != 1 {
+        return Err(invalid(
+            "finding status projection did not advance exactly once",
+        ));
+    }
+    append_global_commit(
+        transaction,
+        mutation_kind,
+        "finding_status",
+        "status",
         projection_sequence,
         fence,
     )?;
@@ -883,6 +980,22 @@ fn projection_reference_digest(
                 .optional()?
                 .ok_or_else(|| invalid("finding challenge projection reference is absent"))
         }
+        "finding_status" => {
+            if key != "status" {
+                return Err(invalid("finding status projection key is invalid"));
+            }
+            connection
+                .query_row(
+                    r#"
+                    SELECT commit_digest FROM finding_status_projection_commits
+                    WHERE projection_sequence = ?1
+                    "#,
+                    [sqlite_u64(sequence, "finding status projection sequence")?],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .ok_or_else(|| invalid("finding status projection reference is absent"))
+        }
         _ => Err(invalid("unknown global authority projection kind")),
     }
 }
@@ -1223,6 +1336,29 @@ fn finding_challenge_snapshot_digest_v1(
     }
     digest(&AuthoritySnapshot {
         format: "chio.sqlite-finding-challenge-snapshot.v1",
+        tables: snapshots,
+    })
+}
+
+#[cfg(feature = "cognition-market-experimental")]
+fn finding_status_snapshot_digest(
+    connection: &Connection,
+) -> Result<String, SqliteServingOwnerError> {
+    let tables = [
+        "finding_status_feeds",
+        "finding_status_epochs",
+        "finding_status_feed_floors",
+        "finding_retraction_intents",
+        "finding_status_states",
+        "finding_status_leaves",
+        "finding_status_proofs",
+    ];
+    let mut snapshots = Vec::with_capacity(tables.len());
+    for table in tables {
+        snapshots.push(table_snapshot(connection, table, None)?);
+    }
+    digest(&AuthoritySnapshot {
+        format: "chio.sqlite-finding-status-snapshot.v1",
         tables: snapshots,
     })
 }
@@ -1786,6 +1922,7 @@ fn verify_global_projection_coverage(
 ) -> Result<(), SqliteServingOwnerError> {
     verify_channel_release_projection_coverage(connection)?;
     verify_finding_challenge_projection_coverage(connection)?;
+    verify_finding_status_projection_coverage(connection)?;
     let incomplete = connection.query_row(
         r#"
         SELECT
@@ -2133,6 +2270,157 @@ pub(super) fn verify_finding_challenge_projection_coverage(
     Ok(())
 }
 
+#[cfg(feature = "cognition-market-experimental")]
+fn verify_finding_status_projection_coverage(
+    connection: &Connection,
+) -> Result<(), SqliteServingOwnerError> {
+    let projection_table_present = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'finding_status_projection_commits')",
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if !projection_table_present {
+        let global_reference_present = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM authority_global_commits WHERE projection_kind = 'finding_status')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )?;
+        return if global_reference_present {
+            Err(invalid("finding status projection table is absent"))
+        } else {
+            Ok(())
+        };
+    }
+    let mut statement = connection.prepare(
+        r#"
+        SELECT projection_sequence, mutation_kind, snapshot_digest,
+               previous_commit_digest, commit_digest
+        FROM finding_status_projection_commits
+        ORDER BY projection_sequence
+        "#,
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut previous = GLOBAL_GENESIS_DIGEST.to_owned();
+    let mut expected_sequence = 1_u64;
+    for (stored_sequence, mutation_kind, snapshot_digest, previous_digest, commit_digest) in &rows {
+        let sequence = read_u64(*stored_sequence, "finding status projection sequence")?;
+        if sequence != expected_sequence
+            || mutation_kind != "finding_status_write"
+            || previous_digest != &previous
+            || !is_digest(snapshot_digest)
+            || !is_digest(commit_digest)
+        {
+            return Err(invalid("finding status projection chain is malformed"));
+        }
+        let expected_digest = digest(&FindingStatusProjectionEntry {
+            format: "chio.sqlite-finding-status-projection.v1",
+            previous_commit_digest: &previous,
+            projection_sequence: sequence,
+            mutation_kind,
+            snapshot_digest,
+        })?;
+        if expected_digest != *commit_digest {
+            return Err(invalid("finding status projection digest mismatch"));
+        }
+        let global_count = connection.query_row(
+            r#"
+            SELECT COUNT(*) FROM authority_global_commits
+            WHERE projection_kind = 'finding_status'
+              AND projection_key = 'status' AND projection_sequence = ?1
+            "#,
+            [sqlite_u64(sequence, "finding status projection sequence")?],
+            |row| row.get::<_, i64>(0),
+        )?;
+        if global_count != 1 {
+            return Err(invalid(
+                "finding status global projection coverage is not exact",
+            ));
+        }
+        previous.clone_from(commit_digest);
+        expected_sequence = expected_sequence
+            .checked_add(1)
+            .ok_or_else(|| invalid("finding status projection sequence overflowed"))?;
+    }
+    let orphaned_global = connection.query_row(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM authority_global_commits AS global
+            WHERE global.projection_kind = 'finding_status'
+              AND (
+                  global.projection_key <> 'status'
+                  OR NOT EXISTS(
+                      SELECT 1 FROM finding_status_projection_commits AS local
+                      WHERE local.projection_sequence = global.projection_sequence
+                  )
+              )
+        )
+        "#,
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if orphaned_global {
+        return Err(invalid(
+            "finding status global projection reference is orphaned",
+        ));
+    }
+    let has_state = connection.query_row(
+        r#"
+        SELECT EXISTS(SELECT 1 FROM finding_status_feeds)
+            OR EXISTS(SELECT 1 FROM finding_status_epochs)
+            OR EXISTS(SELECT 1 FROM finding_status_feed_floors)
+            OR EXISTS(SELECT 1 FROM finding_retraction_intents)
+            OR EXISTS(SELECT 1 FROM finding_status_states)
+            OR EXISTS(SELECT 1 FROM finding_status_leaves)
+            OR EXISTS(SELECT 1 FROM finding_status_proofs)
+        "#,
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    match rows.last() {
+        Some((_, _, snapshot_digest, _, _))
+            if finding_status_snapshot_digest(connection)? != *snapshot_digest =>
+        {
+            return Err(invalid(
+                "finding status projection does not cover current state",
+            ));
+        }
+        None if has_state => {
+            return Err(invalid(
+                "finding status state has no authenticated projection",
+            ));
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "cognition-market-experimental"))]
+fn verify_finding_status_projection_coverage(
+    connection: &Connection,
+) -> Result<(), SqliteServingOwnerError> {
+    let global_reference_present = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM authority_global_commits WHERE projection_kind = 'finding_status')",
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if global_reference_present {
+        return Err(invalid(
+            "finding status projection exists without cognition-market support",
+        ));
+    }
+    Ok(())
+}
+
 fn verify_channel_release_projection_coverage(
     connection: &Connection,
 ) -> Result<(), SqliteServingOwnerError> {
@@ -2474,10 +2762,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn immediately_previous_global_schema_migrates_to_finding_challenge_kind(
+    fn immediately_previous_global_schema_migrates_to_finding_status_kind(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let connection = Connection::open_in_memory()?;
-        let previous_schema = GLOBAL_COMMIT_SCHEMA.replace(", 'finding_challenge'", "");
+        let previous_schema = GLOBAL_COMMIT_SCHEMA.replace(", 'finding_status'", "");
         connection.execute_batch(&previous_schema)?;
         assert!(verify_global_commit_schema(&connection).is_err());
         initialize_global_commit_schema(&connection)?;

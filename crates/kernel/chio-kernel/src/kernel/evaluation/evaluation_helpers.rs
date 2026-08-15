@@ -38,6 +38,19 @@ pub(super) struct ExecutionNonceReservingResponse<'a> {
     pub(super) budget_lease_acquired: bool,
 }
 
+pub(crate) struct OrdinaryRecoveryFinalization<'a> {
+    pub(crate) request: &'a ToolCallRequest,
+    pub(crate) output: ToolServerOutput,
+    pub(crate) elapsed: Duration,
+    pub(crate) timestamp: u64,
+    pub(crate) matched_grant_index: usize,
+    pub(crate) cost: FinalizeToolOutputCostContext<'a>,
+    pub(crate) metadata: Option<serde_json::Value>,
+    pub(crate) guard_evidence: &'a [chio_core::receipt::metadata::GuardEvidence],
+    pub(crate) payee_binding: Option<&'a VerifiedGovernedPayeeBinding>,
+    pub(crate) recovery: Option<&'a crate::finding_recovery::VerifiedFindingRecovery>,
+}
+
 struct CleanupReleaseOutcome {
     metadata: Option<serde_json::Value>,
     confirmed: bool,
@@ -145,11 +158,54 @@ pub(crate) fn delivery_commitment_denial(
 }
 
 impl ChioKernel {
+    pub(crate) fn finalize_ordinary_recovery_response(
+        &self,
+        finalization: OrdinaryRecoveryFinalization<'_>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        let metadata = crate::kernel::recovery_gate::attach_finding_recovery_metadata(
+            finalization.metadata,
+            finalization.recovery,
+        );
+        if finalization.recovery.is_some() {
+            return Err(KernelError::DurableAdmission(
+                "finding recovery requires an atomic durable admission terminal projection"
+                    .to_owned(),
+            ));
+        }
+        self.with_pre_invocation_guard_evidence(finalization.guard_evidence, || {
+            self.finalize_budgeted_tool_output_with_cost_and_metadata(
+                finalization.request,
+                finalization.output,
+                finalization.elapsed,
+                finalization.timestamp,
+                finalization.matched_grant_index,
+                finalization.cost,
+                metadata,
+                finalization.payee_binding,
+            )
+        })
+    }
+
     pub(crate) fn compensate_durable_admission_after_pre_dispatch_cleanup(
         &self,
         operation: Option<&AdmissionOperationV1>,
         reverse: Option<&BudgetReverseHoldDecision>,
         payment_authorization: Option<&PaymentAuthorization>,
+    ) -> Result<(), KernelError> {
+        self.compensate_durable_admission_after_pre_dispatch_cleanup_with_payment_unwind(
+            operation,
+            reverse,
+            payment_authorization,
+            None,
+        )
+    }
+
+    fn compensate_durable_admission_after_pre_dispatch_cleanup_with_payment_unwind(
+        &self,
+        operation: Option<&AdmissionOperationV1>,
+        reverse: Option<&BudgetReverseHoldDecision>,
+        payment_authorization: Option<&PaymentAuthorization>,
+        payment_unwind: Option<&PreDispatchPaymentUnwindEvidence>,
     ) -> Result<(), KernelError> {
         let Some(operation) = operation else {
             return Ok(());
@@ -165,6 +221,7 @@ impl ChioKernel {
                     .map(|authorization| authorization.authorization_id.as_str())
             }),
             current_unix_timestamp_ms(),
+            payment_unwind,
         )
     }
 
@@ -516,7 +573,7 @@ impl ChioKernel {
             }
         };
         let runtime_admission_metadata = match unwind_evidence {
-            Some(evidence) => merge_metadata_objects(
+            Some(ref evidence) => merge_metadata_objects(
                 runtime_admission_metadata,
                 Some(serde_json::json!({
                     "chio_runtime": {
@@ -527,10 +584,11 @@ impl ChioKernel {
             None => runtime_admission_metadata,
         };
         if runtime_release_confirmed && lease_release.confirmed {
-            self.compensate_durable_admission_after_pre_dispatch_cleanup(
+            self.compensate_durable_admission_after_pre_dispatch_cleanup_with_payment_unwind(
                 denial.durable_operation,
                 reverse.as_ref(),
                 denial.payment_authorization,
+                unwind_evidence.as_ref(),
             )?;
         }
 

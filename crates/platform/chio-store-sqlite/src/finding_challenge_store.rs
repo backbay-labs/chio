@@ -32,7 +32,8 @@
 //! refines a root intent with the exact Merkle root and evidence hash that
 //! publication must confirm, while
 //! `finding_seller_impairment_reconciliations` retains the exact verified
-//! transaction evidence that allowed a seller impairment to confirm.
+//! transaction evidence that allowed a seller impairment to confirm;
+//! `effect_root_bindings_refreshes` retains each failed-retry root replacement.
 //!
 //! Writes run under `TransactionBehavior::Immediate` behind the
 //! serving-owner fence; reads run `Deferred`; a commit whose outcome
@@ -96,12 +97,13 @@ use crate::finding_purchase_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
-/// Revision 12 retains authenticated seller-impairment reconciliations;
-/// revision 11 retains pre-dispatch finalizing-authorization refreshes;
+/// Revision 13 combines authenticated seller-impairment reconciliations with
+/// append-only enforcement-root refreshes; revision 11 retains pre-dispatch
+/// finalizing-authorization refreshes.
 /// revision 10 retains the initial exact finalizing authorization atomically
 /// with the liability transition; revision 9 retains exact signed evaluator
 /// outcomes with their verdict.
-pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 12;
+pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 13;
 const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] = &[
     "challenges",
     "finding_challenge_projection_commits",
@@ -1064,6 +1066,27 @@ impl SqliteFindingChallengeStore {
         )
     }
 
+    /// Raw upheld transition for cross-crate integration fixtures only.
+    #[cfg(feature = "cognition-market-test-support")]
+    pub fn record_test_upheld_verdict_with_exposure_fence(
+        &self,
+        challenge_id: &str,
+        outcome_envelope_sha256: &str,
+        outcome_envelope_json: &[u8],
+        allocation_id: &str,
+        expected_open_exposure_units: u64,
+        now: u64,
+    ) -> Result<FindingChallengeState, FindingChallengeStoreError> {
+        self.record_upheld_verdict_with_exposure_fence(
+            challenge_id,
+            outcome_envelope_sha256,
+            outcome_envelope_json,
+            allocation_id,
+            expected_open_exposure_units,
+            now,
+        )
+    }
+
     /// One challenge by its id.
     pub fn get_challenge(
         &self,
@@ -1892,7 +1915,8 @@ impl SqliteFindingChallengeStore {
     /// later appeal refuse because the liability is no longer pending
     /// appeal. Neither ordering can strand a successful appeal behind a
     /// finalizing head.
-    pub fn begin_finalizing_under_sanction(
+    #[cfg(test)]
+    pub(crate) fn begin_finalizing_under_sanction(
         &self,
         liability_key: &str,
         expected_state: FindingLiabilityState,
@@ -1900,98 +1924,18 @@ impl SqliteFindingChallengeStore {
         authorization: &FindingFinalizingAuthorizationInput<'_>,
         now: u64,
     ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
-        require_hex64(liability_key, "liability_key")?;
-        require_identifier(sanction_case_id, "sanction_case_id")?;
-        require_finalizing_authorization(authorization)?;
-        if authorization.liability_key != liability_key || authorization.recorded_at != now {
-            return Err(invariant(
-                "finalizing authorization does not bind the transition",
-            ));
-        }
-        require_trusted_time(now, "now")?;
-        require_transition_source(
-            expected_state,
-            FindingLiabilityState::PendingAppeal,
-            FindingLiabilityState::Finalizing,
-        )?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
-        let head = resolve_case_head_tx(&transaction, liability_key)?.ok_or_else(|| {
-            FindingChallengeStoreError::Conflict(
-                "liability carries no live governance case".to_owned(),
-            )
-        })?;
-        if head.case_kind != FindingGovernanceCaseKind::Sanction || head.case_id != sanction_case_id
-        {
-            return Err(FindingChallengeStoreError::Conflict(
-                "the named sanction is not the live governance case".to_owned(),
-            ));
-        }
-        let retained = transaction
-            .query_row(
-                r#"
-                SELECT authorization_json, authorization_sha256, recorded_at
-                FROM finding_finalizing_authorizations
-                WHERE liability_key = ?1
-                "#,
-                [liability_key],
-                |row| {
-                    Ok((
-                        row.get::<_, Vec<u8>>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, i64>(2)?,
-                    ))
-                },
-            )
-            .optional()
-            .map_err(sqlite_error)?;
-        if let Some((bytes, digest, recorded_at)) = &retained {
-            if bytes != authorization.authorization_json
-                || digest != authorization.authorization_sha256
-                || stored_u64(*recorded_at, "finalizing authorization recorded_at")?
-                    != authorization.recorded_at
-            {
-                return Err(FindingChallengeStoreError::Conflict(
-                    "finalizing authorization is already bound to different bytes".to_owned(),
-                ));
-            }
-        }
-        let (outcome, _) = apply_liability_transition_tx(
+        let outcome = begin_finalizing_under_sanction_tx(
             &transaction,
             liability_key,
-            FindingLiabilityState::PendingAppeal,
-            FindingLiabilityState::Finalizing,
-            Some(true),
+            expected_state,
+            sanction_case_id,
+            authorization,
             now,
         )?;
-        if outcome == FindingChallengeWriteOutcome::ExistingSame && retained.is_none() {
-            return Err(invariant(
-                "finalizing liability has no retained authorization",
-            ));
-        }
         if outcome == FindingChallengeWriteOutcome::ExistingSame {
             return Ok(outcome);
-        }
-        let inserted = transaction
-            .execute(
-                r#"
-                INSERT INTO finding_finalizing_authorizations (
-                    liability_key, authorization_json,
-                    authorization_sha256, recorded_at
-                ) VALUES (?1, ?2, ?3, ?4)
-                "#,
-                params![
-                    liability_key,
-                    authorization.authorization_json,
-                    authorization.authorization_sha256,
-                    sqlite_i64(authorization.recorded_at, "recorded_at")?,
-                ],
-            )
-            .map_err(sqlite_error)?;
-        if inserted != 1 {
-            return Err(invariant(
-                "finalizing authorization insert did not affect one row",
-            ));
         }
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
@@ -2056,9 +2000,14 @@ impl SqliteFindingChallengeStore {
         &self,
         expected_previous_sha256: &str,
         authorization: &FindingFinalizingAuthorizationInput<'_>,
+        expected_seller_intent: &FindingEffectIntentRecord,
+        expected_root_intent: &FindingEffectIntentRecord,
+        expected_root_binding: Option<&FindingEffectRootBindingRecord>,
     ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
         require_hex64(expected_previous_sha256, "expected_previous_sha256")?;
         require_finalizing_authorization(authorization)?;
+        require_hex64(&expected_seller_intent.intent_key, "seller_intent_key")?;
+        require_hex64(&expected_root_intent.intent_key, "root_intent_key")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
         let liability = load_liability_tx(&transaction, authorization.liability_key)?
@@ -2068,23 +2017,45 @@ impl SqliteFindingChallengeStore {
                 "only a finalizing liability can refresh its authorization".to_owned(),
             ));
         }
-        let (seller_intents, refreshable_seller_intents) = transaction
-            .query_row(
-                r#"
-                SELECT COUNT(*),
-                       COALESCE(SUM(state IN ('pending', 'failed')), 0)
-                FROM effect_intents
-                WHERE liability_key = ?1
-                  AND kind = 'seller_impair'
-                  AND settlement_required = 1
-                "#,
-                [authorization.liability_key],
-                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
-            )
-            .map_err(sqlite_error)?;
-        if seller_intents != 1 || refreshable_seller_intents != 1 {
+        let seller_intent =
+            load_effect_intent_tx(&transaction, &expected_seller_intent.intent_key)?
+                .ok_or(FindingChallengeStoreError::NotFound)?;
+        let root_intent = load_effect_intent_tx(&transaction, &expected_root_intent.intent_key)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        let root_binding =
+            load_effect_root_binding_tx(&transaction, &expected_root_intent.intent_key)?;
+        if &seller_intent != expected_seller_intent
+            || &root_intent != expected_root_intent
+            || root_binding.as_ref() != expected_root_binding
+        {
             return Err(FindingChallengeStoreError::Conflict(
-                "finalizing authorization may refresh only before dispatch or after a retryable failed seller impairment"
+                "finalizing authorization refresh lost its effect-state fence".to_owned(),
+            ));
+        }
+        let same_liability = Some(authorization.liability_key);
+        let refreshable = seller_intent.kind == FindingEffectIntentKind::SellerImpair
+            && seller_intent.liability_key.as_deref() == same_liability
+            && seller_intent.settlement_required
+            && root_intent.kind == FindingEffectIntentKind::RootIntent
+            && root_intent.liability_key.as_deref() == same_liability
+            && root_intent.settlement_required
+            && match seller_intent.state {
+                FindingEffectIntentState::Pending => {
+                    root_intent.state == FindingEffectIntentState::Pending
+                        && root_intent.attempt_count == 0
+                        && root_binding.is_none()
+                }
+                FindingEffectIntentState::Failed => {
+                    root_intent.state == FindingEffectIntentState::Confirmed
+                        && root_binding.is_some()
+                }
+                FindingEffectIntentState::Dispatched
+                | FindingEffectIntentState::Confirmed
+                | FindingEffectIntentState::Quarantined => false,
+            };
+        if !refreshable {
+            return Err(FindingChallengeStoreError::Conflict(
+                "finalizing authorization may refresh only before anchor binding or during an authenticated retry"
                     .to_owned(),
             ));
         }
@@ -2771,9 +2742,9 @@ impl SqliteFindingChallengeStore {
         Ok(FindingChallengeWriteOutcome::Inserted)
     }
 
-    /// Refine a pending root intent with the exact proof values that will be
-    /// published and passed to the vault. The binding is immutable and must
-    /// exist before the root intent can enter `dispatched`.
+    /// Refine a root intent with the exact proof values published and passed
+    /// to the vault. The first binding is immutable. A failed seller retry
+    /// appends a chained refresh while retaining every earlier binding.
     pub fn bind_effect_root(
         &self,
         intent_key: &str,
@@ -2797,6 +2768,20 @@ impl SqliteFindingChallengeStore {
                 && existing.evidence_hash == evidence_hash
             {
                 return Ok(FindingChallengeWriteOutcome::ExistingSame);
+            }
+            if try_append_effect_root_refresh(
+                &transaction,
+                &intent,
+                &existing,
+                intent_key,
+                liability_key,
+                merkle_root,
+                evidence_hash,
+                now,
+            )? {
+                self.commit_write(transaction)?;
+                self.sync_after_write(&connection)?;
+                return Ok(FindingChallengeWriteOutcome::Inserted);
             }
             return Err(FindingChallengeStoreError::Conflict(
                 "root intent is already bound to a different anchor proof".to_owned(),
@@ -3060,6 +3045,90 @@ impl SqliteFindingChallengeStore {
         )
     }
 
+    /// Validate the current observation against the exact reconciliation
+    /// retained with a confirmed seller impairment, then clear quarantine in
+    /// the same write transaction. A mismatched reobservation leaves the
+    /// liability quarantined.
+    pub fn reconcile_seller_impairment_quarantine(
+        &self,
+        reconciliation: &ConfirmedFindingImpairmentReconciliation,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        self.reconcile_seller_impairment_quarantine_with_evidence(
+            &SellerImpairmentReconciliationEvidence {
+                intent_key: reconciliation.intent_id(),
+                liability_key: reconciliation.liability_key(),
+                tx_hash: reconciliation.tx_hash(),
+                reconciliation_sha256: reconciliation.reconciliation_sha256(),
+            },
+            now,
+        )
+    }
+
+    fn reconcile_seller_impairment_quarantine_with_evidence(
+        &self,
+        evidence: &SellerImpairmentReconciliationEvidence<'_>,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        require_hex64(evidence.intent_key, "intent_key")?;
+        require_hex64(evidence.liability_key, "liability_key")?;
+        require_chain_hash(evidence.tx_hash, "reconciliation.tx_hash")?;
+        require_hex64(
+            evidence.reconciliation_sha256,
+            "reconciliation.reconciliation_sha256",
+        )?;
+        require_trusted_time(now, "now")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let intent = load_effect_intent_tx(&transaction, evidence.intent_key)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        let retained = load_seller_impairment_reconciliation_tx(&transaction, evidence.intent_key)?
+            .ok_or_else(|| {
+                invariant("confirmed seller impairment has no retained reconciliation")
+            })?;
+        if intent.kind != FindingEffectIntentKind::SellerImpair
+            || intent.state != FindingEffectIntentState::Confirmed
+            || !intent.settlement_required
+            || intent.liability_key.as_deref() != Some(evidence.liability_key)
+            || retained.liability_key != evidence.liability_key
+            || retained.intent_digest != intent.intent_digest
+            || retained.tx_hash != evidence.tx_hash
+            || retained.reconciliation_sha256 != evidence.reconciliation_sha256
+        {
+            return Err(FindingChallengeStoreError::Conflict(
+                "reobserved seller impairment does not match its retained reconciliation"
+                    .to_owned(),
+            ));
+        }
+        let liability = load_liability_tx(&transaction, evidence.liability_key)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        if liability.state != FindingLiabilityState::Finalizing {
+            return Err(FindingChallengeStoreError::Conflict(format!(
+                "liability is in state {}, not the expected finalizing",
+                liability_state_name(liability.state)
+            )));
+        }
+        if !liability.quarantined {
+            return Ok(FindingChallengeWriteOutcome::ExistingSame);
+        }
+        let updated = transaction
+            .execute(
+                r#"
+                UPDATE liability_heads
+                SET quarantined = 0, updated_at = ?2
+                WHERE liability_key = ?1 AND state = 'finalizing' AND quarantined = 1
+                "#,
+                params![evidence.liability_key, sqlite_i64(now, "now")?],
+            )
+            .map_err(sqlite_error)?;
+        if updated != 1 {
+            return Err(invariant("liability quarantine did not affect one row"));
+        }
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(FindingChallengeWriteOutcome::Inserted)
+    }
+
     fn confirm_seller_impairment_with_evidence(
         &self,
         evidence: &SellerImpairmentReconciliationEvidence<'_>,
@@ -3233,6 +3302,26 @@ impl SqliteFindingChallengeStore {
                 reconciliation_sha256: &reconciliation_sha256,
             },
             true,
+            now,
+        )
+    }
+
+    #[cfg(test)]
+    fn reconcile_seller_impairment_quarantine_for_tests(
+        &self,
+        intent_key: &str,
+        liability_key: &str,
+        tx_hash: &str,
+        reconciliation_sha256: &str,
+        now: u64,
+    ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+        self.reconcile_seller_impairment_quarantine_with_evidence(
+            &SellerImpairmentReconciliationEvidence {
+                intent_key,
+                liability_key,
+                tx_hash,
+                reconciliation_sha256,
+            },
             now,
         )
     }
@@ -3972,7 +4061,7 @@ fn load_case_tx(
 /// Resolve the unique unsuperseded case inside a caller-owned transaction.
 /// A write path uses this to serialize its lifecycle decision against case
 /// insertion; the public read path uses the same ambiguity semantics.
-fn resolve_case_head_tx(
+pub(crate) fn resolve_case_head_tx(
     transaction: &Transaction<'_>,
     liability_key: &str,
 ) -> Result<Option<FindingGovernanceCaseRecord>, FindingChallengeStoreError> {
@@ -4177,44 +4266,6 @@ fn load_seller_impairment_reconciliation_tx(
         )
         .transpose()
 }
-
-fn load_effect_root_binding_tx(
-    transaction: &Transaction<'_>,
-    intent_key: &str,
-) -> Result<Option<FindingEffectRootBindingRecord>, FindingChallengeStoreError> {
-    transaction
-        .query_row(
-            r#"
-            SELECT intent_key, liability_key, merkle_root, evidence_hash, bound_at
-            FROM effect_root_bindings WHERE intent_key = ?1
-            "#,
-            [intent_key],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, i64>(4)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(sqlite_error)?
-        .map(
-            |(intent_key, liability_key, merkle_root, evidence_hash, bound_at)| {
-                Ok(FindingEffectRootBindingRecord {
-                    intent_key,
-                    liability_key,
-                    merkle_root,
-                    evidence_hash,
-                    bound_at: stored_u64(bound_at, "bound_at")?,
-                })
-            },
-        )
-        .transpose()
-}
-
 fn advance_challenge_state_tx(
     transaction: &Transaction<'_>,
     challenge_id: &str,
@@ -4749,10 +4800,15 @@ pub(crate) fn initialize_finding_challenge_schema(
     if on_disk == FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION {
         return verify_finding_challenge_invariants(connection);
     }
-    if matches!(on_disk, 10 | 11) {
+    if matches!(on_disk, 10..=12) {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(sqlite_error)?;
+        if table_has_rows_where(&transaction, "liability_heads", "state = 'finalizing'")? {
+            return Err(invariant(
+                "legacy finalizing liability has no retained settlement observer policy",
+            ));
+        }
         transaction
             .execute_batch(FINDING_CHALLENGE_SCHEMA)
             .map_err(sqlite_error)?;
@@ -5367,6 +5423,7 @@ pub(crate) fn verify_finding_challenge_invariants(
             "confirmed seller impairment reconciliation coverage is not exact",
         ));
     }
+    verify_effect_root_refresh_invariants(connection)?;
     Ok(())
 }
 
@@ -5412,6 +5469,109 @@ fn finding_challenge_schema_catalog(
         .collect::<Result<Vec<_>, _>>()
         .map_err(sqlite_error)?;
     Ok(entries)
+}
+
+/// Apply the appeal-final transition and retain its exact authorization in a
+/// caller-owned transaction. The status store uses this boundary so the
+/// signed authorization, sticky retraction outbox, and liability edge cannot
+/// be committed independently.
+pub(crate) fn begin_finalizing_under_sanction_tx(
+    transaction: &Transaction<'_>,
+    liability_key: &str,
+    expected_state: FindingLiabilityState,
+    sanction_case_id: &str,
+    authorization: &FindingFinalizingAuthorizationInput<'_>,
+    now: u64,
+) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
+    require_hex64(liability_key, "liability_key")?;
+    require_identifier(sanction_case_id, "sanction_case_id")?;
+    require_finalizing_authorization(authorization)?;
+    if authorization.liability_key != liability_key || authorization.recorded_at != now {
+        return Err(invariant(
+            "finalizing authorization does not bind the transition",
+        ));
+    }
+    require_trusted_time(now, "now")?;
+    require_transition_source(
+        expected_state,
+        FindingLiabilityState::PendingAppeal,
+        FindingLiabilityState::Finalizing,
+    )?;
+    let head = resolve_case_head_tx(transaction, liability_key)?.ok_or_else(|| {
+        FindingChallengeStoreError::Conflict("liability carries no live governance case".to_owned())
+    })?;
+    if head.case_kind != FindingGovernanceCaseKind::Sanction || head.case_id != sanction_case_id {
+        return Err(FindingChallengeStoreError::Conflict(
+            "the named sanction is not the live governance case".to_owned(),
+        ));
+    }
+    let retained = transaction
+        .query_row(
+            r#"
+            SELECT authorization_json, authorization_sha256, recorded_at
+            FROM finding_finalizing_authorizations
+            WHERE liability_key = ?1
+            "#,
+            [liability_key],
+            |row| {
+                Ok((
+                    row.get::<_, Vec<u8>>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    if let Some((bytes, digest, recorded_at)) = &retained {
+        if bytes != authorization.authorization_json
+            || digest != authorization.authorization_sha256
+            || stored_u64(*recorded_at, "finalizing authorization recorded_at")?
+                != authorization.recorded_at
+        {
+            return Err(FindingChallengeStoreError::Conflict(
+                "finalizing authorization is already bound to different bytes".to_owned(),
+            ));
+        }
+    }
+    let (outcome, _) = apply_liability_transition_tx(
+        transaction,
+        liability_key,
+        FindingLiabilityState::PendingAppeal,
+        FindingLiabilityState::Finalizing,
+        Some(true),
+        now,
+    )?;
+    if outcome == FindingChallengeWriteOutcome::ExistingSame && retained.is_none() {
+        return Err(invariant(
+            "finalizing liability has no retained authorization",
+        ));
+    }
+    if outcome == FindingChallengeWriteOutcome::ExistingSame {
+        return Ok(outcome);
+    }
+    let inserted = transaction
+        .execute(
+            r#"
+            INSERT INTO finding_finalizing_authorizations (
+                liability_key, authorization_json,
+                authorization_sha256, recorded_at
+            ) VALUES (?1, ?2, ?3, ?4)
+            "#,
+            params![
+                liability_key,
+                authorization.authorization_json,
+                authorization.authorization_sha256,
+                sqlite_i64(authorization.recorded_at, "recorded_at")?,
+            ],
+        )
+        .map_err(sqlite_error)?;
+    if inserted != 1 {
+        return Err(invariant(
+            "finalizing authorization insert did not affect one row",
+        ));
+    }
+    Ok(outcome)
 }
 
 fn list_limit() -> Result<i64, FindingChallengeStoreError> {
@@ -5590,6 +5750,8 @@ fn sqlite_error(error: rusqlite::Error) -> FindingChallengeStoreError {
         other => FindingChallengeStoreError::Unavailable(other.to_string()),
     }
 }
+
+include!("finding_challenge_store_root_refresh.rs");
 
 #[cfg(test)]
 #[path = "finding_challenge_store_tests.rs"]

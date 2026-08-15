@@ -205,6 +205,11 @@ pub fn verify_purchase_context_pure(
     {
         return Err(PurchaseVerificationError::MarkerMismatch);
     }
+    if admission.body.status_feed_operator_ref != finding.status_feed_ref {
+        return Err(PurchaseVerificationError::AdmissionBindingMismatch(
+            "status_feed",
+        ));
+    }
     let venue_admission_envelope_sha256 =
         canonical_digest_of(&context.venue_admission_envelope_json, "venue_admission")?;
     for (member, text, bound_digest) in [

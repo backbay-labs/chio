@@ -628,7 +628,7 @@ fn ensure_archive_file_exists(archive_path: &str) -> Result<(), ReceiptStoreErro
 /// restarts.
 ///
 /// The recorded archive path is read back by the watermark-trust check
-/// (`archived_prefix_is_backed`), which opens it to confirm the deleted prefix
+/// (`trusted_retention_watermark`), which opens it to confirm the deleted prefix
 /// still survives in the archive. A relative path stored verbatim (including the
 /// default `receipts-archive.sqlite3`) resolves against whatever working
 /// directory the reader happens to run in, so a restart or a CLI health check

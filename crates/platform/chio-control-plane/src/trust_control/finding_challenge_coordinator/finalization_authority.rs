@@ -3,6 +3,49 @@
 use super::*;
 
 impl FindingChallengeCoordinator {
+    /// Bind a still-pending root intent to the concrete proof this finalize
+    /// attempt prepared. The generic liability and penalty commitment is
+    /// checked first, so a mismatched intent cannot be poisoned with a
+    /// binding that belongs elsewhere.
+    pub(super) fn bind_enforcement_root(
+        &self,
+        liability_key: &str,
+        verified: &VerifiedFindingEnforcement,
+        planned: &chio_settle::FindingImpairmentIntent,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let root = self
+            .challenges
+            .get_effect_intent(verified.root_intent_id())
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        let expected = sha256_hex(
+            root_intent_commitment(
+                liability_key,
+                &verified.enforcement().penalty_envelope_sha256,
+            )
+            .as_bytes(),
+        );
+        if root.kind != FindingEffectIntentKind::RootIntent
+            || root.liability_key.as_deref() != Some(liability_key)
+            || root.intent_digest != expected
+        {
+            return Err(ChallengeCoordinatorError::EnforcementRootUnconfirmed(
+                "the named root intent does not fence this liability and penalty",
+            ));
+        }
+        self.challenges
+            .bind_effect_root(
+                verified.root_intent_id(),
+                liability_key,
+                &planned.merkle_root,
+                &planned.evidence_hash,
+                now,
+            )
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+        Ok(())
+    }
+
     /// Authenticate one retained enforcement under the exact historical
     /// finalization policy its signed body commits. The independently signed
     /// lifecycle status keeps body fields from self-authorizing a signer.

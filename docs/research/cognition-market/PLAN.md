@@ -103,7 +103,7 @@ production surface half-wired.
 | M3 | Kernel delivery contract | candidate `Constraint::OutputDigestSha256`; durable and legacy digest enforcement; generic `chio.delivery-contract.v1` receipt block; verdict-matrix rotation; bounded Lean settlement-admission model | M1 | implemented on `codex/cognition-market-m3`; ADR-A landed as [ADR-0019](../../adr/ADR-0019-kernel-delivery-contract.md); plan and recorded results [plans/2026-07-28-M3-kernel-delivery-contract.md](plans/2026-07-28-M3-kernel-delivery-contract.md) |
 | M4 | Wedge purchase E2E | reference finding server; ADR-A-selected output-aware durable hold/capture; `chio finding` CLI (publish/search/verify/buy) | M2, M3 | implemented on `codex/cognition-market-m4`, including authenticated live purchase route exit; plan and recorded results [plans/2026-07-28-M4-wedge-purchase-e2e.md](plans/2026-07-28-M4-wedge-purchase-e2e.md) |
 | M5 | Challenge and audit lane | frozen-v1 `FraudulentListing` mapping plus signed finding challenge outcome; challenge evaluator; verifiable audit schedule; slash wiring | M4 | implemented on `codex/cognition-market-m5`; plan and recorded results [plans/2026-07-30-M5-challenge-and-audit-lane.md](plans/2026-07-30-M5-challenge-and-audit-lane.md) |
-| M6 | Status feed and retraction | oracle instance; control-plane root/proof surfaces; purchase-time non-inclusion; challenge-outcome outbox; quarantine guard rule; ops runbook | M4, M5 | plan after M5 |
+| M6 | Status feed and retraction | oracle instance; control-plane root/proof surfaces; purchase-time non-inclusion; challenge-outcome outbox; quarantine guard rule; ops runbook | M4, M5 | implemented; plan and recorded results [plans/2026-07-31-M6-status-feed-retraction.md](plans/2026-07-31-M6-status-feed-retraction.md) |
 | M7 | Cross-org escrow path | delivery-receipt settlement-authority bridge; bilateral evidence flow; funded escrow and watchdog runbook | M4, M5, M6 | blocked pending bilateral demand and ADR-C |
 | M8 | Pool purchasing and SDK | swarm purchasing convention; elicitation ceiling in SDKs; pheromone hint convention | M4 | plan after M4 |
 | M9 | Qualification and claims | bounded-matrix entries; CLAIM_REGISTRY rows; RC guarantee entries; R&D-instance extensions | M5, M6 | plan after M6 |
@@ -1142,6 +1142,9 @@ normative scope statement.
   are green.
 
 ### M6 Status feed and retraction
+
+- Implementation and named qualification record:
+  [2026-07-31-M6-status-feed-retraction.md](plans/2026-07-31-M6-status-feed-retraction.md).
 
 - Finding-status oracle instance (generic `RevocationKey` reuse,
   `chio-revocation-oracle/src/api.rs:70`); control-plane surfaces

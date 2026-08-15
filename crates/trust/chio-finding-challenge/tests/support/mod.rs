@@ -1231,6 +1231,7 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
             reservation_id: RESERVATION_ID.to_string(),
             purchase_intent_id: PURCHASE_INTENT_ID.to_string(),
             authoritative_payment_operation_id: PAYMENT_OPERATION_ID.to_string(),
+            status_proof: None,
         };
         metadata.insert(
             FINDING_DELIVERY_METADATA_KEY.to_string(),

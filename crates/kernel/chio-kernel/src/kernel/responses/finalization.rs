@@ -53,6 +53,23 @@ impl ChioKernel {
                 verified_payee_binding,
             );
         }
+        if let Err(error) = self.validate_guarded_output(
+            request,
+            matched_grant_index,
+            &post_invocation.output,
+            true,
+        ) {
+            return self.build_deny_response_with_metadata_and_payee_binding(
+                request,
+                &error.to_string(),
+                timestamp,
+                Some(matched_grant_index),
+                self.mark_runtime_admission_reservations_retained_fail_closed(
+                    post_invocation.extra_metadata,
+                ),
+                verified_payee_binding,
+            );
+        }
 
         match post_invocation.output {
             ToolServerOutput::Value(value) => self

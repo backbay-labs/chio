@@ -129,13 +129,13 @@ use chio_open_market::purchase_verification::{
     derive_payment_operation_id, derive_purchase_intent_id,
 };
 use chio_settle::{
-    finding_anchor_checkpoint_statement_sha256, settlement_devnet_rpc_egress_contract,
-    EvmBondSnapshot, EvmTransactionReceipt, FindingAnchorCheckpointPublication,
-    FindingBondObservationRecheck, FindingImpairmentAttempt, FindingImpairmentOutcome,
-    FindingImpairmentPublishError, FindingImpairmentPublisher, FindingImpairmentQuarantine,
-    FindingVaultRejection, PreparedEvmCall, SettlementChainConfig, SettlementEvidenceConfig,
-    SettlementFinalityStatus, SettlementOracleConfig, SettlementPolicyConfig,
-    SignedFindingAnchorCheckpointPublication, StoredImpairmentTransaction,
+    finding_anchor_checkpoint_statement_sha256, prepare_bond_impair,
+    settlement_devnet_rpc_egress_contract, EvmBondSnapshot, EvmTransactionReceipt,
+    FindingAnchorCheckpointPublication, FindingBondObservationRecheck, FindingImpairmentAttempt,
+    FindingImpairmentOutcome, FindingImpairmentPublishError, FindingImpairmentPublisher,
+    FindingImpairmentQuarantine, FindingVaultRejection, PreparedEvmCall, SettlementChainConfig,
+    SettlementEvidenceConfig, SettlementFinalityStatus, SettlementOracleConfig,
+    SettlementPolicyConfig, SignedFindingAnchorCheckpointPublication, StoredImpairmentTransaction,
     FINDING_ANCHOR_CHECKPOINT_PUBLICATION_SCHEMA_V1,
 };
 use chio_store_sqlite::finding_market_store::{FindingRecordInput, SqliteFindingMarketStore};
@@ -145,7 +145,8 @@ use chio_store_sqlite::{
     FindingDisputeLockDisposition, FindingDisputeLockInput, FindingDisputeLockState,
     FindingEffectIntentKind, FindingEffectIntentState, FindingLiabilityState,
     FindingPurchaseDeliveryInput, FindingPurchaseDenyInput, FindingPurchaseReservationInput,
-    SqliteAuthorityStore, SqliteFindingChallengeStore, SqliteFindingPurchaseStore,
+    FindingRetractionIntentCommitLiveness, SqliteAuthorityStore, SqliteFindingChallengeStore,
+    SqliteFindingPurchaseStore,
 };
 
 use crate::trust_control::finding_challenge_coordinator::{
@@ -162,7 +163,8 @@ use crate::trust_control::{
     FederationAdmissionRateLimiter, FindingAuthorityPin, FindingChallengeSubmissionExecutor,
     FindingChallengeSubmissionRequest, FindingChallengeSubmissionResponse,
     FindingChallengeSubmissionRuntime, FindingChallengeSubmissionWrite, FindingMarketConfig,
-    FindingPoolPin, TrustServiceConfig, TrustServiceState,
+    FindingPoolPin, FindingStatusOperatorPin, FindingStatusServiceBond, TrustServiceConfig,
+    TrustServiceState, FINDING_STATUS_OPERATOR_ROLE,
 };
 use crate::trust_control::{FindingRailInstruction, FindingRailObservation, FindingRailObserver};
 use chio_test_support::plain::TestResultOk;
@@ -187,6 +189,16 @@ use super::build_router;
 
 type AnyError = Box<dyn std::error::Error>;
 type TestResult = Result<(), AnyError>;
+
+struct FixtureStatusCommitClock;
+
+impl crate::trust_control::finding_challenge_coordinator::FindingStatusCommitClock
+    for FixtureStatusCommitClock
+{
+    fn now_unix_secs(&self, venue_now: u64) -> u64 {
+        venue_now
+    }
+}
 
 const VENUE_ID: &str = "venue-challenge";
 const LISTING_ID: &str = "listing-42";
@@ -327,7 +339,7 @@ struct TestAuthorityStatusResolver {
 impl TestAuthorityStatusResolver {
     fn live() -> Self {
         Self {
-            signer_seed: 36,
+            signer_seed: 37,
             status_ref_override: None,
             revoked_authority: None,
             revoked_from_override: None,
@@ -389,7 +401,7 @@ fn market_config() -> FindingMarketConfig {
         venue: authority_pin(6, "venue"),
         listing: authority_pin(24, "listing"),
         governance_root: authority_pin(1, "governance"),
-        authority_status: authority_pin(36, "authority-status"),
+        authority_status: authority_pin(37, "authority-status"),
         verifier_report: authority_pin(15, "verifier-report"),
         collateral: authority_pin(4, "collateral"),
         purchase: authority_pin(16, "purchase"),
@@ -404,7 +416,7 @@ fn market_config() -> FindingMarketConfig {
             min_depth: 64,
         },
         audit_authority: authority_pin(35, "audit-authority"),
-        audit_randomness_witness: authority_pin(37, "audit-randomness-witness"),
+        audit_randomness_witness: authority_pin(38, "audit-randomness-witness"),
         audit_pool: FindingPoolPin {
             principal_id: AUDIT_POOL_PRINCIPAL.to_string(),
             rail_destination: AUDIT_POOL_DESTINATION.to_string(),
@@ -419,6 +431,28 @@ fn market_config() -> FindingMarketConfig {
         },
         community_fund_destination: COMMUNITY_FUND_DESTINATION.to_string(),
         status_feed_operator_ref: "status-feed/venue-challenge".to_string(),
+        status_feed_operator: FindingStatusOperatorPin {
+            feed_id: "status-feed/venue-challenge".to_string(),
+            role: FINDING_STATUS_OPERATOR_ROLE.to_string(),
+            authority: authority_pin(36, "status-operator"),
+            rotation_policy_ref: "rotation-policy/status-feed-v1".to_string(),
+            authorization_sha256: digest("status-operator-authorization"),
+            revoked_from: None,
+        },
+        status_feed_service_bond: FindingStatusServiceBond {
+            bond_id: "status-bond-venue-challenge".to_string(),
+            feed_id: "status-feed/venue-challenge".to_string(),
+            operator_id: "status-operator".to_string(),
+            locked_units: 1_000,
+            currency: "USD".to_string(),
+            valid_from: 1,
+            valid_until: u64::MAX,
+            inclusion_sla_secs: 3_600,
+            missed_inclusion_slash_units: 100,
+            equivocation_slash_units: 1_000,
+            evidence_sha256: digest("status-bond-venue-challenge"),
+        },
+        status_max_epoch_age_secs: 300,
         fee_schedule_operator_keys: vec![fee_schedule_keypair().public_key().to_hex()],
     }
 }
@@ -771,6 +805,7 @@ struct Deployment {
     market: SqliteFindingMarketStore,
     purchases: SqliteFindingPurchaseStore,
     challenges: SqliteFindingChallengeStore,
+    status: chio_store_sqlite::SqliteFindingStatusStore,
     allocation_id: String,
     admission_envelope_sha256: String,
     rail: Arc<RecordingRail>,
@@ -804,6 +839,7 @@ fn deployment_publishing_terms_and_rounds(
     let market = authority.finding_market_store();
     let purchases = authority.finding_purchase_store();
     let challenges = authority.finding_challenge_store();
+    let status = authority.finding_status_store();
     let challenged = challenged_finding()?;
     market.put_finding(
         &FindingRecordInput {
@@ -890,6 +926,7 @@ fn deployment_publishing_terms_and_rounds(
         market,
         purchases,
         challenges,
+        status,
         allocation_id,
         admission_envelope_sha256,
         rail: Arc::new(RecordingRail::default()),
@@ -940,9 +977,10 @@ impl Deployment {
         authority_status: Arc<dyn FindingAuthorityStatusResolver>,
         failed_challenge_disposition: FindingDisputeLockDisposition,
     ) -> Result<FindingChallengeCoordinator, AnyError> {
-        Ok(FindingChallengeCoordinator::new(
+        Ok(FindingChallengeCoordinator::new_with_status_commit_clock(
             self.challenges.clone(),
             self.purchases.clone(),
+            self.status.clone(),
             config,
             evaluator,
             keypair(32),
@@ -951,6 +989,7 @@ impl Deployment {
             self.rail.clone(),
             self.filings.clone(),
             failed_challenge_disposition,
+            Arc::new(FixtureStatusCommitClock),
         )?)
     }
 
@@ -981,6 +1020,7 @@ impl Deployment {
             market,
             purchases,
             challenges,
+            status,
             allocation_id,
             admission_envelope_sha256,
             rail,
@@ -989,6 +1029,7 @@ impl Deployment {
         // The serving lock lives on the open handles, so every one of them
         // closes before the database can be served again.
         drop(challenges);
+        drop(status);
         drop(purchases);
         drop(market);
         drop(_authority);
@@ -996,6 +1037,7 @@ impl Deployment {
         let market = authority.finding_market_store();
         let purchases = authority.finding_purchase_store();
         let challenges = authority.finding_challenge_store();
+        let status = authority.finding_status_store();
         Ok(Self {
             _temp,
             database,
@@ -1004,6 +1046,7 @@ impl Deployment {
             market,
             purchases,
             challenges,
+            status,
             allocation_id,
             admission_envelope_sha256,
             rail,
@@ -1273,14 +1316,14 @@ fn signed_admission_with_backing_and_schedule(
         capability_scope: format!("finding:{}", challenged.finding.finding_id),
         publisher_operator_id: OPERATOR_ID.to_string(),
         payee_destination: "rail:venue-ledger:seller-42".to_string(),
-        fee_schedule_envelope_sha256: schedule_digest.to_owned(),
+        fee_schedule_envelope_sha256: schedule_digest.to_string(),
         verifier_report_id: hex64('5'),
         verifier_report_envelope_sha256: hex64('7'),
         terms_envelope_sha256: signed_envelope_sha256(terms)?,
         profile_envelope_sha256: challenged.profile_envelope_sha256,
         fee_terminals: vec![
             FindingFeeTerminalBinding {
-                fee_schedule_envelope_sha256: schedule_digest.to_owned(),
+                fee_schedule_envelope_sha256: schedule_digest.to_string(),
                 event: FindingFeeEvent::Publication,
                 payer: "seller-42".to_string(),
                 amount: usd(100),
@@ -1290,7 +1333,7 @@ fn signed_admission_with_backing_and_schedule(
                 observation_sha256: hex64('9'),
             },
             FindingFeeTerminalBinding {
-                fee_schedule_envelope_sha256: schedule_digest.to_owned(),
+                fee_schedule_envelope_sha256: schedule_digest.to_string(),
                 event: FindingFeeEvent::ParticipationEpoch { epoch_index: 0 },
                 payer: "seller-42".to_string(),
                 amount: usd(500),
@@ -1871,6 +1914,7 @@ fn digest_mismatch_case(
                 reservation_id: DENY_RESERVATION_ID.to_string(),
                 purchase_intent_id: DENY_INTENT_ID.to_string(),
                 authoritative_payment_operation_id: DENY_PAYMENT_ID.to_string(),
+                status_proof: None,
             })?,
         );
     }
@@ -1933,7 +1977,7 @@ fn digest_mismatch_case(
             revoked_from: None,
             observed_at: NOW,
         },
-        &keypair(36),
+        &keypair(37),
     )?;
     let delivery_policy = challenged
         .profile
@@ -1952,7 +1996,7 @@ fn digest_mismatch_case(
             revoked_from: None,
             observed_at: NOW,
         },
-        &keypair(36),
+        &keypair(37),
     )?;
 
     // Retain the exact reservation and backing that produced the denial.
@@ -1965,7 +2009,7 @@ fn digest_mismatch_case(
             purchase_intent_id: DENY_INTENT_ID,
             authoritative_payment_operation_id: DENY_PAYMENT_ID,
             payer_hex: &keypair(41).public_key().to_hex(),
-            agent_id: "agent-buyer-41",
+            agent_id: "agent-buyer-01",
             payout_destination: EVM_BUYER_DESTINATION,
             finding_id: &challenged.finding.finding_id,
             listing_id: LISTING_ID,
@@ -2175,7 +2219,7 @@ fn evidence_invalid_case(
             revoked_from: None,
             observed_at: NOW,
         },
-        &keypair(36),
+        &keypair(37),
     )?;
     Ok(EvidenceInvalidCase {
         challenge: challenged.sign_challenge(authorization, branch, affected)?,
@@ -2368,7 +2412,7 @@ fn replay_case(
             revoked_from: None,
             observed_at: NOW,
         },
-        &keypair(36),
+        &keypair(37),
     )?;
     Ok(ReplayCase {
         challenge: challenged.sign_challenge(authorization, branch, affected)?,
@@ -2484,7 +2528,7 @@ fn unrelated_audit_round() -> Result<FindingAuditRound, AnyError> {
 fn audit_round_over(eligible: Vec<EligibleListing>) -> Result<FindingAuditRound, AnyError> {
     let revealed_seed = audit_seed();
     let audit_authority = keypair(35);
-    let randomness_witness = keypair(37);
+    let randomness_witness = keypair(38);
     let eligible_snapshot_at = NOW - 2_000;
     let seed_witnessed_at = NOW - 1_500;
     let eligible_snapshot_digest = derive_eligible_snapshot_digest(&eligible)?;
@@ -2621,12 +2665,12 @@ fn venue_audit_challenge_for_round(
     Ok(SignedExportEnvelope::sign(challenge, &keypair(35))?)
 }
 
-/// Whether the sale path admitted the record's payout destination. A
-/// destination that was never admitted must never reach a distribution.
+/// Whether the test preserves the sale path's payout standing or removes
+/// it afterward to model a corrupted retained purchase index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PayoutAdmission {
-    Admitted,
-    Withheld,
+enum PayoutStanding {
+    Intact,
+    RemovedAfterSettlement,
 }
 
 /// Open one reservation, take its slot, and close it against a real
@@ -2647,7 +2691,7 @@ fn settle_purchase(
         realized_spend_units,
         "USD",
         now,
-        PayoutAdmission::Admitted,
+        PayoutStanding::Intact,
     )
 }
 
@@ -2662,7 +2706,7 @@ fn settle_purchase_with(
     realized_spend_units: u64,
     record_currency: &str,
     now: u64,
-    admission: PayoutAdmission,
+    standing: PayoutStanding,
 ) -> Result<SettledPurchase, AnyError> {
     let (finding, _) = finding_artifact()?;
     let reservation_id = format!("reservation-{tag}");
@@ -2677,9 +2721,9 @@ fn settle_purchase_with(
         41
     });
     let withheld_destination = buyer_destination(99);
-    let settlement_destination = match admission {
-        PayoutAdmission::Admitted => &refund_destination,
-        PayoutAdmission::Withheld => &withheld_destination,
+    let settlement_destination = match standing {
+        PayoutStanding::Intact => &refund_destination,
+        PayoutStanding::RemovedAfterSettlement => &withheld_destination,
     };
     let buyer_hex = buyer.public_key().to_hex();
     let ask_digest = digest(&format!("ask-{tag}"));
@@ -2780,7 +2824,7 @@ fn settle_purchase_with(
         encumbrance_id,
         delivery_receipt_id: String::new(),
         payment_reference: payment_operation_id.clone(),
-        payout_destination: refund_destination.clone(),
+        payout_destination: settlement_destination.clone(),
         recorded_at: now,
     };
     let delivery =
@@ -2791,7 +2835,7 @@ fn settle_purchase_with(
     let signed = SignedFindingPurchaseRecord::sign(record, &keypair(16))?;
     let record_json = canonical_json_bytes(&signed)?;
     let record_sha256 = sha256_hex(&record_json);
-    if admission == PayoutAdmission::Admitted {
+    if standing == PayoutStanding::Intact {
         deployment
             .purchases
             .admit_payout_destination(allocation_id, &refund_destination, now)?;
@@ -2824,6 +2868,37 @@ fn settle_purchase_with(
         delivery_checkpoint_transparency: delivery.checkpoint_transparency,
         delivery_authority_status: delivery.authority_status,
     })
+}
+
+/// Corrupt the retained payout index after all legitimate preconditions have
+/// been established. Production code cannot delete this immutable row; the
+/// fixture proves the serving-owner integrity fence denies the later payout.
+fn remove_payout_standing_for_test(
+    deployment: &Deployment,
+    allocation_id: &str,
+    destination: &str,
+) -> TestResult {
+    let mut connection = rusqlite::Connection::open(&deployment.database)?;
+    let transaction = connection.transaction()?;
+    transaction.execute_batch("DROP TRIGGER payout_destinations_no_delete;")?;
+    let removed = transaction.execute(
+        "DELETE FROM payout_destinations WHERE allocation_id = ?1 AND destination = ?2",
+        rusqlite::params![allocation_id, destination],
+    )?;
+    if removed != 1 {
+        return Err("adversarial payout standing fixture removed no row".into());
+    }
+    transaction.execute_batch(
+        r#"
+        CREATE TRIGGER payout_destinations_no_delete
+        BEFORE DELETE ON payout_destinations
+        BEGIN
+            SELECT RAISE(ABORT, 'admitted payout destination must be retained');
+        END;
+        "#,
+    )?;
+    transaction.commit()?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -2862,6 +2937,15 @@ fn governance_signed_by(
     fee_schedule_signer: &Keypair,
 ) -> Result<Governance, AnyError> {
     let signer = signer.clone();
+    let fee_schedule = sample_fee_schedule(fee_schedule_signer)?;
+    let terms = market_terms(CLAIM_WINDOW_SECS)?;
+    let allocation = allocation_body(LISTING_ID, &hex64('1'))?;
+    let admission = signed_admission_with_backing_and_schedule(
+        &allocation.allocation_id,
+        &terms,
+        &hex64('6'),
+        &signed_envelope_sha256(&fee_schedule)?,
+    )?;
     let listing = sample_listing(&signer)?;
     let activation = sample_activation(&signer, &listing)?;
     let charter = sample_charter(&signer)?;
@@ -2882,16 +2966,6 @@ fn governance_signed_by(
         GenericGovernanceCaseKind::Appeal,
         Some(sanction_case.body.case_id.clone()),
         Some(sanction_case.body.case_id.clone()),
-    )?;
-    let fee_schedule = sample_fee_schedule(fee_schedule_signer)?;
-    let schedule_digest = signed_envelope_sha256(&fee_schedule)?;
-    let terms = market_terms(CLAIM_WINDOW_SECS)?;
-    let allocation = allocation_body(LISTING_ID, &hex64('1'))?;
-    let admission = signed_admission_with_backing_and_schedule(
-        &allocation.allocation_id,
-        &terms,
-        &hex64('6'),
-        &schedule_digest,
     )?;
     Ok(Governance {
         fee_schedule,
@@ -3491,13 +3565,32 @@ fn close_challenge(
     now: u64,
 ) -> Result<FindingChallengeState, AnyError> {
     deployment.challenges.begin_evaluation(challenge_id, now)?;
-    Ok(deployment.challenges.record_test_verdict(
-        challenge_id,
-        verdict,
-        outcome_envelope_sha256,
-        outcome_envelope_json,
-        now,
-    )?)
+    if verdict == FindingChallengeVerdict::Upheld {
+        let outcome: SignedFindingChallengeOutcome = serde_json::from_slice(outcome_envelope_json)?;
+        let calculation = outcome
+            .body
+            .penalty_calculation
+            .as_ref()
+            .ok_or("an upheld fixture outcome carries its exposure calculation")?;
+        Ok(deployment
+            .challenges
+            .record_test_upheld_verdict_with_exposure_fence(
+                challenge_id,
+                outcome_envelope_sha256,
+                outcome_envelope_json,
+                &outcome.body.backing_allocation_id,
+                calculation.open_per_sale_encumbrance_units,
+                now,
+            )?)
+    } else {
+        Ok(deployment.challenges.record_test_verdict(
+            challenge_id,
+            verdict,
+            outcome_envelope_sha256,
+            outcome_envelope_json,
+            now,
+        )?)
+    }
 }
 
 /// The evaluator-signed upheld outcome the uphold transaction consumes.
@@ -3516,12 +3609,6 @@ fn upheld_outcome(
         listing_id: LISTING_ID.to_string(),
         backing_allocation_id: allocation_id.to_string(),
         authorization: challenge.body.authorization.kind(),
-        audit_epoch_envelope_sha256: match &challenge.body.authorization {
-            FindingChallengeAuthorization::BuyerSubmission(_) => None,
-            FindingChallengeAuthorization::VenueAudit(audit) => {
-                Some(audit.audit_epoch_envelope_sha256.clone())
-            }
-        },
         evidence_kind: challenge.body.evidence.kind(),
         verifier_profile_envelope_sha256: challenge.body.profile_envelope_sha256.clone(),
         evidence_bundle_digest: hex64('e'),
@@ -3534,6 +3621,12 @@ fn upheld_outcome(
         ),
         reason: "evidence_signature_invalid".to_string(),
         trigger_digest: hex64('9'),
+        audit_epoch_envelope_sha256: match &challenge.body.authorization {
+            FindingChallengeAuthorization::VenueAudit(audit) => {
+                Some(audit.audit_epoch_envelope_sha256.clone())
+            }
+            FindingChallengeAuthorization::BuyerSubmission(_) => None,
+        },
         penalty_calculation: Some(chio_finding::FindingPenaltyCalculation {
             base_finding_stake_units: 300,
             open_per_sale_encumbrance_units,
@@ -4149,6 +4242,39 @@ fn finding_challenge_submission_rejects_noncanonical_finding_before_money_moves(
 }
 
 #[test]
+fn finding_challenge_submission_rejects_a_finding_from_another_status_feed() -> TestResult {
+    let deployment = deployment()?;
+    let mut config = market_config();
+    config.status_feed_operator_ref = "status-feed/other-venue".to_owned();
+    config
+        .status_feed_operator
+        .feed_id
+        .clone_from(&config.status_feed_operator_ref);
+    config
+        .status_feed_service_bond
+        .feed_id
+        .clone_from(&config.status_feed_operator_ref);
+    let coordinator =
+        deployment.coordinator_under(&config, FindingDisputeLockDisposition::Forfeited)?;
+    let challenge = buyer_challenge(&keypair(41))?;
+    let (_, raw) = finding_artifact()?;
+
+    let refused = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("a different configured status feed must reject the filing");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::FindingBinding("status_feed_ref")
+    ));
+    assert!(deployment
+        .challenges
+        .get_challenge(&challenge.body.challenge_id)?
+        .is_none());
+    assert!(deployment.rail.charges().is_empty());
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_venue_audit_charges_nothing_and_locks_nothing() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
@@ -4275,9 +4401,8 @@ fn finding_challenge_a_filing_whose_fee_never_settled_is_not_evaluable() -> Test
     let challenge_id = challenge.body.challenge_id.clone();
     let (_, raw) = finding_artifact()?;
 
-    // The row is recorded before the charge, so a rail that cannot move
-    // the fee leaves the challenge durable with nothing collected and
-    // nothing locked.
+    // The challenge and lock identity are recorded before the charge. A
+    // rail that cannot move the fee leaves both durable, but no funded lock.
     deployment.rail.refuse();
     let error = coordinator
         .submit(&challenge, &raw, NOW)
@@ -4291,6 +4416,15 @@ fn finding_challenge_a_filing_whose_fee_never_settled_is_not_evaluable() -> Test
         .challenges
         .get_dispute_lock(&challenge_id)?
         .is_none());
+    let reservation_exists = rusqlite::Connection::open(&deployment.database)?.query_row(
+        "SELECT EXISTS(SELECT 1 FROM dispute_lock_reservations WHERE challenge_id = ?1)",
+        [&challenge_id],
+        |row| row.get::<_, bool>(0),
+    )?;
+    assert!(
+        reservation_exists,
+        "the dispute lock identity must be fenced before fee dispatch"
+    );
 
     let error = coordinator
         .admit_evaluation(&challenge_id, NOW + 1)
@@ -5007,7 +5141,8 @@ fn finding_challenge_filing_terms_must_be_the_ones_the_signed_schedule_prices() 
         ChallengeCoordinatorError::DisputeTerms("fee_schedule_envelope_sha256")
     ));
 
-    // A schedule this venue never published resolves to nothing at all.
+    // Even when both monetary artifacts agree on a substitute schedule,
+    // the admission-pinned schedule remains authoritative.
     let challenge = buyer_challenge_with(&buyer, |submission| {
         submission.dispute_fee_terminal.fee_schedule_envelope_sha256 = hex64('5');
         submission.dispute_lock_ref.fee_schedule_envelope_sha256 = hex64('5');
@@ -5015,10 +5150,13 @@ fn finding_challenge_filing_terms_must_be_the_ones_the_signed_schedule_prices() 
     let error = coordinator
         .submit(&challenge, &raw, NOW)
         .expect_err("an unresolvable schedule digest must not be admitted");
-    assert!(matches!(
-        error,
-        ChallengeCoordinatorError::UnknownFeeSchedule
-    ));
+    assert!(
+        matches!(
+            &error,
+            ChallengeCoordinatorError::DisputeTerms("fee_schedule_envelope_sha256")
+        ),
+        "{error:?}"
+    );
 
     assert!(
         deployment.rail.charges().is_empty(),
@@ -5725,7 +5863,13 @@ fn finding_challenge_a_bad_signature_under_the_pinned_case_key_blocks_nothing() 
             NOW + 2,
         )
         .expect_err("a forged governance case opens no liability");
-    assert!(matches!(refused, ChallengeCoordinatorError::PenaltyMint(_)));
+    assert!(
+        matches!(
+            &refused,
+            ChallengeCoordinatorError::UnknownGovernanceCasePolicy
+        ),
+        "{refused:?}"
+    );
     assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
     assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
@@ -5904,7 +6048,7 @@ fn finding_challenge_a_sale_from_the_previous_backing_claims_nothing() -> TestRe
         40,
         "USD",
         NOW + 1,
-        PayoutAdmission::Admitted,
+        PayoutStanding::Intact,
     )?;
     // The second buyer's destination is admitted under the liable
     // allocation as well, as it would be for a buyer this seller had
@@ -5970,7 +6114,7 @@ fn finding_challenge_a_sale_from_the_previous_backing_claims_nothing() -> TestRe
 }
 
 #[test]
-fn finding_challenge_purchase_venue_and_fee_rotation_preserve_historical_standing() -> TestResult {
+fn finding_challenge_purchase_and_venue_rotation_preserve_historical_standing() -> TestResult {
     let deployment = deployment()?;
     let sale = settle_purchase(
         &deployment,
@@ -5982,7 +6126,6 @@ fn finding_challenge_purchase_venue_and_fee_rotation_preserve_historical_standin
     let mut rotated = market_config();
     rotated.purchase = authority_pin(48, "purchase-rotated");
     rotated.venue = authority_pin(49, "venue-rotated");
-    rotated.fee_schedule_operator_keys = vec![keypair(50).public_key().to_hex()];
     let coordinator =
         deployment.coordinator_under(&rotated, FindingDisputeLockDisposition::Forfeited)?;
     let governance = governance()?;
@@ -6063,7 +6206,7 @@ fn finding_challenge_harm_in_another_currency_seals_nothing() -> TestResult {
         60,
         "EUR",
         NOW,
-        PayoutAdmission::Admitted,
+        PayoutStanding::Intact,
     )?;
     let ready =
         ready_to_uphold_with_terms_and_penalty(&deployment, &coordinator, &terms, 100, "USD")?;
@@ -6109,7 +6252,8 @@ fn finding_challenge_the_payout_never_seals_inside_the_claim_window() -> TestRes
     let signed = market_terms(CLAIM_WINDOW)?;
     let deployment = deployment_publishing_terms(std::slice::from_ref(&signed))?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
-    let governance = governance()?;
+    let mut governance = governance()?;
+    governance.admission = signed_admission(&deployment.allocation_id, &signed)?;
     let sale = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 50, NOW)?;
     let ready =
         ready_to_uphold_with_terms_and_penalty(&deployment, &coordinator, &signed, 100, "USD")?;
@@ -6136,10 +6280,11 @@ fn finding_challenge_the_payout_never_seals_inside_the_claim_window() -> TestRes
     // Adjudication lands and the liability blocks the listing, but the
     // call that opens the window cannot also close it.
     let opened_at = NOW + 2;
-    assert!(matches!(
-        uphold_at(&signed, opened_at),
-        Err(ChallengeCoordinatorError::ClaimWindowOpen)
-    ));
+    let opened = uphold_at(&signed, opened_at);
+    assert!(
+        matches!(&opened, Err(ChallengeCoordinatorError::ClaimWindowOpen)),
+        "{opened:?}"
+    );
     let head = deployment
         .challenges
         .get_liability(&derive_liability_key(
@@ -6381,9 +6526,10 @@ fn finding_challenge_appeal_accepts_a_prior_hold_across_penalty_rotation() -> Te
     let case = upheld_liability()?;
     let mut rotated_config = market_config();
     rotated_config.market_penalty = authority_pin(50, "market-penalty-rotated");
-    let coordinator = FindingChallengeCoordinator::new(
+    let coordinator = FindingChallengeCoordinator::new_with_status_commit_clock(
         case.deployment.challenges.clone(),
         case.deployment.purchases.clone(),
+        case.deployment.status.clone(),
         &rotated_config,
         keypair(31),
         keypair(32),
@@ -6392,6 +6538,7 @@ fn finding_challenge_appeal_accepts_a_prior_hold_across_penalty_rotation() -> Te
         case.deployment.rail.clone(),
         case.deployment.filings.clone(),
         FindingDisputeLockDisposition::Forfeited,
+        Arc::new(FixtureStatusCommitClock),
     )?;
     let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
 
@@ -6721,9 +6868,10 @@ fn finding_challenge_final_penalty_uses_the_rotated_authority_window() -> TestRe
     rotated_config.market_penalty = authority_pin(50, "market-penalty-rotated");
     rotated_config.market_penalty.valid_from = deadline + 5;
     let resolved_at = deadline + 10;
-    let coordinator = FindingChallengeCoordinator::new(
+    let coordinator = FindingChallengeCoordinator::new_with_status_commit_clock(
         case.deployment.challenges.clone(),
         case.deployment.purchases.clone(),
+        case.deployment.status.clone(),
         &rotated_config,
         keypair(31),
         keypair(32),
@@ -6732,6 +6880,7 @@ fn finding_challenge_final_penalty_uses_the_rotated_authority_window() -> TestRe
         case.deployment.rail.clone(),
         case.deployment.filings.clone(),
         FindingDisputeLockDisposition::Forfeited,
+        Arc::new(FixtureStatusCommitClock),
     )?;
 
     let resolution = coordinator.resolve_appeal(
@@ -6793,66 +6942,48 @@ fn finding_challenge_appeal_finality_uses_the_sanctions_retained_governance_poli
 }
 
 #[test]
-fn finding_challenge_refuses_snapshot_refresh_after_root_binding() -> TestResult {
-    let case = finalizing_liability()?;
-    let authorized = case.authorized()?;
-    let observed_at = SETTLEMENT_NOW + 10;
-    let proof = anchor_proof()?;
-    let root_binding = case
-        .deployment
-        .challenges
-        .get_effect_root_binding(&enforcement_root_intent_key())?
-        .ok_or("the finalizing fixture binds its impairment proof")?;
-    let evidence_hash = root_binding.evidence_hash;
-    let merkle_root = root_binding.merkle_root;
-    let old_seller_intent = authorized
-        .enforcement
-        .body
-        .effect_intents
-        .iter()
-        .find(|binding| binding.kind == chio_finding::FindingEffectIntentKind::SellerImpair)
-        .map(|binding| binding.intent_id.as_str())
-        .ok_or("the original enforcement carries its seller intent")?;
-    let old_anchor_commitment = anchor_evidence_intent_commitment(
-        &authorized.enforcement.body.liability_key,
-        old_seller_intent,
-        &authorized.enforcement.body.penalty_envelope_sha256,
-        &merkle_root,
-    );
-    assert_eq!(
-        case.deployment.challenges.record_effect_intent(
-            &derive_anchor_evidence_intent_key(&evidence_hash),
-            FindingEffectIntentKind::RootIntent,
-            &old_anchor_commitment,
-            Some(&authorized.enforcement.body.liability_key),
-            false,
-            observed_at,
-        )?,
-        FindingChallengeWriteOutcome::Inserted
-    );
-    let mut snapshot_body = case.snapshot.body.clone();
-    snapshot_body.snapshot_id.clear();
-    snapshot_body.block_number = snapshot_body.block_number.saturating_add(1);
-    snapshot_body.block_hash = chain_hash(0xbd);
-    snapshot_body.observed_at = observed_at;
-    snapshot_body.snapshot_id = compute_snapshot_id(&snapshot_body)?;
-    let snapshot = SignedExportEnvelope::sign(snapshot_body, &keypair(34))?;
-    let refreshed = match case.coordinator.refresh_finalizing_enforcement(
+fn finding_challenge_snapshot_refresh_stops_once_exact_enforcement_is_anchored() -> TestResult {
+    let case = upheld_liability()?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+    let authorized = impair_after_appeal(
+        &case.coordinator,
+        &case.governance,
+        &case.upheld,
+        &case.outcome,
+        &identity,
+        APPEAL_FINAL_AT,
+    )?;
+    let seller = keypair(22).public_key();
+    let observed_at = APPEAL_FINAL_AT + 10;
+    let mut snapshot = FindingFinalizedBondSnapshot {
+        schema: FINDING_FINALIZED_BOND_SNAPSHOT_SCHEMA_V1.to_string(),
+        snapshot_id: String::new(),
+        chain_id: authorized.enforcement.body.vault.chain_id.clone(),
+        vault_contract: authorized.enforcement.body.vault.vault_contract.clone(),
+        vault_id: authorized.enforcement.body.vault.vault_id.clone(),
+        seller: seller.clone(),
+        allocation_id: authorized.enforcement.body.seller_allocation_id.clone(),
+        locked_amount: 5_000,
+        held_amount: authorized.enforcement.body.amount.units,
+        slashed_amount: 0,
+        currency: authorized.enforcement.body.amount.currency.clone(),
+        block_number: 21_000_200,
+        block_hash: chain_hash(0xbd),
+        finality_policy: "confirmations>=64".to_string(),
+        observed_finality: FindingObservedFinality::Confirmations { depth: 96 },
+        identity_registry_record: "registry/operators/venue-42".to_string(),
+        operator_key_hash: OPERATOR_KEY_HASH.to_string(),
+        operator_key_epoch: PINNED_KEY_EPOCH,
+        observed_at,
+    };
+    snapshot.snapshot_id = compute_snapshot_id(&snapshot)?;
+    let snapshot = SignedExportEnvelope::sign(snapshot, &keypair(34))?;
+    let refreshed = case.coordinator.refresh_finalizing_enforcement(
         &authorized,
         &snapshot,
-        &case.seller,
+        &seller,
         observed_at + 1,
-    ) {
-        Err(ChallengeCoordinatorError::Settlement(detail)) => {
-            assert!(
-                detail.contains("forbidden after the enforcement root is bound"),
-                "unexpected refresh rejection: {detail}"
-            );
-            return Ok(());
-        }
-        Err(other) => return Err(format!("unexpected refresh rejection: {other}").into()),
-        Ok(refreshed) => refreshed,
-    };
+    )?;
     assert_eq!(
         refreshed.enforcement.body.bond_snapshot_envelope_sha256,
         signed_envelope_sha256(&snapshot)?
@@ -6861,193 +6992,94 @@ fn finding_challenge_refuses_snapshot_refresh_after_root_binding() -> TestResult
         refreshed.enforcement_envelope_sha256,
         authorized.enforcement_envelope_sha256
     );
-    assert_eq!(refreshed.slash.penalty, authorized.slash.penalty);
-    assert_eq!(refreshed.effect_intent_keys, authorized.effect_intent_keys);
-    let retained_after_refresh = case
-        .deployment
-        .challenges
-        .get_finalizing_authorization(&refreshed.enforcement.body.liability_key)?
-        .ok_or("the refreshed authorization is retained for restart recovery")?;
-    let expected_retained = canonical_json_bytes(&serde_json::json!({
-        "enforcement": refreshed.enforcement.clone(),
-        "slash": refreshed.slash.clone(),
-        "finalizationPolicy": market_config().venue_finalization,
-        "sanctionCaseId": FIXTURE_SANCTION_CASE_ID,
-        "heldPenaltyId": FIXTURE_HELD_PENALTY_ID,
-    }))?;
-    assert_eq!(retained_after_refresh.authorization_json, expected_retained);
-    assert_eq!(
-        retained_after_refresh.authorization_sha256,
-        sha256_hex(&expected_retained)
-    );
-    assert_eq!(retained_after_refresh.recorded_at, observed_at + 1);
-    let refreshed_seller_intent = refreshed
+
+    let proof = enforcement_anchor_proof(&refreshed.enforcement)?;
+    let evidence_hash = anchor_evidence_hash(&refreshed.enforcement)?;
+    let merkle_root = proof.receipt_inclusion.merkle_root.to_hex_prefixed();
+    let root_intent = refreshed
         .enforcement
         .body
         .effect_intents
         .iter()
-        .find(|binding| binding.kind == chio_finding::FindingEffectIntentKind::SellerImpair)
+        .find(|binding| binding.kind == chio_finding::FindingEffectIntentKind::RootIntent)
         .map(|binding| binding.intent_id.as_str())
-        .ok_or("the refreshed enforcement carries its seller intent")?;
-    let refreshed_anchor_commitment = anchor_evidence_intent_commitment(
+        .ok_or("refreshed enforcement carries its root intent")?;
+    case.deployment.challenges.bind_effect_root(
+        root_intent,
         &refreshed.enforcement.body.liability_key,
-        refreshed_seller_intent,
-        &refreshed.enforcement.body.penalty_envelope_sha256,
         &merkle_root,
-    );
-    assert_eq!(refreshed_anchor_commitment, old_anchor_commitment);
-    assert_eq!(
-        case.deployment.challenges.record_effect_intent(
-            &derive_anchor_evidence_intent_key(&evidence_hash),
-            FindingEffectIntentKind::RootIntent,
-            &refreshed_anchor_commitment,
-            Some(&refreshed.enforcement.body.liability_key),
-            false,
-            observed_at + 1,
-        )?,
-        FindingChallengeWriteOutcome::ExistingSame,
-        "a crash after the anchor fence must resume under a refreshed snapshot"
-    );
-
-    let seller_intent = authorized
-        .effect_intent_keys
-        .iter()
-        .find(|(kind, _)| *kind == FindingEffectIntentKind::SellerImpair)
-        .map(|(_, key)| key)
-        .ok_or("the impairment authorization fences its seller intent")?;
-    case.deployment.challenges.advance_effect_intent(
-        seller_intent,
-        FindingEffectIntentState::Dispatched,
+        &evidence_hash,
         observed_at + 2,
     )?;
+
     let refused = case
         .coordinator
-        .refresh_finalizing_enforcement(&refreshed, &snapshot, &case.seller, observed_at + 3)
-        .expect_err("a dispatched impairment can no longer refresh its snapshot");
+        .refresh_finalizing_enforcement(&refreshed, &snapshot, &seller, observed_at + 3)
+        .expect_err("an anchored enforcement cannot be re-signed around another snapshot");
     assert!(matches!(
         refused,
         ChallengeCoordinatorError::Settlement(detail)
-            if detail.contains("only before dispatch")
+            if detail.contains("only before anchor binding or dispatch")
     ));
-    case.deployment.challenges.advance_effect_intent(
-        seller_intent,
-        FindingEffectIntentState::Failed,
-        observed_at + 4,
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_failed_impairment_renews_snapshot_and_retains_root_lineage() -> TestResult {
+    let case = finalizing_liability()?;
+    let publisher = MiningPublisher::new();
+    case.finalize(&publisher, SETTLEMENT_NOW)?;
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Failed);
+    let original_binding = case
+        .deployment
+        .challenges
+        .get_effect_root_binding(&enforcement_root_intent_key())?
+        .ok_or("the first published root is retained")?;
+
+    let refresh_at = SETTLEMENT_NOW + 120;
+    let mut snapshot_body = case.snapshot.body.clone();
+    snapshot_body.observed_at = refresh_at - 1;
+    snapshot_body.snapshot_id.clear();
+    snapshot_body.snapshot_id = compute_snapshot_id(&snapshot_body)?;
+    let snapshot = SignedExportEnvelope::sign(snapshot_body, &keypair(34))?;
+    let refreshed = case.coordinator.refresh_finalizing_enforcement(
+        &case.authorized()?,
+        &snapshot,
+        &case.seller,
+        refresh_at,
     )?;
-    let mut refreshed_observation = qualified_observation();
-    refreshed_observation.block_hash = Some(snapshot.body.block_hash.clone());
-    for retry_at in [observed_at + 5, observed_at + 6] {
-        let retry = case.coordinator.finalize(
-            &refreshed.enforcement.body.liability_key,
-            &refreshed.enforcement,
-            &refreshed.slash.penalty,
-            &snapshot,
-            &case.seller,
-            &settlement_config()?,
-            &settlement_config()?.operator_address,
-            &evm_vault_snapshot(),
-            &proof,
-            &ScriptedObservations::then_qualified(vec![refreshed_observation.clone()]),
-            &UnreachableChainPublisher,
-            retry_at,
-        );
-        assert!(
-            matches!(retry, Err(ChallengeCoordinatorError::Publisher(_))),
-            "the exact refreshed authorization must survive a failed dispatch: {retry:?}"
-        );
-        let intent = case
-            .deployment
-            .challenges
-            .get_effect_intent(seller_intent)?
-            .ok_or("seller impairment intent is durable")?;
-        assert_eq!(intent.state, FindingEffectIntentState::Failed);
-    }
-    let stale_at = snapshot
-        .body
-        .observed_at
-        .saturating_add(MAX_SNAPSHOT_AGE_SECS)
-        .saturating_add(1);
-    let stale_retry = case.coordinator.finalize(
-        &refreshed.enforcement.body.liability_key,
+    let completed = case.coordinator.finalize(
+        &case.liability_key,
         &refreshed.enforcement,
-        &refreshed.slash.penalty,
+        &case.penalty,
         &snapshot,
         &case.seller,
         &settlement_config()?,
         &settlement_config()?.operator_address,
         &evm_vault_snapshot(),
-        &proof,
+        &enforcement_anchor_proof(&refreshed.enforcement)?,
         &ScriptedObservations::qualified(),
-        &UnreachableChainPublisher,
-        stale_at,
-    );
-    assert!(
-        matches!(stale_retry, Err(ChallengeCoordinatorError::Settlement(_))),
-        "the aged-out failed authorization must require a fresh snapshot: {stale_retry:?}"
-    );
-    let mut recovery_snapshot_body = snapshot.body.clone();
-    recovery_snapshot_body.snapshot_id.clear();
-    recovery_snapshot_body.block_number = recovery_snapshot_body.block_number.saturating_add(1);
-    recovery_snapshot_body.block_hash = chain_hash(0xbe);
-    recovery_snapshot_body.observed_at = stale_at;
-    recovery_snapshot_body.snapshot_id = compute_snapshot_id(&recovery_snapshot_body)?;
-    let recovery_snapshot = SignedExportEnvelope::sign(recovery_snapshot_body, &keypair(34))?;
-    let retryable_refreshed = case.coordinator.refresh_finalizing_enforcement(
-        &refreshed,
-        &recovery_snapshot,
-        &case.seller,
-        stale_at,
+        &publisher,
+        refresh_at + 1,
     )?;
-    assert_eq!(
-        retryable_refreshed
-            .enforcement
-            .body
-            .bond_snapshot_envelope_sha256,
-        signed_envelope_sha256(&recovery_snapshot)?,
-        "a failed exact intent can recover after its old snapshot expires"
-    );
-    let mut recovery_observation = qualified_observation();
-    recovery_observation.block_hash = Some(recovery_snapshot.body.block_hash.clone());
-    case.deployment.challenges.advance_effect_intent(
-        seller_intent,
-        FindingEffectIntentState::Dispatched,
-        stale_at + 1,
+    assert!(matches!(
+        completed,
+        FindingFinalization::Reconciled(FindingImpairmentOutcome::Confirmed { .. })
+    ));
+    let current_binding = case
+        .deployment
+        .challenges
+        .get_effect_root_binding(&enforcement_root_intent_key())?
+        .ok_or("the renewed published root is retained")?;
+    assert_ne!(current_binding, original_binding);
+    let connection = rusqlite::Connection::open(&case.deployment.database)?;
+    let refreshes = connection.query_row(
+        "SELECT COUNT(*) FROM effect_root_bindings_refreshes WHERE intent_key = ?1",
+        [&enforcement_root_intent_key()],
+        |row| row.get::<_, i64>(0),
     )?;
-    case.deployment.challenges.advance_effect_intent(
-        seller_intent,
-        FindingEffectIntentState::Confirmed,
-        stale_at + 1,
-    )?;
-    let confirmed_retry = case.coordinator.finalize(
-        &retryable_refreshed.enforcement.body.liability_key,
-        &retryable_refreshed.enforcement,
-        &retryable_refreshed.slash.penalty,
-        &recovery_snapshot,
-        &case.seller,
-        &settlement_config()?,
-        &settlement_config()?.operator_address,
-        &evm_vault_snapshot(),
-        &proof,
-        &ScriptedObservations::then_qualified(vec![
-            recovery_observation.clone(),
-            recovery_observation,
-        ]),
-        &UnreachablePublisher,
-        stale_at + 2,
-    );
-    assert!(
-        confirmed_retry.is_ok(),
-        "the exact refreshed authorization must survive confirmed recovery: {confirmed_retry:?}"
-    );
-    assert_eq!(
-        case.deployment
-            .challenges
-            .get_effect_intent(seller_intent)?
-            .ok_or("seller impairment intent remains durable")?
-            .state,
-        FindingEffectIntentState::Confirmed
-    );
-    Err("snapshot refresh unexpectedly succeeded after root binding".into())
+    assert_eq!(refreshes, 1, "the original root remains in the base row");
+    Ok(())
 }
 
 #[test]
@@ -7298,10 +7330,7 @@ fn finding_challenge_a_rejected_outcome_never_authorizes_an_impairment() -> Test
 
     let refused = resolve_final(&case, &identity, &rejected, APPEAL_FINAL_AT)
         .expect_err("only an upheld adjudication reaches the penalty lane");
-    assert!(matches!(
-        refused,
-        ChallengeCoordinatorError::VerdictNotUpheld
-    ));
+    assert!(matches!(refused, ChallengeCoordinatorError::OutcomeBinding));
     assert!(case
         .deployment
         .challenges
@@ -7329,7 +7358,7 @@ fn finding_challenge_an_outcome_the_store_never_recorded_authorizes_no_impairmen
 }
 
 #[test]
-fn finding_challenge_a_second_appeal_finality_reuses_the_root_intent() -> TestResult {
+fn finding_challenge_a_second_appeal_finality_mints_no_new_root_intent() -> TestResult {
     let case = upheld_liability()?;
     let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
     let AppealResolution::Finalizing(first) =
@@ -7729,560 +7758,7 @@ impl FindingImpairmentPublisher for ReorgedReceiptPublisher {
     }
 }
 
-/// Whether the enforcement root behind a finalizing liability has been
-/// published, as the operator's anchoring step would leave it.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum EnforcementRoot {
-    Confirmed,
-    Mismatched,
-    Unpublished,
-}
-
-/// One liability head driven to `finalizing` with its seller-impairment
-/// intent fenced, paired with the enforcement the settlement choke point
-/// verifies. The head carries exactly the allocation and vault the
-/// enforcement names, as the appeal path leaves it.
-struct FinalizingLiability {
-    deployment: Deployment,
-    coordinator: FindingChallengeCoordinator,
-    liability_key: String,
-    seller: PublicKey,
-    intent_key: String,
-    retraction_key: String,
-    enforcement: SignedFindingChallengeEnforcement,
-    penalty: SignedOpenMarketPenalty,
-    slash: FindingPenaltyOutcome,
-    snapshot: SignedFindingFinalizedBondSnapshot,
-    confirm_retraction_after_impairment: bool,
-}
-
-fn finalizing_liability() -> Result<FinalizingLiability, AnyError> {
-    finalizing_liability_with(EnforcementRoot::Confirmed, true)
-}
-
-fn finalizing_liability_rooted(root: EnforcementRoot) -> Result<FinalizingLiability, AnyError> {
-    finalizing_liability_with(root, true)
-}
-
-fn finalizing_liability_pending_retraction() -> Result<FinalizingLiability, AnyError> {
-    finalizing_liability_with(EnforcementRoot::Confirmed, false)
-}
-
-fn finalizing_liability_with(
-    root: EnforcementRoot,
-    confirm_retraction_after_impairment: bool,
-) -> Result<FinalizingLiability, AnyError> {
-    let deployment = deployment()?;
-    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
-    let (finding, raw) = finding_artifact()?;
-    let challenge = buyer_challenge(&keypair(41))?;
-    coordinator.submit(&challenge, &raw, NOW)?;
-    close_challenge(
-        &deployment,
-        &challenge.body.challenge_id,
-        FindingChallengeVerdict::Upheld,
-        &digest("upheld-outcome"),
-        b"upheld-outcome",
-        NOW + 1,
-    )?;
-
-    let liability_key = byte_hex64(0xb1);
-    let seller = keypair(73).public_key();
-    let seller_hex = seller.to_hex();
-    deployment
-        .challenges
-        .open_liability(&chio_store_sqlite::FindingLiabilityInput {
-            liability_key: &liability_key,
-            defect_key: &derive_defect_key(&finding.finding_id),
-            finding_id: &finding.finding_id,
-            listing_id: LISTING_ID,
-            allocation_id: &byte_hex64(0xa1),
-            seller_hex: &seller_hex,
-            venue_id: VENUE_ID,
-            chain_id: &settlement_config()?.chain_id,
-            vault_contract: BOND_VAULT_CONTRACT,
-            vault_id: &chain_hash(0x44),
-            opened_at: NOW,
-        })?;
-    deployment.challenges.uphold_liability(
-        &liability_key,
-        &challenge.body.challenge_id,
-        1,
-        NOW + 2 + CLAIM_WINDOW_SECS,
-        NOW + 2,
-    )?;
-    deployment.purchases.register_community_fund_destination(
-        &byte_hex64(0xa1),
-        EVM_COMMUNITY_FUND,
-        NOW + 2,
-    )?;
-    deployment.purchases.admit_payout_destination(
-        &byte_hex64(0xa1),
-        EVM_BUYER_DESTINATION,
-        NOW + 2,
-    )?;
-    // The sanction the impairment settles under. Dispatch requires it to
-    // still be the live case head, exactly as the coordinator records it
-    // when it upholds a liability.
-    deployment.challenges.record_governance_case(
-        &chio_store_sqlite::FindingGovernanceCaseInput {
-            case_id: FIXTURE_SANCTION_CASE_ID,
-            finding_id: &finding.finding_id,
-            listing_id: LISTING_ID,
-            liability_key: &liability_key,
-            case_kind: chio_store_sqlite::FindingGovernanceCaseKind::Sanction,
-            case_state: "enforced",
-            appeal_of_case_id: None,
-            supersedes_case_id: None,
-            recorded_at: NOW + 2,
-        },
-    )?;
-    deployment.challenges.begin_appeal_window(
-        &liability_key,
-        FindingLiabilityState::UpheldPendingClaims,
-        &admitted_terms_digest()?,
-        259_200,
-        NOW + 3,
-    )?;
-    let intent_key = byte_hex64(0xc1);
-    let penalty = fixture_slash_penalty()?;
-    let penalty_envelope_sha256 = signed_envelope_sha256(&penalty)?;
-    deployment
-        .filings
-        .retain_penalty_policy(&penalty_envelope_sha256, &market_config().market_penalty)?;
-    deployment.challenges.record_effect_intent(
-        &intent_key,
-        chio_store_sqlite::FindingEffectIntentKind::SellerImpair,
-        &byte_hex64(0xd1),
-        Some(&liability_key),
-        true,
-        NOW + 5,
-    )?;
-    // The enforcement root the vault checks the impairment proof against,
-    // fenced under the commitment this liability and penalty derive and
-    // then driven to whatever the anchoring step left it in.
-    deployment.challenges.record_effect_intent(
-        &enforcement_root_intent_key(),
-        chio_store_sqlite::FindingEffectIntentKind::RootIntent,
-        &sha256_hex(root_intent_commitment(&liability_key, &penalty_envelope_sha256).as_bytes()),
-        Some(&liability_key),
-        true,
-        NOW + 5,
-    )?;
-    if root == EnforcementRoot::Mismatched {
-        let merkle_root = chain_hash(0xee);
-        let evidence_hash = sample_anchor_evidence_hash()?;
-        deployment.challenges.bind_effect_root(
-            &enforcement_root_intent_key(),
-            &liability_key,
-            &merkle_root,
-            &evidence_hash,
-            NOW + 5,
-        )?;
-        deployment.challenges.advance_effect_intent(
-            &enforcement_root_intent_key(),
-            FindingEffectIntentState::Dispatched,
-            NOW + 6,
-        )?;
-        deployment.challenges.confirm_effect_root(
-            &enforcement_root_intent_key(),
-            &merkle_root,
-            &evidence_hash,
-            NOW + 6,
-        )?;
-    }
-    let retraction_key = byte_hex64(0xc3);
-    deployment.challenges.record_effect_intent(
-        &retraction_key,
-        chio_store_sqlite::FindingEffectIntentKind::Retraction,
-        &digest("status retraction"),
-        Some(&liability_key),
-        true,
-        NOW + 5,
-    )?;
-    let (enforcement, snapshot) = enforcement_pair(
-        &liability_key,
-        &finding.finding_id,
-        &seller,
-        &intent_key,
-        &penalty_envelope_sha256,
-    )?;
-    let penalty_body = &penalty.body;
-    let slash = FindingPenaltyOutcome {
-        penalty: penalty.clone(),
-        penalty_envelope_sha256: penalty_envelope_sha256.clone(),
-        evaluation: OpenMarketPenaltyEvaluation {
-            listing_id: penalty_body.listing_id.clone(),
-            namespace: penalty_body.namespace.clone(),
-            fee_schedule_id: penalty_body.fee_schedule_id.clone(),
-            charter_id: penalty_body.charter_id.clone(),
-            case_id: penalty_body.case_id.clone(),
-            penalty_id: penalty_body.penalty_id.clone(),
-            governing_operator_id: penalty_body.governing_operator_id.clone(),
-            action: penalty_body.action,
-            state: penalty_body.state,
-            effective_state: OpenMarketPenaltyEffectiveState::BondSlashed,
-            evaluated_at: penalty_body.updated_at,
-            publication_fee: None,
-            dispute_fee: None,
-            market_participation_fee: None,
-            bond_requirement: None,
-            blocks_admission: true,
-            findings: Vec::new(),
-        },
-    };
-    let retained = serde_json::json!({
-        "enforcement": enforcement.clone(),
-        "slash": slash.clone(),
-        "finalizationPolicy": market_config().venue_finalization,
-        "sanctionCaseId": FIXTURE_SANCTION_CASE_ID,
-        "heldPenaltyId": FIXTURE_HELD_PENALTY_ID,
-    });
-    let authorization_json = canonical_json_bytes(&retained)?;
-    let authorization_sha256 = sha256_hex(&authorization_json);
-    deployment.challenges.begin_finalizing_under_sanction(
-        &liability_key,
-        FindingLiabilityState::PendingAppeal,
-        FIXTURE_SANCTION_CASE_ID,
-        &chio_store_sqlite::FindingFinalizingAuthorizationInput {
-            liability_key: &liability_key,
-            authorization_json: &authorization_json,
-            authorization_sha256: &authorization_sha256,
-            recorded_at: NOW + 4,
-        },
-        NOW + 4,
-    )?;
-    let case = FinalizingLiability {
-        deployment,
-        coordinator,
-        liability_key,
-        seller,
-        intent_key,
-        retraction_key,
-        enforcement,
-        penalty,
-        slash,
-        snapshot,
-        confirm_retraction_after_impairment,
-    };
-    if root == EnforcementRoot::Confirmed {
-        let refused = case
-            .finalize_observing(
-                &ScriptedObservations::qualified(),
-                &UnreachablePublisher,
-                SETTLEMENT_NOW,
-            )?
-            .expect_err("the first attempt prepares the root before publication");
-        if !matches!(
-            refused,
-            ChallengeCoordinatorError::EnforcementRootUnconfirmed(_)
-        ) {
-            return Err(format!("unexpected root preparation result: {refused:?}").into());
-        }
-        let binding = case
-            .deployment
-            .challenges
-            .get_effect_root_binding(&enforcement_root_intent_key())?
-            .ok_or("root preparation binds the concrete proof")?;
-        case.deployment.challenges.advance_effect_intent(
-            &enforcement_root_intent_key(),
-            FindingEffectIntentState::Dispatched,
-            NOW + 6,
-        )?;
-        case.deployment.challenges.confirm_effect_root(
-            &enforcement_root_intent_key(),
-            &binding.merkle_root,
-            &binding.evidence_hash,
-            NOW + 6,
-        )?;
-    }
-    Ok(case)
-}
-
-impl FinalizingLiability {
-    fn authorized(&self) -> Result<AuthorizedImpairment, AnyError> {
-        Ok(AuthorizedImpairment {
-            enforcement: self.enforcement.clone(),
-            enforcement_envelope_sha256: signed_envelope_sha256(&self.enforcement)?,
-            slash: self.slash.clone(),
-            effect_intent_keys: vec![
-                (
-                    FindingEffectIntentKind::SellerImpair,
-                    self.intent_key.clone(),
-                ),
-                (
-                    FindingEffectIntentKind::RootIntent,
-                    enforcement_root_intent_key(),
-                ),
-                (
-                    FindingEffectIntentKind::Retraction,
-                    self.retraction_key.clone(),
-                ),
-            ],
-        })
-    }
-
-    /// Run the settlement choke point against this head with the given
-    /// publisher.
-    fn finalize(
-        &self,
-        publisher: &dyn FindingImpairmentPublisher,
-        now: u64,
-    ) -> Result<FindingFinalization, AnyError> {
-        Ok(self.finalize_observing(&ScriptedObservations::qualified(), publisher, now)??)
-    }
-
-    /// The same run against a caller-scripted view of the chain, so a test
-    /// can move the state the signed snapshot rests on under it.
-    fn finalize_observing(
-        &self,
-        observations: &dyn chio_settle::FindingBondObservationSource,
-        publisher: &dyn FindingImpairmentPublisher,
-        now: u64,
-    ) -> Result<Result<FindingFinalization, ChallengeCoordinatorError>, AnyError> {
-        let mut outcome = self.coordinator.finalize(
-            &self.liability_key,
-            &self.enforcement,
-            &self.penalty,
-            &self.snapshot,
-            &self.seller,
-            &settlement_config()?,
-            &settlement_config()?.operator_address,
-            &evm_vault_snapshot(),
-            &enforcement_anchor_proof(&self.enforcement)?,
-            observations,
-            publisher,
-            now,
-        );
-        if outcome.is_ok() && self.confirm_retraction_after_impairment {
-            let seller_intent = self.intent()?;
-            let head = self.head()?;
-            if seller_intent.state == FindingEffectIntentState::Confirmed
-                && head.state == FindingLiabilityState::Finalizing
-                && !head.quarantined
-            {
-                let retraction = self
-                    .deployment
-                    .challenges
-                    .get_effect_intent(&self.retraction_key)?
-                    .ok_or("the retraction intent is durable")?;
-                if retraction.state == FindingEffectIntentState::Pending {
-                    self.deployment.challenges.advance_effect_intent(
-                        &self.retraction_key,
-                        FindingEffectIntentState::Dispatched,
-                        now,
-                    )?;
-                    self.deployment.challenges.advance_effect_intent(
-                        &self.retraction_key,
-                        FindingEffectIntentState::Confirmed,
-                        now,
-                    )?;
-                }
-                self.deployment.challenges.settle_liability(
-                    &self.liability_key,
-                    FindingLiabilityState::Finalizing,
-                    now,
-                )?;
-                if matches!(outcome, Ok(FindingFinalization::AwaitingEffects)) {
-                    outcome = Ok(FindingFinalization::AlreadyConfirmed);
-                }
-            }
-        }
-        Ok(outcome)
-    }
-
-    fn intent_state(&self) -> Result<FindingEffectIntentState, AnyError> {
-        Ok(self.intent()?.state)
-    }
-
-    fn intent(&self) -> Result<chio_store_sqlite::FindingEffectIntentRecord, AnyError> {
-        Ok(self
-            .deployment
-            .challenges
-            .get_effect_intent(&self.intent_key)?
-            .ok_or("the impairment intent is durable")?)
-    }
-
-    fn head(&self) -> Result<chio_store_sqlite::FindingLiabilityRecord, AnyError> {
-        Ok(self
-            .deployment
-            .challenges
-            .get_liability(&self.liability_key)?
-            .ok_or("liability head is durable")?)
-    }
-}
-
-/// Domain-keyed identity of the enforcement-root effect the pair binds.
-fn enforcement_root_intent_key() -> String {
-    byte_hex64(0xc2)
-}
-
-/// The penalty-authority-signed slash the manual finalization fixture
-/// binds. Its case id is the durable sanction head, so final dispatch can
-/// compare the exact authority rather than merely seeing a sanction kind.
-fn fixture_slash_penalty() -> Result<SignedOpenMarketPenalty, AnyError> {
-    let artifact = OpenMarketPenaltyArtifact {
-        schema: OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA.to_string(),
-        penalty_id: "market-penalty-finalizing-fixture".to_string(),
-        fee_schedule_id: "fee-schedule-finalizing-fixture".to_string(),
-        charter_id: "charter-finalizing-fixture".to_string(),
-        case_id: FIXTURE_SANCTION_CASE_ID.to_string(),
-        governing_operator_id: OPERATOR_ID.to_string(),
-        namespace: NAMESPACE.to_string(),
-        listing_id: LISTING_ID.to_string(),
-        activation_id: None,
-        subject_operator_id: Some(OPERATOR_ID.to_string()),
-        abuse_class: OpenMarketAbuseClass::FraudulentListing,
-        bond_class: OpenMarketBondClass::Listing,
-        action: OpenMarketPenaltyAction::SlashBond,
-        state: OpenMarketPenaltyState::Enforced,
-        penalty_amount: usd(250),
-        opened_at: NOW + 4,
-        updated_at: NOW + 4,
-        expires_at: Some(KEY_VALID_UNTIL),
-        evidence_refs: vec![OpenMarketEvidenceReference {
-            kind: OpenMarketEvidenceKind::External,
-            reference_id: byte_hex64(0xb3),
-            uri: None,
-            sha256: Some(byte_hex64(0xb4)),
-        }],
-        supersedes_penalty_id: Some(FIXTURE_HELD_PENALTY_ID.to_string()),
-        issued_by: "market@chio.example".to_string(),
-        note: None,
-    };
-    artifact.validate()?;
-    Ok(SignedOpenMarketPenalty::sign(artifact, &keypair(33))?)
-}
-
-/// The exact settlement pair the choke point verifies, plus the finding
-/// and listing identities the liability head must carry.
-fn enforcement_pair(
-    liability_key: &str,
-    finding_id: &str,
-    seller: &PublicKey,
-    seller_impair_intent_id: &str,
-    penalty_envelope_sha256: &str,
-) -> Result<
-    (
-        SignedFindingChallengeEnforcement,
-        SignedFindingFinalizedBondSnapshot,
-    ),
-    AnyError,
-> {
-    enforcement_pair_at_vault(
-        liability_key,
-        finding_id,
-        seller,
-        seller_impair_intent_id,
-        penalty_envelope_sha256,
-        &chain_hash(0x44),
-    )
-}
-
-/// The same pair against a caller-named vault, so a test can present an
-/// instruction and observation that agree with each other and with the
-/// live contract read while naming a vault the liability never did.
-fn enforcement_pair_at_vault(
-    liability_key: &str,
-    finding_id: &str,
-    seller: &PublicKey,
-    seller_impair_intent_id: &str,
-    penalty_envelope_sha256: &str,
-    vault_id: &str,
-) -> Result<
-    (
-        SignedFindingChallengeEnforcement,
-        SignedFindingFinalizedBondSnapshot,
-    ),
-    AnyError,
-> {
-    let mut snapshot = FindingFinalizedBondSnapshot {
-        schema: FINDING_FINALIZED_BOND_SNAPSHOT_SCHEMA_V1.to_string(),
-        snapshot_id: String::new(),
-        chain_id: settlement_config()?.chain_id,
-        vault_contract: BOND_VAULT_CONTRACT.to_string(),
-        vault_id: vault_id.to_string(),
-        seller: seller.clone(),
-        allocation_id: byte_hex64(0xa1),
-        locked_amount: 500_000,
-        held_amount: 120_000,
-        slashed_amount: 0,
-        currency: "USD".to_string(),
-        block_number: 21_000_000,
-        block_hash: chain_hash(0xbb),
-        finality_policy: "confirmations>=64".to_string(),
-        observed_finality: FindingObservedFinality::Confirmations { depth: 96 },
-        identity_registry_record: "registry/operators/venue-42".to_string(),
-        operator_key_hash: OPERATOR_KEY_HASH.to_string(),
-        operator_key_epoch: PINNED_KEY_EPOCH,
-        observed_at: OBSERVED_AT,
-    };
-    snapshot.snapshot_id = compute_snapshot_id(&snapshot)?;
-    let signed_snapshot = SignedExportEnvelope::sign(snapshot, &keypair(34))?;
-    let snapshot_digest = signed_envelope_sha256(&signed_snapshot)?;
-    let mut enforcement = FindingChallengeEnforcement {
-        schema: FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1.to_string(),
-        enforcement_id: String::new(),
-        liability_key: liability_key.to_string(),
-        finding_id: finding_id.to_string(),
-        listing_id: LISTING_ID.to_string(),
-        outcome_id: byte_hex64(0xb3),
-        outcome_envelope_sha256: byte_hex64(0xb4),
-        penalty_envelope_sha256: penalty_envelope_sha256.to_string(),
-        bond_snapshot_envelope_sha256: snapshot_digest,
-        purchase_snapshot_digest: byte_hex64(0xb6),
-        deterministic_allocation_digest: byte_hex64(0xb7),
-        seller_allocation_id: byte_hex64(0xa1),
-        vault: FindingVaultReference {
-            chain_id: settlement_config()?.chain_id,
-            vault_contract: BOND_VAULT_CONTRACT.to_string(),
-            vault_id: vault_id.to_string(),
-        },
-        amount: usd(250),
-        destinations: vec![
-            FindingEnforcementDestination {
-                destination: EVM_BUYER_DESTINATION.to_string(),
-                amount: usd(150),
-            },
-            FindingEnforcementDestination {
-                destination: EVM_COMMUNITY_FUND.to_string(),
-                amount: usd(100),
-            },
-        ],
-        effect_intents: vec![
-            FindingEffectIntentBinding {
-                kind: chio_finding::FindingEffectIntentKind::SellerImpair,
-                intent_id: seller_impair_intent_id.to_string(),
-            },
-            FindingEffectIntentBinding {
-                kind: chio_finding::FindingEffectIntentKind::RootIntent,
-                intent_id: enforcement_root_intent_key(),
-            },
-            FindingEffectIntentBinding {
-                kind: chio_finding::FindingEffectIntentKind::Retraction,
-                intent_id: byte_hex64(0xc3),
-            },
-        ],
-        penalty_authority_id: "market-penalty".to_owned(),
-        penalty_key: keypair(33).public_key(),
-        penalty_key_epoch: PINNED_KEY_EPOCH,
-        penalty_valid_from: 1,
-        penalty_valid_until: I_JSON_MAX_SAFE_INTEGER,
-        penalty_revocation_status_ref: REVOCATION_STATUS_REF.to_owned(),
-        finalization_authority_id: "venue-finalization".to_owned(),
-        finalization_key: keypair(32).public_key(),
-        finalization_key_epoch: PINNED_KEY_EPOCH,
-        finalization_valid_from: 1,
-        finalization_valid_until: I_JSON_MAX_SAFE_INTEGER,
-        finalization_revocation_status_ref: REVOCATION_STATUS_REF.to_owned(),
-        finalized_at: OBSERVED_AT + 100,
-    };
-    enforcement.enforcement_id = compute_enforcement_id(&enforcement)?;
-    Ok((
-        SignedExportEnvelope::sign(enforcement, &keypair(32))?,
-        signed_snapshot,
-    ))
-}
+include!("finding_challenge_enforcement_e2e_tests/finalizing_liability_support.rs");
 
 #[test]
 fn finding_challenge_quarantined_reconciliation_leaves_purchases_blocked() -> TestResult {
@@ -8313,7 +7789,7 @@ fn finding_challenge_quarantined_reconciliation_leaves_purchases_blocked() -> Te
 }
 
 #[test]
-fn finding_challenge_an_unmined_broadcast_stays_dispatchable_and_settles_when_it_lands(
+fn finding_status_retraction_enforced_challenge_stays_pending_until_the_broadcast_lands(
 ) -> TestResult {
     let case = finalizing_liability()?;
     let publisher = MiningPublisher::new();
@@ -8336,8 +7812,9 @@ fn finding_challenge_an_unmined_broadcast_stays_dispatchable_and_settles_when_it
     assert_eq!(parked.state, FindingLiabilityState::Finalizing);
     assert!(!parked.quarantined);
 
-    // The same transaction then mines and finalizes, and the liability
-    // reaches its terminal instead of staying blocked forever.
+    // The same transaction then mines and finalizes. This only makes the
+    // retraction outbox eligible: the liability remains publication-pending
+    // until a signed status epoch includes the exact intent.
     let second = case.finalize(&publisher, SETTLEMENT_NOW + 60)?;
     let FindingFinalization::Reconciled(FindingImpairmentOutcome::Confirmed { reconciliation }) =
         second
@@ -8357,6 +7834,13 @@ fn finding_challenge_an_unmined_broadcast_stays_dispatchable_and_settles_when_it
     );
     assert_eq!(publisher.attempts(), 2);
     assert_eq!(case.intent_state()?, FindingEffectIntentState::Confirmed);
+    let pending = case.head()?;
+    assert_eq!(pending.state, FindingLiabilityState::Finalizing);
+    assert!(pending.publication_pending);
+
+    case.publish_status(SETTLEMENT_NOW + 61)?;
+    let resumed = case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 62)?;
+    assert_eq!(resumed, FindingFinalization::AlreadyConfirmed);
     let settled = case.head()?;
     assert_eq!(settled.state, FindingLiabilityState::Settled);
     assert!(!settled.publication_pending);
@@ -8402,8 +7886,10 @@ fn finding_challenge_a_confirmed_impairment_settles_without_dispatching_again() 
         FindingEffectIntentState::Confirmed,
         SETTLEMENT_NOW,
     )?;
+    case.mark_status_eligible(&chain_hash(0x77), SETTLEMENT_NOW)?;
+    case.publish_status(SETTLEMENT_NOW + 1)?;
 
-    let resumed = case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?;
+    let resumed = case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 2)?;
     assert_eq!(resumed, FindingFinalization::AlreadyConfirmed);
     let settled = case.head()?;
     assert_eq!(
@@ -8458,7 +7944,7 @@ fn finding_challenge_confirmed_impairment_waits_for_retraction_before_settlement
     }
 
     let waiting = case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?;
-    assert_eq!(waiting, FindingFinalization::AwaitingEffects);
+    assert_eq!(waiting, FindingFinalization::AwaitingStatusPublication);
     let pending = case.head()?;
     assert_eq!(pending.state, FindingLiabilityState::Finalizing);
     assert!(pending.publication_pending);
@@ -8474,11 +7960,88 @@ fn finding_challenge_confirmed_impairment_waits_for_retraction_before_settlement
             SETTLEMENT_NOW + 2,
         )?;
     }
-    let settled = case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 3)?;
+    case.mark_status_eligible(&chain_hash(0x77), SETTLEMENT_NOW + 2)?;
+    case.publish_status(SETTLEMENT_NOW + 3)?;
+    let settled = case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 4)?;
     assert_eq!(settled, FindingFinalization::AlreadyConfirmed);
     let head = case.head()?;
     assert_eq!(head.state, FindingLiabilityState::Settled);
     assert!(!head.publication_pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_finalization_reuses_pending_voluntary_retraction() -> TestResult {
+    let case = finalizing_liability_with_prior_retraction(
+        EnforcementRoot::Confirmed,
+        true,
+        PriorVoluntaryRetraction::Pending,
+    )?;
+    let resolved = case
+        .deployment
+        .status
+        .get_retraction_intent_for_effect(
+            &case.retraction_key,
+            "status-feed/venue-challenge",
+            &case.enforcement.body.finding_id,
+        )?
+        .ok_or("voluntary retraction satisfies the enforcement effect")?;
+    assert_eq!(resolved.intent_id, case.status_intent_key);
+    assert_eq!(
+        resolved.source,
+        chio_store_sqlite::FindingRetractionIntentSource::Voluntary
+    );
+    for state in [
+        FindingEffectIntentState::Dispatched,
+        FindingEffectIntentState::Confirmed,
+    ] {
+        case.deployment.challenges.advance_effect_intent(
+            &case.intent_key,
+            state,
+            SETTLEMENT_NOW,
+        )?;
+    }
+
+    assert_eq!(
+        case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?,
+        FindingFinalization::AwaitingStatusPublication
+    );
+    case.publish_status(SETTLEMENT_NOW + 2)?;
+    assert_eq!(
+        case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 3)?,
+        FindingFinalization::AlreadyConfirmed
+    );
+    let settled = case.head()?;
+    assert_eq!(settled.state, FindingLiabilityState::Settled);
+    assert!(!settled.publication_pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_finalization_reuses_published_voluntary_retraction() -> TestResult {
+    let case = finalizing_liability_with_prior_retraction(
+        EnforcementRoot::Confirmed,
+        true,
+        PriorVoluntaryRetraction::Published,
+    )?;
+    for state in [
+        FindingEffectIntentState::Dispatched,
+        FindingEffectIntentState::Confirmed,
+    ] {
+        case.deployment.challenges.advance_effect_intent(
+            &case.intent_key,
+            state,
+            SETTLEMENT_NOW,
+        )?;
+    }
+
+    assert_eq!(
+        case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?,
+        FindingFinalization::AlreadyConfirmed
+    );
+    let settled = case.head()?;
+    assert_eq!(settled.state, FindingLiabilityState::Settled);
+    assert!(!settled.publication_pending);
     Ok(())
 }
 
@@ -8499,8 +8062,8 @@ fn finding_challenge_confirmed_impairment_settles_after_snapshot_expiry() -> Tes
     let stale_at = OBSERVED_AT + MAX_SNAPSHOT_AGE_SECS + 1;
     assert_eq!(
         case.finalize(&UnreachablePublisher, stale_at)?,
-        FindingFinalization::AwaitingEffects,
-        "a landed impairment waits on signed effects without revalidating its old snapshot"
+        FindingFinalization::AwaitingStatusPublication,
+        "a landed impairment waits on signed status without revalidating its old snapshot"
     );
     for state in [
         FindingEffectIntentState::Dispatched,
@@ -8512,9 +8075,46 @@ fn finding_challenge_confirmed_impairment_settles_after_snapshot_expiry() -> Tes
             stale_at + 1,
         )?;
     }
+    case.mark_status_eligible(&chain_hash(0x77), stale_at + 1)?;
+    case.publish_status(stale_at + 2)?;
     assert_eq!(
-        case.finalize(&UnreachablePublisher, stale_at + 2)?,
+        case.finalize(&UnreachablePublisher, stale_at + 3)?,
         FindingFinalization::AlreadyConfirmed
+    );
+    assert_eq!(case.head()?.state, FindingLiabilityState::Settled);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_published_retraction_reconciles_after_status_bond_expiry() -> TestResult {
+    let mut case = finalizing_liability_pending_retraction()?;
+    for state in [
+        FindingEffectIntentState::Dispatched,
+        FindingEffectIntentState::Confirmed,
+    ] {
+        case.deployment.challenges.advance_effect_intent(
+            &case.intent_key,
+            state,
+            SETTLEMENT_NOW,
+        )?;
+    }
+
+    assert_eq!(
+        case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?,
+        FindingFinalization::AwaitingStatusPublication
+    );
+    case.publish_status(SETTLEMENT_NOW + 2)?;
+
+    let mut expired_status_bond = market_config();
+    expired_status_bond.status_feed_service_bond.valid_until = SETTLEMENT_NOW + 2;
+    case.coordinator = case.deployment.coordinator_under(
+        &expired_status_bond,
+        FindingDisputeLockDisposition::Forfeited,
+    )?;
+    assert_eq!(
+        case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 3)?,
+        FindingFinalization::AlreadyConfirmed,
+        "a published retraction reconciles from retained evidence without a new SLA"
     );
     assert_eq!(case.head()?.state, FindingLiabilityState::Settled);
     Ok(())
@@ -8637,7 +8237,7 @@ fn finding_challenge_a_confirmed_different_merkle_root_never_reaches_the_publish
 
 #[test]
 fn finding_challenge_an_anchor_leaf_bound_elsewhere_never_reaches_the_publisher() -> TestResult {
-    let case = finalizing_liability()?;
+    let case = finalizing_liability_without_anchor()?;
     // The same anchored receipt is already committed to other terms, which
     // is what a proof reused across enforcements looks like once the leaf
     // is fenced.
@@ -8713,34 +8313,23 @@ fn finding_challenge_an_observer_cannot_weaken_deployment_finality() -> TestResu
     snapshot_body.snapshot_id = compute_snapshot_id(&snapshot_body)?;
     let snapshot = SignedExportEnvelope::sign(snapshot_body, &keypair(34))?;
 
-    let mut enforcement_body = case.enforcement.body.clone();
-    enforcement_body.bond_snapshot_envelope_sha256 = signed_envelope_sha256(&snapshot)?;
-    enforcement_body.enforcement_id = String::new();
-    enforcement_body.enforcement_id = compute_enforcement_id(&enforcement_body)?;
-    let enforcement = SignedExportEnvelope::sign(enforcement_body, &keypair(32))?;
-
     let refused = case
         .coordinator
-        .finalize(
-            &case.liability_key,
-            &enforcement,
-            &case.penalty,
+        .refresh_finalizing_enforcement(
+            &case.authorized()?,
             &snapshot,
             &case.seller,
-            &settlement_config()?,
-            &settlement_config()?.operator_address,
-            &evm_vault_snapshot(),
-            &enforcement_anchor_proof(&enforcement)?,
-            &ScriptedObservations::qualified(),
-            &UnreachablePublisher,
             SETTLEMENT_NOW,
         )
         .expect_err("the observer cannot choose a shallower finality policy");
-    assert!(matches!(
-        refused,
-        ChallengeCoordinatorError::Settlement(detail)
-            if detail.contains("does not match the pinned finality requirement")
-    ));
+    assert!(
+        matches!(
+            &refused,
+            ChallengeCoordinatorError::Settlement(detail)
+                if detail.contains("does not match the pinned finality requirement")
+        ),
+        "{refused:?}"
+    );
     assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
     assert_eq!(case.head()?.state, FindingLiabilityState::Finalizing);
     Ok(())
@@ -8812,7 +8401,8 @@ fn finding_challenge_regressed_confirmation_depth_never_reaches_the_publisher() 
 }
 
 #[test]
-fn finding_challenge_confirmed_impairment_recovers_across_operator_rotation() -> TestResult {
+fn finding_challenge_confirmed_impairment_recovers_across_observer_and_operator_rotation(
+) -> TestResult {
     let case = finalizing_liability()?;
     let publisher = MiningPublisher::new();
 
@@ -8857,12 +8447,44 @@ fn finding_challenge_confirmed_impairment_recovers_across_operator_rotation() ->
         operator_key_epoch: 4,
         ..qualified_observation()
     };
-    let recovered = case.finalize_observing(
+    let mut rotated_config = market_config();
+    rotated_config.settlement_observer = authority_pin(51, "settlement-observer-rotated");
+    let rotated_coordinator = FindingChallengeCoordinator::new_with_status_commit_clock(
+        case.deployment.challenges.clone(),
+        case.deployment.purchases.clone(),
+        case.deployment.status.clone(),
+        &rotated_config,
+        keypair(31),
+        keypair(32),
+        keypair(33),
+        Arc::new(TestAuthorityStatusResolver::live()),
+        case.deployment.rail.clone(),
+        case.deployment.filings.clone(),
+        FindingDisputeLockDisposition::Forfeited,
+        Arc::new(FixtureStatusCommitClock),
+    )?;
+    let recovered = rotated_coordinator.finalize(
+        &case.liability_key,
+        &case.enforcement,
+        &case.penalty,
+        &case.snapshot,
+        &case.seller,
+        &settlement_config()?,
+        &settlement_config()?.operator_address,
+        &evm_vault_snapshot(),
+        &enforcement_anchor_proof(&case.enforcement)?,
         &ScriptedObservations::then_qualified(vec![still_rotated]),
         &UnreachablePublisher,
         SETTLEMENT_NOW + 120,
-    )??;
-    assert_eq!(recovered, FindingFinalization::AlreadyConfirmed);
+    )?;
+    assert_eq!(recovered, FindingFinalization::AwaitingStatusPublication);
+    let reconciled = case.head()?;
+    assert_eq!(reconciled.state, FindingLiabilityState::Finalizing);
+    assert!(!reconciled.quarantined);
+
+    case.publish_status(SETTLEMENT_NOW + 181)?;
+    let completed = case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 182)?;
+    assert_eq!(completed, FindingFinalization::AlreadyConfirmed);
     let settled = case.head()?;
     assert_eq!(settled.state, FindingLiabilityState::Settled);
     assert!(!settled.quarantined);
@@ -8874,9 +8496,10 @@ fn finding_challenge_enforcement_recovers_across_finalization_authority_rotation
     let case = finalizing_liability()?;
     let mut rotated = market_config();
     rotated.venue_finalization = authority_pin(49, "venue-finalization-rotated");
-    let coordinator = FindingChallengeCoordinator::new(
+    let coordinator = FindingChallengeCoordinator::new_with_status_commit_clock(
         case.deployment.challenges.clone(),
         case.deployment.purchases.clone(),
+        case.deployment.status.clone(),
         &rotated,
         keypair(31),
         keypair(49),
@@ -8885,6 +8508,7 @@ fn finding_challenge_enforcement_recovers_across_finalization_authority_rotation
         case.deployment.rail.clone(),
         case.deployment.filings.clone(),
         FindingDisputeLockDisposition::Forfeited,
+        Arc::new(FixtureStatusCommitClock),
     )?;
     let publisher = MiningPublisher::new();
     let finalize = || -> Result<FindingFinalization, AnyError> {
@@ -8920,9 +8544,10 @@ fn finding_challenge_penalty_recovers_across_penalty_authority_rotation() -> Tes
     let case = finalizing_liability()?;
     let mut rotated = market_config();
     rotated.market_penalty = authority_pin(50, "market-penalty-rotated");
-    let coordinator = FindingChallengeCoordinator::new(
+    let coordinator = FindingChallengeCoordinator::new_with_status_commit_clock(
         case.deployment.challenges.clone(),
         case.deployment.purchases.clone(),
+        case.deployment.status.clone(),
         &rotated,
         keypair(31),
         keypair(32),
@@ -8931,6 +8556,7 @@ fn finding_challenge_penalty_recovers_across_penalty_authority_rotation() -> Tes
         case.deployment.rail.clone(),
         case.deployment.filings.clone(),
         FindingDisputeLockDisposition::Forfeited,
+        Arc::new(FixtureStatusCommitClock),
     )?;
     let publisher = MiningPublisher::new();
     let finalize = || -> Result<FindingFinalization, AnyError> {
@@ -9082,25 +8708,7 @@ fn finding_challenge_a_snapshot_from_an_expired_observer_key_authorizes_nothing(
 #[test]
 fn finding_challenge_rotated_snapshot_cannot_replace_a_bound_enforcement_root() -> TestResult {
     let case = finalizing_liability()?;
-    let authorized = AuthorizedImpairment {
-        enforcement: case.enforcement.clone(),
-        enforcement_envelope_sha256: signed_envelope_sha256(&case.enforcement)?,
-        slash: case.slash.clone(),
-        effect_intent_keys: vec![
-            (
-                FindingEffectIntentKind::SellerImpair,
-                case.intent_key.clone(),
-            ),
-            (
-                FindingEffectIntentKind::RootIntent,
-                enforcement_root_intent_key(),
-            ),
-            (
-                FindingEffectIntentKind::Retraction,
-                case.retraction_key.clone(),
-            ),
-        ],
-    };
+    let authorized = case.authorized()?;
     let mut body = case.snapshot.body.clone();
     body.operator_key_epoch = PINNED_KEY_EPOCH + 1;
     body.snapshot_id = String::new();
@@ -9119,7 +8727,7 @@ fn finding_challenge_rotated_snapshot_cannot_replace_a_bound_enforcement_root() 
     assert!(matches!(
         refused,
         ChallengeCoordinatorError::Settlement(detail)
-            if detail.contains("forbidden after the enforcement root is bound")
+            if detail.contains("only before anchor binding or dispatch")
     ));
     Ok(())
 }
@@ -9637,12 +9245,12 @@ fn finding_challenge_uphold_uses_the_recorded_historical_evaluator_policy() -> T
     let ready = ready_to_uphold(&deployment, &original)?;
 
     let mut rotated_config = market_config();
-    rotated_config.challenge_evaluator = authority_pin(38, "challenge-evaluator");
+    rotated_config.challenge_evaluator = authority_pin(39, "challenge-evaluator");
     rotated_config.challenge_evaluator.key_epoch = PINNED_KEY_EPOCH + 1;
     rotated_config.challenge_evaluator.valid_from = NOW + 2;
     let rotated = deployment.coordinator_under_with_evaluator_and_status(
         &rotated_config,
-        keypair(38),
+        keypair(39),
         Arc::new(TestAuthorityStatusResolver::live()),
         FindingDisputeLockDisposition::Forfeited,
     )?;
@@ -10000,7 +9608,7 @@ fn finding_challenge_every_value_bearing_role_enforces_authenticated_lifecycle()
 }
 
 #[test]
-fn finding_challenge_governance_charter_must_be_issued_inside_the_pinned_window() -> TestResult {
+fn finding_challenge_governance_charter_uses_its_retained_pinned_window() -> TestResult {
     let deployment = deployment()?;
     let live = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let ready = ready_to_uphold(&deployment, &live)?;
@@ -10012,7 +9620,7 @@ fn finding_challenge_governance_charter_must_be_issued_inside_the_pinned_window(
     let stake = usd(300);
     let required = usd(5_000);
 
-    let refused = coordinator
+    let retry = coordinator
         .uphold(
             &ready.challenge_id,
             &ready.challenge,
@@ -10026,16 +9634,13 @@ fn finding_challenge_governance_charter_must_be_issued_inside_the_pinned_window(
             &governance.sanction_case,
             NOW + 2,
         )
-        .expect_err("a same-key charter predating the configured lifecycle opens no liability");
-    assert!(matches!(
-        refused,
-        ChallengeCoordinatorError::AuthorityLifecycle {
-            role: "governance charter",
-            ..
-        }
-    ));
-    assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 0);
-    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+        .expect_err("the first uphold opens the claim window without sealing it");
+    assert!(
+        matches!(&retry, ChallengeCoordinatorError::ClaimWindowOpen),
+        "{retry:?}"
+    );
+    assert_eq!(liability_heads(&deployment, &ready.finding.finding_id)?, 1);
+    assert!(deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 
@@ -10667,7 +10272,7 @@ fn finding_challenge_harmed_buyer_allocation_is_capped_and_exactly_summed() -> T
 }
 
 #[test]
-fn finding_challenge_a_payout_destination_that_was_never_admitted_is_refused() -> TestResult {
+fn finding_challenge_a_purchase_that_lost_payout_standing_is_refused() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let governance = governance()?;
@@ -10680,7 +10285,7 @@ fn finding_challenge_a_payout_destination_that_was_never_admitted_is_refused() -
         50,
         "USD",
         NOW,
-        PayoutAdmission::Withheld,
+        PayoutStanding::RemovedAfterSettlement,
     )?;
     let case = evidence_invalid_case(
         &challenged,
@@ -10704,34 +10309,39 @@ fn finding_challenge_a_payout_destination_that_was_never_admitted_is_refused() -
         ))?
         .ok_or("a receipt that does not verify is adjudicated")?;
 
+    remove_payout_standing_for_test(
+        &deployment,
+        &deployment.allocation_id,
+        &sale.record.body.payout_destination,
+    )?;
+
     let identity = liability_identity(&challenged.finding.finding_id, &deployment.allocation_id);
-    let refused = uphold_across_claim_window(
-        &coordinator,
-        &market_terms(CLAIM_WINDOW_SECS)?,
-        &case.challenge,
-        &evaluated.outcome,
-        &identity,
-        1,
-        std::slice::from_ref(&sale.purchase_key),
-        &collateral,
-        &governance.context(),
-        &governance.sanction_case,
-        NOW + 3,
-    )
-    .expect_err("an unadmitted destination cannot be paid");
+    let refused = coordinator
+        .uphold(
+            &case.challenge.body.challenge_id,
+            &case.challenge,
+            &evaluated.outcome,
+            &identity,
+            &market_terms(CLAIM_WINDOW_SECS)?,
+            1,
+            std::slice::from_ref(&sale.purchase_key),
+            &collateral,
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 3,
+        )
+        .expect_err("a purchase that lost payout standing cannot be paid");
     assert!(matches!(
         refused,
-        ChallengeCoordinatorError::UnadmittedPayoutDestination(_)
+        ChallengeCoordinatorError::ChallengeStore(reason)
+            if reason.contains("changed outside its serving-owner connection")
     ));
-    let liability_key = derive_liability_key(
-        &derive_defect_key(&challenged.finding.finding_id),
-        VENUE_ID,
-        &identity,
+    let snapshots = rusqlite::Connection::open(&deployment.database)?.query_row(
+        "SELECT COUNT(*) FROM claim_snapshots",
+        [],
+        |row| row.get::<_, i64>(0),
     );
-    assert!(
-        coordinator.sealed_claim(&liability_key)?.is_none(),
-        "no accounting is sealed against a distribution that cannot be computed"
-    );
+    assert_eq!(snapshots?, 0, "the corrupted index seals no accounting");
     Ok(())
 }
 
@@ -11370,9 +10980,10 @@ fn finding_challenge_construction_refuses_a_key_reused_across_roles() -> TestRes
     // One key adjudicating and finalizing collapses the separation the
     // whole lane rests on.
     config.venue_finalization = authority_pin(31, "venue-finalization");
-    let refused = FindingChallengeCoordinator::new(
+    let refused = FindingChallengeCoordinator::new_with_status_commit_clock(
         deployment.challenges.clone(),
         deployment.purchases.clone(),
+        deployment.status.clone(),
         &config,
         keypair(31),
         keypair(31),
@@ -11381,6 +10992,7 @@ fn finding_challenge_construction_refuses_a_key_reused_across_roles() -> TestRes
         deployment.rail.clone(),
         deployment.filings.clone(),
         FindingDisputeLockDisposition::Forfeited,
+        Arc::new(FixtureStatusCommitClock),
     );
     match refused {
         Err(ChallengeCoordinatorError::Configuration(_)) => {}
@@ -11409,7 +11021,7 @@ fn finding_challenge_an_expired_reservation_neither_wedges_nor_inflates_the_clai
             purchase_intent_id: "intent-abandoned",
             authoritative_payment_operation_id: "payment-abandoned",
             payer_hex: &keypair(41).public_key().to_hex(),
-            agent_id: "agent-buyer-41",
+            agent_id: "agent-buyer-01",
             payout_destination: EVM_BUYER_DESTINATION,
             finding_id: &finding.finding_id,
             listing_id: LISTING_ID,

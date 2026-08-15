@@ -115,6 +115,7 @@ not part of the Rust API) for `authority_handlers`, `budget_handlers`,
 | `authority_handlers.rs` | Capability-authority admin: issue/rotate/revoke, SCIM, enterprise-provider and federation-admission-policy CRUD. |
 | `budget_handlers.rs` | Budget increment/charge/reverse/reduce handlers with quorum-commit-aware event ids and compensating rollback. |
 | `certification_handlers.rs` | Certification registry mutation plus the unauthenticated public discovery/marketplace surface. |
+| `finding_status_handlers.rs` | Feature-gated finding-status root and portable-proof reads plus authenticated voluntary retraction intents. It serves exact verifier-persisted bytes and exposes no caller-driven root mutation. |
 | `passport_handlers.rs` | OID4VCI/OID4VP passport issuance, verification, wallet exchange, and federated cross-service capability issuance (`handle_federated_issue`). |
 | `receipt_handlers.rs` | Receipt read/write, analytics, evidence export/import, and the operator/economic/settlement report endpoints; enforces admin-vs-tenant read scoping. |
 | `risk_finance_handlers/{attestation,capital,credit,exposure,liability,reputation,underwriting}.rs` | Credit, capital, exposure, liability, underwriting, reputation, and runtime-attestation-appraisal report and issuance endpoints. |
@@ -128,7 +129,7 @@ not part of the Rust API) for `authority_handlers`, `budget_handlers`,
 | `health.rs` | Unauthenticated `GET` liveness/status endpoint; each subsystem snapshot degrades to `available: false` instead of failing the request. |
 | `cluster/{consensus,deltas,partition,pull_budget,snapshots}.rs` | Quorum-gated leader designation, pull-based per-peer delta replication, partition simulation, and full-state snapshots. |
 | `service_runtime/{budget,client,errors,init,issuance,public_registry,remote_authority,remote_stores,reputation,router}.rs` | Server bootstrap (`serve_async`), axum `Router` construction (`router::build_router`), and the remote adapters (`RemoteCapabilityAuthority`, `RemoteReceiptStore`, `RemoteRevocationStore`, `RemoteBudgetStore`) plus `TrustControlClient` and its `client/*` transport. |
-| `service_types/{cluster_budget,config,paths,requests,responses,state}.rs` | Route-path constants, `TrustServiceConfig`, wire DTOs, and the `TrustServiceState` / `ClusterRuntimeState` app state. |
+| `service_types/{cluster_budget,config,finding_market_config,paths,requests,responses,state}.rs` | Route-path constants, `TrustServiceConfig`, finding-market authority and service-bond pins, wire DTOs, and the `TrustServiceState` / `ClusterRuntimeState` app state. |
 
 ## Data flow
 

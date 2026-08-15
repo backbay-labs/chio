@@ -91,6 +91,7 @@ pub struct RecoveryVerificationOutcome {
     finding_id: String,
     listing_id: String,
     payload_sha256: String,
+    status_feed_id: String,
     original_capability_id: String,
     original_delivery_receipt_id: String,
     purchase_key: String,
@@ -123,6 +124,11 @@ impl RecoveryVerificationOutcome {
     #[must_use]
     pub fn payload_sha256(&self) -> &str {
         &self.payload_sha256
+    }
+
+    #[must_use]
+    pub fn status_feed_id(&self) -> &str {
+        &self.status_feed_id
     }
 
     #[must_use]
@@ -326,6 +332,7 @@ pub fn verify_finding_recovery_context(
         finding_id: purchase.finding.finding_id,
         listing_id: inputs.marker.listing_id.clone(),
         payload_sha256: purchase.finding.payload_sha256,
+        status_feed_id: purchase.finding.status_feed_ref,
         original_capability_id: original_capability.id,
         original_delivery_receipt_id: receipt.id,
         purchase_key: record.purchase_key.clone(),
@@ -425,6 +432,7 @@ mod tests {
             finding_id: "b".repeat(64),
             listing_id: "listing-1".to_owned(),
             payload_sha256: "c".repeat(64),
+            status_feed_id: "status-feed/test".to_owned(),
             original_capability_id: "capability-original".to_owned(),
             original_delivery_receipt_id: "receipt-original".to_owned(),
             purchase_key: "d".repeat(64),

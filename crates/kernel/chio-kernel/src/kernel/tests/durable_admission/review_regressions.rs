@@ -1,5 +1,79 @@
 use super::*;
 
+struct ToggleExactOutputGuard {
+    live: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    calls: std::sync::Arc<AtomicU64>,
+}
+
+impl Guard for ToggleExactOutputGuard {
+    fn name(&self) -> &str {
+        "toggle-exact-output"
+    }
+
+    fn evaluate(&self, _ctx: &GuardContext<'_>) -> Result<GuardDecision, KernelError> {
+        Ok(GuardDecision::allow())
+    }
+
+    fn validate_output_before_release(
+        &self,
+        _ctx: &GuardContext<'_>,
+        output: &ToolServerOutput,
+    ) -> Result<(), KernelError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        if !self.live.load(Ordering::SeqCst) {
+            return Err(KernelError::GuardDenied(
+                "durable output is no longer live".to_owned(),
+            ));
+        }
+        if output
+            != &ToolServerOutput::Value(serde_json::json!({"replacement": "filtered"}))
+        {
+            return Err(KernelError::GuardDenied(
+                "durable output validation ran before the frozen transform".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn requires_exact_released_output(&self, _ctx: &GuardContext<'_>) -> bool {
+        true
+    }
+}
+
+#[test]
+fn durable_exact_output_guard_runs_after_transform_and_again_at_replay_release() {
+    let (mut kernel, request, _store, invocations) =
+        durable_admission_fixture("durable-exact-output-revalidation");
+    let live = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let calls = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.add_guard(Box::new(ToggleExactOutputGuard {
+        live: std::sync::Arc::clone(&live),
+        calls: std::sync::Arc::clone(&calls),
+    }));
+    kernel.add_post_invocation_hook(Box::new(StableRedactingPostInvocationHook {
+        replacement: "filtered",
+    }));
+
+    let response = kernel
+        .evaluate_tool_call_blocking(&request)
+        .expect("post-transform output passes at initial release");
+    assert_eq!(
+        response.output,
+        Some(ToolCallOutput::Value(
+            serde_json::json!({"replacement": "filtered"})
+        ))
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+    live.store(false, Ordering::SeqCst);
+    let error = kernel
+        .evaluate_tool_call_blocking(&request)
+        .expect_err("completed replay must revalidate immediately before release");
+    assert!(error.to_string().contains("no longer live"));
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    assert_eq!(invocations.load(Ordering::SeqCst), 1);
+}
+
 #[test]
 fn durable_terminal_receipt_uses_the_admitted_tenant() {
     let request_id = "durable-tenant-receipt";

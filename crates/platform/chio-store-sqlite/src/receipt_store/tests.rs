@@ -18,6 +18,8 @@ mod liability;
 mod lineage;
 #[path = "tests/query.rs"]
 mod query;
+#[path = "tests/retained_commitments.rs"]
+mod retained_commitments;
 #[path = "tests/retention.rs"]
 mod retention;
 #[path = "tests/scale_proof.rs"]

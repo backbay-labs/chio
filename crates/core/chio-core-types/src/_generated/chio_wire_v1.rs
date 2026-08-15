@@ -35486,6 +35486,9 @@ pub mod receipt_finding_delivery {
     ///        "local_reversible_hold"
     ///      ]
     ///    },
+    ///    "status_proof": {
+    ///      "$ref": "#/$defs/statusProof"
+    ///    },
     ///    "transform_profile": {
     ///      "enum": [
     ///        "identity"
@@ -35512,6 +35515,8 @@ pub mod receipt_finding_delivery {
         pub reservation_id: Identifier,
         pub schema: ::serde_json::Value,
         pub settlement_mode: ChioFindingDeliveryReceiptMetadataSettlementMode,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub status_proof: ::std::option::Option<StatusProof>,
         pub transform_profile: ChioFindingDeliveryReceiptMetadataTransformProfile,
         pub venue_admission_envelope_sha256: Digest,
     }
@@ -35912,6 +35917,148 @@ pub mod receipt_finding_delivery {
                 })
         }
     }
+    ///`HierarchicalIdentifier`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "pattern": "^[A-Za-z0-9._:/-]{1,512}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct HierarchicalIdentifier(::std::string::String);
+    impl ::std::ops::Deref for HierarchicalIdentifier {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<HierarchicalIdentifier> for ::std::string::String {
+        fn from(value: HierarchicalIdentifier) -> Self {
+            value.0
+        }
+    }
+    impl ::std::convert::From<&HierarchicalIdentifier> for HierarchicalIdentifier {
+        fn from(value: &HierarchicalIdentifier) -> Self {
+            value.clone()
+        }
+    }
+    impl ::std::str::FromStr for HierarchicalIdentifier {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^[A-Za-z0-9._:/-]{1,512}$").unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[A-Za-z0-9._:/-]{1,512}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for HierarchicalIdentifier {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for HierarchicalIdentifier {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for HierarchicalIdentifier {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for HierarchicalIdentifier {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+    ///`IJsonU64NonZero`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "integer",
+    ///  "maximum": 9007199254740991.0,
+    ///  "minimum": 1.0
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    #[serde(transparent)]
+    pub struct IJsonU64NonZero(pub ::std::num::NonZeroU64);
+    impl ::std::ops::Deref for IJsonU64NonZero {
+        type Target = ::std::num::NonZeroU64;
+        fn deref(&self) -> &::std::num::NonZeroU64 {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<IJsonU64NonZero> for ::std::num::NonZeroU64 {
+        fn from(value: IJsonU64NonZero) -> Self {
+            value.0
+        }
+    }
+    impl ::std::convert::From<&IJsonU64NonZero> for IJsonU64NonZero {
+        fn from(value: &IJsonU64NonZero) -> Self {
+            value.clone()
+        }
+    }
+    impl ::std::convert::From<::std::num::NonZeroU64> for IJsonU64NonZero {
+        fn from(value: ::std::num::NonZeroU64) -> Self {
+            Self(value)
+        }
+    }
+    impl ::std::str::FromStr for IJsonU64NonZero {
+        type Err = <::std::num::NonZeroU64 as ::std::str::FromStr>::Err;
+        fn from_str(value: &str) -> ::std::result::Result<Self, Self::Err> {
+            Ok(Self(value.parse()?))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for IJsonU64NonZero {
+        type Error = <::std::num::NonZeroU64 as ::std::str::FromStr>::Err;
+        fn try_from(value: &str) -> ::std::result::Result<Self, Self::Error> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&String> for IJsonU64NonZero {
+        type Error = <::std::num::NonZeroU64 as ::std::str::FromStr>::Err;
+        fn try_from(value: &String) -> ::std::result::Result<Self, Self::Error> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<String> for IJsonU64NonZero {
+        type Error = <::std::num::NonZeroU64 as ::std::str::FromStr>::Err;
+        fn try_from(value: String) -> ::std::result::Result<Self, Self::Error> {
+            value.parse()
+        }
+    }
+    impl ::std::fmt::Display for IJsonU64NonZero {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            self.0.fmt(f)
+        }
+    }
     ///`Identifier`
     ///
     /// <details><summary>JSON schema</summary>
@@ -35987,6 +36134,65 @@ pub mod receipt_finding_delivery {
                 .map_err(|e: self::error::ConversionError| {
                     <D::Error as ::serde::de::Error>::custom(e.to_string())
                 })
+        }
+    }
+    ///`StatusProof`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "feed_id",
+    ///    "key_domain_nonce",
+    ///    "map_epoch",
+    ///    "non_inclusion_checked_at",
+    ///    "proof_sha256",
+    ///    "root_hash",
+    ///    "status_epoch_artifact_sha256"
+    ///  ],
+    ///  "properties": {
+    ///    "feed_id": {
+    ///      "$ref": "#/$defs/hierarchicalIdentifier"
+    ///    },
+    ///    "key_domain_nonce": {
+    ///      "const": 3318287169837494
+    ///    },
+    ///    "map_epoch": {
+    ///      "$ref": "#/$defs/iJsonU64NonZero"
+    ///    },
+    ///    "non_inclusion_checked_at": {
+    ///      "$ref": "#/$defs/iJsonU64NonZero"
+    ///    },
+    ///    "proof_sha256": {
+    ///      "$ref": "#/$defs/digest"
+    ///    },
+    ///    "root_hash": {
+    ///      "$ref": "#/$defs/digest"
+    ///    },
+    ///    "status_epoch_artifact_sha256": {
+    ///      "$ref": "#/$defs/digest"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct StatusProof {
+        pub feed_id: HierarchicalIdentifier,
+        pub key_domain_nonce: ::serde_json::Value,
+        pub map_epoch: IJsonU64NonZero,
+        pub non_inclusion_checked_at: IJsonU64NonZero,
+        pub proof_sha256: Digest,
+        pub root_hash: Digest,
+        pub status_epoch_artifact_sha256: Digest,
+    }
+    impl ::std::convert::From<&StatusProof> for StatusProof {
+        fn from(value: &StatusProof) -> Self {
+            value.clone()
         }
     }
 }
@@ -36259,7 +36465,8 @@ pub mod receipt_lineage_statement {
     ///      "type": "string",
     ///      "enum": [
     ///        "local_child",
-    ///        "continued"
+    ///        "continued",
+    ///        "finding_memory_write_to_delivery"
     ///      ]
     ///    },
     ///    "schema": {
@@ -36955,7 +37162,8 @@ pub mod receipt_lineage_statement {
     ///  "type": "string",
     ///  "enum": [
     ///    "local_child",
-    ///    "continued"
+    ///    "continued",
+    ///    "finding_memory_write_to_delivery"
     ///  ]
     ///}
     /// ```
@@ -36977,6 +37185,8 @@ pub mod receipt_lineage_statement {
         LocalChild,
         #[serde(rename = "continued")]
         Continued,
+        #[serde(rename = "finding_memory_write_to_delivery")]
+        FindingMemoryWriteToDelivery,
     }
     impl ::std::convert::From<&Self> for ChioReceiptLineageStatementRelationKind {
         fn from(value: &ChioReceiptLineageStatementRelationKind) -> Self {
@@ -36988,6 +37198,9 @@ pub mod receipt_lineage_statement {
             match *self {
                 Self::LocalChild => f.write_str("local_child"),
                 Self::Continued => f.write_str("continued"),
+                Self::FindingMemoryWriteToDelivery => {
+                    f.write_str("finding_memory_write_to_delivery")
+                }
             }
         }
     }
@@ -36997,6 +37210,7 @@ pub mod receipt_lineage_statement {
             match value {
                 "local_child" => Ok(Self::LocalChild),
                 "continued" => Ok(Self::Continued),
+                "finding_memory_write_to_delivery" => Ok(Self::FindingMemoryWriteToDelivery),
                 _ => Err("invalid value".into()),
             }
         }

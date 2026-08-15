@@ -3169,6 +3169,7 @@ dependencies = [
  "chio-open-market",
  "chio-policy",
  "chio-reputation",
+ "chio-revocation-oracle",
  "chio-risk-comptroller",
  "chio-settle",
  "chio-spec-validate",
@@ -3608,7 +3609,9 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "chio-core-types",
+ "chio-revocation-oracle",
  "chio-spec-validate",
+ "hex",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

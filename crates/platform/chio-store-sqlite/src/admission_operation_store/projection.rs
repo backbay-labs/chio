@@ -1225,7 +1225,12 @@ fn verify_stored_denied_record_shape(
         || body.get("terminal").and_then(serde_json::Value::as_str) != Some("denied_after_delivery")
         || !matches!(
             body.get("reason").and_then(serde_json::Value::as_str),
-            Some("digest_mismatch" | "envelope_malformed" | "media_type_mismatch")
+            Some(
+                "digest_mismatch"
+                    | "envelope_malformed"
+                    | "media_type_mismatch"
+                    | "finding_status_changed"
+            )
         )
         || body
             .get("evidence")

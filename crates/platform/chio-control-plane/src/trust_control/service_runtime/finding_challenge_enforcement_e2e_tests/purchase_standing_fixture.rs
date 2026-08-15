@@ -47,6 +47,7 @@ pub(super) fn settled_delivery_evidence(
             digest_check: DeliveryResult::Matched,
             media_type_check: FindingMediaTypeCheck::Matched,
             settlement_mode: FindingDeliverySettlementMode::LocalReversibleHold,
+            status_proof: None,
             accepted_bid_envelope_sha256: record.accepted_bid_envelope_sha256.clone(),
             venue_admission_envelope_sha256: record.venue_admission_envelope_sha256.clone(),
             reservation_id: reservation_id.to_owned(),
