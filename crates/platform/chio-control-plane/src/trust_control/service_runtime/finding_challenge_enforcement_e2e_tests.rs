@@ -8728,7 +8728,7 @@ fn finding_challenge_rotated_snapshot_cannot_replace_a_bound_enforcement_root() 
     assert!(matches!(
         refused,
         ChallengeCoordinatorError::Settlement(detail)
-            if detail.contains("forbidden after the enforcement root is bound")
+            if detail.contains("only before anchor binding or dispatch")
     ));
     Ok(())
 }

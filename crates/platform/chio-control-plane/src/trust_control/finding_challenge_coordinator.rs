@@ -2354,23 +2354,6 @@ impl FindingChallengeCoordinator {
                     .to_owned(),
             ));
         }
-        let root_intent_id = old
-            .body
-            .effect_intents
-            .iter()
-            .find(|binding| binding.kind == chio_finding::FindingEffectIntentKind::RootIntent)
-            .map(|binding| binding.intent_id.as_str())
-            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
-        if self
-            .challenges
-            .get_effect_root_binding(root_intent_id)
-            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
-            .is_some()
-        {
-            return Err(ChallengeCoordinatorError::Settlement(
-                "bond snapshot refresh is forbidden after the enforcement root is bound".to_owned(),
-            ));
-        }
         let retained = self.require_retained_finalizing_authorization(
             &old.body.liability_key,
             old,
@@ -2676,22 +2659,23 @@ impl FindingChallengeCoordinator {
             // Reconciliation authority exposes no dispatchable plan. It can
             // only re-read the transaction already fenced by this confirmed
             // intent.
-            let tx_hash = match self.require_reobserved_reconciliation(&planned, publisher, None) {
-                Ok(tx_hash) => tx_hash,
-                Err(error) => {
-                    self.challenges
-                        .set_liability_quarantine(liability_key, true, now)
-                        .map_err(|store| {
-                            ChallengeCoordinatorError::ChallengeStore(store.to_string())
-                        })?;
-                    return Err(error);
-                }
-            };
+            let reconciliation =
+                match self.require_reobserved_reconciliation(&planned, publisher, None) {
+                    Ok(reconciliation) => reconciliation,
+                    Err(error) => {
+                        self.challenges
+                            .set_liability_quarantine(liability_key, true, now)
+                            .map_err(|store| {
+                                ChallengeCoordinatorError::ChallengeStore(store.to_string())
+                            })?;
+                        return Err(error);
+                    }
+                };
             return self.finish_confirmed_impairment(
                 liability_key,
                 enforcement,
                 bond_snapshot,
-                &tx_hash,
+                &reconciliation,
                 now,
             );
         }
@@ -2760,8 +2744,9 @@ impl FindingChallengeCoordinator {
             // same collateral twice. Re-read the stored transaction before
             // settlement so a later reorg or loss of finality cannot inherit
             // an earlier confirmation as current chain truth.
-            let tx_hash = match self.require_reobserved_impairment(&planned, publisher, None) {
-                Ok(tx_hash) => tx_hash,
+            let reconciliation = match self.require_reobserved_impairment(&planned, publisher, None)
+            {
+                Ok(reconciliation) => reconciliation,
                 Err(error) => {
                     self.challenges
                         .set_liability_quarantine(liability_key, true, now)
@@ -2778,7 +2763,7 @@ impl FindingChallengeCoordinator {
                 liability_key,
                 enforcement,
                 bond_snapshot,
-                &tx_hash,
+                &reconciliation,
                 now,
             );
         }

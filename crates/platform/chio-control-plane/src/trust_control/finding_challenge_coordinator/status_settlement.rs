@@ -242,7 +242,7 @@ impl FindingChallengeCoordinator {
         liability_key: &str,
         enforcement: &SignedFindingChallengeEnforcement,
         bond_snapshot: &SignedFindingFinalizedBondSnapshot,
-        tx_hash: &str,
+        reconciliation: &ConfirmedFindingImpairmentReconciliation,
         now: u64,
     ) -> Result<FindingFinalization, ChallengeCoordinatorError> {
         let liability = self
@@ -292,8 +292,27 @@ impl FindingChallengeCoordinator {
                 .set_liability_quarantine(liability_key, false, now)
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         }
+        let retained_reconciliation = self
+            .challenges
+            .get_seller_impairment_reconciliation(reconciliation.intent_id())
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::Settlement(
+                    "confirmed seller impairment has no retained reconciliation".to_owned(),
+                )
+            })?;
+        if retained_reconciliation.liability_key != liability_key
+            || retained_reconciliation.tx_hash != reconciliation.tx_hash()
+            || retained_reconciliation.reconciliation_sha256
+                != reconciliation.reconciliation_sha256()
+        {
+            return Err(ChallengeCoordinatorError::Settlement(
+                "reobserved seller impairment does not match its retained reconciliation"
+                    .to_owned(),
+            ));
+        }
         self.confirm_fenced_anchor_effect(liability_key, now)?;
-        self.mark_retraction_dispatch_eligible(enforcement, tx_hash, now)?;
+        self.mark_retraction_dispatch_eligible(enforcement, reconciliation.tx_hash(), now)?;
         if self.reconcile_status_publication_and_settle(liability_key, enforcement, now)? {
             Ok(FindingFinalization::AlreadyConfirmed)
         } else {
