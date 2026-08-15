@@ -338,6 +338,7 @@ pub(super) async fn run_finding_status_retraction() -> TestResult {
         &lane.deployment,
         &delivered.receipt,
         &lane.buyer,
+        &lane.authority,
         status_store.clone(),
     )?;
 

@@ -3230,6 +3230,7 @@ pub(super) async fn run_cognition_market_wedge_purchase_e2e() -> TestResult {
             &deployment,
             &response.receipt,
             &buyer,
+            &authority,
             authority.finding_status_store(),
         )?;
 
@@ -3281,13 +3282,13 @@ pub(super) async fn run_cognition_market_wedge_purchase_e2e() -> TestResult {
 }
 
 include!("finding_wedge_purchase_e2e_tests/status_and_settlement_tests.rs");
-
 /// The buyer's own kernel writes the purchased payload into memory and
 /// records a signed lineage statement whose parent is the delivery receipt.
 fn buyer_memory_write(
     deployment: &Deployment,
     delivery_receipt: &ChioReceipt,
     buyer: &Keypair,
+    authority: &SqliteAuthorityStore,
     status_store: SqliteFindingStatusStore,
 ) -> TestResult {
     let receipts = Arc::new(chio_store_sqlite::SqliteReceiptStore::open(
@@ -3300,6 +3301,11 @@ fn buyer_memory_write(
     config.checkpoint_batch_size = 0;
     let mut kernel = ChioKernel::new(config);
     kernel.set_receipt_store_handle(receipts.clone())?;
+    kernel.set_durable_admission_store(
+        Arc::new(authority.admission_operation_store()),
+        Arc::new(authority.tool_outcome_store()),
+        authority.mutation_fence(),
+    )?;
     let status_config = market_config();
     kernel.set_finding_status_proof_verifier(Arc::new(MarketFindingStatusVerifier::new(
         status_config.status_feed_operator,
@@ -3373,7 +3379,6 @@ fn buyer_memory_write(
         .as_deref()
         .unwrap_or_default()
         .contains("authentic allow receipt"));
-
     kernel.set_finding_delivery_receipt_authorities(vec![keypair(40).public_key()]);
     request.request_id = "wedge-memory-write-trusted-1".to_string();
     if let Some(intent) = request.governed_intent.as_mut() {
@@ -3387,7 +3392,6 @@ fn buyer_memory_write(
         .as_ref()
         .and_then(|metadata| metadata.get("governed_transaction"))
         .is_some());
-
     let store: &dyn ReceiptStore = receipts.as_ref();
     assert!(store
         .load_retained_chio_receipt_commitment(&write.receipt.id)?
@@ -3410,7 +3414,6 @@ fn buyer_memory_write(
         statement.relation_kind,
         ReceiptLineageRelationKind::FindingMemoryWriteToDelivery
     );
-
     let mut substituted = request.clone();
     substituted.request_id = "wedge-memory-write-substituted".to_string();
     substituted.arguments["content"] = serde_json::json!({
@@ -3430,7 +3433,6 @@ fn buyer_memory_write(
     receipts.create_next_receipt_checkpoint(100, &buyer_kernel_keypair)?;
     Ok(())
 }
-
 // ---------------------------------------------------------------------------
 // Failure lanes
 // ---------------------------------------------------------------------------
@@ -3442,7 +3444,6 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
         ..LaneOptions::standard()
     })
     .await?;
-
     let response = lane.reveal("wedge-digest-mismatch-1", "nonce-digest-1")?;
     assert_denied_with(&response, "committed output digest");
     let contract = delivery_contract_block(&response)?;
@@ -3456,7 +3457,6 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
     assert_eq!(lane.invocations.load(Ordering::SeqCst), 1);
     assert_eq!(lane.calls.captures.load(Ordering::SeqCst), 0);
     assert_eq!(lane.calls.releases.load(Ordering::SeqCst), 1);
-
     // A durable Deny cannot be selected into a paid terminal.
     let now = unix_timestamp_now();
     assert!(matches!(

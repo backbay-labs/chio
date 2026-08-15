@@ -566,7 +566,7 @@ fn require_exact_durable_terminal(
                 || stored.record_json != record_json
                 || stored.record_sha256 != record_sha256
                 || stored.delivery_receipt_id != result.delivery_receipt.id
-                || stored.recorded_at != record.body.recorded_at
+                || !retained_at_or_after_terminal(stored.recorded_at, record.body.recorded_at)
             {
                 return Err(());
             }
@@ -584,13 +584,19 @@ fn require_exact_durable_terminal(
                 || stored.record_json != record_json
                 || stored.record_sha256 != record_sha256
                 || stored.deny_receipt_id != result.delivery_receipt.id
-                || stored.recorded_at != failed.body.recorded_at
+                || !retained_at_or_after_terminal(stored.recorded_at, failed.body.recorded_at)
             {
                 return Err(());
             }
         }
     }
     Ok(())
+}
+
+fn retained_at_or_after_terminal(stored_at: u64, terminal_at: u64) -> bool {
+    // The signed JSON fixes the authenticated terminal time. The row time is
+    // the later local transaction time and need not fall in the same second.
+    stored_at >= terminal_at
 }
 
 fn parse_request(raw: &str) -> Result<FindingPurchaseRequest, Response> {
@@ -967,5 +973,17 @@ fn require_bounded_text(value: &str, max_bytes: usize, field: &str) -> Result<()
         ))
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::retained_at_or_after_terminal;
+
+    #[test]
+    fn durable_terminal_row_may_be_recorded_after_the_signed_terminal() {
+        assert!(retained_at_or_after_terminal(101, 100));
+        assert!(retained_at_or_after_terminal(100, 100));
+        assert!(!retained_at_or_after_terminal(99, 100));
     }
 }
