@@ -86,8 +86,8 @@ mod reservation_input;
 use reservation_input::{encumbrance_matches, reservation_matches, validate_reservation_input};
 
 const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
-/// Revision 12 atomically promotes pre-v11 terminals on their first compatible
-/// public replay; revision 11 binds public policy to a reservation and terminal.
+/// Revision 12 retains pre-v11 terminals as undisclosable history; revision 11
+/// binds public policy to a reservation and terminal.
 /// Revision 10 records an immutable capture intent before a payment rail can
 /// move funds, preventing expiry from abandoning a captured purchase; revision
 /// 9 retains pre-EVM payout rows as non-actionable history; revision

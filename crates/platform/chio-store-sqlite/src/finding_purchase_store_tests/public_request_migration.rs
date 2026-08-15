@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn revision_ten_terminal_promotes_one_compatible_public_replay() {
+fn revision_ten_terminals_remain_undisclosable_without_request_ownership() {
     let mut connection = Connection::open_in_memory().expect("in-memory database");
     connection
         .execute_batch(FINDING_PURCHASE_SCHEMA)
@@ -164,7 +164,7 @@ fn revision_ten_terminal_promotes_one_compatible_public_replay() {
     );
 
     let request_id = hex64('8');
-    let transaction = connection.transaction().expect("promotion transaction");
+    let transaction = connection.transaction().expect("verification transaction");
     let reservation = load_reservation_tx(&transaction, &reservation_id)
         .expect("load reservation")
         .expect("reservation exists");
@@ -178,32 +178,13 @@ fn revision_ten_terminal_promotes_one_compatible_public_replay() {
         currency: "USD",
         deadline_secs: None,
     };
-    assert!(
-        require_public_request_binding_tx(&transaction, &reservation, &request)
-            .expect("promote compatible replay")
-    );
-    let promoted: (String, String, String) = transaction
-        .query_row(
-            r#"
-            SELECT terminal_kind, terminal_id, receipt_id
-            FROM public_purchase_requests WHERE request_id = ?1
-            "#,
-            [&request_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .expect("read promoted binding");
-    assert_eq!(
-        promoted,
-        (
-            "purchase_record".to_owned(),
-            purchase_key,
-            receipt_id.to_owned()
-        )
-    );
-    assert!(
-        !require_public_request_binding_tx(&transaction, &reservation, &request)
-            .expect("replay promoted binding")
-    );
+    let purchase_error = require_public_request_binding_tx(&transaction, &reservation, &request)
+        .expect_err("legacy purchase terminal acquired public ownership");
+    assert!(matches!(
+        purchase_error,
+        FindingPurchaseStoreError::Conflict(message)
+            if message == "prebinding purchase terminal has no authenticated public request ownership"
+    ));
 
     let changed_request_id = hex64('9');
     let changed = FindingPublicPurchaseRequestBinding {
@@ -230,27 +211,20 @@ fn revision_ten_terminal_promotes_one_compatible_public_replay() {
         currency: "USD",
         deadline_secs: None,
     };
-    assert!(
+    let denial_error =
         require_public_request_binding_tx(&transaction, &deny_reservation, &deny_request)
-            .expect("promote compatible denial replay")
-    );
-    let promoted_denial: (String, String, String) = transaction
-        .query_row(
-            r#"
-            SELECT terminal_kind, terminal_id, receipt_id
-            FROM public_purchase_requests WHERE request_id = ?1
-            "#,
-            [&deny_request_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .expect("read promoted denial binding");
+            .expect_err("legacy failed-delivery terminal acquired public ownership");
+    assert!(matches!(
+        denial_error,
+        FindingPurchaseStoreError::Conflict(message)
+            if message == "prebinding purchase terminal has no authenticated public request ownership"
+    ));
     assert_eq!(
-        promoted_denial,
-        (
-            "failed_delivery".to_owned(),
-            "failed-v10".to_owned(),
-            "deny-receipt-v10".to_owned(),
-        )
+        transaction
+            .query_row("SELECT COUNT(*) FROM public_purchase_requests", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("count public bindings"),
+        0
     );
-    transaction.commit().expect("commit promotion");
 }

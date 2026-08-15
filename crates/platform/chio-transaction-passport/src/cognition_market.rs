@@ -10,14 +10,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use chio_core_types::crypto::PublicKey;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::receipt::metadata::{DeliveryResult, FindingMediaTypeCheck};
 use chio_core_types::receipt::MEDIATED_SPEND_PROFILE;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
-    signed_envelope_sha256, verify_finding, verify_signed_authority_status, verify_signed_profile,
-    verify_signed_purchase_record, verify_signed_verifier_report, verify_status_proof_input,
-    Finding, FindingAuthorityKeyPolicy, FindingEvidenceClass, FindingFacetKind,
-    FindingFacetOutcome, FindingGuaranteeClass, FindingReplayRecipeInput,
+    signed_envelope_sha256, verify_finding, verify_pinned_envelope, verify_signed_authority_status,
+    verify_signed_profile, verify_signed_purchase_record, verify_signed_verifier_report,
+    verify_status_proof_input, Finding, FindingAuthorityKeyPolicy, FindingEvidenceClass,
+    FindingFacetKind, FindingFacetOutcome, FindingGuaranteeClass, FindingReplayRecipeInput,
     FindingStatusFreshnessPolicy, FindingStatusOperatorAuthorization, FindingStatusProofInput,
     SignedFindingAuthorityStatus, SignedFindingChallengeVerifierProfile,
     SignedFindingPurchaseRecord, SignedFindingStatusEpoch, SignedFindingVerifierReport,
@@ -106,7 +107,11 @@ pub struct CognitionMarketVerifierAuthorityStatusTrust {
 /// requires the status-liveness facet.
 #[derive(Clone)]
 pub struct CognitionMarketStatusTrust {
-    pub status_operator_authorization: FindingStatusOperatorAuthorization,
+    /// Governance-signed operator authorization. The verifier authenticates
+    /// this envelope against the deployment-pinned profile governance key
+    /// before using its body to verify any status proof.
+    pub signed_status_operator_authorization:
+        SignedExportEnvelope<FindingStatusOperatorAuthorization>,
     /// Digest of the governance-signed authorization envelope retained by
     /// the durable status floor. This is not the digest of the bare body.
     pub status_operator_authorization_sha256: String,
@@ -215,7 +220,12 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
                 .status_authority
                 .key
         || trust.status.as_ref().is_some_and(|status| {
-            status.status_operator_authorization.operator.key == trust.purchase_authority
+            status
+                .signed_status_operator_authorization
+                .body
+                .operator
+                .key
+                == trust.purchase_authority
                 || status.operator_authority_status.status_authority.key == trust.purchase_authority
         })
     {
@@ -239,7 +249,12 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         ));
     }
     if trust.status.as_ref().is_some_and(|status| {
-        status.status_operator_authorization.operator.key == trust.finding_verifier_authority
+        status
+            .signed_status_operator_authorization
+            .body
+            .operator
+            .key
+            == trust.finding_verifier_authority
     }) {
         return Err(claim_failed(
             "status operator and finding verifier authorities must be distinct",
@@ -582,6 +597,20 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         let status_trust = trust.status.as_ref().ok_or_else(|| {
             claim_failed("status-liveness verification has no deployment-pinned status trust")
         })?;
+        let status_operator_authorization = &status_trust.signed_status_operator_authorization.body;
+        status_operator_authorization.validate().map_err(|error| {
+            claim_failed(format!("status operator authorization is invalid: {error}"))
+        })?;
+        verify_pinned_envelope(
+            &status_trust.signed_status_operator_authorization,
+            &trust.profile_governance_authority.key,
+            "status_operator_authorization",
+        )
+        .map_err(|error| {
+            claim_failed(format!(
+                "status operator authorization envelope is invalid: {error}"
+            ))
+        })?;
         if crate::validation::validate_sha256_hex(
             &status_trust.status_operator_authorization_sha256,
         )
@@ -589,6 +618,19 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         {
             return Err(claim_failed(
                 "status operator authorization envelope digest is invalid",
+            ));
+        }
+        let actual_authorization_sha256 = signed_envelope_sha256(
+            &status_trust.signed_status_operator_authorization,
+        )
+        .map_err(|error| {
+            claim_failed(format!(
+                "status operator authorization envelope cannot be hashed: {error}"
+            ))
+        })?;
+        if actual_authorization_sha256 != status_trust.status_operator_authorization_sha256 {
+            return Err(claim_failed(
+                "status operator authorization digest does not bind the signed envelope",
             ));
         }
         let status_bytes = artifact_bytes(artifacts, status_node.path)?;
@@ -607,7 +649,7 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         }
         let (status_feed_id, status_checked_at) = status_proof_binding(&status);
         if status_feed_id != finding.status_feed_ref
-            || status_trust.status_operator_authorization.feed_id != finding.status_feed_ref
+            || status_operator_authorization.feed_id != finding.status_feed_ref
         {
             return Err(claim_failed(
                 "status proof and operator authorization do not bind the Finding status feed",
@@ -623,12 +665,12 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         }
         let signed_epoch = verify_status_proof_input(
             &status,
-            &status_trust.status_operator_authorization,
+            status_operator_authorization,
             status_trust.status_freshness,
         )
         .map_err(|error| invalid_artifact(status_node.path, error.to_string()))?;
         verify_status_operator_authority_status(
-            &status_trust.status_operator_authorization.operator,
+            &status_operator_authorization.operator,
             &status_trust.operator_authority_status,
             signed_epoch.body.generated_at,
             status_trust.status_freshness.now,
@@ -961,7 +1003,8 @@ fn selected_cognition_report_claim(
     selected_claims: &BTreeSet<&'static str>,
     claim_id: &str,
 ) -> bool {
-    selected_claims.contains(claim_id) || claim_id.starts_with("claim.transaction.")
+    selected_claims.contains(claim_id)
+        || crate::verifier_policy::is_supported_transaction_claim(claim_id)
 }
 
 fn validate_every_graph_artifact(

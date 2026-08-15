@@ -266,13 +266,16 @@ fn cognition_market_recipe_must_use_a_profile_allowed_runner() -> TestResult {
 #[test]
 fn cognition_market_status_proof_must_bind_the_finding_feed() -> TestResult {
     let mut bundle = build_bundle()?;
-    bundle
-        .trust
-        .status
-        .as_mut()
-        .ok_or("status trust missing")?
-        .status_operator_authorization
-        .feed_id = "finding-status/substituted".to_string();
+    let status_trust = bundle.trust.status.as_mut().ok_or("status trust missing")?;
+    let mut authorization = status_trust
+        .signed_status_operator_authorization
+        .body
+        .clone();
+    authorization.feed_id = "finding-status/substituted".to_string();
+    status_trust.signed_status_operator_authorization =
+        SignedExportEnvelope::sign(authorization, &Keypair::from_seed(&[8_u8; 32]))?;
+    status_trust.status_operator_authorization_sha256 =
+        signed_envelope_sha256(&status_trust.signed_status_operator_authorization)?;
     let error = verify(&bundle)
         .err()
         .ok_or("status proof for another feed was accepted")?

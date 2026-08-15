@@ -646,10 +646,9 @@ fn cognition_market_status_trust_from_env(
             "{FINDING_STATUS_OPERATOR_AUTHORIZATION_SHA256_ENV} does not match the signed authorization envelope"
         )));
     }
-    let status_operator_authorization = signed_status_operator_authorization.body;
     let operator_authority_status = finding_authority_status_trust_from_env(
         FINDING_STATUS_OPERATOR_AUTHORITY_STATUS_PATH_ENV,
-        &status_operator_authorization.operator.key,
+        &signed_status_operator_authorization.body.operator.key,
         status_authority,
         checked_at,
         max_age_secs,
@@ -670,7 +669,7 @@ fn cognition_market_status_trust_from_env(
     let status_store = authority.finding_status_store();
     Ok(
         chio_control_plane::transaction_passport::CognitionMarketStatusTrust {
-            status_operator_authorization,
+            signed_status_operator_authorization,
             status_operator_authorization_sha256,
             operator_authority_status,
             status_freshness: chio_finding::FindingStatusFreshnessPolicy {

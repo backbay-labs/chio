@@ -609,6 +609,12 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
         &verifier_status_authority,
     )?;
     let status_operator_authorization = status_authorization(&status_keypair);
+    let signed_status_operator_authorization = SignedExportEnvelope::sign(
+        status_operator_authorization.clone(),
+        &Keypair::from_seed(&[8_u8; 32]),
+    )?;
+    let status_operator_authorization_sha256 =
+        signed_envelope_sha256(&signed_status_operator_authorization)?;
     let status_operator_authority_status = SignedExportEnvelope::sign(
         FindingAuthorityStatus {
             schema: FINDING_AUTHORITY_STATUS_SCHEMA_V1.to_owned(),
@@ -648,8 +654,8 @@ fn build_bundle() -> TestResult<QualifiedBundle> {
             max_age_secs: 60,
         },
         status: Some(CognitionMarketStatusTrust {
-            status_operator_authorization,
-            status_operator_authorization_sha256: HEX64.to_owned(),
+            signed_status_operator_authorization,
+            status_operator_authorization_sha256,
             operator_authority_status: CognitionMarketVerifierAuthorityStatusTrust {
                 signed_status: status_operator_authority_status,
                 status_authority: profile_key_policy(10, "verifier-status-authority"),
@@ -1842,29 +1848,6 @@ fn cognition_market_qualified_profile_rejects_verifier_as_passport_signer() -> T
 }
 
 #[test]
-fn cognition_market_qualified_profile_rejects_verifier_as_status_operator() -> TestResult {
-    let mut bundle = build_bundle()?;
-    bundle
-        .trust
-        .status
-        .as_mut()
-        .ok_or("status trust missing")?
-        .status_operator_authorization
-        .operator
-        .key = bundle.trust.finding_verifier_authority.clone();
-
-    let error = verify(&bundle)
-        .err()
-        .ok_or("finding verifier was accepted as the status operator")?
-        .to_string();
-    assert!(
-        error.contains("status operator and finding verifier authorities must be distinct"),
-        "unexpected error: {error}"
-    );
-    Ok(())
-}
-
-#[test]
 fn cognition_market_qualified_profile_rejects_verifier_as_operator_status_authority() -> TestResult
 {
     let mut bundle = build_bundle()?;
@@ -2194,6 +2177,7 @@ fn regenerate_cognition_market_golden() -> TestResult {
 }
 
 include!("cognition_market/delivery_transaction_regressions.rs");
+include!("cognition_market/review_thread_regressions.rs");
 #[path = "cognition_market/profile_expiry_regression.rs"]
 mod expiry_regressions;
 #[path = "cognition_market/profile_governance_regressions.rs"]
