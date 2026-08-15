@@ -906,6 +906,28 @@ struct DeferredAgentWebReplayReservation {
     read_only_report: chio_control_plane::agent_web::AgentWebInteropReport,
 }
 
+#[cfg(test)]
+static FAIL_BEFORE_ROOT_CLAIM_SET_VERIFICATION_ONCE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(test)]
+fn fail_before_root_claim_set_verification_once() {
+    FAIL_BEFORE_ROOT_CLAIM_SET_VERIFICATION_ONCE
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn enforce_pre_root_claim_set_test_hook() -> Result<(), CliError> {
+    #[cfg(test)]
+    if FAIL_BEFORE_ROOT_CLAIM_SET_VERIFICATION_ONCE
+        .swap(false, std::sync::atomic::Ordering::SeqCst)
+    {
+        return Err(CliError::cli_other_error(
+            "injected failure before root claim set verification",
+        ));
+    }
+    Ok(())
+}
+
 fn verify_transaction_passport_file_with_mode(
     path: &Path,
     verification_mode: TransactionPassportVerificationMode<'_>,
@@ -1127,6 +1149,7 @@ fn verify_transaction_passport_file_with_mode(
         push_family_report(&mut family_reports, report)?;
     }
     if !family_reports.is_empty() {
+        enforce_pre_root_claim_set_test_hook()?;
         let trust_anchors =
             chio_control_plane::transaction_passport::TransactionTrustAnchors {
                 passport_root_signers: &trusted_transaction_root_keys,

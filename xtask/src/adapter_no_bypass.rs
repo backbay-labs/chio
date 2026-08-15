@@ -206,7 +206,7 @@ const CALL_CONTRACTS: &[CallContract] = &[
     CallContract {
         path: "crates/kernel/chio-kernel/src/kernel/validation.rs",
         function: "ChioKernel::verify_capability_full_pre_admit",
-        target: "chio_kernel_core::verify_capability_full",
+        target: "chio_kernel_core::verify_capability_full_with_root",
         minimum: 1,
     },
     CallContract {

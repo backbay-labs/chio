@@ -1,0 +1,24 @@
+[package]
+name = "chio-finding"
+description = "Chio cognition-market finding artifact"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_finding"
+
+[dependencies]
+chio-core-types = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+chio-spec-validate = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

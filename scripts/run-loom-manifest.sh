@@ -173,6 +173,11 @@ def source_tests(path):
     tests = set()
     for attributes, name in TEST_DECLARATION.findall(raw):
         if re.search(r"#\[\s*test\s*\]", attributes):
+            # The manifest runner compiles with chio_kernel_loom only. A test
+            # gated exclusively on cfg(loom) belongs to the production-state
+            # lane and must not be registered as a manifest harness.
+            if re.search(r"#\[\s*cfg\s*\(\s*loom\s*\)\s*\]", attributes):
+                continue
             tests.add(name)
     return tests
 

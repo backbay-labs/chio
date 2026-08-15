@@ -264,6 +264,12 @@
       "schemaFile": "spec/schemas/chio-federation/v1/verifier-trust-bundle.schema.json"
     },
     {
+      "schema": "chio.finding.v1",
+      "artifactKind": "finding",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/finding.schema.json"
+    },
+    {
       "schema": "chio.frost.authorization-slot-checkpoint.v1",
       "artifactKind": "frost_authorization_slot_checkpoint",
       "introducedBy": "frost-quorum-substrate-v1",

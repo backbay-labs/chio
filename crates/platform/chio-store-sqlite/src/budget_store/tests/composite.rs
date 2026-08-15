@@ -1,3 +1,4 @@
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::sync::{Arc, Barrier};
 
@@ -616,6 +617,7 @@ fn v9_event_quota_projection_migrates_without_losing_history() {
     let _ = fs::remove_dir_all(path);
 }
 
+#[cfg(unix)]
 #[test]
 fn provision_refuses_populated_legacy_budget_state() {
     let path = unique_db_path("chio-composite-legacy-quota");

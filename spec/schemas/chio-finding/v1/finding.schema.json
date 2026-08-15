@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/finding.schema.json",
+  "title": "Chio Finding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "finding_id",
+    "descriptor",
+    "guarantee_class",
+    "payload_sha256",
+    "payload_media_type",
+    "evidence_receipt_ids",
+    "evidence_checkpoint_ref",
+    "evidence_cost",
+    "evidence_class",
+    "bond_ref",
+    "status_feed_ref",
+    "issuer",
+    "issued_at",
+    "expires_at",
+    "signature"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.finding.v1"
+    },
+    "finding_id": {
+      "$ref": "#/$defs/sha256"
+    },
+    "descriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "topic",
+        "context_sha256",
+        "outcome_class"
+      ],
+      "properties": {
+        "topic": {
+          "$ref": "#/$defs/boundedText"
+        },
+        "context_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "outcome_class": {
+          "enum": [
+            "null_result",
+            "verified_fix",
+            "positive_result"
+          ]
+        }
+      }
+    },
+    "guarantee_class": {
+      "enum": [
+        "deterministic_replay",
+        "metered_attested",
+        "asserted"
+      ]
+    },
+    "payload_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "payload_media_type": {
+      "$ref": "#/$defs/boundedText"
+    },
+    "evidence_receipt_ids": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/boundedIdentifier"
+      }
+    },
+    "evidence_checkpoint_ref": {
+      "$ref": "#/$defs/boundedIdentifier"
+    },
+    "evidence_cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "units",
+        "currency"
+      ],
+      "properties": {
+        "units": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "runtime_assurance_tier": {
+      "enum": [
+        "basic",
+        "attested",
+        "verified"
+      ]
+    },
+    "evidence_class": {
+      "enum": [
+        "asserted",
+        "observed",
+        "verified"
+      ]
+    },
+    "replay_recipe_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "intent_commitment_receipt_id": {
+      "$ref": "#/$defs/boundedIdentifier"
+    },
+    "bond_ref": {
+      "$ref": "#/$defs/boundedIdentifier"
+    },
+    "status_feed_ref": {
+      "$ref": "#/$defs/boundedIdentifier"
+    },
+    "license_ref": {
+      "$ref": "#/$defs/boundedIdentifier"
+    },
+    "price_hint_ref": {
+      "$ref": "#/$defs/boundedIdentifier"
+    },
+    "issuer": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "issued_at": {
+      "$ref": "#/$defs/iJsonU64"
+    },
+    "expires_at": {
+      "$ref": "#/$defs/iJsonU64"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "guarantee_class"
+        ],
+        "properties": {
+          "guarantee_class": {
+            "const": "deterministic_replay"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "replay_recipe_sha256"
+        ]
+      }
+    },
+    {
+      "if": {
+        "anyOf": [
+          {
+            "required": [
+              "guarantee_class"
+            ],
+            "properties": {
+              "guarantee_class": {
+                "enum": [
+                  "deterministic_replay",
+                  "metered_attested"
+                ]
+              }
+            }
+          },
+          {
+            "required": [
+              "evidence_class"
+            ],
+            "properties": {
+              "evidence_class": {
+                "enum": [
+                  "observed",
+                  "verified"
+                ]
+              }
+            }
+          },
+          {
+            "required": [
+              "runtime_assurance_tier"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "evidence_receipt_ids": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "boundedIdentifier": {
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "\\S"
+    },
+    "boundedText": {
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "\\S"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

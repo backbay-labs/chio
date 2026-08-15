@@ -23,6 +23,22 @@ fn unique_db_path(prefix: &str) -> std::path::PathBuf {
     ))
 }
 
+fn copy_checkpoint_prefix_to_attached_archive(
+    connection: &rusqlite::Connection,
+    archived_through_entry_seq: i64,
+) -> rusqlite::Result<()> {
+    connection.execute_batch(
+        "CREATE TABLE IF NOT EXISTS archive.kernel_checkpoints AS \
+         SELECT * FROM main.kernel_checkpoints WHERE 0;",
+    )?;
+    connection.execute(
+        "INSERT OR REPLACE INTO archive.kernel_checkpoints \
+         SELECT * FROM main.kernel_checkpoints WHERE batch_end_seq <= ?1",
+        [archived_through_entry_seq],
+    )?;
+    Ok(())
+}
+
 #[test]
 fn watermark_ledger_reports_max_and_rejects_regression() -> Result<(), Box<dyn std::error::Error>> {
     use crate::receipt_store::support::{insert_receipt_retention_watermark, retention_watermark};
@@ -1651,6 +1667,7 @@ fn bricked_store_repair_restores_append() -> Result<(), Box<dyn std::error::Erro
                        BEFORE DELETE ON chio_tool_receipts \
                        BEGIN SELECT RAISE(ABORT, 'chio_tool_receipts is append-only'); END;",
                 )?;
+                copy_checkpoint_prefix_to_attached_archive(connection, 2)?;
                 connection.execute_batch("DETACH DATABASE archive")?;
                 Ok(())
             }
@@ -1731,6 +1748,7 @@ fn repair_creates_missing_watermark_ledger_on_legacy_store(
                        BEGIN SELECT RAISE(ABORT, 'chio_tool_receipts is append-only'); END; \
                      DROP TABLE IF EXISTS receipt_retention_watermark;",
                 )?;
+                copy_checkpoint_prefix_to_attached_archive(connection, 2)?;
                 super::support::restore_transparency_projection_guards(connection)?;
                 connection.execute_batch("DETACH DATABASE archive")?;
                 Ok(())
@@ -2281,6 +2299,7 @@ fn repair_is_idempotent_when_watermark_already_covers_boundary(
                        BEFORE DELETE ON chio_tool_receipts \
                        BEGIN SELECT RAISE(ABORT, 'chio_tool_receipts is append-only'); END;",
                 )?;
+                copy_checkpoint_prefix_to_attached_archive(connection, 2)?;
                 super::support::restore_transparency_projection_guards(connection)?;
                 connection.execute_batch("DETACH DATABASE archive")?;
                 // The ledger must name the real archive the botched rotation
@@ -3471,6 +3490,7 @@ fn repair_tombstones_archived_ids_to_block_reuse() -> Result<(), Box<dyn std::er
                        BEFORE DELETE ON chio_tool_receipts \
                        BEGIN SELECT RAISE(ABORT, 'chio_tool_receipts is append-only'); END;",
                 )?;
+                copy_checkpoint_prefix_to_attached_archive(connection, 2)?;
                 super::support::restore_transparency_projection_guards(connection)?;
                 connection.execute_batch("DETACH DATABASE archive")?;
                 Ok(())
@@ -3554,6 +3574,7 @@ fn repair_tombstones_already_deleted_prefix_ids() -> Result<(), Box<dyn std::err
                        BEFORE DELETE ON claim_receipt_log_entries \
                        BEGIN SELECT RAISE(ABORT, 'claim receipt log entries are immutable'); END;",
                 )?;
+                copy_checkpoint_prefix_to_attached_archive(connection, 2)?;
                 super::support::restore_transparency_projection_guards(connection)?;
                 connection.execute_batch("DETACH DATABASE archive")?;
                 Ok(())

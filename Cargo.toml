@@ -62,6 +62,7 @@ members = [
     "crates/economy/chio-autonomy",
     "crates/economy/chio-credit",
     "crates/economy/chio-fincred",
+    "crates/economy/chio-finding",
     "crates/economy/chio-fiscal",
     "crates/economy/chio-link",
     "crates/economy/chio-listing",
@@ -384,6 +385,7 @@ chio-core-types = { path = "crates/core/chio-core-types" }
 chio-credentials = { path = "crates/trust/chio-credentials" }
 chio-credit = { path = "crates/economy/chio-credit" }
 chio-fincred = { path = "crates/economy/chio-fincred" }
+chio-finding = { path = "crates/economy/chio-finding" }
 chio-fiscal = { path = "crates/economy/chio-fiscal" }
 chio-cross-protocol = { path = "crates/protocol/chio-cross-protocol" }
 # `default-features = false` at the workspace root so consumers can opt out of

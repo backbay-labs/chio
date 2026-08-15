@@ -35,6 +35,10 @@ cat > "${scratch}/repo/crates/kernel/chio-kernel/tests/loom_concurrency.rs" <<'E
 #[cfg(chio_kernel_loom)]
 #[test]
 fn loom_registered() {}
+
+#[cfg(loom)]
+#[test]
+fn loom_other_cfg_lane() {}
 EOF
 
 cat > "${scratch}/repo/fakebin/cargo" <<'EOF'

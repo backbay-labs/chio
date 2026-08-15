@@ -5,13 +5,11 @@
 # dependency of a shipped runtime SDK. The Rust supply-chain gate (cargo-audit,
 # plus cargo-deny in ci.yml) is unaffected and stays fully blocking.
 #
-# Why these are suppressed rather than bumped: patched releases exist within the
-# current semver ranges, but the example packages depend on unpublished local
-# @chio-protocol/* workspace packages, so npm cannot regenerate their lockfiles
-# in isolation (it fails resolving the workspace deps). These entries are
-# intentionally narrow (by advisory id) so a new, unrelated advisory still
-# blocks. Revisit and remove once the lockfiles can be refreshed against the
-# full workspace install.
+# Why these are suppressed rather than bumped: either no compatible patched
+# release exists, or the patched dependency line is outside the peer-test
+# package's supported range. These entries are intentionally narrow (by
+# advisory id) so a new, unrelated advisory still blocks. Revisit each entry
+# when its upstream dependency publishes a compatible fix.
 
 [[IgnoredVulns]]
 id = "GHSA-866g-f22w-33x8"
@@ -22,13 +20,9 @@ id = "GHSA-f88m-g3jw-g9cj"
 reason = "sharp is pinned below 0.35 by dev-only miniflare and Next SDK test/build tooling; no shipped runtime processes untrusted images; remove when upstream adopts sharp >=0.35"
 
 [[IgnoredVulns]]
-id = "GHSA-qx2v-qp2m-jg93"
-reason = "postcss 8.4.31 is an exact nested dependency of patched Next 15.5.21 in the dev-only Next SDK peer test lock; no shipped runtime processes untrusted CSS; remove when Next updates postcss"
+id = "GHSA-5p2g-fcmc-qvqq"
+reason = "image-size has no patched release; it is reachable only through Metro in the dev-only React Native peer test lock, and no shipped runtime SDK parses attacker-controlled images; remove when Metro adopts a fixed image-size release"
 
 [[IgnoredVulns]]
-id = "GHSA-6g55-p6wh-862q"
-reason = "postcss 8.4.31 is an exact nested dependency of patched Next 15.5.21 in the dev-only Next SDK peer test lock; no shipped runtime processes untrusted CSS; remove when Next updates postcss"
-
-[[IgnoredVulns]]
-id = "GHSA-r28c-9q8g-f849"
-reason = "postcss 8.4.31 is an exact nested dependency of patched Next 15.5.21 in the dev-only Next SDK peer test lock; no shipped runtime processes untrusted CSS; remove when Next updates postcss"
+id = "GHSA-w3rx-r6r6-pgpr"
+reason = "image-size has no patched release; it is reachable only through Metro in the dev-only React Native peer test lock, and no shipped runtime SDK parses attacker-controlled images; remove when Metro adopts a fixed image-size release"

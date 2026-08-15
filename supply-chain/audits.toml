@@ -745,6 +745,12 @@ criteria = "safe-to-deploy"
 version = "0.4.29"
 notes = "Top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
+[[audits.lru]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+delta = "0.18.0 -> 0.18.2"
+notes = "Local review of the full published-source delta. Version 0.18.1 adds a bounded in-memory find-and-promote operation; version 0.18.2 fixes panic-safety unsoundness by detaching a removed node before a potentially panicking key destructor. The new reference construction remains tied to the mutable cache borrow, and the delta adds no dependencies, build script, filesystem or network access, or broader unsafe capability."
+
 [[audits.lsp-types]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"

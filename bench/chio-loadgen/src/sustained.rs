@@ -3,7 +3,7 @@
 //! a fail-closed budget verdict.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Barrier, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -118,11 +118,6 @@ pub fn run_sustained(
 
     let rss_start = rss::current_rss_bytes();
 
-    // Start the measured window only after bounded allocations are resident.
-    // This keeps setup cost out of the configured arrival interval and RSS
-    // growth inside it.
-    let run_start = Instant::now();
-
     let (calls_attempted, mut dispatch_results, rss_end) = thread::scope(|scope| {
         let sampling_complete = Arc::new(AtomicBool::new(false));
         let sampler_complete = Arc::clone(&sampling_complete);
@@ -141,32 +136,56 @@ pub fn run_sustained(
         let (tick_sender, tick_receiver) = mpsc::sync_channel::<()>(queue_capacity);
         let tick_receiver = Arc::new(Mutex::new(tick_receiver));
         let (result_sender, result_receiver) = mpsc::channel::<Result<Duration, LoadgenError>>();
+        let thread_count = worker_count + 2;
+        let threads_ready = Arc::new(Barrier::new(thread_count));
+        let dispatch_start = Arc::new(Barrier::new(thread_count));
+        let shared_run_start = Arc::new(OnceLock::<Instant>::new());
 
         let mut workers = Vec::with_capacity(worker_count);
         for _ in 0..worker_count {
             let receiver = Arc::clone(&tick_receiver);
             let sender = result_sender.clone();
-            workers.push(scope.spawn(move || loop {
-                let next = match receiver.lock() {
-                    Ok(guard) => guard.recv(),
-                    Err(_) => {
-                        let _ = sender.send(Err(LoadgenError::Dispatch(
-                            "loadgen dispatch queue lock was poisoned".to_string(),
-                        )));
-                        break;
+            let ready = Arc::clone(&threads_ready);
+            let start = Arc::clone(&dispatch_start);
+            workers.push(scope.spawn(move || {
+                ready.wait();
+                start.wait();
+                loop {
+                    let next = match receiver.lock() {
+                        Ok(guard) => guard.recv(),
+                        Err(_) => {
+                            let _ = sender.send(Err(LoadgenError::Dispatch(
+                                "loadgen dispatch queue lock was poisoned".to_string(),
+                            )));
+                            break;
+                        }
+                    };
+                    match next {
+                        Ok(()) => {
+                            let _ = sender.send(harness.dispatch_allow_once());
+                        }
+                        Err(_) => break,
                     }
-                };
-                match next {
-                    Ok(()) => {
-                        let _ = sender.send(harness.dispatch_allow_once());
-                    }
-                    Err(_) => break,
                 }
             }));
         }
         drop(result_sender);
 
+        let collector_ready = Arc::clone(&threads_ready);
+        let collector_start = Arc::clone(&dispatch_start);
+        let collector_run_start = Arc::clone(&shared_run_start);
         let collector = scope.spawn(move || {
+            collector_ready.wait();
+            collector_start.wait();
+            let Some(run_start) = collector_run_start.get().copied() else {
+                return DispatchResults {
+                    latencies_ns: latency_buffer,
+                    ttfrh: None,
+                    first_error: Some(LoadgenError::Dispatch(
+                        "loadgen dispatch start was not initialized".to_string(),
+                    )),
+                };
+            };
             let mut results = DispatchResults {
                 latencies_ns: latency_buffer,
                 ttfrh: None,
@@ -196,6 +215,19 @@ pub fn run_sustained(
             }
             results
         });
+
+        // Thread creation can be heavily delayed on a saturated CI host. Do
+        // not charge that setup delay against the arrival window or let the
+        // pacer fill its bounded queue before any worker has started.
+        threads_ready.wait();
+        let run_start = Instant::now();
+        let start_was_initialized = shared_run_start.set(run_start).is_ok();
+        dispatch_start.wait();
+        if !start_was_initialized {
+            return Err(LoadgenError::Dispatch(
+                "loadgen dispatch start was initialized more than once".to_string(),
+            ));
+        }
 
         let mut attempted = 0u64;
         let mut pacing_error = None;

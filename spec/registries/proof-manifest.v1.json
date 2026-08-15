@@ -1639,15 +1639,15 @@
         },
         {
           "kind": "rust_test",
-          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_cloudevents_specversion_mismatch"
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/projection_tests.rs::agent_web_interop_rejects_cloudevents_specversion_mismatch"
         },
         {
           "kind": "rust_test",
-          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_graphql_http_draft_version_missing"
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/projection_tests.rs::agent_web_interop_rejects_graphql_http_draft_version_missing"
         },
         {
           "kind": "rust_test",
-          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_graphql_errors_projected_as_success"
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/projection_tests.rs::agent_web_interop_rejects_graphql_errors_projected_as_success"
         },
         {
           "kind": "positive_fixture",
@@ -1802,11 +1802,11 @@
         },
         {
           "kind": "rust_test",
-          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_mcp_authority_claim_without_limitation"
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/projection_tests.rs::agent_web_interop_rejects_mcp_authority_claim_without_limitation"
         },
         {
           "kind": "rust_test",
-          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_a2a_authority_claim_without_limitation"
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/projection_tests.rs::agent_web_interop_rejects_a2a_authority_claim_without_limitation"
         },
         {
           "kind": "positive_fixture",

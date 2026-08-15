@@ -443,6 +443,19 @@ impl PublicKey {
         }
     }
 
+    /// Whether this is a weak, low-order Ed25519 public key.
+    ///
+    /// Such keys can validate signatures for almost every message under
+    /// loose Ed25519 verification and must not identify artifact issuers.
+    /// Non-Ed25519 keys return `false`.
+    #[must_use]
+    pub fn is_weak_ed25519(&self) -> bool {
+        match &self.material {
+            PublicKeyMaterial::Ed25519 { verifying_key } => verifying_key.is_weak(),
+            _ => false,
+        }
+    }
+
     /// Verify a signature against a message.
     ///
     /// Returns `false` when algorithms differ between key and signature, or
@@ -481,10 +494,62 @@ impl PublicKey {
         }
     }
 
+    /// Strictly verify a signature against a message.
+    ///
+    /// Ed25519 verification rejects weak public keys and small-order
+    /// signature points. Other algorithms retain their normal verifier;
+    /// hybrid signatures apply strict verification to the classical part.
+    #[must_use]
+    pub fn verify_strict(&self, message: &[u8], signature: &Signature) -> bool {
+        match (&self.material, &signature.material) {
+            (
+                PublicKeyMaterial::Ed25519 { verifying_key },
+                SignatureMaterial::Ed25519 { inner },
+            ) => verifying_key.verify_strict(message, inner).is_ok(),
+            (PublicKeyMaterial::P256 { encoded_point }, SignatureMaterial::P256 { der }) => {
+                verify_ecdsa_p256(encoded_point, message, der)
+            }
+            (PublicKeyMaterial::P384 { encoded_point }, SignatureMaterial::P384 { der }) => {
+                verify_ecdsa_p384(encoded_point, message, der)
+            }
+            (
+                PublicKeyMaterial::Hybrid {
+                    classical,
+                    pq,
+                    alg_set,
+                },
+                SignatureMaterial::Hybrid {
+                    classical: classical_signature,
+                    pq: pq_signature,
+                    alg_set: signature_alg_set,
+                },
+            ) => {
+                alg_set == signature_alg_set
+                    && validate_hybrid_alg_set(classical.algorithm(), alg_set).is_ok()
+                    && classical.verify_strict(message, classical_signature)
+                    && verify_mldsa65_signature(pq, message, pq_signature)
+            }
+            _ => false,
+        }
+    }
+
     /// Verify a signature over the canonical JSON form of a serializable value.
     pub fn verify_canonical<T: Serialize>(&self, value: &T, signature: &Signature) -> Result<bool> {
         let canonical = canonical_json_shared_bytes(value)?;
         Ok(self.verify_shared_canonical(&canonical, signature))
+    }
+
+    /// Strictly verify a signature over canonical JSON.
+    ///
+    /// Use this for public, identity-bearing artifacts whose verification
+    /// must reject weak Ed25519 keys and small-order signature points.
+    pub fn verify_canonical_strict<T: Serialize>(
+        &self,
+        value: &T,
+        signature: &Signature,
+    ) -> Result<bool> {
+        let canonical = canonical_json_shared_bytes(value)?;
+        Ok(self.verify_strict(canonical.as_bytes(), signature))
     }
 
     /// Verify a signature over shared canonical JSON bytes.
@@ -1247,6 +1312,26 @@ mod tests {
         let kp2 = Keypair::generate();
         let sig = kp1.sign(b"hello chio");
         assert!(!kp2.public_key().verify(b"hello chio", &sig));
+    }
+
+    #[test]
+    fn strict_verification_rejects_weak_ed25519_key() {
+        let weak_key = match PublicKey::from_hex(
+            "0100000000000000000000000000000000000000000000000000000000000000",
+        ) {
+            Ok(key) => key,
+            Err(err) => panic!("weak Ed25519 test key construction failed: {err}"),
+        };
+        let forged_signature = match Signature::from_hex(
+            "0100000000000000000000000000000000000000000000000000000000000000\
+             0000000000000000000000000000000000000000000000000000000000000000",
+        ) {
+            Ok(signature) => signature,
+            Err(err) => panic!("weak Ed25519 test signature construction failed: {err}"),
+        };
+
+        assert!(weak_key.is_weak_ed25519());
+        assert!(!weak_key.verify_strict(b"message without a signer", &forged_signature));
     }
 
     #[test]

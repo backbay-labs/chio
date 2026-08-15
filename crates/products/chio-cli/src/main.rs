@@ -143,7 +143,31 @@ mod chio_dispatch;
 use chio_dispatch::*;
 
 fn main() {
+    #[cfg(not(windows))]
     dispatch_cli::run();
+
+    // The Windows process main thread has a smaller default stack than the
+    // generated clap parser needs as the command surface grows. Keep parsing
+    // and dispatch on an explicitly bounded worker so even lightweight
+    // commands such as `chio init` cannot overflow before dispatch.
+    #[cfg(windows)]
+    {
+        let worker = match std::thread::Builder::new()
+            .name("chio-cli-dispatch".to_owned())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(dispatch_cli::run)
+        {
+            Ok(worker) => worker,
+            Err(error) => {
+                eprintln!("fatal: failed to start CLI dispatch: {error}");
+                std::process::exit(1);
+            }
+        };
+        if worker.join().is_err() {
+            eprintln!("fatal: CLI dispatch panicked");
+            std::process::exit(1);
+        }
+    }
 }
 #[path = "cli/runtime.rs"]
 mod runtime_cli;
