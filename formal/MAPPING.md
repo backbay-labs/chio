@@ -407,13 +407,13 @@ theorems model the pure M6 status decision. Signature verification, canonical
 JSON, sparse hashing, and SQLite durability remain implementation checks and
 audited assumptions.
 
-| Property | Rust path constrained | Assumption discharge | One-line description |
-| --- | --- | --- | --- |
-| `epoch_advance_is_strict` | `chio_finding::status::verify_status_proof_input`, durable status-floor install | P10; storage and crypto remain audited | Any candidate that advances the local floor has a strictly greater `map_epoch`. |
-| `same_epoch_equivocation_rejected` | durable status-floor install | P10; storage and crypto remain audited | Another id or root at the same `map_epoch` is equivocation and rejects. |
-| `admitted_non_inclusion_not_past_valid_until` | `chio_finding::status::verify_status_proof_input` | P10; OS clock remains audited | An admitted non-inclusion proof is checked no later than the signed `valid_until`. |
-| `pending_never_accepts_non_inclusion` | kernel status cache and purchase gate | P10; durable cache availability remains audited | Sticky local pending state denies a contradictory non-inclusion proof. |
-| `retracted_never_accepts_non_inclusion` | kernel status cache and purchase gate | P10; durable cache availability remains audited | Sticky local retracted state denies a contradictory non-inclusion proof. |
+| Property | Source | Rust path constrained | Assumption discharge | One-line description |
+| --- | --- | --- | --- | --- |
+| `epoch_advance_is_strict` | `formal/lean4/Chio/Chio/Proofs/FindingStatusFreshness.lean` | `crates/platform/chio-store-sqlite/src/finding_status_store.rs` | P10; storage and crypto remain audited | Any candidate that advances the local floor has a strictly greater `map_epoch`. |
+| `same_epoch_equivocation_rejected` | `formal/lean4/Chio/Chio/Proofs/FindingStatusFreshness.lean` | `crates/platform/chio-store-sqlite/src/finding_status_store.rs` | P10; storage and crypto remain audited | Another id or root at the same `map_epoch` is equivocation and rejects. |
+| `admitted_non_inclusion_not_past_valid_until` | `formal/lean4/Chio/Chio/Proofs/FindingStatusFreshness.lean` | `crates/economy/chio-finding/src/status.rs` | P10; OS clock remains audited | An admitted non-inclusion proof is checked no later than the signed `valid_until`. |
+| `pending_never_accepts_non_inclusion` | `formal/lean4/Chio/Chio/Proofs/FindingStatusFreshness.lean` | `crates/kernel/chio-kernel/src/kernel/purchase_gate.rs`; `crates/platform/chio-store-sqlite/src/finding_status_store.rs` | P10; durable cache availability remains audited | Sticky local pending state denies a contradictory non-inclusion proof. |
+| `retracted_never_accepts_non_inclusion` | `formal/lean4/Chio/Chio/Proofs/FindingStatusFreshness.lean` | `crates/kernel/chio-kernel/src/kernel/purchase_gate.rs`; `crates/platform/chio-store-sqlite/src/finding_status_store.rs` | P10; durable cache availability remains audited | Sticky local retracted state denies a contradictory non-inclusion proof. |
 
 ## Adding a new property
 
