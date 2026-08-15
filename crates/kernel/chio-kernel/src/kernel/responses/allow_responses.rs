@@ -668,26 +668,6 @@ impl ChioKernel {
                 "Finding delivery lineage requires a durable receipt store".to_owned(),
             ));
         };
-        let verifier = self.finding_status_proof_verifier.as_ref().ok_or_else(|| {
-            KernelError::GuardDenied(
-                "Finding memory write requires a configured finding status verifier".to_owned(),
-            )
-        })?;
-        verifier
-            .verify_current_status_admission(
-                &crate::finding_purchase::FindingCurrentStatusContextView {
-                    expected_finding_id: &finding_id,
-                    expected_feed_id: &status_proof.feed_id,
-                    minimum_map_epoch: status_proof.map_epoch,
-                    minimum_non_inclusion_checked_at: status_proof.non_inclusion_checked_at,
-                },
-                now_unix_secs,
-            )
-            .map_err(|error| {
-                KernelError::GuardDenied(format!(
-                    "Finding memory write status revalidation failed: {error}"
-                ))
-            })?;
         let Some(()) = self.with_receipt_store(|store| {
             if !store.supports_kernel_signed_checkpoints() {
                 return Err(KernelError::Internal(
@@ -721,6 +701,26 @@ impl ChioKernel {
                 "Finding delivery lineage requires a durable receipt store".to_owned(),
             ));
         };
+        let verifier = self.finding_status_proof_verifier.as_ref().ok_or_else(|| {
+            KernelError::GuardDenied(
+                "Finding memory write requires a configured finding status verifier".to_owned(),
+            )
+        })?;
+        verifier
+            .verify_current_status_admission(
+                &crate::finding_purchase::FindingCurrentStatusContextView {
+                    expected_finding_id: &finding_id,
+                    expected_feed_id: &status_proof.feed_id,
+                    minimum_map_epoch: status_proof.map_epoch,
+                    minimum_non_inclusion_checked_at: status_proof.non_inclusion_checked_at,
+                },
+                now_unix_secs,
+            )
+            .map_err(|error| {
+                KernelError::GuardDenied(format!(
+                    "Finding memory write status revalidation failed: {error}"
+                ))
+            })?;
         Ok(())
     }
 

@@ -326,8 +326,43 @@ impl crate::finding_purchase::FindingStatusProofVerifier for RetractedFindingSta
     }
 }
 
-#[test]
-fn finding_memory_write_rejects_a_delivery_from_another_status_feed_before_dispatch() {
+struct CheckpointRaceStatusVerifier {
+    retracted: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl crate::finding_purchase::FindingStatusProofVerifier for CheckpointRaceStatusVerifier {
+    fn verify_status_proof(
+        &self,
+        _view: &crate::finding_purchase::FindingStatusProofContextView<'_>,
+    ) -> Result<crate::finding_purchase::VerifiedFindingStatusProof, String> {
+        Err("portable proof verification is not used by this test".to_owned())
+    }
+
+    fn verify_status_admission(
+        &self,
+        _view: &crate::finding_purchase::FindingStatusProofContextView<'_>,
+        _verified: &crate::finding_purchase::VerifiedFindingStatusProof,
+        _now_unix_secs: u64,
+    ) -> Result<(), String> {
+        Err("portable proof admission is not used by this test".to_owned())
+    }
+
+    fn verify_current_status_admission(
+        &self,
+        _view: &crate::finding_purchase::FindingCurrentStatusContextView<'_>,
+        _now_unix_secs: u64,
+    ) -> Result<(), String> {
+        if self.retracted.load(std::sync::atomic::Ordering::SeqCst) {
+            Err("finding retracted during checkpoint preflight".to_owned())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+fn signed_finding_delivery_receipt(
+    feed_id: &str,
+) -> (chio_core::receipt::body::ChioReceipt, Keypair) {
     use chio_core::receipt::metadata::{
         DeliveryContract, DeliveryResult, FindingDelivery, FindingDeliverySettlementMode,
         FindingMediaTypeCheck, FindingStatusProofMetadata, FindingTransformProfile,
@@ -335,25 +370,13 @@ fn finding_memory_write_rejects_a_delivery_from_another_status_feed_before_dispa
         FINDING_DELIVERY_SCHEMA, FINDING_STATUS_KEY_DOMAIN_NONCE,
     };
 
-    let mut kernel = make_kernel(make_config());
-    let invocations = Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-mem",
-        vec!["memory_write"],
-        Arc::clone(&invocations),
-    )));
-    install_provenance_store(&mut kernel);
-    kernel.add_guard(Box::new(RequiredFindingStatusFeedGuard(
-        "status-feed/quarantine",
-    )));
-
     let delivery_key = make_keypair();
     let content = serde_json::json!("important context");
     let content_digest = chio_core::crypto::sha256_hex(
         &chio_core::canonical::canonical_json_bytes(&content)
             .expect("memory content is canonicalizable"),
     );
-    let parent = chio_core::receipt::body::ChioReceipt::sign(
+    let receipt = chio_core::receipt::body::ChioReceipt::sign(
         chio_core::receipt::body::ChioReceiptBody {
             id: "placeholder-finding-delivery".to_owned(),
             timestamp: current_unix_timestamp(),
@@ -395,7 +418,7 @@ fn finding_memory_write_rejects_a_delivery_from_another_status_feed_before_dispa
                     purchase_intent_id: "purchase-intent-1".to_owned(),
                     authoritative_payment_operation_id: "payment-operation-1".to_owned(),
                     status_proof: Some(FindingStatusProofMetadata {
-                        feed_id: "status-feed/delivery".to_owned(),
+                        feed_id: feed_id.to_owned(),
                         key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
                         map_epoch: 1,
                         status_epoch_artifact_sha256: "3".repeat(64),
@@ -413,6 +436,89 @@ fn finding_memory_write_rejects_a_delivery_from_another_status_feed_before_dispa
         &delivery_key,
     )
     .expect("sign finding delivery receipt");
+    (receipt, delivery_key)
+}
+
+#[test]
+fn finding_memory_status_is_rechecked_after_checkpoint_preflight() {
+    let mut config = make_config();
+    config.checkpoint_batch_size = 1;
+    let mut kernel = make_kernel(config);
+    install_provenance_store(&mut kernel);
+    kernel.add_guard(Box::new(RequiredFindingStatusFeedGuard(
+        "status-feed/delivery",
+    )));
+    let (parent, delivery_key) = signed_finding_delivery_receipt("status-feed/delivery");
+    let retracted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let directory = tempfile::tempdir().expect("receipt store directory");
+    let store = SqliteReceiptStore::open(directory.path().join("receipts.db"))
+        .expect("open checkpointing receipt store");
+    store.flip_status_on_checkpoint(Arc::clone(&retracted));
+    store
+        .append_chio_receipt(&parent)
+        .expect("seed delivery receipt");
+    kernel
+        .set_receipt_store(Box::new(store))
+        .expect("install receipt store");
+    kernel.set_finding_delivery_receipt_authorities(vec![delivery_key.public_key()]);
+    kernel.set_finding_status_proof_verifier(Arc::new(CheckpointRaceStatusVerifier {
+        retracted: Arc::clone(&retracted),
+    }));
+
+    let agent = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent,
+        make_scope(vec![make_grant("srv-mem", "memory_write")]),
+        300,
+    );
+    let mut request = memory_write_request("finding-memory-checkpoint-race", &capability, "finding-1");
+    request.arguments[crate::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT] =
+        serde_json::json!(parent.id);
+    request.governed_intent = Some(GovernedTransactionIntent {
+        id: "intent-finding-memory-checkpoint-race".to_owned(),
+        server_id: request.server_id.clone(),
+        tool_name: request.tool_name.clone(),
+        purpose: "retain an authenticated Finding delivery".to_owned(),
+        max_amount: None,
+        commerce: None,
+        metered_billing: None,
+        runtime_attestation: None,
+        call_chain: None,
+        autonomy: None,
+        context: None,
+        body: Default::default(),
+    });
+
+    let error = kernel
+        .revalidate_finding_memory_write_status_before_dispatch(
+            &request,
+            current_unix_timestamp(),
+        )
+        .expect_err("a retraction during checkpoint preflight must deny dispatch");
+    assert!(
+        error
+            .to_string()
+            .contains("retracted during checkpoint preflight"),
+        "unexpected rejection: {error}"
+    );
+}
+
+#[test]
+fn finding_memory_write_rejects_a_delivery_from_another_status_feed_before_dispatch() {
+    let mut kernel = make_kernel(make_config());
+    let invocations = Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-mem",
+        vec!["memory_write"],
+        Arc::clone(&invocations),
+    )));
+    install_provenance_store(&mut kernel);
+    kernel.add_guard(Box::new(RequiredFindingStatusFeedGuard(
+        "status-feed/quarantine",
+    )));
+
+    let (parent, delivery_key) = signed_finding_delivery_receipt("status-feed/delivery");
     let store = PointLookupReceiptStore::default();
     store
         .append_chio_receipt(&parent)

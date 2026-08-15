@@ -2186,6 +2186,10 @@ impl ChioKernel {
         } else {
             None
         };
+        self.revalidate_completed_purchase_status_for_terminal(
+            purchase.as_ref(),
+            current_unix_timestamp_ms() / 1_000,
+        )?;
         self.revalidate_completed_recovery_status(
             matched_grant_index,
             request,

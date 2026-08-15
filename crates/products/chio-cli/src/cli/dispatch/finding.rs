@@ -957,7 +957,7 @@ fn cmd_finding_status(
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| CliError::cli_other_error(format!("system clock is invalid: {error}")))?
         .as_secs();
-    status_floor::require_trusted_time(rollback_floor, now)?;
+    status_floor::advance_trusted_time_locked(rollback_floor, now)?;
     let service_bond = load_status_service_bond(
         service_bond,
         feed_id,
@@ -996,7 +996,7 @@ fn cmd_finding_status(
             "finding status host clock rolled back during proof retrieval".to_owned(),
         ));
     }
-    status_floor::require_trusted_time(rollback_floor, post_fetch_now)?;
+    status_floor::advance_trusted_time_locked(rollback_floor, post_fetch_now)?;
     if !service_bond.covers(post_fetch_now) {
         return Err(CliError::cli_other_error(
             "finding status service bond expired while fetching the proof".to_owned(),

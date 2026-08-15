@@ -685,6 +685,21 @@ impl ChioKernel {
             .map_err(|error| format!("completed purchase status admission rejected: {error}"))
     }
 
+    /// Apply the final purchase status fence immediately before the atomic
+    /// terminal projection can capture payment or release output.
+    pub(crate) fn revalidate_completed_purchase_status_for_terminal(
+        &self,
+        purchase: Option<&VerifiedFindingPurchase>,
+        now_unix_secs: u64,
+    ) -> Result<(), KernelError> {
+        self.revalidate_completed_purchase_status(purchase, now_unix_secs)
+            .map_err(|reason| {
+                KernelError::DurableAdmission(format!(
+                    "finding purchase terminal status revalidation failed: {reason}"
+                ))
+            })
+    }
+
     /// Preserve a retained terminal denial and apply the current status gate
     /// before replaying a purchased delivery.
     pub(crate) fn revalidate_replayed_purchase_delivery(

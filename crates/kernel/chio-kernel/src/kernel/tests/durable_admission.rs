@@ -115,6 +115,44 @@ fn side_effecting_mode_exempts_only_explicitly_read_only_tools() {
         .is_none());
 }
 
+#[test]
+fn finding_memory_lineage_requires_a_durable_terminal_projection() {
+    let mut kernel = make_kernel(make_config());
+    kernel
+        .configure_durable_admission(crate::admission_operation::DurableAdmissionMode::Off, true)
+        .expect("unsafe ephemeral mode for the regression");
+    let agent = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent,
+        make_scope(vec![make_grant("memory-server", "write")]),
+        300,
+    );
+    let mut request = make_request("finding-memory-durable", &capability, "write", "memory-server");
+    request.arguments[crate::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT] =
+        serde_json::json!("delivery-receipt");
+    let matching = resolve_required_matching_grants(
+        &capability,
+        &request.tool_name,
+        &request.server_id,
+        &request.arguments,
+        request.model_metadata.as_ref(),
+    )
+    .expect("matching Finding memory grant");
+
+    let error = match kernel.begin_durable_tool_admission(
+        &request,
+        &matching,
+        current_unix_timestamp_ms(),
+    ) {
+        Ok(_) => panic!("Finding memory lineage used an ephemeral terminal"),
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("no qualified admission operation store"));
+}
+
 #[derive(Default)]
 struct TestAdmissionState {
     operation: Option<AdmissionOperationV1>,

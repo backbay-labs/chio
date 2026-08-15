@@ -579,13 +579,18 @@ impl ChioKernel {
                     })
                 })
                 .count();
+        let finding_memory_terminal_required = request
+            .arguments
+            .get(crate::memory_provenance::FINDING_DELIVERY_RECEIPT_ID_ARGUMENT)
+            .is_some();
         // Only a grant that can serve this request may force the structured path. An
         // unrelated cumulative grant elsewhere in the capability must not withdraw an
         // otherwise exempt call.
         let requires_structured_admission = aggregate_quota.is_some()
             || request.supplemental_authorization.is_some()
             || cumulative_matching_grant_count != 0
-            || recovery_matching_grant_count != 0;
+            || recovery_matching_grant_count != 0
+            || finding_memory_terminal_required;
         if request.supplemental_authorization.is_some()
             && self.supplemental_quota_verifier.is_none()
         {
@@ -612,10 +617,13 @@ impl ChioKernel {
         // through the recoverable terminal projection so its Allow receipt and
         // receipt-to-delivery lineage cannot disagree and trigger a duplicate
         // execution after a later persistence failure.
-        if !self.durable_admission_mode.covers(effect_class) && recovery_matching_grant_count == 0 {
+        if !self.durable_admission_mode.covers(effect_class)
+            && recovery_matching_grant_count == 0
+            && !finding_memory_terminal_required
+        {
             if requires_structured_admission {
                 return Err(KernelError::DurableAdmission(
-                    "aggregate, cumulative, supplemental, and recovery authorization requires durable admission coverage"
+                    "aggregate, cumulative, supplemental, recovery, and Finding memory authorization requires durable admission coverage"
                         .to_string(),
                 ));
             }

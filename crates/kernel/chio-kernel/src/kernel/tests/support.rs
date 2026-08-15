@@ -72,6 +72,7 @@ struct SqliteReceiptStore {
     // (`enable_background_checkpoints`). `None` until installed;
     // `max_batch == 0` disables checkpointing (ADR-0008).
     background_checkpoint_signer: Mutex<Option<(std::sync::Arc<Keypair>, u64)>>,
+    checkpoint_status_flip: Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>>,
 }
 
 static UNIQUE_RECEIPT_DB_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -149,37 +150,8 @@ impl SqliteReceiptStore {
         Ok(Self {
             connection: Mutex::new(connection),
             background_checkpoint_signer: Mutex::new(None),
+            checkpoint_status_flip: Mutex::new(None),
         })
-    }
-
-    fn connection(&self) -> Result<MutexGuard<'_, Connection>, ReceiptStoreError> {
-        self.connection.lock().map_err(|_| {
-            ReceiptStoreError::Conflict("sqlite receipt store lock poisoned".to_string())
-        })
-    }
-
-    fn load_checkpoint_by_seq_locked(
-        connection: &Connection,
-        checkpoint_seq: u64,
-    ) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
-        connection
-            .query_row(
-                "SELECT raw_json FROM kernel_checkpoints WHERE checkpoint_seq = ?1",
-                params![checkpoint_seq as i64],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?
-            .map(|raw_json| serde_json::from_str(&raw_json))
-            .transpose()
-            .map_err(Into::into)
-    }
-
-    fn load_checkpoint_by_seq(
-        &self,
-        checkpoint_seq: u64,
-    ) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
-        let connection = self.connection()?;
-        Self::load_checkpoint_by_seq_locked(&connection, checkpoint_seq)
     }
 
     /// Locked analogue of the `ReceiptStore::load_latest_checkpoint` default,
@@ -282,7 +254,9 @@ impl SqliteReceiptStore {
             });
         }
         let batch_start_seq = latest_checkpointed_entry_seq + 1;
-        let batch_end_seq = latest_committed_entry_seq.min(batch_start_seq + max_batch - 1);
+        let batch_end_seq = latest_committed_entry_seq.min(
+            batch_start_seq.saturating_add(max_batch.saturating_sub(1)),
+        );
         let receipt_bytes_with_seqs = Self::receipts_canonical_bytes_range_locked(
             connection,
             batch_start_seq,
@@ -527,6 +501,20 @@ impl ReceiptStore for SqliteReceiptStore {
         Ok(())
     }
 
+    fn load_chio_receipt(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        self.load_chio_receipt_for_test(receipt_id)
+    }
+
+    fn load_retained_chio_receipt_commitment(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<crate::receipt_store::RetainedReceiptCommitment>, ReceiptStoreError> {
+        self.load_retained_chio_receipt_commitment_for_test(receipt_id)
+    }
+
     fn supports_kernel_signed_checkpoints(&self) -> bool {
         true
     }
@@ -686,8 +674,7 @@ impl ReceiptStore for SqliteReceiptStore {
         max_batch: u64,
         keypair: &Keypair,
     ) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
-        let connection = self.connection()?;
-        Self::create_next_receipt_checkpoint_locked(&connection, max_batch, keypair)
+        self.create_next_receipt_checkpoint_with_status_flip(max_batch, keypair)
     }
 
     fn load_checkpoint_by_seq(

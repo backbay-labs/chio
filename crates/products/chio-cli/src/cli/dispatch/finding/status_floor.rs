@@ -9,6 +9,8 @@ const FINDING_STATUS_FLOOR_SCHEMA_V1: &str = "chio.finding.status-cli-floor.v1";
 const FINDING_STATUS_FLOOR_SCHEMA_V2: &str = "chio.finding.status-cli-floor.v2";
 const FINDING_STATUS_RETRACTION_MAX_BYTES: usize = 4 * 1024;
 const FINDING_STATUS_RETRACTION_SCHEMA_V1: &str = "chio.finding.status-cli-retraction.v1";
+const FINDING_STATUS_TRUSTED_TIME_MAX_BYTES: usize = 512;
+const FINDING_STATUS_TRUSTED_TIME_SCHEMA_V1: &str = "chio.finding.status-cli-trusted-time.v1";
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
@@ -83,6 +85,13 @@ struct FindingStatusCliRetraction {
     rotation_policy_ref: String,
     key_domain_nonce: u64,
     finding_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct FindingStatusCliTrustedTime {
+    schema: String,
+    trusted_time_floor: u64,
 }
 
 pub(super) struct FindingStatusFloorObservation<'a> {
@@ -275,6 +284,54 @@ pub(super) fn write_status_floor(
     )
 }
 
+fn status_trusted_time_path(floor_path: &Path) -> Result<PathBuf, CliError> {
+    let file_name = floor_path.file_name().ok_or_else(|| {
+        CliError::cli_other_error("finding status rollback floor path has no file name".to_owned())
+    })?;
+    let mut trusted_time_name = file_name.to_os_string();
+    trusted_time_name.push(".trusted-time");
+    Ok(floor_path.with_file_name(trusted_time_name))
+}
+
+fn read_trusted_time_floor(floor_path: &Path) -> Result<Option<u64>, CliError> {
+    let path = status_trusted_time_path(floor_path)?;
+    let Some(bytes) = read_canonical_state(
+        &path,
+        FINDING_STATUS_TRUSTED_TIME_MAX_BYTES,
+        "trusted-time floor",
+    )?
+    else {
+        return Ok(None);
+    };
+    let state: FindingStatusCliTrustedTime = serde_json::from_slice(&bytes)?;
+    if state.schema != FINDING_STATUS_TRUSTED_TIME_SCHEMA_V1 || state.trusted_time_floor == 0 {
+        return Err(CliError::cli_other_error(
+            "finding status trusted-time floor is invalid".to_owned(),
+        ));
+    }
+    Ok(Some(state.trusted_time_floor))
+}
+
+pub(super) fn advance_trusted_time_locked(
+    floor_path: &Path,
+    trusted_now: u64,
+) -> Result<(), CliError> {
+    require_trusted_time(floor_path, trusted_now)?;
+    if read_trusted_time_floor(floor_path)?.is_some_and(|current| current >= trusted_now) {
+        return Ok(());
+    }
+    let path = status_trusted_time_path(floor_path)?;
+    write_canonical_state(
+        &path,
+        &FindingStatusCliTrustedTime {
+            schema: FINDING_STATUS_TRUSTED_TIME_SCHEMA_V1.to_owned(),
+            trusted_time_floor: trusted_now,
+        },
+        FINDING_STATUS_TRUSTED_TIME_MAX_BYTES,
+        "trusted-time floor",
+    )
+}
+
 fn status_retraction_directory(floor_path: &Path) -> Result<PathBuf, CliError> {
     let file_name = floor_path.file_name().ok_or_else(|| {
         CliError::cli_other_error("finding status rollback floor path has no file name".to_owned())
@@ -407,13 +464,14 @@ pub(super) fn require_trusted_time(path: &Path, trusted_now: u64) -> Result<(), 
             "finding status trusted time must be positive".to_owned(),
         ));
     }
+    let mut durable_floor = read_trusted_time_floor(path)?.unwrap_or_default();
     if let Some(FindingStatusCliFloorState::V2(current)) = read_status_floor_state(path)? {
-        if trusted_now < current.trusted_time_floor {
-            return Err(CliError::cli_other_error(format!(
-                "finding status host clock rolled back below the durable trusted-time floor {}",
-                current.trusted_time_floor
-            )));
-        }
+        durable_floor = durable_floor.max(current.trusted_time_floor);
+    }
+    if trusted_now < durable_floor {
+        return Err(CliError::cli_other_error(format!(
+            "finding status host clock rolled back below the durable trusted-time floor {durable_floor}"
+        )));
     }
     Ok(())
 }
@@ -425,7 +483,7 @@ pub(super) fn advance_status_floor_locked(
     authorization_sha256: &str,
     trusted_now: u64,
 ) -> Result<(), CliError> {
-    require_trusted_time(path, trusted_now)?;
+    advance_trusted_time_locked(path, trusted_now)?;
     if let Some(state) = read_status_floor_state(path)? {
         let (current, legacy_retractions) = match state {
             FindingStatusCliFloorState::V1(floor) => floor.into_v2(trusted_now),

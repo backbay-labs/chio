@@ -72,3 +72,23 @@ fn status_floor_rejects_rollback_and_same_epoch_equivocation() {
     .to_string()
     .contains("equivocates"));
 }
+
+#[test]
+fn status_floor_persists_trusted_time_before_any_verified_epoch() {
+    let dir = tempfile::tempdir().unwrap();
+    let floor_path = dir.path().join("status-floor.json");
+    let _lock = FindingStatusFloorLock::acquire(&floor_path).unwrap();
+
+    status_floor::advance_trusted_time_locked(&floor_path, 1_800_000_000).unwrap();
+    assert!(read_status_floor(&floor_path).unwrap().is_none());
+    assert!(status_floor::require_trusted_time(&floor_path, 1_799_999_999)
+        .unwrap_err()
+        .to_string()
+        .contains("host clock rolled back"));
+
+    status_floor::advance_trusted_time_locked(&floor_path, 1_800_000_100).unwrap();
+    assert!(status_floor::require_trusted_time(&floor_path, 1_800_000_099)
+        .unwrap_err()
+        .to_string()
+        .contains("1800000100"));
+}
