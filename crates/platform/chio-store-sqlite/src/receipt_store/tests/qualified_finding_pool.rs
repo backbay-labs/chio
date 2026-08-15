@@ -396,6 +396,67 @@ fn qualified_receipt_sink_anchors_standalone_lineage_mutations(
 }
 
 #[test]
+fn qualified_settlement_state_writes_advance_the_rollback_anchor(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use chio_settle::{
+        RetryPolicy, SettlementOutcomeStore as _, SettlementRoute, SettlementRoutingInput,
+    };
+
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-settlement-state-anchor")?;
+    #[cfg(unix)]
+    for root in [directory.path(), anchor_directory.path()] {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let database = directory.path().join("qualified-settlement-state.sqlite3");
+    let snapshot = directory.path().join("before-terminal-settlement.sqlite3");
+    let store = SqliteReceiptStore::open_for_finding_pool(&database, anchor_directory.path())?;
+    let outcomes = crate::SqliteSettlementOutcomeStore::open_alongside(&store)?;
+    let receipt =
+        super::support::sample_receipt_with_id_and_timestamp("qualified-settlement-state", 1);
+    let pending = chio_kernel::PendingSettlementObservation {
+        next_visible_at_ms: 1,
+    };
+    chio_kernel::ReceiptStore::append_chio_receipt_with_pending_observation(
+        &store, &receipt, &pending,
+    )?;
+    store.flush_receipt_writes()?;
+    let connection = rusqlite::Connection::open(&database)?;
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(connection);
+    std::fs::copy(&database, &snapshot)?;
+
+    let claim = outcomes
+        .claim_receipt(&receipt.id, "qualified-settlement-worker", 1, 100)?
+        .ok_or("qualified settlement attempt was not claimable")?;
+    assert_eq!(
+        outcomes.record_claimed_outcome(
+            &claim,
+            &SettlementRoutingInput::Accepted,
+            RetryPolicy::default(),
+            2,
+        )?,
+        SettlementRoute::NoAction
+    );
+    store.flush_receipt_writes()?;
+    let connection = rusqlite::Connection::open(&database)?;
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(connection);
+    std::fs::copy(&snapshot, &database)?;
+
+    let error = store
+        .max_tool_receipt_seq()
+        .err()
+        .ok_or("rolled-back terminal settlement state was served")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("rollback protection")),
+        "unexpected settlement-state rollback error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn qualified_receipt_sink_anchors_standalone_checkpoint_commits(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let directory = tempfile::tempdir()?;
