@@ -130,6 +130,7 @@ fn require_enforcement_anchor_binding(
     anchor_proof: &AnchorInclusionProof,
     publisher: FindingAnchorPublisherEvidence<'_>,
 ) -> Result<(), SettlementError> {
+    require_anchor_publisher_role_separation(verified, publisher.retained_policy)?;
     verify_anchor_inclusion_proof(anchor_proof)
         .map_err(|error| reject(format!("anchor proof rejected: {error}")))?;
     require_anchor_publisher_lifecycle(anchor_proof, publisher)?;
@@ -159,7 +160,20 @@ fn require_enforcement_anchor_binding(
     Ok(())
 }
 
-fn require_anchor_publisher_lifecycle(
+pub(super) fn require_anchor_publisher_role_separation(
+    verified: &VerifiedFindingEnforcement,
+    policy: &FindingPenaltyAuthorityPolicy,
+) -> Result<(), SettlementError> {
+    let enforcement = verified.enforcement();
+    if policy.key == enforcement.finalization_key || policy.key == enforcement.penalty_key {
+        return Err(reject(
+            "anchor publisher must be distinct from finalization and penalty authorities",
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn require_anchor_publisher_lifecycle(
     proof: &AnchorInclusionProof,
     evidence: FindingAnchorPublisherEvidence<'_>,
 ) -> Result<(), SettlementError> {
@@ -176,6 +190,7 @@ fn require_anchor_publisher_lifecycle(
         ));
     }
 
+    let receipt_at = proof.receipt.timestamp;
     let published_at = proof.checkpoint_statement.issued_at;
     let certificate = &proof.key_binding_certificate.certificate;
     if proof.receipt.kernel_key != policy.key
@@ -194,6 +209,21 @@ fn require_anchor_publisher_lifecycle(
     if published_at < certificate.issued_at || published_at >= certificate.expires_at {
         return Err(reject(
             "anchor proof was published outside its key-binding certificate window",
+        ));
+    }
+    if receipt_at < policy.valid_from || receipt_at >= policy.valid_until {
+        return Err(reject(
+            "anchor receipt was signed outside the retained authority window",
+        ));
+    }
+    if receipt_at < certificate.issued_at || receipt_at >= certificate.expires_at {
+        return Err(reject(
+            "anchor receipt was signed outside its key-binding certificate window",
+        ));
+    }
+    if receipt_at > published_at {
+        return Err(reject(
+            "anchor receipt was signed after its enclosing checkpoint",
         ));
     }
 

@@ -858,6 +858,59 @@ fn report_verification_keeps_the_status_signer_independent() {
 }
 
 #[test]
+fn report_verification_keeps_all_audit_authorities_independent() {
+    let (eligible, epoch) = standard_round();
+    let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+    let envelope = signed_epoch_digest(&epoch);
+    let report = report_for(&epoch, &envelope, &selection);
+    let audit_attempts = audit_attempts_for_report(&report, &eligible, &epoch);
+    let outcomes = resolved_outcomes_for_report(&report, &eligible, &audit_attempts);
+
+    let policies = [audit_evaluator_policy()];
+    let mut witnesses = report_witnesses(&epoch, &policies, &audit_attempts, &outcomes);
+    witnesses.pinned_governance_policy.key = witnesses.pinned_audit_policy.key.clone();
+    assert_eq!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &witnesses,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::AuthorityRoleCollision("authority", "governance")
+    );
+
+    let colliding_evaluator =
+        evaluator_policy("audit-evaluator", governance_authority().public_key(), 1);
+    let policies = [colliding_evaluator];
+    let witnesses = report_witnesses(&epoch, &policies, &audit_attempts, &outcomes);
+    assert_eq!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &witnesses,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::AuthorityRoleCollision("evaluator", "governance")
+    );
+
+    let duplicate = audit_evaluator_policy();
+    let policies = [audit_evaluator_policy(), duplicate];
+    let witnesses = report_witnesses(&epoch, &policies, &audit_attempts, &outcomes);
+    assert_eq!(
+        verify_audit_report_with_witness(
+            &sign_epoch(&epoch),
+            &sign_report(&report),
+            &eligible,
+            &witnesses,
+        )
+        .test_unwrap_err(),
+        FindingAuditError::AuthorityRoleCollision("evaluator", "another evaluator")
+    );
+}
+
+#[test]
 fn report_verification_authenticates_the_seed_witness_lifecycle() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
@@ -1398,7 +1451,7 @@ fn the_audit_authority_cannot_also_resolve_its_own_attempt() {
         .test_expect("the reused audit authority can sign the outcome");
     let policies = [reused_policy];
 
-    assert!(matches!(
+    assert_eq!(
         verify_audit_report_with_witness(
             &sign_epoch(&epoch),
             &sign_report(&report),
@@ -1406,8 +1459,8 @@ fn the_audit_authority_cannot_also_resolve_its_own_attempt() {
             &report_witnesses(&epoch, &policies, &audit_attempts, &outcomes),
         )
         .test_unwrap_err(),
-        FindingAuditError::OutcomeAuthorityRoleCollision(_)
-    ));
+        FindingAuditError::AuthorityRoleCollision("evaluator", "authority")
+    );
 }
 
 #[test]

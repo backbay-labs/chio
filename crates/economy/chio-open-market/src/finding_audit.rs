@@ -167,6 +167,8 @@ pub enum FindingAuditError {
     AuditAuthorityWindow,
     #[error("audit status signer reuses the {0} authority key")]
     StatusAuthorityRoleCollision(&'static str),
+    #[error("audit {0} authority reuses the {1} authority key")]
+    AuthorityRoleCollision(&'static str, &'static str),
     #[error("audit authority status rejected: {0}")]
     AuditAuthorityStatus(FindingError),
     #[error("audit authority status does not bind the pinned policy")]
@@ -443,6 +445,7 @@ pub fn verify_audit_report(
         .pinned_audit_policy
         .validate("audit authority policy")
         .map_err(FindingAuditError::AuditAuthorityPolicy)?;
+    require_distinct_audit_authority_keys(witnesses)?;
     for (role, key) in [
         ("audit", &witnesses.pinned_audit_policy.key),
         (
@@ -907,6 +910,42 @@ pub fn verify_audit_report(
         let envelope_digest = signed_envelope_sha256(signed).map_err(FindingAuditError::Outcome)?;
         if !reported_digests.contains(envelope_digest.as_str()) {
             return Err(FindingAuditError::OutcomeDigestMismatch(envelope_digest));
+        }
+    }
+    Ok(())
+}
+
+fn require_distinct_audit_authority_keys(
+    witnesses: &FindingAuditReportWitnesses<'_>,
+) -> Result<(), FindingAuditError> {
+    let fixed_roles = [
+        ("authority", &witnesses.pinned_audit_policy.key),
+        ("seed witness", &witnesses.pinned_seed_witness_policy.key),
+        ("governance", &witnesses.pinned_governance_policy.key),
+    ];
+    for (index, (role, key)) in fixed_roles.iter().enumerate() {
+        if let Some((other_role, _)) = fixed_roles
+            .iter()
+            .skip(index.saturating_add(1))
+            .find(|(_, candidate)| candidate == key)
+        {
+            return Err(FindingAuditError::AuthorityRoleCollision(role, other_role));
+        }
+    }
+    for (index, evaluator) in witnesses.pinned_evaluator_policies.iter().enumerate() {
+        if let Some((role, _)) = fixed_roles.iter().find(|(_, key)| *key == &evaluator.key) {
+            return Err(FindingAuditError::AuthorityRoleCollision("evaluator", role));
+        }
+        if witnesses
+            .pinned_evaluator_policies
+            .iter()
+            .skip(index.saturating_add(1))
+            .any(|candidate| candidate.key == evaluator.key)
+        {
+            return Err(FindingAuditError::AuthorityRoleCollision(
+                "evaluator",
+                "another evaluator",
+            ));
         }
     }
     Ok(())

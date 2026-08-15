@@ -142,3 +142,59 @@ fn plan_rejects_an_anchor_publisher_outside_the_pinned_lifecycle() {
         "unexpected rejection: {error}"
     );
 }
+
+#[test]
+fn plan_rejects_anchor_publishers_that_reuse_enforcement_authorities() {
+    let verified = verified();
+    for key in [
+        verified.enforcement().finalization_key.clone(),
+        verified.enforcement().penalty_key.clone(),
+    ] {
+        let mut policy = anchor_publisher_policy();
+        policy.key = key;
+        let error = require_anchor_publisher_role_separation(&verified, &policy)
+            .test_expect_err("an enforcement authority must not publish its own anchor");
+        assert!(
+            error
+                .to_string()
+                .contains("distinct from finalization and penalty authorities"),
+            "unexpected rejection: {error}"
+        );
+    }
+}
+
+#[test]
+fn plan_rejects_anchor_receipt_times_outside_publisher_lifecycle() {
+    let verified = verified();
+    let mut proof = enforcement_anchor_proof(&verified);
+    let policy = anchor_publisher_policy();
+    let status = anchor_publisher_status_at(TRUSTED_NOW);
+    let status_authority = status_keypair().public_key();
+    let evidence = FindingAnchorPublisherEvidence {
+        retained_policy: &policy,
+        signed_status: &status,
+        status_authority: &status_authority,
+        max_status_age_secs: MAX_SNAPSHOT_AGE_SECS,
+        trusted_now_secs: TRUSTED_NOW,
+    };
+
+    proof.receipt.timestamp = policy.valid_until;
+    let error = require_anchor_publisher_lifecycle(&proof, evidence)
+        .test_expect_err("an expired publisher receipt must be rejected");
+    assert!(
+        error
+            .to_string()
+            .contains("receipt was signed outside the retained authority window"),
+        "unexpected rejection: {error}"
+    );
+
+    proof.receipt.timestamp = proof.checkpoint_statement.issued_at.saturating_add(1);
+    let error = require_anchor_publisher_lifecycle(&proof, evidence)
+        .test_expect_err("a receipt signed after its checkpoint must be rejected");
+    assert!(
+        error
+            .to_string()
+            .contains("receipt was signed after its enclosing checkpoint"),
+        "unexpected rejection: {error}"
+    );
+}

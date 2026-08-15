@@ -39,6 +39,8 @@ pub use plan::{
     FINDING_ENFORCEMENT_ANCHOR_SCHEMA_V1, FINDING_ENFORCEMENT_ANCHOR_TOOL_NAME,
     FINDING_ENFORCEMENT_ANCHOR_TOOL_SERVER,
 };
+#[cfg(test)]
+use plan::{require_anchor_publisher_lifecycle, require_anchor_publisher_role_separation};
 pub use publish::{
     dispatch_finding_impairment, reobserve_finding_impairment,
     reobserve_finding_impairment_for_reconciliation, FindingImpairmentPublishError,
