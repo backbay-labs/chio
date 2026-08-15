@@ -170,7 +170,7 @@ pub(crate) fn receipt_pool_connection(
     Ok(connection)
 }
 
-pub(in crate::receipt_store) fn verify_rollback(
+pub(crate) fn verify_rollback(
     connection: &Connection,
     rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
     appends_receipts: bool,

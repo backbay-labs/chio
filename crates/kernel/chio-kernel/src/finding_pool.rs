@@ -159,6 +159,8 @@ pub enum FindingPoolLedgerError {
     ReceiptSinkMismatch,
     #[error("finding pool durable receipt sink identity is invalid")]
     InvalidReceiptSink,
+    #[error("finding pool receipt retention archive is not rollback-qualified")]
+    UnqualifiedRetentionArchive,
     #[error("finding pool ledger is bound to another mutation receipt authority")]
     ReceiptAuthorityMismatch,
     #[error("finding pool receipt authority and sink configuration did not bind atomically")]

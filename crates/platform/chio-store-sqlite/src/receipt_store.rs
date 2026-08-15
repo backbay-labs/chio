@@ -104,12 +104,12 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use bootstrap::*;
 
-pub(crate) use bootstrap::{receipt_pool_connection, ReceiptSinkQualification};
+pub(crate) use bootstrap::{receipt_pool_connection, verify_rollback, ReceiptSinkQualification};
 
 pub struct SqliteReceiptStore {
     pub(crate) pool: Pool<SqliteConnectionManager>,
     receipt_commit_actor: ReceiptCommitActor,
-    rollback_anchor: Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
+    pub(crate) rollback_anchor: Option<Arc<crate::rollback_generation::RollbackGenerationAnchor>>,
     settlement_store_binding: Option<chio_settle::SettlementStoreBinding>,
     durable_sink_id: Option<String>,
     pub(crate) receipt_sink_qualification: Option<Arc<ReceiptSinkQualification>>,
@@ -171,7 +171,15 @@ fn load_receipt_rollback_generation(connection: &Connection) -> Result<u64, Rece
 fn receipt_store_has_receipts(connection: &Connection) -> Result<bool, ReceiptStoreError> {
     connection
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM claim_receipt_log_entries LIMIT 1)",
+            "SELECT EXISTS(\
+                 SELECT 1 FROM claim_receipt_log_entries \
+                 UNION ALL SELECT 1 FROM chio_tool_receipts \
+                 UNION ALL SELECT 1 FROM chio_child_receipts \
+                 UNION ALL SELECT 1 FROM kernel_checkpoints \
+                 UNION ALL SELECT 1 FROM receipt_retention_watermark \
+                     WHERE archived_through_entry_seq > 0 \
+                 UNION ALL SELECT 1 FROM receipt_retention_tombstones\
+             )",
             [],
             |row| row.get::<_, bool>(0),
         )
@@ -1894,6 +1902,10 @@ fn handle_non_append_command(
                     return None;
                 }
             };
+            if let Err(error) = verify_rollback(&connection, rollback_anchor, false) {
+                let _ = response.send(Err(error));
+                return None;
+            }
             // Fail-closed: rotation deletes evidence, so it must audit the FULL
             // persisted checkpoint chain against the live claim log before pruning,
             // in BOTH verification modes. A non-incremental store seeds its head
@@ -1963,6 +1975,7 @@ fn handle_non_append_command(
                     &mut connection,
                     &config,
                     verified_ceiling,
+                    rollback_anchor,
                 )
             }))
             .unwrap_or_else(|payload| Err(receipt_writer_job_panic_error(&payload)));

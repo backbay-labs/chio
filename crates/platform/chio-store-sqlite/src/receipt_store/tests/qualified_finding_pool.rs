@@ -646,3 +646,79 @@ fn qualified_receipt_sink_anchors_background_checkpoint_commits(
     );
     Ok(())
 }
+
+#[test]
+fn qualified_receipt_sink_refuses_to_seed_an_archive_only_store(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-archive-only-anchor")?;
+    #[cfg(unix)]
+    for root in [directory.path(), anchor_directory.path()] {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let database = directory.path().join("archive-only.sqlite3");
+    let archive = directory.path().join("archive.sqlite3");
+    let archive_path = archive.to_str().ok_or("archive path is not UTF-8")?;
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&database)?;
+    store.enable_background_checkpoints(signer(&keypair, 1))?;
+    let receipt = sample_receipt_with_keypair_and_timestamp("archive-only", 1, 100, &keypair);
+    chio_kernel::ReceiptStore::append_chio_receipt_returning_seq(&store, &receipt)?;
+    store.flush_receipt_writes()?;
+    assert!(store.load_checkpoint_by_seq(1)?.is_some());
+    assert_eq!(store.archive_receipts_before(150, archive_path)?, 1);
+    drop(store);
+
+    let error =
+        SqliteReceiptStore::open_existing_for_finding_pool(&database, anchor_directory.path())
+            .err()
+            .ok_or("archive-only receipt evidence was adopted without a rollback anchor")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("protected rollback generation is absent")),
+        "unexpected archive-only qualification error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn qualified_receipt_sink_anchors_retention_rotation() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let anchor_directory = rollback_anchor_tempdir("chio-receipt-rotation-anchor")?;
+    #[cfg(unix)]
+    for root in [directory.path(), anchor_directory.path()] {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let database = directory.path().join("qualified-rotation.sqlite3");
+    let snapshot = directory.path().join("before-rotation.sqlite3");
+    let archive = directory.path().join("archive.sqlite3");
+    let archive_path = archive.to_str().ok_or("archive path is not UTF-8")?;
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open_for_finding_pool(&database, anchor_directory.path())?;
+    store.enable_background_checkpoints(signer(&keypair, 1))?;
+    let receipt = sample_receipt_with_keypair_and_timestamp("anchored-rotation", 1, 100, &keypair);
+    chio_kernel::ReceiptStore::append_chio_receipt_returning_seq(&store, &receipt)?;
+    store.flush_receipt_writes()?;
+    assert!(store.load_checkpoint_by_seq(1)?.is_some());
+    let connection = rusqlite::Connection::open(&database)?;
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(connection);
+    std::fs::copy(&database, &snapshot)?;
+
+    assert_eq!(store.archive_receipts_before(150, archive_path)?, 1);
+    let connection = rusqlite::Connection::open(&database)?;
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    drop(connection);
+    std::fs::copy(&snapshot, &database)?;
+
+    let error = store
+        .max_tool_receipt_seq()
+        .err()
+        .ok_or("retention rollback must fail a qualified receipt read")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(ref message) if message.contains("rollback protection")),
+        "unexpected retention rollback error: {error}"
+    );
+    Ok(())
+}

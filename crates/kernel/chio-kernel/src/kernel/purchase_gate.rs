@@ -368,6 +368,9 @@ impl ChioKernel {
         if self.receipt_store.is_none() {
             return Err(crate::finding_pool::FindingPoolLedgerError::DurableReceiptStoreMissing);
         }
+        if self.config.retention_config.is_some() {
+            return Err(crate::finding_pool::FindingPoolLedgerError::UnqualifiedRetentionArchive);
+        }
         let receipt_sink_id = self
             .receipt_store
             .as_ref()

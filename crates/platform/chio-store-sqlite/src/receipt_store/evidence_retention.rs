@@ -856,6 +856,7 @@ pub(super) fn rotate_on_writer_connection(
     connection: &mut rusqlite::Connection,
     config: &RetentionConfig,
     verified_checkpoint_ceiling: Option<u64>,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
 ) -> Result<u64, ReceiptStoreError> {
     if config.tenant_id.is_some() {
         return Err(ReceiptStoreError::RetentionTenantScopeUnsupported);
@@ -883,6 +884,7 @@ pub(super) fn rotate_on_writer_connection(
         cutoff,
         &config.archive_path,
         verified_checkpoint_ceiling,
+        rollback_anchor,
     )
 }
 
@@ -896,6 +898,7 @@ fn archive_range(
     cutoff_unix_secs: u64,
     archive_path: &str,
     verified_checkpoint_ceiling: Option<u64>,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
 ) -> Result<u64, ReceiptStoreError> {
     // Never archive past the checkpoint boundary the caller has verified. The
     // ceiling is itself a checkpoint `batch_end_seq`, and `compute_archival_watermark`
@@ -937,7 +940,13 @@ fn archive_range(
         create_archive_schema(connection)?;
         let archived = copy_archived_prefix(connection, w)?;
         verify_co_archival_complete(connection, w)?; // RetentionArchiveIncomplete on any shortfall
-        delete_archived_prefix_in_tx(connection, w, cutoff_unix_secs, &archive_path)?;
+        delete_archived_prefix_in_tx(
+            connection,
+            w,
+            cutoff_unix_secs,
+            &archive_path,
+            rollback_anchor,
+        )?;
         Ok(archived)
     })();
 
@@ -1581,12 +1590,22 @@ pub(super) fn delete_archived_prefix_in_tx(
     w: i64,
     cutoff_unix_secs: u64,
     archive_path: &str,
+    rollback_anchor: Option<&crate::rollback_generation::RollbackGenerationAnchor>,
 ) -> Result<(), ReceiptStoreError> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let rollback_generation = rollback_anchor
+        .map(|anchor| {
+            let generation = super::load_receipt_rollback_generation(&tx)?;
+            anchor.verify(generation).map_err(|error| {
+                ReceiptStoreError::Conflict(format!("receipt rollback protection failed: {error}"))
+            })?;
+            Ok::<_, ReceiptStoreError>(generation)
+        })
+        .transpose()?;
     // The archive copy and its completeness check ran before this transaction
     // took the write lock, so a second store handle or process could have
     // committed a new dependent row (a reconciliation or authorization-
@@ -1664,8 +1683,34 @@ pub(super) fn delete_archived_prefix_in_tx(
         now,
     )?;
     ensure_transparency_projection_guards(&tx)?; // recreate all reject-delete/update guards
-    tx.commit()?;
-    Ok(())
+    match (rollback_anchor, rollback_generation) {
+        (Some(anchor), Some(generation)) => {
+            let next = generation.checked_add(1).ok_or_else(|| {
+                ReceiptStoreError::Conflict("receipt rollback generation overflowed".to_owned())
+            })?;
+            let changed = tx.execute(
+                "UPDATE chio_receipt_sink_generation SET store_generation = ?1 \
+                 WHERE singleton = 1 AND store_generation = ?2",
+                params![next.to_string(), generation.to_string()],
+            )?;
+            if changed != 1 {
+                return Err(ReceiptStoreError::Conflict(
+                    "receipt rollback generation compare-and-set failed".to_owned(),
+                ));
+            }
+            anchor
+                .advance_while(generation, next, || {
+                    tx.commit()
+                        .map_err(|error| format!("SQLite commit failed: {error}"))
+                })
+                .map_err(|error| {
+                    ReceiptStoreError::Conflict(format!(
+                        "receipt rollback protection failed: {error}"
+                    ))
+                })
+        }
+        _ => tx.commit().map_err(ReceiptStoreError::Sqlite),
+    }
 }
 
 /// Recover a store whose claim-log projection rows survived a source-row
