@@ -457,6 +457,11 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
                 "purchase standing authority and profile governance authority must be distinct",
             ));
         }
+        if purchase_authority_status.status_authority.key == trust.finding_verifier_authority {
+            return Err(claim_failed(
+                "purchase standing authority and finding verifier authority must be distinct",
+            ));
+        }
         verify_purchase_authority_status(
             &trust.trusted_verifier_profile.body.purchase_authority,
             purchase_authority_status,
@@ -1327,6 +1332,8 @@ fn require_report_facets(
             &[
                 FindingFacetKind::ArtifactIntegrity,
                 FindingFacetKind::GuaranteeConsistency,
+                FindingFacetKind::ReceiptAuthenticity,
+                FindingFacetKind::CheckpointMembership,
             ][..],
         ),
         (

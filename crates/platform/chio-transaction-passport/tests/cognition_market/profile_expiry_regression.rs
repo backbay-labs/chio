@@ -484,6 +484,73 @@ fn cognition_market_enforces_observed_and_metered_finding_facet_floors() -> Test
 }
 
 #[test]
+fn delivery_claim_requires_authenticated_receipt_facets_for_asserted_findings() -> TestResult {
+    let mut bundle = build_bundle()?;
+    rebind_finding(&mut bundle, |finding| {
+        finding.evidence_class = FindingEvidenceClass::Asserted;
+        finding.guarantee_class = FindingGuaranteeClass::Asserted;
+    })?;
+    let selected_claim = COGNITION_MARKET_CLAIMS[0];
+
+    let mut claim_set: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("claim-set.json")
+            .ok_or("claim set missing")?,
+    )?;
+    claim_set["claims"]
+        .as_array_mut()
+        .ok_or("claim rows missing")?
+        .retain(|claim| claim.get("claim_id").and_then(Value::as_str) == Some(selected_claim));
+    bundle.passport.claim_set_sha256 = replace_graph_artifact(
+        &mut bundle,
+        "claim-set.json",
+        canonical_json_bytes(&claim_set)?,
+    )?;
+
+    let mut policy: Value = serde_json::from_slice(&bundle.verifier_policy_bytes)?;
+    policy["required_claims"] = json!([selected_claim]);
+    bundle.verifier_policy_bytes = canonical_json_bytes(&policy)?;
+    let policy_bytes = bundle.verifier_policy_bytes.clone();
+    bundle.passport.verifier_policy_sha256 =
+        replace_graph_artifact(&mut bundle, "verifier-policy.json", policy_bytes)?;
+
+    let signed: SignedExportEnvelope<FindingVerifierReport> = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("report.json")
+            .ok_or("report missing")?,
+    )?;
+    let mut report = signed.body;
+    for facet in [
+        FindingFacetKind::ReceiptAuthenticity,
+        FindingFacetKind::CheckpointMembership,
+    ] {
+        let row = report
+            .facets
+            .iter_mut()
+            .find(|row| row.facet == facet)
+            .ok_or("receipt facet missing")?;
+        row.outcome = FindingFacetOutcome::Unavailable;
+        row.reason = "authenticated receipt evidence was not supplied".to_owned();
+    }
+    report.report_id = compute_report_id(&report)?;
+    let report = SignedExportEnvelope::sign(report, &verifier_keypair())?;
+    replace_graph_artifact(&mut bundle, "report.json", canonical_json_bytes(&report)?)?;
+    resign_graph(&mut bundle)?;
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("delivery claim without authenticated receipt facets was accepted")?
+        .to_string();
+    assert!(
+        error.contains("delivery_digest_bound requires verified facet ReceiptAuthenticity"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn deterministic_delivery_claim_rechecks_the_recipe_attachment() -> TestResult {
     let mut bundle = build_bundle()?;
     let selected_claim = COGNITION_MARKET_CLAIMS[0];

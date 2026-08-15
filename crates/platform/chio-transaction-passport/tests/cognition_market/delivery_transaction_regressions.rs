@@ -303,6 +303,28 @@ fn cognition_market_rejects_unanchored_purchase_after_authority_revocation() -> 
 }
 
 #[test]
+fn cognition_market_rejects_verifier_as_purchase_standing_authority() -> TestResult {
+    let mut bundle = build_bundle()?;
+    bundle
+        .trust
+        .purchase_authority_status
+        .as_mut()
+        .ok_or("purchase authority status missing")?
+        .status_authority
+        .key = bundle.trust.finding_verifier_authority.clone();
+
+    let error = verify(&bundle)
+        .err()
+        .ok_or("finding verifier was accepted as purchase standing authority")?
+        .to_string();
+    assert!(
+        error.contains("purchase standing authority and finding verifier authority must be distinct"),
+        "unexpected error: {error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn claim_set_schema_requires_a_subject_for_finding_claims() -> TestResult {
     let schema_path =
         workspace_root().join("spec/schemas/chio-transaction/v1/claim-set.schema.json");
