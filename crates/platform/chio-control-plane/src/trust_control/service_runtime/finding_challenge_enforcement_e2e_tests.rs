@@ -496,6 +496,7 @@ struct PublishedArtifacts {
     profile_governance_policies: BTreeMap<String, FindingAuthorityPin>,
     case_governance_policies: RwLock<BTreeMap<String, FindingAuthorityPin>>,
     penalty_policies: RwLock<BTreeMap<String, FindingAuthorityPin>>,
+    evaluator_policies: RwLock<BTreeMap<String, FindingAuthorityPin>>,
     audit_policies: BTreeMap<String, FindingAuthorityPin>,
     audit_witness_policies: BTreeMap<String, FindingAuthorityPin>,
     audit_governance_policies: BTreeMap<String, FindingAuthorityPin>,
@@ -672,6 +673,35 @@ impl FindingFilingResolver for PublishedArtifacts {
         match policies.get(envelope_sha256) {
             Some(existing) if existing != policy => {
                 Err("penalty envelope is already bound to another policy".to_owned())
+            }
+            Some(_) => Ok(()),
+            None => {
+                policies.insert(envelope_sha256.to_owned(), policy.clone());
+                Ok(())
+            }
+        }
+    }
+
+    fn evaluator_policy_for_outcome(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
+        self.evaluator_policies
+            .read()
+            .ok()?
+            .get(envelope_sha256)
+            .cloned()
+    }
+
+    fn retain_evaluator_policy(
+        &self,
+        envelope_sha256: &str,
+        policy: &FindingAuthorityPin,
+    ) -> Result<(), String> {
+        let mut policies = self
+            .evaluator_policies
+            .write()
+            .map_err(|_| "evaluator-policy index lock is poisoned".to_owned())?;
+        match policies.get(envelope_sha256) {
+            Some(existing) if existing != policy => {
+                Err("outcome envelope is already bound to another evaluator policy".to_owned())
             }
             Some(_) => Ok(()),
             None => {
@@ -5181,6 +5211,26 @@ fn finding_challenge_terminal_evaluation_recovers_its_signed_outcome() -> TestRe
         .ok_or("the signed outcome bytes commit atomically with the verdict")?;
 
     deployment.rail.accept();
+    let retained_policy = deployment
+        .filings
+        .evaluator_policies
+        .write()
+        .map_err(|_| "evaluator-policy index lock is poisoned")?
+        .remove(retained_digest)
+        .ok_or("the signed outcome retained its evaluator policy")?;
+    assert!(matches!(
+        coordinator.evaluate(&evaluation_request(
+            &case.challenge,
+            &challenged,
+            &evidence,
+            &collateral,
+            NOW + 3,
+        )),
+        Err(ChallengeCoordinatorError::UnknownEvaluatorPolicy)
+    ));
+    deployment
+        .filings
+        .retain_evaluator_policy(retained_digest, &retained_policy)?;
     let recovered = coordinator
         .evaluate(&evaluation_request(
             &case.challenge,

@@ -9,12 +9,14 @@
 use chio_core_types::crypto::PublicKey;
 use chio_finding::{
     FindingAuthorityKeyPolicy, FindingChallengeFacet, FindingChallengeVerdict, FindingError,
-    SignedFindingAuthorityStatus, SignedFindingChallenge, SignedFindingChallengeVerifierProfile,
-    SignedFindingFailedDelivery, SignedFindingKeyRevocation, SignedFindingPurchaseRecord,
+    SignedFindingAuditEpoch, SignedFindingAuditRoundAuthorization, SignedFindingAuthorityStatus,
+    SignedFindingChallenge, SignedFindingChallengeVerifierProfile, SignedFindingFailedDelivery,
+    SignedFindingKeyRevocation, SignedFindingPurchaseRecord,
 };
 use chio_finding_verifier::ResolvedReceiptEvidence;
 use chio_kernel::checkpoint::{CheckpointTransparencySummary, KernelCheckpoint};
 use chio_open_market::bidding::{SignedAcceptedBid, SignedBidRequest, SignedReservationReceipt};
+use chio_open_market::finding_audit::EligibleListing;
 
 use crate::ingress::FindingIngressError;
 use crate::reason::FindingChallengeReason;
@@ -66,9 +68,24 @@ pub struct FindingChallengeEvaluationInput<'a> {
     /// Trusted evaluation time supplied by the coordinator. The evaluator
     /// remains pure and uses this only to bound signed role-status readings.
     pub evaluated_at: u64,
+    /// Exact committed draw artifacts for a bondless venue audit. Buyer
+    /// submissions must leave this absent.
+    pub venue_audit_selection: Option<FindingVenueAuditSelectionEvidence<'a>>,
     /// Exactly the evidence the challenge's evidence class selects. A branch
     /// that does not match the challenge's class is inadmissible.
     pub evidence: &'a FindingChallengeClassEvidence<'a>,
+}
+
+/// Independently pinned artifacts proving that a venue audit was selected by
+/// its committed round rather than merely signed by the audit filing key.
+#[derive(Clone, Copy)]
+pub struct FindingVenueAuditSelectionEvidence<'a> {
+    pub epoch: &'a SignedFindingAuditEpoch,
+    pub authorization: &'a SignedFindingAuditRoundAuthorization,
+    pub revealed_seed: &'a str,
+    pub eligible: &'a [EligibleListing],
+    pub pinned_randomness_witness: &'a PublicKey,
+    pub pinned_governance_authority: &'a PublicKey,
 }
 
 /// Lifecycle fields retained for a historical authority configuration.
@@ -212,6 +229,8 @@ pub enum FindingChallengeInadmissible {
     RetainedGovernanceStatusNotEstablished,
     #[error("authority-status signer is not independent from a trusted market role")]
     AuthorityStatusRoleCollision,
+    #[error("venue audit selection is not established: {0}")]
+    VenueAuditSelectionNotEstablished(&'static str),
     #[error("challenge names a verifier profile other than the one supplied")]
     ProfileBindingMismatch,
     #[error("verifier profile is not the one retained by the authenticated admission")]

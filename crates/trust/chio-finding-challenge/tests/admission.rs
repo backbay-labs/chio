@@ -7,8 +7,9 @@ mod support;
 
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
-    compute_profile_id, ensure_challenge_class_compatibility, FindingChallengeEvidenceKind,
-    FindingChallengeVerdict, FindingEvidenceClass, FindingGuaranteeClass,
+    compute_challenge_id, compute_profile_id, ensure_challenge_class_compatibility,
+    FindingChallengeEvidenceKind, FindingChallengeVerdict, FindingEvidenceClass,
+    FindingGuaranteeClass,
 };
 use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeEvaluation, FindingChallengeEvaluationInput,
@@ -239,6 +240,7 @@ fn the_raw_finding_must_be_its_own_canonical_serialization() -> TestResult {
         purchase_authority_status: Some(&world.purchase_authority_status),
         pinned_authority_status_key: &world.authority_status_key,
         evaluated_at: support::EVALUATED_AT,
+        venue_audit_selection: None,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -270,6 +272,7 @@ fn a_self_consistent_retired_profile_cannot_replace_the_admitted_profile() -> Te
         purchase_authority_status: Some(&world.purchase_authority_status),
         pinned_authority_status_key: &world.authority_status_key,
         evaluated_at: support::EVALUATED_AT,
+        venue_audit_selection: None,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -300,6 +303,7 @@ fn the_profile_must_verify_under_the_pinned_governance_root() -> TestResult {
         purchase_authority_status: Some(&world.purchase_authority_status),
         pinned_authority_status_key: &world.authority_status_key,
         evaluated_at: support::EVALUATED_AT,
+        venue_audit_selection: None,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -390,6 +394,7 @@ fn the_profile_body_must_name_the_pinned_governance_root() -> TestResult {
         purchase_authority_status: Some(&world.purchase_authority_status),
         pinned_authority_status_key: &world.authority_status_key,
         evaluated_at: support::EVALUATED_AT,
+        venue_audit_selection: None,
         evidence: &evidence,
     };
 
@@ -423,6 +428,7 @@ fn a_venue_audit_must_verify_under_the_pinned_audit_authority() -> TestResult {
         purchase_authority_status: Some(&world.purchase_authority_status),
         pinned_authority_status_key: &world.authority_status_key,
         evaluated_at: support::EVALUATED_AT,
+        venue_audit_selection: None,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);
@@ -432,6 +438,29 @@ fn a_venue_audit_must_verify_under_the_pinned_audit_authority() -> TestResult {
         ) => {}
         other => panic!("expected the challenge to be rejected, got {other:?}"),
     }
+    Ok(())
+}
+
+#[test]
+fn a_venue_audit_key_cannot_select_an_undrawn_listing() -> TestResult {
+    let world = world()?;
+    let case = venue_digest_case(&world, &DenyShape::seller_origin())?;
+    let evidence = case.evidence();
+    let mut body = case.challenge.body.clone();
+    let chio_finding::FindingChallengeAuthorization::VenueAudit(audit) = &mut body.authorization
+    else {
+        return Err("venue audit authorization".into());
+    };
+    audit.selection_digest = support::HEX64_THIRD.to_string();
+    body.challenge_id = compute_challenge_id(&body)?;
+    let challenge = SignedExportEnvelope::sign(body, &world.audit_authority)?;
+    let input = world.input(&challenge, &evidence);
+    let evaluation = evaluate_finding_challenge(&input);
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::VenueAuditSelectionNotEstablished("selection_digest"),
+    )?;
     Ok(())
 }
 
@@ -455,6 +484,7 @@ fn the_finding_artifact_must_verify_as_its_issuer_signed_it() -> TestResult {
         purchase_authority_status: Some(&world.purchase_authority_status),
         pinned_authority_status_key: &world.authority_status_key,
         evaluated_at: support::EVALUATED_AT,
+        venue_audit_selection: None,
         evidence: &evidence,
     };
     let evaluation = evaluate_finding_challenge(&input);

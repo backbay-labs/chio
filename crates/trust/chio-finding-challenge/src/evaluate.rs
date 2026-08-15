@@ -15,6 +15,7 @@ use chio_finding::{
 };
 use chio_finding_verifier::MAX_RAW_FINDING_BYTES;
 
+use crate::audit::require_venue_audit_selection;
 use crate::digest_mismatch::evaluate_digest_mismatch;
 use crate::evidence_invalid::evaluate_evidence_invalid;
 use crate::ingress::strict_parse;
@@ -146,6 +147,7 @@ fn adjudicate(
         finding.evidence_class,
     )
     .map_err(FindingChallengeInadmissible::ClassIncompatible)?;
+    require_venue_audit_selection(input, challenge)?;
 
     let challenger = match &challenge.authorization {
         FindingChallengeAuthorization::BuyerSubmission(submission) => Some(&submission.challenger),

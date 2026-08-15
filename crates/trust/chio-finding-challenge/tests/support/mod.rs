@@ -28,9 +28,11 @@ use chio_core_types::{
     FINDING_DELIVERY_SCHEMA,
 };
 use chio_finding::{
+    audit_epoch_precommitment_sha256, audit_seed_witness_signing_bytes, compute_audit_epoch_id,
     compute_challenge_id, compute_failed_delivery_id, compute_finding_id, compute_profile_id,
-    derive_outcome_id, derive_purchase_key, sign_finding, signed_envelope_sha256,
-    verify_outcome_challenge_binding, Finding, FindingAffectedDelivery, FindingAuthorityKeyPolicy,
+    derive_audit_seed_commitment, derive_outcome_id, derive_purchase_key, sign_finding,
+    signed_envelope_sha256, verify_outcome_challenge_binding, Finding, FindingAffectedDelivery,
+    FindingAuditEpoch, FindingAuditRoundAuthorization, FindingAuthorityKeyPolicy,
     FindingAuthorityStatus, FindingBbsIssuerPolicy, FindingBuyerSubmission, FindingChallenge,
     FindingChallengeAuthorization, FindingChallengeEvidence, FindingChallengeOutcome,
     FindingChallengeStanding, FindingChallengeVerdict, FindingChallengeVerifierProfile,
@@ -42,20 +44,22 @@ use chio_finding::{
     FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase,
     FindingRecipePhaseKind, FindingReplayObservation, FindingReplayRecipeInput,
     FindingReplayReproduction, FindingReplayTerminalResult, FindingResourceCaps,
-    FindingVenueAuditAuthorization, SignedFindingAuthorityStatus, SignedFindingChallenge,
-    SignedFindingChallengeVerifierProfile, SignedFindingFailedDelivery, SignedFindingKeyRevocation,
-    SignedFindingPurchaseRecord, FINDING_AUTHORITY_STATUS_SCHEMA_V1,
-    FINDING_CHALLENGE_OUTCOME_SCHEMA_V1, FINDING_CHALLENGE_SCHEMA_V1,
-    FINDING_FAILED_DELIVERY_SCHEMA_V1, FINDING_KEY_REVOCATION_SCHEMA_V1,
-    FINDING_PURCHASE_RECORD_SCHEMA_V1, FINDING_REPLAY_OBSERVATION_SCHEMA_V1,
-    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
+    FindingVenueAuditAuthorization, SignedFindingAuditEpoch, SignedFindingAuditRoundAuthorization,
+    SignedFindingAuthorityStatus, SignedFindingChallenge, SignedFindingChallengeVerifierProfile,
+    SignedFindingFailedDelivery, SignedFindingKeyRevocation, SignedFindingPurchaseRecord,
+    FINDING_AUDIT_EPOCH_SCHEMA_V1, FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1,
+    FINDING_AUTHORITY_STATUS_SCHEMA_V1, FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
+    FINDING_CHALLENGE_SCHEMA_V1, FINDING_FAILED_DELIVERY_SCHEMA_V1,
+    FINDING_KEY_REVOCATION_SCHEMA_V1, FINDING_PURCHASE_RECORD_SCHEMA_V1,
+    FINDING_REPLAY_OBSERVATION_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
+    MAX_PUBLISHED_RATE_BPS,
 };
 use chio_finding_challenge::{
     FindingChallengeAdjudication, FindingChallengeClassEvidence, FindingChallengeEvaluation,
     FindingChallengeEvaluationInput, FindingChallengeInadmissible, FindingChallengeReason,
     FindingDigestMismatchEvidence, FindingEvidenceInvalidEvidence, FindingPurchaseStandingEvidence,
     FindingReplayContradictionEvidence, FindingResolvedReproduction,
-    FindingRetainedAuthorityPolicy, FindingRevokedKeyProof,
+    FindingRetainedAuthorityPolicy, FindingRevokedKeyProof, FindingVenueAuditSelectionEvidence,
 };
 use chio_finding_verifier::ResolvedReceiptEvidence;
 use chio_kernel::checkpoint::{
@@ -66,6 +70,10 @@ use chio_open_market::bidding::{
     AcceptedBid, BidRequest, RequestedScope, ReservationReceipt, SignedAcceptedBid,
     SignedBidRequest, SignedReservationReceipt, ACCEPTED_BID_SCHEMA, BID_REQUEST_SCHEMA,
     RESERVATION_RECEIPT_SCHEMA,
+};
+use chio_open_market::finding_audit::{
+    derive_audit_draw, derive_eligible_snapshot_digest, EligibleListing,
+    AUDIT_SELECTION_ALGORITHM_V1,
 };
 use chio_open_market::purchase_verification::{
     derive_payment_operation_id, derive_purchase_intent_id,
@@ -249,6 +257,11 @@ pub struct World {
     pub buyer: Keypair,
     pub audit_authority: Keypair,
     pub audit_authority_key: PublicKey,
+    pub audit_epoch: SignedFindingAuditEpoch,
+    pub audit_authorization: SignedFindingAuditRoundAuthorization,
+    pub audit_revealed_seed: String,
+    pub audit_eligible: Vec<EligibleListing>,
+    pub audit_randomness_witness_key: PublicKey,
     pub authority_status: Keypair,
     pub authority_status_key: PublicKey,
     pub purchase_authority_status: SignedFindingAuthorityStatus,
@@ -507,6 +520,56 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
     let finding = sign_finding(finding, &issuer)?;
     let raw_finding = canonical_json_string(&finding)?;
     let finding_artifact_sha256 = sha256_hex(raw_finding.as_bytes());
+    let audit_randomness_witness = keypair(44);
+    let audit_revealed_seed = "7c".repeat(32);
+    let audit_eligible = vec![EligibleListing {
+        finding_id: finding.finding_id.clone(),
+        listing_id: LISTING_ID.to_string(),
+        weight_or_none: None,
+    }];
+    let eligible_snapshot_at = PUBLISHED_AT + 100;
+    let seed_witnessed_at = PUBLISHED_AT + 200;
+    let committed_at = PUBLISHED_AT + 300;
+    let eligible_snapshot_digest = derive_eligible_snapshot_digest(&audit_eligible)?;
+    let seed_commitment = derive_audit_seed_commitment(&audit_revealed_seed);
+    let mut audit_epoch = FindingAuditEpoch {
+        schema: FINDING_AUDIT_EPOCH_SCHEMA_V1.to_string(),
+        audit_epoch_id: String::new(),
+        epoch_index: 1,
+        audit_authority: audit_authority.public_key(),
+        seed_witnessed_at,
+        eligible_snapshot_at,
+        seed_witness: audit_randomness_witness.public_key(),
+        seed_witness_signature: audit_randomness_witness.sign(&audit_seed_witness_signing_bytes(
+            &audit_authority.public_key(),
+            1,
+            &eligible_snapshot_digest,
+            &seed_commitment,
+            eligible_snapshot_at,
+            seed_witnessed_at,
+        )),
+        eligible_snapshot_digest,
+        eligible_listing_count: u64::try_from(audit_eligible.len())?,
+        fee_schedule_envelope_sha256: HEX64.to_string(),
+        seed_commitment,
+        selection_algorithm_id: AUDIT_SELECTION_ALGORITHM_V1.to_string(),
+        published_rate_bps: MAX_PUBLISHED_RATE_BPS,
+        available_budget: usd(10_000),
+        authorization_digest: String::new(),
+        committed_at,
+    };
+    let audit_authorization = SignedExportEnvelope::sign(
+        FindingAuditRoundAuthorization {
+            schema: FINDING_AUDIT_ROUND_AUTHORIZATION_SCHEMA_V1.to_string(),
+            epoch_precommitment_sha256: audit_epoch_precommitment_sha256(&audit_epoch)?,
+            authorized_at: PUBLISHED_AT + 250,
+            expires_at: KEY_VALID_UNTIL,
+        },
+        &governance,
+    )?;
+    audit_epoch.authorization_digest = signed_envelope_sha256(&audit_authorization)?;
+    audit_epoch.audit_epoch_id = compute_audit_epoch_id(&audit_epoch)?;
+    let audit_epoch = SignedExportEnvelope::sign(audit_epoch, &audit_authority)?;
 
     Ok(World {
         governance_key: governance.public_key(),
@@ -517,6 +580,11 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
         buyer,
         audit_authority_key: audit_authority.public_key(),
         audit_authority,
+        audit_epoch,
+        audit_authorization,
+        audit_revealed_seed,
+        audit_eligible,
+        audit_randomness_witness_key: audit_randomness_witness.public_key(),
         authority_status_key: authority_status.public_key(),
         purchase_authority_status,
         authority_status,
@@ -627,6 +695,19 @@ impl World {
             purchase_authority_status: Some(&self.purchase_authority_status),
             pinned_authority_status_key: &self.authority_status_key,
             evaluated_at: EVALUATED_AT,
+            venue_audit_selection: match challenge.body.authorization {
+                FindingChallengeAuthorization::VenueAudit(_) => {
+                    Some(FindingVenueAuditSelectionEvidence {
+                        epoch: &self.audit_epoch,
+                        authorization: &self.audit_authorization,
+                        revealed_seed: &self.audit_revealed_seed,
+                        eligible: &self.audit_eligible,
+                        pinned_randomness_witness: &self.audit_randomness_witness_key,
+                        pinned_governance_authority: &self.governance_key,
+                    })
+                }
+                FindingChallengeAuthorization::BuyerSubmission(_) => None,
+            },
             evidence,
         }
     }
@@ -665,12 +746,18 @@ impl World {
         }))
     }
 
-    pub fn venue_authorization(&self) -> FindingChallengeAuthorization {
-        FindingChallengeAuthorization::VenueAudit(FindingVenueAuditAuthorization {
-            audit_epoch_envelope_sha256: HEX64.to_string(),
-            selection_digest: HEX64_ALT.to_string(),
-            authorization_digest: HEX64_THIRD.to_string(),
-        })
+    pub fn venue_authorization(&self) -> Built<FindingChallengeAuthorization> {
+        Ok(FindingChallengeAuthorization::VenueAudit(
+            FindingVenueAuditAuthorization {
+                audit_epoch_envelope_sha256: signed_envelope_sha256(&self.audit_epoch)?,
+                selection_digest: derive_audit_draw(
+                    &self.audit_revealed_seed,
+                    &self.finding.finding_id,
+                    LISTING_ID,
+                ),
+                authorization_digest: signed_envelope_sha256(&self.audit_authorization)?,
+            },
+        ))
     }
 
     pub fn sign_challenge(
@@ -1225,7 +1312,7 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
             failed_delivery_envelope_sha256,
         })
     } else {
-        world.venue_authorization()
+        world.venue_authorization()?
     };
     let affected = if buyer_filing {
         vec![world.affected_delivery(&deny_receipt_ref)]

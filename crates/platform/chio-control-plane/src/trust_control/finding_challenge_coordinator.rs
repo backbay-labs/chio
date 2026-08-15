@@ -73,6 +73,7 @@ pub use chio_finding::{
 use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeClassEvidence, FindingChallengeEvaluation,
     FindingChallengeEvaluationInput, FindingRetainedAuthorityPolicy,
+    FindingVenueAuditSelectionEvidence,
 };
 use chio_kernel::admission_operation::StoreMutationFence;
 use chio_open_market::evaluation::{
@@ -80,7 +81,9 @@ use chio_open_market::evaluation::{
 };
 use chio_open_market::evidence::{OpenMarketEvidenceKind, OpenMarketEvidenceReference};
 use chio_open_market::fee_schedule::{OpenMarketBondClass, SignedOpenMarketFeeSchedule};
-use chio_open_market::finding_audit::{select_audit_targets, EligibleListing};
+use chio_open_market::finding_audit::{
+    derive_eligible_snapshot_digest, select_audit_targets, EligibleListing,
+};
 use chio_open_market::finding_penalty::{
     evaluate_finding_penalty, FindingPenaltyBranch, FindingPenaltyContext,
 };
@@ -388,8 +391,12 @@ pub enum ChallengeCoordinatorError {
     UnknownGovernanceActivationPolicy,
     #[error("retained prior penalty has no authenticated penalty-authority policy")]
     UnknownPenaltyAuthorityPolicy,
+    #[error("retained challenge outcome has no authenticated evaluator policy")]
+    UnknownEvaluatorPolicy,
     #[error("penalty-authority policy could not be retained: {0}")]
     PenaltyPolicyRetention(String),
+    #[error("evaluator policy could not be retained: {0}")]
+    EvaluatorPolicyRetention(String),
     #[error("retained venue-audit challenge has no authenticated audit policy")]
     UnknownAuditAuthorityPolicy,
     #[error("retained audit epoch has no authenticated randomness-witness policy")]
@@ -529,6 +536,13 @@ pub struct FindingAuditRound {
     pub eligible: Vec<EligibleListing>,
 }
 
+pub(crate) struct ResolvedFindingAuditSelection {
+    round: FindingAuditRound,
+    audit_authority: PublicKey,
+    randomness_witness: PublicKey,
+    governance_authority: PublicKey,
+}
+
 /// Resolution of the signed artifacts a filing binds by digest.
 ///
 /// A challenge carries digests, never the artifacts behind them, so the
@@ -590,6 +604,18 @@ pub trait FindingFilingResolver: Send + Sync {
     /// Retain the trusted policy used to mint an exact penalty so a later
     /// appeal can authenticate it after authority rotation.
     fn retain_penalty_policy(
+        &self,
+        envelope_sha256: &str,
+        policy: &FindingAuthorityPin,
+    ) -> Result<(), String>;
+
+    /// The evaluator policy retained when this exact signed outcome was
+    /// minted. Outcome-authored role fields never select their own trust.
+    fn evaluator_policy_for_outcome(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin>;
+
+    /// Retain the configured evaluator policy before the exact signed
+    /// outcome becomes reachable from the durable verdict record.
+    fn retain_evaluator_policy(
         &self,
         envelope_sha256: &str,
         policy: &FindingAuthorityPin,
@@ -1324,20 +1350,15 @@ impl FindingChallengeCoordinator {
         // for adjudication so an immutable refusal cannot strand the funded
         // filing in `evaluating`.
         self.require_funded_filing(&body.challenge_id, request.now)?;
-        let audit_authority = match &body.authorization {
+        let resolved_audit_selection = match &body.authorization {
             FindingChallengeAuthorization::VenueAudit(audit) => {
-                let historical_policy = self
-                    .filings
-                    .audit_policy_for_epoch(&audit.audit_epoch_envelope_sha256)
-                    .ok_or(ChallengeCoordinatorError::UnknownAuditAuthorityPolicy)?;
-                self.require_live_role(
-                    &historical_policy,
-                    body.filed_at,
-                    request.now,
-                    "historical audit",
-                )?
+                Some(self.require_audit_selection(audit, body, &admission, request.now)?)
             }
-            FindingChallengeAuthorization::BuyerSubmission(_) => self
+            FindingChallengeAuthorization::BuyerSubmission(_) => None,
+        };
+        let audit_authority = match &resolved_audit_selection {
+            Some(selection) => selection.audit_authority.clone(),
+            None => self
                 .pins
                 .audit_authority
                 .key()
@@ -1372,6 +1393,17 @@ impl FindingChallengeCoordinator {
             .authority_status
             .key()
             .map_err(|_| ChallengeCoordinatorError::AuthorityPinMismatch("authority status"))?;
+        let venue_audit_selection =
+            resolved_audit_selection
+                .as_ref()
+                .map(|selection| FindingVenueAuditSelectionEvidence {
+                    epoch: &selection.round.epoch,
+                    authorization: &selection.round.authorization,
+                    revealed_seed: &selection.round.revealed_seed,
+                    eligible: &selection.round.eligible,
+                    pinned_randomness_witness: &selection.randomness_witness,
+                    pinned_governance_authority: &selection.governance_authority,
+                });
         let input = FindingChallengeEvaluationInput {
             challenge: request.challenge,
             pinned_audit_authority: &audit_authority,
@@ -1386,6 +1418,7 @@ impl FindingChallengeCoordinator {
             purchase_authority_status: purchase_authority_status.as_ref(),
             pinned_authority_status_key: &authority_status_key,
             evaluated_at: request.now,
+            venue_audit_selection,
             evidence: request.evidence,
         };
         let FindingChallengeEvaluation::Adjudicated(adjudication) =
@@ -1407,6 +1440,7 @@ impl FindingChallengeCoordinator {
             request.evidence,
             purchase_authority_status.as_ref(),
             &governance_authority_status,
+            resolved_audit_selection.as_ref(),
         )?;
         let attempt = self
             .challenges
@@ -1486,6 +1520,9 @@ impl FindingChallengeCoordinator {
         let outcome_envelope_json =
             canonical_json_bytes(&signed).map_err(|_| ChallengeCoordinatorError::Canonical)?;
         let outcome_envelope_sha256 = sha256_hex(&outcome_envelope_json);
+        self.filings
+            .retain_evaluator_policy(&outcome_envelope_sha256, &self.evaluator_pin)
+            .map_err(ChallengeCoordinatorError::EvaluatorPolicyRetention)?;
 
         let state = match signed.body.penalty_calculation.as_ref() {
             Some(calculation) => self.challenges.record_upheld_verdict_with_exposure_fence(
@@ -3456,7 +3493,7 @@ impl FindingChallengeCoordinator {
         challenge: &FindingChallenge,
         admission: &SignedFindingAdmission,
         now: u64,
-    ) -> Result<(), ChallengeCoordinatorError> {
+    ) -> Result<ResolvedFindingAuditSelection, ChallengeCoordinatorError> {
         let round = self
             .filings
             .audit_round(&audit.audit_epoch_envelope_sha256)
@@ -3561,7 +3598,12 @@ impl FindingChallengeCoordinator {
                 "selection_digest",
             ));
         }
-        Ok(())
+        Ok(ResolvedFindingAuditSelection {
+            round,
+            audit_authority,
+            randomness_witness,
+            governance_authority,
+        })
     }
 
     /// Resolve the signed fee schedule one filing bound by digest, and
@@ -4719,14 +4761,19 @@ impl FindingChallengeCoordinator {
             .body
             .validate()
             .map_err(|error| ChallengeCoordinatorError::OutcomeEnvelope(error.to_string()))?;
-        let historical_pin = FindingAuthorityPin {
-            authority_id: outcome.body.evaluator_authority_id.clone(),
-            key_hex: outcome.body.evaluator_key.to_hex(),
-            key_epoch: outcome.body.evaluator_key_epoch,
-            valid_from: outcome.body.evaluator_valid_from,
-            valid_until: outcome.body.evaluator_valid_until,
-            revocation_status_ref: outcome.body.evaluator_revocation_status_ref.clone(),
-        };
+        let historical_pin = self
+            .filings
+            .evaluator_policy_for_outcome(&presented)
+            .ok_or(ChallengeCoordinatorError::UnknownEvaluatorPolicy)?;
+        if historical_pin.authority_id != outcome.body.evaluator_authority_id
+            || historical_pin.key_hex != outcome.body.evaluator_key.to_hex()
+            || historical_pin.key_epoch != outcome.body.evaluator_key_epoch
+            || historical_pin.valid_from != outcome.body.evaluator_valid_from
+            || historical_pin.valid_until != outcome.body.evaluator_valid_until
+            || historical_pin.revocation_status_ref != outcome.body.evaluator_revocation_status_ref
+        {
+            return Err(ChallengeCoordinatorError::OutcomeBinding);
+        }
         let evaluator = self
             .require_live_role(
                 &historical_pin,
@@ -6012,6 +6059,7 @@ impl FindingChallengeCoordinator {
         evidence: &FindingChallengeClassEvidence<'_>,
         purchase_authority_status: Option<&SignedFindingAuthorityStatus>,
         governance_authority_status: &SignedFindingAuthorityStatus,
+        audit_selection: Option<&ResolvedFindingAuditSelection>,
     ) -> Result<String, ChallengeCoordinatorError> {
         let bytes = chio_core::canonical_json_bytes(&challenge.evidence)
             .map_err(|_| ChallengeCoordinatorError::Canonical)?;
@@ -6093,6 +6141,20 @@ impl FindingChallengeCoordinator {
             }
         };
         supplemental_digests.insert(0, self.envelope_digest(governance_authority_status)?);
+        if let Some(selection) = audit_selection {
+            supplemental_digests.push(self.envelope_digest(&selection.round.epoch)?);
+            supplemental_digests.push(self.envelope_digest(&selection.round.authorization)?);
+            supplemental_digests.push(self.canonical_digest(&selection.round.revealed_seed)?);
+            supplemental_digests.push(
+                derive_eligible_snapshot_digest(&selection.round.eligible)
+                    .map_err(|_| ChallengeCoordinatorError::Canonical)?,
+            );
+            supplemental_digests.push(self.canonical_digest(&selection.audit_authority.to_hex())?);
+            supplemental_digests
+                .push(self.canonical_digest(&selection.randomness_witness.to_hex())?);
+            supplemental_digests
+                .push(self.canonical_digest(&selection.governance_authority.to_hex())?);
+        }
         let resolved_bytes = self.canonical_bytes(&(branch, supplemental_digests))?;
         let mut preimage = Vec::with_capacity(
             EVIDENCE_BUNDLE_DOMAIN.len() + 1 + bytes.len() + 1 + resolved_bytes.len(),

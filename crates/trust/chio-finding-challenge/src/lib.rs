@@ -33,6 +33,7 @@
 
 #![forbid(unsafe_code)]
 
+mod audit;
 mod digest_mismatch;
 mod evaluate;
 mod evidence_invalid;
@@ -51,6 +52,6 @@ pub use input::{
     FindingChallengeEvaluationInput, FindingChallengeInadmissible, FindingDigestMismatchEvidence,
     FindingEvidenceInvalidEvidence, FindingPurchaseStandingEvidence,
     FindingReplayContradictionEvidence, FindingResolvedReproduction,
-    FindingRetainedAuthorityPolicy, FindingRevokedKeyProof,
+    FindingRetainedAuthorityPolicy, FindingRevokedKeyProof, FindingVenueAuditSelectionEvidence,
 };
 pub use reason::{FindingChallengeReason, FindingChallengeReasonClass};

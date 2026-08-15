@@ -30,12 +30,14 @@ fn finding_challenge_evidence_bundle_commits_resolved_membership_inputs() -> Tes
         &resolved,
         Some(&purchase_status),
         &governance_status,
+        None,
     )?;
     let unresolved_digest = coordinator.evidence_bundle_digest(
         &case.challenge.body,
         &unresolved,
         Some(&purchase_status),
         &governance_status,
+        None,
     )?;
 
     assert_ne!(
@@ -49,6 +51,7 @@ fn finding_challenge_evidence_bundle_commits_resolved_membership_inputs() -> Tes
             &resolved,
             Some(&later_purchase_status),
             &governance_status,
+            None,
         )?,
         "purchase standing substitutions must change the evidence-invalid commitment"
     );
@@ -59,6 +62,7 @@ fn finding_challenge_evidence_bundle_commits_resolved_membership_inputs() -> Tes
             &resolved,
             Some(&purchase_status),
             &later_governance_status,
+            None,
         )?,
         "governance status substitutions must change the evidence commitment"
     );
@@ -77,6 +81,7 @@ fn finding_challenge_evidence_bundle_commits_resolved_membership_inputs() -> Tes
         &replay_evidence,
         Some(&purchase_status),
         &governance_status,
+        None,
     )?;
     assert_ne!(
         replay_digest,
@@ -85,6 +90,7 @@ fn finding_challenge_evidence_bundle_commits_resolved_membership_inputs() -> Tes
             &replay_evidence,
             Some(&later_purchase_status),
             &governance_status,
+            None,
         )?,
         "purchase standing substitutions must change the replay commitment"
     );
