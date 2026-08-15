@@ -1149,6 +1149,19 @@ fn replay_kernel() -> Keypair {
     keypair(13)
 }
 
+/// Checkpoint signing stays in a separate trust domain from receipt signing.
+fn production_log_signer() -> Keypair {
+    keypair(23)
+}
+
+fn delivery_log_signer() -> Keypair {
+    keypair(24)
+}
+
+fn replay_log_signer() -> Keypair {
+    keypair(25)
+}
+
 fn key_policy(key: &PublicKey, label: &str) -> FindingAuthorityKeyPolicy {
     FindingAuthorityKeyPolicy {
         authority_id: format!("authority-{label}"),
@@ -1373,16 +1386,16 @@ fn verifier_profile() -> Result<SignedFindingChallengeVerifierProfile, AnyError>
         ],
         checkpoint_logs: vec![
             FindingCheckpointLogPolicy {
-                log_id: log_id_for(&production_kernel())?,
-                signer: key_policy(&production_kernel().public_key(), "production-log"),
+                log_id: log_id_for(&production_log_signer())?,
+                signer: key_policy(&production_log_signer().public_key(), "production-log"),
             },
             FindingCheckpointLogPolicy {
-                log_id: log_id_for(&delivery_kernel())?,
-                signer: key_policy(&delivery_kernel().public_key(), "delivery-log"),
+                log_id: log_id_for(&delivery_log_signer())?,
+                signer: key_policy(&delivery_log_signer().public_key(), "delivery-log"),
             },
             FindingCheckpointLogPolicy {
-                log_id: log_id_for(&replay_kernel())?,
-                signer: key_policy(&replay_kernel().public_key(), "replay-log"),
+                log_id: log_id_for(&replay_log_signer())?,
+                signer: key_policy(&replay_log_signer().public_key(), "replay-log"),
             },
         ],
         bbs_projection_issuer: FindingBbsIssuerPolicy {
@@ -1525,7 +1538,7 @@ fn production_evidence(shape: ProductionShape) -> Result<ProductionEvidence, Any
         EVIDENCE_FIRST_SEQ,
         EVIDENCE_LAST_SEQ,
         &leaves,
-        &production_kernel(),
+        &production_log_signer(),
     )?;
     let reference = checkpoint_reference(&checkpoint)?;
     let mut resolved = Vec::with_capacity(receipts.len());
@@ -1584,7 +1597,7 @@ fn challenged_finding() -> Result<ChallengedFinding, AnyError> {
         evidence_receipt_ids,
         evidence_checkpoint_ref: format!(
             "{}#{EVIDENCE_CHECKPOINT_SEQ}",
-            log_id_for(&production_kernel())?
+            log_id_for(&production_log_signer())?
         ),
         evidence_cost: usd(10),
         runtime_assurance_tier: None,
@@ -1825,7 +1838,7 @@ fn digest_mismatch_case(
         DENY_RECEIPT_SEQ,
         DENY_RECEIPT_SEQ,
         &leaves,
-        &kernel,
+        &delivery_log_signer(),
     )?;
     let deny_checkpoint_ref = checkpoint_reference(&deny_checkpoint)?;
     let deny_receipt = resolve(receipt, &leaves, 0, DENY_CHECKPOINT_SEQ, DENY_RECEIPT_SEQ)?;
@@ -2044,7 +2057,7 @@ fn evidence_invalid_case(
         EVIDENCE_FIRST_SEQ,
         EVIDENCE_LAST_SEQ,
         &[b"unresolved-leaf-a".to_vec(), b"unresolved-leaf-b".to_vec()],
-        &production_kernel(),
+        &production_log_signer(),
     )?;
     let branch = FindingChallengeEvidence::EvidenceInvalid {
         challenged_evidence_receipt_refs: challenged_refs,
@@ -2219,7 +2232,7 @@ fn replay_case(
         REPLAY_FIRST_SEQ,
         REPLAY_FIRST_SEQ + receipts.len() as u64 - 1,
         &leaves,
-        &kernel,
+        &replay_log_signer(),
     )?;
     let checkpoint_ref = checkpoint_reference(&checkpoint)?;
     let mut resolved = Vec::with_capacity(receipts.len());
