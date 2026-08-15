@@ -164,16 +164,16 @@ fn cognition_market_qualified_profile_rejects_purchase_authority_as_passport_sig
 }
 
 #[test]
-fn cognition_market_qualified_profile_rejects_unpinned_purchase_record() -> TestResult {
+fn cognition_market_qualified_profile_rejects_purchase_authority_outside_profile() -> TestResult {
     let mut bundle = build_bundle()?;
     bundle.trust.purchase_authority = Keypair::from_seed(&[14_u8; 32]).public_key();
 
     let error = verify(&bundle)
         .err()
-        .ok_or("purchase record signed outside the deployment pin was accepted")?
+        .ok_or("purchase authority outside the governance-signed profile was accepted")?
         .to_string();
     assert!(
-        error.contains("purchase-record.json"),
+        error.contains("pinned verifier profile purchase authority and deployment key disagree"),
         "unexpected error: {error}"
     );
     Ok(())

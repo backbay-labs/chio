@@ -428,6 +428,11 @@ pub fn verify_cognition_market_passport_artifacts_with_external_claims(
         &trust.profile_governance_authority.key,
     )
     .map_err(|error| claim_failed(format!("trusted verifier profile is invalid: {error}")))?;
+    if trust.trusted_verifier_profile.body.purchase_authority.key != trust.purchase_authority {
+        return Err(claim_failed(
+            "pinned verifier profile purchase authority and deployment key disagree",
+        ));
+    }
     verify_profile_governance_authority_status(
         &trust.profile_governance_authority,
         &trust.profile_governance_authority_status,

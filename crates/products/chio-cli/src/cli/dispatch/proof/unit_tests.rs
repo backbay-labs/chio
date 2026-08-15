@@ -362,6 +362,24 @@ fn cognition_market_trust_skips_status_configuration_for_non_status_claims() {
         profile.body.required_facets
     );
 
+    {
+        let mismatched_purchase_key = chio_core_types::Keypair::from_seed(&[14_u8; 32])
+            .public_key()
+            .to_hex();
+        let _mismatched_purchase = TestEnvGuard::set(&[(
+            "CHIO_FINDING_PURCHASE_AUTHORITY_KEY",
+            std::ffi::OsStr::new(&mismatched_purchase_key),
+        )]);
+        let error = match cognition_market_proof_trust_from_env(&[], &[], false) {
+            Ok(_) => panic!("purchase authority outside the verifier profile was accepted"),
+            Err(error) => error.to_string(),
+        };
+        assert!(
+            error.contains("purchase authority key does not match CHIO_FINDING_PURCHASE_AUTHORITY_KEY"),
+            "unexpected error: {error}"
+        );
+    }
+
     let unauthorized_governance = chio_core_types::Keypair::from_seed(&[99_u8; 32])
         .public_key()
         .to_hex();

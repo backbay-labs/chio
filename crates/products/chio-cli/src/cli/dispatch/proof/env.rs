@@ -325,6 +325,11 @@ pub(super) fn cognition_market_proof_trust_from_env(
             "{FINDING_VERIFIER_PROFILE_PATH_ENV} signer key does not match {FINDING_VERIFIER_AUTHORITY_KEY_ENV}"
         )));
     }
+    if trusted_verifier_profile.body.purchase_authority.key != purchase_authority {
+        return Err(CliError::cli_other_error(format!(
+            "{FINDING_VERIFIER_PROFILE_PATH_ENV} purchase authority key does not match {FINDING_PURCHASE_AUTHORITY_KEY_ENV}"
+        )));
+    }
     let trusted_verifier_profile_envelope_sha256 =
         required_sha256_env(FINDING_VERIFIER_PROFILE_ENVELOPE_SHA256_ENV)?;
     let trusted_trust_root_snapshot_sha256 =

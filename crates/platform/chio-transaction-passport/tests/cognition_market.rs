@@ -47,7 +47,7 @@ use serde_json::{json, Value};
 
 type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 
-const FINDING_ID: &str = "62f77d806d9f5e065b6238555d720ed587af7ef056b8cf7c94c4d75e135999a3";
+const FINDING_ID: &str = "2e1b8eabe5efb8027edac0d529ed5d16efa1d73429e6cbb619a6008152ae37c5";
 const STATUS_FEED_ID: &str = "finding-status/test";
 const RETRACTED_FINDING_ID: &str =
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -242,7 +242,7 @@ fn verifier_profile() -> TestResult<SignedFindingChallengeVerifierProfile> {
         allowed_predicates: vec![FindingPredicate::BaselineFailsCandidatePassesV1],
         required_facets: Vec::new(),
         verifier_report_signer: verifier_signer_policy(),
-        purchase_authority: profile_key_policy(22, "purchase-authority"),
+        purchase_authority: profile_key_policy(11, "purchase-authority"),
         failed_delivery_authority: profile_key_policy(23, "failed-delivery-authority"),
         issued_at: GENERATED_AT - 60,
         expires_at: GENERATED_AT + 600,
