@@ -2000,9 +2000,14 @@ impl SqliteFindingChallengeStore {
         &self,
         expected_previous_sha256: &str,
         authorization: &FindingFinalizingAuthorizationInput<'_>,
+        expected_seller_intent: &FindingEffectIntentRecord,
+        expected_root_intent: &FindingEffectIntentRecord,
+        expected_root_binding: Option<&FindingEffectRootBindingRecord>,
     ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
         require_hex64(expected_previous_sha256, "expected_previous_sha256")?;
         require_finalizing_authorization(authorization)?;
+        require_hex64(&expected_seller_intent.intent_key, "seller_intent_key")?;
+        require_hex64(&expected_root_intent.intent_key, "root_intent_key")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
         let liability = load_liability_tx(&transaction, authorization.liability_key)?
@@ -2012,23 +2017,45 @@ impl SqliteFindingChallengeStore {
                 "only a finalizing liability can refresh its authorization".to_owned(),
             ));
         }
-        let (seller_intents, refreshable_seller_intents) = transaction
-            .query_row(
-                r#"
-                SELECT COUNT(*),
-                       COALESCE(SUM(state IN ('pending', 'failed')), 0)
-                FROM effect_intents
-                WHERE liability_key = ?1
-                  AND kind = 'seller_impair'
-                  AND settlement_required = 1
-                "#,
-                [authorization.liability_key],
-                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
-            )
-            .map_err(sqlite_error)?;
-        if seller_intents != 1 || refreshable_seller_intents != 1 {
+        let seller_intent =
+            load_effect_intent_tx(&transaction, &expected_seller_intent.intent_key)?
+                .ok_or(FindingChallengeStoreError::NotFound)?;
+        let root_intent = load_effect_intent_tx(&transaction, &expected_root_intent.intent_key)?
+            .ok_or(FindingChallengeStoreError::NotFound)?;
+        let root_binding =
+            load_effect_root_binding_tx(&transaction, &expected_root_intent.intent_key)?;
+        if &seller_intent != expected_seller_intent
+            || &root_intent != expected_root_intent
+            || root_binding.as_ref() != expected_root_binding
+        {
             return Err(FindingChallengeStoreError::Conflict(
-                "finalizing authorization may refresh only before dispatch or after a retryable failed seller impairment"
+                "finalizing authorization refresh lost its effect-state fence".to_owned(),
+            ));
+        }
+        let same_liability = Some(authorization.liability_key);
+        let refreshable = seller_intent.kind == FindingEffectIntentKind::SellerImpair
+            && seller_intent.liability_key.as_deref() == same_liability
+            && seller_intent.settlement_required
+            && root_intent.kind == FindingEffectIntentKind::RootIntent
+            && root_intent.liability_key.as_deref() == same_liability
+            && root_intent.settlement_required
+            && match seller_intent.state {
+                FindingEffectIntentState::Pending => {
+                    root_intent.state == FindingEffectIntentState::Pending
+                        && root_intent.attempt_count == 0
+                        && root_binding.is_none()
+                }
+                FindingEffectIntentState::Failed => {
+                    root_intent.state == FindingEffectIntentState::Confirmed
+                        && root_binding.is_some()
+                }
+                FindingEffectIntentState::Dispatched
+                | FindingEffectIntentState::Confirmed
+                | FindingEffectIntentState::Quarantined => false,
+            };
+        if !refreshable {
+            return Err(FindingChallengeStoreError::Conflict(
+                "finalizing authorization may refresh only before anchor binding or during an authenticated retry"
                     .to_owned(),
             ));
         }

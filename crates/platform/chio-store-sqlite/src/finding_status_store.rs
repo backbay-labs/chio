@@ -608,13 +608,13 @@ impl SqliteFindingStatusStore {
         sanction_case_id: &str,
         authorization: &FindingFinalizingAuthorizationInput<'_>,
         input: &FindingRetractionIntentInput<'_>,
-        now: u64,
+        liveness: FindingRetractionIntentCommitLiveness,
+        read_now: impl FnOnce() -> u64,
     ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
         require_hex64(liability_key, "liability_key")?;
         require_identifier(sanction_case_id, "sanction_case_id")?;
         validate_intent_input(input)?;
-        require_positive(now, "now")?;
-        if input.source != FindingRetractionIntentSource::Enforcement || input.created_at != now {
+        if input.source != FindingRetractionIntentSource::Enforcement {
             return Err(invariant(
                 "finalizing transition requires a current enforcement retraction intent",
             ));
@@ -622,13 +622,46 @@ impl SqliteFindingStatusStore {
         let intent_sha256 = sha256_hex(input.intent_bytes);
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
+        let existing_intent = load_intent_tx(&transaction, input.intent_id)?;
+        let commit_now = if let Some(existing) = existing_intent.as_ref() {
+            verify_intent_replay(existing, input, &intent_sha256)?;
+            let status = load_status_tx(&transaction, input.feed_id, input.finding_id)?
+                .ok_or_else(|| invariant("exact intent replay is missing its sticky status row"))?;
+            verify_intent_status_pair(existing, &status)?;
+            existing.created_at
+        } else {
+            validate_intent_commit_liveness(input, liveness)?;
+            let observed = read_now();
+            require_positive(observed, "commit_now")?;
+            if observed < liveness.valid_from
+                || observed >= liveness.valid_until
+                || observed < input.issued_at
+                || observed >= input.inclusion_deadline
+            {
+                return Err(FindingStatusStoreError::Conflict(
+                    "status feed authority or service bond expired before the finalizing transaction"
+                        .to_owned(),
+                ));
+            }
+            ensure_feed_tx(&transaction, input.feed_id, input.operator_id, observed)?;
+            if load_floor_tx(&transaction, input.feed_id)?.is_some() {
+                advance_trusted_time_floor_tx(&transaction, input.feed_id, observed)?;
+            }
+            observed
+        };
+        let committed_authorization = FindingFinalizingAuthorizationInput {
+            liability_key: authorization.liability_key,
+            authorization_json: authorization.authorization_json,
+            authorization_sha256: authorization.authorization_sha256,
+            recorded_at: commit_now,
+        };
         let transition_outcome = begin_finalizing_under_sanction_tx(
             &transaction,
             liability_key,
             FindingLiabilityState::PendingAppeal,
             sanction_case_id,
-            authorization,
-            now,
+            &committed_authorization,
+            commit_now,
         )
         .map_err(|error| {
             FindingStatusStoreError::Conflict(format!(
@@ -636,18 +669,7 @@ impl SqliteFindingStatusStore {
             ))
         })?;
 
-        ensure_feed_tx(
-            &transaction,
-            input.feed_id,
-            input.operator_id,
-            input.created_at,
-        )?;
-        let intent_outcome = if let Some(existing) = load_intent_tx(&transaction, input.intent_id)?
-        {
-            verify_intent_replay(&existing, input, &intent_sha256)?;
-            let status = load_status_tx(&transaction, input.feed_id, input.finding_id)?
-                .ok_or_else(|| invariant("exact intent replay is missing its sticky status row"))?;
-            verify_intent_status_pair(&existing, &status)?;
+        let intent_outcome = if existing_intent.is_some() {
             FindingStatusWriteOutcome::ExactReplay
         } else if let Some(status) = load_status_tx(&transaction, input.feed_id, input.finding_id)?
         {
@@ -686,7 +708,7 @@ impl SqliteFindingStatusStore {
                         input.intent_bytes,
                         sqlite_i64(input.issued_at, "issued_at")?,
                         sqlite_i64(input.inclusion_deadline, "inclusion_deadline")?,
-                        sqlite_i64(input.created_at, "created_at")?,
+                        sqlite_i64(commit_now, "created_at")?,
                     ],
                 )
                 .map_err(sqlite_error)?;
@@ -703,7 +725,7 @@ impl SqliteFindingStatusStore {
                         input.operator_id,
                         input.finding_id,
                         intent_sha256,
-                        sqlite_i64(input.created_at, "created_at")?,
+                        sqlite_i64(commit_now, "created_at")?,
                     ],
                 )
                 .map_err(sqlite_error)?;

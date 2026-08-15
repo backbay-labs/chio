@@ -378,7 +378,11 @@ fn finalizing_liability_with_prior_retraction(
             inclusion_deadline: NOW + 3_605,
             created_at: NOW + 5,
         },
-        NOW + 5,
+        chio_store_sqlite::FindingRetractionIntentCommitLiveness {
+            valid_from: NOW.saturating_sub(60),
+            valid_until: NOW + 7_200,
+        },
+        || NOW + 5,
     )?;
     let case = FinalizingLiability {
         deployment,

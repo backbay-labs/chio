@@ -1615,32 +1615,6 @@ impl ChioKernel {
                     Some(crate::kernel::purchase_gate::finding_status_delivery_denial());
             }
         }
-        let delivery_denied = delivery_evaluation.denial.is_some();
-        let projected_terminal_state = if delivery_denied {
-            AdmissionOperationState::DeniedAfterDelivery
-        } else {
-            AdmissionOperationState::Completed
-        };
-        let receipt_visible_content = receipt_visible_delivery_content(
-            &receipt_content,
-            delivery_evaluation.digest_mismatched,
-            expected_output_digest.as_deref(),
-        );
-        let receipt_visible_digest = AdmissionDigest::try_new(
-            "receipt_visible_output_digest",
-            receipt_visible_content.content_hash.clone(),
-        )?;
-        let terminal_decision = match &delivery_evaluation.denial {
-            Some(denial) => Decision::Deny {
-                reason: denial.message.to_owned(),
-                guard: denial.guard.to_owned(),
-            },
-            None => incomplete_reason
-                .as_ref()
-                .map_or(Decision::Allow, |reason| Decision::Incomplete {
-                    reason: reason.clone(),
-                }),
-        };
         let stored_outcome = runtime
             .outcome_store
             .lookup_by_operation(admission.operation.binding().operation_id())
@@ -1707,6 +1681,42 @@ impl ChioKernel {
                 evaluation.validate_replay_contract(&plan.frozen_steps, &normalized_context)
             })
             .map_err(tool_outcome_error)?;
+        if delivery_evaluation.denial.is_none() {
+            if let Err(reason) = self.revalidate_completed_purchase_status(
+                purchase.as_ref(),
+                current_unix_timestamp_ms() / 1_000,
+            ) {
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase final terminal output withheld");
+                delivery_evaluation.denial =
+                    Some(crate::kernel::purchase_gate::finding_status_delivery_denial());
+            }
+        }
+        let delivery_denied = delivery_evaluation.denial.is_some();
+        let projected_terminal_state = if delivery_denied {
+            AdmissionOperationState::DeniedAfterDelivery
+        } else {
+            AdmissionOperationState::Completed
+        };
+        let receipt_visible_content = receipt_visible_delivery_content(
+            &receipt_content,
+            delivery_evaluation.digest_mismatched,
+            expected_output_digest.as_deref(),
+        );
+        let receipt_visible_digest = AdmissionDigest::try_new(
+            "receipt_visible_output_digest",
+            receipt_visible_content.content_hash.clone(),
+        )?;
+        let terminal_decision = match &delivery_evaluation.denial {
+            Some(denial) => Decision::Deny {
+                reason: denial.message.to_owned(),
+                guard: denial.guard.to_owned(),
+            },
+            None => incomplete_reason
+                .as_ref()
+                .map_or(Decision::Allow, |reason| Decision::Incomplete {
+                    reason: reason.clone(),
+                }),
+        };
         let post_guard_decision_digest = admission_digest(
             "post_guard_decision_digest",
             &KernelOutputGuardDecision {
@@ -2186,10 +2196,6 @@ impl ChioKernel {
         } else {
             None
         };
-        self.revalidate_completed_purchase_status_for_terminal(
-            purchase.as_ref(),
-            current_unix_timestamp_ms() / 1_000,
-        )?;
         self.revalidate_completed_recovery_status(
             matched_grant_index,
             request,

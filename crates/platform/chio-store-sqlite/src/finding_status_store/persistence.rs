@@ -245,6 +245,35 @@ fn persist_epoch_tx(
     prior_floor: Option<&FindingStatusFeedFloor>,
 ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
     let signed_epoch_sha256 = sha256_hex(epoch.signed_epoch_bytes);
+    if prior_floor.is_none() {
+        let pre_epoch_high_water = transaction
+            .query_row(
+                r#"
+                SELECT MAX(observed_at) FROM (
+                    SELECT registered_at AS observed_at
+                    FROM finding_status_feeds
+                    WHERE feed_id = ?1
+                    UNION ALL
+                    SELECT created_at AS observed_at
+                    FROM finding_retraction_intents
+                    WHERE feed_id = ?1
+                )
+                "#,
+                [epoch.feed_id],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .map_err(sqlite_error)?
+            .map(|value| stored_u64(value, "pre-epoch trusted time"))
+            .transpose()?
+            .unwrap_or(0);
+        if epoch.recorded_at < pre_epoch_high_water {
+            return Err(FindingStatusStoreError::ClockRollback {
+                feed_id: epoch.feed_id.to_owned(),
+                high_water: pre_epoch_high_water,
+                observed: epoch.recorded_at,
+            });
+        }
+    }
     if let Some(floor) = prior_floor {
         if floor.operator_id != epoch.operator_id
             || floor.key_domain_nonce != epoch.key_domain_nonce

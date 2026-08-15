@@ -689,6 +689,9 @@ pub(crate) async fn handle_get_finding_status_proof(
     ) {
         return response;
     }
+    if let Err(response) = require_proof_sticky_state(&store, &proof) {
+        return response;
+    }
     let proof_kind = match proof.kind {
         FindingStatusProofKind::Inclusion => "inclusion",
         FindingStatusProofKind::NonInclusion => "non_inclusion",

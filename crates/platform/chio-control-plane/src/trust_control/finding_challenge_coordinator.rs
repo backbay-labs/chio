@@ -2453,6 +2453,9 @@ impl FindingChallengeCoordinator {
                     authorization_sha256: &refreshed_sha256,
                     recorded_at: now,
                 },
+                &seller_intent,
+                &root_intent,
+                root_binding.as_ref(),
             )
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         Ok(refreshed_authorization)
@@ -5923,7 +5926,24 @@ impl FindingChallengeCoordinator {
                     inclusion_deadline,
                     created_at: now,
                 },
-                now,
+                FindingRetractionIntentCommitLiveness {
+                    valid_from: self
+                        .status_feed_operator
+                        .authority
+                        .valid_from
+                        .max(self.status_feed_service_bond.valid_from),
+                    valid_until: self
+                        .status_feed_operator
+                        .authority
+                        .valid_until
+                        .min(
+                            self.status_feed_operator
+                                .revoked_from
+                                .unwrap_or(self.status_feed_operator.authority.valid_until),
+                        )
+                        .min(self.status_feed_service_bond.valid_until),
+                },
+                || self.status_commit_clock.now_unix_secs(now),
             )
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
 
