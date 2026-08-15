@@ -96,6 +96,17 @@ fn digest(tag: &str) -> String {
     sha256_hex(tag.as_bytes())
 }
 
+fn upheld_outcome(tag: &str, allocation_id: &str) -> (String, Vec<u8>) {
+    let bytes = canonical_json_bytes(&serde_json::json!({
+        "body": {
+            "backing_allocation_id": allocation_id,
+        },
+        "test_tag": tag,
+    }))
+    .expect("canonical upheld outcome");
+    (sha256_hex(&bytes), bytes)
+}
+
 fn chain_hash(tag: &str) -> String {
     format!("0x{}", digest(tag))
 }
@@ -305,8 +316,9 @@ fn close_challenge(
         .store
         .begin_evaluation(&challenge.challenge_id, now)
         .expect("begin evaluation");
-    let outcome = format!("outcome-{}", challenge.challenge_id);
     if verdict == FindingChallengeVerdict::Upheld {
+        let (outcome_digest, outcome_bytes) =
+            upheld_outcome(&challenge.challenge_id, &fixture.allocation_id);
         let exposure = fixture
             .purchases
             .list_outstanding_exposure_total(&fixture.allocation_id, now + 1)
@@ -315,14 +327,15 @@ fn close_challenge(
             .store
             .record_upheld_verdict_with_exposure_fence(
                 &challenge.challenge_id,
-                &digest(&outcome),
-                outcome.as_bytes(),
+                &outcome_digest,
+                &outcome_bytes,
                 &fixture.allocation_id,
                 exposure,
                 now + 1,
             )
             .expect("record upheld verdict")
     } else {
+        let outcome = format!("outcome-{}", challenge.challenge_id);
         fixture
             .store
             .record_verdict(
@@ -949,14 +962,14 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
     let fixture = fixture();
     let upheld = Challenge::buyer("alpha");
     submit(&fixture, &upheld);
-    let outcome = digest("outcome-alpha");
+    let (outcome, outcome_bytes) = upheld_outcome("alpha", &fixture.allocation_id);
     assert!(
         matches!(
             fixture.store.record_verdict(
                 &upheld.challenge_id,
                 FindingChallengeVerdict::Upheld,
                 &outcome,
-                b"outcome-alpha",
+                &outcome_bytes,
                 NOW + 1
             ),
             Err(FindingChallengeStoreError::Conflict(_))
@@ -988,7 +1001,7 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
                 &upheld.challenge_id,
                 FindingChallengeVerdict::Upheld,
                 &outcome,
-                b"outcome-alpha",
+                &outcome_bytes,
                 NOW + 3
             ),
             Err(FindingChallengeStoreError::Conflict(_))
@@ -1010,7 +1023,7 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
             .record_upheld_verdict_with_exposure_fence(
                 &upheld.challenge_id,
                 &outcome,
-                b"outcome-alpha",
+                &outcome_bytes,
                 &fixture.allocation_id,
                 0,
                 NOW + 3,
@@ -1024,14 +1037,14 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
         .expect("read retained outcome")
         .expect("verdict and outcome commit together");
     assert_eq!(retained.challenge_id, upheld.challenge_id);
-    assert_eq!(retained.outcome_envelope_json, b"outcome-alpha");
+    assert_eq!(retained.outcome_envelope_json, outcome_bytes);
     assert_eq!(
         fixture
             .store
             .record_upheld_verdict_with_exposure_fence(
                 &upheld.challenge_id,
                 &outcome,
-                b"outcome-alpha",
+                &retained.outcome_envelope_json,
                 &fixture.allocation_id,
                 0,
                 NOW + 4
@@ -1045,7 +1058,7 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
                 &upheld.challenge_id,
                 FindingChallengeVerdict::Rejected,
                 &outcome,
-                b"outcome-alpha",
+                &retained.outcome_envelope_json,
                 NOW + 5
             ),
             Err(FindingChallengeStoreError::Conflict(_))
@@ -1103,7 +1116,7 @@ fn challenge_lifecycle_admits_only_its_legal_edges() {
                 "challenge-absent",
                 FindingChallengeVerdict::Upheld,
                 &outcome,
-                b"outcome-alpha",
+                &outcome_bytes,
                 NOW
             ),
             Err(FindingChallengeStoreError::NotFound)
@@ -1415,12 +1428,13 @@ fn dispute_bond_locks_exclusively_and_disposes_exactly_once() {
         .store
         .begin_evaluation(&upheld.challenge_id, NOW + 1)
         .expect("begin evaluation");
+    let (outcome_digest, outcome_bytes) = upheld_outcome("bond-alpha", &fixture.allocation_id);
     fixture
         .store
         .record_upheld_verdict_with_exposure_fence(
             &upheld.challenge_id,
-            &digest("outcome-alpha"),
-            b"outcome-alpha",
+            &outcome_digest,
+            &outcome_bytes,
             &fixture.allocation_id,
             0,
             NOW + 2,
@@ -2183,13 +2197,26 @@ fn upheld_verdict_fences_exposure_before_becoming_terminal() {
         .store
         .begin_evaluation(&challenge.challenge_id, NOW + 1)
         .expect("begin evaluation");
-    let outcome_digest = digest("verdict-exposure-race-outcome");
+    let (outcome_digest, outcome_bytes) =
+        upheld_outcome("verdict-exposure-race", &fixture.allocation_id);
 
     assert!(matches!(
         fixture.store.record_upheld_verdict_with_exposure_fence(
             &challenge.challenge_id,
             &outcome_digest,
-            b"verdict-exposure-race-outcome",
+            &outcome_bytes,
+            &hex64('f'),
+            0,
+            NOW + 2,
+        ),
+        Err(FindingChallengeStoreError::Conflict(_))
+    ));
+
+    assert!(matches!(
+        fixture.store.record_upheld_verdict_with_exposure_fence(
+            &challenge.challenge_id,
+            &outcome_digest,
+            &outcome_bytes,
             &fixture.allocation_id,
             0,
             NOW + 2,
@@ -2211,7 +2238,7 @@ fn upheld_verdict_fences_exposure_before_becoming_terminal() {
             .record_upheld_verdict_with_exposure_fence(
                 &challenge.challenge_id,
                 &outcome_digest,
-                b"verdict-exposure-race-outcome",
+                &outcome_bytes,
                 &fixture.allocation_id,
                 10,
                 NOW + 2,

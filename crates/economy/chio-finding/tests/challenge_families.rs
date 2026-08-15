@@ -793,6 +793,50 @@ fn challenge_requires_standing_matching_its_evidence_class() -> TestResult {
 }
 
 #[test]
+fn challenge_nonzero_integers_enforce_the_i_json_maximum() -> TestResult {
+    let challenger = keypair(41);
+    type ChallengeMutation = fn(&mut FindingChallenge);
+    let out_of_range_cases: [(&'static str, ChallengeMutation); 4] = [
+        ("filed_at", |challenge| {
+            challenge.filed_at = ABOVE_I_JSON_MAX;
+        }),
+        ("dispute_fee_terminal.amount", |challenge| {
+            if let FindingChallengeAuthorization::BuyerSubmission(submission) =
+                &mut challenge.authorization
+            {
+                submission.dispute_fee_terminal.amount.units = ABOVE_I_JSON_MAX;
+            }
+        }),
+        ("dispute_lock_ref.amount", |challenge| {
+            if let FindingChallengeAuthorization::BuyerSubmission(submission) =
+                &mut challenge.authorization
+            {
+                submission.dispute_lock_ref.amount.units = ABOVE_I_JSON_MAX;
+            }
+        }),
+        ("dispute_lock_ref.expiry", |challenge| {
+            if let FindingChallengeAuthorization::BuyerSubmission(submission) =
+                &mut challenge.authorization
+            {
+                submission.dispute_lock_ref.expiry = ABOVE_I_JSON_MAX;
+            }
+        }),
+    ];
+
+    for (field, mutate) in out_of_range_cases {
+        let mut challenge = buyer_digest_mismatch_challenge(&challenger)?;
+        mutate(&mut challenge);
+        challenge.challenge_id = compute_challenge_id(&challenge)?;
+        assert_eq!(
+            challenge.validate(),
+            Err(FindingError::IJsonIntegerOutOfRange(field)),
+            "{field} must match the registered schema's I-JSON bound"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn replay_evidence_binds_one_run_and_the_committed_recipe() -> TestResult {
     let challenge = venue_replay_challenge()?;
     (challenge.validate())?;

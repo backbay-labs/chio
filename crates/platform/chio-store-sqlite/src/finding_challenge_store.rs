@@ -887,6 +887,7 @@ impl SqliteFindingChallengeStore {
         require_identifier(challenge_id, "challenge_id")?;
         require_outcome_envelope(outcome_envelope_sha256, outcome_envelope_json)?;
         require_hex64(allocation_id, "allocation_id")?;
+        require_outcome_allocation_binding(outcome_envelope_json, allocation_id)?;
         require_trusted_time(now, "now")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
@@ -5294,6 +5295,26 @@ fn require_outcome_envelope(
     if sha256_hex(outcome_envelope_json) != outcome_envelope_sha256 {
         return Err(invariant(
             "outcome envelope bytes do not match their recorded digest",
+        ));
+    }
+    Ok(())
+}
+
+fn require_outcome_allocation_binding(
+    outcome_envelope_json: &[u8],
+    allocation_id: &str,
+) -> Result<(), FindingChallengeStoreError> {
+    let envelope: serde_json::Value = serde_json::from_slice(outcome_envelope_json)
+        .map_err(|_| invariant("outcome envelope is not typed JSON"))?;
+    let retained_allocation_id = envelope
+        .get("body")
+        .and_then(|body| body.get("backing_allocation_id"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| invariant("outcome envelope omits its backing allocation"))?;
+    require_hex64(retained_allocation_id, "outcome.backing_allocation_id")?;
+    if retained_allocation_id != allocation_id {
+        return Err(FindingChallengeStoreError::Conflict(
+            "exposure fence allocation does not match the retained outcome".to_owned(),
         ));
     }
     Ok(())
