@@ -72,6 +72,40 @@ pub(crate) fn evaluate_replay_contradiction(
     if recipe_sha256 != committed_recipe_sha256 {
         return Err(FindingChallengeInadmissible::RecipePreimageMismatch);
     }
+    if recipe.context_sha256 != context.finding.descriptor.context_sha256 {
+        return Err(FindingChallengeInadmissible::RecipeBindingMismatch(
+            "context_sha256",
+        ));
+    }
+    if recipe.payload_sha256 != context.finding.payload_sha256 {
+        return Err(FindingChallengeInadmissible::RecipeBindingMismatch(
+            "payload_sha256",
+        ));
+    }
+    if recipe.verifier_profile_envelope_sha256 != context.profile_envelope_sha256 {
+        return Err(FindingChallengeInadmissible::RecipeBindingMismatch(
+            "verifier_profile_envelope_sha256",
+        ));
+    }
+    if recipe.resource_bounds.max_runtime_secs > context.profile.resource_caps.max_runtime_secs
+        || recipe.resource_bounds.max_memory_bytes > context.profile.resource_caps.max_memory_bytes
+        || recipe.resource_bounds.max_recipe_bytes > context.profile.resource_caps.max_recipe_bytes
+        || recipe.resource_bounds.max_evidence_receipts
+            > context.profile.resource_caps.max_evidence_receipts
+    {
+        return Err(FindingChallengeInadmissible::RecipeBindingMismatch(
+            "resource_bounds",
+        ));
+    }
+    if !context
+        .profile
+        .allowed_runner_manifests
+        .contains(&recipe.runner_manifest_sha256)
+    {
+        return Err(FindingChallengeInadmissible::RecipeBindingMismatch(
+            "runner_manifest_sha256",
+        ));
+    }
 
     if evidence.reproductions.len() != reproduction.len() {
         return Err(FindingChallengeInadmissible::EvidenceSetMismatch(

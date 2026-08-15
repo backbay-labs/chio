@@ -3,11 +3,14 @@
 
 mod support;
 
+use chio_core_types::canonical_json_string;
+use chio_core_types::crypto::sha256_hex;
 use chio_core_types::receipt::decision::Decision;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
-    verdict_for_replay_predicate, FindingChallengeVerdict, FindingEvidenceClass,
-    FindingGuaranteeClass, FindingReplayPredicateResult, FindingReplayTerminalResult,
+    compute_finding_id, sign_finding, verdict_for_replay_predicate, FindingChallengeVerdict,
+    FindingEvidenceClass, FindingGuaranteeClass, FindingReplayPredicateResult,
+    FindingReplayRecipeInput, FindingReplayTerminalResult,
 };
 use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeClassEvidence, FindingChallengeInadmissible,
@@ -16,8 +19,20 @@ use chio_finding_challenge::{
 
 use support::{
     expect_inadmissible, expect_reason, foreign_recipe_preimage, outcome_for, replay_case, world,
-    world_with_classes, FindingClasses, PhaseShape, ReplayShape, TestResult, HEX64_THIRD,
+    world_with_classes, FindingClasses, PhaseShape, ReplayShape, TestResult, World, HEX64_ALT,
+    HEX64_THIRD,
 };
+
+fn recommit_recipe(world: &mut World) -> TestResult {
+    world.recipe_preimage = canonical_json_string(&world.recipe)?;
+    world.recipe_sha256 = sha256_hex(world.recipe_preimage.as_bytes());
+    world.finding.replay_recipe_sha256 = Some(world.recipe_sha256.clone());
+    world.finding.finding_id = compute_finding_id(&world.finding)?;
+    world.finding = sign_finding(world.finding.clone(), &world.issuer)?;
+    world.raw_finding = canonical_json_string(&world.finding)?;
+    world.finding_artifact_sha256 = sha256_hex(world.raw_finding.as_bytes());
+    Ok(())
+}
 
 #[test]
 fn a_reproduction_that_agrees_with_the_claim_is_rejected() -> TestResult {
@@ -375,6 +390,39 @@ fn a_recipe_preimage_that_is_not_the_committed_one_rejects_before_evaluation() -
         &evaluation,
         &FindingChallengeInadmissible::RecipePreimageMismatch,
     )?;
+    Ok(())
+}
+
+#[test]
+fn a_committed_recipe_must_bind_the_challenged_finding_and_profile() -> TestResult {
+    let cases: [(&str, fn(&mut FindingReplayRecipeInput)); 4] = [
+        ("context_sha256", |recipe| {
+            recipe.context_sha256 = HEX64_ALT.to_string()
+        }),
+        ("payload_sha256", |recipe| {
+            recipe.payload_sha256 = HEX64_ALT.to_string()
+        }),
+        ("resource_bounds", |recipe| {
+            recipe.resource_bounds.max_runtime_secs += 1;
+        }),
+        ("runner_manifest_sha256", |recipe| {
+            recipe.runner_manifest_sha256 = HEX64_ALT.to_string();
+        }),
+    ];
+
+    for (field, mutate) in cases {
+        let mut world = world()?;
+        mutate(&mut world.recipe);
+        recommit_recipe(&mut world)?;
+        let case = replay_case(&world, &ReplayShape::default())?;
+        let reproductions = case.reproductions();
+        let evidence = case.evidence(&reproductions);
+        let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+        expect_inadmissible(
+            &evaluation,
+            &FindingChallengeInadmissible::RecipeBindingMismatch(field),
+        )?;
+    }
     Ok(())
 }
 

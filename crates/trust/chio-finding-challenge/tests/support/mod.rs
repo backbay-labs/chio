@@ -257,6 +257,9 @@ pub struct World {
     pub production_kernel: Keypair,
     pub delivery_kernel: Keypair,
     pub replay_kernel: Keypair,
+    pub production_checkpoint: Keypair,
+    pub delivery_checkpoint: Keypair,
+    pub replay_checkpoint: Keypair,
     pub profile: SignedFindingChallengeVerifierProfile,
     pub profile_envelope_sha256: String,
     pub recipe: FindingReplayRecipeInput,
@@ -332,6 +335,9 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
     let production_kernel = keypair(21);
     let delivery_kernel = keypair(12);
     let replay_kernel = keypair(13);
+    let production_checkpoint = keypair(22);
+    let delivery_checkpoint = keypair(23);
+    let replay_checkpoint = keypair(24);
 
     let production_signer = if production == ProductionShape::ForeignSigner {
         &delivery_kernel
@@ -377,7 +383,7 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
     let first_bytes = canonical_json_bytes(&first)?;
     let second_bytes = canonical_json_bytes(&second)?;
     let leaves = vec![first_bytes, second_bytes];
-    let evidence_checkpoint = build_checkpoint(1, 1, 2, &leaves, &production_kernel)?;
+    let evidence_checkpoint = build_checkpoint(1, 1, 2, &leaves, &production_checkpoint)?;
     let evidence_checkpoint_ref = checkpoint_reference(&evidence_checkpoint)?;
     let first_id = first.id.clone();
     let second_id = second.id.clone();
@@ -413,16 +419,16 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
         ],
         checkpoint_logs: vec![
             FindingCheckpointLogPolicy {
-                log_id: log_id_for(&production_kernel)?,
-                signer: key_policy(&production_kernel.public_key(), "production-log"),
+                log_id: log_id_for(&production_checkpoint)?,
+                signer: key_policy(&production_checkpoint.public_key(), "production-log"),
             },
             FindingCheckpointLogPolicy {
-                log_id: log_id_for(&delivery_kernel)?,
-                signer: key_policy(&delivery_kernel.public_key(), "delivery-log"),
+                log_id: log_id_for(&delivery_checkpoint)?,
+                signer: key_policy(&delivery_checkpoint.public_key(), "delivery-log"),
             },
             FindingCheckpointLogPolicy {
-                log_id: log_id_for(&replay_kernel)?,
-                signer: key_policy(&replay_kernel.public_key(), "replay-log"),
+                log_id: log_id_for(&replay_checkpoint)?,
+                signer: key_policy(&replay_checkpoint.public_key(), "replay-log"),
             },
         ],
         bbs_projection_issuer: FindingBbsIssuerPolicy {
@@ -519,6 +525,9 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
         production_kernel,
         delivery_kernel,
         replay_kernel,
+        production_checkpoint,
+        delivery_checkpoint,
+        replay_checkpoint,
         profile,
         profile_envelope_sha256,
         recipe,
@@ -875,7 +884,7 @@ impl World {
         };
         let signed = SignedExportEnvelope::sign(record, authority)?;
         let leaves = vec![canonical_json_bytes(&receipt)?];
-        let checkpoint = build_checkpoint(1, 1, 1, &leaves, &self.delivery_kernel)?;
+        let checkpoint = build_checkpoint(1, 1, 1, &leaves, &self.delivery_checkpoint)?;
         let resolved = resolve(receipt, &leaves, 0, 1, 1)?;
         let checkpoint_transparency =
             build_checkpoint_transparency(core::slice::from_ref(&checkpoint))?;
@@ -1143,6 +1152,10 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
         DenySigner::Delivery => &world.delivery_kernel,
         DenySigner::Production => &world.production_kernel,
     };
+    let checkpoint_signer = match shape.signer {
+        DenySigner::Delivery => &world.delivery_checkpoint,
+        DenySigner::Production => &world.production_checkpoint,
+    };
     let mut action = ToolCallAction::from_parameters(serde_json::json!({ "finding": "reveal" }))?;
     if shape.break_action_commitment {
         action.parameter_hash = HEX64_THIRD.to_string();
@@ -1157,7 +1170,7 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
         Some(serde_json::Value::Object(metadata)),
     )?;
     let leaves = vec![canonical_json_bytes(&receipt)?];
-    let deny_checkpoint = build_checkpoint(1, 1, 1, &leaves, kernel)?;
+    let deny_checkpoint = build_checkpoint(1, 1, 1, &leaves, checkpoint_signer)?;
     let named_checkpoint_ref = checkpoint_reference(&deny_checkpoint)?;
     let deny_receipt = resolve(receipt, &leaves, 0, 1, 1)?;
     let deny_receipt_ref = receipt_reference(&deny_receipt);
@@ -1224,7 +1237,7 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
     // A substituted checkpoint proves the same leaves under a different
     // identity, so the reference no longer resolves.
     let deny_checkpoint = if shape.substitute_checkpoint {
-        build_checkpoint(7, 1, 1, &leaves, kernel)?
+        build_checkpoint(7, 1, 1, &leaves, checkpoint_signer)?
     } else {
         deny_checkpoint
     };
@@ -1450,7 +1463,7 @@ fn build_evidence_case(
                 challenged_receipts[0].canonical_receipt_bytes.clone(),
                 b"other-leaf-b".to_vec(),
             ],
-            &world.production_kernel,
+            &world.production_checkpoint,
         )?,
         // The same leaves and identity the venue published, signed by a key
         // that is not the pinned log signer.
@@ -1460,7 +1473,7 @@ fn build_evidence_case(
                 .map(|resolved| resolved.canonical_receipt_bytes.clone())
                 .collect();
             let mut forged = build_checkpoint(1, 1, 2, &leaves, &keypair(88))?;
-            forged.body.kernel_key = world.production_kernel.public_key();
+            forged.body.kernel_key = world.production_checkpoint.public_key();
             forged
         }
         // A checkpoint of the same log at a sequence the finding never
@@ -1470,7 +1483,7 @@ fn build_evidence_case(
             900,
             901,
             &[b"other-leaf-a".to_vec(), b"other-leaf-b".to_vec()],
-            &world.production_kernel,
+            &world.production_checkpoint,
         )?,
     };
     match shape {
@@ -1795,7 +1808,13 @@ pub fn replay_case(world: &World, shape: &ReplayShape) -> Built<ReplayCase> {
         receipts.push(receipt);
         observation_texts.push(text);
     }
-    let checkpoint = build_checkpoint(1, 1, receipts.len() as u64, &leaves, &kernel)?;
+    let checkpoint = build_checkpoint(
+        1,
+        1,
+        receipts.len() as u64,
+        &leaves,
+        &world.replay_checkpoint,
+    )?;
     let checkpoint_ref = checkpoint_reference(&checkpoint)?;
     let mut resolved = Vec::with_capacity(receipts.len());
     for (index, receipt) in receipts.into_iter().enumerate() {

@@ -243,6 +243,13 @@ fn require_distinct_challenge_role_keys(
         if authority_roles.iter().any(|key| *key == &signer.policy.key) {
             return Err(FindingChallengeInadmissible::AuthorityStatusRoleCollision);
         }
+        if profile
+            .checkpoint_logs
+            .iter()
+            .any(|checkpoint| checkpoint.signer.key == signer.policy.key)
+        {
+            return Err(FindingChallengeInadmissible::AuthorityStatusRoleCollision);
+        }
     }
     for (index, signer) in profile.receipt_signers.iter().enumerate() {
         if profile

@@ -242,6 +242,8 @@ pub enum FindingChallengeInadmissible {
     RecipePreimageRejected(FindingIngressError),
     #[error("carried recipe preimage does not hash to the committed recipe digest")]
     RecipePreimageMismatch,
+    #[error("carried recipe does not bind the challenged finding and verifier profile: {0}")]
+    RecipeBindingMismatch(&'static str),
     #[error("carried replay observation rejected: {0}")]
     ObservationRejected(FindingIngressError),
     #[error("carried replay observation does not bind the committed recipe: {0}")]

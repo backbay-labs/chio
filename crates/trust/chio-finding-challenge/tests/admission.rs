@@ -5,9 +5,10 @@
 
 mod support;
 
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
-    ensure_challenge_class_compatibility, FindingChallengeEvidenceKind, FindingChallengeVerdict,
-    FindingEvidenceClass, FindingGuaranteeClass,
+    compute_profile_id, ensure_challenge_class_compatibility, FindingChallengeEvidenceKind,
+    FindingChallengeVerdict, FindingEvidenceClass, FindingGuaranteeClass,
 };
 use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeEvaluation, FindingChallengeEvaluationInput,
@@ -101,6 +102,26 @@ fn purchase_authority_must_be_independent_from_evidence_roles() -> TestResult {
     aliased_purchase.key = world.delivery_kernel.public_key();
     let mut input = world.input(&case.challenge, &evidence);
     input.pinned_purchase_authority = &aliased_purchase;
+
+    let evaluation = evaluate_finding_challenge(&input);
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::AuthorityStatusRoleCollision,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn receipt_signers_must_be_independent_from_checkpoint_signers() -> TestResult {
+    let world = world()?;
+    let case = digest_case(&world, &DenyShape::seller_origin())?;
+    let evidence = case.evidence();
+    let mut profile_body = world.profile.body.clone();
+    profile_body.receipt_signers[0].policy.key = profile_body.checkpoint_logs[0].signer.key.clone();
+    profile_body.profile_id = compute_profile_id(&profile_body)?;
+    let profile = SignedExportEnvelope::sign(profile_body, &world.governance)?;
+    let mut input = world.input(&case.challenge, &evidence);
+    input.profile = &profile;
 
     let evaluation = evaluate_finding_challenge(&input);
     expect_inadmissible(
