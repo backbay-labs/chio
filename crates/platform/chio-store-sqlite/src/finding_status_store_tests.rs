@@ -682,6 +682,68 @@ fn new_retraction_intent_checks_liveness_inside_the_write_transaction() {
 }
 
 #[test]
+fn voluntary_intent_commit_advances_and_obeys_the_durable_clock_floor() {
+    let fixture = DurableFixture::new();
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    let finding_id = hex64('4');
+    let intent_id = hex64('5');
+    store
+        .observe_verified_epoch(&epoch(
+            1,
+            &hex64('a'),
+            &hex64('b'),
+            b"voluntary-clock-epoch",
+            1,
+        ))
+        .expect("establish feed floor");
+    store
+        .observe_trusted_time(FEED, NOW + 50)
+        .expect("advance feed time");
+    let input = FindingRetractionIntentInput {
+        intent_id: &intent_id,
+        feed_id: FEED,
+        operator_id: OPERATOR,
+        finding_id: &finding_id,
+        source: FindingRetractionIntentSource::Voluntary,
+        intent_bytes: b"seller-signed-retraction",
+        issued_at: NOW + 1,
+        inclusion_deadline: NOW + 500,
+        created_at: NOW + 1,
+    };
+    let liveness = FindingRetractionIntentCommitLiveness {
+        valid_from: NOW,
+        valid_until: NOW + 1_000,
+    };
+    let rollback = store
+        .issue_retraction_intent_with_commit_clock(&input, liveness, || NOW + 40)
+        .expect_err("regressed voluntary commit time must reject");
+    assert!(matches!(
+        rollback,
+        FindingStatusStoreError::ClockRollback {
+            high_water,
+            observed,
+            ..
+        } if high_water == NOW + 50 && observed == NOW + 40
+    ));
+    assert!(store
+        .get_retraction_intent(&intent_id)
+        .expect("load rejected intent")
+        .is_none());
+
+    store
+        .issue_retraction_intent_with_commit_clock(&input, liveness, || NOW + 60)
+        .expect("commit at advancing trusted time");
+    assert_eq!(
+        store
+            .get_feed_floor(FEED)
+            .expect("load advanced floor")
+            .advanced_at,
+        NOW + 60
+    );
+}
+
+#[test]
 fn dispatch_eligibility_replay_retains_the_original_authorization_time() {
     let fixture = DurableFixture::new();
     let authority = fixture.open();

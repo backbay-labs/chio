@@ -430,43 +430,32 @@ impl SqliteFindingStatusStore {
         feed_id: &str,
         trusted_now: u64,
     ) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
+        self.observe_trusted_time_with_clock(feed_id, || trusted_now)
+            .map(|(outcome, _)| outcome)
+    }
+
+    /// Sample and advance trusted time only after acquiring the durable write
+    /// transaction. This closes expiry races for callers that must perform a
+    /// final freshness check after a potentially blocking feed read.
+    pub fn observe_trusted_time_with_clock(
+        &self,
+        feed_id: &str,
+        read_now: impl FnOnce() -> u64,
+    ) -> Result<(FindingStatusWriteOutcome, u64), FindingStatusStoreError> {
         require_identifier(feed_id, "feed_id")?;
-        require_positive(trusted_now, "trusted_now")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
         ensure_feed_registered_tx(&transaction, feed_id)?;
-        let floor = load_floor_tx(&transaction, feed_id)?.ok_or_else(|| {
-            FindingStatusStoreError::MissingFloor {
-                feed_id: feed_id.to_owned(),
-            }
-        })?;
-        if trusted_now < floor.advanced_at {
-            return Err(FindingStatusStoreError::ClockRollback {
-                feed_id: feed_id.to_owned(),
-                high_water: floor.advanced_at,
-                observed: trusted_now,
-            });
-        }
-        if trusted_now == floor.advanced_at {
+        let trusted_now = read_now();
+        require_positive(trusted_now, "trusted_now")?;
+        let outcome = advance_trusted_time_floor_tx(&transaction, feed_id, trusted_now)?;
+        if outcome == FindingStatusWriteOutcome::ExactReplay {
             transaction.commit().map_err(sqlite_error)?;
-            return Ok(FindingStatusWriteOutcome::ExactReplay);
+        } else {
+            self.commit_write(transaction)?;
+            self.sync_after_write(&connection)?;
         }
-        let changed = transaction
-            .execute(
-                "UPDATE finding_status_feed_floors SET advanced_at = ?2 WHERE feed_id = ?1 AND advanced_at = ?3",
-                params![
-                    feed_id,
-                    sqlite_i64(trusted_now, "trusted_now")?,
-                    sqlite_i64(floor.advanced_at, "advanced_at")?,
-                ],
-            )
-            .map_err(sqlite_error)?;
-        if changed != 1 {
-            return Err(invariant("finding status clock floor changed concurrently"));
-        }
-        self.commit_write(transaction)?;
-        self.sync_after_write(&connection)?;
-        Ok(FindingStatusWriteOutcome::Inserted)
+        Ok((outcome, trusted_now))
     }
 
     /// Atomically persist a local retraction intent and the sticky pending row.
@@ -536,6 +525,7 @@ impl SqliteFindingStatusStore {
             }
         }
         ensure_feed_tx(&transaction, input.feed_id, input.operator_id, created_at)?;
+        advance_trusted_time_floor_tx(&transaction, input.feed_id, created_at)?;
 
         let (initial_state, finality_sha256, finality_bytes, dispatch_eligible_at) = match input
             .source

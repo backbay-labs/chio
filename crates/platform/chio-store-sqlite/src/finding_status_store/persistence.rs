@@ -995,6 +995,42 @@ fn load_floor_tx(
     raw.map(floor_from_raw).transpose()
 }
 
+fn advance_trusted_time_floor_tx(
+    transaction: &Transaction<'_>,
+    feed_id: &str,
+    trusted_now: u64,
+) -> Result<FindingStatusWriteOutcome, FindingStatusStoreError> {
+    let floor = load_floor_tx(transaction, feed_id)?.ok_or_else(|| {
+        FindingStatusStoreError::MissingFloor {
+            feed_id: feed_id.to_owned(),
+        }
+    })?;
+    if trusted_now < floor.advanced_at {
+        return Err(FindingStatusStoreError::ClockRollback {
+            feed_id: feed_id.to_owned(),
+            high_water: floor.advanced_at,
+            observed: trusted_now,
+        });
+    }
+    if trusted_now == floor.advanced_at {
+        return Ok(FindingStatusWriteOutcome::ExactReplay);
+    }
+    let changed = transaction
+        .execute(
+            "UPDATE finding_status_feed_floors SET advanced_at = ?2 WHERE feed_id = ?1 AND advanced_at = ?3",
+            params![
+                feed_id,
+                sqlite_i64(trusted_now, "trusted_now")?,
+                sqlite_i64(floor.advanced_at, "advanced_at")?,
+            ],
+        )
+        .map_err(sqlite_error)?;
+    if changed != 1 {
+        return Err(invariant("finding status clock floor changed concurrently"));
+    }
+    Ok(FindingStatusWriteOutcome::Inserted)
+}
+
 fn verify_floor_epoch_consistency(
     floor: &FindingStatusFeedFloor,
     epoch: &FindingStatusEpochRecord,

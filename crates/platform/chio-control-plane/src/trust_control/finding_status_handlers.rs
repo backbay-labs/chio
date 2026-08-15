@@ -280,8 +280,7 @@ fn require_current_epoch(
     .map_err(|error| plain_http_error(StatusCode::SERVICE_UNAVAILABLE, &error))
 }
 
-fn require_current_proof(
-    store: &SqliteFindingStatusStore,
+fn require_current_proof_material(
     operator: &FindingStatusOperatorPin,
     service_bond: &FindingStatusServiceBond,
     max_epoch_age_secs: u64,
@@ -315,6 +314,13 @@ fn require_current_proof(
         ));
     }
 
+    Ok(())
+}
+
+fn require_proof_sticky_state(
+    store: &SqliteFindingStatusStore,
+    proof: &FindingStatusProofRecord,
+) -> Result<(), Response> {
     let sticky = store
         .get_finding_status(&proof.feed_id, &proof.finding_id)
         .map_err(status_read_error)?;
@@ -330,6 +336,17 @@ fn require_current_proof(
             "inclusion proof is missing sticky retracted state",
         )),
     }
+}
+
+fn observe_status_route_time(
+    store: &SqliteFindingStatusStore,
+    feed_id: &str,
+    read_now: impl FnOnce() -> u64,
+) -> Result<u64, Response> {
+    store
+        .observe_trusted_time_with_clock(feed_id, read_now)
+        .map(|(_, observed_at)| observed_at)
+        .map_err(status_read_error)
 }
 
 fn validate_intent_submission(
@@ -553,7 +570,7 @@ pub(crate) async fn handle_get_finding_status_root(
     AxumPath(feed_id): AxumPath<String>,
 ) -> Response {
     let request_started_at = unix_timestamp_now();
-    let (config, store) = match status_context(&state, &feed_id, request_started_at) {
+    let (_, store) = match status_context(&state, &feed_id, request_started_at) {
         Ok(context) => context,
         Err(response) => return response,
     };
@@ -561,7 +578,14 @@ pub(crate) async fn handle_get_finding_status_root(
         Ok(epoch) => epoch,
         Err(error) => return status_read_error(error),
     };
-    let verification_now = unix_timestamp_now();
+    let verification_now = match observe_status_route_time(&store, &feed_id, unix_timestamp_now) {
+        Ok(now) => now,
+        Err(response) => return response,
+    };
+    let config = match live_status_config(&state, &feed_id, verification_now) {
+        Ok(config) => config,
+        Err(response) => return response,
+    };
     if let Err(response) = require_current_epoch(
         &config.status_feed_operator,
         &config.status_feed_service_bond,
@@ -590,7 +614,7 @@ pub(crate) async fn handle_get_finding_status_proof(
     AxumPath((feed_id, finding_id)): AxumPath<(String, String)>,
 ) -> Response {
     let request_started_at = unix_timestamp_now();
-    let (config, store) = match status_context(&state, &feed_id, request_started_at) {
+    let (_, store) = match status_context(&state, &feed_id, request_started_at) {
         Ok(context) => context,
         Err(response) => return response,
     };
@@ -608,7 +632,14 @@ pub(crate) async fn handle_get_finding_status_proof(
         }
         Err(error) => return status_read_error(error),
     };
-    let verification_now = unix_timestamp_now();
+    let verification_now = match observe_status_route_time(&store, &feed_id, unix_timestamp_now) {
+        Ok(now) => now,
+        Err(response) => return response,
+    };
+    let config = match live_status_config(&state, &feed_id, verification_now) {
+        Ok(config) => config,
+        Err(response) => return response,
+    };
     if let Err(response) = require_current_epoch(
         &config.status_feed_operator,
         &config.status_feed_service_bond,
@@ -618,14 +649,43 @@ pub(crate) async fn handle_get_finding_status_proof(
     ) {
         return response;
     }
-    if let Err(response) = require_current_proof(
-        &store,
+    if let Err(response) = require_current_proof_material(
         &config.status_feed_operator,
         &config.status_feed_service_bond,
         config.status_max_epoch_age_secs,
         &epoch,
         &proof,
         verification_now,
+    ) {
+        return response;
+    }
+    if let Err(response) = require_proof_sticky_state(&store, &proof) {
+        return response;
+    }
+    let final_now = match observe_status_route_time(&store, &feed_id, unix_timestamp_now) {
+        Ok(now) => now,
+        Err(response) => return response,
+    };
+    let config = match live_status_config(&state, &feed_id, final_now) {
+        Ok(config) => config,
+        Err(response) => return response,
+    };
+    if let Err(response) = require_current_epoch(
+        &config.status_feed_operator,
+        &config.status_feed_service_bond,
+        config.status_max_epoch_age_secs,
+        &epoch,
+        final_now,
+    ) {
+        return response;
+    }
+    if let Err(response) = require_current_proof_material(
+        &config.status_feed_operator,
+        &config.status_feed_service_bond,
+        config.status_max_epoch_age_secs,
+        &epoch,
+        &proof,
+        final_now,
     ) {
         return response;
     }
@@ -1440,6 +1500,28 @@ mod tests {
             proof_json["proof_input_b64"],
             serde_json::Value::String(STANDARD.encode(&proof_bytes))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn status_routes_reject_a_clock_below_the_durable_feed_floor(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp, authority) = provision_authority()?;
+        let market = live_market_config(NOW);
+        let store = authority.finding_status_store();
+        let publisher = super::super::finding_status_publisher::FindingStatusEpochPublisher::new(
+            store.clone(),
+            market.status_feed_operator,
+            market.status_feed_service_bond,
+            operator_key(),
+            market.status_max_epoch_age_secs,
+        )?;
+        publisher.publish_non_inclusion(&sha256_hex(b"clock-fenced-route"), &[], NOW)?;
+        store.observe_trusted_time(FEED_ID, NOW + 100)?;
+
+        let response = observe_status_route_time(&store, FEED_ID, || NOW + 50)
+            .test_expect_err("route time below the durable floor must reject");
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         Ok(())
     }
 
