@@ -50,6 +50,9 @@ jobs:
         env:
           BASELINE_REF: ${{ steps.refs.outputs.baseline }}
           CURRENT_REF: ${{ steps.refs.outputs.current }}
+          # Benchmarks build from Rust sources only; skip LFS smudge so the
+          # worktree checkout never depends on LFS bandwidth.
+          GIT_LFS_SKIP_SMUDGE: "1"
         run: |
           set -euo pipefail
           git worktree add "$RUNNER_TEMP/chio-bench-baseline" "$BASELINE_REF"

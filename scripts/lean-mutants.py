@@ -584,6 +584,9 @@ def enumerate_at_snapshot(
     scratch = scratch_parent / "worktree"
     worktree_added = False
     try:
+        # Scratch worktrees only feed text proof sources to the mutation run;
+        # skipping the LFS smudge filter keeps checkout from downloading
+        # tracked binaries or failing when LFS bandwidth is gone.
         added = subprocess.run(
             ["git", "worktree", "add", "--detach", str(scratch), snapshot.commit],
             cwd=root,
@@ -591,6 +594,7 @@ def enumerate_at_snapshot(
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env={**os.environ, "GIT_LFS_SKIP_SMUDGE": "1"},
         )
         if added.returncode != 0:
             raise LeanMutationError(
@@ -845,6 +849,7 @@ def execute(
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env={**os.environ, "GIT_LFS_SKIP_SMUDGE": "1"},
         )
         if added.returncode != 0:
             raise LeanMutationError(f"cannot create Lean scratch worktree: {added.stderr.strip()}")
