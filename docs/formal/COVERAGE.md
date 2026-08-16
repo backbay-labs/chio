@@ -987,7 +987,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `f85034cd8689c3618d7907322037bce097df22b1b79084dffaa309bcc82c1076`
+- Input digest: `ad8d73cfbb1c44d1fb664e9656bfadeccab8712e2061e6a986b328817dbe4cdd`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -1227,9 +1227,9 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `scripts/check-kani-core.sh`: `a70974500c4f73edabf0a8c102d99fa9dc1ff6cc3d33360e74c76954b595064b`
 - `scripts/kani-mutant-killer.sh`: `4cf43d168576613440101ff9ef337e929db477aa2983f4302fe022fa1c0fb796`
 - `scripts/lib/apalache_evidence.py`: `30e037d7b6d3fc3ae8a274a22bad1fb11ff10ebe8875221c65a4d4be734cba6a`
-- `scripts/proof-mutants.py`: `efa3e28b2fc25fbb18841499bbeb23b543b48f358242b769a51976b276cb581a`
+- `scripts/proof-mutants.py`: `74add856dab5b5178ee609c1082f13fa33c1cb542fdc58c53c5511f80869b90f`
 - `scripts/proof-mutants.sh`: `b6a8709ff3d15e8e58521ed60efda0e344733a81b1902dc314928cdedec479a7`
-- `scripts/spec-mutants.py`: `ca80a1a94c5731933f3bab3258bd0f4bbfa61f754bb8de82e73950ae1d417cb0`
+- `scripts/spec-mutants.py`: `c88efd2538101fadf201214440b2500e692e842f10c613d07f4c2f49b3c37c88`
 - `tools/install-apalache.sh`: `3f50745f56521685d30d18669bddb64a4bff060b40c121b30cdbf61fe26f4cc5`
 - `xtask/src/proof_coverage.rs`: `69d95683f00355935be2fc7340bca155b98313a03cb8ef1759337420582033c6`
 - `xtask/src/proof_coverage/build.rs`: `d3c143795929b424c1eb71008378801d9c3ea3e9717de287223e1a04eb148054`
