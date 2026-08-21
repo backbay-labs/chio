@@ -767,6 +767,9 @@ def discover_at_snapshot(
     if not Path(binary).is_absolute() and os.sep in binary:
         discovery_binary = str((root / binary).resolve())
     try:
+        # Scratch worktrees only feed text proof sources to the mutation run;
+        # skipping the LFS smudge filter keeps checkout from downloading
+        # tracked binaries or failing when LFS bandwidth is gone.
         added = subprocess.run(
             ["git", "worktree", "add", "--detach", str(scratch), snapshot.commit],
             cwd=root,
@@ -774,6 +777,7 @@ def discover_at_snapshot(
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env={**os.environ, "GIT_LFS_SKIP_SMUDGE": "1"},
         )
         if added.returncode != 0:
             raise ProofMutationError(
@@ -1224,6 +1228,7 @@ def execute(
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                env={**os.environ, "GIT_LFS_SKIP_SMUDGE": "1"},
             )
             if add.returncode != 0:
                 raise ProofMutationError(

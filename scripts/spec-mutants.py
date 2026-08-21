@@ -1034,6 +1034,9 @@ def materialized_execution_root(
     scratch = scratch_parent / "worktree"
     worktree_added = False
     try:
+        # The scratch worktree only feeds text specification sources to the
+        # mutation run; skipping the LFS smudge filter keeps checkout from
+        # downloading tracked binaries or failing when LFS bandwidth is gone.
         added = subprocess.run(
             ["git", "worktree", "add", "--detach", str(scratch), snapshot.commit],
             cwd=root,
@@ -1041,6 +1044,7 @@ def materialized_execution_root(
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env={**os.environ, "GIT_LFS_SKIP_SMUDGE": "1"},
         )
         if added.returncode != 0:
             raise MutationError(
