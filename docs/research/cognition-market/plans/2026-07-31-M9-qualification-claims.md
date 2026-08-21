@@ -20,8 +20,9 @@ transition, portable status rejection, and governed-memory quarantine. The
 same test name in `chio-transaction-passport` verifies the persisted proof
 bundle golden.
 
-M7 was re-evaluated on 2026-08-01 and rechecked during the 2026-08-10 stack
-rebase. No real bilateral seller and buyer pair or deployment request is
+M7 was re-evaluated on 2026-08-01, rechecked during the 2026-08-10 stack
+rebase, and rechecked for roadmap closeout on 2026-08-21. No real bilateral
+seller and buyer pair or deployment request is
 recorded in the repository or roadmap handoff, and no M7 branch or pull
 request exists. Its trigger is therefore false.
 `cognition_market_cross_org_escrow` remains an ignored fail-first test, and
@@ -91,6 +92,10 @@ The bounded matrix includes three cognition-market conditions:
 repo-relative witness. Feature removal and ADR-0017 acceptance are backed by
 the focused exits, schema and formal registries, generated artifacts, formal
 and strict Rust verification, and cumulative workspace gates recorded below.
+`./scripts/qualify-cognition-market.sh` binds those focused exits, the live
+local purchase route, CLI handlers, transaction passport, and authenticated
+pool ledger into one exact-candidate report under
+`target/release-qualification/cognition-market/`.
 
 ## Recorded Results
 

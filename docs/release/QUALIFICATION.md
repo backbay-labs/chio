@@ -33,6 +33,14 @@ Chio now has four distinct gate types:
   market-adjacent statements without pretending repo-local evidence proves the
   broader market thesis
 
+The bounded release also carries one exact-candidate cognition-market evidence
+bundle. `./scripts/qualify-cognition-market.sh` composes the promoted
+single-operator router, live purchase route, CLI Finding surface, transaction
+passport, open-market flow, and authenticated pool ledger. It writes its report
+and hashed logs under
+`target/release-qualification/cognition-market/`. Release Qualification runs
+the command and includes that directory in the hosted artifact manifest.
+
 ## Bounded Chio Release Gate
 
 For the current ship decision, Chio has one primary release gate:
@@ -149,6 +157,7 @@ Release-qualification lane:
 
 ```bash
 cargo xtask qualify bounded-chio
+./scripts/qualify-cognition-market.sh
 ./scripts/qualify-trust-control.sh
 ./scripts/qualify-release.sh
 ```

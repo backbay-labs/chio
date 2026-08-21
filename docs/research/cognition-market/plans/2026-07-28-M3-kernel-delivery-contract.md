@@ -3,12 +3,12 @@
 Bite-sized implementation plan for milestone M3 of the cognition-market
 program ([../PLAN.md](../PLAN.md) section "M3 Kernel delivery contract"),
 authored from the decisions in
-[ADR-0018](../../../adr/ADR-0018-kernel-delivery-contract.md) with the
+[ADR-0019](../../../adr/ADR-0019-kernel-delivery-contract.md) with the
 target files open. The M0/M1 plan
 ([2026-07-20-M0-M1-finding-artifact-family.md](2026-07-20-M0-M1-finding-artifact-family.md))
-is the format precedent. Every ADR-0018 decision it cites was verified by
+is the format precedent. Every ADR-0019 decision it cites was verified by
 direct read of the post-#974 kernel; the milestone-text corrections in
-ADR-0018 supersede the original PLAN wording where they conflict.
+ADR-0019 supersede the original PLAN wording where they conflict.
 
 ## Goal and boundary
 
@@ -33,7 +33,7 @@ full-workspace gate discipline carries over.
 
 ## Two decisions to confirm before the owning task lands
 
-ADR-0018 flags two points a human kernel owner would still weigh. Each is
+ADR-0019 flags two points a human kernel owner would still weigh. Each is
 resolved here with a default and an explicit fallback; the default is
 taken unless review overturns it before the task that depends on it.
 

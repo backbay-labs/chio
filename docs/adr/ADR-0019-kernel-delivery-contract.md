@@ -1,6 +1,6 @@
 # ADR-0019: Kernel Delivery Contract (output-digest constraint, durable enforcement, delivery-contract receipt block)
 
-- Status: Proposed (kernel-review pass recorded below in lieu of a separate owner sign-off; see "Kernel review")
+- Status: Accepted (2026-08-21; implemented in M3 and cumulatively qualified in M9)
 - Decision owner: kernel and spend control-plane lane
 - Related: ADR-0016 (authoritative spend contract), ADR-0017 (cognition-market finding artifacts), `spec/PROTOCOL.md` 6.4 (receipt-metadata blocks), the cognition-market program plan (`docs/research/cognition-market/PLAN.md`, milestone M3)
 - Supersedes the ADR-A and ADR-E placeholders in the cognition-market decision backlog.
@@ -129,4 +129,6 @@ The milestone definition (`docs/research/cognition-market/PLAN.md`) and `ARCHITE
 
 ## Kernel review
 
-This ADR stands in for the plan's "fresh ADR-A and kernel-owner review" with a recorded adversarial review pass over the post-#974 terminal topology (six-lens read of the durable lane, legacy lane, constraint matching, receipt metadata, verdict/FV machinery, and pre-dispatch surfaces), every load-bearing claim re-verified by direct read. Two corrections the review forced are recorded above: the durable digest comparison runs at `Finalizing`, not `DispatchCommitted`, so no existing terminal can carry the mismatch Deny and an 18th state is required (Context, item 3); and the `PrepaidFinal` rejection must precede `authorize_payment_if_needed`, which settles the prepayment inside the call, so a later check would deny after money loss (item 5, Gate B). Where a human kernel owner would still be consulted before implementation: the `operation_id`-breaking digest freeze versus a new attachment slot (item 6), and whether a self-declared `tool_is_read_only` flag is acceptable as an admission input for the no-capture profile (item 6 / corrections). Both are flagged in the M3 plan as decisions to confirm before the owning task lands.
+This ADR stands in for the plan's "fresh ADR-A and kernel-owner review" with a recorded adversarial review pass over the post-#974 terminal topology (six-lens read of the durable lane, legacy lane, constraint matching, receipt metadata, verdict/FV machinery, and pre-dispatch surfaces), every load-bearing claim re-verified by direct read. Two corrections the review forced are recorded above: the durable digest comparison runs at `Finalizing`, not `DispatchCommitted`, so no existing terminal can carry the mismatch Deny and an 18th state is required (Context, item 3); and the `PrepaidFinal` rejection must precede `authorize_payment_if_needed`, which settles the prepayment inside the call, so a later check would deny after money loss (item 5, Gate B).
+
+The M3 implementation plan resolved both remaining review choices before their owning tasks landed. The expected digest reuses the existing immutable request and selected-grant binding without changing `operation_id`; the unauthenticated read-only no-capture profile remains unshipped. M3 merged in PR #1034, and M9's cumulative qualification and ADR-0017 acceptance establish this record's accepted status.
