@@ -40,6 +40,10 @@ mkdir -p \
 install -m 0644 target/formal/proof-report.json "${formal_root}/proof-report.json"
 install -m 0644 target/formal/coverage.json "${formal_root}/coverage.json"
 
+# Bind the promoted cognition-market profile, live local routes, CLI surface,
+# passport, and durable pool to this exact release candidate.
+./scripts/qualify-cognition-market.sh
+
 required_formal_lane_count="$(
   python3 - <<'PY'
 import tomllib
