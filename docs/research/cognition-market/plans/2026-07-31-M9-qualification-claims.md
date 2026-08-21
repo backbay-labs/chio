@@ -107,6 +107,7 @@ pool ledger into one exact-candidate report under
 | claim-registry integrity | passed, 10 tests |
 | bounded matrix contract and witness resolution | passed, 12 tests |
 | `cargo xtask qualify bounded-chio` | passed, 9 conditions |
+| exact-candidate cognition-market closeout | passed: production-router profile 1, public purchase 1, digest-mismatch zero-charge 1, promoted CLI Finding surface 75, transaction passport 68 with 1 golden regenerator ignored, open-market flow 3 with conditional M7 ignored, authenticated pool ledger 38 |
 | Lean proof build, strict Rust verification, and public harness mapping | inherited cumulative evidence from 2026-08-01; 1,532 Lean jobs, 32 Creusot files, 44 core Kani harnesses, 30 public-core Kani harnesses, and 17 non-core PR harnesses; not rerun during the rebase |
 | schema registry and deterministic schema manifest | passed |
 | promoted-default marketplace and SQLite pool exits | passed, 41 and 11 focused tests; conditional M7 test ignored |
