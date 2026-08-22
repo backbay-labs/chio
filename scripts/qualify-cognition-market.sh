@@ -92,6 +92,55 @@ gate_index = Path(sys.argv[2])
 report_path = Path(sys.argv[3])
 artifact_root = report_path.parent
 
+dogfood_prefix = "cognition-market-dogfood-result "
+dogfood_lines = [
+    line.split(dogfood_prefix, 1)[1]
+    for line in (artifact_root / "logs/public-purchase-route.log")
+    .read_text(encoding="utf-8")
+    .splitlines()
+    if dogfood_prefix in line
+]
+if len(dogfood_lines) != 1:
+    raise SystemExit(
+        "public purchase route must emit exactly one cognition-market dogfood result"
+    )
+dogfood = json.loads(dogfood_lines[0])
+expected_dogfood = {
+    "formatVersion": 1,
+    "scenario": "same-second-revocation-cursor-verified-fix",
+    "settlement": "captured",
+    "currency": "USD",
+    "realizedSpendUnits": 300,
+    "captureCount": 1,
+    "sellerInvocationCount": 1,
+    "replayByteIdentical": True,
+    "sourceRegression": [
+        "crates/platform/chio-store-sqlite/src/revocation_store.rs",
+        "crates/products/chio-cli/tests/trust_cluster.rs",
+    ],
+}
+for field, expected in expected_dogfood.items():
+    if dogfood.get(field) != expected:
+        raise SystemExit(
+            f"invalid cognition-market dogfood field {field}: "
+            f"{dogfood.get(field)!r} != {expected!r}"
+        )
+for field in (
+    "findingId",
+    "payloadSha256",
+    "purchaseRequestId",
+    "reservationId",
+    "deliveryReceiptId",
+    "purchaseRecordSha256",
+):
+    value = dogfood.get(field)
+    if not isinstance(value, str) or not value:
+        raise SystemExit(f"cognition-market dogfood result lacks {field}")
+for field in ("findingId", "payloadSha256", "purchaseRecordSha256"):
+    value = dogfood[field]
+    if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+        raise SystemExit(f"cognition-market dogfood result has invalid {field}")
+
 gates = []
 for line in gate_index.read_text(encoding="utf-8").splitlines():
     gate_id, relative_log, command = line.split("\t", 2)
@@ -134,6 +183,7 @@ report = {
         "disposition": "conditional-unbuilt",
         "basis": "no verified bilateral seller and buyer deployment request",
     },
+    "dogfood": dogfood,
     "gates": gates,
 }
 report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

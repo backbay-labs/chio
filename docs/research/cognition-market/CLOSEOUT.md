@@ -28,6 +28,14 @@ Finding surface, transaction passport, open-market flow, and authenticated
 SQLite pool ledger. It rejects a dirty worktree, a mismatched hosted candidate
 SHA, or skipped CLI transport evidence.
 
+The public purchase gate dogfoods the real same-second revocation-cursor
+regression found while running the full release gate. It sells the verified
+fix as a signed Finding through the production router, authoritative
+coordinator, durable kernel, reference seller, SQLite authority, and local
+reversible-hold capture path. Qualification fails unless the cycle records one
+capture, one seller invocation, the signed delivery and purchase artifacts,
+and byte-identical replay without a second capture.
+
 The generated release artifact is:
 
 ```text
@@ -35,8 +43,8 @@ target/release-qualification/cognition-market/qualification.json
 ```
 
 The report binds the exact candidate SHA, every gate command, the digest of
-each log, the M7 disposition, the four approved claims, and the two audited
-assumptions. `scripts/qualify-release.sh` runs this gate before constructing the
+each log, the dogfood transaction, the M7 disposition, the four approved
+claims, and the two audited assumptions. `scripts/qualify-release.sh` runs this gate before constructing the
 top-level release artifact manifest, so hosted Release Qualification retains
 the same evidence.
 

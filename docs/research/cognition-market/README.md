@@ -8,7 +8,9 @@ mechanism, threat, planning, and release-boundary records.
 Status: the cumulative implementation includes M0-M6, M8, and the M9
 qualification boundary. The named bounded-profile integration, approved scoped
 claims, audited assumptions, persisted transaction-passport golden, and
-focused promoted-default gates pass on the recorded candidate. Release
+focused promoted-default gates pass on the recorded candidate. The focused
+gate also records a captured single-operator dogfood purchase of the verified
+same-second revocation-cursor fix found during closeout. Release
 qualification additionally requires the complete local gate set and hosted CI
 and Release Qualification workflows to pass on the exact promoted commit, with
 the hosted evidence bundle validated before any release decision. M7 stays
