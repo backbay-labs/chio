@@ -73,6 +73,7 @@ const DUMMY_VALUES = {
   operator_address: "0x3333333333333333333333333333333333333333",
   delegate_address: "0x4444444444444444444444444444444444444444",
   operator_ed_key_label: "chio-operator-ed25519-key",
+  operator_key_hash: "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975",
   delegate_expiry_seconds: 7200,
   create2_factory_address: "0x5555555555555555555555555555555555555555"
 };
@@ -123,6 +124,7 @@ async function main() {
       ? {
           role_address: DUMMY_VALUES.registry_admin_address,
           operator_ed_key_label: DUMMY_VALUES.operator_ed_key_label,
+          operator_key_hash: DUMMY_VALUES.operator_key_hash,
           delegate_expiry_seconds: DUMMY_VALUES.delegate_expiry_seconds,
           create2_factory_address: DUMMY_VALUES.create2_factory_address
         }
@@ -162,6 +164,7 @@ async function main() {
     assert.equal(approval.environment, spec.environment);
     assert.equal(approval.create2.factory_mode, "predeployed");
     assert.equal(approval.create2.factory_address, DUMMY_VALUES.create2_factory_address);
+    assert.equal(manifest.operator_configuration.operator_key_hash, DUMMY_VALUES.operator_key_hash);
     if (spec.singleRoleAddress) {
       assert.equal(manifest.operator_configuration.registry_admin_address, DUMMY_VALUES.registry_admin_address);
       assert.equal(manifest.operator_configuration.price_admin_address, DUMMY_VALUES.registry_admin_address);
