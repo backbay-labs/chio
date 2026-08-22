@@ -65,6 +65,12 @@ run_gate same-second-revocation-cluster \
   cargo test -p chio-cli --test trust_cluster \
     trust_control_cluster_repeat_run_qualification -- \
     --ignored --nocapture --test-threads=1
+if rg -n -F \
+  "skipping trust_control_cluster_repeat_run_qualification: loopback bind denied:" \
+  "${log_root}/same-second-revocation-cluster.log"; then
+  echo "cognition-market clustered revocation evidence was skipped" >&2
+  exit 1
+fi
 run_gate public-purchase-route \
   cargo test -p chio-control-plane cognition_market_live_purchase_route_exit --lib -- \
     --nocapture --test-threads=1

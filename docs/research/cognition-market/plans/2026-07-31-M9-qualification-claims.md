@@ -93,10 +93,10 @@ repo-relative witness. Feature removal and ADR-0017 acceptance are backed by
 the focused exits, schema and formal registries, generated artifacts, formal
 and strict Rust verification, and cumulative workspace gates recorded below.
 `./scripts/qualify-cognition-market.sh` binds those focused exits, the
-same-second revocation store regression, mixed-version delta endpoint, five-run
-cluster proving scenario, live local purchase route, CLI handlers, transaction
-passport, and authenticated pool ledger into one exact-candidate report under
-`target/release-qualification/cognition-market/`.
+same-second revocation store regression, mixed-version delta endpoint,
+non-skippable five-run cluster proving scenario, live local purchase route, CLI
+handlers, transaction passport, and authenticated pool ledger into one
+exact-candidate report under `target/release-qualification/cognition-market/`.
 
 ## Recorded Results
 

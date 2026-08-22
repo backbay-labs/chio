@@ -3261,10 +3261,6 @@ fn trust_control_cluster_multi_region_partition_qualification() {
 #[test]
 #[ignore = "slow scenario: repeats the full failover scenario"]
 fn trust_control_cluster_repeat_run_qualification() {
-    if skip_when_loopback_bind_denied("trust_control_cluster_repeat_run_qualification") {
-        return;
-    }
-
     let _test_lock = trust_cluster_test_lock();
     for run_index in 1..=TRUST_CLUSTER_QUALIFICATION_RUNS {
         run_trust_control_cluster_proving_scenario(run_index, TRUST_CLUSTER_QUALIFICATION_RUNS);
