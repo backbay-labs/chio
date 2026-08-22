@@ -250,6 +250,7 @@ fn open_configured_joint_authority_store(
     let Some(path) = config.joint_authority_db_path.as_deref() else {
         return Ok(None);
     };
+    SqliteAuthorityStore::ensure_serving_supported()?;
     let lock_root = crate::durable_admission_lock_root(path)?;
     crate::create_private_directory(&lock_root)?;
     SqliteAuthorityStore::provision(path, &lock_root)?;
