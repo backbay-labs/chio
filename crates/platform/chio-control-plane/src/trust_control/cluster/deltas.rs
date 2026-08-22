@@ -587,6 +587,14 @@ fn sync_peer_revocations(
             limit: Some(MAX_LIST_LIMIT),
         })?;
         ensure_revocation_cursor_version(response.cursor_version)?;
+        if revocation_protocol_downgrade_requires_replay(cursor.as_ref(), response.cursor_version) {
+            // A legacy peer interpreted the stored sequence cursor as a tuple
+            // cursor. That can skip an older or same-second lexical backfill.
+            // Discard this page, clear the incomparable cursor, and refetch from
+            // the beginning. Revocation upserts are idempotent.
+            clear_peer_revocation_cursor(state, peer_url);
+            continue;
+        }
         if response.records.is_empty() {
             break;
         }

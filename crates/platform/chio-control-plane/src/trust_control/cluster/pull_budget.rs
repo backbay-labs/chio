@@ -260,6 +260,17 @@ pub(crate) fn ensure_revocation_cursor_version(
     }
 }
 
+/// An unversioned response after a sequence-cursor response means the peer was
+/// downgraded or replaced by a legacy binary. Its tuple cursor is not comparable
+/// to the stored sequence head, so the caller must discard this response and
+/// replay the legacy stream from its beginning.
+pub(crate) fn revocation_protocol_downgrade_requires_replay(
+    cursor: Option<&RevocationCursor>,
+    response_cursor_version: Option<u8>,
+) -> bool {
+    response_cursor_version.is_none() && cursor.is_some_and(|value| value.seq.is_some())
+}
+
 pub(crate) fn ensure_revocation_page_ascending(
     cursor: Option<&RevocationCursor>,
     cursor_version: Option<u8>,
@@ -636,6 +647,34 @@ mod pull_budget_tests {
             panic!("a legacy cursor safely restarts the version-2 sequence");
         };
         assert_eq!(upgraded_head.seq, Some(2));
+    }
+
+    #[test]
+    fn revocation_protocol_downgrade_replays_legacy_stream_from_start() {
+        let sequence_cursor = RevocationCursor {
+            seq: Some(9),
+            revoked_at: 20,
+            capability_id: "cap-z".to_string(),
+        };
+        let legacy_cursor = RevocationCursor {
+            seq: None,
+            revoked_at: 20,
+            capability_id: "cap-z".to_string(),
+        };
+
+        assert!(revocation_protocol_downgrade_requires_replay(
+            Some(&sequence_cursor),
+            None
+        ));
+        assert!(!revocation_protocol_downgrade_requires_replay(
+            Some(&legacy_cursor),
+            None
+        ));
+        assert!(!revocation_protocol_downgrade_requires_replay(
+            Some(&sequence_cursor),
+            Some(REVOCATION_SEQUENCE_CURSOR_VERSION)
+        ));
+        assert!(!revocation_protocol_downgrade_requires_replay(None, None));
     }
 
     #[test]
