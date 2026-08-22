@@ -207,7 +207,10 @@ report = {
 report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 PY
 
-sha256sum "${report_path}" >"${report_sha_path}"
+(
+  cd "${output_root}"
+  sha256sum "$(basename "${report_path}")" >"$(basename "${report_sha_path}")"
+)
 rm -f "${gate_index}"
 printf 'cognition-market qualification passed for %s; report: %s\n' \
   "${candidate_sha}" \
