@@ -28,6 +28,8 @@ use reqwest::blocking::Client;
 use reqwest::header::AUTHORIZATION;
 use serde_json::{json, Value};
 
+#[path = "trust_cluster/revocation_proof.rs"]
+mod revocation_proof;
 const TRUST_CLUSTER_QUALIFICATION_RUNS: usize = 5;
 const MULTI_REGION_PARTITION_SAMPLES: usize = 20;
 const CLUSTER_NODE_ID_HEADER: &str = "x-chio-cluster-node-id";
@@ -1332,29 +1334,7 @@ fn run_trust_control_cluster_proving_scenario(run_index: usize, run_total: usize
     assert_expected_write_visibility_metadata(&revoked_follower, &leader_url);
     assert_revocation_visible(&client, &leader_url, service_token, "cap-revoke-follower");
 
-    let stored_revoked_at = |capability_id: &str| {
-        let revocations = get_json(
-            &client,
-            &format!("{leader_url}/v1/revocations?capabilityId={capability_id}&limit=10"),
-            service_token,
-        );
-        revocations["revocations"]
-            .as_array()
-            .and_then(|records| {
-                records
-                    .iter()
-                    .find(|record| record["capabilityId"].as_str() == Some(capability_id))
-            })
-            .and_then(|record| record["revokedAt"].as_i64())
-            .expect("stored revocation must carry revokedAt")
-    };
-    let leader_revoked_at = stored_revoked_at("cap-revoke-leader");
-    let follower_revoked_at = stored_revoked_at("cap-revoke-follower");
-    assert_eq!(
-        leader_revoked_at, follower_revoked_at,
-        "qualification requires both revocations to share one unix second"
-    );
-    println!("same-second revocation proof: revokedAt={leader_revoked_at}");
+    revocation_proof::assert_cluster_pair_same_second(&client, &leader_url, service_token);
 
     wait_until_with_diagnostics(
         "revocation replication",
