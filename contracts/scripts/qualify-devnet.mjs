@@ -10,8 +10,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(rootDir, "..");
 const artifactsDir = path.join(rootDir, "artifacts");
-const deploymentsDir = path.join(rootDir, "deployments");
-const reportsDir = path.join(rootDir, "reports");
+const configuredOutputRoot = process.env.CHIO_WEB3_DEVNET_OUTPUT_DIR?.trim();
+const outputRoot = configuredOutputRoot
+  ? path.resolve(repoRoot, configuredOutputRoot)
+  : rootDir;
+if (configuredOutputRoot && (outputRoot === repoRoot || outputRoot === rootDir)) {
+  throw new Error("CHIO_WEB3_DEVNET_OUTPUT_DIR must name a dedicated output directory");
+}
+const deploymentsDir = path.join(outputRoot, "deployments");
+const reportsDir = path.join(outputRoot, "reports");
 const contractPackagePath = path.join(repoRoot, "docs/standards/CHIO_WEB3_CONTRACT_PACKAGE.json");
 const deploymentPolicyPath = path.join(repoRoot, "docs/standards/CHIO_WEB3_DEPLOYMENT_POLICY.json");
 
@@ -4042,7 +4049,7 @@ async function main() {
     );
 
     console.log(
-      `Wrote Chio web3 local-devnet fixture at ${RPC_URL}. Reports written to contracts/deployments/local-devnet.json and contracts/reports/local-devnet-qualification.json.`,
+      `Wrote Chio web3 local-devnet fixture at ${RPC_URL}. Reports written to ${path.relative(repoRoot, deploymentsDir)}/local-devnet.json and ${path.relative(repoRoot, reportsDir)}/local-devnet-qualification.json.`,
     );
   } finally {
     provider?.destroy?.();

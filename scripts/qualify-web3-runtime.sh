@@ -20,6 +20,8 @@ fi
 output_root="target/web3-runtime-qualification"
 cargo_target_dir="${output_root}/cargo-target"
 log_path="${output_root}/qualification.log"
+devnet_output_root="${output_root}/devnet-smoke"
+devnet_output_root_abs="$(pwd)/${devnet_output_root}"
 public_settlement_passport="fixtures/proof-room/public-settlement/valid-offline-finality/transaction-passport.json"
 public_settlement_report="${output_root}/public-settlement-verifier-report.json"
 proof_room_bundle_signer_keys="${CHIO_PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS:-66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a}"
@@ -34,6 +36,7 @@ public_settlement_minimum_confirmations="${CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIR
 public_settlement_independent_chain_head="${CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON:-{\"chain_id\":\"eip155:8453\",\"observed_block_number\":12345678,\"observed_block_hash\":\"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"latest_block_number\":12345701}}"
 public_settlement_verifier_now="${CHIO_PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS:-1743293560}"
 mkdir -p "${output_root}"
+rm -rf "${devnet_output_root}"
 : >"${log_path}"
 
 run() {
@@ -65,7 +68,11 @@ run env CARGO_TARGET_DIR="${cargo_target_dir}" CARGO_INCREMENTAL=0 CARGO_BUILD_J
   cargo test -p chio-settle --lib -- --test-threads=1
 run env CARGO_TARGET_DIR="${cargo_target_dir}" CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 \
   cargo test -p chio-settle --test runtime_devnet -- --nocapture
-run "${pnpm_cmd[@]}" --dir contracts devnet:smoke
+run env CHIO_WEB3_DEVNET_OUTPUT_DIR="${devnet_output_root_abs}" \
+  "${pnpm_cmd[@]}" --dir contracts devnet:smoke
+run jq empty \
+  "${devnet_output_root}/deployments/local-devnet.json" \
+  "${devnet_output_root}/reports/local-devnet-qualification.json"
 run git diff --exit-code -- \
   contracts/artifacts \
   crates/economy/chio-web3-bindings/artifacts \
