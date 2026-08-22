@@ -43,6 +43,7 @@ public_settlement_independent_chain_head="${CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_C
 public_settlement_verifier_now="${CHIO_PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS:-1743293560}"
 mkdir -p "${output_root}"
 rm -rf "${devnet_output_root}"
+rm -f "${public_settlement_report}"
 : >"${log_path}"
 
 run() {

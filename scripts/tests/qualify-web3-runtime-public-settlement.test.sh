@@ -17,6 +17,7 @@ require_string "fixtures/proof-room/public-settlement/valid-offline-finality/tra
 require_string "proof verify" "proof verify"
 require_string "--require settlement" "required settlement claim"
 require_string "public-settlement-verifier-report.json" "verifier report"
+require_string 'rm -f "${public_settlement_report}"' "stale verifier report cleanup"
 require_string "CHIO_PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS" "bundle signer keys"
 require_string "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS" "transaction trust roots"
 require_string "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS" "capital signer keys"
