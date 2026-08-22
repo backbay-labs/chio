@@ -3562,7 +3562,12 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
     ));
 
     let (checkpoint, inclusion_proof) = denial_checkpoint(&response.receipt)?;
-    let future_checkpoint = checkpoint_at(checkpoint.clone(), now.saturating_add(1), &keypair(40))?;
+    let checkpoint_now = now.max(checkpoint.body.issued_at);
+    let future_checkpoint = checkpoint_at(
+        checkpoint.clone(),
+        checkpoint_now.saturating_add(1),
+        &keypair(40),
+    )?;
     assert!(matches!(
         lane.coordinator.finalize_denial(
             &lane.purchase.handshake.reservation_id,
@@ -3570,7 +3575,7 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
             &lane.deployment.web.admission,
             &future_checkpoint,
             &inclusion_proof,
-            now,
+            checkpoint_now,
         ),
         Err(PurchaseCoordinatorError::CheckpointEvidence(message))
             if message.contains("ahead of the finalization clock")
@@ -3584,7 +3589,7 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
             &lane.deployment.web.admission,
             &checkpoint,
             &wrong_proof,
-            now,
+            checkpoint_now,
         ),
         Err(PurchaseCoordinatorError::CheckpointEvidence(_))
     ));
@@ -3594,7 +3599,7 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
         &lane.deployment.web.admission,
         &checkpoint,
         &inclusion_proof,
-        now,
+        checkpoint_now,
     )?;
     verify_signed_failed_delivery(&failed, &keypair(17).public_key())?;
     assert!(!failed.body.payout_eligible);
