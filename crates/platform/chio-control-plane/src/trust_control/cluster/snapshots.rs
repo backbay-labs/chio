@@ -86,7 +86,7 @@ pub(crate) fn cluster_replication_heads(
         lineage_seq,
         budget_seq,
         revocation_cursor: revocation_cursor.map(|stored| RevocationCursorView {
-            seq: stored.seq,
+            seq: Some(stored.seq),
             revoked_at: stored.record.revoked_at,
             capability_id: stored.record.capability_id,
         }),
@@ -504,7 +504,7 @@ fn collect_revocation_views(
         for stored in batch {
             cursor = stored.seq;
             head = Some(RevocationCursorView {
-                seq: stored.seq,
+                seq: Some(stored.seq),
                 revoked_at: stored.record.revoked_at,
                 capability_id: stored.record.capability_id.clone(),
             });

@@ -36,25 +36,58 @@ pub(crate) async fn handle_internal_revocations_delta(
         Ok(store) => store,
         Err(response) => return response,
     };
-    let records = match store
-        .list_revocations_after_seq(list_limit(query.limit), query.after_seq.unwrap_or(0))
-    {
-        Ok(records) => records,
-        Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
-        }
-    };
-    Json(RevocationDeltaResponse {
-        records: records
-            .into_iter()
-            .map(|stored| StoredRevocationView {
-                seq: stored.seq,
-                capability_id: stored.record.capability_id,
-                revoked_at: stored.record.revoked_at,
+    match query.cursor_version {
+        Some(REVOCATION_SEQUENCE_CURSOR_VERSION) => {
+            let records = match store
+                .list_revocations_after_seq(list_limit(query.limit), query.after_seq.unwrap_or(0))
+            {
+                Ok(records) => records,
+                Err(error) => {
+                    return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
+                }
+            };
+            Json(RevocationDeltaResponse {
+                cursor_version: Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+                records: records
+                    .into_iter()
+                    .map(|stored| StoredRevocationView {
+                        seq: Some(stored.seq),
+                        capability_id: stored.record.capability_id,
+                        revoked_at: stored.record.revoked_at,
+                    })
+                    .collect(),
             })
-            .collect(),
-    })
-    .into_response()
+            .into_response()
+        }
+        None => {
+            let records = match store.list_revocations_after(
+                list_limit(query.limit),
+                query.after_revoked_at,
+                query.after_capability_id.as_deref(),
+            ) {
+                Ok(records) => records,
+                Err(error) => {
+                    return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
+                }
+            };
+            Json(RevocationDeltaResponse {
+                cursor_version: None,
+                records: records
+                    .into_iter()
+                    .map(|record| StoredRevocationView {
+                        seq: None,
+                        capability_id: record.capability_id,
+                        revoked_at: record.revoked_at,
+                    })
+                    .collect(),
+            })
+            .into_response()
+        }
+        Some(version) => plain_http_error(
+            StatusCode::BAD_REQUEST,
+            &format!("unsupported revocation cursor version {version}"),
+        ),
+    }
 }
 
 pub(crate) async fn handle_internal_tool_receipts_delta(
@@ -547,9 +580,13 @@ fn sync_peer_revocations(
         }
         let cursor = peer_revocation_cursor(state, peer_url);
         let response = client.revocation_deltas(&RevocationDeltaQuery {
-            after_seq: cursor.as_ref().map(|value| value.seq),
+            cursor_version: Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+            after_seq: Some(cursor.as_ref().and_then(|value| value.seq).unwrap_or(0)),
+            after_revoked_at: cursor.as_ref().map(|value| value.revoked_at),
+            after_capability_id: cursor.as_ref().map(|value| value.capability_id.clone()),
             limit: Some(MAX_LIST_LIMIT),
         })?;
+        ensure_revocation_cursor_version(response.cursor_version)?;
         if response.records.is_empty() {
             break;
         }
@@ -558,13 +595,15 @@ fn sync_peer_revocations(
         if round.charge_page(response.records.len() as u64).is_err() {
             break;
         }
-        // The revocation delta endpoint promises ascending sequence order and we
-        // persist the page HEAD as the next cursor, so
-        // require the page to be STRICTLY ascending from the current cursor. A
-        // reorder (e.g. [high, low]) is a protocol violation that demotes the peer,
-        // rather than silently persisting a cursor behind page_max and replaying
-        // already-applied revocations every round. The returned head equals page_max.
-        let page_head = ensure_revocation_page_ascending(cursor.as_ref(), &response.records)?;
+        // Version 2 pages advance in durable sequence order. An older peer ignores
+        // the additive query fields and returns the legacy tuple-ordered wire
+        // shape, which remains accepted during a rolling upgrade. The validator
+        // rejects mixed or unsupported shapes rather than inventing an order.
+        let page_head = ensure_revocation_page_ascending(
+            cursor.as_ref(),
+            response.cursor_version,
+            &response.records,
+        )?;
         for record in &response.records {
             store
                 .upsert_revocation(&RevocationRecord {

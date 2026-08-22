@@ -248,8 +248,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-control-plane/src/trust_control/cluster_and_reports.rs": allow(
         "2026-08-31",
-        "trust-control cluster and reports surface with sequenced revocation cursor coverage; capped to current size until split",
-        max_lines=2_761,
+        "trust-control cluster and reports surface with mixed-version revocation cursor coverage; capped to current size until split",
+        max_lines=2_867,
     ),
     "crates/platform/chio-store-sqlite/src/budget_store/tests.rs": allow(
         "2026-08-31",

@@ -401,6 +401,112 @@ mod cluster_and_reports_tests {
     }
 
     #[tokio::test]
+    async fn revocation_delta_endpoint_negotiates_legacy_and_sequence_cursors() {
+        let revocation_db = unique_temp_path("revocation-delta-upgrade", "sqlite3");
+        let state = state_with_cluster(
+            "http://node-a",
+            &["http://node-b"],
+            None,
+            Some(revocation_db),
+            None,
+        );
+        let store = state.revocation_store().test_unwrap();
+        for capability_id in ["cap-b", "cap-a"] {
+            store
+                .upsert_revocation(&RevocationRecord {
+                    capability_id: capability_id.to_string(),
+                    revoked_at: 10,
+                })
+                .test_unwrap();
+        }
+
+        let issued_at = unix_timestamp_now() as i64;
+        let signature = cluster_peer_auth_signature(
+            &state.config.service_token,
+            "http://node-b",
+            INTERNAL_REVOCATIONS_DELTA_PATH,
+            issued_at,
+            None,
+        )
+        .test_unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CLUSTER_NODE_ID_HEADER,
+            HeaderValue::from_static("http://node-b"),
+        );
+        headers.insert(
+            CLUSTER_AUTH_ISSUED_AT_HEADER,
+            HeaderValue::from_str(&issued_at.to_string()).test_unwrap(),
+        );
+        headers.insert(
+            CLUSTER_AUTH_SIGNATURE_HEADER,
+            HeaderValue::from_str(&signature).test_unwrap(),
+        );
+
+        // An old client sends only the tuple cursor. The upgraded server must
+        // preserve that pagination and omit every version-2 field.
+        let legacy = handle_internal_revocations_delta(
+            State(state.clone()),
+            Query(RevocationDeltaQuery {
+                cursor_version: None,
+                after_seq: None,
+                after_revoked_at: Some(10),
+                after_capability_id: Some("cap-a".to_string()),
+                limit: Some(MAX_LIST_LIMIT),
+            }),
+            headers.clone(),
+        )
+        .await;
+        assert_eq!(legacy.status(), StatusCode::OK);
+        let legacy: Value =
+            serde_json::from_slice(&to_bytes(legacy.into_body(), usize::MAX).await.test_unwrap())
+                .test_unwrap();
+        assert!(legacy.get("cursorVersion").is_none());
+        assert_eq!(
+            legacy["records"],
+            json!([{"capabilityId": "cap-b", "revokedAt": 10}])
+        );
+
+        // A new client explicitly negotiates version 2 and gets the durable
+        // insertion sequence, including same-second backfills.
+        let sequence = handle_internal_revocations_delta(
+            State(state.clone()),
+            Query(RevocationDeltaQuery {
+                cursor_version: Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+                after_seq: Some(0),
+                after_revoked_at: Some(10),
+                after_capability_id: Some("cap-z".to_string()),
+                limit: Some(MAX_LIST_LIMIT),
+            }),
+            headers.clone(),
+        )
+        .await;
+        assert_eq!(sequence.status(), StatusCode::OK);
+        let sequence: Value = serde_json::from_slice(
+            &to_bytes(sequence.into_body(), usize::MAX)
+                .await
+                .test_unwrap(),
+        )
+        .test_unwrap();
+        assert_eq!(sequence["cursorVersion"], 2);
+        assert_eq!(sequence["records"][0]["seq"], 1);
+        assert_eq!(sequence["records"][0]["capabilityId"], "cap-b");
+        assert_eq!(sequence["records"][1]["seq"], 2);
+        assert_eq!(sequence["records"][1]["capabilityId"], "cap-a");
+
+        let unsupported = handle_internal_revocations_delta(
+            State(state),
+            Query(RevocationDeltaQuery {
+                cursor_version: Some(99),
+                ..RevocationDeltaQuery::default()
+            }),
+            headers,
+        )
+        .await;
+        assert_eq!(unsupported.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
     async fn budget_quorum_commit_metadata_tracks_quorum_witnesses() {
         let state = state_with_cluster(
             "http://node-a",
@@ -1466,7 +1572,7 @@ mod cluster_and_reports_tests {
             &state,
             "http://node-b",
             RevocationCursor {
-                seq: 7,
+                seq: Some(7),
                 revoked_at: 5,
                 capability_id: "cap-1".to_string(),
             },
@@ -1890,7 +1996,7 @@ mod cluster_and_reports_tests {
                 .as_ref()
                 .test_unwrap()
                 .seq,
-            1
+            Some(1)
         );
         assert_eq!(snapshot.budget_mutation_events.len(), 2);
         assert_eq!(

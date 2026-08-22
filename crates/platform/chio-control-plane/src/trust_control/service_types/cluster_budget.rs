@@ -214,7 +214,8 @@ pub struct LeaseTerminateRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RevocationCursorView {
-    pub(crate) seq: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) seq: Option<u64>,
     pub(crate) revoked_at: i64,
     pub(crate) capability_id: String,
 }
@@ -288,16 +289,23 @@ pub(crate) struct AuthorityTrustedKeyView {
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RevocationDeltaQuery {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) cursor_version: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) after_seq: Option<u64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) after_revoked_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) after_capability_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) limit: Option<usize>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct StoredRevocationView {
-    pub(crate) seq: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) seq: Option<u64>,
     pub(crate) capability_id: String,
     pub(crate) revoked_at: i64,
 }
@@ -305,8 +313,12 @@ pub(crate) struct StoredRevocationView {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RevocationDeltaResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) cursor_version: Option<u8>,
     pub(crate) records: Vec<StoredRevocationView>,
 }
+
+pub(crate) const REVOCATION_SEQUENCE_CURSOR_VERSION: u8 = 2;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

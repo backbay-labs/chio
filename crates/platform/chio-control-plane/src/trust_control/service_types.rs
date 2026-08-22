@@ -41,6 +41,7 @@ pub(crate) use self::cluster_budget::{
     ReverseChargeCostResponse, RevocationCursorView, RevocationDeltaQuery, RevocationDeltaResponse,
     StoredLineageView, StoredReceiptView, StoredRevocationView, TryChargeCostRequest,
     TryChargeCostResponse, TryIncrementBudgetRequest, TryIncrementBudgetResponse,
+    REVOCATION_SEQUENCE_CURSOR_VERSION,
 };
 pub use self::cluster_budget::{
     LeaseHeartbeatRequest, LeaseTerminateRequest, LeaseTerminationReason,
