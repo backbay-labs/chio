@@ -19,6 +19,12 @@ pub struct SqliteRevocationStore {
     ephemeral: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct StoredRevocation {
+    pub seq: u64,
+    pub record: RevocationRecord,
+}
+
 /// Whether a SQLite path opens a database that lives only in memory for the life
 /// of the process. rusqlite enables URI filenames, so the bare `:memory:`
 /// sentinel, `file::memory:`, and any `file:...?mode=memory` URI all open a
@@ -222,6 +228,50 @@ impl SqliteRevocationStore {
         })
     }
 
+    pub fn list_revocations_after_seq(
+        &self,
+        limit: usize,
+        after_seq: u64,
+    ) -> Result<Vec<StoredRevocation>, RevocationStoreError> {
+        let after_seq = i64::try_from(after_seq).map_err(|_| {
+            RevocationStoreError::Sync("revocation cursor exceeds SQLite range".to_string())
+        })?;
+        let index_column = if self.serving_owner.is_some() {
+            "admission_authority_commit_index"
+        } else {
+            "revocation_index"
+        };
+        self.read(|transaction| {
+            let mut statement = transaction.prepare(&format!(
+                r#"
+                SELECT {index_column}, capability_id, revoked_at
+                FROM revoked_capabilities
+                WHERE {index_column} > ?1
+                ORDER BY {index_column} ASC
+                LIMIT ?2
+                "#
+            ))?;
+            let rows = statement.query_map(params![after_seq, limit as i64], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })?;
+            rows.map(|row| {
+                let (seq, capability_id, revoked_at) = row?;
+                Ok(StoredRevocation {
+                    seq: stored_index(seq)?,
+                    record: RevocationRecord {
+                        capability_id,
+                        revoked_at,
+                    },
+                })
+            })
+            .collect()
+        })
+    }
+
     pub fn upsert_revocation(&self, record: &RevocationRecord) -> Result<(), RevocationStoreError> {
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
@@ -308,6 +358,45 @@ impl SqliteRevocationStore {
                 )
                 .optional()
                 .map_err(Into::into)
+        })
+    }
+
+    pub fn latest_revocation_stream_head(
+        &self,
+    ) -> Result<Option<StoredRevocation>, RevocationStoreError> {
+        let index_column = if self.serving_owner.is_some() {
+            "admission_authority_commit_index"
+        } else {
+            "revocation_index"
+        };
+        self.read(|transaction| {
+            transaction
+                .query_row(
+                    &format!(
+                        "SELECT {index_column}, capability_id, revoked_at \
+                         FROM revoked_capabilities \
+                         ORDER BY {index_column} DESC LIMIT 1"
+                    ),
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                        ))
+                    },
+                )
+                .optional()?
+                .map(|(seq, capability_id, revoked_at)| {
+                    Ok(StoredRevocation {
+                        seq: stored_index(seq)?,
+                        record: RevocationRecord {
+                            capability_id,
+                            revoked_at,
+                        },
+                    })
+                })
+                .transpose()
         })
     }
 }
@@ -916,6 +1005,38 @@ mod tests {
             store.latest_revocation_cursor()?,
             Some((25, "cap-b".to_string()))
         );
+        let _ = fs::remove_file(&path);
+        Ok(())
+    }
+
+    #[test]
+    fn revocation_sequence_does_not_skip_same_second_backfill(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let path = unique_db_path("chio-rev-sequence");
+        let store = SqliteRevocationStore::open(&path)?;
+        store.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-revoke-leader".to_string(),
+            revoked_at: 100,
+        })?;
+        let first = store.list_revocations_after_seq(10, 0)?;
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].seq, 1);
+
+        store.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-revoke-follower".to_string(),
+            revoked_at: 100,
+        })?;
+        let after = store.list_revocations_after_seq(10, first[0].seq)?;
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].seq, 2);
+        assert_eq!(after[0].record.capability_id, "cap-revoke-follower");
+        assert_eq!(
+            store
+                .latest_revocation_stream_head()?
+                .map(|stored| stored.seq),
+            Some(2)
+        );
+
         let _ = fs::remove_file(&path);
         Ok(())
     }

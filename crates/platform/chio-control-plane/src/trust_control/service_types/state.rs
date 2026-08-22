@@ -404,6 +404,7 @@ pub(crate) enum PeerHealth {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RevocationCursor {
+    pub(crate) seq: u64,
     pub(crate) revoked_at: i64,
     pub(crate) capability_id: String,
 }

@@ -29,6 +29,19 @@ advancement, and hard caps on snapshot materialization and peer-response
 deserialization. The `BudgetReplication.tla` model in the formal-methods plan is
 the design proof for the witness change.
 
+### Post-implementation correction (2026-08-22)
+
+Release qualification exposed a revocation convergence hole left by the
+original composite `(revoked_at, capability_id)` cursor. A second revocation
+inserted in the same second after a peer advanced past a lexically greater
+capability id could sort behind that cursor and never replicate. The current
+implementation pages revocations by the store's durable monotonic
+`revocation_index`, or by `admission_authority_commit_index` in the joint
+authority store. Snapshot and status heads carry that sequence alongside the
+record fields, and pullers require strictly ascending sequence pages. The
+historical composite-cursor design excerpts below remain as the original RFC
+record; they no longer describe the implemented revocation wire cursor.
+
 ## Motivation
 
 The article lens ("overload/crashes must fail early, local, and graceful; know

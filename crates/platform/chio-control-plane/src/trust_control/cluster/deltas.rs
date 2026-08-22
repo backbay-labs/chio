@@ -36,11 +36,9 @@ pub(crate) async fn handle_internal_revocations_delta(
         Ok(store) => store,
         Err(response) => return response,
     };
-    let records = match store.list_revocations_after(
-        list_limit(query.limit),
-        query.after_revoked_at,
-        query.after_capability_id.as_deref(),
-    ) {
+    let records = match store
+        .list_revocations_after_seq(list_limit(query.limit), query.after_seq.unwrap_or(0))
+    {
         Ok(records) => records,
         Err(error) => {
             return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
@@ -49,9 +47,10 @@ pub(crate) async fn handle_internal_revocations_delta(
     Json(RevocationDeltaResponse {
         records: records
             .into_iter()
-            .map(|record| RevocationRecordView {
-                capability_id: record.capability_id,
-                revoked_at: record.revoked_at,
+            .map(|stored| StoredRevocationView {
+                seq: stored.seq,
+                capability_id: stored.record.capability_id,
+                revoked_at: stored.record.revoked_at,
             })
             .collect(),
     })
@@ -548,8 +547,7 @@ fn sync_peer_revocations(
         }
         let cursor = peer_revocation_cursor(state, peer_url);
         let response = client.revocation_deltas(&RevocationDeltaQuery {
-            after_revoked_at: cursor.as_ref().map(|value| value.revoked_at),
-            after_capability_id: cursor.as_ref().map(|value| value.capability_id.clone()),
+            after_seq: cursor.as_ref().map(|value| value.seq),
             limit: Some(MAX_LIST_LIMIT),
         })?;
         if response.records.is_empty() {
@@ -560,8 +558,8 @@ fn sync_peer_revocations(
         if round.charge_page(response.records.len() as u64).is_err() {
             break;
         }
-        // The revocation delta endpoint promises ascending (revoked_at,
-        // capability_id) order and we persist the page HEAD as the next cursor, so
+        // The revocation delta endpoint promises ascending sequence order and we
+        // persist the page HEAD as the next cursor, so
         // require the page to be STRICTLY ascending from the current cursor. A
         // reorder (e.g. [high, low]) is a protocol violation that demotes the peer,
         // rather than silently persisting a cursor behind page_max and replaying

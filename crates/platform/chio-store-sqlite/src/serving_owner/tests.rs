@@ -202,6 +202,26 @@ fn joint_store_owns_budget_and_revocation_with_one_fence() {
     );
     assert_eq!(authority.mutation_fence().owner_epoch, 1);
 
+    let first_page = revocation
+        .list_revocations_after_seq(10, 0)
+        .expect("list first revocation page");
+    assert_eq!(first_page.len(), 1);
+    assert_eq!(first_page[0].seq, 2);
+    assert!(revocation.revoke("cap-second").expect("second revoke"));
+    let second_page = revocation
+        .list_revocations_after_seq(10, first_page[0].seq)
+        .expect("list second revocation page");
+    assert_eq!(second_page.len(), 1);
+    assert_eq!(second_page[0].seq, 3);
+    assert_eq!(second_page[0].record.capability_id, "cap-second");
+    assert_eq!(
+        revocation
+            .latest_revocation_stream_head()
+            .expect("latest revocation stream head")
+            .map(|stored| stored.seq),
+        Some(3)
+    );
+
     assert!(matches!(
         SqliteAuthorityStore::open_serving(&database, &lock_root),
         Err(SqliteServingOwnerError::AlreadyServing(_))

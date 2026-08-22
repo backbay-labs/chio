@@ -1466,6 +1466,7 @@ mod cluster_and_reports_tests {
             &state,
             "http://node-b",
             RevocationCursor {
+                seq: 7,
                 revoked_at: 5,
                 capability_id: "cap-1".to_string(),
             },
@@ -1882,6 +1883,15 @@ mod cluster_and_reports_tests {
         assert_eq!(snapshot.replication.child_seq, 1);
         assert_eq!(snapshot.replication.lineage_seq, 1);
         assert_eq!(snapshot.replication.budget_seq, 2);
+        assert_eq!(
+            snapshot
+                .replication
+                .revocation_cursor
+                .as_ref()
+                .test_unwrap()
+                .seq,
+            1
+        );
         assert_eq!(snapshot.budget_mutation_events.len(), 2);
         assert_eq!(
             snapshot

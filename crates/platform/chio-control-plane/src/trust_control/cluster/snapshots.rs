@@ -77,7 +77,7 @@ pub(crate) fn cluster_replication_heads(
         .optional_revocation_store()
         .map_err(|error| CliError::cli_other_error(error.to_string()))?
     {
-        Some(store) => store.latest_revocation_cursor()?,
+        Some(store) => store.latest_revocation_stream_head()?,
         None => None,
     };
     Ok(ClusterReplicationHeadsView {
@@ -85,11 +85,10 @@ pub(crate) fn cluster_replication_heads(
         child_seq,
         lineage_seq,
         budget_seq,
-        revocation_cursor: revocation_cursor.map(|(revoked_at, capability_id)| {
-            RevocationCursorView {
-                revoked_at,
-                capability_id,
-            }
+        revocation_cursor: revocation_cursor.map(|stored| RevocationCursorView {
+            seq: stored.seq,
+            revoked_at: stored.record.revoked_at,
+            capability_id: stored.record.capability_id,
         }),
     })
 }
@@ -107,13 +106,13 @@ pub(crate) fn build_cluster_state_snapshot(
         None
     };
 
-    let revocations = if let Some(store) = state
+    let (revocations, revocation_cursor) = if let Some(store) = state
         .optional_revocation_store()
         .map_err(|error| CliError::cli_other_error(error.to_string()))?
     {
         collect_revocation_views(&store)?
     } else {
-        Vec::new()
+        (Vec::new(), None)
     };
 
     let (tool_receipts, child_receipts, lineage) =
@@ -231,10 +230,7 @@ pub(crate) fn build_cluster_state_snapshot(
         child_seq: child_receipts.last().map(|record| record.seq).unwrap_or(0),
         lineage_seq: lineage.last().map(|record| record.seq).unwrap_or(0),
         budget_seq: budget_covered_head,
-        revocation_cursor: revocations.last().map(|record| RevocationCursorView {
-            revoked_at: record.revoked_at,
-            capability_id: record.capability_id.clone(),
-        }),
+        revocation_cursor,
     };
 
     Ok(ClusterStateSnapshotResponse {
@@ -496,34 +492,29 @@ fn seed_cluster_authority_from_snapshot(
 
 fn collect_revocation_views(
     store: &SqliteRevocationStore,
-) -> Result<Vec<RevocationRecordView>, CliError> {
+) -> Result<(Vec<RevocationRecordView>, Option<RevocationCursorView>), CliError> {
     let mut records = Vec::new();
-    let mut cursor = None;
+    let mut cursor = 0u64;
+    let mut head = None;
     loop {
-        let batch = store.list_revocations_after(
-            MAX_LIST_LIMIT,
-            cursor
-                .as_ref()
-                .map(|value: &RevocationCursor| value.revoked_at),
-            cursor
-                .as_ref()
-                .map(|value: &RevocationCursor| value.capability_id.as_str()),
-        )?;
+        let batch = store.list_revocations_after_seq(MAX_LIST_LIMIT, cursor)?;
         if batch.is_empty() {
             break;
         }
-        for record in batch {
-            cursor = Some(RevocationCursor {
-                revoked_at: record.revoked_at,
-                capability_id: record.capability_id.clone(),
+        for stored in batch {
+            cursor = stored.seq;
+            head = Some(RevocationCursorView {
+                seq: stored.seq,
+                revoked_at: stored.record.revoked_at,
+                capability_id: stored.record.capability_id.clone(),
             });
             records.push(RevocationRecordView {
-                capability_id: record.capability_id,
-                revoked_at: record.revoked_at,
+                capability_id: stored.record.capability_id,
+                revoked_at: stored.record.revoked_at,
             });
         }
     }
-    Ok(records)
+    Ok((records, head))
 }
 
 fn collect_tool_receipt_views(
