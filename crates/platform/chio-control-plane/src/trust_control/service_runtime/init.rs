@@ -455,6 +455,7 @@ mod windows_authority_tests {
             cluster_sync_interval: Duration::from_millis(25),
             roster_policy: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+            finding_market: None,
         };
 
         let Err(error) = serve_async(config, None, None, None, None, None).await else {
