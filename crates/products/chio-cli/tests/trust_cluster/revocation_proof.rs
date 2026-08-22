@@ -1,6 +1,24 @@
 use reqwest::blocking::Client;
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::get_json;
+
+pub(super) fn wait_for_fresh_unix_second() {
+    let starting_second = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time before unix epoch")
+        .as_secs();
+    loop {
+        let elapsed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch");
+        if elapsed.as_secs() > starting_second && elapsed.subsec_millis() <= 100 {
+            return;
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+}
 
 pub(super) fn assert_cluster_pair_same_second(
     client: &Client,
