@@ -23,14 +23,18 @@ Run the focused closeout gate from a clean candidate commit:
 ```
 
 The gate executes the bounded-profile contract, production-router composition,
-authenticated public purchase route, zero-charge digest-mismatch lane, CLI
-Finding surface, transaction passport, open-market flow, and authenticated
-SQLite pool ledger. It rejects a dirty worktree, a mismatched hosted candidate
-SHA, or skipped CLI transport evidence.
+same-second revocation store regression, mixed-version revocation delta
+endpoint, five-run cluster proving scenario, authenticated public purchase
+route, zero-charge digest-mismatch lane, CLI Finding surface, transaction
+passport, open-market flow, and authenticated SQLite pool ledger. It rejects a
+dirty worktree, a mismatched hosted candidate SHA, or skipped CLI transport
+evidence.
 
 The public purchase gate dogfoods the real same-second revocation-cursor
-regression found while running the full release gate. It sells the verified
-fix as a signed Finding through the production router, authoritative
+regression found while running the full release gate. The store, endpoint, and
+cluster proving gates must pass before the qualifier accepts that scenario as
+verified. It sells the verified fix as a signed Finding through the production
+router, authoritative
 coordinator, durable kernel, reference seller, SQLite authority, and local
 reversible-hold capture path. Qualification fails unless the cycle records one
 capture, one seller invocation, the signed delivery and purchase artifacts,

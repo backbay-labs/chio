@@ -35,9 +35,10 @@ Chio now has four distinct gate types:
 
 The bounded release also carries one exact-candidate cognition-market evidence
 bundle. `./scripts/qualify-cognition-market.sh` composes the promoted
-single-operator router, live purchase route, CLI Finding surface, transaction
-passport, open-market flow, and authenticated pool ledger. It writes its report
-and hashed logs under
+single-operator router, same-second revocation store regression, mixed-version
+revocation delta endpoint, five-run cluster proving scenario, live purchase
+route, CLI Finding surface, transaction passport, open-market flow, and
+authenticated pool ledger. It writes its report and hashed logs under
 `target/release-qualification/cognition-market/`. Release Qualification runs
 the command and includes that directory in the hosted artifact manifest.
 

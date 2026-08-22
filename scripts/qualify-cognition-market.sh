@@ -53,6 +53,18 @@ run_gate bounded-profile \
 run_gate production-router-profile \
   cargo test -p chio-control-plane cognition_market_qualified_profile --lib -- \
     --nocapture --test-threads=1
+run_gate same-second-revocation-store \
+  cargo test -p chio-store-sqlite \
+    revocation_sequence_does_not_skip_same_second_backfill --lib -- \
+    --nocapture --test-threads=1
+run_gate mixed-version-revocation-delta \
+  cargo test -p chio-control-plane \
+    revocation_delta_endpoint_negotiates_legacy_and_sequence_cursors --lib -- \
+    --nocapture --test-threads=1
+run_gate same-second-revocation-cluster \
+  cargo test -p chio-cli --test trust_cluster \
+    trust_control_cluster_repeat_run_qualification -- \
+    --ignored --nocapture --test-threads=1
 run_gate public-purchase-route \
   cargo test -p chio-control-plane cognition_market_live_purchase_route_exit --lib -- \
     --nocapture --test-threads=1
