@@ -10,6 +10,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
+    attenuation::{DelegationLink, DelegationLinkBody},
     scope::{ChioScope, Constraint, MonetaryAmount, Operation, ToolGrant},
     token::{CapabilityToken, CapabilityTokenBody},
 };
@@ -763,6 +764,43 @@ fn sample_capability(id: &str, subject_kp: &Keypair, issuer_kp: &Keypair) -> Cap
     .expect("sign capability")
 }
 
+fn sample_delegated_capability(
+    id: &str,
+    parent_capability_id: &str,
+    subject_kp: &Keypair,
+    delegator_kp: &Keypair,
+) -> CapabilityToken {
+    let delegation = DelegationLink::sign(
+        DelegationLinkBody {
+            capability_id: parent_capability_id.to_string(),
+            delegator: delegator_kp.public_key(),
+            delegatee: subject_kp.public_key(),
+            attenuations: vec![],
+            timestamp: 1_100,
+            scope_hash: None,
+            aggregate_budget: None,
+            cumulative_approval: None,
+        },
+        delegator_kp,
+    )
+    .expect("sign delegation link");
+
+    CapabilityToken::sign(
+        CapabilityTokenBody {
+            id: id.to_string(),
+            issuer: delegator_kp.public_key(),
+            subject: subject_kp.public_key(),
+            scope: ChioScope::default(),
+            issued_at: 1_100,
+            expires_at: 9_000,
+            delegation_chain: vec![delegation],
+            aggregate_invocation_budget: None,
+        },
+        delegator_kp,
+    )
+    .expect("sign delegated capability")
+}
+
 fn assert_write_visibility_metadata(response: &Value) -> &str {
     assert_eq!(response["visibleAtLeader"].as_bool(), Some(true));
     let leader_url = response["leaderUrl"].as_str().expect("leaderUrl metadata");
@@ -1213,7 +1251,12 @@ fn run_trust_control_cluster_proving_scenario(run_index: usize, run_total: usize
     let root_kp = Keypair::generate();
     let child_kp = Keypair::generate();
     let root_capability = sample_capability("cluster-lineage-root", &root_kp, &issuer_kp);
-    let child_capability = sample_capability("cluster-lineage-child", &child_kp, &issuer_kp);
+    let child_capability = sample_delegated_capability(
+        "cluster-lineage-child",
+        "cluster-lineage-root",
+        &child_kp,
+        &root_kp,
+    );
 
     let stored_root_lineage = post_json(
         &client,
@@ -1470,7 +1513,7 @@ fn run_trust_control_cluster_proving_scenario(run_index: usize, run_total: usize
     assert_eq!(authorized_budget["totalExposureCharged"].as_u64(), Some(75));
     assert_eq!(authorized_budget["totalRealizedSpend"].as_u64(), Some(0));
     assert_expected_write_visibility_metadata(&authorized_budget, &leader_url);
-    assert_budget_authority_metadata(&authorized_budget, &leader_url, "ha_quorum_commit");
+    assert_budget_authority_metadata(&authorized_budget, &leader_url, "advisory_posthoc");
     assert_budget_commit_metadata(
         &authorized_budget,
         &leader_url,
