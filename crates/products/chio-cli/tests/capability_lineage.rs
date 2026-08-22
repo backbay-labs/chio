@@ -8,6 +8,7 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
@@ -81,6 +82,13 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+fn trust_service_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
+
 struct ServerGuard {
     child: Child,
 }
@@ -148,6 +156,7 @@ fn issue_capability_records_lineage_snapshot() {
     if skip_when_loopback_bind_denied("issue_capability_records_lineage_snapshot") {
         return;
     }
+    let _test_guard = trust_service_test_guard();
 
     let dir = unique_dir("chio-cli-lineage-test");
     std::fs::create_dir_all(&dir).expect("create temp dir");
@@ -253,6 +262,7 @@ fn authority_endpoints_require_auth_and_rotate_generation() {
     if skip_when_loopback_bind_denied("authority_endpoints_require_auth_and_rotate_generation") {
         return;
     }
+    let _test_guard = trust_service_test_guard();
 
     let dir = unique_dir("chio-cli-authority-http");
     std::fs::create_dir_all(&dir).expect("create temp dir");
@@ -333,6 +343,7 @@ fn issue_capability_rejects_invalid_public_key() {
     if skip_when_loopback_bind_denied("issue_capability_rejects_invalid_public_key") {
         return;
     }
+    let _test_guard = trust_service_test_guard();
 
     let dir = unique_dir("chio-cli-invalid-capability-key");
     std::fs::create_dir_all(&dir).expect("create temp dir");
@@ -384,6 +395,7 @@ fn issue_capability_rejects_conflicting_runtime_attestation_binding() {
     ) {
         return;
     }
+    let _test_guard = trust_service_test_guard();
 
     let dir = unique_dir("chio-cli-invalid-runtime-attestation");
     std::fs::create_dir_all(&dir).expect("create temp dir");
