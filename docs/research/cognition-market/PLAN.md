@@ -1,9 +1,9 @@
 # Cognition Market Program Plan
 
-> **For agentic workers:** This is the program-level plan. M0/M1 has been
-> executed through the bite-sized plan under [plans/](plans/). Later
-> milestone plans are authored fresh when their dependencies and ADR
-> decisions land (rule in section 6).
+> **For agentic workers:** This is the program-level implementation record.
+> M0-M6, M8, and M9 were executed through the bite-sized plans under
+> [plans/](plans/). M7 remains conditional on verified bilateral demand and
+> ADR-C (rule in section 6).
 
 **Goal:** Ship the agent-to-agent cognition market on Chio - coding-agent
 verified fixes first, R&D negative results second - as an extension of
@@ -28,15 +28,16 @@ external dependencies anticipated before M7.
 - Schema evolution: additive optional fields only; new enum variants on
   frozen `deny_unknown_fields`-style wire enums are forbidden (new `.v2`
   schemas instead). The `Constraint` vocabulary is the deliberate
-  exception this program proposes: it is adjacently tagged with
-  hard-reject-on-unknown, so the two planned variants are fail-closed
+  exception this program adopted: it is adjacently tagged with
+  hard-reject-on-unknown, so the two added variants are fail-closed
   vocabulary extensions (old kernels refuse the token rather than running
-  it without the new enforcement). `OutputDigestSha256` is gated on ADR-A,
-  a PROTOCOL.md update, and verdict-matrix rotation at M3.
+  it without the new enforcement). `OutputDigestSha256` was gated on ADR-A,
+  a PROTOCOL.md update, and verdict-matrix rotation at M3; PR #1034 satisfied
+  those gates.
   `RequireFindingPurchase` with exact finding/listing ids and a closed
   `LocalReversibleHold | CrossOrgEscrow { settlement_profile_sha256 }`
-  selector is gated on the M4 provider-mint design, a PROTOCOL.md update, and
-  a second verdict-matrix rotation at M4. M4 registers both selector shapes
+  selector was gated on the M4 provider-mint design, a PROTOCOL.md update, and
+  a second verdict-matrix rotation at M4. M4 registered both selector shapes
   while leaving cross-org disabled until M7. `Constraint::Custom` is rejected
   as the digest carrier
   because it is input-side and semantically ignored by old kernels
@@ -44,7 +45,7 @@ external dependencies anticipated before M7.
   signed-artifact schema id registers in `signed_artifact.rs` and
   `spec/schemas/registry.json`. The current generic
   `signed_artifact_schema` test proves allowlist-to-registry correspondence,
-  not reverse parity, so each milestone adds explicit rows plus a
+  not reverse parity, so each milestone added explicit rows plus a
   bidirectional parity assertion. `cargo test -p chio-core-types --test
   signed_artifact_schema` and `scripts/check-chio-schema-registry.sh` are
   both required. Receipt-metadata block schemas
@@ -58,12 +59,12 @@ external dependencies anticipated before M7.
   qualify bounded-chio`). Earlier milestones tested both disabled absence
   and enabled behavior. M9 repeats qualification against the exact source
   proposed for promotion, then removes the gate and verifies the default
-  build graph. The pure M1 leaf crate and M0 public schema were always-on
+  build graph. M9 completed that promotion. The pure M1 leaf crate and M0 public schema were always-on
   protocol foundations.
 - Proof-claim discipline: nothing listable under capabilities
   `ChioProofClaims` rejects; evidence classes never upgraded.
 
-## 0. Baseline: PR #974 has landed; M3 requires re-anchoring
+## 0. Baseline resolution: PR #974 landed and M3 was re-anchored
 
 PR #974 landed as `51e46336b` and is an ancestor of the current
 `9ec6814a2` implementation baseline. Its durable admission and payment
@@ -82,11 +83,11 @@ pipeline invalidates the earlier M3 placement assumptions:
   therefore needs a rail restriction or explicit durable compensation, not
   an assumed release.
 
-The `OutputDigestSha256` carrier remains the leading candidate because
-unknown constraint variants fail closed and PR #974 established in-v1
-constraint extension precedent. Gate placement, durable mismatch state,
-legacy coverage, and `PrepaidFinal` policy remain undecided. M3 is blocked
-until a fresh ADR-A and kernel-owner review resolve them.
+ADR-0019 selected `OutputDigestSha256` because unknown constraint variants
+fail closed and PR #974 established in-v1 constraint extension precedent. It
+also fixed the gate placement, durable `DeniedAfterDelivery` mismatch state,
+legacy coverage, and `PrepaidFinal` policy. M3 implemented that decision and
+merged in PR #1034.
 
 ## 1. Milestone ladder
 
@@ -353,12 +354,15 @@ remains the normative scope statement.
   loose or weak receipt keys, inconsistent checkpoint wrapper fields, and
   crash/retry double charge or partial indexing. The workspace gate is green.
 
-### M3 Kernel delivery contract (blocked pending ADR-A)
+### M3 Kernel delivery contract (implemented; ADR-A accepted)
 
-- Write ADR-A against current main before implementation. It must decide the
-  carrier, durable mismatch transition, legacy-lane policy, `PrepaidFinal`
-  policy, generic transform semantics, the M4 finding-profile compatibility
-  boundary, and receipt metadata insertion points.
+Status: implemented and merged in PR #1034. ADR-A is accepted as
+[ADR-0019](../../adr/ADR-0019-kernel-delivery-contract.md). The requirements
+below are retained as the implementation contract that PR #1034 satisfied.
+
+- ADR-A decides the carrier, durable mismatch transition, legacy-lane policy,
+  `PrepaidFinal` policy, generic transform semantics, the M4 finding-profile
+  compatibility boundary, and receipt metadata insertion points.
 - Leading carrier: `Constraint::OutputDigestSha256(String)`. Add explicit
   exhaustive handling in core serialization, governed validation, portable
   normalization, the production request matcher, and both terminal lanes.
@@ -1541,8 +1545,8 @@ remains the normative scope statement.
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Durable digest mismatch has no signed terminal transition yet | high until ADR-A | M3 blocked | design and owner-review the persisted Deny plus release/refund/compensation state before writing implementation tasks |
-| Current reserve-for-caller `MustPrepay` and `PrepaidFinal` can settle before output verification | certain on those paths | paid invalid delivery | exclude both from M4; ADR-A must prove direct durable `HoldCapture` ordering and real idempotent rail effects |
+| Durable digest mismatch lacked a signed terminal transition before ADR-A | resolved by ADR-0019 and M3 | none in the qualified profile | persisted `DeniedAfterDelivery` plus `ContractualZeroCharge` landed in PR #1034 |
+| Reserve-for-caller `MustPrepay` and `PrepaidFinal` can settle before output verification | excluded from the qualified profile | paid invalid delivery if reintroduced | ADR-0019 requires predispatch rejection; M4 admits only direct durable `HoldCapture` with idempotent rail effects |
 | Verdict-matrix rotation friction across 7+ drivers | medium | M3 and M4 tails | add one scoped scenario class with each new constraint and stage each rotation with its owning change, not after |
 | Honest-cost fabrication on `metered_attested` (threat S2) | high for R&D | trust in vision instance | wedge ships `deterministic_replay` only; R&D gated to M9 with audit-rate data |
 | Declarative or overcommitted seller/challenge bonds | high until M2/M5 | uncompensated fraud or challenge replay | dedicated authority-verified allocations, atomic per-sale exposure, exactly-once challenge custody, and a 15-distinct-buyer unbatched payout cap |
@@ -1550,7 +1554,7 @@ remains the normative scope statement.
 | Cross-org mediator suppresses response or checkpoint | high without aligned operator | buyer or seller loss | M7 remains Experimental under explicit SLA; performance bond only for observable omission and separate response-delivery residual |
 | Current escrow alternatives bypass an off-chain Finding full-only/authority profile | certain without ADR-C contract work | discretionary or partial release can evade the claimed settlement gate | block M7 qualification on ADR-C; require a contract discriminator or label the deployment an audited TTP profile with no non-discretionary claim |
 | No job daemon for epoch/audit cadence | certain | ops burden | operator cron per runbook (existing anchor/settle precedent); revisit only if ops data demands a daemon |
-| Demand-side flop (nobody buys) | unknown | program value | M4 exit includes a dogfood loop on this repo's own CI failures; M7+ gated on demand evidence |
+| Demand-side flop (nobody buys) | unknown | program value | the exact-candidate gate records a captured single-operator dogfood purchase of the same-second revocation-cursor fix found during closeout; M7+ remains gated on bilateral demand evidence |
 | Cross-org confidentiality objections (operator sees reveals, O1/T1) | medium | limits vision instance | documented posture + TEE-tier deployment guidance; no overclaim in CLAIM_REGISTRY |
 | Post-reveal resale collapses prices (B2) | high by nature | seller participation | priced-in decay/versioning (MECHANISMS 3/7); wedge contexts are org-internal where resale is moot |
 
