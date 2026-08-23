@@ -93,10 +93,11 @@ repo-relative witness. Feature removal and ADR-0017 acceptance are backed by
 the focused exits, schema and formal registries, generated artifacts, formal
 and strict Rust verification, and cumulative workspace gates recorded below.
 `./scripts/qualify-cognition-market.sh` binds those focused exits, the
-same-second revocation store regression, mixed-version delta endpoint,
-non-skippable five-run cluster proving scenario, live local purchase route, CLI
-handlers, transaction passport, and authenticated pool ledger into one
-exact-candidate report under `target/release-qualification/cognition-market/`.
+dense append-only revocation store regression, legacy-readable revocation
+endpoint, fail-closed version-2 puller, non-skippable five-run cluster proving
+scenario, live local purchase route, CLI handlers, transaction passport, and
+authenticated pool ledger into one exact-candidate report under
+`target/release-qualification/cognition-market/`.
 
 ## Recorded Results
 
@@ -108,7 +109,7 @@ exact-candidate report under `target/release-qualification/cognition-market/`.
 | claim-registry integrity | passed, 10 tests |
 | bounded matrix contract and witness resolution | passed, 12 tests |
 | `cargo xtask qualify bounded-chio` | passed, 9 conditions |
-| exact-candidate cognition-market closeout | passed: production-router profile 1, same-second revocation store 1, mixed-version revocation delta 1, clustered trust proving 5 of 5 runs, captured single-operator dogfood purchase of the same-second revocation-cursor fix 1, digest-mismatch zero-charge 1, promoted CLI Finding surface 75, transaction passport 68 with 1 golden regenerator ignored, open-market flow 3 with conditional M7 ignored, authenticated pool ledger 38 |
+| exact-candidate cognition-market closeout | passed: production-router profile 1, dense append-only revocation store 1, legacy-readable revocation endpoint 1, fail-closed revocation puller 8, clustered trust proving 5 of 5 runs, captured single-operator dogfood purchase of the same-second revocation-cursor fix 1, digest-mismatch zero-charge 1, promoted CLI Finding surface 75, transaction passport 68 with 1 golden regenerator ignored, open-market flow 3 with conditional M7 ignored, authenticated pool ledger 38 |
 | Lean proof build, strict Rust verification, and public harness mapping | inherited cumulative evidence from 2026-08-01; 1,532 Lean jobs, 32 Creusot files, 44 core Kani harnesses, 30 public-core Kani harnesses, and 17 non-core PR harnesses; not rerun during the rebase |
 | schema registry and deterministic schema manifest | passed |
 | promoted-default marketplace and SQLite pool exits | passed, 41 and 11 focused tests; conditional M7 test ignored |

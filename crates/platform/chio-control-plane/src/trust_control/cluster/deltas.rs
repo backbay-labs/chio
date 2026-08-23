@@ -587,14 +587,6 @@ fn sync_peer_revocations(
             limit: Some(MAX_LIST_LIMIT),
         })?;
         ensure_revocation_cursor_version(response.cursor_version)?;
-        if revocation_protocol_downgrade_requires_replay(cursor.as_ref(), response.cursor_version) {
-            // A legacy peer interpreted the stored sequence cursor as a tuple
-            // cursor. That can skip an older or same-second lexical backfill.
-            // Discard this page, clear the incomparable cursor, and refetch from
-            // the beginning. Revocation upserts are idempotent.
-            clear_peer_revocation_cursor(state, peer_url);
-            continue;
-        }
         if response.records.is_empty() {
             break;
         }
@@ -603,10 +595,10 @@ fn sync_peer_revocations(
         if round.charge_page(response.records.len() as u64).is_err() {
             break;
         }
-        // Version 2 pages advance in durable sequence order. An older peer ignores
-        // the additive query fields and returns the legacy tuple-ordered wire
-        // shape, which remains accepted during a rolling upgrade. The validator
-        // rejects mixed or unsupported shapes rather than inventing an order.
+        // Version 2 pages advance through a dense append-only revocation log.
+        // The validator rejects a missing cursor successor, an interior gap, or
+        // a legacy response before the local cursor can advance past omitted
+        // revocations.
         let page_head = ensure_revocation_page_ascending(
             cursor.as_ref(),
             response.cursor_version,
