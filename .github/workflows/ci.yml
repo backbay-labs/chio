@@ -45,9 +45,10 @@ jobs:
     name: Build, lint, test
     runs-on: ubuntu-latest
     # Failsafe above the healthy-lane ceiling (cold-cache compile plus the
-    # full workspace suite runs past 2h under runner load): a wedged test
-    # surfaces as a failure in 4h instead of eating the 6h default.
-    timeout-minutes: 240
+    # full workspace, Iroh, cognition-market, and Wasm suites can run past
+    # 4h under runner load): a wedged test surfaces as a failure in 5h
+    # instead of eating the 6h default.
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
