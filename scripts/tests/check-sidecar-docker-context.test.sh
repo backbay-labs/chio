@@ -15,5 +15,6 @@ require_copy() {
 }
 
 require_copy "contracts" "./contracts"
+require_copy "spec" "./spec"
 
-echo "sidecar Docker build context includes contract artifacts"
+echo "sidecar Docker build context includes compile-time artifacts"
