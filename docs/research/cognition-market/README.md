@@ -1,21 +1,22 @@
 # Cognition Market: Research And Design Set
 
-Working design set for the agent-to-agent cognition market (agents trading
-solved cognition: verified fixes and negative results). This extends the
-original spike memo and holds the architecture, mechanism, threat, and
-planning documents as they mature.
+Implemented design and qualification set for the bounded agent-to-agent
+cognition market (agents trading solved cognition: verified fixes and negative
+results). This extends the original spike memo and retains the architecture,
+mechanism, threat, planning, and release-boundary records.
 
 Status: the cumulative implementation includes M0-M6, M8, and the M9
 qualification boundary. The named bounded-profile integration, approved scoped
 claims, audited assumptions, persisted transaction-passport golden, and
-focused promoted-default gates pass. The production workspace build, Clippy,
-formatting, code generation, formal proofs, and strict Rust verification pass.
-The workspace test sweep completed every non-xtask suite, then its final
-`xtask` package exposed a stale proof-mapping assertion. That assertion was
-corrected and the exact `xtask` suite passed; the full roughly 80-minute sweep
-was not repeated after the test-only repair. M7 stays conditional and unbuilt
-because no bilateral seller/buyer deployment has triggered its ADR-C
-prerequisite. Usage-gated stochastic R&D extensions also remain unbuilt.
+focused promoted-default gates pass on the recorded candidate. The focused
+gate also records a captured single-operator dogfood purchase of the verified
+same-second revocation-cursor fix found during closeout. Release
+qualification additionally requires the complete local gate set and hosted CI
+and Release Qualification workflows to pass on the exact promoted commit, with
+the hosted evidence bundle validated before any release decision. M7 stays
+conditional and unbuilt because no bilateral seller/buyer deployment has
+triggered its ADR-C prerequisite. Usage-gated stochastic R&D extensions also
+remain unbuilt.
 
 Reading order:
 
@@ -35,6 +36,9 @@ Reading order:
 6. [PLAN.md](PLAN.md) - milestone ladder, per-milestone work breakdown with
    crates and verification, formal/conformance hooks, decision backlog
    (future ADRs), risk register.
+7. [Closeout](CLOSEOUT.md) - merged milestone inventory, exact-candidate
+   qualification contract, scoped claims, audited assumptions, and M7
+   disposition.
 
 Companion executable spec: `crates/economy/chio-open-market/tests/cognition_market_flow.rs`.
 The single-operator flow is implemented in control-plane exits; the separate

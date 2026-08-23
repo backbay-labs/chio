@@ -10,8 +10,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(rootDir, "..");
 const artifactsDir = path.join(rootDir, "artifacts");
-const deploymentsDir = path.join(rootDir, "deployments");
-const reportsDir = path.join(rootDir, "reports");
+const configuredOutputRoot = process.env.CHIO_WEB3_DEVNET_OUTPUT_DIR?.trim();
+const outputRoot = configuredOutputRoot
+  ? path.resolve(repoRoot, configuredOutputRoot)
+  : rootDir;
+if (configuredOutputRoot && (outputRoot === repoRoot || outputRoot === rootDir)) {
+  throw new Error("CHIO_WEB3_DEVNET_OUTPUT_DIR must name a dedicated output directory");
+}
+const deploymentsDir = path.join(outputRoot, "deployments");
+const reportsDir = path.join(outputRoot, "reports");
 const contractPackagePath = path.join(repoRoot, "docs/standards/CHIO_WEB3_CONTRACT_PACKAGE.json");
 const deploymentPolicyPath = path.join(repoRoot, "docs/standards/CHIO_WEB3_DEPLOYMENT_POLICY.json");
 
@@ -651,6 +658,30 @@ async function main() {
       wallets.admin,
       wallets.admin.address,
     );
+    const registerOperatorWithGasMargin = async (
+      operator,
+      operatorKeyHash,
+      settlementKey,
+      bindingProof,
+    ) => {
+      const estimate = await identityRegistry.registerOperator.estimateGas(
+        operator,
+        operatorKeyHash,
+        settlementKey,
+        bindingProof,
+      );
+      const priorEstimate = BigInt(gasEstimates.register_operator ?? 0);
+      gasEstimates.register_operator = (estimate > priorEstimate ? estimate : priorEstimate).toString();
+      const gasLimit = (estimate * 12n) / 10n + 50_000n;
+      const transaction = await identityRegistry.registerOperator(
+        operator,
+        operatorKeyHash,
+        settlementKey,
+        bindingProof,
+        { gasLimit },
+      );
+      return transaction.wait();
+    };
     await expectDeployRevert("root registry zero identity", provider, "ChioRootRegistry", wallets.admin, ethers.ZeroAddress);
     await expectDeployRevert("root registry EOA identity", provider, "ChioRootRegistry", wallets.admin, wallets.admin.address);
     const rootRegistry = await deploy(
@@ -840,22 +871,12 @@ async function main() {
       operatorEdKeyHash,
       wallets.operator.address,
     );
-    gasEstimates.register_operator = (
-      await identityRegistry.registerOperator.estimateGas(
-        wallets.operator.address,
-        operatorEdKeyHash,
-        wallets.operator.address,
-        operatorBindingProof,
-      )
-    ).toString();
-    await (
-      await identityRegistry.registerOperator(
-        wallets.operator.address,
-        operatorEdKeyHash,
-        wallets.operator.address,
-        operatorBindingProof,
-      )
-    ).wait();
+    await registerOperatorWithGasMargin(
+      wallets.operator.address,
+      operatorEdKeyHash,
+      wallets.operator.address,
+      operatorBindingProof,
+    );
     const operatorRecord = await identityRegistry.getOperator(wallets.operator.address);
     const operatorEpoch = operatorRecord.operatorEpoch;
     assert.notEqual(operatorEpoch, 0n);
@@ -951,14 +972,12 @@ async function main() {
       lifecycleOperatorKeyHash,
       wallets.principal.address,
     );
-    await (
-      await identityRegistry.registerOperator(
-        lifecycleOperator,
-        lifecycleOperatorKeyHash,
-        wallets.principal.address,
-        lifecycleOperatorBindingProof,
-      )
-    ).wait();
+    await registerOperatorWithGasMargin(
+      lifecycleOperator,
+      lifecycleOperatorKeyHash,
+      wallets.principal.address,
+      lifecycleOperatorBindingProof,
+    );
     const lifecycleRecordBefore = await identityRegistry.getOperator(lifecycleOperator);
     await (await identityRegistry.deactivateOperator(lifecycleOperator)).wait();
     const replacementOperatorBindingProof = await operatorBindingSignature(
@@ -969,14 +988,12 @@ async function main() {
       replacementOperatorKeyHash,
       wallets.outsider.address,
     );
-    await (
-      await identityRegistry.registerOperator(
-        lifecycleOperator,
-        replacementOperatorKeyHash,
-        wallets.outsider.address,
-        replacementOperatorBindingProof,
-      )
-    ).wait();
+    await registerOperatorWithGasMargin(
+      lifecycleOperator,
+      replacementOperatorKeyHash,
+      wallets.outsider.address,
+      replacementOperatorBindingProof,
+    );
     const lifecycleRecordAfter = await identityRegistry.getOperator(lifecycleOperator);
     assert.equal(lifecycleRecordAfter.edKeyHash, replacementOperatorKeyHash);
     assert.equal(lifecycleRecordAfter.settlementKey, wallets.outsider.address);
@@ -996,14 +1013,12 @@ async function main() {
       reentrantOperatorKeyHash,
       await reentrantBondToken.getAddress(),
     );
-    await (
-      await identityRegistry.registerOperator(
-        await reentrantBondToken.getAddress(),
-        reentrantOperatorKeyHash,
-        await reentrantBondToken.getAddress(),
-        reentrantOperatorBindingProof,
-      )
-    ).wait();
+    await registerOperatorWithGasMargin(
+      await reentrantBondToken.getAddress(),
+      reentrantOperatorKeyHash,
+      await reentrantBondToken.getAddress(),
+      reentrantOperatorBindingProof,
+    );
 
     await (await identityRegistry.transferAdmin(wallets.outsider.address)).wait();
     assert.equal(await identityRegistry.admin(), wallets.admin.address);
@@ -1859,14 +1874,12 @@ async function main() {
       rotatingOperatorKeyA,
       wallets.rotatingOperator.address,
     );
-    await (
-      await identityRegistry.registerOperator(
-        wallets.rotatingOperator.address,
-        rotatingOperatorKeyA,
-        wallets.rotatingOperator.address,
-        rotatingOperatorBindingProofA,
-      )
-    ).wait();
+    await registerOperatorWithGasMargin(
+      wallets.rotatingOperator.address,
+      rotatingOperatorKeyA,
+      wallets.rotatingOperator.address,
+      rotatingOperatorBindingProofA,
+    );
     const rotatingDelegateExpiry = BigInt(now + 3600);
     await (
       await rootRegistry
@@ -2150,14 +2163,12 @@ async function main() {
       rotatingOperatorKeyA,
       wallets.rotatingOperator.address,
     );
-    await (
-      await identityRegistry.registerOperator(
-        wallets.rotatingOperator.address,
-        rotatingOperatorKeyA,
-        wallets.rotatingOperator.address,
-        rotatingOperatorReregisterBindingProofA,
-      )
-    ).wait();
+    await registerOperatorWithGasMargin(
+      wallets.rotatingOperator.address,
+      rotatingOperatorKeyA,
+      wallets.rotatingOperator.address,
+      rotatingOperatorReregisterBindingProofA,
+    );
     const rotatingReregisterEpoch = (await identityRegistry.getOperator(wallets.rotatingOperator.address))
       .operatorEpoch;
     assert.equal(
@@ -2227,14 +2238,12 @@ async function main() {
       rotatingOperatorKeyB,
       wallets.rotatingOperator.address,
     );
-    await (
-      await identityRegistry.registerOperator(
-        wallets.rotatingOperator.address,
-        rotatingOperatorKeyB,
-        wallets.rotatingOperator.address,
-        rotatingOperatorBindingProofB,
-      )
-    ).wait();
+    await registerOperatorWithGasMargin(
+      wallets.rotatingOperator.address,
+      rotatingOperatorKeyB,
+      wallets.rotatingOperator.address,
+      rotatingOperatorBindingProofB,
+    );
     assert.equal(
       await rootRegistry.isAuthorizedPublisher(wallets.rotatingOperator.address, wallets.delegate.address),
       false,
@@ -2447,14 +2456,12 @@ async function main() {
       inactiveOperatorKeyHash,
       wallets.outsider.address,
     );
-    await (
-      await identityRegistry.registerOperator(
-        wallets.outsider.address,
-        inactiveOperatorKeyHash,
-        wallets.outsider.address,
-        inactiveOperatorBindingProof,
-      )
-    ).wait();
+    await registerOperatorWithGasMargin(
+      wallets.outsider.address,
+      inactiveOperatorKeyHash,
+      wallets.outsider.address,
+      inactiveOperatorBindingProof,
+    );
     const inactiveOperatorReceiptHash = toBytes32Label("inactive-operator-escrow-receipt");
     const inactiveOperatorSigner = await provider.getSigner(wallets.outsider.address);
     await (
@@ -2522,14 +2529,12 @@ async function main() {
       inactiveBondOperatorKeyHash,
       wallets.delegate.address,
     );
-    await (
-      await identityRegistry.registerOperator(
-        wallets.delegate.address,
-        inactiveBondOperatorKeyHash,
-        wallets.delegate.address,
-        inactiveBondOperatorBindingProof,
-      )
-    ).wait();
+    await registerOperatorWithGasMargin(
+      wallets.delegate.address,
+      inactiveBondOperatorKeyHash,
+      wallets.delegate.address,
+      inactiveBondOperatorBindingProof,
+    );
     const inactiveBondEvidenceHash = toBytes32Label("inactive-operator-bond-evidence");
     const inactiveBondOperatorSigner = await provider.getSigner(wallets.delegate.address);
     const inactiveOperatorBondTerms = {
@@ -4042,7 +4047,7 @@ async function main() {
     );
 
     console.log(
-      `Wrote Chio web3 local-devnet fixture at ${RPC_URL}. Reports written to contracts/deployments/local-devnet.json and contracts/reports/local-devnet-qualification.json.`,
+      `Wrote Chio web3 local-devnet fixture at ${RPC_URL}. Reports written to ${path.relative(repoRoot, deploymentsDir)}/local-devnet.json and ${path.relative(repoRoot, reportsDir)}/local-devnet-qualification.json.`,
     );
   } finally {
     provider?.destroy?.();

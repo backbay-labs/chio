@@ -16,6 +16,8 @@ mod cluster_and_reports_tests {
     mod budget_delta_authority;
     #[path = "cluster_fence.rs"]
     mod cluster_fence;
+    #[path = "revocation_replication.rs"]
+    mod revocation_replication;
     #[path = "snapshot_budget_authority.rs"]
     mod snapshot_budget_authority;
     #[path = "structured_authority.rs"]
@@ -80,7 +82,7 @@ mod cluster_and_reports_tests {
         let revocation_store = config
             .revocation_db_path
             .as_deref()
-            .map(SqliteRevocationStore::open)
+            .map(SqliteRevocationStore::open_replication_source)
             .transpose()
             .test_unwrap()
             .map(Arc::new);
@@ -1466,6 +1468,9 @@ mod cluster_and_reports_tests {
             &state,
             "http://node-b",
             RevocationCursor {
+                cursor_version: Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+                stream_id: Some("01991bb4-e2f7-7e21-b75d-a59be8fbc441".to_string()),
+                seq: Some(7),
                 revoked_at: 5,
                 capability_id: "cap-1".to_string(),
             },
@@ -1845,6 +1850,14 @@ mod cluster_and_reports_tests {
                     revoked_at: 17,
                 })
                 .test_unwrap();
+            for revoked_at in [18, 19] {
+                revocation_store
+                    .upsert_revocation(&RevocationRecord {
+                        capability_id: "cap-1".to_string(),
+                        revoked_at,
+                    })
+                    .test_unwrap();
+            }
         }
         {
             let receipt_store = SqliteReceiptStore::open(&source_receipt_db).test_unwrap();
@@ -1882,6 +1895,18 @@ mod cluster_and_reports_tests {
         assert_eq!(snapshot.replication.child_seq, 1);
         assert_eq!(snapshot.replication.lineage_seq, 1);
         assert_eq!(snapshot.replication.budget_seq, 2);
+        assert_eq!(
+            snapshot
+                .replication
+                .revocation_cursor
+                .as_ref()
+                .test_unwrap()
+                .seq,
+            Some(3)
+        );
+        assert_eq!(snapshot.revocations.len(), 1);
+        assert_eq!(snapshot.revocations[0].capability_id, "cap-1");
+        assert_eq!(snapshot.revocations[0].revoked_at, 19);
         assert_eq!(snapshot.budget_mutation_events.len(), 2);
         assert_eq!(
             snapshot
@@ -1910,6 +1935,7 @@ mod cluster_and_reports_tests {
             .test_unwrap();
         assert_eq!(revocations.len(), 1);
         assert_eq!(revocations[0].capability_id, "cap-1");
+        assert_eq!(revocations[0].revoked_at, 19);
 
         let receipt_store = SqliteReceiptStore::open(&target_receipt_db).test_unwrap();
         assert_eq!(
@@ -1969,6 +1995,13 @@ mod cluster_and_reports_tests {
                 .capability_id,
             "cap-1"
         );
+        let installed_revocation_cursor =
+            peer_revocation_cursor(&target_state, "http://node-a").test_unwrap();
+        assert_eq!(
+            installed_revocation_cursor.cursor_version,
+            Some(REVOCATION_SEQUENCE_CURSOR_VERSION)
+        );
+        assert_eq!(installed_revocation_cursor.seq, Some(3));
         assert_eq!(
             with_peer_state(&target_state, "http://node-a", |peer| peer
                 .snapshot_applied_count),
@@ -2662,7 +2695,19 @@ mod cluster_and_reports_tests {
         let heads = cluster_replication_heads(&state).test_unwrap();
         assert_eq!(heads.budget_seq, 1);
         assert_eq!(heads.tool_seq, 0);
+        assert_eq!(
+            heads.revocation_cursor_version,
+            Some(REVOCATION_SEQUENCE_CURSOR_VERSION)
+        );
+        let stream_id = heads.revocation_stream_id.as_deref().test_unwrap();
+        assert_eq!(
+            uuid::Uuid::parse_str(stream_id)
+                .test_unwrap()
+                .get_version_num(),
+            7
+        );
         let cursor = heads.revocation_cursor.test_unwrap();
+        assert_eq!(cursor.stream_id.as_deref(), Some(stream_id));
         assert_eq!(cursor.revoked_at, 77);
         assert_eq!(cursor.capability_id, "cap-heads");
     }

@@ -19,6 +19,7 @@ release-go decision,
 - [x] `./scripts/check-web3-contract-parity.sh` passes *(local only)*
 - [x] `./scripts/qualify-release.sh` passes *(local only)*
 - [x] local web3 qualification, `e2e`, ops-control, and promotion lanes pass *(local only)*
+- [x] `./scripts/qualify-cognition-market.sh` passes *(local only)*
 - [x] release-input guards prevent generated artifacts from entering source *(local only)*
 - [x] dashboard release build and test lane is green *(local only)*
 - [x] TypeScript SDK pack/install qualification is green *(local only)*
@@ -34,6 +35,7 @@ release-go decision,
 - [x] release audit and risk register are updated for this candidate
 - [ ] hosted `CI` workflow green on the candidate commit *(hosted CI pending)*
 - [ ] hosted `Release Qualification` workflow green on the candidate commit *(hosted CI pending)*
+- [ ] hosted release bundle contains the exact-candidate cognition-market report and hashed logs
 - [ ] hosted web3 bundle under `target/release-qualification/web3-runtime/`
   includes runtime, `e2e`, ops, and promotion evidence for the candidate *(hosted CI pending)*
 - [ ] final release tag and publication decision taken by operator

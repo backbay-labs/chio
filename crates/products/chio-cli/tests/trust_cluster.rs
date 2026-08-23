@@ -10,6 +10,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
+    attenuation::{DelegationLink, DelegationLinkBody},
     scope::{ChioScope, Constraint, MonetaryAmount, Operation, ToolGrant},
     token::{CapabilityToken, CapabilityTokenBody},
 };
@@ -27,6 +28,8 @@ use reqwest::blocking::Client;
 use reqwest::header::AUTHORIZATION;
 use serde_json::{json, Value};
 
+#[path = "trust_cluster/revocation_proof.rs"]
+mod revocation_proof;
 const TRUST_CLUSTER_QUALIFICATION_RUNS: usize = 5;
 const MULTI_REGION_PARTITION_SAMPLES: usize = 20;
 const CLUSTER_NODE_ID_HEADER: &str = "x-chio-cluster-node-id";
@@ -763,6 +766,43 @@ fn sample_capability(id: &str, subject_kp: &Keypair, issuer_kp: &Keypair) -> Cap
     .expect("sign capability")
 }
 
+fn sample_delegated_capability(
+    id: &str,
+    parent_capability_id: &str,
+    subject_kp: &Keypair,
+    delegator_kp: &Keypair,
+) -> CapabilityToken {
+    let delegation = DelegationLink::sign(
+        DelegationLinkBody {
+            capability_id: parent_capability_id.to_string(),
+            delegator: delegator_kp.public_key(),
+            delegatee: subject_kp.public_key(),
+            attenuations: vec![],
+            timestamp: 1_100,
+            scope_hash: None,
+            aggregate_budget: None,
+            cumulative_approval: None,
+        },
+        delegator_kp,
+    )
+    .expect("sign delegation link");
+
+    CapabilityToken::sign(
+        CapabilityTokenBody {
+            id: id.to_string(),
+            issuer: delegator_kp.public_key(),
+            subject: subject_kp.public_key(),
+            scope: ChioScope::default(),
+            issued_at: 1_100,
+            expires_at: 9_000,
+            delegation_chain: vec![delegation],
+            aggregate_invocation_budget: None,
+        },
+        delegator_kp,
+    )
+    .expect("sign delegated capability")
+}
+
 fn assert_write_visibility_metadata(response: &Value) -> &str {
     assert_eq!(response["visibleAtLeader"].as_bool(), Some(true));
     let leader_url = response["leaderUrl"].as_str().expect("leaderUrl metadata");
@@ -1213,7 +1253,12 @@ fn run_trust_control_cluster_proving_scenario(run_index: usize, run_total: usize
     let root_kp = Keypair::generate();
     let child_kp = Keypair::generate();
     let root_capability = sample_capability("cluster-lineage-root", &root_kp, &issuer_kp);
-    let child_capability = sample_capability("cluster-lineage-child", &child_kp, &issuer_kp);
+    let child_capability = sample_delegated_capability(
+        "cluster-lineage-child",
+        "cluster-lineage-root",
+        &child_kp,
+        &root_kp,
+    );
 
     let stored_root_lineage = post_json(
         &client,
@@ -1278,16 +1323,18 @@ fn run_trust_control_cluster_proving_scenario(run_index: usize, run_total: usize
     assert_eq!(revoked_leader["revoked"].as_bool(), Some(true));
     assert_expected_write_visibility_metadata(&revoked_leader, &leader_url);
     assert_revocation_visible(&client, &leader_url, service_token, "cap-revoke-leader");
-
-    let revoked_follower = post_json(
+    let revocation_dbs = [&revocation_db_b, &revocation_db_a];
+    let leader_revocation_db = revocation_dbs[usize::from(leader_url == url_a)];
+    revocation_proof::insert_same_second_backfill_after_follower_cursor(
         &client,
-        &format!("{follower_url}/v1/revocations"),
+        &leader_url,
+        &follower_url,
         service_token,
-        &json!({"capabilityId": "cap-revoke-follower"}),
+        leader_revocation_db,
     );
-    assert_eq!(revoked_follower["revoked"].as_bool(), Some(true));
-    assert_expected_write_visibility_metadata(&revoked_follower, &leader_url);
     assert_revocation_visible(&client, &leader_url, service_token, "cap-revoke-follower");
+
+    revocation_proof::assert_cluster_pair_same_second(&client, &leader_url, service_token);
 
     wait_until_with_diagnostics(
         "revocation replication",
@@ -1470,7 +1517,7 @@ fn run_trust_control_cluster_proving_scenario(run_index: usize, run_total: usize
     assert_eq!(authorized_budget["totalExposureCharged"].as_u64(), Some(75));
     assert_eq!(authorized_budget["totalRealizedSpend"].as_u64(), Some(0));
     assert_expected_write_visibility_metadata(&authorized_budget, &leader_url);
-    assert_budget_authority_metadata(&authorized_budget, &leader_url, "ha_quorum_commit");
+    assert_budget_authority_metadata(&authorized_budget, &leader_url, "advisory_posthoc");
     assert_budget_commit_metadata(
         &authorized_budget,
         &leader_url,
@@ -3218,10 +3265,6 @@ fn trust_control_cluster_multi_region_partition_qualification() {
 #[test]
 #[ignore = "slow scenario: repeats the full failover scenario"]
 fn trust_control_cluster_repeat_run_qualification() {
-    if skip_when_loopback_bind_denied("trust_control_cluster_repeat_run_qualification") {
-        return;
-    }
-
     let _test_lock = trust_cluster_test_lock();
     for run_index in 1..=TRUST_CLUSTER_QUALIFICATION_RUNS {
         run_trust_control_cluster_proving_scenario(run_index, TRUST_CLUSTER_QUALIFICATION_RUNS);

@@ -10,6 +10,15 @@ pub(crate) const PEER_ROUND_WALL_CLOCK_BUDGET: Duration = Duration::from_secs(20
 /// pull cap (see `RoundLimit`), which is not.
 #[derive(Debug)]
 pub(crate) enum PeerProtocolError {
+    LegacyRevocationCursorUnsupported,
+    UnsupportedRevocationCursorVersion {
+        version: u8,
+    },
+    MissingRevocationSequence,
+    UnexpectedRevocationSequence,
+    MissingRevocationStreamIdentity,
+    RevocationStreamIdentityMismatch,
+    IncompleteRevocationStreamContract,
     NonAdvancingPage {
         after_seq: u64,
         page_max_seq: u64,
@@ -41,6 +50,34 @@ pub(crate) enum PeerProtocolError {
 impl std::fmt::Display for PeerProtocolError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::LegacyRevocationCursorUnsupported => write!(
+                f,
+                "peer returned the legacy revocation cursor contract to a sequence-cursor puller"
+            ),
+            Self::UnsupportedRevocationCursorVersion { version } => write!(
+                f,
+                "peer returned unsupported revocation cursor version {version}"
+            ),
+            Self::MissingRevocationSequence => write!(
+                f,
+                "peer returned a sequence-cursor revocation page with a missing seq"
+            ),
+            Self::UnexpectedRevocationSequence => write!(
+                f,
+                "peer returned a sequence value in a legacy revocation projection page"
+            ),
+            Self::MissingRevocationStreamIdentity => write!(
+                f,
+                "peer omitted the durable revocation stream identity"
+            ),
+            Self::RevocationStreamIdentityMismatch => write!(
+                f,
+                "peer returned a revocation cursor or page for a different stream identity"
+            ),
+            Self::IncompleteRevocationStreamContract => write!(
+                f,
+                "peer advertised an incomplete revocation stream contract"
+            ),
             Self::NonAdvancingPage { after_seq, page_max_seq } => write!(
                 f,
                 "peer returned a non-empty page whose max seq {page_max_seq} did not advance past cursor {after_seq}"
@@ -62,6 +99,73 @@ impl std::fmt::Display for PeerProtocolError {
                 "peer returned non-canonical or live-overlapping abandoned sequence {seq}"
             ),
         }
+    }
+}
+
+/// Revocation replication contract advertised by a peer status response.
+///
+/// A peer with no top-level cursor version and stream identity is a pre-v4
+/// legacy projection source. Current peers must advertise both fields even for
+/// an empty stream, which prevents a database reset from masquerading as an
+/// empty page at an old cursor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RevocationPeerContract {
+    Legacy,
+    Current { stream_id: String, head_seq: u64 },
+}
+
+pub(crate) fn revocation_peer_contract(
+    replication: &ClusterReplicationHeadsView,
+) -> Result<RevocationPeerContract, PeerProtocolError> {
+    match (
+        replication.revocation_cursor_version,
+        replication.revocation_stream_id.as_deref(),
+    ) {
+        (None, None) => Ok(RevocationPeerContract::Legacy),
+        (Some(version), Some(stream_id)) => {
+            ensure_revocation_cursor_version(Some(version))?;
+            if stream_id.is_empty() {
+                return Err(PeerProtocolError::MissingRevocationStreamIdentity);
+            }
+            let head_seq = match replication.revocation_cursor.as_ref() {
+                None => 0,
+                Some(cursor)
+                    if cursor.cursor_version == Some(version)
+                        && cursor.stream_id.as_deref() == Some(stream_id)
+                        && cursor.seq.is_some_and(|seq| seq > 0) =>
+                {
+                    cursor.seq.unwrap_or(0)
+                }
+                Some(_) => {
+                    return Err(PeerProtocolError::IncompleteRevocationStreamContract);
+                }
+            };
+            Ok(RevocationPeerContract::Current {
+                stream_id: stream_id.to_string(),
+                head_seq,
+            })
+        }
+        _ => Err(PeerProtocolError::IncompleteRevocationStreamContract),
+    }
+}
+
+pub(crate) fn revocation_snapshot_contract_is_compatible(
+    status: &RevocationPeerContract,
+    snapshot: &RevocationPeerContract,
+) -> bool {
+    match (status, snapshot) {
+        (RevocationPeerContract::Legacy, RevocationPeerContract::Legacy) => true,
+        (
+            RevocationPeerContract::Current {
+                stream_id: status_stream_id,
+                head_seq: status_head_seq,
+            },
+            RevocationPeerContract::Current {
+                stream_id: snapshot_stream_id,
+                head_seq: snapshot_head_seq,
+            },
+        ) => status_stream_id == snapshot_stream_id && snapshot_head_seq >= status_head_seq,
+        _ => false,
     }
 }
 
@@ -210,42 +314,126 @@ pub(crate) fn require_forward_progress(
     Ok(())
 }
 
-/// Validate that a revocation delta page is STRICTLY ASCENDING in composite
-/// `(revoked_at, capability_id)` order starting after `cursor`, returning its head
-/// (the last, and therefore maximum, tuple) as the next cursor.
+/// Validate the revocation cursor contract selected by an upgraded puller.
 ///
-/// The revocation delta endpoint promises ascending cursor order and the puller
-/// persists the page HEAD as the next cursor. A max-only advance check (comparing
-/// the page maximum against the cursor) would accept a reordered page such as
-/// `[high, low]`; the puller would then persist `low` (behind the maximum) as the
-/// cursor and re-fetch the already-applied `high` every round, burning the shared
-/// round budget forever instead of demoting the malformed peer. Requiring every
-/// row to be strictly after the previous one rejects both a rewind past the cursor
-/// and an interior reorder as a `NonAdvancingPage` protocol violation, and
-/// guarantees the returned head equals `page_max`.
+/// Version 4 is a dense append-only per-store sequence bound to a durable stream
+/// identity. Earlier versions cannot share cursors with it. An unversioned
+/// response remains invalid when the peer advertised the current contract, but
+/// a status-verified legacy peer is handled by the separate full-projection
+/// replay path.
+pub(crate) fn ensure_revocation_cursor_version(
+    cursor_version: Option<u8>,
+) -> Result<(), PeerProtocolError> {
+    match cursor_version {
+        Some(REVOCATION_SEQUENCE_CURSOR_VERSION) => Ok(()),
+        None => Err(PeerProtocolError::LegacyRevocationCursorUnsupported),
+        Some(version) => Err(PeerProtocolError::UnsupportedRevocationCursorVersion { version }),
+    }
+}
+
+pub(crate) fn ensure_current_revocation_cursor(
+    cursor: Option<&RevocationCursor>,
+    expected_stream_id: &str,
+) -> Result<(), PeerProtocolError> {
+    if let Some(cursor) = cursor {
+        ensure_revocation_cursor_version(cursor.cursor_version)?;
+        if cursor.stream_id.as_deref() != Some(expected_stream_id) || cursor.seq.is_none() {
+            return Err(PeerProtocolError::RevocationStreamIdentityMismatch);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn current_revocation_cursor_requires_snapshot(
+    cursor: Option<&RevocationCursor>,
+    expected_stream_id: &str,
+    advertised_head_seq: u64,
+) -> bool {
+    cursor.is_some_and(|cursor| {
+        ensure_current_revocation_cursor(Some(cursor), expected_stream_id).is_err()
+            || cursor.seq.unwrap_or(0) > advertised_head_seq
+    })
+}
+
 pub(crate) fn ensure_revocation_page_ascending(
     cursor: Option<&RevocationCursor>,
-    records: &[RevocationRecordView],
+    cursor_version: Option<u8>,
+    response_stream_id: Option<&str>,
+    expected_stream_id: &str,
+    records: &[StoredRevocationView],
 ) -> Result<RevocationCursor, PeerProtocolError> {
+    ensure_revocation_cursor_version(cursor_version)?;
+    if response_stream_id != Some(expected_stream_id) {
+        return Err(PeerProtocolError::RevocationStreamIdentityMismatch);
+    }
+    ensure_current_revocation_cursor(cursor, expected_stream_id)?;
+    ensure_sequence_revocation_page_ascending(cursor, expected_stream_id, records)
+}
+
+fn ensure_sequence_revocation_page_ascending(
+    cursor: Option<&RevocationCursor>,
+    stream_id: &str,
+    records: &[StoredRevocationView],
+) -> Result<RevocationCursor, PeerProtocolError> {
+    let after_seq = cursor.and_then(|value| value.seq).unwrap_or(0);
+    let seqs = records
+        .iter()
+        .map(|record| {
+            record
+                .seq
+                .ok_or(PeerProtocolError::MissingRevocationSequence)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    require_contiguous_page(after_seq.saturating_add(1), &seqs)?;
+    let record = records.last().ok_or(PeerProtocolError::NonAdvancingPage {
+        after_seq,
+        page_max_seq: after_seq,
+    })?;
+    Ok(RevocationCursor {
+        cursor_version: Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+        stream_id: Some(stream_id.to_string()),
+        seq: record.seq,
+        revoked_at: record.revoked_at,
+        capability_id: record.capability_id.clone(),
+    })
+}
+
+/// Validate one page from a status-verified legacy peer's full current-state
+/// projection. The tuple cursor is only a within-pass pagination token. The
+/// caller clears it after the first empty page so the next completed pass starts
+/// at genesis and catches same-second records that sort before the prior pass's
+/// head.
+pub(crate) fn ensure_legacy_revocation_page_ascending(
+    cursor: Option<&RevocationCursor>,
+    records: &[StoredRevocationView],
+) -> Result<RevocationCursor, PeerProtocolError> {
+    if cursor.is_some_and(|cursor| {
+        cursor.cursor_version.is_some() || cursor.stream_id.is_some() || cursor.seq.is_some()
+    }) {
+        return Err(PeerProtocolError::IncompleteRevocationStreamContract);
+    }
     let mut previous = cursor.cloned();
-    let mut head: Option<RevocationCursor> = None;
+    let mut head = None;
     for record in records {
+        if record.seq.is_some() {
+            return Err(PeerProtocolError::UnexpectedRevocationSequence);
+        }
         let current = RevocationCursor {
+            cursor_version: None,
+            stream_id: None,
+            seq: None,
             revoked_at: record.revoked_at,
             capability_id: record.capability_id.clone(),
         };
-        let advanced = match &previous {
-            None => true,
-            Some(prev) => {
-                (current.revoked_at, current.capability_id.as_str())
-                    > (prev.revoked_at, prev.capability_id.as_str())
-            }
-        };
-        if !advanced {
+        let advances = previous.as_ref().is_none_or(|prior| {
+            (current.revoked_at, current.capability_id.as_str())
+                > (prior.revoked_at, prior.capability_id.as_str())
+        });
+        if !advances {
             return Err(PeerProtocolError::NonAdvancingPage {
                 after_seq: previous
                     .as_ref()
-                    .map(|cursor| cursor.revoked_at.max(0) as u64)
+                    .map(|value| value.revoked_at.max(0) as u64)
                     .unwrap_or(0),
                 page_max_seq: current.revoked_at.max(0) as u64,
             });
@@ -254,7 +442,9 @@ pub(crate) fn ensure_revocation_page_ascending(
         head = Some(current);
     }
     head.ok_or(PeerProtocolError::NonAdvancingPage {
-        after_seq: 0,
+        after_seq: cursor
+            .map(|value| value.revoked_at.max(0) as u64)
+            .unwrap_or(0),
         page_max_seq: 0,
     })
 }
@@ -298,6 +488,7 @@ impl From<CliError> for PullError {
 #[cfg(test)]
 mod pull_budget_tests {
     use super::*;
+    use chio_test_support::prelude::*;
 
     #[test]
     fn charge_page_reports_round_limits_not_protocol_errors() {
@@ -419,46 +610,319 @@ mod pull_budget_tests {
     }
 
     #[test]
-    fn revocation_page_must_be_strictly_ascending_and_returns_page_head() {
-        // The puller persists the page HEAD as the next cursor, so an out-of-order
-        // page that a max-only advance check would accept must be rejected here, or
-        // the cursor lands behind page_max and replays forever.
-        let rec = |revoked_at: i64, cap: &str| RevocationRecordView {
+    fn sequence_revocation_page_must_be_cursor_anchored_and_dense() {
+        // The puller persists the page head as the next cursor. The append-only
+        // source stream is dense, so accepting an ascending jump would let a peer
+        // strand every omitted revocation below that new cursor.
+        let rec = |seq: u64, revoked_at: i64, cap: &str| StoredRevocationView {
+            seq: Some(seq),
             capability_id: cap.to_string(),
             revoked_at,
         };
+        let stream_id = "01991bb4-e2f7-7e21-b75d-a59be8fbc441";
         let cursor = RevocationCursor {
+            cursor_version: Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+            stream_id: Some(stream_id.to_string()),
+            seq: Some(5),
             revoked_at: 5,
             capability_id: "cap-b".to_string(),
         };
 
-        // A strictly ascending page returns its LAST (== maximum) tuple as the head.
+        // A cursor-anchored dense page returns its last sequence as the head.
         let Ok(head) = ensure_revocation_page_ascending(
             Some(&cursor),
-            &[rec(5, "cap-c"), rec(6, "cap-a"), rec(9, "cap-z")],
+            Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+            Some(stream_id),
+            stream_id,
+            &[rec(6, 5, "cap-c"), rec(7, 6, "cap-a"), rec(8, 9, "cap-z")],
         ) else {
-            panic!("an ascending page is valid");
+            panic!("a cursor-anchored dense page is valid");
         };
-        assert_eq!((head.revoked_at, head.capability_id.as_str()), (9, "cap-z"));
+        assert_eq!(head.seq, Some(8));
+        assert_eq!(
+            head.cursor_version,
+            Some(REVOCATION_SEQUENCE_CURSOR_VERSION)
+        );
 
-        // A reordered page [high, low] is a protocol violation, even though its
-        // MAXIMUM (10, cap-a) advances past the cursor: a max-only check accepted it.
+        // A forward jump is a protocol violation even when the page is otherwise
+        // ascending: sequence 8 has not been returned.
         assert!(matches!(
-            ensure_revocation_page_ascending(Some(&cursor), &[rec(10, "cap-a"), rec(7, "cap-a")]),
-            Err(PeerProtocolError::NonAdvancingPage { .. })
+            ensure_revocation_page_ascending(
+                Some(&cursor),
+                Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+                Some(stream_id),
+                stream_id,
+                &[rec(6, 7, "cap-a"), rec(7, 8, "cap-b"), rec(9, 10, "cap-c")]
+            ),
+            Err(PeerProtocolError::NonContiguousPage {
+                expected_seq: 8,
+                found_seq: 9
+            })
         ));
 
-        // The first row must also advance past the cursor (no rewind/resend).
+        // The first row must be exactly the cursor successor (no rewind/resend).
         assert!(matches!(
-            ensure_revocation_page_ascending(Some(&cursor), &[rec(5, "cap-b"), rec(6, "cap-a")]),
-            Err(PeerProtocolError::NonAdvancingPage { .. })
+            ensure_revocation_page_ascending(
+                Some(&cursor),
+                Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+                Some(stream_id),
+                stream_id,
+                &[rec(5, 6, "cap-b"), rec(6, 5, "cap-a")]
+            ),
+            Err(PeerProtocolError::NonContiguousPage { .. })
         ));
 
         // A fresh cursor accepts the first row unconditionally, then requires ascent.
-        let Ok(head) = ensure_revocation_page_ascending(None, &[rec(1, "cap-a"), rec(2, "cap-a")])
-        else {
+        let Ok(head) = ensure_revocation_page_ascending(
+            None,
+            Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+            Some(stream_id),
+            stream_id,
+            &[rec(1, 2, "cap-a"), rec(2, 1, "cap-a")],
+        ) else {
             panic!("ascending page from a fresh cursor is valid");
         };
-        assert_eq!((head.revoked_at, head.capability_id.as_str()), (2, "cap-a"));
+        assert_eq!(head.seq, Some(2));
+    }
+
+    #[test]
+    fn revocation_wire_decodes_legacy_delta_and_snapshot_cursor() {
+        let query: RevocationDeltaQuery =
+            serde_urlencoded::from_str("afterRevokedAt=11&afterCapabilityId=cap-old&limit=25")
+                .test_unwrap();
+        assert_eq!(query.cursor_version, None);
+        assert_eq!(query.after_seq, None);
+        assert_eq!(query.after_revoked_at, Some(11));
+        assert_eq!(query.after_capability_id.as_deref(), Some("cap-old"));
+
+        let response: RevocationDeltaResponse = serde_json::from_value(serde_json::json!({
+            "records": [{"capabilityId": "cap-old", "revokedAt": 11}]
+        }))
+        .test_unwrap();
+        assert_eq!(response.cursor_version, None);
+        assert_eq!(response.records[0].seq, None);
+
+        let cursor = serde_json::from_value::<RevocationCursorView>(serde_json::json!({
+            "revokedAt": 11,
+            "capabilityId": "cap-old"
+        }))
+        .test_unwrap();
+        assert_eq!(cursor.cursor_version, None);
+        assert_eq!(cursor.stream_id, None);
+        assert_eq!(cursor.seq, None);
+    }
+
+    #[test]
+    fn upgraded_revocation_puller_rejects_legacy_downgrade() {
+        let legacy_record = StoredRevocationView {
+            seq: None,
+            capability_id: "cap-a".to_string(),
+            revoked_at: 5,
+        };
+        assert!(matches!(
+            ensure_revocation_page_ascending(None, None, None, "current-stream", &[legacy_record]),
+            Err(PeerProtocolError::LegacyRevocationCursorUnsupported)
+        ));
+        let retired = RevocationCursor {
+            cursor_version: Some(2),
+            stream_id: Some("retired-stream".to_string()),
+            seq: Some(9),
+            revoked_at: 5,
+            capability_id: "cap-retired".to_string(),
+        };
+        assert!(matches!(
+            ensure_current_revocation_cursor(Some(&retired), "current-stream"),
+            Err(PeerProtocolError::UnsupportedRevocationCursorVersion { version: 2 })
+        ));
+    }
+
+    #[test]
+    fn revocation_page_rejects_mixed_and_unsupported_cursor_shapes() {
+        let legacy_record = StoredRevocationView {
+            seq: None,
+            capability_id: "cap-a".to_string(),
+            revoked_at: 1,
+        };
+        let sequence_record = StoredRevocationView {
+            seq: Some(1),
+            capability_id: "cap-a".to_string(),
+            revoked_at: 1,
+        };
+        assert!(matches!(
+            ensure_revocation_page_ascending(None, None, None, "current-stream", &[legacy_record]),
+            Err(PeerProtocolError::LegacyRevocationCursorUnsupported)
+        ));
+        assert!(matches!(
+            ensure_revocation_page_ascending(
+                None,
+                None,
+                None,
+                "current-stream",
+                &[sequence_record]
+            ),
+            Err(PeerProtocolError::LegacyRevocationCursorUnsupported)
+        ));
+        assert!(matches!(
+            ensure_revocation_page_ascending(
+                None,
+                Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+                Some("current-stream"),
+                "current-stream",
+                &[StoredRevocationView {
+                    seq: None,
+                    capability_id: "cap-missing".to_string(),
+                    revoked_at: 1,
+                }]
+            ),
+            Err(PeerProtocolError::MissingRevocationSequence)
+        ));
+        assert!(matches!(
+            ensure_revocation_cursor_version(Some(99)),
+            Err(PeerProtocolError::UnsupportedRevocationCursorVersion { version: 99 })
+        ));
+    }
+
+    #[test]
+    fn revocation_status_distinguishes_legacy_and_empty_current_streams() {
+        let legacy: ClusterReplicationHeadsView = serde_json::from_value(serde_json::json!({
+            "toolSeq": 0,
+            "childSeq": 0,
+            "lineageSeq": 0,
+            "budgetSeq": 0,
+            "revocationCursor": {
+                "cursorVersion": 3,
+                "seq": 9,
+                "revokedAt": 11,
+                "capabilityId": "cap-old"
+            }
+        }))
+        .test_unwrap();
+        assert_eq!(
+            revocation_peer_contract(&legacy).test_unwrap(),
+            RevocationPeerContract::Legacy
+        );
+
+        let stream_id = "01991bb4-e2f7-7e21-b75d-a59be8fbc441";
+        let current = ClusterReplicationHeadsView {
+            revocation_cursor_version: Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+            revocation_stream_id: Some(stream_id.to_string()),
+            ..ClusterReplicationHeadsView::default()
+        };
+        assert_eq!(
+            revocation_peer_contract(&current).test_unwrap(),
+            RevocationPeerContract::Current {
+                stream_id: stream_id.to_string(),
+                head_seq: 0,
+            }
+        );
+
+        let incomplete = ClusterReplicationHeadsView {
+            revocation_cursor_version: Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+            ..ClusterReplicationHeadsView::default()
+        };
+        assert!(matches!(
+            revocation_peer_contract(&incomplete),
+            Err(PeerProtocolError::IncompleteRevocationStreamContract)
+        ));
+    }
+
+    #[test]
+    fn revocation_snapshot_contract_accepts_advancing_head_and_rejects_regression() {
+        let status = RevocationPeerContract::Current {
+            stream_id: "stream-a".to_string(),
+            head_seq: 12,
+        };
+        let advanced_snapshot = RevocationPeerContract::Current {
+            stream_id: "stream-a".to_string(),
+            head_seq: 13,
+        };
+        assert!(revocation_snapshot_contract_is_compatible(
+            &status,
+            &advanced_snapshot
+        ));
+        assert!(revocation_snapshot_contract_is_compatible(&status, &status));
+        assert!(!revocation_snapshot_contract_is_compatible(
+            &status,
+            &RevocationPeerContract::Current {
+                stream_id: "stream-a".to_string(),
+                head_seq: 11,
+            }
+        ));
+        assert!(!revocation_snapshot_contract_is_compatible(
+            &status,
+            &RevocationPeerContract::Current {
+                stream_id: "stream-b".to_string(),
+                head_seq: 13,
+            }
+        ));
+        assert!(!revocation_snapshot_contract_is_compatible(
+            &status,
+            &RevocationPeerContract::Legacy
+        ));
+    }
+
+    #[test]
+    fn revocation_cursor_detects_equal_head_stream_replacement_and_head_rollback() {
+        let cursor = RevocationCursor {
+            cursor_version: Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+            stream_id: Some("stream-a".to_string()),
+            seq: Some(12),
+            revoked_at: 20,
+            capability_id: "cap-a".to_string(),
+        };
+        assert!(!current_revocation_cursor_requires_snapshot(
+            Some(&cursor),
+            "stream-a",
+            12
+        ));
+        assert!(current_revocation_cursor_requires_snapshot(
+            Some(&cursor),
+            "stream-b",
+            12
+        ));
+        assert!(current_revocation_cursor_requires_snapshot(
+            Some(&cursor),
+            "stream-a",
+            11
+        ));
+    }
+
+    #[test]
+    fn legacy_projection_cursor_is_safe_only_within_a_full_pass() {
+        let records = [
+            StoredRevocationView {
+                seq: None,
+                capability_id: "cap-a".to_string(),
+                revoked_at: 10,
+            },
+            StoredRevocationView {
+                seq: None,
+                capability_id: "cap-b".to_string(),
+                revoked_at: 10,
+            },
+        ];
+        let head = ensure_legacy_revocation_page_ascending(None, &records).test_unwrap();
+        assert_eq!(head.cursor_version, None);
+        assert_eq!(head.stream_id, None);
+        assert_eq!(head.seq, None);
+        assert_eq!(head.capability_id, "cap-b");
+
+        let same_second_backfill = StoredRevocationView {
+            seq: None,
+            capability_id: "cap-0".to_string(),
+            revoked_at: 10,
+        };
+        assert!(matches!(
+            ensure_legacy_revocation_page_ascending(Some(&head), &[same_second_backfill]),
+            Err(PeerProtocolError::NonAdvancingPage { .. })
+        ));
+        // Clearing the completed-pass cursor makes the same backfill visible on
+        // the next genesis replay.
+        let replay = StoredRevocationView {
+            seq: None,
+            capability_id: "cap-0".to_string(),
+            revoked_at: 10,
+        };
+        assert!(ensure_legacy_revocation_page_ascending(None, &[replay]).is_ok());
     }
 }

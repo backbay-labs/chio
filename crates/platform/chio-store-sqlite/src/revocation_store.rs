@@ -19,6 +19,12 @@ pub struct SqliteRevocationStore {
     ephemeral: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct StoredRevocation {
+    pub seq: u64,
+    pub record: RevocationRecord,
+}
+
 /// Whether a SQLite path opens a database that lives only in memory for the life
 /// of the process. rusqlite enables URI filenames, so the bare `:memory:`
 /// sentinel, `file::memory:`, and any `file:...?mode=memory` URI all open a
@@ -48,7 +54,7 @@ fn path_opens_in_memory(path: &Path) -> bool {
 }
 
 /// Revocation-store schema revision. Bump on every schema-affecting change.
-pub(crate) const REVOCATION_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 2;
+pub(crate) const REVOCATION_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 4;
 /// Stable key under which this store records its schema revision in the shared
 /// keyed metadata table, distinct from any co-located store's key.
 const REVOCATION_STORE_SCHEMA_KEY: &str = "revocation";
@@ -58,6 +64,23 @@ const REVOCATION_STORE_LEGACY_ANCHOR_TABLES: &[&str] = &["revoked_capabilities"]
 
 impl SqliteRevocationStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, RevocationStoreError> {
+        Self::open_with_replication_epoch(path, false)
+    }
+
+    /// Open a store that will advertise its delta stream to replication peers.
+    ///
+    /// Every serving activation rotates the stream identity before the caller
+    /// can advertise a cursor. A database restored to an earlier dense-log head
+    /// therefore cannot reuse sequence numbers under an identity cached by a
+    /// follower. Ordinary non-serving opens retain the stored identity.
+    pub fn open_replication_source(path: impl AsRef<Path>) -> Result<Self, RevocationStoreError> {
+        Self::open_with_replication_epoch(path, true)
+    }
+
+    fn open_with_replication_epoch(
+        path: impl AsRef<Path>,
+        rotate_replication_epoch: bool,
+    ) -> Result<Self, RevocationStoreError> {
         let path = path.as_ref();
         let ephemeral = path_opens_in_memory(path);
         if !ephemeral {
@@ -93,6 +116,9 @@ impl SqliteRevocationStore {
         )
         .map_err(|error| RevocationStoreError::Sync(error.to_string()))?;
         verify_revocation_foreign_keys(&connection)?;
+        if rotate_replication_epoch {
+            rotate_revocation_stream_identity(&mut connection)?;
+        }
 
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
@@ -222,7 +248,78 @@ impl SqliteRevocationStore {
         })
     }
 
+    pub fn list_revocations_after_seq(
+        &self,
+        limit: usize,
+        after_seq: u64,
+    ) -> Result<Vec<StoredRevocation>, RevocationStoreError> {
+        self.list_revocations_after_seq_with_head(limit, after_seq)
+            .map(|(records, _)| records)
+    }
+
+    /// Read one delta page and the stream head from the same SQLite snapshot.
+    /// This prevents an append between two separate reads from making an honest
+    /// empty page appear to end below a later head.
+    pub fn list_revocations_after_seq_with_head(
+        &self,
+        limit: usize,
+        after_seq: u64,
+    ) -> Result<(Vec<StoredRevocation>, u64), RevocationStoreError> {
+        let after_seq = i64::try_from(after_seq).map_err(|_| {
+            RevocationStoreError::Sync("revocation cursor exceeds SQLite range".to_string())
+        })?;
+        self.read(|transaction| {
+            let records = {
+                let mut statement = transaction.prepare(
+                    r#"
+                    SELECT seq, capability_id, revoked_at
+                    FROM revocation_delta_log
+                    WHERE seq > ?1
+                    ORDER BY seq ASC
+                    LIMIT ?2
+                    "#,
+                )?;
+                let rows = statement.query_map(params![after_seq, limit as i64], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                })?;
+                rows.map(|row| {
+                    let (seq, capability_id, revoked_at) = row?;
+                    Ok(StoredRevocation {
+                        seq: stored_index(seq)?,
+                        record: RevocationRecord {
+                            capability_id,
+                            revoked_at,
+                        },
+                    })
+                })
+                .collect::<Result<Vec<_>, RevocationStoreError>>()?
+            };
+            let head = transaction.query_row(
+                "SELECT next_seq FROM revocation_delta_meta WHERE singleton = 1",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?;
+            Ok((records, stored_index(head)?))
+        })
+    }
+
     pub fn upsert_revocation(&self, record: &RevocationRecord) -> Result<(), RevocationStoreError> {
+        self.upsert_revocation_if_newer(record).map(|_| ())
+    }
+
+    /// Apply a revocation only when it advances the stored projection.
+    ///
+    /// The returned flag is true exactly when this call commits a projection and
+    /// append-log mutation. Replication callers use it to distinguish a fresh
+    /// delta from an idempotent projection replay.
+    pub fn upsert_revocation_if_newer(
+        &self,
+        record: &RevocationRecord,
+    ) -> Result<bool, RevocationStoreError> {
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
         let existing = transaction
@@ -234,7 +331,7 @@ impl SqliteRevocationStore {
             .optional()?;
         if existing.is_some_and(|revoked_at| revoked_at >= record.revoked_at) {
             transaction.rollback()?;
-            return Ok(());
+            return Ok(false);
         }
         let joint = self.serving_owner.is_some();
         let revocation_index = allocate_revocation_index(&transaction, joint)?;
@@ -285,13 +382,14 @@ impl SqliteRevocationStore {
                 params![record.capability_id, record.revoked_at, revocation_index],
             )?;
         }
+        append_revocation_delta(&transaction, record)?;
         commit_mutation(self, transaction)?;
         if let Some(owner) = self.serving_owner.as_ref() {
             owner
                 .sync_authority_anchor(&connection)
                 .map_err(map_serving_owner_error)?;
         }
-        Ok(())
+        Ok(true)
     }
 
     /// The head of the revocation stream as the pagination cursor tuple
@@ -308,6 +406,116 @@ impl SqliteRevocationStore {
                 )
                 .optional()
                 .map_err(Into::into)
+        })
+    }
+
+    pub fn latest_revocation_stream_head(
+        &self,
+    ) -> Result<Option<StoredRevocation>, RevocationStoreError> {
+        self.read(|transaction| {
+            transaction
+                .query_row(
+                    "SELECT seq, capability_id, revoked_at \
+                     FROM revocation_delta_log \
+                     ORDER BY seq DESC LIMIT 1",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                        ))
+                    },
+                )
+                .optional()?
+                .map(|(seq, capability_id, revoked_at)| {
+                    Ok(StoredRevocation {
+                        seq: stored_index(seq)?,
+                        record: RevocationRecord {
+                            capability_id,
+                            revoked_at,
+                        },
+                    })
+                })
+                .transpose()
+        })
+    }
+
+    /// Identity of this append-only revocation serving epoch.
+    ///
+    /// Ordinary non-serving opens preserve the stored value. A trust-control
+    /// replication source rotates it at activation, before advertising status,
+    /// so a database rollback cannot reuse sequence numbers under an identity
+    /// cached during an earlier serving epoch. A replication cursor is valid
+    /// only for the identity that issued it.
+    pub fn revocation_stream_id(&self) -> Result<String, RevocationStoreError> {
+        self.read(|transaction| {
+            transaction
+                .query_row(
+                    "SELECT stream_id FROM revocation_stream_meta WHERE singleton = 1",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .map_err(Into::into)
+        })
+    }
+
+    /// Export the current revoked-capability projection and the append-only
+    /// stream head from one SQLite read snapshot.
+    ///
+    /// Cluster snapshots transfer current state, not mutation history. Reading
+    /// both values in one transaction ensures the advertised stream head never
+    /// advances past a revocation omitted from the exported projection.
+    pub fn export_revocation_snapshot(
+        &self,
+    ) -> Result<(String, Vec<RevocationRecord>, Option<StoredRevocation>), RevocationStoreError>
+    {
+        self.read(|transaction| {
+            let stream_id = transaction.query_row(
+                "SELECT stream_id FROM revocation_stream_meta WHERE singleton = 1",
+                [],
+                |row| row.get::<_, String>(0),
+            )?;
+            let records = {
+                let mut statement = transaction.prepare(
+                    "SELECT capability_id, revoked_at FROM revoked_capabilities \
+                     ORDER BY revoked_at ASC, capability_id ASC",
+                )?;
+                let records = statement
+                    .query_map([], |row| {
+                        Ok(RevocationRecord {
+                            capability_id: row.get(0)?,
+                            revoked_at: row.get(1)?,
+                        })
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                records
+            };
+            let head = transaction
+                .query_row(
+                    "SELECT seq, capability_id, revoked_at \
+                     FROM revocation_delta_log ORDER BY seq DESC LIMIT 1",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                        ))
+                    },
+                )
+                .optional()?
+                .map(|(seq, capability_id, revoked_at)| {
+                    Ok::<StoredRevocation, RevocationStoreError>(StoredRevocation {
+                        seq: stored_index(seq)?,
+                        record: RevocationRecord {
+                            capability_id,
+                            revoked_at,
+                        },
+                    })
+                })
+                .transpose()?;
+            Ok((stream_id, records, head))
         })
     }
 }
@@ -364,6 +572,13 @@ impl RevocationStore for SqliteRevocationStore {
             )
             .optional()?;
         if inserted.is_some() {
+            append_revocation_delta(
+                &transaction,
+                &RevocationRecord {
+                    capability_id: capability_id.to_string(),
+                    revoked_at,
+                },
+            )?;
             if joint {
                 append_admission_revocation_commit(&transaction, revocation_index, capability_id)?;
                 self.serving_owner
@@ -474,6 +689,25 @@ pub(crate) fn initialize_revocation_schema(
         CREATE INDEX IF NOT EXISTS idx_revoked_capabilities_revoked_at
             ON revoked_capabilities(revoked_at);
 
+        CREATE TABLE IF NOT EXISTS revocation_delta_log (
+            seq INTEGER PRIMARY KEY CHECK (seq > 0),
+            capability_id TEXT NOT NULL,
+            revoked_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_revocation_delta_log_projection
+            ON revocation_delta_log(capability_id, revoked_at);
+
+        CREATE TABLE IF NOT EXISTS revocation_delta_meta (
+            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+            next_seq INTEGER NOT NULL CHECK (next_seq >= 0)
+        );
+
+        CREATE TABLE IF NOT EXISTS revocation_stream_meta (
+            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+            stream_id TEXT NOT NULL CHECK (stream_id <> '')
+        );
+
         "#,
     )?;
     ensure_revocation_index_column(connection)?;
@@ -518,6 +752,12 @@ pub(crate) fn initialize_revocation_schema(
     }
 
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    transaction.execute(
+        "INSERT INTO revocation_stream_meta (singleton, stream_id) VALUES (1, ?1) \
+         ON CONFLICT(singleton) DO NOTHING",
+        [uuid::Uuid::now_v7().to_string()],
+    )?;
+    initialize_revocation_delta_log(&transaction)?;
     if shared_authority_sequence {
         transaction.execute(
             r#"
@@ -675,9 +915,27 @@ pub(crate) fn initialize_revocation_schema(
         )?;
     }
     transaction.commit()?;
+    verify_revocation_delta_invariants(connection)?;
     if shared_authority_sequence {
         verify_admission_authority_invariants(connection)?;
     }
+    Ok(())
+}
+
+fn rotate_revocation_stream_identity(
+    connection: &mut Connection,
+) -> Result<(), RevocationStoreError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let updated = transaction.execute(
+        "UPDATE revocation_stream_meta SET stream_id = ?1 WHERE singleton = 1",
+        [uuid::Uuid::now_v7().to_string()],
+    )?;
+    if updated != 1 {
+        return Err(RevocationStoreError::Sync(
+            "revocation stream identity row is missing".to_string(),
+        ));
+    }
+    transaction.commit()?;
     Ok(())
 }
 
@@ -747,6 +1005,154 @@ fn allocate_revocation_index(
         params![next],
     )?;
     Ok(next)
+}
+
+/// Allocate and append one row to the dense, append-only revocation delta log.
+///
+/// The mutable `revoked_capabilities` projection cannot itself be a sound delta
+/// stream: updating one capability replaces its older projection row, and the
+/// joint authority commit index is not the delta log's cursor contract. This
+/// independent sequence advances exactly once for every accepted revocation
+/// mutation and is written in the same transaction as the projection update.
+fn append_revocation_delta(
+    transaction: &Transaction<'_>,
+    record: &RevocationRecord,
+) -> Result<(), RevocationStoreError> {
+    let current = transaction.query_row(
+        "SELECT next_seq FROM revocation_delta_meta WHERE singleton = 1",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let next = current.checked_add(1).ok_or_else(|| {
+        RevocationStoreError::Sync("revocation delta sequence overflowed i64".to_string())
+    })?;
+    transaction.execute(
+        "INSERT INTO revocation_delta_log (seq, capability_id, revoked_at) \
+         VALUES (?1, ?2, ?3)",
+        params![next, record.capability_id, record.revoked_at],
+    )?;
+    transaction.execute(
+        "UPDATE revocation_delta_meta SET next_seq = ?1 WHERE singleton = 1",
+        params![next],
+    )?;
+    Ok(())
+}
+
+/// Seed the append-only delta log when opening a pre-v3 revocation database.
+/// Existing projection rows form the complete revocation state at the migration
+/// boundary. They receive a deterministic dense prefix; all later mutations are
+/// appended transactionally by `append_revocation_delta`.
+fn initialize_revocation_delta_log(
+    transaction: &Transaction<'_>,
+) -> Result<(), RevocationStoreError> {
+    transaction.execute(
+        "INSERT INTO revocation_delta_meta (singleton, next_seq) VALUES (1, 0) \
+         ON CONFLICT(singleton) DO NOTHING",
+        [],
+    )?;
+    let existing_count =
+        transaction.query_row("SELECT COUNT(*) FROM revocation_delta_log", [], |row| {
+            row.get::<_, i64>(0)
+        })?;
+    if existing_count == 0 {
+        let records = {
+            let mut statement = transaction.prepare(
+                "SELECT capability_id, revoked_at FROM revoked_capabilities \
+                 ORDER BY revoked_at ASC, capability_id ASC",
+            )?;
+            let records = statement
+                .query_map([], |row| {
+                    Ok(RevocationRecord {
+                        capability_id: row.get(0)?,
+                        revoked_at: row.get(1)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            records
+        };
+        for record in records {
+            append_revocation_delta(transaction, &record)?;
+        }
+    } else {
+        let max_seq = transaction.query_row(
+            "SELECT COALESCE(MAX(seq), 0) FROM revocation_delta_log",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        transaction.execute(
+            "UPDATE revocation_delta_meta SET next_seq = MAX(next_seq, ?1) \
+             WHERE singleton = 1",
+            params![max_seq],
+        )?;
+    }
+    Ok(())
+}
+
+fn verify_revocation_delta_invariants(connection: &Connection) -> Result<(), RevocationStoreError> {
+    let projection_index_columns = {
+        let mut statement =
+            connection.prepare("PRAGMA index_info('idx_revocation_delta_log_projection')")?;
+        let columns = statement
+            .query_map([], |row| row.get::<_, String>(2))?
+            .collect::<Result<Vec<_>, _>>()?;
+        columns
+    };
+    if projection_index_columns != ["capability_id", "revoked_at"] {
+        return Err(RevocationStoreError::Sync(
+            "revocation projection-history index has an invalid shape".to_string(),
+        ));
+    }
+    let (next_seq, row_count, min_seq, max_seq, projection_unlogged) = connection.query_row(
+        r#"
+        SELECT
+            (SELECT next_seq FROM revocation_delta_meta WHERE singleton = 1),
+            (SELECT COUNT(*) FROM revocation_delta_log),
+            (SELECT COALESCE(MIN(seq), 0) FROM revocation_delta_log),
+            (SELECT COALESCE(MAX(seq), 0) FROM revocation_delta_log),
+            EXISTS(
+                SELECT 1 FROM revoked_capabilities AS revoked
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM revocation_delta_log AS delta
+                    WHERE delta.capability_id = revoked.capability_id
+                      AND delta.revoked_at = revoked.revoked_at
+                )
+            )
+        "#,
+        [],
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, bool>(4)?,
+            ))
+        },
+    )?;
+    let dense = if row_count == 0 {
+        next_seq == 0 && min_seq == 0 && max_seq == 0
+    } else {
+        min_seq == 1 && row_count == max_seq && next_seq == max_seq
+    };
+    if !dense || projection_unlogged {
+        return Err(RevocationStoreError::Sync(
+            "revocation delta log is not a dense complete projection history".to_string(),
+        ));
+    }
+    let stream_id = connection.query_row(
+        "SELECT stream_id FROM revocation_stream_meta WHERE singleton = 1",
+        [],
+        |row| row.get::<_, String>(0),
+    )?;
+    let parsed = uuid::Uuid::parse_str(&stream_id).map_err(|_| {
+        RevocationStoreError::Sync("revocation stream identity is not a valid UUID".to_string())
+    })?;
+    if parsed.get_version_num() != 7 {
+        return Err(RevocationStoreError::Sync(
+            "revocation stream identity is not a UUIDv7".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn append_admission_revocation_commit(
@@ -900,6 +1306,73 @@ mod tests {
     }
 
     #[test]
+    fn revocation_stream_identity_is_durable_and_store_unique(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let first_path = unique_db_path("chio-rev-stream-first");
+        let second_path = unique_db_path("chio-rev-stream-second");
+        let first_id = SqliteRevocationStore::open(&first_path)?.revocation_stream_id()?;
+        let reopened_id = SqliteRevocationStore::open(&first_path)?.revocation_stream_id()?;
+        let second_id = SqliteRevocationStore::open(&second_path)?.revocation_stream_id()?;
+
+        assert_eq!(first_id, reopened_id, "an ordinary reopen keeps the epoch");
+        assert_ne!(
+            first_id, second_id,
+            "independent stores need distinct epochs"
+        );
+        assert_eq!(uuid::Uuid::parse_str(&first_id)?.get_version_num(), 7);
+
+        let _ = fs::remove_file(first_path);
+        let _ = fs::remove_file(second_path);
+        Ok(())
+    }
+
+    #[test]
+    fn replication_source_epoch_rotates_after_restored_sequence_reuse(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let path = unique_db_path("chio-rev-stream-restore");
+        let restored_snapshot = unique_db_path("chio-rev-stream-snapshot");
+        let store = SqliteRevocationStore::open(&path)?;
+        store.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-first".to_string(),
+            revoked_at: 10,
+        })?;
+        drop(store);
+        fs::copy(&path, &restored_snapshot)?;
+
+        let live = SqliteRevocationStore::open_replication_source(&path)?;
+        let live_stream_id = live.revocation_stream_id()?;
+        live.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-live-second".to_string(),
+            revoked_at: 20,
+        })?;
+        assert_eq!(
+            live.latest_revocation_stream_head()?.map(|row| row.seq),
+            Some(2)
+        );
+        drop(live);
+
+        fs::copy(&restored_snapshot, &path)?;
+        let restored = SqliteRevocationStore::open_replication_source(&path)?;
+        let restored_stream_id = restored.revocation_stream_id()?;
+        restored.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-restored-second".to_string(),
+            revoked_at: 20,
+        })?;
+        assert_eq!(
+            restored.latest_revocation_stream_head()?.map(|row| row.seq),
+            Some(2)
+        );
+        assert_ne!(
+            live_stream_id, restored_stream_id,
+            "equal restored heads must belong to distinct serving epochs"
+        );
+
+        let _ = fs::remove_file(path);
+        let _ = fs::remove_file(restored_snapshot);
+        Ok(())
+    }
+
+    #[test]
     fn latest_revocation_cursor_returns_head_or_none() -> Result<(), Box<dyn std::error::Error>> {
         let path = unique_db_path("chio-rev-head");
         let store = SqliteRevocationStore::open(&path)?;
@@ -917,6 +1390,158 @@ mod tests {
             Some((25, "cap-b".to_string()))
         );
         let _ = fs::remove_file(&path);
+        Ok(())
+    }
+
+    #[test]
+    fn revocation_sequence_does_not_skip_same_second_backfill(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let path = unique_db_path("chio-rev-sequence");
+        let store = SqliteRevocationStore::open(&path)?;
+        store.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-revoke-leader".to_string(),
+            revoked_at: 100,
+        })?;
+        let first = store.list_revocations_after_seq(10, 0)?;
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].seq, 1);
+
+        store.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-revoke-leader".to_string(),
+            revoked_at: 101,
+        })?;
+        store.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-revoke-follower".to_string(),
+            revoked_at: 100,
+        })?;
+        let after = store.list_revocations_after_seq(10, first[0].seq)?;
+        assert_eq!(after.len(), 2);
+        assert_eq!(after[0].seq, 2);
+        assert_eq!(after[0].record.capability_id, "cap-revoke-leader");
+        assert_eq!(after[1].seq, 3);
+        assert_eq!(after[1].record.capability_id, "cap-revoke-follower");
+        assert_eq!(
+            store
+                .latest_revocation_stream_head()?
+                .map(|stored| stored.seq),
+            Some(3)
+        );
+
+        let _ = fs::remove_file(&path);
+        Ok(())
+    }
+
+    #[test]
+    fn v2_projection_migrates_to_a_dense_append_only_delta_log(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let path = unique_db_path("chio-rev-v2-delta-migration");
+        let store = SqliteRevocationStore::open(&path)?;
+        store.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-b".to_string(),
+            revoked_at: 20,
+        })?;
+        store.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-a".to_string(),
+            revoked_at: 10,
+        })?;
+        drop(store);
+
+        let connection = Connection::open(&path)?;
+        connection.execute_batch(
+            r#"
+            DROP TABLE revocation_delta_log;
+            DROP TABLE revocation_delta_meta;
+            UPDATE chio_store_schema_versions
+            SET version = 2
+            WHERE store_key = 'revocation';
+            "#,
+        )?;
+        drop(connection);
+
+        let migrated = SqliteRevocationStore::open(&path)?;
+        let rows = migrated.list_revocations_after_seq(10, 0)?;
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].seq, 1);
+        assert_eq!(rows[0].record.capability_id, "cap-a");
+        assert_eq!(rows[1].seq, 2);
+        assert_eq!(rows[1].record.capability_id, "cap-b");
+
+        migrated.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-a".to_string(),
+            revoked_at: 30,
+        })?;
+        let appended = migrated.list_revocations_after_seq(10, 2)?;
+        assert_eq!(appended.len(), 1);
+        assert_eq!(appended[0].seq, 3);
+        assert_eq!(appended[0].record.revoked_at, 30);
+
+        let _ = fs::remove_file(&path);
+        Ok(())
+    }
+
+    #[test]
+    fn v3_store_migrates_stream_identity_and_projection_history_index(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let path = unique_db_path("chio-rev-v3-stream-migration");
+        let store = SqliteRevocationStore::open(&path)?;
+        store.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-indexed".to_string(),
+            revoked_at: 44,
+        })?;
+        drop(store);
+
+        let connection = Connection::open(&path)?;
+        connection.execute_batch(
+            r#"
+            DROP INDEX idx_revocation_delta_log_projection;
+            DROP TABLE revocation_stream_meta;
+            UPDATE chio_store_schema_versions
+            SET version = 3
+            WHERE store_key = 'revocation';
+            "#,
+        )?;
+        drop(connection);
+
+        let migrated = SqliteRevocationStore::open(&path)?;
+        assert_eq!(
+            uuid::Uuid::parse_str(&migrated.revocation_stream_id()?)?.get_version_num(),
+            7
+        );
+        drop(migrated);
+
+        let connection = Connection::open(&path)?;
+        let version: i32 = connection.query_row(
+            "SELECT version FROM chio_store_schema_versions WHERE store_key = 'revocation'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(version, REVOCATION_STORE_SUPPORTED_SCHEMA_VERSION);
+        let plan = {
+            let mut statement = connection.prepare(
+                r#"
+                EXPLAIN QUERY PLAN
+                SELECT EXISTS(
+                    SELECT 1 FROM revoked_capabilities AS revoked
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM revocation_delta_log AS delta
+                        WHERE delta.capability_id = revoked.capability_id
+                          AND delta.revoked_at = revoked.revoked_at
+                    )
+                )
+                "#,
+            )?;
+            let details = statement
+                .query_map([], |row| row.get::<_, String>(3))?
+                .collect::<Result<Vec<_>, _>>()?;
+            details
+        };
+        assert!(
+            plan.iter()
+                .any(|detail| detail.contains("idx_revocation_delta_log_projection")),
+            "projection-history lookup must use the composite index: {plan:?}"
+        );
+
+        let _ = fs::remove_file(path);
         Ok(())
     }
 

@@ -772,15 +772,15 @@ mod tests;
 #[path = "finding_evidence_test_support.rs"]
 mod finding_evidence_test_support;
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[path = "finding_market_exit_tests.rs"]
 mod finding_market_exit_tests;
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[path = "finding_wedge_purchase_e2e_tests.rs"]
 mod finding_wedge_purchase_e2e_tests;
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[path = "finding_challenge_enforcement_e2e_tests.rs"]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod finding_challenge_enforcement_e2e_tests;
@@ -789,7 +789,7 @@ mod finding_challenge_enforcement_e2e_tests;
 /// milestone exits through their production-facing SQLite and router seams.
 /// Each leg provisions an independent deployment so authority state from one
 /// security boundary cannot make a later boundary pass accidentally.
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cognition_market_qualified_profile() -> Result<(), Box<dyn std::error::Error>> {
     finding_market_exit_tests::run_finding_publish_discover_admission().await?;

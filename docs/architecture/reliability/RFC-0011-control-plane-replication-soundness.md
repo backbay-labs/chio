@@ -29,6 +29,24 @@ advancement, and hard caps on snapshot materialization and peer-response
 deserialization. The `BudgetReplication.tla` model in the formal-methods plan is
 the design proof for the witness change.
 
+### Post-implementation correction (2026-08-22)
+
+Release qualification exposed a revocation convergence hole left by the
+original composite `(revoked_at, capability_id)` cursor. A second revocation
+inserted in the same second after a peer advanced past a lexically greater
+capability id could sort behind that cursor and never replicate. The current
+implementation pages revocations by the independent dense
+`revocation_delta_log.seq` sequence. `revocation_index` and
+`admission_authority_commit_index` remain projection and authority-commit
+metadata; neither is the wire cursor. Snapshot and status heads carry the dense
+delta sequence alongside the record fields, and pullers require contiguous
+sequence pages. The sequence is bound to a UUIDv7 serving epoch that rotates
+whenever trust-control activates the database as a replication source. A
+restored database therefore cannot reuse old sequence slots under an identity
+cached by a follower, including when the restored and cached heads are equal.
+The historical composite-cursor design excerpts below remain as the original
+RFC record; they no longer describe the implemented revocation wire cursor.
+
 ## Motivation
 
 The article lens ("overload/crashes must fail early, local, and graceful; know

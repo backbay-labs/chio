@@ -93,8 +93,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/products/chio-cli/tests/trust_cluster.rs": allow(
         "2026-08-31",
-        "existing oversized CLI trust-cluster integration suite; capped to current size until split",
-        max_lines=3_229,
+        "existing oversized CLI trust-cluster integration suite with signed delegation and same-second revocation coverage; capped to current size until split",
+        max_lines=3_272,
     ),
     "crates/products/chio-api-protect/src/proxy/tests.rs": allow(
         "2026-08-31",
@@ -248,8 +248,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-control-plane/src/trust_control/cluster_and_reports.rs": allow(
         "2026-08-31",
-        "trust-control cluster and reports surface; capped to current size until split",
-        max_lines=2_754,
+        "trust-control cluster and reports surface with mixed-version revocation cursor coverage; capped to current size until split",
+        max_lines=2_867,
     ),
     "crates/platform/chio-store-sqlite/src/budget_store/tests.rs": allow(
         "2026-08-31",
@@ -418,8 +418,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
         "2026-08-31",
-        "cognition purchase and recovery end-to-end regression suite with durable public-terminal replay validation; capped until split",
-        max_lines=6_171,
+        "cognition purchase and recovery end-to-end regression suite with durable public-terminal replay and closeout dogfood evidence; capped until split",
+        max_lines=6_201,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
         "2026-08-31",
@@ -498,8 +498,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-store-sqlite/src/serving_owner/tests.rs": allow(
         "2026-08-31",
-        "serving-owner provisioning test suite; capped to current size until split",
-        max_lines=2_320,
+        "serving-owner provisioning test suite with sequenced revocation stream coverage; capped to current size until split",
+        max_lines=2_334,
     ),
     "crates/products/chio-api-protect/src/proxy/mediated.rs": allow(
         "2026-08-31",

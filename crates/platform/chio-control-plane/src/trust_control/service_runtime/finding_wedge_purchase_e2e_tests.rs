@@ -184,7 +184,7 @@ const TOKEN_ID: &str = "finding-purchase-token-0001";
 const BUYER_PAYOUT: &str = "0x1111111111111111111111111111111111111111";
 const OTHER_BUYER_PAYOUT: &str = "0x2222222222222222222222222222222222222222";
 const REVEAL_MEDIA_TYPE: &str = "application/json";
-const SEALED_PAYLOAD: &[u8] = br#"{"repro":"baseline fails, candidate passes"}"#;
+const SEALED_PAYLOAD: &[u8] = br#"{"finding":"same-second revocations require a durable monotonic cursor","repro":"insert cap-revoke-leader and cap-revoke-follower at the same revoked_at after the peer cursor advances"}"#;
 const OTHER_PAYLOAD: &[u8] = br#"{"repro":"a different payload entirely"}"#;
 
 // ---------------------------------------------------------------------------
@@ -2895,6 +2895,7 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
     let request_body = canonical_json_bytes(&request)?;
     let path = format!("/v1/findings/{}/purchase", deployment.web.finding_id);
     let expected_finding_id = deployment.web.finding_id.clone();
+    let expected_payload_sha256 = deployment.web.finding.payload_sha256.clone();
 
     // Authentication is checked before any request body is consumed.
     let (status, body) = send(
@@ -3001,6 +3002,26 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
         .ok_or_else(|| missing("public purchase result omitted its record"))?;
     verify_signed_purchase_record(record, &keypair(16).public_key())?;
     assert_eq!(record.body.delivery_receipt_id, first.delivery_receipt.id);
+    let dogfood_result = serde_json::json!({
+        "formatVersion": 1,
+        "scenario": "same-second-revocation-cursor-verified-fix",
+        "findingId": expected_finding_id.clone(),
+        "payloadSha256": expected_payload_sha256,
+        "purchaseRequestId": first.request_id.clone(),
+        "reservationId": first.reservation_id.clone(),
+        "deliveryReceiptId": first.delivery_receipt.id.clone(),
+        "purchaseRecordSha256": digest_of(record)?,
+        "settlement": "captured",
+        "currency": first.accepted_price.currency.clone(),
+        "realizedSpendUnits": first.realized_spend.units,
+        "captureCount": 1,
+        "sellerInvocationCount": 1,
+        "replayByteIdentical": true,
+        "sourceRegression": [
+            "crates/platform/chio-store-sqlite/src/revocation_store.rs",
+            "crates/products/chio-cli/tests/trust_cluster.rs"
+        ]
+    });
     assert_eq!(calls.captures.load(Ordering::SeqCst), 1);
     assert_eq!(calls.releases.load(Ordering::SeqCst), 0);
     assert_eq!(invocations.load(Ordering::SeqCst), 1);
@@ -3069,6 +3090,10 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
     assert_eq!(
         json_body(&body)?["code"],
         serde_json::json!("purchase_terminal_invalid")
+    );
+    println!(
+        "cognition-market-dogfood-result {}",
+        canonical_string(&dogfood_result)?
     );
     Ok(())
 }
@@ -3537,7 +3562,9 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
     ));
 
     let (checkpoint, inclusion_proof) = denial_checkpoint(&response.receipt)?;
-    let future_checkpoint = checkpoint_at(checkpoint.clone(), now.saturating_add(1), &keypair(40))?;
+    let checkpoint_now = now.max(checkpoint.body.issued_at);
+    let future_time = checkpoint_now.saturating_add(1);
+    let future_checkpoint = checkpoint_at(checkpoint.clone(), future_time, &keypair(40))?;
     assert!(matches!(
         lane.coordinator.finalize_denial(
             &lane.purchase.handshake.reservation_id,
@@ -3545,7 +3572,7 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
             &lane.deployment.web.admission,
             &future_checkpoint,
             &inclusion_proof,
-            now,
+            checkpoint_now,
         ),
         Err(PurchaseCoordinatorError::CheckpointEvidence(message))
             if message.contains("ahead of the finalization clock")
@@ -3559,7 +3586,7 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
             &lane.deployment.web.admission,
             &checkpoint,
             &wrong_proof,
-            now,
+            checkpoint_now,
         ),
         Err(PurchaseCoordinatorError::CheckpointEvidence(_))
     ));
@@ -3569,7 +3596,7 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
         &lane.deployment.web.admission,
         &checkpoint,
         &inclusion_proof,
-        now,
+        checkpoint_now,
     )?;
     verify_signed_failed_delivery(&failed, &keypair(17).public_key())?;
     assert!(!failed.body.payout_eligible);
@@ -5792,9 +5819,10 @@ async fn wedge_purchase_terminal_closure_requires_live_authority_status() -> Tes
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn wedge_purchase_reservation_rechecks_seller_authorization_status() -> TestResult {
     let lane = open_lane(LaneOptions::standard()).await?;
-    let now = unix_timestamp_now();
-    lane.coordinator
-        .release(&lane.purchase.handshake.reservation_id, now)?;
+    lane.coordinator.release(
+        &lane.purchase.handshake.reservation_id,
+        unix_timestamp_now(),
+    )?;
 
     let buyer = keypair(32);
     let exchange = handshake(
@@ -5804,6 +5832,7 @@ async fn wedge_purchase_reservation_rechecks_seller_authorization_status() -> Te
         OTHER_BUYER_PAYOUT,
         "finding-purchase-token-revoked-seller",
     )?;
+    let now = unix_timestamp_now();
     let revoked = coordinator_with_status(
         &lane.authority,
         Arc::new(TestTerminalAuthorityStatusResolver::revoked(

@@ -100,7 +100,7 @@ async fn serve_async_inner(
     let revocation_store = config
         .revocation_db_path
         .as_deref()
-        .map(SqliteRevocationStore::open)
+        .map(SqliteRevocationStore::open_replication_source)
         .transpose()
         .map_err(|error| {
             CliError::cli_other_error(format!(
@@ -250,6 +250,7 @@ fn open_configured_joint_authority_store(
     let Some(path) = config.joint_authority_db_path.as_deref() else {
         return Ok(None);
     };
+    SqliteAuthorityStore::ensure_serving_supported()?;
     let lock_root = crate::durable_admission_lock_root(path)?;
     crate::create_private_directory(&lock_root)?;
     SqliteAuthorityStore::provision(path, &lock_root)?;
@@ -455,6 +456,7 @@ mod windows_authority_tests {
             cluster_sync_interval: Duration::from_millis(25),
             roster_policy: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+            finding_market: None,
         };
 
         let Err(error) = serve_async(config, None, None, None, None, None).await else {

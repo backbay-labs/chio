@@ -93,12 +93,17 @@ mod deltas_tests {
             shared[0] as usize, sync_peer_budgets as Puller as usize,
             "budget remains first in the shared round"
         );
-        assert!(
-            !shared
-                .iter()
-                .any(|puller| *puller as usize == sync_peer_revocations as Puller as usize),
-            "revocations must be pulled on an independent round budget, not the shared one"
+        assert_eq!(
+            shared[1] as usize,
+            sync_peer_tool_receipts as Puller as usize
         );
+        assert_eq!(
+            shared[2] as usize,
+            sync_peer_child_receipts as Puller as usize
+        );
+        assert_eq!(shared[3] as usize, sync_peer_lineage as Puller as usize);
+        // `sync_peer_revocations` deliberately takes an additional advertised
+        // contract argument, so it cannot inhabit this shared `Puller` list.
     }
 
     #[test]
@@ -160,6 +165,43 @@ mod deltas_tests {
             .map(|elapsed| elapsed.as_nanos())
             .unwrap_or(0);
         std::env::temp_dir().join(format!("chio-{tag}-{nonce}.sqlite3"))
+    }
+
+    #[test]
+    fn legacy_projection_replay_does_not_count_as_fresh_delta_records() {
+        let db = temp_budget_db("legacy-revocation-replay");
+        let store = SqliteRevocationStore::open(&db).test_unwrap();
+        let records = (0..CLUSTER_SNAPSHOT_RECORD_THRESHOLD)
+            .map(|index| StoredRevocationView {
+                seq: None,
+                capability_id: format!("cap-legacy-{index}"),
+                revoked_at: 10,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            apply_revocation_page(&store, &records).test_unwrap(),
+            CLUSTER_SNAPSHOT_RECORD_THRESHOLD,
+            "the first legacy projection pass applies every fresh revocation"
+        );
+        assert_eq!(
+            apply_revocation_page(&store, &records).test_unwrap(),
+            0,
+            "a completed legacy pass replay must not count idempotent rows toward forced snapshot"
+        );
+
+        let advanced = StoredRevocationView {
+            seq: None,
+            capability_id: records[0].capability_id.clone(),
+            revoked_at: 11,
+        };
+        assert_eq!(
+            apply_revocation_page(&store, &[advanced]).test_unwrap(),
+            1,
+            "a genuinely newer legacy projection row remains a fresh delta"
+        );
+
+        let _ = std::fs::remove_file(&db);
     }
 
     #[test]

@@ -116,6 +116,12 @@ copy_required \
 copy_cutover \
   "target/web3-example-qualification/qualification.log" \
   "${dest_root}/logs/example-qualification.log"
+copy_required \
+  "target/web3-runtime-qualification/devnet-smoke/deployments/local-devnet.json" \
+  "${dest_root}/contracts/deployments/local-devnet.json"
+copy_required \
+  "target/web3-runtime-qualification/devnet-smoke/reports/local-devnet-qualification.json" \
+  "${dest_root}/contracts/reports/local-devnet-qualification.json"
 copy_if_exists \
   "contracts/deployments/local-devnet.json" \
   "${dest_root}/historical/contracts/deployments/local-devnet.json"
