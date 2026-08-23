@@ -439,9 +439,9 @@ fn sync_peer(state: &TrustServiceState, peer_url: &str) -> Result<(), CliError> 
                 return Err(error);
             }
         };
-        if snapshot_contract != revocation_contract {
+        if !revocation_snapshot_contract_is_compatible(&revocation_contract, &snapshot_contract) {
             let error = CliError::cli_other_error(
-                "peer changed its revocation stream contract between status and snapshot"
+                "peer changed or regressed its revocation stream contract between status and snapshot"
                     .to_string(),
             );
             update_peer_failure(state, peer_url, error.to_string());

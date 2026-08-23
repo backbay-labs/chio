@@ -149,6 +149,26 @@ pub(crate) fn revocation_peer_contract(
     }
 }
 
+pub(crate) fn revocation_snapshot_contract_is_compatible(
+    status: &RevocationPeerContract,
+    snapshot: &RevocationPeerContract,
+) -> bool {
+    match (status, snapshot) {
+        (RevocationPeerContract::Legacy, RevocationPeerContract::Legacy) => true,
+        (
+            RevocationPeerContract::Current {
+                stream_id: status_stream_id,
+                head_seq: status_head_seq,
+            },
+            RevocationPeerContract::Current {
+                stream_id: snapshot_stream_id,
+                head_seq: snapshot_head_seq,
+            },
+        ) => status_stream_id == snapshot_stream_id && snapshot_head_seq >= status_head_seq,
+        _ => false,
+    }
+}
+
 /// The per-round pull budget was reached. This is a LOCAL cap on how much a
 /// single peer is pulled per sync round, NOT peer misbehavior: a large but
 /// well-ordered backlog legitimately exceeds it. The puller stops the round and
@@ -803,6 +823,41 @@ mod pull_budget_tests {
         assert!(matches!(
             revocation_peer_contract(&incomplete),
             Err(PeerProtocolError::IncompleteRevocationStreamContract)
+        ));
+    }
+
+    #[test]
+    fn revocation_snapshot_contract_accepts_advancing_head_and_rejects_regression() {
+        let status = RevocationPeerContract::Current {
+            stream_id: "stream-a".to_string(),
+            head_seq: 12,
+        };
+        let advanced_snapshot = RevocationPeerContract::Current {
+            stream_id: "stream-a".to_string(),
+            head_seq: 13,
+        };
+        assert!(revocation_snapshot_contract_is_compatible(
+            &status,
+            &advanced_snapshot
+        ));
+        assert!(revocation_snapshot_contract_is_compatible(&status, &status));
+        assert!(!revocation_snapshot_contract_is_compatible(
+            &status,
+            &RevocationPeerContract::Current {
+                stream_id: "stream-a".to_string(),
+                head_seq: 11,
+            }
+        ));
+        assert!(!revocation_snapshot_contract_is_compatible(
+            &status,
+            &RevocationPeerContract::Current {
+                stream_id: "stream-b".to_string(),
+                head_seq: 13,
+            }
+        ));
+        assert!(!revocation_snapshot_contract_is_compatible(
+            &status,
+            &RevocationPeerContract::Legacy
         ));
     }
 

@@ -48,8 +48,8 @@ pub(crate) use pull_budget::{
     current_revocation_cursor_requires_snapshot, ensure_current_revocation_cursor,
     ensure_legacy_revocation_page_ascending, ensure_revocation_cursor_version,
     ensure_revocation_page_ascending, require_contiguous_page, require_forward_progress,
-    revocation_peer_contract, PeerProtocolError, PullError, PullRoundBudget,
-    RevocationPeerContract, PEER_ROUND_WALL_CLOCK_BUDGET,
+    revocation_peer_contract, revocation_snapshot_contract_is_compatible, PeerProtocolError,
+    PullError, PullRoundBudget, RevocationPeerContract, PEER_ROUND_WALL_CLOCK_BUDGET,
 };
 pub(crate) use snapshots::{
     apply_cluster_snapshot, cluster_replication_heads, handle_internal_authority_snapshot,
