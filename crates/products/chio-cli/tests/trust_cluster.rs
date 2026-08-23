@@ -1314,7 +1314,6 @@ fn run_trust_control_cluster_proving_scenario(run_index: usize, run_total: usize
         },
     );
 
-    revocation_proof::wait_for_fresh_unix_second();
     let revoked_leader = post_json(
         &client,
         &format!("{leader_url}/v1/revocations"),
@@ -1322,16 +1321,17 @@ fn run_trust_control_cluster_proving_scenario(run_index: usize, run_total: usize
         &json!({"capabilityId": "cap-revoke-leader"}),
     );
     assert_eq!(revoked_leader["revoked"].as_bool(), Some(true));
-    let revoked_follower = post_json(
-        &client,
-        &format!("{follower_url}/v1/revocations"),
-        service_token,
-        &json!({"capabilityId": "cap-revoke-follower"}),
-    );
-    assert_eq!(revoked_follower["revoked"].as_bool(), Some(true));
     assert_expected_write_visibility_metadata(&revoked_leader, &leader_url);
-    assert_expected_write_visibility_metadata(&revoked_follower, &leader_url);
     assert_revocation_visible(&client, &leader_url, service_token, "cap-revoke-leader");
+    let revocation_dbs = [&revocation_db_b, &revocation_db_a];
+    let leader_revocation_db = revocation_dbs[usize::from(leader_url == url_a)];
+    revocation_proof::insert_same_second_backfill_after_follower_cursor(
+        &client,
+        &leader_url,
+        &follower_url,
+        service_token,
+        leader_revocation_db,
+    );
     assert_revocation_visible(&client, &leader_url, service_token, "cap-revoke-follower");
 
     revocation_proof::assert_cluster_pair_same_second(&client, &leader_url, service_token);

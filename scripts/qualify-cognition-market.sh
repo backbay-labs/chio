@@ -61,6 +61,10 @@ run_gate revocation-store-epoch-index \
   cargo test -p chio-store-sqlite \
     v3_store_migrates_stream_identity_and_projection_history_index --lib -- \
     --nocapture --test-threads=1
+run_gate revocation-store-restore-epoch \
+  cargo test -p chio-store-sqlite \
+    replication_source_epoch_rotates_after_restored_sequence_reuse --lib -- \
+    --nocapture --test-threads=1
 run_gate mixed-version-revocation-delta \
   cargo test -p chio-control-plane \
     revocation_delta_endpoint_negotiates_legacy_and_sequence_cursors --lib -- \

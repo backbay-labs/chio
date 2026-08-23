@@ -82,7 +82,7 @@ mod cluster_and_reports_tests {
         let revocation_store = config
             .revocation_db_path
             .as_deref()
-            .map(SqliteRevocationStore::open)
+            .map(SqliteRevocationStore::open_replication_source)
             .transpose()
             .test_unwrap()
             .map(Arc::new);

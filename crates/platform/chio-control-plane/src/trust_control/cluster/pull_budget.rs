@@ -862,7 +862,7 @@ mod pull_budget_tests {
     }
 
     #[test]
-    fn revocation_cursor_detects_stream_replacement_and_head_rollback() {
+    fn revocation_cursor_detects_equal_head_stream_replacement_and_head_rollback() {
         let cursor = RevocationCursor {
             cursor_version: Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
             stream_id: Some("stream-a".to_string()),

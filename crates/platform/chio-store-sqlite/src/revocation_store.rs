@@ -64,6 +64,23 @@ const REVOCATION_STORE_LEGACY_ANCHOR_TABLES: &[&str] = &["revoked_capabilities"]
 
 impl SqliteRevocationStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, RevocationStoreError> {
+        Self::open_with_replication_epoch(path, false)
+    }
+
+    /// Open a store that will advertise its delta stream to replication peers.
+    ///
+    /// Every serving activation rotates the stream identity before the caller
+    /// can advertise a cursor. A database restored to an earlier dense-log head
+    /// therefore cannot reuse sequence numbers under an identity cached by a
+    /// follower. Ordinary non-serving opens retain the stored identity.
+    pub fn open_replication_source(path: impl AsRef<Path>) -> Result<Self, RevocationStoreError> {
+        Self::open_with_replication_epoch(path, true)
+    }
+
+    fn open_with_replication_epoch(
+        path: impl AsRef<Path>,
+        rotate_replication_epoch: bool,
+    ) -> Result<Self, RevocationStoreError> {
         let path = path.as_ref();
         let ephemeral = path_opens_in_memory(path);
         if !ephemeral {
@@ -99,6 +116,9 @@ impl SqliteRevocationStore {
         )
         .map_err(|error| RevocationStoreError::Sync(error.to_string()))?;
         verify_revocation_foreign_keys(&connection)?;
+        if rotate_replication_epoch {
+            rotate_revocation_stream_identity(&mut connection)?;
+        }
 
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
@@ -409,11 +429,13 @@ impl SqliteRevocationStore {
         })
     }
 
-    /// Durable identity of this append-only revocation stream instance.
+    /// Identity of this append-only revocation serving epoch.
     ///
-    /// The identity survives an ordinary reopen and a database snapshot restore,
-    /// but a newly created replacement database receives a different value. A
-    /// replication cursor is valid only for the stream identity that issued it.
+    /// Ordinary non-serving opens preserve the stored value. A trust-control
+    /// replication source rotates it at activation, before advertising status,
+    /// so a database rollback cannot reuse sequence numbers under an identity
+    /// cached during an earlier serving epoch. A replication cursor is valid
+    /// only for the identity that issued it.
     pub fn revocation_stream_id(&self) -> Result<String, RevocationStoreError> {
         self.read(|transaction| {
             transaction
@@ -888,6 +910,23 @@ pub(crate) fn initialize_revocation_schema(
     Ok(())
 }
 
+fn rotate_revocation_stream_identity(
+    connection: &mut Connection,
+) -> Result<(), RevocationStoreError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let updated = transaction.execute(
+        "UPDATE revocation_stream_meta SET stream_id = ?1 WHERE singleton = 1",
+        [uuid::Uuid::now_v7().to_string()],
+    )?;
+    if updated != 1 {
+        return Err(RevocationStoreError::Sync(
+            "revocation stream identity row is missing".to_string(),
+        ));
+    }
+    transaction.commit()?;
+    Ok(())
+}
+
 fn ensure_revocation_index_column(connection: &Connection) -> Result<(), RevocationStoreError> {
     let mut statement = connection.prepare("PRAGMA table_info(revoked_capabilities)")?;
     let columns = statement
@@ -1272,6 +1311,52 @@ mod tests {
 
         let _ = fs::remove_file(first_path);
         let _ = fs::remove_file(second_path);
+        Ok(())
+    }
+
+    #[test]
+    fn replication_source_epoch_rotates_after_restored_sequence_reuse(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let path = unique_db_path("chio-rev-stream-restore");
+        let restored_snapshot = unique_db_path("chio-rev-stream-snapshot");
+        let store = SqliteRevocationStore::open(&path)?;
+        store.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-first".to_string(),
+            revoked_at: 10,
+        })?;
+        drop(store);
+        fs::copy(&path, &restored_snapshot)?;
+
+        let live = SqliteRevocationStore::open_replication_source(&path)?;
+        let live_stream_id = live.revocation_stream_id()?;
+        live.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-live-second".to_string(),
+            revoked_at: 20,
+        })?;
+        assert_eq!(
+            live.latest_revocation_stream_head()?.map(|row| row.seq),
+            Some(2)
+        );
+        drop(live);
+
+        fs::copy(&restored_snapshot, &path)?;
+        let restored = SqliteRevocationStore::open_replication_source(&path)?;
+        let restored_stream_id = restored.revocation_stream_id()?;
+        restored.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-restored-second".to_string(),
+            revoked_at: 20,
+        })?;
+        assert_eq!(
+            restored.latest_revocation_stream_head()?.map(|row| row.seq),
+            Some(2)
+        );
+        assert_ne!(
+            live_stream_id, restored_stream_id,
+            "equal restored heads must belong to distinct serving epochs"
+        );
+
+        let _ = fs::remove_file(path);
+        let _ = fs::remove_file(restored_snapshot);
         Ok(())
     }
 

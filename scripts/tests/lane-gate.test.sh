@@ -1561,6 +1561,8 @@ if 'rg -n "skipping finding "' not in cognition_qualification:
     raise SystemExit("cognition qualification does not reject every finding CLI skip")
 if "skipping finding .* transport test" in cognition_qualification:
     raise SystemExit("cognition qualification still accepts non-transport finding skips")
+if "replication_source_epoch_rotates_after_restored_sequence_reuse" not in cognition_qualification:
+    raise SystemExit("cognition qualification lacks restored revocation epoch coverage")
 release_workflow = Path(".github/workflows/release-qualification.yml").read_text(
     encoding="utf-8"
 )

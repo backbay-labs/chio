@@ -24,8 +24,9 @@ Run the focused closeout gate from a clean candidate commit:
 
 The gate executes the bounded-profile contract, production-router composition,
 dense append-only revocation store regression, legacy-readable revocation
-endpoint, fail-closed version-3 puller, retired-cursor snapshot recovery,
-projection-bounded cluster snapshot, non-skippable five-run cluster proving
+endpoint, fail-closed version-4 puller, retired-cursor snapshot recovery,
+restored-database serving-epoch rotation, projection-bounded cluster snapshot,
+non-skippable five-run cluster proving
 scenario, authenticated public purchase route, zero-charge digest-mismatch
 lane, CLI Finding surface, transaction passport, open-market flow, and
 authenticated SQLite pool ledger. It rejects a dirty worktree, a mismatched
@@ -33,12 +34,14 @@ hosted candidate SHA, skipped clustered qualification evidence, or skipped CLI
 transport evidence.
 
 The public purchase gate dogfoods the real same-second revocation-cursor
-regression found while running the full release gate. The store, endpoint, and
-cluster proving gates must pass before the qualifier accepts that scenario as
-verified. It sells the verified fix as a signed Finding through the production
-router, authoritative
-coordinator, durable kernel, reference seller, SQLite authority, and local
-reversible-hold capture path. Qualification fails unless the cycle records one
+regression found while running the full release gate. The live cluster proof
+requires the follower to expose an advanced peer cursor before a controlled
+lower-sorting record is inserted at the identical timestamp. The store,
+endpoint, restored-epoch, and cluster proving gates must pass before the
+qualifier accepts that scenario as verified. It sells the verified fix as a
+signed Finding through the production router, authoritative coordinator,
+durable kernel, reference seller, SQLite authority, and local reversible-hold
+capture path. Qualification fails unless the cycle records one
 capture, one seller invocation, the signed delivery and purchase artifacts,
 and byte-identical replay without a second capture.
 

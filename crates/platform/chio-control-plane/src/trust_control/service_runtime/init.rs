@@ -100,7 +100,7 @@ async fn serve_async_inner(
     let revocation_store = config
         .revocation_db_path
         .as_deref()
-        .map(SqliteRevocationStore::open)
+        .map(SqliteRevocationStore::open_replication_source)
         .transpose()
         .map_err(|error| {
             CliError::cli_other_error(format!(
