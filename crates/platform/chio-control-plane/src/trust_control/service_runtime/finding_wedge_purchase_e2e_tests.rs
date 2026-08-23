@@ -3563,11 +3563,8 @@ async fn wedge_purchase_digest_mismatch_denies_and_releases() -> TestResult {
 
     let (checkpoint, inclusion_proof) = denial_checkpoint(&response.receipt)?;
     let checkpoint_now = now.max(checkpoint.body.issued_at);
-    let future_checkpoint = checkpoint_at(
-        checkpoint.clone(),
-        checkpoint_now.saturating_add(1),
-        &keypair(40),
-    )?;
+    let future_time = checkpoint_now.saturating_add(1);
+    let future_checkpoint = checkpoint_at(checkpoint.clone(), future_time, &keypair(40))?;
     assert!(matches!(
         lane.coordinator.finalize_denial(
             &lane.purchase.handshake.reservation_id,
