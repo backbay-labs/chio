@@ -24,7 +24,8 @@ Run the focused closeout gate from a clean candidate commit:
 
 The gate executes the bounded-profile contract, production-router composition,
 dense append-only revocation store regression, legacy-readable revocation
-endpoint, fail-closed version-2 puller, non-skippable five-run cluster proving
+endpoint, fail-closed version-3 puller, retired-cursor snapshot recovery,
+projection-bounded cluster snapshot, non-skippable five-run cluster proving
 scenario, authenticated public purchase route, zero-charge digest-mismatch
 lane, CLI Finding surface, transaction passport, open-market flow, and
 authenticated SQLite pool ledger. It rejects a dirty worktree, a mismatched

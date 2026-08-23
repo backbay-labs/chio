@@ -64,6 +64,10 @@ run_gate mixed-version-revocation-delta \
 run_gate revocation-puller-soundness \
   cargo test -p chio-control-plane pull_budget_tests --lib -- \
     --nocapture --test-threads=1
+run_gate revocation-snapshot-soundness \
+  cargo test -p chio-control-plane \
+    revocation_snapshot_is_projection_bounded_and_epoch_bound --lib -- \
+    --nocapture --test-threads=1
 run_gate same-second-revocation-cluster \
   cargo test -p chio-cli --test trust_cluster \
     trust_control_cluster_repeat_run_qualification -- \

@@ -86,6 +86,7 @@ pub(crate) fn cluster_replication_heads(
         lineage_seq,
         budget_seq,
         revocation_cursor: revocation_cursor.map(|stored| RevocationCursorView {
+            cursor_version: REVOCATION_SEQUENCE_CURSOR_VERSION,
             seq: Some(stored.seq),
             revoked_at: stored.record.revoked_at,
             capability_id: stored.record.capability_id,
@@ -278,6 +279,8 @@ pub(crate) fn apply_cluster_snapshot(
         budget_origin_ack_heads,
     } = snapshot;
 
+    validate_revocation_snapshot(&revocations, replication.revocation_cursor.as_ref())?;
+
     if let (Some(path), Some(authority_view)) =
         (state.config.authority_db_path.as_deref(), authority)
     {
@@ -424,6 +427,35 @@ pub(crate) fn apply_cluster_snapshot(
     Ok(())
 }
 
+fn validate_revocation_snapshot(
+    records: &[RevocationRecordView],
+    cursor: Option<&RevocationCursorView>,
+) -> Result<(), CliError> {
+    let Some(cursor) = cursor else {
+        if records.is_empty() {
+            return Ok(());
+        }
+        return Err(CliError::cli_other_error(
+            "revocation snapshot carried projection records without a stream head".to_string(),
+        ));
+    };
+    ensure_revocation_cursor_version(Some(cursor.cursor_version))
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    if cursor.seq.is_none() {
+        return Err(CliError::cli_other_error(
+            "revocation snapshot stream head omitted its dense sequence".to_string(),
+        ));
+    }
+    if !records.iter().any(|record| {
+        record.capability_id == cursor.capability_id && record.revoked_at == cursor.revoked_at
+    }) {
+        return Err(CliError::cli_other_error(
+            "revocation snapshot stream head is absent from the current projection".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn seed_cluster_authority_from_snapshot(
     state: &TrustServiceState,
     snapshot_election_term: u64,
@@ -493,27 +525,20 @@ fn seed_cluster_authority_from_snapshot(
 fn collect_revocation_views(
     store: &SqliteRevocationStore,
 ) -> Result<(Vec<RevocationRecordView>, Option<RevocationCursorView>), CliError> {
-    let mut records = Vec::new();
-    let mut cursor = 0u64;
-    let mut head = None;
-    loop {
-        let batch = store.list_revocations_after_seq(MAX_LIST_LIMIT, cursor)?;
-        if batch.is_empty() {
-            break;
-        }
-        for stored in batch {
-            cursor = stored.seq;
-            head = Some(RevocationCursorView {
-                seq: Some(stored.seq),
-                revoked_at: stored.record.revoked_at,
-                capability_id: stored.record.capability_id.clone(),
-            });
-            records.push(RevocationRecordView {
-                capability_id: stored.record.capability_id,
-                revoked_at: stored.record.revoked_at,
-            });
-        }
-    }
+    let (projection, head) = store.export_revocation_snapshot()?;
+    let records = projection
+        .into_iter()
+        .map(|record| RevocationRecordView {
+            capability_id: record.capability_id,
+            revoked_at: record.revoked_at,
+        })
+        .collect();
+    let head = head.map(|stored| RevocationCursorView {
+        cursor_version: REVOCATION_SEQUENCE_CURSOR_VERSION,
+        seq: Some(stored.seq),
+        revoked_at: stored.record.revoked_at,
+        capability_id: stored.record.capability_id,
+    });
     Ok((records, head))
 }
 

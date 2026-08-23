@@ -83,6 +83,7 @@ pub(crate) fn authority_snapshot_view(snapshot: AuthoritySnapshot) -> AuthorityS
 
 pub(crate) fn revocation_cursor_view(cursor: RevocationCursor) -> RevocationCursorView {
     RevocationCursorView {
+        cursor_version: cursor.cursor_version,
         seq: cursor.seq,
         revoked_at: cursor.revoked_at,
         capability_id: cursor.capability_id,
@@ -117,6 +118,7 @@ pub(crate) fn authority_snapshot_from_view(view: AuthoritySnapshotView) -> Autho
 
 pub(crate) fn revocation_cursor_from_view(view: RevocationCursorView) -> RevocationCursor {
     RevocationCursor {
+        cursor_version: view.cursor_version,
         seq: view.seq,
         revoked_at: view.revoked_at,
         capability_id: view.capability_id,

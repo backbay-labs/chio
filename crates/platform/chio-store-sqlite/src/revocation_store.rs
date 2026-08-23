@@ -388,6 +388,59 @@ impl SqliteRevocationStore {
                 .transpose()
         })
     }
+
+    /// Export the current revoked-capability projection and the append-only
+    /// stream head from one SQLite read snapshot.
+    ///
+    /// Cluster snapshots transfer current state, not mutation history. Reading
+    /// both values in one transaction ensures the advertised stream head never
+    /// advances past a revocation omitted from the exported projection.
+    pub fn export_revocation_snapshot(
+        &self,
+    ) -> Result<(Vec<RevocationRecord>, Option<StoredRevocation>), RevocationStoreError> {
+        self.read(|transaction| {
+            let records = {
+                let mut statement = transaction.prepare(
+                    "SELECT capability_id, revoked_at FROM revoked_capabilities \
+                     ORDER BY revoked_at ASC, capability_id ASC",
+                )?;
+                let records = statement
+                    .query_map([], |row| {
+                        Ok(RevocationRecord {
+                            capability_id: row.get(0)?,
+                            revoked_at: row.get(1)?,
+                        })
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                records
+            };
+            let head = transaction
+                .query_row(
+                    "SELECT seq, capability_id, revoked_at \
+                     FROM revocation_delta_log ORDER BY seq DESC LIMIT 1",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                        ))
+                    },
+                )
+                .optional()?
+                .map(|(seq, capability_id, revoked_at)| {
+                    Ok::<StoredRevocation, RevocationStoreError>(StoredRevocation {
+                        seq: stored_index(seq)?,
+                        record: RevocationRecord {
+                            capability_id,
+                            revoked_at,
+                        },
+                    })
+                })
+                .transpose()?;
+            Ok((records, head))
+        })
+    }
 }
 
 impl RevocationStore for SqliteRevocationStore {

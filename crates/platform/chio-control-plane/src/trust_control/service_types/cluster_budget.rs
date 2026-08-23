@@ -214,6 +214,7 @@ pub struct LeaseTerminateRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RevocationCursorView {
+    pub(crate) cursor_version: u8,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) seq: Option<u64>,
     pub(crate) revoked_at: i64,
@@ -318,7 +319,9 @@ pub(crate) struct RevocationDeltaResponse {
     pub(crate) records: Vec<StoredRevocationView>,
 }
 
-pub(crate) const REVOCATION_SEQUENCE_CURSOR_VERSION: u8 = 2;
+/// Dense append-only revocation stream epoch. Version 2 exposed the mutable
+/// projection sequence and cannot share cursors with the independent delta log.
+pub(crate) const REVOCATION_SEQUENCE_CURSOR_VERSION: u8 = 3;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

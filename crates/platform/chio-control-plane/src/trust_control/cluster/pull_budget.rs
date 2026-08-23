@@ -229,7 +229,9 @@ pub(crate) fn require_forward_progress(
 
 /// Validate the revocation cursor contract selected by an upgraded puller.
 ///
-/// Version 2 is a dense append-only per-store sequence. The legacy tuple cursor
+/// Version 3 is a dense append-only per-store sequence. Version 2 exposed a
+/// different mutable-projection sequence, so its cursor is a retired stream
+/// epoch and must force a snapshot instead of being reused. The legacy tuple cursor
 /// is unsafe for continuous polling because a same-second lexical backfill can
 /// sort before an already persisted tuple. Upgraded pullers therefore reject an
 /// unversioned response rather than silently downgrade. Legacy endpoints remain
@@ -244,12 +246,22 @@ pub(crate) fn ensure_revocation_cursor_version(
     }
 }
 
+pub(crate) fn ensure_current_revocation_cursor(
+    cursor: Option<&RevocationCursor>,
+) -> Result<(), PeerProtocolError> {
+    if let Some(cursor) = cursor {
+        ensure_revocation_cursor_version(Some(cursor.cursor_version))?;
+    }
+    Ok(())
+}
+
 pub(crate) fn ensure_revocation_page_ascending(
     cursor: Option<&RevocationCursor>,
     cursor_version: Option<u8>,
     records: &[StoredRevocationView],
 ) -> Result<RevocationCursor, PeerProtocolError> {
     ensure_revocation_cursor_version(cursor_version)?;
+    ensure_current_revocation_cursor(cursor)?;
     ensure_sequence_revocation_page_ascending(cursor, records)
 }
 
@@ -272,6 +284,7 @@ fn ensure_sequence_revocation_page_ascending(
         page_max_seq: after_seq,
     })?;
     Ok(RevocationCursor {
+        cursor_version: REVOCATION_SEQUENCE_CURSOR_VERSION,
         seq: record.seq,
         revoked_at: record.revoked_at,
         capability_id: record.capability_id.clone(),
@@ -449,6 +462,7 @@ mod pull_budget_tests {
             revoked_at,
         };
         let cursor = RevocationCursor {
+            cursor_version: REVOCATION_SEQUENCE_CURSOR_VERSION,
             seq: Some(5),
             revoked_at: 5,
             capability_id: "cap-b".to_string(),
@@ -463,6 +477,7 @@ mod pull_budget_tests {
             panic!("a cursor-anchored dense page is valid");
         };
         assert_eq!(head.seq, Some(8));
+        assert_eq!(head.cursor_version, REVOCATION_SEQUENCE_CURSOR_VERSION);
 
         // A forward jump is a protocol violation even when the page is otherwise
         // ascending: sequence 8 has not been returned.
@@ -500,7 +515,7 @@ mod pull_budget_tests {
     }
 
     #[test]
-    fn revocation_wire_decodes_legacy_delta_and_snapshot_cursor() {
+    fn revocation_wire_decodes_legacy_delta_but_rejects_legacy_snapshot_cursor() {
         let query: RevocationDeltaQuery =
             serde_urlencoded::from_str("afterRevokedAt=11&afterCapabilityId=cap-old&limit=25")
                 .test_unwrap();
@@ -516,14 +531,11 @@ mod pull_budget_tests {
         assert_eq!(response.cursor_version, None);
         assert_eq!(response.records[0].seq, None);
 
-        let cursor: RevocationCursorView = serde_json::from_value(serde_json::json!({
+        let cursor = serde_json::from_value::<RevocationCursorView>(serde_json::json!({
             "revokedAt": 11,
             "capabilityId": "cap-old"
-        }))
-        .test_unwrap();
-        assert_eq!(cursor.seq, None);
-        let encoded = serde_json::to_value(cursor).test_unwrap();
-        assert!(encoded.get("seq").is_none());
+        }));
+        assert!(cursor.is_err(), "legacy snapshot cursors must fail closed");
     }
 
     #[test]
@@ -536,6 +548,16 @@ mod pull_budget_tests {
         assert!(matches!(
             ensure_revocation_page_ascending(None, None, &[legacy_record]),
             Err(PeerProtocolError::LegacyRevocationCursorUnsupported)
+        ));
+        let retired = RevocationCursor {
+            cursor_version: 2,
+            seq: Some(9),
+            revoked_at: 5,
+            capability_id: "cap-retired".to_string(),
+        };
+        assert!(matches!(
+            ensure_current_revocation_cursor(Some(&retired)),
+            Err(PeerProtocolError::UnsupportedRevocationCursorVersion { version: 2 })
         ));
     }
 

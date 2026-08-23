@@ -444,7 +444,7 @@ mod cluster_and_reports_tests {
         );
 
         // An old client sends only the tuple cursor. The upgraded server must
-        // preserve that pagination and omit every version-2 field.
+        // preserve that pagination and omit every sequence-cursor field.
         let legacy = handle_internal_revocations_delta(
             State(state.clone()),
             Query(RevocationDeltaQuery {
@@ -467,7 +467,7 @@ mod cluster_and_reports_tests {
             json!([{"capabilityId": "cap-b", "revokedAt": 10}])
         );
 
-        // A new client explicitly negotiates version 2 and gets the durable
+        // A new client explicitly negotiates version 3 and gets the durable
         // insertion sequence, including same-second backfills.
         let sequence = handle_internal_revocations_delta(
             State(state.clone()),
@@ -488,11 +488,22 @@ mod cluster_and_reports_tests {
                 .test_unwrap(),
         )
         .test_unwrap();
-        assert_eq!(sequence["cursorVersion"], 2);
+        assert_eq!(sequence["cursorVersion"], 3);
         assert_eq!(sequence["records"][0]["seq"], 1);
         assert_eq!(sequence["records"][0]["capabilityId"], "cap-b");
         assert_eq!(sequence["records"][1]["seq"], 2);
         assert_eq!(sequence["records"][1]["capabilityId"], "cap-a");
+
+        let retired = handle_internal_revocations_delta(
+            State(state.clone()),
+            Query(RevocationDeltaQuery {
+                cursor_version: Some(2),
+                ..RevocationDeltaQuery::default()
+            }),
+            headers.clone(),
+        )
+        .await;
+        assert_eq!(retired.status(), StatusCode::BAD_REQUEST);
 
         let unsupported = handle_internal_revocations_delta(
             State(state),
@@ -1572,6 +1583,7 @@ mod cluster_and_reports_tests {
             &state,
             "http://node-b",
             RevocationCursor {
+                cursor_version: REVOCATION_SEQUENCE_CURSOR_VERSION,
                 seq: Some(7),
                 revoked_at: 5,
                 capability_id: "cap-1".to_string(),
@@ -1952,6 +1964,14 @@ mod cluster_and_reports_tests {
                     revoked_at: 17,
                 })
                 .test_unwrap();
+            for revoked_at in [18, 19] {
+                revocation_store
+                    .upsert_revocation(&RevocationRecord {
+                        capability_id: "cap-1".to_string(),
+                        revoked_at,
+                    })
+                    .test_unwrap();
+            }
         }
         {
             let receipt_store = SqliteReceiptStore::open(&source_receipt_db).test_unwrap();
@@ -1996,8 +2016,11 @@ mod cluster_and_reports_tests {
                 .as_ref()
                 .test_unwrap()
                 .seq,
-            Some(1)
+            Some(3)
         );
+        assert_eq!(snapshot.revocations.len(), 1);
+        assert_eq!(snapshot.revocations[0].capability_id, "cap-1");
+        assert_eq!(snapshot.revocations[0].revoked_at, 19);
         assert_eq!(snapshot.budget_mutation_events.len(), 2);
         assert_eq!(
             snapshot
@@ -2026,6 +2049,7 @@ mod cluster_and_reports_tests {
             .test_unwrap();
         assert_eq!(revocations.len(), 1);
         assert_eq!(revocations[0].capability_id, "cap-1");
+        assert_eq!(revocations[0].revoked_at, 19);
 
         let receipt_store = SqliteReceiptStore::open(&target_receipt_db).test_unwrap();
         assert_eq!(
@@ -2085,6 +2109,13 @@ mod cluster_and_reports_tests {
                 .capability_id,
             "cap-1"
         );
+        let installed_revocation_cursor =
+            peer_revocation_cursor(&target_state, "http://node-a").test_unwrap();
+        assert_eq!(
+            installed_revocation_cursor.cursor_version,
+            REVOCATION_SEQUENCE_CURSOR_VERSION
+        );
+        assert_eq!(installed_revocation_cursor.seq, Some(3));
         assert_eq!(
             with_peer_state(&target_state, "http://node-a", |peer| peer
                 .snapshot_applied_count),
@@ -2095,6 +2126,72 @@ mod cluster_and_reports_tests {
             Some(Some(generated_at))
         );
         assert!(!peer_should_force_snapshot(&target_state, "http://node-a"));
+    }
+
+    #[test]
+    fn revocation_snapshot_is_projection_bounded_and_epoch_bound() {
+        let source_revocation_db =
+            unique_temp_path("cluster-source-revocation-snapshot", "sqlite3");
+        let target_revocation_db =
+            unique_temp_path("cluster-target-revocation-snapshot", "sqlite3");
+        let source_state = state_with_cluster(
+            "http://node-a",
+            &["http://node-b"],
+            None,
+            Some(source_revocation_db.clone()),
+            None,
+        );
+        let target_state = state_with_cluster(
+            "http://node-b",
+            &["http://node-a"],
+            None,
+            Some(target_revocation_db.clone()),
+            None,
+        );
+        let source_store = SqliteRevocationStore::open(&source_revocation_db).test_unwrap();
+        for revoked_at in 1..=32 {
+            source_store
+                .upsert_revocation(&RevocationRecord {
+                    capability_id: "cap-one".to_string(),
+                    revoked_at,
+                })
+                .test_unwrap();
+        }
+
+        let mut snapshot = build_cluster_state_snapshot(&source_state).test_unwrap();
+        assert_eq!(snapshot.revocations.len(), 1);
+        assert_eq!(snapshot.revocations[0].revoked_at, 32);
+        let cursor = snapshot
+            .replication
+            .revocation_cursor
+            .as_ref()
+            .test_unwrap();
+        assert_eq!(cursor.cursor_version, REVOCATION_SEQUENCE_CURSOR_VERSION);
+        assert_eq!(cursor.seq, Some(32));
+
+        snapshot
+            .replication
+            .revocation_cursor
+            .as_mut()
+            .test_unwrap()
+            .cursor_version = 2;
+        let error = apply_cluster_snapshot(&target_state, "http://node-a", snapshot)
+            .test_unwrap_err()
+            .to_string();
+        assert!(error.contains("unsupported revocation cursor version 2"));
+        assert!(SqliteRevocationStore::open(&target_revocation_db)
+            .test_unwrap()
+            .list_revocations_after(MAX_LIST_LIMIT, None, None)
+            .test_unwrap()
+            .is_empty());
+        assert_eq!(
+            with_peer_state(&target_state, "http://node-a", |peer| peer
+                .snapshot_applied_count),
+            Some(0)
+        );
+
+        let _ = std::fs::remove_file(source_revocation_db);
+        let _ = std::fs::remove_file(target_revocation_db);
     }
 
     #[test]

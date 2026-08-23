@@ -579,6 +579,11 @@ fn sync_peer_revocations(
             break;
         }
         let cursor = peer_revocation_cursor(state, peer_url);
+        ensure_current_revocation_cursor(cursor.as_ref()).map_err(|error| {
+            PullError::ForceSnapshot(CliError::cli_other_error(format!(
+                "revocation cursor stream epoch changed; snapshot required: {error}"
+            )))
+        })?;
         let response = client.revocation_deltas(&RevocationDeltaQuery {
             cursor_version: Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
             after_seq: Some(cursor.as_ref().and_then(|value| value.seq).unwrap_or(0)),
@@ -595,7 +600,7 @@ fn sync_peer_revocations(
         if round.charge_page(response.records.len() as u64).is_err() {
             break;
         }
-        // Version 2 pages advance through a dense append-only revocation log.
+        // Version 3 pages advance through a dense append-only revocation log.
         // The validator rejects a missing cursor successor, an interior gap, or
         // a legacy response before the local cursor can advance past omitted
         // revocations.

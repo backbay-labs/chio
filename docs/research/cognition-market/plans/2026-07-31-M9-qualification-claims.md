@@ -94,7 +94,8 @@ the focused exits, schema and formal registries, generated artifacts, formal
 and strict Rust verification, and cumulative workspace gates recorded below.
 `./scripts/qualify-cognition-market.sh` binds those focused exits, the
 dense append-only revocation store regression, legacy-readable revocation
-endpoint, fail-closed version-2 puller, non-skippable five-run cluster proving
+endpoint, fail-closed version-3 puller, retired-cursor snapshot recovery,
+projection-bounded cluster snapshot, non-skippable five-run cluster proving
 scenario, live local purchase route, CLI handlers, transaction passport, and
 authenticated pool ledger into one exact-candidate report under
 `target/release-qualification/cognition-market/`.
