@@ -308,6 +308,18 @@ impl SqliteRevocationStore {
     }
 
     pub fn upsert_revocation(&self, record: &RevocationRecord) -> Result<(), RevocationStoreError> {
+        self.upsert_revocation_if_newer(record).map(|_| ())
+    }
+
+    /// Apply a revocation only when it advances the stored projection.
+    ///
+    /// The returned flag is true exactly when this call commits a projection and
+    /// append-log mutation. Replication callers use it to distinguish a fresh
+    /// delta from an idempotent projection replay.
+    pub fn upsert_revocation_if_newer(
+        &self,
+        record: &RevocationRecord,
+    ) -> Result<bool, RevocationStoreError> {
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
         let existing = transaction
@@ -319,7 +331,7 @@ impl SqliteRevocationStore {
             .optional()?;
         if existing.is_some_and(|revoked_at| revoked_at >= record.revoked_at) {
             transaction.rollback()?;
-            return Ok(());
+            return Ok(false);
         }
         let joint = self.serving_owner.is_some();
         let revocation_index = allocate_revocation_index(&transaction, joint)?;
@@ -377,7 +389,7 @@ impl SqliteRevocationStore {
                 .sync_authority_anchor(&connection)
                 .map_err(map_serving_owner_error)?;
         }
-        Ok(())
+        Ok(true)
     }
 
     /// The head of the revocation stream as the pagination cursor tuple

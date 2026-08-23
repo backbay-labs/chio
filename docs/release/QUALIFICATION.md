@@ -38,7 +38,8 @@ bundle. `./scripts/qualify-cognition-market.sh` composes the promoted
 single-operator router, dense append-only revocation store regression,
 legacy-readable revocation endpoint, fail-closed version-4 puller,
 retired-cursor snapshot recovery, restored-database serving-epoch rotation,
-projection-bounded cluster snapshot, non-skippable five-run cluster proving
+projection-bounded cluster snapshot, idempotent legacy-projection replay
+accounting, non-skippable five-run cluster proving
 that advances the follower cursor before the same-second lexical backfill,
 live purchase route, CLI Finding surface, transaction passport, open-market
 flow, and authenticated pool ledger. It

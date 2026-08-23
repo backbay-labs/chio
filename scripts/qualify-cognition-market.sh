@@ -80,6 +80,10 @@ run_gate legacy-revocation-recovery \
   cargo test -p chio-control-plane \
     legacy_revocation_snapshot_recovers_projection_without_reusing_tuple_cursor --lib -- \
     --nocapture --test-threads=1
+run_gate legacy-revocation-replay-accounting \
+  cargo test -p chio-control-plane \
+    legacy_projection_replay_does_not_count_as_fresh_delta_records --lib -- \
+    --nocapture --test-threads=1
 run_gate same-second-revocation-cluster \
   cargo test -p chio-cli --test trust_cluster \
     trust_control_cluster_repeat_run_qualification -- \

@@ -1563,6 +1563,8 @@ if "skipping finding .* transport test" in cognition_qualification:
     raise SystemExit("cognition qualification still accepts non-transport finding skips")
 if "replication_source_epoch_rotates_after_restored_sequence_reuse" not in cognition_qualification:
     raise SystemExit("cognition qualification lacks restored revocation epoch coverage")
+if "legacy_projection_replay_does_not_count_as_fresh_delta_records" not in cognition_qualification:
+    raise SystemExit("cognition qualification lacks legacy revocation replay accounting coverage")
 release_workflow = Path(".github/workflows/release-qualification.yml").read_text(
     encoding="utf-8"
 )

@@ -802,12 +802,15 @@ fn apply_revocation_page(
 ) -> Result<u64, PullError> {
     let mut applied = 0u64;
     for record in records {
-        store
-            .upsert_revocation(&RevocationRecord {
+        let changed = store
+            .upsert_revocation_if_newer(&RevocationRecord {
                 capability_id: record.capability_id.clone(),
                 revoked_at: record.revoked_at,
             })
             .map_err(CliError::from)?;
+        if !changed {
+            continue;
+        }
         observe_capability_revocation_lag(record.revoked_at);
         applied = applied.saturating_add(1);
     }

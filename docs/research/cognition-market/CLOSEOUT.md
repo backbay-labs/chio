@@ -26,6 +26,7 @@ The gate executes the bounded-profile contract, production-router composition,
 dense append-only revocation store regression, legacy-readable revocation
 endpoint, fail-closed version-4 puller, retired-cursor snapshot recovery,
 restored-database serving-epoch rotation, projection-bounded cluster snapshot,
+idempotent legacy-projection replay accounting,
 non-skippable five-run cluster proving
 scenario, authenticated public purchase route, zero-charge digest-mismatch
 lane, CLI Finding surface, transaction passport, open-market flow, and

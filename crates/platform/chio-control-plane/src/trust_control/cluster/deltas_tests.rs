@@ -168,6 +168,43 @@ mod deltas_tests {
     }
 
     #[test]
+    fn legacy_projection_replay_does_not_count_as_fresh_delta_records() {
+        let db = temp_budget_db("legacy-revocation-replay");
+        let store = SqliteRevocationStore::open(&db).test_unwrap();
+        let records = (0..CLUSTER_SNAPSHOT_RECORD_THRESHOLD)
+            .map(|index| StoredRevocationView {
+                seq: None,
+                capability_id: format!("cap-legacy-{index}"),
+                revoked_at: 10,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            apply_revocation_page(&store, &records).test_unwrap(),
+            CLUSTER_SNAPSHOT_RECORD_THRESHOLD,
+            "the first legacy projection pass applies every fresh revocation"
+        );
+        assert_eq!(
+            apply_revocation_page(&store, &records).test_unwrap(),
+            0,
+            "a completed legacy pass replay must not count idempotent rows toward forced snapshot"
+        );
+
+        let advanced = StoredRevocationView {
+            seq: None,
+            capability_id: records[0].capability_id.clone(),
+            revoked_at: 11,
+        };
+        assert_eq!(
+            apply_revocation_page(&store, &[advanced]).test_unwrap(),
+            1,
+            "a genuinely newer legacy projection row remains a fresh delta"
+        );
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
     fn paginated_budget_delta_projects_last_included_event_not_current_head() {
         let db = temp_budget_db("event-time-budget-page");
         let store = SqliteBudgetStore::open(&db).test_unwrap();
