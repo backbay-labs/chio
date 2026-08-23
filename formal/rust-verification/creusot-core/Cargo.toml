@@ -10,4 +10,4 @@ publish = false
 creusot-std = { git = "https://github.com/creusot-rs/creusot.git", rev = "a12f3ac7f688c7b93cee2c2eb60282004a2bdb30" }
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(creusot)", "cfg(chio_creusot_contracts)"] }
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)", "cfg(creusot)", "cfg(chio_creusot_contracts)"] }
