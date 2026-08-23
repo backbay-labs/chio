@@ -5822,9 +5822,10 @@ async fn wedge_purchase_terminal_closure_requires_live_authority_status() -> Tes
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn wedge_purchase_reservation_rechecks_seller_authorization_status() -> TestResult {
     let lane = open_lane(LaneOptions::standard()).await?;
-    let now = unix_timestamp_now();
-    lane.coordinator
-        .release(&lane.purchase.handshake.reservation_id, now)?;
+    lane.coordinator.release(
+        &lane.purchase.handshake.reservation_id,
+        unix_timestamp_now(),
+    )?;
 
     let buyer = keypair(32);
     let exchange = handshake(
@@ -5834,6 +5835,7 @@ async fn wedge_purchase_reservation_rechecks_seller_authorization_status() -> Te
         OTHER_BUYER_PAYOUT,
         "finding-purchase-token-revoked-seller",
     )?;
+    let now = unix_timestamp_now();
     let revoked = coordinator_with_status(
         &lane.authority,
         Arc::new(TestTerminalAuthorityStatusResolver::revoked(
