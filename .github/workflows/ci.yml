@@ -44,11 +44,11 @@ jobs:
   check:
     name: Build, lint, test
     runs-on: ubuntu-latest
-    # Failsafe above the healthy-lane ceiling (cold-cache compile plus the
-    # full workspace, Iroh, cognition-market, and Wasm suites can run past
-    # 4h under runner load): a wedged test surfaces as a failure in 5h
-    # instead of eating the 6h default.
-    timeout-minutes: 300
+    # Failsafe above the healthy-lane ceiling. A cold-cache serial run reached
+    # the final Tokio smoke compile only after the full workspace, Iroh,
+    # cognition-market, and Wasm suites had consumed 4h55. Keep the explicit
+    # 6h bound so a healthy final smoke is not cancelled while it compiles.
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
