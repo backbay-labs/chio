@@ -1554,6 +1554,13 @@ for required in (
 ):
     if required not in qualification:
         raise SystemExit(f"release qualification does not retain {required}")
+cognition_qualification = Path("scripts/qualify-cognition-market.sh").read_text(
+    encoding="utf-8"
+)
+if 'rg -n "skipping finding "' not in cognition_qualification:
+    raise SystemExit("cognition qualification does not reject every finding CLI skip")
+if "skipping finding .* transport test" in cognition_qualification:
+    raise SystemExit("cognition qualification still accepts non-transport finding skips")
 release_workflow = Path(".github/workflows/release-qualification.yml").read_text(
     encoding="utf-8"
 )

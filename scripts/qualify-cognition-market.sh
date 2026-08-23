@@ -105,8 +105,8 @@ run_gate authenticated-pool-ledger \
   cargo test -p chio-store-sqlite --test finding_pool_ledger -- \
     --nocapture --test-threads=1
 
-if rg -n "skipping finding .* transport test" "${log_root}/cli-finding-surface.log"; then
-  echo "cognition-market CLI transport evidence was skipped" >&2
+if rg -n "skipping finding " "${log_root}/cli-finding-surface.log"; then
+  echo "cognition-market CLI live-route evidence was skipped" >&2
   exit 1
 fi
 
