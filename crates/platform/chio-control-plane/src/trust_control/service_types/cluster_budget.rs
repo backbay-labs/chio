@@ -60,6 +60,13 @@ pub(crate) struct ClusterReplicationHeadsView {
     pub(crate) child_seq: u64,
     pub(crate) lineage_seq: u64,
     pub(crate) budget_seq: u64,
+    /// Explicit revocation delta contract, advertised even when the stream is
+    /// empty so a follower can distinguish an empty current stream from a
+    /// legacy peer that has no stream-epoch support.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) revocation_cursor_version: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) revocation_stream_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) revocation_cursor: Option<RevocationCursorView>,
 }
@@ -214,7 +221,10 @@ pub struct LeaseTerminateRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RevocationCursorView {
-    pub(crate) cursor_version: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) cursor_version: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) stream_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) seq: Option<u64>,
     pub(crate) revoked_at: i64,
@@ -293,6 +303,8 @@ pub(crate) struct RevocationDeltaQuery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) cursor_version: Option<u8>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) stream_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) after_seq: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) after_revoked_at: Option<i64>,
@@ -316,12 +328,17 @@ pub(crate) struct StoredRevocationView {
 pub(crate) struct RevocationDeltaResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) cursor_version: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) stream_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) head_seq: Option<u64>,
     pub(crate) records: Vec<StoredRevocationView>,
 }
 
-/// Dense append-only revocation stream epoch. Version 2 exposed the mutable
-/// projection sequence and cannot share cursors with the independent delta log.
-pub(crate) const REVOCATION_SEQUENCE_CURSOR_VERSION: u8 = 3;
+/// Dense append-only revocation stream contract. Version 2 exposed the mutable
+/// projection sequence, while version 3 omitted a durable stream-instance
+/// identity and could not detect database replacement or rollback.
+pub(crate) const REVOCATION_SEQUENCE_CURSOR_VERSION: u8 = 4;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

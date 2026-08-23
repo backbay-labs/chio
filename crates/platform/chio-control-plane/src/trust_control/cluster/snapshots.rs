@@ -1,5 +1,12 @@
 use super::*;
 
+#[derive(Default)]
+struct RevocationSnapshotExport {
+    records: Vec<RevocationRecordView>,
+    stream_id: Option<String>,
+    cursor: Option<RevocationCursorView>,
+}
+
 pub(crate) async fn handle_internal_cluster_snapshot(
     State(state): State<TrustServiceState>,
     headers: HeaderMap,
@@ -73,24 +80,35 @@ pub(crate) fn cluster_replication_heads(
         Some(store) => store.budget_snapshot_covered_head()?,
         None => 0,
     };
-    let revocation_cursor = match state
+    let (revocation_cursor_version, revocation_stream_id, revocation_cursor) = match state
         .optional_revocation_store()
         .map_err(|error| CliError::cli_other_error(error.to_string()))?
     {
-        Some(store) => store.latest_revocation_stream_head()?,
-        None => None,
+        Some(store) => {
+            let stream_id = store.revocation_stream_id()?;
+            let head = store.latest_revocation_stream_head()?;
+            (
+                Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+                Some(stream_id.clone()),
+                head.map(|stored| RevocationCursorView {
+                    cursor_version: Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+                    stream_id: Some(stream_id),
+                    seq: Some(stored.seq),
+                    revoked_at: stored.record.revoked_at,
+                    capability_id: stored.record.capability_id,
+                }),
+            )
+        }
+        None => (None, None, None),
     };
     Ok(ClusterReplicationHeadsView {
         tool_seq,
         child_seq,
         lineage_seq,
         budget_seq,
-        revocation_cursor: revocation_cursor.map(|stored| RevocationCursorView {
-            cursor_version: REVOCATION_SEQUENCE_CURSOR_VERSION,
-            seq: Some(stored.seq),
-            revoked_at: stored.record.revoked_at,
-            capability_id: stored.record.capability_id,
-        }),
+        revocation_cursor_version,
+        revocation_stream_id,
+        revocation_cursor,
     })
 }
 
@@ -107,14 +125,19 @@ pub(crate) fn build_cluster_state_snapshot(
         None
     };
 
-    let (revocations, revocation_cursor) = if let Some(store) = state
+    let revocation_export = if let Some(store) = state
         .optional_revocation_store()
         .map_err(|error| CliError::cli_other_error(error.to_string()))?
     {
         collect_revocation_views(&store)?
     } else {
-        (Vec::new(), None)
+        RevocationSnapshotExport::default()
     };
+    let RevocationSnapshotExport {
+        records: revocations,
+        stream_id: revocation_stream_id,
+        cursor: revocation_cursor,
+    } = revocation_export;
 
     let (tool_receipts, child_receipts, lineage) =
         if let Some(path) = state.config.receipt_db_path.as_deref() {
@@ -231,6 +254,10 @@ pub(crate) fn build_cluster_state_snapshot(
         child_seq: child_receipts.last().map(|record| record.seq).unwrap_or(0),
         lineage_seq: lineage.last().map(|record| record.seq).unwrap_or(0),
         budget_seq: budget_covered_head,
+        revocation_cursor_version: revocation_stream_id
+            .as_ref()
+            .map(|_| REVOCATION_SEQUENCE_CURSOR_VERSION),
+        revocation_stream_id,
         revocation_cursor,
     };
 
@@ -279,7 +306,7 @@ pub(crate) fn apply_cluster_snapshot(
         budget_origin_ack_heads,
     } = snapshot;
 
-    validate_revocation_snapshot(&revocations, replication.revocation_cursor.as_ref())?;
+    let validated_revocation_cursor = validate_revocation_snapshot(&revocations, &replication)?;
 
     if let (Some(path), Some(authority_view)) =
         (state.config.authority_db_path.as_deref(), authority)
@@ -398,10 +425,7 @@ pub(crate) fn apply_cluster_snapshot(
         peer.tool_seq = replication.tool_seq;
         peer.child_seq = replication.child_seq;
         peer.lineage_seq = replication.lineage_seq;
-        peer.revocation_cursor = replication
-            .revocation_cursor
-            .clone()
-            .map(revocation_cursor_from_view);
+        peer.revocation_cursor = validated_revocation_cursor.clone();
         peer.budget_cursor = budget_cursor.clone();
         peer.snapshot_applied_count = peer.snapshot_applied_count.saturating_add(1);
         peer.last_snapshot_at = Some(generated_at);
@@ -429,31 +453,93 @@ pub(crate) fn apply_cluster_snapshot(
 
 fn validate_revocation_snapshot(
     records: &[RevocationRecordView],
-    cursor: Option<&RevocationCursorView>,
-) -> Result<(), CliError> {
-    let Some(cursor) = cursor else {
-        if records.is_empty() {
-            return Ok(());
+    replication: &ClusterReplicationHeadsView,
+) -> Result<Option<RevocationCursor>, CliError> {
+    for pair in records.windows(2) {
+        let previous = (&pair[0].revoked_at, pair[0].capability_id.as_str());
+        let current = (&pair[1].revoked_at, pair[1].capability_id.as_str());
+        if current <= previous {
+            return Err(CliError::cli_other_error(
+                "revocation snapshot projection is not strictly tuple ordered".to_string(),
+            ));
         }
-        return Err(CliError::cli_other_error(
-            "revocation snapshot carried projection records without a stream head".to_string(),
-        ));
-    };
-    ensure_revocation_cursor_version(Some(cursor.cursor_version))
-        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
-    if cursor.seq.is_none() {
-        return Err(CliError::cli_other_error(
-            "revocation snapshot stream head omitted its dense sequence".to_string(),
-        ));
     }
-    if !records.iter().any(|record| {
-        record.capability_id == cursor.capability_id && record.revoked_at == cursor.revoked_at
-    }) {
-        return Err(CliError::cli_other_error(
-            "revocation snapshot stream head is absent from the current projection".to_string(),
-        ));
+
+    let cursor = replication.revocation_cursor.as_ref();
+    match (
+        replication.revocation_cursor_version,
+        replication.revocation_stream_id.as_deref(),
+    ) {
+        (None, None) => {
+            // Pre-v4 peers have no durable stream identity. Their snapshot is a
+            // full projection recovery only, never a reusable sequence cursor.
+            match cursor {
+                None if records.is_empty() => Ok(None),
+                None => Err(CliError::cli_other_error(
+                    "legacy revocation snapshot carried projection records without a head"
+                        .to_string(),
+                )),
+                Some(_) if records.is_empty() => Err(CliError::cli_other_error(
+                    "legacy revocation snapshot carried a head without projection records"
+                        .to_string(),
+                )),
+                Some(cursor)
+                    if records.iter().any(|record| {
+                        record.capability_id == cursor.capability_id
+                            && record.revoked_at == cursor.revoked_at
+                    }) =>
+                {
+                    Ok(None)
+                }
+                Some(_) => Err(CliError::cli_other_error(
+                    "legacy revocation snapshot head is absent from the projection".to_string(),
+                )),
+            }
+        }
+        (Some(version), Some(stream_id)) => {
+            ensure_revocation_cursor_version(Some(version))
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+            if stream_id.is_empty() {
+                return Err(CliError::cli_other_error(
+                    "revocation snapshot advertised an empty stream identity".to_string(),
+                ));
+            }
+            let Some(cursor) = cursor else {
+                if records.is_empty() {
+                    return Ok(None);
+                }
+                return Err(CliError::cli_other_error(
+                    "revocation snapshot carried projection records without a stream head"
+                        .to_string(),
+                ));
+            };
+            if cursor.cursor_version != Some(version)
+                || cursor.stream_id.as_deref() != Some(stream_id)
+            {
+                return Err(CliError::cli_other_error(
+                    "revocation snapshot cursor is not bound to its advertised stream".to_string(),
+                ));
+            }
+            if cursor.seq.is_none() {
+                return Err(CliError::cli_other_error(
+                    "revocation snapshot stream head omitted its dense sequence".to_string(),
+                ));
+            }
+            if !records.iter().any(|record| {
+                record.capability_id == cursor.capability_id
+                    && record.revoked_at == cursor.revoked_at
+            }) {
+                return Err(CliError::cli_other_error(
+                    "revocation snapshot stream head is absent from the current projection"
+                        .to_string(),
+                ));
+            }
+            Ok(Some(revocation_cursor_from_view(cursor.clone())))
+        }
+        _ => Err(CliError::cli_other_error(
+            "revocation snapshot advertised an incomplete stream contract".to_string(),
+        )),
     }
-    Ok(())
 }
 
 fn seed_cluster_authority_from_snapshot(
@@ -524,8 +610,8 @@ fn seed_cluster_authority_from_snapshot(
 
 fn collect_revocation_views(
     store: &SqliteRevocationStore,
-) -> Result<(Vec<RevocationRecordView>, Option<RevocationCursorView>), CliError> {
-    let (projection, head) = store.export_revocation_snapshot()?;
+) -> Result<RevocationSnapshotExport, CliError> {
+    let (stream_id, projection, head) = store.export_revocation_snapshot()?;
     let records = projection
         .into_iter()
         .map(|record| RevocationRecordView {
@@ -534,12 +620,17 @@ fn collect_revocation_views(
         })
         .collect();
     let head = head.map(|stored| RevocationCursorView {
-        cursor_version: REVOCATION_SEQUENCE_CURSOR_VERSION,
+        cursor_version: Some(REVOCATION_SEQUENCE_CURSOR_VERSION),
+        stream_id: Some(stream_id.clone()),
         seq: Some(stored.seq),
         revoked_at: stored.record.revoked_at,
         capability_id: stored.record.capability_id,
     });
-    Ok((records, head))
+    Ok(RevocationSnapshotExport {
+        records,
+        stream_id: Some(stream_id),
+        cursor: head,
+    })
 }
 
 fn collect_tool_receipt_views(

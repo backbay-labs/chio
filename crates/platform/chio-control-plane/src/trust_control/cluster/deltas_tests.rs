@@ -93,12 +93,17 @@ mod deltas_tests {
             shared[0] as usize, sync_peer_budgets as Puller as usize,
             "budget remains first in the shared round"
         );
-        assert!(
-            !shared
-                .iter()
-                .any(|puller| *puller as usize == sync_peer_revocations as Puller as usize),
-            "revocations must be pulled on an independent round budget, not the shared one"
+        assert_eq!(
+            shared[1] as usize,
+            sync_peer_tool_receipts as Puller as usize
         );
+        assert_eq!(
+            shared[2] as usize,
+            sync_peer_child_receipts as Puller as usize
+        );
+        assert_eq!(shared[3] as usize, sync_peer_lineage as Puller as usize);
+        // `sync_peer_revocations` deliberately takes an additional advertised
+        // contract argument, so it cannot inhabit this shared `Puller` list.
     }
 
     #[test]

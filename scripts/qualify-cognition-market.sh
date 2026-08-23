@@ -57,6 +57,10 @@ run_gate same-second-revocation-store \
   cargo test -p chio-store-sqlite \
     revocation_sequence_does_not_skip_same_second_backfill --lib -- \
     --nocapture --test-threads=1
+run_gate revocation-store-epoch-index \
+  cargo test -p chio-store-sqlite \
+    v3_store_migrates_stream_identity_and_projection_history_index --lib -- \
+    --nocapture --test-threads=1
 run_gate mixed-version-revocation-delta \
   cargo test -p chio-control-plane \
     revocation_delta_endpoint_negotiates_legacy_and_sequence_cursors --lib -- \
@@ -67,6 +71,10 @@ run_gate revocation-puller-soundness \
 run_gate revocation-snapshot-soundness \
   cargo test -p chio-control-plane \
     revocation_snapshot_is_projection_bounded_and_epoch_bound --lib -- \
+    --nocapture --test-threads=1
+run_gate legacy-revocation-recovery \
+  cargo test -p chio-control-plane \
+    legacy_revocation_snapshot_recovers_projection_without_reusing_tuple_cursor --lib -- \
     --nocapture --test-threads=1
 run_gate same-second-revocation-cluster \
   cargo test -p chio-cli --test trust_cluster \

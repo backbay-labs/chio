@@ -221,6 +221,10 @@ pub(crate) fn update_peer_revocation_cursor(
     });
 }
 
+pub(crate) fn clear_peer_revocation_cursor(state: &TrustServiceState, peer_url: &str) {
+    update_peer_state(state, peer_url, |peer| peer.revocation_cursor = None);
+}
+
 pub(crate) fn update_peer_budget_cursor(
     state: &TrustServiceState,
     peer_url: &str,

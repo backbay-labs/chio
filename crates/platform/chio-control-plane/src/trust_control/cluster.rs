@@ -36,18 +36,20 @@ pub(crate) use deltas::{
     wait_for_budget_write_quorum_commit, BudgetWriteToken,
 };
 pub(crate) use partition::{
-    clamp_down_peer_budget_acks, handle_internal_cluster_partition, peer_budget_cursor,
-    peer_child_seq, peer_is_partitioned, peer_lineage_seq, peer_revocation_cursor,
-    peer_should_force_snapshot, peer_tool_seq, request_peer_snapshot_recovery,
-    update_peer_budget_acks, update_peer_budget_cursor, update_peer_child_seq,
-    update_peer_delta_records, update_peer_failure, update_peer_lineage_seq, update_peer_reachable,
-    update_peer_revocation_cursor, update_peer_state, update_peer_success, update_peer_sync_error,
-    update_peer_tool_seq,
+    clamp_down_peer_budget_acks, clear_peer_revocation_cursor, handle_internal_cluster_partition,
+    peer_budget_cursor, peer_child_seq, peer_is_partitioned, peer_lineage_seq,
+    peer_revocation_cursor, peer_should_force_snapshot, peer_tool_seq,
+    request_peer_snapshot_recovery, update_peer_budget_acks, update_peer_budget_cursor,
+    update_peer_child_seq, update_peer_delta_records, update_peer_failure, update_peer_lineage_seq,
+    update_peer_reachable, update_peer_revocation_cursor, update_peer_state, update_peer_success,
+    update_peer_sync_error, update_peer_tool_seq,
 };
 pub(crate) use pull_budget::{
-    ensure_current_revocation_cursor, ensure_revocation_cursor_version,
+    current_revocation_cursor_requires_snapshot, ensure_current_revocation_cursor,
+    ensure_legacy_revocation_page_ascending, ensure_revocation_cursor_version,
     ensure_revocation_page_ascending, require_contiguous_page, require_forward_progress,
-    PeerProtocolError, PullError, PullRoundBudget, PEER_ROUND_WALL_CLOCK_BUDGET,
+    revocation_peer_contract, PeerProtocolError, PullError, PullRoundBudget,
+    RevocationPeerContract, PEER_ROUND_WALL_CLOCK_BUDGET,
 };
 pub(crate) use snapshots::{
     apply_cluster_snapshot, cluster_replication_heads, handle_internal_authority_snapshot,
