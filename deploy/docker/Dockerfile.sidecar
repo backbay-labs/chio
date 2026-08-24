@@ -84,8 +84,10 @@ COPY xtask ./xtask
 # --workspace` in CI.
 COPY integrations ./integrations
 
-# Build a release binary, locked to the committed Cargo.lock.
-RUN cargo build --release --locked --package chio-cli --bin chio \
+# Build a release binary, locked to the committed Cargo.lock. Keep Cargo at one
+# job so the native GitHub ARM runner does not lose service under peak memory
+# pressure while compiling the full chio-cli dependency graph.
+RUN cargo build --release --locked --jobs 1 --package chio-cli --bin chio \
  && strip target/release/chio \
  && cp target/release/chio /chio
 

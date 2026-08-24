@@ -692,16 +692,50 @@ NODE
 
     packed_package_names=()
     packed_package_paths=()
-    packed_package_path_for() {
+    packed_package_deps=()
+    packed_package_index_for() {
       local requested_name="$1"
       local idx
       for ((idx = 0; idx < ${#packed_package_names[@]}; idx += 1)); do
         if [[ "${packed_package_names[${idx}]}" == "${requested_name}" ]]; then
-          printf "%s\n" "${packed_package_paths[${idx}]}"
+          printf "%s\n" "${idx}"
           return 0
         fi
       done
       return 1
+    }
+
+    append_packed_dependency_closure() {
+      local requested_name="$1"
+      local requested_index
+      local requested_deps
+      local existing_name
+      local dep_name
+      local -a requested_dep_names=()
+
+      for existing_name in "${install_arg_names[@]}"; do
+        if [[ "${existing_name}" == "${requested_name}" ]]; then
+          return 0
+        fi
+      done
+
+      if ! requested_index="$(packed_package_index_for "${requested_name}")"; then
+        echo "TypeScript release smoke is missing packed local dependency ${requested_name}" >&2
+        return 1
+      fi
+
+      requested_deps="${packed_package_deps[${requested_index}]}"
+      if [[ -n "${requested_deps}" ]]; then
+        IFS=',' read -r -a requested_dep_names <<<"${requested_deps}"
+        for dep_name in "${requested_dep_names[@]}"; do
+          if [[ -n "${dep_name}" ]]; then
+            append_packed_dependency_closure "${dep_name}"
+          fi
+        done
+      fi
+
+      install_arg_names+=("${requested_name}")
+      install_args+=("${packed_package_paths[${requested_index}]}")
     }
 
     package_index=0
@@ -736,6 +770,7 @@ NODE
       )"
       packed_package_names+=("${package_name}")
       packed_package_paths+=("${pack_dir}/${pack_file}")
+      packed_package_deps+=("${local_deps}")
 
       package_index=$((package_index + 1))
       consumer_dir="${work_dir}/consumer-${package_index}"
@@ -748,17 +783,13 @@ NODE
 }
 EOF
 
-      install_args=("${pack_dir}/${pack_file}")
-      if [[ -n "${local_deps}" ]]; then
-        IFS=',' read -r -a local_dep_names <<<"${local_deps}"
-        for local_dep_name in "${local_dep_names[@]}"; do
-          if [[ -n "${local_dep_name}" ]]; then
-            if local_dep_pack_path="$(packed_package_path_for "${local_dep_name}")"; then
-              install_args+=("${local_dep_pack_path}")
-            fi
-          fi
-        done
-      fi
+      # Install the complete same-release dependency closure in one npm
+      # transaction. A direct-only install can still reach the public registry
+      # for a second-hop package, such as wasm-core under edge, before any Chio
+      # TypeScript package from this release exists there.
+      install_args=()
+      install_arg_names=()
+      append_packed_dependency_closure "${package_name}"
 
       (
         cd "${consumer_dir}"
