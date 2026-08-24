@@ -38,6 +38,8 @@ WORKDIR /workspace
 #   - `contracts/` is embedded by chio-web3-bindings via Alloy's sol! macro.
 #   - `spec/` contains schemas embedded by control-plane handlers via
 #     `include_str!` and other compile-time protocol inputs.
+#   - `fixtures/` contains proof-room assets embedded by the chio-proof-room
+#     build script, which is reachable from chio-cli.
 #
 # Note on protobuf: the vendored Envoy protos consumed by
 # chio-envoy-ext-authz's tonic-build live under
@@ -48,6 +50,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY contracts ./contracts
 COPY spec ./spec
+COPY fixtures ./fixtures
 COPY bench ./bench
 COPY integrations/editors ./integrations/editors
 COPY wit ./wit
