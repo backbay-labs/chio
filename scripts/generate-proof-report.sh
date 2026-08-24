@@ -729,8 +729,8 @@ if run_gates:
     }
 
 tool_versions = {
-    "lean": command_output("lean --version"),
-    "lake": command_output("lake --version"),
+    "lean": command_output("cd formal/lean4/Chio && lean --version"),
+    "lake": command_output("cd formal/lean4/Chio && lake --version"),
     "cargo": command_output("cargo --version"),
     "rustc": command_output("rustc --version"),
     "kani": command_output("cargo kani --version"),

@@ -190,8 +190,8 @@ RUST_VERIFICATION_STATIC_INPUTS = {
     "scripts/run-kani-manifest.sh",
 }
 TOOL_COMMANDS = {
-    "lean": "lean --version",
-    "lake": "lake --version",
+    "lean": "cd formal/lean4/Chio && lean --version",
+    "lake": "cd formal/lean4/Chio && lake --version",
     "cargo": "cargo --version",
     "rustc": "rustc --version",
     "kani": "cargo kani --version",

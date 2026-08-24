@@ -280,22 +280,26 @@ See `spec/PROTOCOL.md` for the broader attestation contract.
 
 Owned by the release toolchain. The multi-arch sidecar OCI image built by
 [`.github/workflows/sidecar-image.yml`](../../.github/workflows/sidecar-image.yml)
-is keyless-signed with [Sigstore cosign](https://docs.sigstore.dev/cosign/)
-immediately after the `docker/build-push-action@v6` push step. The
-signature is keyed to the image's content-addressed digest, so every
-tag the metadata-action emits (`vMAJOR.MINOR.PATCH`, `MAJOR.MINOR`,
-short SHA, `latest` on default branch, optional `workflow_dispatch`
-override) is covered by a single signature on the underlying manifest.
+is built on native x86_64 and ARM64 GitHub runners. Each native build is
+pushed by digest, then an assembly job creates and verifies the two-platform
+manifest before keyless signing it with
+[Sigstore cosign](https://docs.sigstore.dev/cosign/). The signature is keyed
+to the manifest's content-addressed digest, so every tag the metadata-action
+emits (`vMAJOR.MINOR.PATCH`, `MAJOR.MINOR`, short SHA, and `latest` on the
+default branch) is covered by a single signature on the underlying manifest.
 
 ### How signing works
 
-1. `sigstore/cosign-installer@v3.7.0` pins cosign at `v2.4.1` on the
-   GitHub-hosted runner.
-2. The workflow already runs with `permissions.id-token: write`, which
+1. The workflow builds `linux/amd64` on `ubuntu-24.04` and `linux/arm64` on
+   `ubuntu-24.04-arm`, then refuses to sign unless the assembled manifest
+   contains both platforms.
+2. `sigstore/cosign-installer@v3.7.0` pins cosign at `v2.4.1` on the
+   assembly runner.
+3. The assembly job runs with `permissions.id-token: write`, which
    lets `cosign sign --yes` exchange a GitHub-issued OIDC token for a
    short-lived Fulcio signing certificate. No long-lived signing key is
    held in repo secrets.
-3. `cosign sign --yes ghcr.io/<owner>/chio-sidecar@sha256:<digest>`
+4. `cosign sign --yes ghcr.io/<owner>/chio-sidecar@sha256:<digest>`
    uploads the resulting signature blob and certificate to the
    sigstore cosign signature tag (`sha256-<digest>.sig`) on the same
    ghcr.io repository, and writes a Rekor transparency-log entry that
