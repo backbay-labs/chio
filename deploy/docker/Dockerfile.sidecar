@@ -84,12 +84,13 @@ COPY xtask ./xtask
 # --workspace` in CI.
 COPY integrations ./integrations
 
-# Build a release binary, locked to the committed Cargo.lock. Keep Cargo at one
-# job so the native GitHub ARM runner does not lose service under peak memory
-# pressure while compiling the full chio-cli dependency graph.
-RUN cargo build --release --locked --jobs 1 --package chio-cli --bin chio \
- && strip target/release/chio \
- && cp target/release/chio /chio
+# Build with the workspace's container-specific profile, which uses thin LTO
+# instead of the memory-heavy fat LTO release profile. Keep Cargo at one job so
+# the native GitHub ARM runner stays within its memory envelope while compiling
+# and linking the full chio-cli dependency graph.
+RUN cargo build --profile docker-release --locked --jobs 1 --package chio-cli --bin chio \
+ && strip target/docker-release/chio \
+ && cp target/docker-release/chio /chio
 
 ############################
 # Stage 2: minimal runtime

@@ -287,6 +287,9 @@ manifest before keyless signing it with
 to the manifest's content-addressed digest, so every tag the metadata-action
 emits (`vMAJOR.MINOR.PATCH`, `MAJOR.MINOR`, short SHA, and `latest` on the
 default branch) is covered by a single signature on the underlying manifest.
+Both native builds use the workspace `docker-release` profile (thin LTO) and
+one Cargo job. This keeps the final `chio` link within the standard hosted ARM
+runner memory envelope while retaining an optimized container artifact.
 
 ### How signing works
 
