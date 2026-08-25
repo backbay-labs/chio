@@ -467,7 +467,7 @@ mod windows_authority_tests {
             finding_market: None,
         };
 
-        let Err(error) = serve_async(config, None, None, None, None, None).await else {
+        let Err(error) = serve_async(config, None, None, None, None, None, None).await else {
             return Err(CliError::cli_other_error(
                 "Windows trust service unexpectedly started with a joint authority database",
             ));
