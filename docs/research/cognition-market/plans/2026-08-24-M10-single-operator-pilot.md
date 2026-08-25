@@ -28,7 +28,8 @@ chio finding verify-bundle
 ```
 
 The operator profile uses separate scoped buyer and seller credentials. Buyer
-requests cannot select another payer, seller requests cannot mutate operator
+requests must bind the authenticated payer into their durable identity and
+cannot omit or select another payer. Seller requests cannot mutate operator
 state outside admission, and neither role receives the global control-plane
 service credential.
 

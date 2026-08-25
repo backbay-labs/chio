@@ -883,6 +883,25 @@ pub(crate) async fn handle_purchase_finding(
         Ok(request) => request,
         Err(response) => return response,
     };
+    if let Some(buyer) = authenticated_buyer.as_ref() {
+        match request.payer.as_deref() {
+            None => {
+                return purchase_error(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "purchase_payer_required",
+                    "purchase request must name its authenticated payer",
+                )
+            }
+            Some(payer) if payer != buyer.payer() => {
+                return purchase_error(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "purchase_payer_mismatch",
+                    "purchase payer does not match the authenticated buyer",
+                )
+            }
+            Some(_) => {}
+        }
+    }
     if request.finding_id != finding_id {
         return purchase_error(
             StatusCode::BAD_REQUEST,

@@ -3019,6 +3019,30 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
         serde_json::json!("purchase_unauthorized")
     );
 
+    // The public operator route requires the authenticated payer in the
+    // request identity, so payer-omitted requests cannot collide across buyers.
+    let payer_omitted = FindingPurchaseRequest::new(
+        expected_finding_id.clone(),
+        PRICE_UNITS + 50,
+        "USD".to_owned(),
+        None,
+        Some(900),
+    )?;
+    let (status, body) = send(
+        &state,
+        buyer_post(&path, canonical_json_bytes(&payer_omitted)?)?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        json_body(&body)?["code"],
+        serde_json::json!("purchase_payer_required")
+    );
+    assert_eq!(calls.captures.load(Ordering::SeqCst), 0);
+    assert_eq!(calls.releases.load(Ordering::SeqCst), 0);
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    assert_eq!(attempts.load(Ordering::SeqCst), 0);
+
     let (status, first_body) = send(&state, buyer_post(&path, request_body.clone())?).await?;
     assert_eq!(
         status,
