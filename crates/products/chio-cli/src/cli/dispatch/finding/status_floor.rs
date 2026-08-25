@@ -105,7 +105,7 @@ pub(super) struct FindingStatusFloorObservation<'a> {
 }
 
 pub(super) struct FindingStatusFloorLock {
-    _file: std::fs::File,
+    file: std::fs::File,
 }
 
 impl FindingStatusFloorLock {
@@ -136,7 +136,13 @@ impl FindingStatusFloorLock {
                 path.display()
             ))
         })?;
-        Ok(Self { _file: file })
+        Ok(Self { file })
+    }
+}
+
+impl Drop for FindingStatusFloorLock {
+    fn drop(&mut self) {
+        let _ = self.file.unlock();
     }
 }
 

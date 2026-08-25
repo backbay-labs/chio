@@ -90,9 +90,11 @@ The requalified candidate also closes the final deployment review findings:
   deadline and output ceiling. Published repository identity removes URL
   credentials, query strings, and fragments. Failed staging removes its
   partial clone, and completed package files publish atomically. Seller
-  submission retention is capped at 256 jobs and an 8 GiB and 100,000-entry
-  package/report ceiling. The full transient staging budget plus publication
-  headroom is reserved before a new job is accepted.
+  seller submission and retraction retention is capped at 256 jobs combined
+  under an 8 GiB and 100,000-entry package/report ceiling. The full transient
+  staging budget plus publication headroom is reserved before a new job is
+  accepted. Revision and published repository-identity lookups use the same
+  timed, output-bounded process-group runner as patch generation.
 - Bundle, encrypted payload, and proof bytes are durable before activation.
   Retraction intent bytes are durable before submission, and pre-dispatch
   purchase failures release both reservation exposure and any reserved slot.
@@ -100,6 +102,8 @@ The requalified candidate also closes the final deployment review findings:
   a completed paid replay verifies proof liveness at its authenticated terminal
   time. Purchase-job retention is capped at 10,000 rows, failing new requests
   closed while preserving exact replay at capacity.
+- Status-floor lock guards explicitly unlock before close, so an immediate
+  sequential retry can read a retraction retained by a rejected rollback.
 - Seller client credentials contain no market signing seed. Buyer SDKs require
   a search predicate, bind purchase identities to the credential's payer key,
   use bounded request deadlines and response streams, and verify the signed

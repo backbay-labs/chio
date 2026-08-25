@@ -43,6 +43,7 @@ const MAX_PROOF_BYTES: usize = 24 * 1024 * 1024;
 const MAX_PAYLOAD_BYTES: usize = 8 * 1024 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_GIT_ERROR_BYTES: usize = 64 * 1024;
+const MAX_REPOSITORY_IDENTITY_BYTES: usize = 8 * 1024;
 const TEST_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
 const REPOSITORY_STAGE_TIMEOUT: Duration = Duration::from_secs(300);
 const PATCH_GENERATION_TIMEOUT: Duration = Duration::from_secs(300);
@@ -124,7 +125,7 @@ pub(super) fn cmd_finding_package_verified_fix(
     }
     require_bwrap()?;
 
-    let repository_identity = repository_identity(&repository);
+    let repository_identity = repository_identity(&repository)?;
     let work_root = paths
         .packages_directory
         .join(format!(".verified-fix-work-{}", uuid::Uuid::new_v4()));
@@ -1105,7 +1106,13 @@ fn sandbox_path() -> String {
 }
 
 fn require_git_repository(path: &Path) -> Result<(), CliError> {
-    let inside = git_stdout(path, &["rev-parse", "--is-inside-work-tree"])?;
+    let inside = git_stdout_bounded(
+        path,
+        &["rev-parse", "--is-inside-work-tree"],
+        16,
+        REPOSITORY_STAGE_TIMEOUT,
+        "verify seller repository",
+    )?;
     if inside != "true" {
         return Err(CliError::cli_other_error(
             "--repository is not a git worktree".to_owned(),
@@ -1177,13 +1184,6 @@ fn command_version(command: &str, args: &[&str]) -> Result<String, CliError> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
-fn git_stdout(repository: &Path, args: &[&str]) -> Result<String, CliError> {
-    let bytes = git_stdout_bytes(repository, args)?;
-    let value = String::from_utf8(bytes)
-        .map_err(|_| CliError::cli_other_error("git output is not UTF-8".to_owned()))?;
-    Ok(value.trim().to_owned())
-}
-
 fn git_stdout_bounded(
     repository: &Path,
     args: &[&str],
@@ -1199,14 +1199,34 @@ fn git_stdout_bounded(
     Ok(value.trim().to_owned())
 }
 
-fn git_optional_stdout(repository: &Path, args: &[&str]) -> Option<String> {
-    git_stdout(repository, args).ok().filter(|value| !value.is_empty())
+fn git_optional_stdout_bounded(
+    repository: &Path,
+    args: &[&str],
+    max_bytes: usize,
+    timeout: Duration,
+    label: &str,
+) -> Result<Option<String>, CliError> {
+    let mut command = hardened_git_command();
+    command.arg("-C").arg(repository).args(args);
+    let output = run_bounded_output_command_capture(command, max_bytes, timeout, label)?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let value = String::from_utf8(output.stdout)
+        .map_err(|_| CliError::cli_other_error("git output is not UTF-8".to_owned()))?;
+    Ok((!value.trim().is_empty()).then(|| value.trim().to_owned()))
 }
 
-fn repository_identity(repository: &Path) -> String {
-    git_optional_stdout(repository, &["remote", "get-url", "origin"])
+fn repository_identity(repository: &Path) -> Result<String, CliError> {
+    Ok(git_optional_stdout_bounded(
+        repository,
+        &["remote", "get-url", "origin"],
+        MAX_REPOSITORY_IDENTITY_BYTES,
+        REPOSITORY_STAGE_TIMEOUT,
+        "resolve seller repository identity",
+    )?
         .and_then(|remote| credential_free_repository_url(&remote))
-        .unwrap_or_else(|| repository.display().to_string())
+        .unwrap_or_else(|| repository.display().to_string()))
 }
 
 fn credential_free_repository_url(remote: &str) -> Option<String> {
@@ -1231,21 +1251,6 @@ fn credential_free_repository_url(remote: &str) -> Option<String> {
     Some(identity.to_owned())
 }
 
-fn git_stdout_bytes(repository: &Path, args: &[&str]) -> Result<Vec<u8>, CliError> {
-    let output = hardened_git_command()
-        .arg("-C")
-        .arg(repository)
-        .args(args)
-        .output()?;
-    if !output.status.success() {
-        return Err(CliError::cli_other_error(format!(
-            "git command failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        )));
-    }
-    Ok(output.stdout)
-}
-
 fn git_stdout_bytes_bounded(
     repository: &Path,
     args: &[&str],
@@ -1262,11 +1267,33 @@ fn git_stdout_bytes_bounded(
 }
 
 fn run_bounded_output_command(
-    mut command: Command,
+    command: Command,
     max_bytes: usize,
     timeout: Duration,
     label: &str,
 ) -> Result<Vec<u8>, CliError> {
+    let output = run_bounded_output_command_capture(command, max_bytes, timeout, label)?;
+    if !output.status.success() {
+        return Err(CliError::cli_other_error(format!(
+            "{label} failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    Ok(output.stdout)
+}
+
+struct BoundedCommandOutput {
+    status: ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+fn run_bounded_output_command_capture(
+    mut command: Command,
+    max_bytes: usize,
+    timeout: Duration,
+    label: &str,
+) -> Result<BoundedCommandOutput, CliError> {
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(unix)]
     {
@@ -1323,13 +1350,11 @@ fn run_bounded_output_command(
         )));
     }
     let status = outcome?;
-    if !status.success() {
-        return Err(CliError::cli_other_error(format!(
-            "{label} failed: {}",
-            String::from_utf8_lossy(&stderr).trim()
-        )));
-    }
-    Ok(bytes)
+    Ok(BoundedCommandOutput {
+        status,
+        stdout: bytes,
+        stderr,
+    })
 }
 
 fn read_output_prefix(
@@ -1786,7 +1811,14 @@ mod tests {
         fs::create_dir(&work_root).unwrap();
         let worktrees = StagedRepositorySet::new(work_root);
         worktrees.stage(&source).unwrap();
-        let revision = git_stdout(&worktrees.repository, &["rev-parse", "HEAD"]).unwrap();
+        let revision = git_stdout_bounded(
+            &worktrees.repository,
+            &["rev-parse", "HEAD"],
+            128,
+            REPOSITORY_STAGE_TIMEOUT,
+            "resolve staged repository revision",
+        )
+        .unwrap();
         worktrees.add("candidate", &revision).unwrap();
         assert!(!marker.exists());
     }
@@ -1921,6 +1953,27 @@ mod tests {
                 .as_deref(),
             Some("example.com:org/repo.git")
         );
+
+        let repository = tempfile::tempdir().unwrap();
+        assert!(Command::new("git")
+            .arg("init")
+            .arg(repository.path())
+            .status()
+            .unwrap()
+            .success());
+        let oversized_remote = format!(
+            "https://example.com/{}.git",
+            "a".repeat(MAX_REPOSITORY_IDENTITY_BYTES)
+        );
+        assert!(Command::new("git")
+            .arg("-C")
+            .arg(repository.path())
+            .args(["config", "remote.origin.url", &oversized_remote])
+            .status()
+            .unwrap()
+            .success());
+        let error = repository_identity(repository.path()).unwrap_err();
+        assert!(error.to_string().contains("output exceeded"));
     }
 
     #[test]

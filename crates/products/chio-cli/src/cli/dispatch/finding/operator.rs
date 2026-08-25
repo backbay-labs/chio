@@ -52,7 +52,7 @@ const PROFILE_MAX_BYTES: usize = 1024 * 1024;
 const ROLE_WINDOW_SECS: u64 = 10 * 365 * 24 * 60 * 60;
 const SELLER_SUBMISSION_JOB_SCHEMA: &str = "chio.finding.seller-submission-job.v1";
 const SELLER_SUBMISSION_JOB_MAX_BYTES: usize = 1024 * 1024;
-const MAX_RETAINED_SELLER_SUBMISSION_JOBS: usize = 256;
+const MAX_RETAINED_SELLER_JOBS: usize = 256;
 const SELLER_SUBMISSION_STORAGE_CAP_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const SELLER_SUBMISSION_RESERVED_BYTES: u64 =
     super::finding_verified_fix::REPOSITORY_STAGE_MAX_BYTES + 64 * 1024 * 1024;
@@ -334,6 +334,10 @@ impl FindingSellerSubmissionExecutor for OperatorSellerSubmissionExecutor {
             }
             stored
         } else {
+            require_seller_submission_capacity(
+                &self.reports_directory,
+                &self.packages_directory,
+            )?;
             let created = FindingSellerRetractionJob {
                 schema: SELLER_RETRACTION_JOB_SCHEMA.to_owned(),
                 request_id: request.request_id.clone(),
@@ -1199,15 +1203,15 @@ fn require_seller_submission_capacity(
     {
         let entry =
             entry.map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
-        if entry
-            .file_name()
-            .to_string_lossy()
-            .ends_with(".seller-submission-job.json")
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.ends_with(".seller-submission-job.json")
+            || name.ends_with(".seller-retraction-job.json")
         {
             retained_jobs = retained_jobs.saturating_add(1);
-            if retained_jobs >= MAX_RETAINED_SELLER_SUBMISSION_JOBS {
+            if retained_jobs >= MAX_RETAINED_SELLER_JOBS {
                 return Err(FindingSellerSubmissionError::Pending(
-                    "seller submission job capacity is exhausted".to_owned(),
+                    "seller job capacity is exhausted".to_owned(),
                 ));
             }
         }
@@ -1416,9 +1420,14 @@ mod tests {
         fs::create_dir(&packages).unwrap();
         assert!(require_seller_submission_capacity(&reports, &packages).is_ok());
 
-        for index in 0..MAX_RETAINED_SELLER_SUBMISSION_JOBS {
+        for index in 0..MAX_RETAINED_SELLER_JOBS {
+            let suffix = if index % 2 == 0 {
+                "seller-submission-job.json"
+            } else {
+                "seller-retraction-job.json"
+            };
             fs::write(
-                reports.join(format!("{index}.seller-submission-job.json")),
+                reports.join(format!("{index}.{suffix}")),
                 b"{}",
             )
             .unwrap();

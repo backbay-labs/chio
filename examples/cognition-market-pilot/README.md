@@ -106,6 +106,7 @@ credentials, query strings, and fragments.
 The sandbox mounts toolchain executables but not the operator account's Cargo
 registry or Git dependency caches. Rust repositories that need third-party
 dependencies must commit a vendored source tree and its offline Cargo
-configuration. The operator retains at most 256 seller submission jobs and
-reserves the full transient staging budget plus publication headroom within an
-8 GiB and 100,000-entry package/report storage ceiling.
+configuration. The operator retains at most 256 seller submission and
+retraction jobs combined, and reserves the full transient staging budget plus
+publication headroom within an 8 GiB and 100,000-entry package/report storage
+ceiling.
