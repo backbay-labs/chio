@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`f279cb866be54380f68f018c60d4d5322ba5accd`. The pilot used the installed
+`a25c21737ee89549daec5072270a69f9de92a1a4`. The pilot used the installed
 `chio` binary, one deployable local operator, and distinct scoped seller and
 buyer credentials. It did not give either agent the global service token.
 
@@ -24,9 +24,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,968 ms minimum, 2,012 ms median, 2,500 ms maximum
-- Recorded normal purchase time: 2,664 ms minimum, 2,877 ms median,
-  2,933 ms maximum
+- Admission time: 1,986 ms minimum, 1,999 ms median, 2,199 ms maximum
+- Recorded normal purchase time: 2,661 ms minimum, 2,826 ms median,
+  2,978 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -71,10 +71,12 @@ verification boundaries in its SDK test suite.
 The requalified candidate also closes the final deployment review findings:
 
 - Seller test commands receive a self-contained Git clone copied into a private
-  size-capped tmpfs plus required read-only runtimes, never the operator profile
-  or state tree. They have no network, a cleared environment, bounded output,
-  PID and user namespaces, a five-minute deadline, and hard memory, CPU,
-  process, descriptor, file-size, and writable-volume limits.
+  size-capped tmpfs plus required read-only toolchains, never the operator
+  profile, state tree, Cargo registry, or Git dependency cache. Offline
+  dependencies must be vendored in the repository. Tests have no network, a
+  cleared environment, bounded output, PID and user namespaces, a five-minute
+  deadline, and hard memory, CPU, process, descriptor, file-size, and
+  writable-volume limits.
 - Source repositories are copied without hard links into operator-owned state.
   Operator initialization requires an explicit approved repository root, and
   seller ingress rejects canonical paths and symbolic links that escape it.
@@ -84,7 +86,9 @@ The requalified candidate also closes the final deployment review findings:
   entries, and a per-file limit. Patch generation has its own five-minute
   deadline and output ceiling. Published repository identity removes URL
   credentials, query strings, and fragments. Failed staging removes its
-  partial clone, and completed package files publish atomically.
+  partial clone, and completed package files publish atomically. Seller
+  submission retention is capped at 256 jobs and 8 GiB of package/report
+  storage with worst-case headroom reserved before a new job is accepted.
 - Bundle, encrypted payload, and proof bytes are durable before activation.
   Retraction intent bytes are durable before submission, and pre-dispatch
   purchase failures release both reservation exposure and any reserved slot.
@@ -103,7 +107,8 @@ The requalified candidate also closes the final deployment review findings:
 - Python and TypeScript status calls use the Rust verifier with the profile's
   pinned status authority, service bond, freshness window, and durable rollback
   floor. Challenge helpers authenticate the purchase terminal again before
-  deriving evidence.
+  deriving evidence. Challenge policy lookup streams one retained bundle at a
+  time and stops at the first digest match instead of materializing the store.
 - Seller request validation and the HTTP body cap cover the same complete
   canonical request surface. Seller prices cannot exceed the operator's 450-unit
   backed sale exposure, and operator profiles reject an ephemeral listen port.
