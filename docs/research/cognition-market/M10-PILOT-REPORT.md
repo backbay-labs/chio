@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`952b2f02863c709cdea43a23767fe10aadad0edd`. The qualifier built the `chio`
+`8bbe3cb8b2d1f0bc042b517667ef2d75dec06812`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,973 ms minimum, 2,006 ms median, 2,958 ms maximum
-- Recorded normal purchase time: 2,527 ms minimum, 2,834 ms median,
-  2,894 ms maximum
+- Admission time: 1,938 ms minimum, 2,014 ms median, 2,377 ms maximum
+- Recorded normal purchase time: 2,589 ms minimum, 2,825 ms median,
+  2,931 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -78,13 +78,18 @@ The requalified candidate also closes the final deployment review findings:
   profile, state tree, Cargo registry, or Git dependency cache. Offline
   dependencies must be vendored in the repository. Tests have no network, a
   cleared environment, bounded output, PID and user namespaces, and one
-  five-minute aggregate baseline-and-candidate deadline. Cgroup v2 enforces
-  hard aggregate memory, swap, and process limits across the descendant tree;
+  five-minute aggregate deadline shared by source Git reads, staging, baseline
+  and candidate tests, and patch generation. Cgroup v2 enforces hard aggregate
+  memory, swap, and process limits across each test descendant tree;
   process-local CPU, memory, process, descriptor, and file-size rlimits remain
   defense in depth, and the writable volume is size-capped.
 - Source repositories are copied without hard links into operator-owned state.
   Operator initialization requires an explicit approved repository root, and
   seller ingress rejects canonical paths and symbolic links that escape it.
+  Source Git reads and the initial clone run in a filesystem namespace exposing
+  only that approved root. A full non-local transfer prevents worktree,
+  common-directory, config-include, or alternate-object metadata from retaining
+  access to operator-readable paths outside it.
   Git hooks, system and global configuration, credentials, and external
   protocol helpers are disabled before checkout. Clone and checkout staging is
   bounded by a five-minute deadline, a 1 GiB aggregate ceiling, 75,000
