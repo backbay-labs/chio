@@ -1,6 +1,6 @@
 # M10: Single-Operator Cognition Market Pilot
 
-Status: in progress
+Status: candidate qualified
 
 ## Outcome
 
@@ -100,6 +100,9 @@ or referenced material.
 
 Exit: the committed pilot evidence is reproducible from documented commands and
 meets every quantity and safety condition above.
+
+Evidence: [M10-PILOT-REPORT.md](../M10-PILOT-REPORT.md) records the qualified
+ten-Finding, five-purchase run and its exact implementation candidate.
 
 ## Integration and qualification
 

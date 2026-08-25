@@ -1,0 +1,72 @@
+{
+  "admissionMillis": {
+    "max": 2032,
+    "median": 2003.5,
+    "min": 1801
+  },
+  "candidateSha": "e77b19ac1c0c7120d19963bff9f27c91a93c6f45",
+  "challenge": {
+    "challengeId": "c9ab9f46a8d197bbb98ef2191906702e481cd7a5185c97fee2e3dc99f685ae18",
+    "findingId": "4a9f5b04e6df7f94e59d1d756c6e319022cccfa7a1924d2eec3273203df050c3",
+    "intentId": "4184b5446f7c6ec99bb0e2fec31ba01ff9eeff68c983a3cf7cc51ae8c1d48fc1",
+    "proofKind": "inclusion",
+    "status": "retracted"
+  },
+  "clients": [
+    "python",
+    "python",
+    "python",
+    "python",
+    "typescript"
+  ],
+  "counts": {
+    "captureCount": 5,
+    "failureCount": 0,
+    "findingCount": 10,
+    "purchaseCount": 5,
+    "taskCount": 10
+  },
+  "generatedAt": 1787633657,
+  "operatorTick": {
+    "bundleCount": 10,
+    "captureCount": 5,
+    "proofCount": 10,
+    "purchaseJobCount": 5,
+    "reconciledJobs": 0,
+    "schema": "chio.finding.operator-tick.v1",
+    "terminalCount": 5
+  },
+  "purchaseMillis": {
+    "max": 2948,
+    "median": 2923.5,
+    "min": 2585
+  },
+  "replay": {
+    "captureCount": 5,
+    "terminalCount": 5,
+    "terminalDigestsUnchanged": true
+  },
+  "restart": {
+    "activeJobObserved": true,
+    "captureDelta": 1,
+    "exactReplay": true,
+    "terminalDelta": 1
+  },
+  "schema": "chio.cognition-market.pilot-report.v1",
+  "tamper": {
+    "rustRejected": true,
+    "typescriptRejected": true
+  },
+  "tasks": [
+    "clamp-bounds",
+    "stable-unique",
+    "complete-chunks",
+    "parse-boolean",
+    "even-median",
+    "capped-backoff",
+    "safe-ratio",
+    "casefold-headers",
+    "redact-secret",
+    "retryable-status"
+  ]
+}
