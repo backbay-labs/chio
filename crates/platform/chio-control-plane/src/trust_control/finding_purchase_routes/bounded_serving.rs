@@ -1,0 +1,151 @@
+use super::*;
+
+use std::sync::Mutex;
+use std::time::Duration;
+
+use axum::body::Body;
+use futures_util::stream;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+
+const FINDING_PROOF_CHUNK_BYTES: usize = 64 * 1024;
+const FINDING_PROOF_EGRESS_DEADLINE: Duration = Duration::from_secs(30);
+
+pub(super) enum PurchaseLaneError {
+    Busy,
+    Worker,
+}
+
+pub(super) async fn execute_purchase(
+    executor: SharedFindingPurchaseExecutor,
+    buyer: AuthenticatedFindingBuyer,
+    request: FindingPurchaseRequest,
+    lane: Arc<Semaphore>,
+) -> Result<Result<FindingPurchaseResult, FindingPurchaseExecutionError>, PurchaseLaneError> {
+    let permit = lane
+        .try_acquire_owned()
+        .map_err(|_| PurchaseLaneError::Busy)?;
+    let runtime = tokio::runtime::Handle::current();
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        runtime.block_on(executor.execute(buyer, request))
+    })
+    .await
+    .map_err(|_| PurchaseLaneError::Worker)
+}
+
+pub(super) async fn serve_public_proof(
+    executor: SharedFindingPurchaseExecutor,
+    finding_id: String,
+    lane: Arc<Semaphore>,
+) -> Response {
+    let permit = match lane.try_acquire_owned() {
+        Ok(permit) => permit,
+        Err(_) => {
+            return plain_http_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "finding proof egress lane is busy",
+            )
+        }
+    };
+    let proof = tokio::task::spawn_blocking(move || executor.public_proof(&finding_id)).await;
+    match proof {
+        Ok(Ok(bytes)) if bytes.len() <= FINDING_PROOF_BUNDLE_MAX_BYTES => {
+            proof_stream_response(bytes, permit)
+        }
+        Ok(Ok(_)) => plain_http_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "finding proof bundle exceeds its serving bound",
+        ),
+        Ok(Err(_)) => {
+            plain_http_error(StatusCode::NOT_FOUND, "finding proof bundle is unavailable")
+        }
+        Err(_) => plain_http_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "finding proof reader failed",
+        ),
+    }
+}
+
+struct ProofStreamState {
+    receiver: tokio::sync::mpsc::Receiver<Result<Vec<u8>, std::io::Error>>,
+    _lease: Arc<ProofEgressLease>,
+}
+
+struct ProofEgressLease {
+    permit: Mutex<Option<OwnedSemaphorePermit>>,
+}
+
+impl ProofEgressLease {
+    fn release(&self) {
+        if let Ok(mut permit) = self.permit.lock() {
+            permit.take();
+        }
+    }
+}
+
+fn proof_stream_response(bytes: Vec<u8>, permit: OwnedSemaphorePermit) -> Response {
+    let lease = Arc::new(ProofEgressLease {
+        permit: Mutex::new(Some(permit)),
+    });
+    let deadline = tokio::time::Instant::now() + FINDING_PROOF_EGRESS_DEADLINE;
+    let deadline_lease = Arc::downgrade(&lease);
+    tokio::spawn(async move {
+        tokio::time::sleep_until(deadline).await;
+        if let Some(lease) = deadline_lease.upgrade() {
+            lease.release();
+        }
+    });
+    let (sender, receiver) = tokio::sync::mpsc::channel(1);
+    tokio::spawn(async move {
+        for chunk in bytes.chunks(FINDING_PROOF_CHUNK_BYTES) {
+            let send = sender.send(Ok(chunk.to_vec()));
+            match tokio::time::timeout_at(deadline, send).await {
+                Ok(Ok(())) => {}
+                Ok(Err(_)) | Err(_) => return,
+            }
+        }
+    });
+    let state = ProofStreamState {
+        receiver,
+        _lease: lease,
+    };
+    let body = Body::from_stream(stream::unfold(state, |mut state| async move {
+        state.receiver.recv().await.map(|chunk| (chunk, state))
+    }));
+    let mut response = Response::new(body);
+    *response.status_mut() = StatusCode::OK;
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn proof_response_holds_nonqueued_lane_until_body_drop() {
+        let lane = Arc::new(Semaphore::new(1));
+        let permit = lane
+            .clone()
+            .try_acquire_owned()
+            .unwrap_or_else(|error| panic!("proof permit: {error}"));
+        let response = proof_stream_response(b"{}".to_vec(), permit);
+        assert!(lane.clone().try_acquire_owned().is_err());
+        drop(response);
+        assert!(lane.try_acquire_owned().is_ok());
+    }
+
+    #[test]
+    fn purchase_lane_rejects_queued_blocking_work() {
+        let lane = Arc::new(Semaphore::new(1));
+        let active = lane
+            .clone()
+            .try_acquire_owned()
+            .unwrap_or_else(|error| panic!("purchase permit: {error}"));
+        assert!(lane.clone().try_acquire_owned().is_err());
+        drop(active);
+        assert!(lane.try_acquire_owned().is_ok());
+    }
+}

@@ -136,6 +136,8 @@ async fn serve_async_inner(
         cluster_progress,
         finding_rail,
         finding_purchase_executor,
+        finding_purchase_execution_lane: Arc::new(tokio::sync::Semaphore::new(1)),
+        finding_proof_egress_lane: Arc::new(tokio::sync::Semaphore::new(1)),
         finding_seller_submission_executor,
         finding_seller_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
         finding_authority_status_resolver,

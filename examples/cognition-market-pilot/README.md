@@ -5,8 +5,11 @@ operator. The agents receive separate scoped credentials. Neither client file
 contains the operator service token, and the seller credential contains no
 market signing key.
 
-Seller packaging requires Git, Bubblewrap (`bwrap`), and util-linux
-`prlimit` on the operator host.
+Seller packaging requires Git, Bubblewrap (`bwrap`), util-linux `prlimit`, and
+cgroup v2 on the operator host. The included systemd service delegates memory
+and process controllers to the operator. An interactive deployment can instead
+use an available systemd user manager (`systemd-run --user`). Packaging fails
+closed when neither cgroup path is available.
 
 Build Chio and initialize a private deployment directory:
 
@@ -71,7 +74,10 @@ lock. Only one seller submission or retraction enters blocking execution at a
 time; overlapping requests receive HTTP 503 and can retry the same durable
 identity. A prepared purchase ask is checked against current operator time
 before its first reservation. An expired ask cannot reserve funds, and the
-buyer must prepare a fresh purchase request.
+buyer must prepare a fresh purchase request. Purchase execution uses one
+non-queued blocking lane. Public proof reads use a separate one-response lane,
+64 KiB streaming chunks, and a 30-second absolute egress deadline. A busy lane
+returns HTTP 503 instead of accumulating work.
 
 The Python and TypeScript buyer SDKs verify status proofs with the profile's
 pinned status authority, service bond, freshness window, and a durable rollback
@@ -101,10 +107,13 @@ path and rejects anything outside that root. Packaging first clones its objects 
 operator-owned packages directory, with repository hooks and external Git
 helpers disabled. It creates self-contained baseline and candidate clones so
 Git-based build tooling remains available without mounting shared repository
-metadata. Each test receives a private size-capped tmpfs, no network, a
-five-minute deadline, a cleared environment, bounded output, hard memory, CPU,
-process, descriptor, and file-size limits, and no mount of the operator profile
-or state directory. Repository clone and checkout staging also has a
+metadata. Each test receives a private size-capped tmpfs, no network, a cleared
+environment, bounded output, hard memory, CPU, process, descriptor, and
+file-size limits, and no mount of the operator profile or state directory.
+Baseline and candidate commands share one five-minute aggregate deadline.
+Memory, swap, and process limits are enforced across the complete descendant
+tree by cgroup v2, with process-local rlimits retained as defense in depth.
+Repository clone and checkout staging also has a
 five-minute deadline, a 1 GiB aggregate storage ceiling, a 75,000-entry
 ceiling, and a per-file size limit. Published repository identity strips URL
 credentials, query strings, and fragments.

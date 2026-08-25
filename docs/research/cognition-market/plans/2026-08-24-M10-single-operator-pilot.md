@@ -62,9 +62,17 @@ original job.
 Seller admission and scheduled reconciliation serialize through one
 cross-process operator lock. Submission and retraction share one non-queued
 blocking lane, so overlap returns a retryable HTTP 503 instead of consuming
-unbounded worker capacity. Before its first reservation, a prepared purchase
-ask is revalidated against current operator time and an expired ask fails
-closed without reserving funds.
+unbounded worker capacity. Reconciliation records a terminal-safe failure for
+each failed admission and continues with later jobs. Before its first
+reservation, a prepared purchase ask is revalidated against current operator
+time and an expired ask fails closed without reserving funds. Purchase
+execution runs in one non-queued blocking lane. Public proof reads and egress
+use a separate one-response lane, bounded chunks, and an absolute deadline.
+
+Seller-controlled baseline and candidate commands share one five-minute
+package deadline. Their complete descendant tree is constrained by cgroup v2
+aggregate memory, swap, and process limits, in addition to the existing
+process-local rlimits and isolated writable volume.
 
 The seller workflow packages a patch, replay recipe, deterministic evidence,
 commercial terms, backing, listing, and admission request from normal files.

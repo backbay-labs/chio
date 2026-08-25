@@ -991,7 +991,7 @@ pub(super) fn cmd_finding_operator_tick(
         .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     let payments = SqliteFindingOperatorPaymentAdapter::open(&paths.operator_database)
         .map_err(CliError::cli_other_error)?;
-    let reconciled_jobs = reconcile_admission_jobs(profile_path)?;
+    let reconciliation = reconcile_admission_jobs(profile_path)?;
     let report = serde_json::json!({
         "schema": "chio.finding.operator-tick.v1",
         "bundleCount": bundles.bundle_count().map_err(|error| CliError::cli_other_error(error.to_string()))?,
@@ -999,7 +999,9 @@ pub(super) fn cmd_finding_operator_tick(
         "terminalCount": bundles.terminal_count().map_err(|error| CliError::cli_other_error(error.to_string()))?,
         "purchaseJobCount": bundles.purchase_job_count().map_err(|error| CliError::cli_other_error(error.to_string()))?,
         "captureCount": payments.capture_count().map_err(CliError::cli_other_error)?,
-        "reconciledJobs": reconciled_jobs,
+        "reconciledJobs": reconciliation.reconciled_jobs,
+        "failedAdmissionJobCount": reconciliation.failed_jobs.len(),
+        "failedAdmissionJobs": reconciliation.failed_jobs,
     });
     if json_output {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -1010,6 +1012,10 @@ pub(super) fn cmd_finding_operator_tick(
         println!("purchase_jobs:   {}", report["purchaseJobCount"]);
         println!("captures:        {}", report["captureCount"]);
         println!("reconciled_jobs: {}", report["reconciledJobs"]);
+        println!(
+            "failed_admission_jobs: {}",
+            report["failedAdmissionJobCount"]
+        );
     }
     Ok(())
 }

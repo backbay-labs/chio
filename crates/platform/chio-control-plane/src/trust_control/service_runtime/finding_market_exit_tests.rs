@@ -610,6 +610,8 @@ fn market_state(
         cluster_progress: None,
         finding_rail: Some(rail),
         finding_purchase_executor: None,
+        finding_purchase_execution_lane: Arc::new(tokio::sync::Semaphore::new(1)),
+        finding_proof_egress_lane: Arc::new(tokio::sync::Semaphore::new(1)),
         finding_seller_submission_executor: None,
         finding_seller_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
         finding_authority_status_resolver: Some(Arc::new(
@@ -3227,7 +3229,6 @@ async fn unpaid_epoch_drops_the_marker_until_renewal() -> TestResult {
     stack.seed_market().await?;
     let (status, body) = stack.activate().await?;
     assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
-
     tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
     assert!(
         stack.admission_marker().await?.is_none(),
@@ -3401,7 +3402,6 @@ async fn expired_admission_loses_the_marker() -> TestResult {
     let (status, body) = stack.activate().await?;
     assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
     assert!(stack.admission_marker().await?.is_some());
-
     let remaining = expires_at.saturating_sub(unix_timestamp_now()) + 1;
     tokio::time::sleep(std::time::Duration::from_secs(remaining)).await;
     assert!(

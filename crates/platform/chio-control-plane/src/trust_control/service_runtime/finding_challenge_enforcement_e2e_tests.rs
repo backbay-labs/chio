@@ -1177,6 +1177,8 @@ fn challenge_route_state(
         cluster_progress: None,
         finding_rail: Some(deployment.rail.clone()),
         finding_purchase_executor: None,
+        finding_purchase_execution_lane: Arc::new(tokio::sync::Semaphore::new(1)),
+        finding_proof_egress_lane: Arc::new(tokio::sync::Semaphore::new(1)),
         finding_seller_submission_executor: None,
         finding_seller_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
         finding_authority_status_resolver: Some(Arc::new(TestAuthorityStatusResolver::live())),

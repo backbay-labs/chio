@@ -213,8 +213,32 @@ fn paid_terminal_uses_its_authenticated_historical_verification_time() {
 }
 
 #[test]
+fn admission_reconciliation_continues_after_one_job_fails() {
+    let pending = vec![
+        ("a".repeat(64), PathBuf::from("/tmp/first")),
+        ("b".repeat(64), PathBuf::from("/tmp/second")),
+        ("c".repeat(64), PathBuf::from("/tmp/third")),
+    ];
+    let mut visited = Vec::new();
+    let result = reconcile_pending_admissions(pending, |package| {
+        visited.push(package.to_path_buf());
+        if package.ends_with("first") {
+            Err(CliError::cli_other_error("terminal failure".to_owned()))
+        } else {
+            Ok(())
+        }
+    });
+
+    assert_eq!(visited.len(), 3);
+    assert_eq!(result.reconciled_jobs, 2);
+    assert_eq!(result.failed_jobs.len(), 1);
+    assert_eq!(result.failed_jobs[0].finding_id, "a".repeat(64));
+    assert_eq!(result.failed_jobs[0].error, "terminal failure");
+}
+
+#[test]
 fn isolated_test_cannot_read_operator_sibling_and_has_a_deadline() {
-    if require_bwrap().is_err() {
+    if require_sandbox().is_err() {
         return;
     }
     let root = tempfile::tempdir().unwrap();

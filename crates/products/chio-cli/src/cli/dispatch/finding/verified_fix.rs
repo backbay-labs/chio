@@ -4,8 +4,8 @@ use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -41,24 +41,26 @@ use super::finding_operator::{load_profile, ResolvedOperatorPaths};
 #[path = "verified_fix_admission_lock.rs"]
 mod admission_lock;
 use admission_lock::FindingAdmissionJobLock;
+#[path = "verified_fix_sandbox.rs"]
+mod sandbox;
+use sandbox::{
+    require_sandbox, run_test_commands, runtime_fingerprint, PACKAGE_TEST_TIMEOUT,
+};
+#[cfg(test)]
+use sandbox::{
+    add_runtime_mounts, run_test_command_with_limits, run_test_command_with_timeout,
+    TestSandboxLimits,
+};
 
 const MAX_DRAFT_BYTES: usize = 32 * 1024 * 1024;
 const MAX_PROOF_BYTES: usize = 24 * 1024 * 1024;
 const MAX_PAYLOAD_BYTES: usize = 8 * 1024 * 1024;
-const MAX_COMMAND_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_GIT_ERROR_BYTES: usize = 64 * 1024;
 const MAX_REPOSITORY_IDENTITY_BYTES: usize = 8 * 1024;
-const TEST_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
 const REPOSITORY_STAGE_TIMEOUT: Duration = Duration::from_secs(300);
 const PATCH_GENERATION_TIMEOUT: Duration = Duration::from_secs(300);
 pub(super) const REPOSITORY_STAGE_MAX_BYTES: u64 = 1024 * 1024 * 1024;
 pub(super) const REPOSITORY_STAGE_MAX_ENTRIES: u64 = 75_000;
-const TEST_SANDBOX_ADDRESS_SPACE_BYTES: u64 = 6 * 1024 * 1024 * 1024;
-const TEST_SANDBOX_FILE_BYTES: u64 = 1024 * 1024 * 1024;
-const TEST_SANDBOX_TMPFS_BYTES: u64 = 4 * 1024 * 1024 * 1024;
-const TEST_SANDBOX_PROCESS_LIMIT: u64 = 512;
-const TEST_SANDBOX_OPEN_FILE_LIMIT: u64 = 1024;
-const TEST_SANDBOX_CPU_SECS: u64 = 300;
 const PAYLOAD_TENANT: &str = "cognition-market-pilot";
 const ADMISSION_JOB_SCHEMA: &str = "chio.finding.admission-job.v1";
 
@@ -127,7 +129,7 @@ pub(super) fn cmd_finding_package_verified_fix(
             "at least one non-empty --test command is required".to_owned(),
         ));
     }
-    require_bwrap()?;
+    require_sandbox()?;
 
     let repository_identity = repository_identity(&repository)?;
     let work_root = paths
@@ -141,8 +143,11 @@ pub(super) fn cmd_finding_package_verified_fix(
     let staged_repository = worktrees.repository.clone();
     let baseline_path = worktrees.add("baseline", &base)?;
     let candidate_path = worktrees.add("candidate", &candidate)?;
-    let baseline = run_test_commands(&baseline_path, request.tests)?;
-    let candidate_results = run_test_commands(&candidate_path, request.tests)?;
+    let test_deadline = Instant::now()
+        .checked_add(PACKAGE_TEST_TIMEOUT)
+        .ok_or_else(|| CliError::cli_other_error("package test deadline overflowed".to_owned()))?;
+    let baseline = run_test_commands(&baseline_path, request.tests, test_deadline)?;
+    let candidate_results = run_test_commands(&candidate_path, request.tests, test_deadline)?;
     if !baseline.iter().any(|result| result.exit_code != 0) {
         return Err(CliError::cli_other_error(
             "verified-fix baseline unexpectedly passed every test".to_owned(),
@@ -165,7 +170,8 @@ pub(super) fn cmd_finding_package_verified_fix(
     })?;
     let issued_at = unix_time()?;
     let runner_manifest = canonical_json_bytes(&serde_json::json!({
-        "isolation": "bubblewrap-rlimit-bounded-tmpfs-v1",
+        "aggregateTestDeadlineMillis": PACKAGE_TEST_TIMEOUT.as_millis(),
+        "isolation": "bubblewrap-cgroup-v2-rlimit-bounded-tmpfs-v1",
         "runner": "chio finding package verified-fix",
         "tests": request.tests,
         "version": env!("CARGO_PKG_VERSION"),
@@ -251,7 +257,21 @@ pub(super) fn cmd_finding_admit(
     Ok(())
 }
 
-pub(super) fn reconcile_admission_jobs(profile_path: &Path) -> Result<u64, CliError> {
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct FindingAdmissionReconciliationFailure {
+    finding_id: String,
+    error: String,
+}
+
+pub(super) struct FindingAdmissionReconciliation {
+    pub(super) reconciled_jobs: u64,
+    pub(super) failed_jobs: Vec<FindingAdmissionReconciliationFailure>,
+}
+
+pub(super) fn reconcile_admission_jobs(
+    profile_path: &Path,
+) -> Result<FindingAdmissionReconciliation, CliError> {
     let (profile, root) = load_profile(profile_path)?;
     let paths = ResolvedOperatorPaths::new(&root, &profile.paths);
     let mut pending = Vec::new();
@@ -268,17 +288,42 @@ pub(super) fn reconcile_admission_jobs(profile_path: &Path) -> Result<u64, CliEr
         let job: FindingAdmissionJob = read_canonical_file(&entry.path(), MAX_DRAFT_BYTES)?;
         validate_admission_job(&job)?;
         if !job.completed {
-            pending.push(PathBuf::from(job.package_path));
+            pending.push((job.finding_id, PathBuf::from(job.package_path)));
         }
     }
-    let mut reconciled = 0u64;
-    for package in pending {
-        run_finding_admission(profile_path, &package)?;
-        reconciled = reconciled
-            .checked_add(1)
-            .ok_or_else(|| CliError::cli_other_error("admission job count overflowed".to_owned()))?;
+    pending.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(reconcile_pending_admissions(pending, |package| {
+        run_finding_admission(profile_path, package).map(|_| ())
+    }))
+}
+
+fn reconcile_pending_admissions(
+    pending: Vec<(String, PathBuf)>,
+    mut reconcile: impl FnMut(&Path) -> Result<(), CliError>,
+) -> FindingAdmissionReconciliation {
+    let mut reconciled_jobs = 0u64;
+    let mut failed_jobs = Vec::new();
+    for (finding_id, package) in pending {
+        match reconcile(&package) {
+            Ok(()) => reconciled_jobs = reconciled_jobs.saturating_add(1),
+            Err(error) => failed_jobs.push(FindingAdmissionReconciliationFailure {
+                finding_id,
+                error: terminal_safe(reconciliation_error_message(&error)),
+            }),
+        }
     }
-    Ok(reconciled)
+    FindingAdmissionReconciliation {
+        reconciled_jobs,
+        failed_jobs,
+    }
+}
+
+fn reconciliation_error_message(error: &CliError) -> &str {
+    match error {
+        CliError::Chio(error) => error.message(),
+        CliError::Other(message) => message,
+        _ => "admission reconciliation failed",
+    }
 }
 
 fn run_finding_admission(
@@ -662,270 +707,6 @@ impl Drop for StagedRepositorySet {
     }
 }
 
-fn run_test_commands(
-    worktree: &Path,
-    commands: &[String],
-) -> Result<Vec<VerifiedFixCommandResult>, CliError> {
-    commands
-        .iter()
-        .map(|command| run_test_command(worktree, command))
-        .collect()
-}
-
-fn run_test_command(
-    worktree: &Path,
-    command: &str,
-) -> Result<VerifiedFixCommandResult, CliError> {
-    run_test_command_with_timeout(worktree, command, TEST_COMMAND_TIMEOUT)
-}
-
-fn run_test_command_with_timeout(
-    worktree: &Path,
-    command: &str,
-    timeout: Duration,
-) -> Result<VerifiedFixCommandResult, CliError> {
-    run_test_command_with_limits(
-        worktree,
-        command,
-        timeout,
-        TestSandboxLimits::production(),
-    )
-}
-
-#[derive(Clone, Copy)]
-struct TestSandboxLimits {
-    address_space_bytes: u64,
-    file_bytes: u64,
-    tmpfs_bytes: u64,
-    process_count: u64,
-    open_files: u64,
-    cpu_secs: u64,
-}
-
-impl TestSandboxLimits {
-    const fn production() -> Self {
-        Self {
-            address_space_bytes: TEST_SANDBOX_ADDRESS_SPACE_BYTES,
-            file_bytes: TEST_SANDBOX_FILE_BYTES,
-            tmpfs_bytes: TEST_SANDBOX_TMPFS_BYTES,
-            process_count: TEST_SANDBOX_PROCESS_LIMIT,
-            open_files: TEST_SANDBOX_OPEN_FILE_LIMIT,
-            cpu_secs: TEST_SANDBOX_CPU_SECS,
-        }
-    }
-}
-
-fn run_test_command_with_limits(
-    worktree: &Path,
-    command: &str,
-    timeout: Duration,
-    limits: TestSandboxLimits,
-) -> Result<VerifiedFixCommandResult, CliError> {
-    let started = Instant::now();
-    let mut isolated = Command::new("prlimit");
-    isolated
-        .arg(format!("--as={}", limits.address_space_bytes))
-        .arg(format!("--fsize={}", limits.file_bytes))
-        .arg(format!("--nproc={}", limits.process_count))
-        .arg(format!("--nofile={}", limits.open_files))
-        .arg(format!("--cpu={}", limits.cpu_secs))
-        .args(["--", "bwrap"])
-        .args([
-            "--die-with-parent",
-            "--new-session",
-            "--unshare-user",
-            "--unshare-net",
-            "--unshare-pid",
-            "--unshare-ipc",
-            "--unshare-cgroup-try",
-            "--disable-userns",
-            "--clearenv",
-            "--proc",
-            "/proc",
-            "--dev",
-            "/dev",
-            "--size",
-        ])
-        .arg(limits.tmpfs_bytes.to_string())
-        .args([
-            "--tmpfs",
-            "/workspace",
-            "--dir",
-            "/workspace/.home",
-            "--dir",
-            "/workspace/.cargo",
-            "--dir",
-            "/workspace/.tmp",
-        ]);
-    add_runtime_mounts(
-        &mut isolated,
-        std::env::var_os("HOME").as_deref().map(Path::new),
-    );
-    isolated
-        .arg("--ro-bind")
-        .arg(worktree)
-        .arg("/source")
-        .arg("--chdir")
-        .arg("/workspace")
-        .args([
-            "--setenv",
-            "HOME",
-            "/workspace/.home",
-            "--setenv",
-            "LANG",
-            "C",
-            "--setenv",
-            "LC_ALL",
-            "C",
-            "--setenv",
-            "TZ",
-            "UTC",
-            "--setenv",
-            "PATH",
-            &sandbox_path(),
-            "--setenv",
-            "CARGO_HOME",
-            "/workspace/.cargo",
-            "--setenv",
-            "CARGO_NET_OFFLINE",
-            "true",
-            "--setenv",
-            "GIT_CONFIG_GLOBAL",
-            "/dev/null",
-            "--setenv",
-            "GIT_CONFIG_NOSYSTEM",
-            "1",
-            "--setenv",
-            "GIT_TERMINAL_PROMPT",
-            "0",
-            "--setenv",
-            "TMPDIR",
-            "/workspace/.tmp",
-            "--",
-            "sh",
-            "-c",
-        ])
-        .arg(
-            "mkdir -p /workspace/repository && cp -a /source/. /workspace/repository/ && cd /workspace/repository && exec sh -c \"$1\"",
-        )
-        .arg("chio-verified-fix-sandbox")
-        .arg(command)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt as _;
-        isolated.process_group(0);
-    }
-    let mut child = isolated.spawn().map_err(|error| {
-        CliError::cli_other_error(format!("failed to start isolated test command: {error}"))
-    })?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| CliError::cli_other_error("test stdout pipe is unavailable".to_owned()))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| CliError::cli_other_error("test stderr pipe is unavailable".to_owned()))?;
-    let overflow = Arc::new(AtomicBool::new(false));
-    let stdout_overflow = Arc::clone(&overflow);
-    let stderr_overflow = Arc::clone(&overflow);
-    let stdout_reader = thread::spawn(move || read_and_digest(stdout, &stdout_overflow));
-    let stderr_reader = thread::spawn(move || read_and_digest(stderr, &stderr_overflow));
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if overflow.load(Ordering::Acquire) {
-            terminate_process_group(&mut child);
-            let _ = child.wait();
-            let _ = join_digest(stdout_reader, "stdout");
-            let _ = join_digest(stderr_reader, "stderr");
-            return Err(CliError::cli_other_error(
-                "test command output exceeded the 4 MiB evidence bound".to_owned(),
-            ));
-        }
-        if started.elapsed() >= timeout {
-            terminate_process_group(&mut child);
-            let _ = child.wait();
-            let _ = join_digest(stdout_reader, "stdout");
-            let _ = join_digest(stderr_reader, "stderr");
-            return Err(CliError::cli_other_error(
-                format!(
-                    "test command exceeded the {} millisecond execution deadline",
-                    timeout.as_millis()
-                ),
-            ));
-        }
-        thread::sleep(Duration::from_millis(20));
-    };
-    let (stdout_sha256, stdout_overflow) = join_digest(stdout_reader, "stdout")?;
-    let (stderr_sha256, stderr_overflow) = join_digest(stderr_reader, "stderr")?;
-    if stdout_overflow || stderr_overflow {
-        return Err(CliError::cli_other_error(
-            "test command output exceeded the 4 MiB evidence bound".to_owned(),
-        ));
-    }
-    Ok(VerifiedFixCommandResult {
-        command: command.to_owned(),
-        exit_code: exit_code(status),
-        stdout_sha256,
-        stderr_sha256,
-        duration_millis: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-    })
-}
-
-fn read_and_digest(
-    mut reader: impl Read,
-    overflow: &AtomicBool,
-) -> Result<(String, bool), std::io::Error> {
-    use sha2::Digest as _;
-    let mut digest = sha2::Sha256::new();
-    let mut total = 0usize;
-    let mut buffer = [0u8; 16 * 1024];
-    loop {
-        let read = reader.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        total = total.saturating_add(read);
-        if total > MAX_COMMAND_OUTPUT_BYTES {
-            overflow.store(true, Ordering::Release);
-        }
-        digest.update(&buffer[..read]);
-    }
-    Ok((hex::encode(digest.finalize()), total > MAX_COMMAND_OUTPUT_BYTES))
-}
-
-fn join_digest(
-    worker: thread::JoinHandle<Result<(String, bool), std::io::Error>>,
-    label: &str,
-) -> Result<(String, bool), CliError> {
-    worker
-        .join()
-        .map_err(|_| CliError::cli_other_error(format!("{label} reader panicked")))?
-        .map_err(CliError::from)
-}
-
-fn exit_code(status: ExitStatus) -> i32 {
-    status.code().unwrap_or(255)
-}
-
-fn terminate_process_group(child: &mut std::process::Child) {
-    #[cfg(unix)]
-    {
-        if let Ok(pid) = i32::try_from(child.id()) {
-            // SAFETY: `pid` is the live child process group created above. A
-            // negative PID targets only that group, never the operator.
-            unsafe {
-                libc::kill(-pid, libc::SIGKILL);
-            }
-        }
-    }
-    let _ = child.kill();
-}
-
 fn stage_repository(source: &Path, work_root: &Path) -> Result<PathBuf, CliError> {
     let template = work_root.join("git-template");
     fs::create_dir(&template)?;
@@ -1018,6 +799,20 @@ fn run_repository_staging_command(
     }
 }
 
+fn terminate_process_group(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        if let Ok(pid) = i32::try_from(child.id()) {
+            // SAFETY: the child is created as its own process group above, so
+            // the negative PID targets only that group.
+            unsafe {
+                libc::kill(-pid, libc::SIGKILL);
+            }
+        }
+    }
+    let _ = child.kill();
+}
+
 fn staging_root_within_bound(root: &Path, maximum_bytes: u64) -> Result<bool, CliError> {
     let mut pending = vec![root.to_path_buf()];
     let mut bytes = 0u64;
@@ -1065,66 +860,6 @@ fn hardened_git_command() -> Command {
     command
 }
 
-fn add_runtime_mounts(command: &mut Command, home: Option<&Path>) {
-    for path in [
-        "/usr",
-        "/usr/local",
-        "/bin",
-        "/sbin",
-        "/lib",
-        "/lib64",
-        "/etc/alternatives",
-        "/etc/ld.so.cache",
-        "/etc/localtime",
-        "/etc/ssl",
-    ] {
-        if Path::new(path).exists() {
-            command.args(["--ro-bind", path, path]);
-        }
-    }
-    if let Some(home) = home {
-        let cargo_bin = home.join(".cargo/bin");
-        if cargo_bin.is_dir() {
-            command.arg("--ro-bind").arg(&cargo_bin).arg(&cargo_bin);
-        }
-        let rustup_toolchains = home.join(".rustup/toolchains");
-        if rustup_toolchains.is_dir() {
-            command
-                .arg("--ro-bind")
-                .arg(&rustup_toolchains)
-                .arg(&rustup_toolchains);
-            command
-                .args(["--setenv", "RUSTUP_HOME"])
-                .arg(home.join(".rustup"));
-        }
-        let rustup_settings = home.join(".rustup/settings.toml");
-        if rustup_settings.is_file() {
-            command
-                .arg("--ro-bind")
-                .arg(&rustup_settings)
-                .arg(&rustup_settings);
-        }
-        // Operator-owned Cargo registry and Git caches may contain private
-        // dependencies. Seller tests receive only the toolchain executables;
-        // repositories that need offline dependencies must vendor them.
-    }
-}
-
-fn sandbox_path() -> String {
-    let mut paths = vec![
-        "/usr/local/sbin".to_owned(),
-        "/usr/local/bin".to_owned(),
-        "/usr/sbin".to_owned(),
-        "/usr/bin".to_owned(),
-        "/sbin".to_owned(),
-        "/bin".to_owned(),
-    ];
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
-        paths.push(home.join(".cargo/bin").display().to_string());
-    }
-    paths.join(":")
-}
-
 fn require_git_repository(path: &Path) -> Result<(), CliError> {
     let inside = git_stdout_bounded(
         path,
@@ -1139,69 +874,6 @@ fn require_git_repository(path: &Path) -> Result<(), CliError> {
         ));
     }
     Ok(())
-}
-
-fn require_bwrap() -> Result<(), CliError> {
-    let output = Command::new("bwrap").arg("--version").output().map_err(|_| {
-        CliError::cli_other_error(
-            "verified-fix packaging requires bubblewrap for network isolation".to_owned(),
-        )
-    })?;
-    if !output.status.success() {
-        return Err(CliError::cli_other_error(
-            "bubblewrap is unavailable for verified-fix isolation".to_owned(),
-        ));
-    }
-    let output = Command::new("prlimit")
-        .arg("--version")
-        .output()
-        .map_err(|_| {
-            CliError::cli_other_error(
-                "verified-fix packaging requires prlimit for resource isolation".to_owned(),
-            )
-        })?;
-    if !output.status.success() {
-        return Err(CliError::cli_other_error(
-            "prlimit is unavailable for verified-fix resource isolation".to_owned(),
-        ));
-    }
-    Ok(())
-}
-
-fn runtime_fingerprint() -> Result<Vec<u8>, CliError> {
-    let os_release = fs::read_to_string("/etc/os-release").unwrap_or_default();
-    let git = command_version("git", &["--version"])?;
-    let bwrap = command_version("bwrap", &["--version"])?;
-    let prlimit = command_version("prlimit", &["--version"])?;
-    let shell = command_version("sh", &["--version"]).unwrap_or_else(|_| "sh".to_owned());
-    canonical_json_bytes(&serde_json::json!({
-        "arch": std::env::consts::ARCH,
-        "bubblewrap": bwrap,
-        "git": git,
-        "os": std::env::consts::OS,
-        "osReleaseSha256": sha256_hex(os_release.as_bytes()),
-        "prlimit": prlimit,
-        "resourceLimits": {
-            "addressSpaceBytes": TEST_SANDBOX_ADDRESS_SPACE_BYTES,
-            "cpuSeconds": TEST_SANDBOX_CPU_SECS,
-            "fileBytes": TEST_SANDBOX_FILE_BYTES,
-            "openFiles": TEST_SANDBOX_OPEN_FILE_LIMIT,
-            "processes": TEST_SANDBOX_PROCESS_LIMIT,
-            "writableTmpfsBytes": TEST_SANDBOX_TMPFS_BYTES,
-        },
-        "shell": shell,
-    }))
-    .map_err(CliError::from)
-}
-
-fn command_version(command: &str, args: &[&str]) -> Result<String, CliError> {
-    let output = Command::new(command).args(args).output()?;
-    if !output.status.success() {
-        return Err(CliError::cli_other_error(format!(
-            "failed to query {command} version"
-        )));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
 fn git_stdout_bounded(

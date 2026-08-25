@@ -42,6 +42,9 @@ use serde::{Deserialize, Serialize};
 use super::report_validation::validate_service_auth;
 use super::{plain_http_error, TrustServiceState};
 
+#[path = "finding_purchase_routes/bounded_serving.rs"]
+mod bounded_serving;
+
 /// Stable request schema for the public purchase surface.
 pub const FINDING_PURCHASE_REQUEST_SCHEMA: &str = "chio.finding.purchase-request.v1";
 /// Stable terminal response schema for the public purchase surface.
@@ -570,19 +573,10 @@ pub(crate) async fn handle_get_finding_proof_bundle(
     if require_hex64(&finding_id, "finding_id").is_err() {
         return plain_http_error(StatusCode::BAD_REQUEST, "finding id is invalid");
     }
-    let Some(executor) = state.finding_purchase_executor.as_ref() else {
+    let Some(executor) = state.finding_purchase_executor.clone() else {
         return plain_http_error(StatusCode::NOT_FOUND, "finding proof bundle is unavailable");
     };
-    match executor.public_proof(&finding_id) {
-        Ok(bytes) if bytes.len() <= FINDING_PROOF_BUNDLE_MAX_BYTES => {
-            (StatusCode::OK, [(CONTENT_TYPE, "application/json")], bytes).into_response()
-        }
-        Ok(_) => plain_http_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "finding proof bundle exceeds its serving bound",
-        ),
-        Err(_) => plain_http_error(StatusCode::NOT_FOUND, "finding proof bundle is unavailable"),
-    }
+    bounded_serving::serve_public_proof(executor, finding_id, state.finding_proof_egress_lane).await
 }
 
 /// POST /v1/findings/{finding_id}/operator/live-status (service-authenticated).
@@ -946,7 +940,7 @@ pub(crate) async fn handle_purchase_finding(
         Ok(finding) => finding,
         Err(response) => return response,
     };
-    let Some(executor) = executor.as_ref() else {
+    let Some(executor) = executor else {
         return purchase_error(
             StatusCode::SERVICE_UNAVAILABLE,
             "purchase_executor_unavailable",
@@ -961,7 +955,31 @@ pub(crate) async fn handle_purchase_finding(
         );
     };
 
-    let result = match executor.execute(authenticated_buyer, request.clone()).await {
+    let execution = match bounded_serving::execute_purchase(
+        executor,
+        authenticated_buyer,
+        request.clone(),
+        state.finding_purchase_execution_lane,
+    )
+    .await
+    {
+        Ok(execution) => execution,
+        Err(bounded_serving::PurchaseLaneError::Busy) => {
+            return purchase_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "purchase_busy",
+                "finding purchase execution lane is busy",
+            )
+        }
+        Err(bounded_serving::PurchaseLaneError::Worker) => {
+            return purchase_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "purchase_executor_failed",
+                "finding purchase execution worker failed",
+            )
+        }
+    };
+    let result = match execution {
         Ok(result) => result,
         Err(FindingPurchaseExecutionError::Rejected(error)) => {
             tracing::warn!(error = %error, finding_id = %finding_id, "finding purchase rejected");
