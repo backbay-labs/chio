@@ -273,6 +273,9 @@ pub(crate) enum FindingOperatorCommands {
         /// HTTP address for the operator service.
         #[arg(long, default_value = "127.0.0.1:7143")]
         listen: std::net::SocketAddr,
+        /// Existing root containing every seller-accessible source repository.
+        #[arg(long)]
+        repository_root: PathBuf,
         /// Initial buyer principal installed in the profile.
         #[arg(long, default_value = "coding-agent-buyer")]
         buyer_principal: String,

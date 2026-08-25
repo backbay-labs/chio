@@ -158,6 +158,7 @@ pub struct FindingOperatorChallengeKeys {
 pub struct FindingOperatorProfile {
     pub schema: String,
     pub listen: SocketAddr,
+    pub seller_repository_root: String,
     pub service_token: String,
     pub paths: FindingOperatorPaths,
     pub market: FindingMarketConfig,
@@ -175,6 +176,7 @@ impl FindingOperatorProfile {
         if self.listen.port() == 0 {
             return Err("finding operator listen port must be nonzero".to_owned());
         }
+        validate_absolute_path(&self.seller_repository_root, "seller repository root")?;
         validate_text(&self.service_token, "service token")?;
         self.market.validate().map_err(|error| error.to_string())?;
         for (path, label) in [
@@ -569,6 +571,19 @@ fn validate_relative_path(value: &str, label: &str) -> Result<(), String> {
             .any(|component| !matches!(component, Component::Normal(_)))
     {
         return Err(format!("{label} must be a normalized relative path"));
+    }
+    Ok(())
+}
+
+fn validate_absolute_path(value: &str, label: &str) -> Result<(), String> {
+    validate_text(value, label)?;
+    let path = Path::new(value);
+    if !path.is_absolute()
+        || path
+            .components()
+            .any(|component| !matches!(component, Component::RootDir | Component::Normal(_)))
+    {
+        return Err(format!("{label} must be a normalized absolute path"));
     }
     Ok(())
 }

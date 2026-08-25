@@ -38,10 +38,16 @@ survive process restarts. Exact retries replay the original outcome and do not
 capture payment twice.
 
 Operator initialization is atomic and resumable for an exact deployment
-request. Repository clone and checkout work is deadline-bound and
-storage-bound, repository identities exclude transport credentials, and the
-maximum admitted sale price cannot exceed the collateral exposure backing the
-listing.
+request. Initialization requires an explicit canonical repository root, and
+seller submissions cannot select a repository outside it, including through a
+symbolic-link escape. Repository clone, checkout, and patch generation are
+deadline-bound and storage or output-bound, repository identities exclude
+transport credentials, and the maximum admitted sale price cannot exceed the
+collateral exposure backing the listing.
+
+Durable purchase jobs have a hard 10,000-row ceiling. A new request fails
+closed at capacity while an existing exact request can still replay its
+original job.
 
 The seller workflow packages a patch, replay recipe, deterministic evidence,
 commercial terms, backing, listing, and admission request from normal files.

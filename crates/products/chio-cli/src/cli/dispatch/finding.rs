@@ -65,6 +65,7 @@ pub(crate) fn dispatch_finding(
             FindingOperatorCommands::Init {
                 directory,
                 listen,
+                repository_root,
                 buyer_principal,
                 buyer_payout,
                 seller_principal,
@@ -72,6 +73,7 @@ pub(crate) fn dispatch_finding(
             } => cmd_finding_operator_init(
                 &directory,
                 listen,
+                &repository_root,
                 &buyer_principal,
                 &buyer_payout,
                 &seller_principal,

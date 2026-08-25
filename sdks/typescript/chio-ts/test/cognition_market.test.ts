@@ -148,7 +148,7 @@ test("seller packages and admits with only its scoped credential", async () => {
     },
   });
   const packageRequest = await seller.packageVerifiedFix({
-    repository: ".",
+    repository: "/srv/operator-repositories/example",
     base: "base",
     candidate: "candidate",
     tests: ["./check.sh"],

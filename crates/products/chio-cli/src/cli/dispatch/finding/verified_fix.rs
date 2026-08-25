@@ -45,6 +45,7 @@ const MAX_COMMAND_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_GIT_ERROR_BYTES: usize = 64 * 1024;
 const TEST_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
 const REPOSITORY_STAGE_TIMEOUT: Duration = Duration::from_secs(300);
+const PATCH_GENERATION_TIMEOUT: Duration = Duration::from_secs(300);
 const REPOSITORY_STAGE_MAX_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const REPOSITORY_STAGE_MAX_ENTRIES: u64 = 1_000_000;
 const TEST_SANDBOX_ADDRESS_SPACE_BYTES: u64 = 6 * 1024 * 1024 * 1024;
@@ -1227,54 +1228,110 @@ fn git_stdout_bytes_bounded(
     args: &[&str],
     max_bytes: usize,
 ) -> Result<Vec<u8>, CliError> {
-    let mut child = hardened_git_command()
-        .arg("-C")
-        .arg(repository)
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    let mut stdout = child
+    let mut command = hardened_git_command();
+    command.arg("-C").arg(repository).args(args);
+    run_bounded_output_command(
+        command,
+        max_bytes,
+        PATCH_GENERATION_TIMEOUT,
+        "git command",
+    )
+}
+
+fn run_bounded_output_command(
+    mut command: Command,
+    max_bytes: usize,
+    timeout: Duration,
+    label: &str,
+) -> Result<Vec<u8>, CliError> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        command.process_group(0);
+    }
+    let started = Instant::now();
+    let mut child = command.spawn()?;
+    let stdout = child
         .stdout
         .take()
         .ok_or_else(|| CliError::cli_other_error("git stdout pipe is unavailable".to_owned()))?;
-    let mut stderr = child
+    let stderr = child
         .stderr
         .take()
         .ok_or_else(|| CliError::cli_other_error("git stderr pipe is unavailable".to_owned()))?;
-    let stderr_reader = thread::spawn(move || {
-        let mut prefix = Vec::new();
-        stderr
-            .by_ref()
-            .take((MAX_GIT_ERROR_BYTES + 1) as u64)
-            .read_to_end(&mut prefix)?;
-        std::io::copy(&mut stderr, &mut std::io::sink())?;
-        Ok::<_, std::io::Error>(prefix)
+    let overflow = Arc::new(AtomicBool::new(false));
+    let stdout_overflow = Arc::clone(&overflow);
+    let stdout_reader = thread::spawn(move || {
+        read_output_prefix(stdout, max_bytes, Some(&stdout_overflow))
     });
-    let mut bytes = Vec::new();
-    stdout
-        .by_ref()
-        .take((max_bytes + 1) as u64)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() > max_bytes {
-        terminate_process_group(&mut child);
-    }
-    let status = child.wait()?;
+    let stderr_reader =
+        thread::spawn(move || read_output_prefix(stderr, MAX_GIT_ERROR_BYTES, None));
+    let outcome = loop {
+        if let Some(status) = child.try_wait()? {
+            break Ok(status);
+        }
+        if overflow.load(Ordering::Acquire) {
+            terminate_process_group(&mut child);
+            let _ = child.wait();
+            break Err(CliError::cli_other_error(format!(
+                "{label} output exceeded the {max_bytes} byte bound"
+            )));
+        }
+        if started.elapsed() >= timeout {
+            terminate_process_group(&mut child);
+            let _ = child.wait();
+            break Err(CliError::cli_other_error(format!(
+                "{label} exceeded the {} millisecond deadline",
+                timeout.as_millis()
+            )));
+        }
+        thread::sleep(Duration::from_millis(20));
+    };
+    let bytes = stdout_reader
+        .join()
+        .map_err(|_| CliError::cli_other_error("git stdout reader panicked".to_owned()))??;
     let stderr = stderr_reader
         .join()
         .map_err(|_| CliError::cli_other_error("git stderr reader panicked".to_owned()))??;
-    if bytes.len() > max_bytes {
+    if overflow.load(Ordering::Acquire) {
         return Err(CliError::cli_other_error(format!(
-            "git output exceeded the {max_bytes} byte bound"
+            "{label} output exceeded the {max_bytes} byte bound"
         )));
     }
+    let status = outcome?;
     if !status.success() {
         return Err(CliError::cli_other_error(format!(
-            "git command failed: {}",
+            "{label} failed: {}",
             String::from_utf8_lossy(&stderr).trim()
         )));
     }
     Ok(bytes)
+}
+
+fn read_output_prefix(
+    mut reader: impl Read,
+    maximum: usize,
+    overflow: Option<&AtomicBool>,
+) -> Result<Vec<u8>, std::io::Error> {
+    let mut prefix = Vec::new();
+    let mut total = 0usize;
+    let mut buffer = [0u8; 16 * 1024];
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        total = total.saturating_add(read);
+        let retained = maximum.saturating_sub(prefix.len()).min(read);
+        prefix.extend_from_slice(&buffer[..retained]);
+        if total > maximum {
+            if let Some(overflow) = overflow {
+                overflow.store(true, Ordering::Release);
+            }
+        }
+    }
+    Ok(prefix)
 }
 
 fn seller_authorization_status(
@@ -1759,6 +1816,33 @@ mod tests {
         )
         .unwrap_err();
         assert!(storage.to_string().contains("storage bound"));
+    }
+
+    #[test]
+    fn patch_output_runner_enforces_deadline_and_output_bound() {
+        let mut stalled = Command::new("sh");
+        stalled.args(["-c", "sleep 5"]);
+        let started = Instant::now();
+        let timeout = run_bounded_output_command(
+            stalled,
+            1024,
+            Duration::from_millis(50),
+            "test patch generation",
+        )
+        .unwrap_err();
+        assert!(timeout.to_string().contains("deadline"));
+        assert!(started.elapsed() < Duration::from_secs(2));
+
+        let mut oversized = Command::new("sh");
+        oversized.args(["-c", "printf '123456789'"]);
+        let output = run_bounded_output_command(
+            oversized,
+            8,
+            Duration::from_secs(2),
+            "test patch generation",
+        )
+        .unwrap_err();
+        assert!(output.to_string().contains("output exceeded"));
     }
 
     #[test]

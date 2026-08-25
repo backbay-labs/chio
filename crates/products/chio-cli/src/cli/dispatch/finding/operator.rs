@@ -143,6 +143,8 @@ impl OperatorSellerSubmissionExecutor {
                 "verified-fix repository must be an absolute path".to_owned(),
             ));
         }
+        let repository =
+            approved_seller_repository(&self.profile.seller_repository_root, &repository)?;
         let request_bytes = canonical_json_bytes(request)
             .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
         let request_sha256 = sha256_hex(&request_bytes);
@@ -196,7 +198,7 @@ impl OperatorSellerSubmissionExecutor {
                 "--profile".to_owned(),
                 self.profile_path.display().to_string(),
                 "--repository".to_owned(),
-                request.repository.clone(),
+                repository.display().to_string(),
                 "--base".to_owned(),
                 request.base_revision.clone(),
                 "--candidate".to_owned(),
@@ -648,6 +650,7 @@ impl GeneratedRoles {
 pub(super) fn cmd_finding_operator_init(
     directory: &Path,
     listen: SocketAddr,
+    repository_root: &Path,
     buyer_principal: &str,
     buyer_payout: &str,
     seller_principal: &str,
@@ -655,6 +658,15 @@ pub(super) fn cmd_finding_operator_init(
     json_output: bool,
 ) -> Result<(), CliError> {
     set_operator_umask();
+    let repository_root = fs::canonicalize(repository_root)?;
+    if !repository_root.is_dir() {
+        return Err(CliError::cli_other_error(
+            "seller repository root must be an existing directory".to_owned(),
+        ));
+    }
+    let repository_root = repository_root.to_str().ok_or_else(|| {
+        CliError::cli_other_error("seller repository root must be valid UTF-8".to_owned())
+    })?;
     create_secure_directory(directory)?;
     let profile_path = directory.join(PROFILE_FILE);
     for child in ["locks", "packages", "reports"] {
@@ -666,6 +678,7 @@ pub(super) fn cmd_finding_operator_init(
         require_matching_init_request(
             &profile,
             listen,
+            repository_root,
             buyer_principal,
             buyer_payout,
             seller_principal,
@@ -756,6 +769,7 @@ pub(super) fn cmd_finding_operator_init(
         let profile = FindingOperatorProfile {
             schema: FINDING_OPERATOR_PROFILE_SCHEMA.to_owned(),
             listen,
+            seller_repository_root: repository_root.to_owned(),
             service_token: random_token("service"),
             paths: FindingOperatorPaths {
                 authority_database: "authority.db".to_owned(),
@@ -831,6 +845,7 @@ pub(super) fn cmd_finding_operator_init(
         "buyerClient": buyer_client_path,
         "sellerClient": seller_client_path,
         "listen": profile.listen,
+        "repositoryRoot": profile.seller_repository_root.clone(),
         "buyerPrincipal": buyer_principal,
         "sellerPrincipal": seller_principal,
         "schema": FINDING_OPERATOR_PROFILE_SCHEMA,
@@ -843,6 +858,7 @@ pub(super) fn cmd_finding_operator_init(
         println!("buyer_client:    {}", buyer_client_path.display());
         println!("seller_client:   {}", seller_client_path.display());
         println!("listen:          http://{}", profile.listen);
+        println!("repository_root: {}", profile.seller_repository_root);
         println!("buyer_principal: {}", terminal_safe(buyer_principal));
         println!("seller_principal: {}", terminal_safe(seller_principal));
         println!("credentials:     retained in separate mode-0600 client files");
@@ -1108,12 +1124,14 @@ fn create_secure_directory(path: &Path) -> Result<(), CliError> {
 fn require_matching_init_request(
     profile: &FindingOperatorProfile,
     listen: SocketAddr,
+    repository_root: &str,
     buyer_principal: &str,
     buyer_payout: &str,
     seller_principal: &str,
     seller_payout: &str,
 ) -> Result<(), CliError> {
     let matches = profile.listen == listen
+        && profile.seller_repository_root == repository_root
         && profile.buyers.len() == 1
         && profile.sellers.len() == 1
         && profile.buyers[0].principal_id == buyer_principal
@@ -1126,6 +1144,38 @@ fn require_matching_init_request(
         ));
     }
     Ok(())
+}
+
+fn approved_seller_repository(
+    configured_root: &str,
+    requested: &Path,
+) -> Result<PathBuf, FindingSellerSubmissionError> {
+    let approved_root = fs::canonicalize(configured_root).map_err(|error| {
+        FindingSellerSubmissionError::Internal(format!(
+            "seller repository root is unavailable: {error}"
+        ))
+    })?;
+    if !approved_root.is_dir() {
+        return Err(FindingSellerSubmissionError::Internal(
+            "seller repository root is not a directory".to_owned(),
+        ));
+    }
+    let repository = fs::canonicalize(requested).map_err(|_| {
+        FindingSellerSubmissionError::Invalid(
+            "verified-fix repository is unavailable to the operator".to_owned(),
+        )
+    })?;
+    if !repository.is_dir() || !repository.starts_with(&approved_root) {
+        return Err(FindingSellerSubmissionError::Invalid(
+            "verified-fix repository is outside the approved repository root".to_owned(),
+        ));
+    }
+    if repository.to_str().is_none() {
+        return Err(FindingSellerSubmissionError::Invalid(
+            "verified-fix repository path must be valid UTF-8".to_owned(),
+        ));
+    }
+    Ok(repository)
 }
 
 fn write_secret_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
@@ -1249,5 +1299,40 @@ fn set_operator_umask() {
     #[cfg(unix)]
     unsafe {
         libc::umask(0o077);
+    }
+}
+
+#[cfg(all(test, unix))]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::symlink;
+
+    #[test]
+    fn seller_repository_is_confined_to_the_configured_root() {
+        let temporary = tempfile::tempdir().unwrap();
+        let approved_root = temporary.path().join("approved");
+        let repository = approved_root.join("repository");
+        let outside = temporary.path().join("outside");
+        fs::create_dir_all(&repository).unwrap();
+        fs::create_dir(&outside).unwrap();
+        let approved_root = fs::canonicalize(approved_root).unwrap();
+        let configured_root = approved_root.to_str().unwrap();
+
+        assert_eq!(
+            approved_seller_repository(configured_root, &repository).unwrap(),
+            fs::canonicalize(&repository).unwrap()
+        );
+        assert!(matches!(
+            approved_seller_repository(configured_root, &outside),
+            Err(FindingSellerSubmissionError::Invalid(_))
+        ));
+
+        let escape = approved_root.join("escape");
+        symlink(&outside, &escape).unwrap();
+        assert!(matches!(
+            approved_seller_repository(configured_root, &escape),
+            Err(FindingSellerSubmissionError::Invalid(_))
+        ));
     }
 }

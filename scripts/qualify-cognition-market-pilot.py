@@ -574,6 +574,8 @@ def qualify(binary: Path, output: Path, candidate_sha: str) -> dict[str, Any]:
             str(deployment),
             "--listen",
             f"127.0.0.1:{port}",
+            "--repository-root",
+            str(temporary_root),
             "--json",
         ]
         run(init_command)

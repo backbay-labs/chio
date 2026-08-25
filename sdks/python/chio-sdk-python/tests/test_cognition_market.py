@@ -264,6 +264,23 @@ async def test_seller_retracts_with_the_same_scoped_credential(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
+async def test_seller_accepts_an_operator_side_repository_coordinate(tmp_path: Path) -> None:
+    coordinate = "/srv/operator-repositories/remote-project"
+    seller = CognitionMarketSeller(seller_profile(tmp_path / "seller.json"))
+    try:
+        package = await seller.package_verified_fix(
+            repository=coordinate,
+            base="base",
+            candidate="candidate",
+            tests=["./check.sh"],
+            topic="rust/fix",
+        )
+        assert package["repository"] == coordinate
+    finally:
+        await seller.close()
+
+
+@pytest.mark.asyncio
 async def test_buyer_builds_and_files_challenge_with_scoped_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

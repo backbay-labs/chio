@@ -14,12 +14,14 @@ Build Chio and initialize a private deployment directory:
 cargo build -p chio-cli
 target/debug/chio finding operator init \
   --directory "$PWD/.local/cognition-market" \
-  --listen 127.0.0.1:7143
+  --listen 127.0.0.1:7143 \
+  --repository-root /absolute/path/to/repositories
 target/debug/chio finding operator serve \
   --profile "$PWD/.local/cognition-market/operator-profile.json"
 ```
 
-Initialization publishes credentials atomically and is resumable. Repeating
+The repository root is the only source tree visible to authenticated seller
+submissions. Initialization publishes credentials atomically and is resumable. Repeating
 the same command completes or verifies the same deployment without rotating
 its identity. A retry with different listen, buyer, seller, or payout values
 fails closed. The listen port must be nonzero.
@@ -62,7 +64,8 @@ git -C /tmp/fix-sandbox apply /tmp/verified-fix.patch
 
 `chio finding operator tick` reports retained bundles, purchase jobs,
 terminals, and captures. It is idempotent and suitable for a local service
-timer or cron entry.
+timer or cron entry. The operator accepts at most 10,000 durable purchase jobs;
+at capacity, new purchases fail closed while exact retries remain replayable.
 
 The Python and TypeScript buyer SDKs verify status proofs with the profile's
 pinned status authority, service bond, freshness window, and a durable rollback
@@ -86,7 +89,9 @@ sudo git clone /absolute/path/to/repository \
 ```
 
 Pass the staged `/srv/chio/cognition-market-repositories/project` path as
-`--repository`. Packaging first clones its objects without hard links into the
+`--repository`, and configure `/srv/chio/cognition-market-repositories` as the
+`operator init --repository-root`. Operator ingress canonicalizes each submitted
+path and rejects anything outside that root. Packaging first clones its objects without hard links into the
 operator-owned packages directory, with repository hooks and external Git
 helpers disabled. It creates self-contained baseline and candidate clones so
 Git-based build tooling remains available without mounting shared repository

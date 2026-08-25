@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 const BUYER_SCHEMA = "chio.finding.buyer-client.v1";
 const SELLER_SCHEMA = "chio.finding.seller-client.v1";
@@ -416,11 +416,19 @@ export class CognitionMarketSeller {
         "price must be between 1 and the verified-fix sale exposure",
       );
     }
+    const repository = input.repository;
+    if (!repository.startsWith("/") || repository.trim() !== repository
+        || repository.includes("\0")
+        || repository.split("/").some((part) => part === "." || part === "..")) {
+      throw new CognitionMarketError(
+        "repository must be an absolute normalized operator-side path",
+      );
+    }
     const identity: Record<string, unknown> = {
       baseRevision: input.base,
       candidateRevision: input.candidate,
       priceUnits: price,
-      repository: resolve(input.repository),
+      repository,
       schema: VERIFIED_FIX_SUBMISSION_SCHEMA,
       tests: input.tests,
       topic: input.topic,

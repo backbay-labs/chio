@@ -574,7 +574,17 @@ class CognitionMarketSeller:
             raise CognitionMarketError(
                 "price must be between 1 and the verified-fix sale exposure"
             )
-        repository_path = str(Path(repository).resolve(strict=True))
+        repository_path = str(repository)
+        repository_parts = repository_path.split("/")
+        if (
+            not repository_path.startswith("/")
+            or repository_path.strip() != repository_path
+            or "\x00" in repository_path
+            or any(part in (".", "..") for part in repository_parts)
+        ):
+            raise CognitionMarketError(
+                "repository must be an absolute normalized operator-side path"
+            )
         identity: dict[str, Any] = {
             "baseRevision": base,
             "candidateRevision": candidate,
