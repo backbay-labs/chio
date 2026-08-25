@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`4f4a28167b8e8820ef64ce4d0d4045e73e4cbbed`. The pilot used the installed
+`bad17e91da26b336a9ec3a2dd44256e723832597`. The pilot used the installed
 `chio` binary, one deployable local operator, and distinct scoped seller and
 buyer credentials. It did not give either agent the global service token.
 
@@ -24,9 +24,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,632 ms minimum, 2,000 ms median, 2,047 ms maximum
-- Recorded normal purchase time: 2,654 ms minimum, 2,903.5 ms median,
-  2,964 ms maximum
+- Admission time: 1,985 ms minimum, 2,001 ms median, 2,030 ms maximum
+- Recorded normal purchase time: 2,609 ms minimum, 2,814 ms median,
+  2,930 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -43,6 +43,10 @@ digest set. The measured delta was one job, one terminal, and one capture.
 
 After all five purchases, another exact replay left both the five terminal
 digests and the capture count unchanged.
+
+The qualifier also repeated `operator init` with the exact deployment request.
+The private operator profile, scoped client credentials, public client profile,
+and completion marker remained byte-for-byte identical.
 
 ## Challenge, retraction, and tamper controls
 
@@ -73,8 +77,11 @@ The requalified candidate also closes the final deployment review findings:
   process, descriptor, file-size, and writable-volume limits.
 - Source repositories are copied without hard links into operator-owned state.
   Git hooks, system and global configuration, credentials, and external
-  protocol helpers are disabled before checkout. Failed staging removes its
-  partial clone, and completed package files publish atomically.
+  protocol helpers are disabled before checkout. Clone and checkout staging is
+  bounded by a five-minute deadline, an 8 GiB aggregate ceiling, one million
+  entries, and a per-file limit. Published repository identity removes URL
+  credentials, query strings, and fragments. Failed staging removes its partial
+  clone, and completed package files publish atomically.
 - Bundle, encrypted payload, and proof bytes are durable before activation.
   Retraction intent bytes are durable before submission, and pre-dispatch
   purchase failures release both reservation exposure and any reserved slot.
@@ -85,9 +92,15 @@ The requalified candidate also closes the final deployment review findings:
   a search predicate, bind purchase identities to the credential's payer key,
   use bounded request deadlines and response streams, and verify the signed
   purchase record and reveal commitment before returning a patch.
+- Python and TypeScript status calls use the Rust verifier with the profile's
+  pinned status authority, service bond, freshness window, and durable rollback
+  floor. Challenge helpers authenticate the purchase terminal again before
+  deriving evidence.
 - Seller request validation and the HTTP body cap cover the same complete
-  canonical request surface. The qualifier refuses a dirty worktree before it
-  records the exact candidate SHA.
+  canonical request surface. Seller prices cannot exceed the operator's 450-unit
+  backed sale exposure, and operator profiles reject an ephemeral listen port.
+  The qualifier refuses a dirty worktree before it records the exact candidate
+  SHA.
 
 ## Reproduction
 
