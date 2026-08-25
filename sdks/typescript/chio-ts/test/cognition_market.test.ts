@@ -183,3 +183,31 @@ test("buyer request deadline aborts a stalled transport", async () => {
     /operator request timed out/,
   );
 });
+
+test("buyer cancels an oversized streaming response", async () => {
+  const findingId = "8".repeat(64);
+  const chunk = new Uint8Array(1024 * 1024);
+  let emitted = 0;
+  let cancelled = false;
+  const buyer = new CognitionMarketBuyer(profileFile(), {
+    fetch: async () => new Response(new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (emitted === 100) {
+          controller.close();
+          return;
+        }
+        emitted += 1;
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    })),
+  });
+  await assert.rejects(
+    buyer.proof(findingId),
+    /exceeds the SDK size bound/,
+  );
+  assert.ok(emitted < 100);
+  assert.equal(cancelled, true);
+});

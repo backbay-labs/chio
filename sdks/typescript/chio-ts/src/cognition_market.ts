@@ -21,6 +21,10 @@ const VOLUNTARY_RETRACTION_DOMAIN = Buffer.from(
 );
 const VERIFIED_FIX_PAYLOAD_SCHEMA = "chio.finding.verified-fix-payload.v1";
 const VERIFIED_FIX_MEDIA_TYPE = "application/vnd.chio.verified-fix+json";
+const PROOF_RESPONSE_MAX_BYTES = 24 * 1024 * 1024;
+const PURCHASE_RESULT_MAX_BYTES = Math.ceil((257 * 1024 * 1024) / 3) * 4 + 2 * 1024 * 1024;
+const JSON_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
+const ERROR_RESPONSE_MAX_BYTES = 4096;
 
 export class CognitionMarketError extends Error {
   constructor(message: string) {
@@ -102,8 +106,13 @@ export class CognitionMarketBuyer {
 
   async proof(findingId: string): Promise<Uint8Array> {
     requireHex64(findingId, "findingId");
-    const proof = await this.request("GET", `/v1/findings/${findingId}/proof`);
-    if (proof.length === 0 || proof.length > 24 * 1024 * 1024) {
+    const proof = await this.request(
+      "GET",
+      `/v1/findings/${findingId}/proof`,
+      undefined,
+      PROOF_RESPONSE_MAX_BYTES,
+    );
+    if (proof.length === 0) {
       throw new CognitionMarketError("proof bundle is empty or oversized");
     }
     return proof;
@@ -156,6 +165,7 @@ export class CognitionMarketBuyer {
       "POST",
       `/v1/findings/${verified.findingId}/purchase`,
       canonicalJson(request),
+      PURCHASE_RESULT_MAX_BYTES,
     );
   }
 
@@ -173,6 +183,7 @@ export class CognitionMarketBuyer {
       "POST",
       `/v1/findings/${verified.findingId}/purchase`,
       canonicalJson(request),
+      PURCHASE_RESULT_MAX_BYTES,
     );
     await this.verifyPurchaseTerminal(verified, request, purchase);
     return purchasedVerifiedFix(verified, purchase);
@@ -247,11 +258,17 @@ export class CognitionMarketBuyer {
     method: string,
     path: string,
     body?: Uint8Array,
+    maximum = JSON_RESPONSE_MAX_BYTES,
   ): Promise<Record<string, unknown>> {
-    return parseObject(await this.request(method, path, body), "operator response");
+    return parseObject(await this.request(method, path, body, maximum), "operator response");
   }
 
-  private async request(method: string, path: string, body?: Uint8Array): Promise<Uint8Array> {
+  private async request(
+    method: string,
+    path: string,
+    body?: Uint8Array,
+    maximum = JSON_RESPONSE_MAX_BYTES,
+  ): Promise<Uint8Array> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     const init: RequestInit = {
@@ -268,9 +285,13 @@ export class CognitionMarketBuyer {
         `${this.profile.endpoint.replace(/\/$/, "")}${path}`,
         init,
       );
-      const bytes = new Uint8Array(await response.arrayBuffer());
+      const responseMaximum = response.ok ? maximum : ERROR_RESPONSE_MAX_BYTES;
+      const responseLabel = response.ok
+        ? "operator response"
+        : `operator HTTP ${response.status} error response`;
+      const bytes = await readBoundedResponse(response, responseMaximum, responseLabel);
       if (!response.ok) {
-        const text = Buffer.from(bytes).toString("utf8").slice(0, 4096);
+        const text = Buffer.from(bytes).toString("utf8");
         throw new CognitionMarketError(`operator returned HTTP ${response.status}: ${text}`);
       }
       return bytes;
@@ -395,9 +416,13 @@ export class CognitionMarketSeller {
         body: canonicalJson(body),
         },
       );
-      const bytes = new Uint8Array(await response.arrayBuffer());
+      const responseMaximum = response.ok ? JSON_RESPONSE_MAX_BYTES : ERROR_RESPONSE_MAX_BYTES;
+      const responseLabel = response.ok
+        ? "operator response"
+        : `operator HTTP ${response.status} error response`;
+      const bytes = await readBoundedResponse(response, responseMaximum, responseLabel);
       if (!response.ok) {
-        const text = Buffer.from(bytes).toString("utf8").slice(0, 4096);
+        const text = Buffer.from(bytes).toString("utf8");
         throw new CognitionMarketError(`operator returned HTTP ${response.status}: ${text}`);
       }
       return parseObject(bytes, "Finding admission response");
@@ -410,6 +435,46 @@ export class CognitionMarketSeller {
       clearTimeout(timer);
     }
   }
+}
+
+async function readBoundedResponse(
+  response: Response,
+  maximum: number,
+  label: string,
+): Promise<Uint8Array> {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength !== null && /^\d+$/.test(contentLength)
+      && BigInt(contentLength) > BigInt(maximum)) {
+    throw new CognitionMarketError(`${label} exceeds the SDK size bound`);
+  }
+  if (response.body === null) return new Uint8Array();
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value === undefined) continue;
+      if (total + value.byteLength > maximum) {
+        await reader.cancel().catch(() => undefined);
+        throw new CognitionMarketError(`${label} exceeds the SDK size bound`);
+      }
+      chunks.push(value);
+      total += value.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 function loadProfile(path: string, schema: string): CognitionMarketClientProfile {

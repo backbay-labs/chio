@@ -5,11 +5,13 @@ import hashlib
 import json
 import os
 import subprocess
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import httpx
 import pytest
 
+import chio_sdk.cognition_market as cognition_market
 from chio_sdk.cognition_market import (
     CognitionMarketBuyer,
     CognitionMarketError,
@@ -379,3 +381,32 @@ def test_seller_profile_rejects_a_market_signing_seed(tmp_path: Path) -> None:
     path.write_bytes(_canonical_json(value))
     with pytest.raises(CognitionMarketError, match="must not contain"):
         CognitionMarketSeller(path)
+
+
+@pytest.mark.asyncio
+async def test_buyer_stops_streaming_an_oversized_response(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    finding_id = "8" * 64
+    chunks_read = 0
+
+    class ChunkedResponse(httpx.AsyncByteStream):
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            nonlocal chunks_read
+            for chunk in (b"123456", b"789"):
+                chunks_read += 1
+                yield chunk
+
+    monkeypatch.setattr(cognition_market, "PROOF_RESPONSE_MAX_BYTES", 8)
+    buyer = CognitionMarketBuyer(
+        buyer_profile(tmp_path / "buyer.json"),
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, stream=ChunkedResponse())
+        ),
+    )
+    try:
+        with pytest.raises(CognitionMarketError, match="exceeds the SDK size bound"):
+            await buyer.proof(finding_id)
+    finally:
+        await buyer.close()
+    assert chunks_read == 2

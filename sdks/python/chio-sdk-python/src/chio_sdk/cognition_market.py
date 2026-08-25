@@ -30,6 +30,10 @@ VERIFIED_FIX_SUBMISSION_DOMAIN = b"chio.finding.verified-fix-submission-id.v1\0"
 VOLUNTARY_RETRACTION_DOMAIN = b"chio.finding.voluntary-retraction-request-id.v1\0"
 VERIFIED_FIX_PAYLOAD_SCHEMA = "chio.finding.verified-fix-payload.v1"
 VERIFIED_FIX_MEDIA_TYPE = "application/vnd.chio.verified-fix+json"
+PROOF_RESPONSE_MAX_BYTES = 24 * 1024 * 1024
+PURCHASE_RESULT_MAX_BYTES = ((257 * 1024 * 1024 + 2) // 3) * 4 + 2 * 1024 * 1024
+JSON_RESPONSE_MAX_BYTES = 2 * 1024 * 1024
+ERROR_RESPONSE_MAX_BYTES = 4096
 
 
 class CognitionMarketError(RuntimeError):
@@ -200,11 +204,16 @@ class CognitionMarketBuyer:
 
     async def proof(self, finding_id: str) -> bytes:
         _require_hex64(finding_id, "finding_id")
-        response = await self._client.get(f"/v1/findings/{finding_id}/proof")
-        self._raise_for_status(response)
-        if not response.content or len(response.content) > 24 * 1024 * 1024:
+        proof = await _request_bytes(
+            self._client,
+            "GET",
+            f"/v1/findings/{finding_id}/proof",
+            maximum=PROOF_RESPONSE_MAX_BYTES,
+            label="proof bundle",
+        )
+        if not proof:
             raise CognitionMarketError("proof bundle is empty or exceeds the SDK size bound")
-        return response.content
+        return proof
 
     async def verify_proof(self, proof: bytes) -> VerifiedFindingProof:
         if not proof or len(proof) > 24 * 1024 * 1024:
@@ -268,6 +277,7 @@ class CognitionMarketBuyer:
             f"/v1/findings/{verified.finding_id}/purchase",
             content=_canonical_json(request),
             headers={"content-type": "application/json"},
+            maximum=PURCHASE_RESULT_MAX_BYTES,
         )
 
     async def purchase_verified_fix(
@@ -291,6 +301,7 @@ class CognitionMarketBuyer:
             f"/v1/findings/{verified.finding_id}/purchase",
             content=_canonical_json(request),
             headers={"content-type": "application/json"},
+            maximum=PURCHASE_RESULT_MAX_BYTES,
         )
         await self._verify_purchase_terminal(verified, request, purchase)
         return _purchased_verified_fix(verified, purchase)
@@ -420,23 +431,29 @@ class CognitionMarketBuyer:
             raise CognitionMarketError("challenge command response is not an object")
         return value
 
-    async def _json_request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
-        response = await self._client.request(method, path, **kwargs)
-        self._raise_for_status(response)
+    async def _json_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        maximum: int = JSON_RESPONSE_MAX_BYTES,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        body = await _request_bytes(
+            self._client,
+            method,
+            path,
+            maximum=maximum,
+            label="operator response",
+            **kwargs,
+        )
         try:
-            value = response.json()
-        except json.JSONDecodeError as error:
+            value = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise CognitionMarketError("operator returned invalid JSON") from error
         if not isinstance(value, dict):
             raise CognitionMarketError("operator JSON response is not an object")
         return value
-
-    @staticmethod
-    def _raise_for_status(response: httpx.Response) -> None:
-        if response.is_success:
-            return
-        body = response.text[:4096]
-        raise CognitionMarketError(f"operator returned HTTP {response.status_code}: {body}")
 
 
 class CognitionMarketSeller:
@@ -497,19 +514,10 @@ class CognitionMarketSeller:
         return {**identity, "requestId": request_id}
 
     async def admit(self, package: dict[str, Any]) -> dict[str, Any]:
-        response = await self._client.post(
+        return await self._post_json(
             "/v1/findings/operator/verified-fixes",
-            content=_canonical_json(package),
-            headers={"content-type": "application/json"},
+            package,
         )
-        CognitionMarketBuyer._raise_for_status(response)
-        try:
-            value = response.json()
-        except json.JSONDecodeError as error:
-            raise CognitionMarketError("operator returned invalid JSON") from error
-        if not isinstance(value, dict):
-            raise CognitionMarketError("operator JSON response is not an object")
-        return value
 
     async def retract(self, finding_id: str) -> dict[str, Any]:
         _require_hex64(finding_id, "finding_id")
@@ -520,19 +528,63 @@ class CognitionMarketSeller:
             ).hexdigest(),
             "schema": "chio.finding.voluntary-retraction-request.v1",
         }
-        response = await self._client.post(
+        return await self._post_json(
             "/v1/findings/operator/retractions",
+            request,
+        )
+
+    async def _post_json(self, path: str, request: dict[str, Any]) -> dict[str, Any]:
+        body = await _request_bytes(
+            self._client,
+            "POST",
+            path,
+            maximum=JSON_RESPONSE_MAX_BYTES,
+            label="operator response",
             content=_canonical_json(request),
             headers={"content-type": "application/json"},
         )
-        CognitionMarketBuyer._raise_for_status(response)
         try:
-            value = response.json()
-        except json.JSONDecodeError as error:
+            value = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise CognitionMarketError("operator returned invalid JSON") from error
         if not isinstance(value, dict):
             raise CognitionMarketError("operator JSON response is not an object")
         return value
+
+
+async def _request_bytes(
+    client: httpx.AsyncClient,
+    method: str,
+    path: str,
+    *,
+    maximum: int,
+    label: str,
+    **kwargs: Any,
+) -> bytes:
+    async with client.stream(method, path, **kwargs) as response:
+        if response.is_success:
+            return await _read_bounded_response(response, maximum, label)
+        error_label = f"operator HTTP {response.status_code} error response"
+        body = await _read_bounded_response(response, ERROR_RESPONSE_MAX_BYTES, error_label)
+        message = body.decode("utf-8", errors="replace")
+        raise CognitionMarketError(f"operator returned HTTP {response.status_code}: {message}")
+
+
+async def _read_bounded_response(
+    response: httpx.Response,
+    maximum: int,
+    label: str,
+) -> bytes:
+    content_length = response.headers.get("content-length")
+    if content_length is not None and content_length.isascii() and content_length.isdigit():
+        if int(content_length) > maximum:
+            raise CognitionMarketError(f"{label} exceeds the SDK size bound")
+    body = bytearray()
+    async for chunk in response.aiter_bytes():
+        if len(body) + len(chunk) > maximum:
+            raise CognitionMarketError(f"{label} exceeds the SDK size bound")
+        body.extend(chunk)
+    return bytes(body)
 
 
 def _require_hex64(value: str, field: str) -> None:
