@@ -1,14 +1,14 @@
 {
   "admissionMillis": {
-    "max": 2051,
-    "median": 1998.0,
-    "min": 1950
+    "max": 2131,
+    "median": 2003.5,
+    "min": 1963
   },
-  "candidateSha": "a7e2effa5e15488ea078712940df76583b51b0fd",
+  "candidateSha": "5d4d55f88868b1d2cb91498908ffd0578638dead",
   "challenge": {
-    "challengeId": "6ae0d34b1689c4e40a988847ed37d2a02c0ae06085a451bb836c459c5e1d290b",
-    "findingId": "04f4f64ddbe1f60f7174ec9e50bd118861e30ca33a4ffe7e0dad19c599c45308",
-    "intentId": "bf9ee1a43fb1a7172fb804fc2a1572af85ba48214c7e9d225f31252e4c2921d4",
+    "challengeId": "ca268f533c7f66a437d29b38a73dc61b3714b02e6c0121594047969d70d9e6c2",
+    "findingId": "ae84fbb4b5cfda67ec182c215d36b65d14ebe530768635cca8bfabd2dae30949",
+    "intentId": "90e7af1e8012c82a04135da20d63a30fb9e10b2d857ae804dc21477e166eadfb",
     "proofKind": "inclusion",
     "retractionCrashReplayExact": true,
     "status": "retracted"
@@ -27,7 +27,7 @@
     "purchaseCount": 5,
     "taskCount": 10
   },
-  "generatedAt": 1787675005,
+  "generatedAt": 1787675632,
   "operatorTick": {
     "bundleCount": 10,
     "captureCount": 5,
@@ -38,9 +38,9 @@
     "terminalCount": 5
   },
   "purchaseMillis": {
-    "max": 3098,
-    "median": 3010.0,
-    "min": 2564
+    "max": 2965,
+    "median": 2835,
+    "min": 2634
   },
   "replay": {
     "captureCount": 5,
