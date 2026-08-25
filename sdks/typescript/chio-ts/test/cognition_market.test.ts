@@ -16,7 +16,7 @@ function profileFile(): string {
   const path = join(directory, "buyer.json");
   writeFileSync(
     path,
-    "{\"bearerToken\":\"buyer-secret\",\"endpoint\":\"http://operator.local\",\"market\":{\"statusFeedOperator\":{\"feedId\":\"finding-status/local\"}},\"payoutDestination\":\"0x1111111111111111111111111111111111111111\",\"principalId\":\"buyer-1\",\"schema\":\"chio.finding.buyer-client.v1\",\"signingSeed\":\"2222222222222222222222222222222222222222222222222222222222222222\"}",
+    "{\"bearerToken\":\"buyer-secret\",\"endpoint\":\"http://operator.local\",\"market\":{\"statusFeedOperator\":{\"feedId\":\"finding-status/local\"}},\"payer\":\"9999999999999999999999999999999999999999999999999999999999999999\",\"payoutDestination\":\"0x1111111111111111111111111111111111111111\",\"principalId\":\"buyer-1\",\"schema\":\"chio.finding.buyer-client.v1\",\"signingSeed\":\"2222222222222222222222222222222222222222222222222222222222222222\"}",
   );
   return path;
 }
@@ -46,7 +46,7 @@ test("buyer executes search, proof, status, and purchase with scoped auth", asyn
       assert.equal(body.schema, "chio.finding.purchase-request.v1");
       assert.equal(typeof body.requestId, "string");
       assert.equal((body.requestId as string).length, 64);
-      assert.equal("payer" in body, false);
+      assert.equal(body.payer, "9".repeat(64));
       return Response.json({ verdict: "allow" });
     }
     if (request.url.includes("/status/")) return Response.json({ status: "live" });
@@ -123,7 +123,7 @@ test("buyer rejects a credential without the pinned status feed", () => {
   const path = join(directory, "buyer.json");
   writeFileSync(
     path,
-    "{\"bearerToken\":\"buyer-secret\",\"endpoint\":\"http://operator.local\",\"market\":{},\"payoutDestination\":\"0x1111111111111111111111111111111111111111\",\"principalId\":\"buyer-1\",\"schema\":\"chio.finding.buyer-client.v1\",\"signingSeed\":\"2222222222222222222222222222222222222222222222222222222222222222\"}",
+    "{\"bearerToken\":\"buyer-secret\",\"endpoint\":\"http://operator.local\",\"market\":{},\"payer\":\"9999999999999999999999999999999999999999999999999999999999999999\",\"payoutDestination\":\"0x1111111111111111111111111111111111111111\",\"principalId\":\"buyer-1\",\"schema\":\"chio.finding.buyer-client.v1\",\"signingSeed\":\"2222222222222222222222222222222222222222222222222222222222222222\"}",
   );
   assert.throws(() => new CognitionMarketBuyer(path), /client profile is invalid/);
 });

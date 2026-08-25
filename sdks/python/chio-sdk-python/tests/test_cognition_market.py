@@ -18,6 +18,7 @@ from chio_sdk.cognition_market import (
     CognitionMarketSeller,
     VerifiedFindingProof,
     _canonical_json,
+    _request_id,
 )
 
 
@@ -28,6 +29,7 @@ def buyer_profile(path: Path) -> Path:
         "market": {
             "statusFeedOperator": {"feedId": "finding-status/local"},
         },
+        "payer": "9" * 64,
         "payoutDestination": "0x" + "1" * 40,
         "principalId": "buyer-1",
         "schema": "chio.finding.buyer-client.v1",
@@ -50,6 +52,14 @@ def seller_profile(path: Path) -> Path:
     return path
 
 
+def test_purchase_request_identity_is_scoped_to_the_buyer() -> None:
+    first_id, first = _request_id("a" * 64, 300, "USD", "1" * 64, 600)
+    second_id, second = _request_id("a" * 64, 300, "USD", "2" * 64, 600)
+    assert first_id != second_id
+    assert first["payer"] == "1" * 64
+    assert second["payer"] == "2" * 64
+
+
 @pytest.mark.asyncio
 async def test_buyer_runs_search_proof_status_and_purchase(tmp_path: Path) -> None:
     finding_id = "a" * 64
@@ -64,7 +74,7 @@ async def test_buyer_runs_search_proof_status_and_purchase(tmp_path: Path) -> No
             body = json.loads(request.content)
             assert body["schema"] == "chio.finding.purchase-request.v1"
             assert len(body["requestId"]) == 64
-            assert "payer" not in body
+            assert body["payer"] == "9" * 64
             return httpx.Response(200, json={"verdict": "allow"})
         if "/status/" in request.url.path:
             return httpx.Response(200, json={"status": "live"})
@@ -293,6 +303,7 @@ def test_profile_rejects_missing_market_pins(tmp_path: Path) -> None:
                 "bearerToken": "buyer-secret",
                 "endpoint": "http://operator.local",
                 "market": {},
+                "payer": "9" * 64,
                 "payoutDestination": "0x" + "1" * 40,
                 "principalId": "buyer-1",
                 "schema": "chio.finding.buyer-client.v1",

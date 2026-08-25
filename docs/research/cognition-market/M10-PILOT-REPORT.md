@@ -82,7 +82,8 @@ The requalified candidate also closes the final deployment review findings:
   a completed paid replay verifies proof liveness at its authenticated terminal
   time.
 - Seller client credentials contain no market signing seed. Buyer SDKs require
-  a search predicate, use bounded request deadlines, and verify the signed
+  a search predicate, bind purchase identities to the credential's payer key,
+  use bounded request deadlines and response streams, and verify the signed
   purchase record and reveal commitment before returning a patch.
 - Seller request validation and the HTTP body cap cover the same complete
   canonical request surface. The qualifier refuses a dirty worktree before it

@@ -787,6 +787,7 @@ pub(super) fn cmd_finding_operator_init(
     let buyer_client_path = directory.join(BUYER_CLIENT_FILE);
     let buyer_client = profile
         .buyer_client_profiles()
+        .map_err(CliError::cli_other_error)?
         .into_iter()
         .next()
         .ok_or_else(|| CliError::cli_other_error("buyer client profile is missing".to_owned()))?;

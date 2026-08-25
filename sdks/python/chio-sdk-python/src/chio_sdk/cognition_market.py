@@ -101,12 +101,17 @@ def _load_profile(path: str | Path, schema: str) -> dict[str, Any]:
     if not isinstance(token, str) or not token or token.strip() != token or len(token) > 4096:
         raise CognitionMarketError("client profile bearer token is invalid")
     principal = profile.get("principalId")
+    payer = profile.get("payer")
     seed = profile.get("signingSeed")
     payout = profile.get("payoutDestination")
     market = profile.get("market")
     if not isinstance(principal, str) or not principal or principal.strip() != principal:
         raise CognitionMarketError("client profile principal is invalid")
     if schema == BUYER_SCHEMA:
+        if not isinstance(payer, str) or len(payer) != 64 or any(
+            character not in "0123456789abcdef" for character in payer
+        ):
+            raise CognitionMarketError("client profile payer is invalid")
         if not isinstance(seed, str) or len(seed) != 64 or any(
             character not in "0123456789abcdef" for character in seed
         ):
@@ -269,7 +274,7 @@ class CognitionMarketBuyer:
             verified.finding_id,
             max_price_units,
             currency,
-            None,
+            self.profile["payer"],
             deadline_secs,
         )
         return await self._json_request(
@@ -293,7 +298,7 @@ class CognitionMarketBuyer:
             verified.finding_id,
             max_price_units,
             currency,
-            None,
+            self.profile["payer"],
             deadline_secs,
         )
         purchase = await self._json_request(

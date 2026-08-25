@@ -47,6 +47,7 @@ pub struct FindingOperatorBuyerClientProfile {
     pub endpoint: String,
     pub market: FindingMarketConfig,
     pub principal_id: String,
+    pub payer: String,
     pub bearer_token: String,
     pub signing_seed: String,
     pub payout_destination: String,
@@ -309,18 +310,25 @@ impl FindingOperatorProfile {
         }
     }
 
-    pub fn buyer_client_profiles(&self) -> Vec<FindingOperatorBuyerClientProfile> {
+    pub fn buyer_client_profiles(&self) -> Result<Vec<FindingOperatorBuyerClientProfile>, String> {
         let endpoint = format!("http://{}", self.listen);
         self.buyers
             .iter()
-            .map(|buyer| FindingOperatorBuyerClientProfile {
-                schema: FINDING_OPERATOR_BUYER_CLIENT_SCHEMA.to_owned(),
-                endpoint: endpoint.clone(),
-                market: self.market.clone(),
-                principal_id: buyer.principal_id.clone(),
-                bearer_token: buyer.bearer_token.clone(),
-                signing_seed: buyer.signing_seed.clone(),
-                payout_destination: buyer.payout_destination.clone(),
+            .map(|buyer| {
+                let payer = Keypair::from_seed_hex(&buyer.signing_seed)
+                    .map_err(|_| "buyer signing seed is invalid".to_owned())?
+                    .public_key()
+                    .to_hex();
+                Ok(FindingOperatorBuyerClientProfile {
+                    schema: FINDING_OPERATOR_BUYER_CLIENT_SCHEMA.to_owned(),
+                    endpoint: endpoint.clone(),
+                    market: self.market.clone(),
+                    principal_id: buyer.principal_id.clone(),
+                    payer,
+                    bearer_token: buyer.bearer_token.clone(),
+                    signing_seed: buyer.signing_seed.clone(),
+                    payout_destination: buyer.payout_destination.clone(),
+                })
             })
             .collect()
     }

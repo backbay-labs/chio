@@ -41,6 +41,7 @@ export interface CognitionMarketClientProfile {
     [key: string]: unknown;
   };
   principalId: string;
+  payer?: string;
   bearerToken: string;
   signingSeed?: string;
   payoutDestination: string;
@@ -159,6 +160,7 @@ export class CognitionMarketBuyer {
       verified.findingId,
       options.maxPriceUnits,
       options.currency ?? "USD",
+      buyerPayer(this.profile),
       options.deadlineSecs ?? 3600,
     );
     return this.jsonRequest(
@@ -177,6 +179,7 @@ export class CognitionMarketBuyer {
       verified.findingId,
       options.maxPriceUnits,
       options.currency ?? "USD",
+      buyerPayer(this.profile),
       options.deadlineSecs ?? 3600,
     );
     const purchase = await this.jsonRequest(
@@ -493,8 +496,9 @@ function loadProfile(path: string, schema: string): CognitionMarketClientProfile
     throw new CognitionMarketError("client profile is invalid");
   }
   if (schema === BUYER_SCHEMA
-      && (typeof value.signingSeed !== "string" || !/^[0-9a-f]{64}$/.test(value.signingSeed))) {
-    throw new CognitionMarketError("client profile signing seed is invalid");
+      && (typeof value.signingSeed !== "string" || !/^[0-9a-f]{64}$/.test(value.signingSeed)
+        || typeof value.payer !== "string" || !/^[0-9a-f]{64}$/.test(value.payer))) {
+    throw new CognitionMarketError("client profile buyer identity is invalid");
   }
   if (schema === SELLER_SCHEMA && Object.hasOwn(value, "signingSeed")) {
     throw new CognitionMarketError("seller client profile must not contain a signing seed");
@@ -532,6 +536,7 @@ function purchaseRequest(
   findingId: string,
   maxPriceUnits: number,
   currency: string,
+  payer: string,
   deadlineSecs: number | undefined,
 ): Record<string, unknown> {
   requireHex64(findingId, "findingId");
@@ -542,7 +547,7 @@ function purchaseRequest(
     deadlineSecs: deadlineSecs ?? null,
     findingId,
     maxPrice: { currency, units: maxPriceUnits },
-    payer: null,
+    payer,
     schema: PURCHASE_SCHEMA,
   };
   const digest = createHash("sha256")
@@ -553,9 +558,17 @@ function purchaseRequest(
     ...(deadlineSecs === undefined ? {} : { deadlineSecs }),
     findingId,
     maxPrice: { currency, units: maxPriceUnits },
+    payer,
     requestId: digest,
     schema: PURCHASE_SCHEMA,
   };
+}
+
+function buyerPayer(profile: CognitionMarketClientProfile): string {
+  if (typeof profile.payer !== "string") {
+    throw new CognitionMarketError("buyer profile omitted its payer identity");
+  }
+  return profile.payer;
 }
 
 function canonicalJson(value: unknown): Uint8Array {
