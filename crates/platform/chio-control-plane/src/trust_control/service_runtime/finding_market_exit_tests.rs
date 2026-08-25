@@ -1937,10 +1937,7 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
     assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
     let replay = json_body(&body)?;
     assert_eq!(replay["exactReplay"], serde_json::json!(true));
-    assert_eq!(
-        replay["allocationId"],
-        serde_json::json!(web.backing.body.allocation_id)
-    );
+    assert_eq!(replay["allocationId"], web.backing.body.allocation_id);
     assert!(replay["acceptedAt"].as_u64().is_some_and(|value| value > 0));
 
     // Rejection sweep over the activation surface. Every leg asserts the

@@ -53,6 +53,9 @@ use admission_view::{
 #[path = "finding_handlers/participation.rs"]
 mod participation;
 use participation::reconcile_participation_fee_intent;
+#[path = "finding_handlers/collateral_replay.rs"]
+mod collateral_replay;
+use collateral_replay::prepare_collateral_registration;
 
 /// Publish body cap: strict canonical findings are small; anything larger
 /// is hostile or malformed. Enforced at the route layer and re-checked
@@ -911,37 +914,10 @@ pub(crate) async fn handle_register_finding_collateral(
         Ok(None) => return plain_http_error(StatusCode::BAD_REQUEST, "unknown finding"),
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
-    let envelope_json = match chio_core::canonical_json_bytes(&backing)
-        .map_err(|_| ())
-        .and_then(|bytes| String::from_utf8(bytes).map_err(|_| ()))
-    {
+    let envelope_json = match prepare_collateral_registration(&store, backing) {
         Ok(json) => json,
-        Err(()) => {
-            return plain_http_error(StatusCode::BAD_REQUEST, "backing failed canonicalization")
-        }
+        Err(response) => return response,
     };
-    let envelope_sha256 = chio_core::sha256_hex(envelope_json.as_bytes());
-    match store.get_allocation(&backing.body.allocation_id) {
-        Ok(Some(existing))
-            if existing.backing == backing.body
-                && existing.backing_envelope_sha256 == envelope_sha256 =>
-        {
-            return Json(serde_json::json!({
-                "allocationId": backing.body.allocation_id,
-                "acceptedAt": existing.accepted_at,
-                "exactReplay": true,
-            }))
-            .into_response();
-        }
-        Ok(Some(_)) => {
-            return plain_http_error(
-                StatusCode::CONFLICT,
-                "collateral allocation id is bound to different backing",
-            );
-        }
-        Ok(None) => {}
-        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
-    }
     match store.register_allocation(&envelope_json, &backing.body, now) {
         Ok(()) => Json(serde_json::json!({
             "allocationId": backing.body.allocation_id,
