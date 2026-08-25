@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`311a5bd31d9fc5befd2830e347e3db2b3ae85a3c`. The qualifier built the `chio`
+`803986de6829fe890ed40afbf9ada250bc24feca`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,987 ms minimum, 2,011 ms median, 2,626 ms maximum
-- Recorded normal purchase time: 2,689 ms minimum, 2,915 ms median,
-  2,974 ms maximum
+- Admission time: 1,898 ms minimum, 2,015 ms median, 2,650 ms maximum
+- Recorded normal purchase time: 2,620 ms minimum, 2,842 ms median,
+  2,929 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -90,18 +90,23 @@ The requalified candidate also closes the final deployment review findings:
   deadline and output ceiling. Published repository identity removes URL
   credentials, query strings, and fragments. Failed staging removes its
   partial clone, and completed package files publish atomically. Seller
-  seller submission and retraction retention is capped at 256 jobs combined
+  submission and retraction retention is capped at 256 jobs combined
   under an 8 GiB and 100,000-entry package/report ceiling. The full transient
   staging budget plus publication headroom is reserved before a new job is
   accepted. Revision and published repository-identity lookups use the same
   timed, output-bounded process-group runner as patch generation.
+- Live seller admission and scheduled `operator tick` reconciliation share one
+  cross-process operator lock. Submission and retraction also share one
+  non-queued blocking lane, so overlapping work receives a retryable HTTP 503
+  before it can consume unbounded blocking-pool capacity.
 - Bundle, encrypted payload, and proof bytes are durable before activation.
   Retraction intent bytes are durable before submission, and pre-dispatch
   purchase failures release both reservation exposure and any reserved slot.
-  A prepared job without a reservation revalidates current market policy, while
-  a completed paid replay verifies proof liveness at its authenticated terminal
-  time. Purchase-job retention is capped at 10,000 rows, failing new requests
-  closed while preserving exact replay at capacity.
+  A prepared job without a reservation revalidates current market policy and
+  rejects an expired signed ask before reserving funds, while a completed paid
+  replay verifies proof liveness at its authenticated terminal time.
+  Purchase-job retention is capped at 10,000 rows, failing new requests closed
+  while preserving exact replay at capacity.
 - Status-floor lock guards explicitly unlock before close, so an immediate
   sequential retry can read a retraction retained by a rejected rollback.
 - Seller client credentials contain no market signing seed. Buyer SDKs require
