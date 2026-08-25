@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`ecaa978d0cc1012ddd9a5d82e6d6a951dbf3b8f8`. The pilot used the installed
+`f279cb866be54380f68f018c60d4d5322ba5accd`. The pilot used the installed
 `chio` binary, one deployable local operator, and distinct scoped seller and
 buyer credentials. It did not give either agent the global service token.
 
@@ -24,9 +24,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,925 ms minimum, 2,007 ms median, 2,017 ms maximum
-- Recorded normal purchase time: 2,593 ms minimum, 2,857 ms median,
-  2,928 ms maximum
+- Admission time: 1,968 ms minimum, 2,012 ms median, 2,500 ms maximum
+- Recorded normal purchase time: 2,664 ms minimum, 2,877 ms median,
+  2,933 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -95,7 +95,9 @@ The requalified candidate also closes the final deployment review findings:
 - Seller client credentials contain no market signing seed. Buyer SDKs require
   a search predicate, bind purchase identities to the credential's payer key,
   use bounded request deadlines and response streams, and verify the signed
-  purchase record and reveal commitment before returning a patch.
+  purchase record and reveal commitment before returning a patch. The public
+  operator route rejects omitted or mismatched payer identities before purchase
+  execution.
   Seller SDKs treat repositories as operator-side absolute coordinates and do
   not require those paths to exist on the buyer or seller client host.
 - Python and TypeScript status calls use the Rust verifier with the profile's
