@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`ee11c61a0475028ff4ea56fb5683652a7b3074a2`. The pilot used the installed
+`4f4a28167b8e8820ef64ce4d0d4045e73e4cbbed`. The pilot used the installed
 `chio` binary, one deployable local operator, and distinct scoped seller and
 buyer credentials. It did not give either agent the global service token.
 
@@ -24,9 +24,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,670 ms minimum, 1,992.5 ms median, 2,056 ms maximum
-- Recorded normal purchase time: 2,644 ms minimum, 2,847 ms median,
-  2,975 ms maximum
+- Admission time: 1,632 ms minimum, 2,000 ms median, 2,047 ms maximum
+- Recorded normal purchase time: 2,654 ms minimum, 2,903.5 ms median,
+  2,964 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -66,19 +66,27 @@ verification boundaries in its SDK test suite.
 
 The requalified candidate also closes the final deployment review findings:
 
-- Seller test commands see only their staged worktree and required read-only
-  runtimes, never the operator profile or state tree. They have no network, a
-  cleared environment, bounded output, a PID namespace, and a five-minute
-  execution deadline.
+- Seller test commands receive a self-contained Git clone copied into a private
+  size-capped tmpfs plus required read-only runtimes, never the operator profile
+  or state tree. They have no network, a cleared environment, bounded output,
+  PID and user namespaces, a five-minute deadline, and hard memory, CPU,
+  process, descriptor, file-size, and writable-volume limits.
 - Source repositories are copied without hard links into operator-owned state.
   Git hooks, system and global configuration, credentials, and external
-  protocol helpers are disabled before worktree checkout.
+  protocol helpers are disabled before checkout. Failed staging removes its
+  partial clone, and completed package files publish atomically.
 - Bundle, encrypted payload, and proof bytes are durable before activation.
   Retraction intent bytes are durable before submission, and pre-dispatch
   purchase failures release both reservation exposure and any reserved slot.
+  A prepared job without a reservation revalidates current market policy, while
+  a completed paid replay verifies proof liveness at its authenticated terminal
+  time.
 - Seller client credentials contain no market signing seed. Buyer SDKs require
   a search predicate, use bounded request deadlines, and verify the signed
   purchase record and reveal commitment before returning a patch.
+- Seller request validation and the HTTP body cap cover the same complete
+  canonical request surface. The qualifier refuses a dirty worktree before it
+  records the exact candidate SHA.
 
 ## Reproduction
 
