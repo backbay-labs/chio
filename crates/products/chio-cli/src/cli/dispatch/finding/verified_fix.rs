@@ -1,7 +1,7 @@
 use super::super::*;
 
 use std::fs::{self, OpenOptions};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
@@ -10,7 +10,12 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use chio_control_plane::trust_control::finding_challenge_coordinator::FindingAuthorityStatusResolver;
-use chio_control_plane::trust_control::finding_operator_profile::FindingOperatorProfile;
+use chio_control_plane::trust_control::finding_operator_profile::{
+    FindingOperatorBuyerClientProfile, FindingOperatorClientProfile, FindingOperatorProfile,
+    FindingOperatorSellerClientProfile, FINDING_OPERATOR_BUYER_CLIENT_SCHEMA,
+    FINDING_OPERATOR_CLIENT_PROFILE_SCHEMA, FINDING_OPERATOR_PROFILE_SCHEMA,
+    FINDING_OPERATOR_SELLER_CLIENT_SCHEMA,
+};
 use chio_control_plane::trust_control::finding_operator_status::FindingOperatorAuthorityStatusResolver;
 use chio_control_plane::trust_control::finding_verified_fix::{
     FindingOperatorProofBundle, FindingVerifiedFixDraft, VerifiedFixAuthoringInput,
@@ -32,6 +37,26 @@ const MAX_DRAFT_BYTES: usize = 32 * 1024 * 1024;
 const MAX_PROOF_BYTES: usize = 24 * 1024 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const PAYLOAD_TENANT: &str = "cognition-market-pilot";
+const ADMISSION_JOB_SCHEMA: &str = "chio.finding.admission-job.v1";
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FindingAdmissionJob {
+    schema: String,
+    finding_id: String,
+    package_path: String,
+    package_sha256: String,
+    accepted_at: Option<u64>,
+    evaluation_time: Option<u64>,
+    activation: Option<serde_json::Value>,
+    completed: bool,
+}
+
+struct FindingAdmissionRunResult {
+    finding_id: String,
+    activation: serde_json::Value,
+    proof_path: PathBuf,
+}
 
 pub(super) struct VerifiedFixPackageRequest<'a> {
     pub profile_path: &'a Path,
@@ -170,12 +195,75 @@ pub(super) fn cmd_finding_admit(
     package_path: &Path,
     json_output: bool,
 ) -> Result<(), CliError> {
+    let result = run_finding_admission(profile_path, package_path)?;
+    let output = serde_json::json!({
+        "activation": result.activation,
+        "findingId": result.finding_id,
+        "proofBundle": result.proof_path,
+        "schema": "chio.finding.admission-result.v1",
+    });
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("finding_id:  {}", output["findingId"]);
+        println!("activation:  {}", output["activation"]["outcome"]);
+        println!("proof_bundle: {}", result.proof_path.display());
+    }
+    Ok(())
+}
+
+pub(super) fn reconcile_admission_jobs(profile_path: &Path) -> Result<u64, CliError> {
     let (profile, root) = load_profile(profile_path)?;
     let paths = ResolvedOperatorPaths::new(&root, &profile.paths);
-    let draft: FindingVerifiedFixDraft = read_canonical_file(package_path, MAX_DRAFT_BYTES)?;
+    let mut pending = Vec::new();
+    for entry in fs::read_dir(&paths.reports_directory)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file()
+            || !entry
+                .file_name()
+                .to_string_lossy()
+                .ends_with(".admission-job.json")
+        {
+            continue;
+        }
+        let job: FindingAdmissionJob = read_canonical_file(&entry.path(), MAX_DRAFT_BYTES)?;
+        validate_admission_job(&job)?;
+        if !job.completed {
+            pending.push(PathBuf::from(job.package_path));
+        }
+    }
+    let mut reconciled = 0u64;
+    for package in pending {
+        run_finding_admission(profile_path, &package)?;
+        reconciled = reconciled
+            .checked_add(1)
+            .ok_or_else(|| CliError::cli_other_error("admission job count overflowed".to_owned()))?;
+    }
+    Ok(reconciled)
+}
+
+fn run_finding_admission(
+    profile_path: &Path,
+    package_path: &Path,
+) -> Result<FindingAdmissionRunResult, CliError> {
+    let (profile, root) = load_profile(profile_path)?;
+    let paths = ResolvedOperatorPaths::new(&root, &profile.paths);
+    let package_path = fs::canonicalize(package_path)?;
+    let package_bytes = read_file_bounded(&package_path, MAX_DRAFT_BYTES)?;
+    let draft: FindingVerifiedFixDraft = parse_canonical(&package_bytes, "verified-fix package")?;
     draft
         .verify_static(&profile)
         .map_err(CliError::cli_other_error)?;
+    let job_path = paths.reports_directory.join(format!(
+        "{}.admission-job.json",
+        draft.finding.finding_id
+    ));
+    let mut job = load_or_create_admission_job(
+        &job_path,
+        &draft.finding.finding_id,
+        &package_path,
+        &sha256_hex(&package_bytes),
+    )?;
     let base_url = format!("http://{}", profile.listen);
     let resolver = FindingOperatorAuthorityStatusResolver::new(
         profile.market.authority_status.clone(),
@@ -246,7 +334,22 @@ pub(super) fn cmd_finding_admit(
                 "collateral response omitted its acceptedAt timestamp".to_owned(),
             )
         })?;
-    let evaluation_time = unix_time()?.max(accepted_at.saturating_add(1));
+    if job.accepted_at.is_some_and(|stored| stored != accepted_at) {
+        return Err(CliError::cli_other_error(
+            "admission retry returned a different collateral acceptance time".to_owned(),
+        ));
+    }
+    job.accepted_at = Some(accepted_at);
+    let evaluation_time = job
+        .evaluation_time
+        .unwrap_or(unix_time()?.max(accepted_at.saturating_add(1)));
+    if evaluation_time <= accepted_at {
+        return Err(CliError::cli_other_error(
+            "admission job evaluation time does not follow collateral acceptance".to_owned(),
+        ));
+    }
+    job.evaluation_time = Some(evaluation_time);
+    write_private_atomic(&job_path, &canonical_json_bytes(&job)?)?;
     wait_until(evaluation_time)?;
     let finalization = draft
         .finalize(&profile, accepted_at, evaluation_time)
@@ -284,17 +387,27 @@ pub(super) fn cmd_finding_admit(
         "verifierAuthorityStatus": status(&profile.market.verifier_report)?,
         "verifierReport": finalization.bundle.verifier_report,
     });
-    let activation_response = post_json(
+    let mut activation_response = post_json(
         &base_url,
         &format!("/v1/findings/{}/activate", draft.finding.finding_id),
         &profile.service_token,
         &activation,
     )?;
+    if let Some(stored) = job.activation.as_ref() {
+        if !same_activation(stored, &activation_response) {
+            return Err(CliError::cli_other_error(
+                "admission retry returned a different activation result".to_owned(),
+            ));
+        }
+        activation_response = stored.clone();
+    } else {
+        job.activation = Some(activation_response.clone());
+    }
+    write_private_atomic(&job_path, &canonical_json_bytes(&job)?)?;
 
     let bundle_bytes = canonical_json_bytes(&finalization.bundle)?;
     let bundle_store = SqliteFindingOperatorBundleStore::open(&paths.operator_database)
-        .map_err(|error| CliError::cli_other_error(error.to_string()))?
-        ;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     bundle_store
         .put(&draft.finding.finding_id, &bundle_bytes)
         .map_err(|error| CliError::cli_other_error(error.to_string()))?;
@@ -322,20 +435,13 @@ pub(super) fn cmd_finding_admit(
         .put_proof(&draft.finding.finding_id, &proof_bytes)
         .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     write_private_exact_or_new(&proof_path, &proof_bytes)?;
-    let result = serde_json::json!({
-        "activation": activation_response,
-        "findingId": draft.finding.finding_id,
-        "proofBundle": proof_path,
-        "schema": "chio.finding.admission-result.v1",
-    });
-    if json_output {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        println!("finding_id:  {}", draft.finding.finding_id);
-        println!("activation:  {}", activation_response["outcome"]);
-        println!("proof_bundle: {}", proof_path.display());
-    }
-    Ok(())
+    job.completed = true;
+    write_private_atomic(&job_path, &canonical_json_bytes(&job)?)?;
+    Ok(FindingAdmissionRunResult {
+        finding_id: draft.finding.finding_id,
+        activation: activation_response,
+        proof_path,
+    })
 }
 
 pub(super) fn cmd_finding_verify_bundle(
@@ -343,7 +449,7 @@ pub(super) fn cmd_finding_verify_bundle(
     input: &Path,
     json_output: bool,
 ) -> Result<(), CliError> {
-    let (profile, _) = load_profile(profile_path)?;
+    let market = load_verification_market(profile_path)?;
     let bytes = if input == Path::new("-") {
         read_stdin_bounded(MAX_PROOF_BYTES)?
     } else {
@@ -352,7 +458,7 @@ pub(super) fn cmd_finding_verify_bundle(
     let proof: FindingOperatorProofBundle = parse_canonical(&bytes, "proof bundle")?;
     let now = unix_time()?;
     proof
-        .verify(&profile, now)
+        .verify(&market, now)
         .map_err(CliError::cli_other_error)?;
     let result = serde_json::json!({
         "evaluationTime": proof.bundle.verifier_report.body.evaluation_time,
@@ -687,7 +793,48 @@ fn post_bytes(
     serde_json::from_slice(&body).map_err(CliError::from)
 }
 
-fn read_canonical_file<T: serde::de::DeserializeOwned + serde::Serialize>(
+fn load_verification_market(
+    path: &Path,
+) -> Result<chio_control_plane::trust_control::FindingMarketConfig, CliError> {
+    let bytes = read_file_bounded(path, 1024 * 1024)?;
+    let value: serde_json::Value = parse_canonical(&bytes, "verification profile")?;
+    let schema = value
+        .get("schema")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| CliError::cli_other_error("verification profile has no schema".to_owned()))?;
+    let market = match schema {
+        FINDING_OPERATOR_PROFILE_SCHEMA => load_profile(path)?.0.market,
+        FINDING_OPERATOR_CLIENT_PROFILE_SCHEMA => {
+            let profile: FindingOperatorClientProfile =
+                parse_canonical(&bytes, "operator client profile")?;
+            profile
+                .validate()
+                .map_err(CliError::cli_other_error)?;
+            profile.market
+        }
+        FINDING_OPERATOR_BUYER_CLIENT_SCHEMA => {
+            let profile: FindingOperatorBuyerClientProfile =
+                parse_canonical(&bytes, "buyer client profile")?;
+            profile.market
+        }
+        FINDING_OPERATOR_SELLER_CLIENT_SCHEMA => {
+            let profile: FindingOperatorSellerClientProfile =
+                parse_canonical(&bytes, "seller client profile")?;
+            profile.market
+        }
+        _ => {
+            return Err(CliError::cli_other_error(
+                "unsupported verification profile schema".to_owned(),
+            ));
+        }
+    };
+    market
+        .validate()
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    Ok(market)
+}
+
+pub(super) fn read_canonical_file<T: serde::de::DeserializeOwned + serde::Serialize>(
     path: &Path,
     max_bytes: usize,
 ) -> Result<T, CliError> {
@@ -715,6 +862,85 @@ fn parse_canonical<T: serde::de::DeserializeOwned + serde::Serialize>(
         )));
     }
     Ok(value)
+}
+
+fn load_or_create_admission_job(
+    path: &Path,
+    finding_id: &str,
+    package_path: &Path,
+    package_sha256: &str,
+) -> Result<FindingAdmissionJob, CliError> {
+    let package_path = package_path.to_str().ok_or_else(|| {
+        CliError::cli_other_error("verified-fix package path is not UTF-8".to_owned())
+    })?;
+    if path.exists() {
+        let job: FindingAdmissionJob = read_canonical_file(path, MAX_DRAFT_BYTES)?;
+        validate_admission_job(&job)?;
+        if job.finding_id != finding_id
+            || job.package_path != package_path
+            || job.package_sha256 != package_sha256
+        {
+            return Err(CliError::cli_other_error(
+                "admission job is bound to different package input".to_owned(),
+            ));
+        }
+        return Ok(job);
+    }
+    let job = FindingAdmissionJob {
+        schema: ADMISSION_JOB_SCHEMA.to_owned(),
+        finding_id: finding_id.to_owned(),
+        package_path: package_path.to_owned(),
+        package_sha256: package_sha256.to_owned(),
+        accepted_at: None,
+        evaluation_time: None,
+        activation: None,
+        completed: false,
+    };
+    validate_admission_job(&job)?;
+    write_private_atomic(path, &canonical_json_bytes(&job)?)?;
+    Ok(job)
+}
+
+fn validate_admission_job(job: &FindingAdmissionJob) -> Result<(), CliError> {
+    let hex64 = |value: &str| {
+        value.len() == 64
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    };
+    if job.schema != ADMISSION_JOB_SCHEMA
+        || !hex64(&job.finding_id)
+        || !hex64(&job.package_sha256)
+        || job.package_path.is_empty()
+        || !Path::new(&job.package_path).is_absolute()
+        || job.evaluation_time.is_some() != job.accepted_at.is_some()
+        || job.activation.is_some() && job.evaluation_time.is_none()
+        || job.completed && job.activation.is_none()
+    {
+        return Err(CliError::cli_other_error(
+            "admission job failed its state invariants".to_owned(),
+        ));
+    }
+    if let (Some(accepted_at), Some(evaluation_time)) = (job.accepted_at, job.evaluation_time) {
+        if evaluation_time <= accepted_at {
+            return Err(CliError::cli_other_error(
+                "admission job evaluation time is invalid".to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn same_activation(stored: &serde_json::Value, replay: &serde_json::Value) -> bool {
+    let accepted_outcome = |value: &serde_json::Value| {
+        matches!(
+            value.get("outcome").and_then(serde_json::Value::as_str),
+            Some("Activated" | "ExactReplay")
+        )
+    };
+    accepted_outcome(stored)
+        && accepted_outcome(replay)
+        && stored.get("admissionId") == replay.get("admissionId")
 }
 
 fn read_file_bounded(path: &Path, max_bytes: usize) -> Result<Vec<u8>, CliError> {
@@ -796,6 +1022,30 @@ fn write_private_exact_or_new(path: &Path, bytes: &[u8]) -> Result<(), CliError>
         }
         Err(error) => Err(error),
     }
+}
+
+pub(super) fn write_private_atomic(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
+    let parent = path.parent().ok_or_else(|| {
+        CliError::cli_other_error("private output path has no parent directory".to_owned())
+    })?;
+    if path.exists() {
+        let metadata = fs::symlink_metadata(path)?;
+        if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+            return Err(CliError::cli_other_error(format!(
+                "{} is not a regular admission job file",
+                path.display()
+            )));
+        }
+    }
+    let temporary = parent.join(format!(".admission-job-{}.tmp", uuid::Uuid::new_v4()));
+    write_private_new(&temporary, bytes)?;
+    if let Err(error) = fs::rename(&temporary, path) {
+        let _ = fs::remove_file(&temporary);
+        return Err(CliError::from(error));
+    }
+    let directory = OpenOptions::new().read(true).open(parent)?;
+    directory.sync_all()?;
+    Ok(())
 }
 
 fn create_private_directory(path: &Path) -> Result<(), CliError> {

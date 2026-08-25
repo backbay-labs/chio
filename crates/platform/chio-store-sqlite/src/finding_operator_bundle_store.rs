@@ -25,6 +25,7 @@ const SCHEMA_ANCHORS: &[&str] = &[
 const MAX_BUNDLE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_TERMINAL_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PROOF_BYTES: usize = 24 * 1024 * 1024;
+const MAX_PURCHASE_JOB_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FindingOperatorBundleRecord {
@@ -38,6 +39,15 @@ pub struct FindingOperatorProofRecord {
     pub finding_id: String,
     pub proof_sha256: String,
     pub proof_json: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FindingOperatorPurchaseJobRecord {
+    pub request_id: String,
+    pub principal_id: String,
+    pub request_sha256: String,
+    pub job_sha256: String,
+    pub job_json: Vec<u8>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -145,6 +155,15 @@ impl SqliteFindingOperatorBundleStore {
                 proof_json BLOB NOT NULL,
                 created_at INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS chio_finding_operator_purchase_jobs (
+                request_id TEXT PRIMARY KEY,
+                principal_id TEXT NOT NULL,
+                request_sha256 TEXT NOT NULL CHECK(length(request_sha256) = 64),
+                job_sha256 TEXT NOT NULL CHECK(length(job_sha256) = 64),
+                job_json BLOB NOT NULL,
+                created_at INTEGER NOT NULL
+            );
             "#,
         )
         .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
@@ -227,6 +246,52 @@ impl SqliteFindingOperatorBundleStore {
             bundle_sha256,
             bundle_json,
         })
+    }
+
+    /// Return retained bundles in deterministic Finding-id order. The caller
+    /// supplies a hard bound so digest-addressed resolution cannot become an
+    /// unbounded database scan.
+    pub fn list(
+        &self,
+        limit: u64,
+    ) -> Result<Vec<FindingOperatorBundleRecord>, FindingOperatorBundleStoreError> {
+        if limit == 0 || limit > 10_000 {
+            return Err(FindingOperatorBundleStoreError::Invalid(
+                "bundle list limit",
+            ));
+        }
+        let limit = i64::try_from(limit)
+            .map_err(|_| FindingOperatorBundleStoreError::Invalid("bundle list limit"))?;
+        let conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let mut statement = conn
+            .prepare(
+                "SELECT finding_id, bundle_sha256, bundle_json FROM chio_finding_operator_bundles ORDER BY finding_id ASC LIMIT ?1",
+            )
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let rows = statement
+            .query_map([limit], |row| {
+                Ok(FindingOperatorBundleRecord {
+                    finding_id: row.get(0)?,
+                    bundle_sha256: row.get(1)?,
+                    bundle_json: row.get(2)?,
+                })
+            })
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let mut records = Vec::new();
+        for row in rows {
+            let record = row
+                .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+            validate_finding_id(&record.finding_id)?;
+            if record.bundle_sha256 != sha256_hex(&record.bundle_json) {
+                return Err(FindingOperatorBundleStoreError::DigestMismatch);
+            }
+            validate_canonical_bundle(&record.bundle_json)?;
+            records.push(record);
+        }
+        Ok(records)
     }
 
     pub fn put_proof(
@@ -320,6 +385,78 @@ impl SqliteFindingOperatorBundleStore {
         u64::try_from(count).map_err(|_| {
             FindingOperatorBundleStoreError::Unavailable("proof count is negative".to_owned())
         })
+    }
+
+    /// Retain the immutable prepared purchase context before opening its
+    /// reservation. This closes the crash window where a durable reservation
+    /// exists but its signed bid and ask can no longer be reconstructed.
+    pub fn put_purchase_job(
+        &self,
+        request_id: &str,
+        principal_id: &str,
+        request_sha256: &str,
+        job_json: &[u8],
+    ) -> Result<FindingOperatorBundleWriteOutcome, FindingOperatorBundleStoreError> {
+        validate_digest(request_id, "request_id")?;
+        validate_identifier(principal_id, "principal_id")?;
+        validate_digest(request_sha256, "request_sha256")?;
+        validate_canonical_json(job_json, MAX_PURCHASE_JOB_BYTES, "purchase job")?;
+        let job_sha256 = sha256_hex(job_json);
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let existing = load_purchase_job(&tx, request_id)?;
+        if let Some(existing) = existing {
+            if existing.job_sha256 != sha256_hex(&existing.job_json) {
+                return Err(FindingOperatorBundleStoreError::DigestMismatch);
+            }
+            if existing.principal_id == principal_id
+                && existing.request_sha256 == request_sha256
+                && existing.job_sha256 == job_sha256
+                && existing.job_json == job_json
+            {
+                tx.commit().map_err(|error| {
+                    FindingOperatorBundleStoreError::Unavailable(error.to_string())
+                })?;
+                return Ok(FindingOperatorBundleWriteOutcome::ExactReplay);
+            }
+            return Err(FindingOperatorBundleStoreError::Conflict);
+        }
+        tx.execute(
+            "INSERT INTO chio_finding_operator_purchase_jobs (request_id, principal_id, request_sha256, job_sha256, job_json, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![request_id, principal_id, request_sha256, job_sha256, job_json, now_secs()],
+        )
+        .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        tx.commit()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        Ok(FindingOperatorBundleWriteOutcome::Inserted)
+    }
+
+    pub fn get_purchase_job(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<FindingOperatorPurchaseJobRecord>, FindingOperatorBundleStoreError> {
+        validate_digest(request_id, "request_id")?;
+        let conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let job = load_purchase_job(&conn, request_id)?;
+        if let Some(record) = job.as_ref() {
+            if record.job_sha256 != sha256_hex(&record.job_json) {
+                return Err(FindingOperatorBundleStoreError::DigestMismatch);
+            }
+            validate_canonical_json(&record.job_json, MAX_PURCHASE_JOB_BYTES, "purchase job")?;
+        }
+        Ok(job)
+    }
+
+    pub fn purchase_job_count(&self) -> Result<u64, FindingOperatorBundleStoreError> {
+        self.count_rows("chio_finding_operator_purchase_jobs")
     }
 
     /// Retain an exact public purchase terminal for restart-safe route replay.
@@ -428,6 +565,27 @@ fn load_terminal(
                 request_sha256: row.get(1)?,
                 result_sha256: row.get(2)?,
                 result_json: row.get(3)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))
+}
+
+fn load_purchase_job(
+    conn: &rusqlite::Connection,
+    request_id: &str,
+) -> Result<Option<FindingOperatorPurchaseJobRecord>, FindingOperatorBundleStoreError> {
+    conn.query_row(
+        "SELECT principal_id, request_sha256, job_sha256, job_json FROM chio_finding_operator_purchase_jobs WHERE request_id = ?1",
+        [request_id],
+        |row| {
+            Ok(FindingOperatorPurchaseJobRecord {
+                request_id: request_id.to_owned(),
+                principal_id: row.get(0)?,
+                request_sha256: row.get(1)?,
+                job_sha256: row.get(2)?,
+                job_json: row.get(3)?,
             })
         },
     )
@@ -605,6 +763,33 @@ mod tests {
         assert_eq!(record.proof_sha256, sha256_hex(proof));
         assert!(matches!(
             reopened.put_proof(&finding_id(), br#"{"schema":"changed"}"#),
+            Err(FindingOperatorBundleStoreError::Conflict)
+        ));
+    }
+
+    #[test]
+    fn purchase_job_precedes_and_survives_terminal_state() {
+        let store = SqliteFindingOperatorBundleStore::open_in_memory().unwrap();
+        let request_id = "e".repeat(64);
+        let request_sha256 = "f".repeat(64);
+        let job = br#"{"schema":"chio.finding.operator-purchase-job.v1"}"#;
+        assert_eq!(
+            store
+                .put_purchase_job(&request_id, "buyer-1", &request_sha256, job)
+                .unwrap(),
+            FindingOperatorBundleWriteOutcome::Inserted
+        );
+        assert_eq!(
+            store
+                .put_purchase_job(&request_id, "buyer-1", &request_sha256, job)
+                .unwrap(),
+            FindingOperatorBundleWriteOutcome::ExactReplay
+        );
+        let record = store.get_purchase_job(&request_id).unwrap().unwrap();
+        assert_eq!(record.job_json, job);
+        assert_eq!(store.purchase_job_count().unwrap(), 1);
+        assert!(matches!(
+            store.put_purchase_job(&request_id, "buyer-2", &request_sha256, job),
             Err(FindingOperatorBundleStoreError::Conflict)
         ));
     }

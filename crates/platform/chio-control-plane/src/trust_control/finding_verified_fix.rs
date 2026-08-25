@@ -80,6 +80,7 @@ const STAKE_UNITS: u64 = 50;
 const EXPOSURE_UNITS: u64 = 450;
 const LOCKED_UNITS: u64 = 500;
 const REQUIREMENT_UNITS: u64 = 5_000;
+const DISPUTE_BOND_UNITS: u64 = 10;
 const ARTIFACT_LIFETIME_SECS: u64 = 180 * 24 * 60 * 60;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -446,7 +447,7 @@ impl FindingVerifiedFixDraft {
             trusted_time_source_sha256: self.trusted_time_source_sha256.clone(),
             status_proof_input_b64: None,
         };
-        proof.verify(profile, evaluation_time)?;
+        proof.verify(&profile.market, evaluation_time)?;
         Ok(FindingOperatorFinalization { bundle, proof })
     }
 
@@ -541,7 +542,7 @@ impl FindingVerifiedFixDraft {
         .map_err(string_error)?;
         let recipe = decode_bounded(&self.replay_recipe_b64, 1024 * 1024, "replay recipe")?;
         let trust = verifier_trust(
-            profile,
+            &profile.market,
             &self.verifier_profile,
             checkpoint_signer_status.clone(),
             evaluation_time,
@@ -676,14 +677,12 @@ impl FindingVerifiedFixDraft {
 }
 
 impl FindingOperatorProofBundle {
-    pub fn verify(&self, profile: &FindingOperatorProfile, now: u64) -> Result<(), String> {
+    pub fn verify(&self, market: &super::FindingMarketConfig, now: u64) -> Result<(), String> {
         if self.schema != FINDING_OPERATOR_PROOF_BUNDLE_SCHEMA {
             return Err("unsupported finding operator proof-bundle schema".to_owned());
         }
-        profile.validate()?;
-        self.bundle
-            .verify_at(&profile.market, now)
-            .map_err(string_error)?;
+        market.validate().map_err(string_error)?;
+        self.bundle.verify_at(market, now).map_err(string_error)?;
         let resolved = self
             .evidence_receipts
             .iter()
@@ -708,7 +707,7 @@ impl FindingOperatorProofBundle {
         };
         let evaluation_time = self.bundle.verifier_report.body.evaluation_time;
         let trust = verifier_trust(
-            profile,
+            market,
             &self.bundle.verifier_profile,
             self.checkpoint_signer_status.clone(),
             evaluation_time,
@@ -1009,12 +1008,20 @@ fn build_fee_schedule(
         publication_fee: usd(PUBLICATION_FEE_UNITS),
         dispute_fee: usd(25),
         market_participation_fee: usd(PARTICIPATION_FEE_UNITS),
-        bond_requirements: vec![OpenMarketBondRequirement {
-            bond_class: OpenMarketBondClass::Listing,
-            required_amount: usd(REQUIREMENT_UNITS),
-            collateral_reference_kind: OpenMarketCollateralReferenceKind::ExternalReference,
-            slashable: true,
-        }],
+        bond_requirements: vec![
+            OpenMarketBondRequirement {
+                bond_class: OpenMarketBondClass::Listing,
+                required_amount: usd(REQUIREMENT_UNITS),
+                collateral_reference_kind: OpenMarketCollateralReferenceKind::ExternalReference,
+                slashable: true,
+            },
+            OpenMarketBondRequirement {
+                bond_class: OpenMarketBondClass::Dispute,
+                required_amount: usd(DISPUTE_BOND_UNITS),
+                collateral_reference_kind: OpenMarketCollateralReferenceKind::ExternalReference,
+                slashable: true,
+            },
+        ],
         issued_by: profile.market.fee_schedule_operator_keys[0].clone(),
         issued_at: Some(issued_at),
         expires_at: None,
@@ -1057,7 +1064,7 @@ fn build_terms(
         verifier_profile_envelope_sha256: profile_sha256.to_owned(),
         challenge_bond_limits: vec![FindingChallengeBondLimit {
             guarantee_class: FindingGuaranteeClass::DeterministicReplay,
-            min_bond: usd(10),
+            min_bond: usd(DISPUTE_BOND_UNITS),
             max_bond: usd(100),
         }],
         payout_policy: "pro_rata_capped_v1".to_owned(),
@@ -1415,7 +1422,7 @@ fn signer_status_trust(
 
 #[allow(clippy::too_many_arguments)]
 fn verifier_trust(
-    profile: &FindingOperatorProfile,
+    market: &super::FindingMarketConfig,
     verifier_profile: &SignedFindingChallengeVerifierProfile,
     signer_status: FindingCheckpointSignerStatusTrust,
     trusted_time: u64,
@@ -1424,8 +1431,8 @@ fn verifier_trust(
     trusted_time_source_sha256: &str,
 ) -> Result<FindingVerifierTrustRoots, String> {
     Ok(FindingVerifierTrustRoots {
-        governance_authority: profile.market.governance_root.key().map_err(string_error)?,
-        governance_authority_policy: pin_policy(&profile.market.governance_root)?,
+        governance_authority: market.governance_root.key().map_err(string_error)?,
+        governance_authority_policy: pin_policy(&market.governance_root)?,
         profile: verifier_profile.clone(),
         admitted_kernel_keys: vec![verifier_profile
             .body
@@ -1436,11 +1443,8 @@ fn verifier_trust(
             .policy
             .key
             .clone()],
-        collateral_authority: pin_policy(&profile.market.collateral)?,
-        fee_schedule_authorities: profile
-            .market
-            .fee_schedule_operators()
-            .map_err(string_error)?,
+        collateral_authority: pin_policy(&market.collateral)?,
+        fee_schedule_authorities: market.fee_schedule_operators().map_err(string_error)?,
         runtime_attestation_authority: None,
         appraisal_authority: None,
         attestation_trust_policy: None,

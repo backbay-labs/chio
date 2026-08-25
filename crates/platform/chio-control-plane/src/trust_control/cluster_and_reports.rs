@@ -101,6 +101,7 @@ mod cluster_and_reports_tests {
             cluster_progress,
             finding_rail: None,
             finding_purchase_executor: None,
+            finding_seller_submission_executor: None,
             finding_authority_status_resolver: None,
             finding_challenge_executor: None,
         };

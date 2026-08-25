@@ -196,9 +196,6 @@ pub(crate) async fn handle_submit_finding_challenge(
     headers: HeaderMap,
     raw_challenge_envelope: String,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
     let (config, store) = match finding_market_context(&state) {
         Ok(context) => context,
         Err(response) => return response,
@@ -224,6 +221,39 @@ pub(crate) async fn handle_submit_finding_challenge(
             StatusCode::BAD_REQUEST,
             "challenge finding id does not match the request path",
         );
+    }
+
+    match &request.challenge.body.authorization {
+        chio_finding::FindingChallengeAuthorization::BuyerSubmission(submission) => {
+            let authenticated = state
+                .finding_purchase_executor
+                .as_ref()
+                .and_then(|executor| {
+                    bearer_token(&headers).and_then(|token| executor.authenticate_buyer(token).ok())
+                });
+            if let Some(buyer) = authenticated {
+                if buyer.public_key() != &submission.challenger {
+                    return plain_http_error(
+                        StatusCode::UNAUTHORIZED,
+                        "buyer challenge credential does not match the challenger",
+                    );
+                }
+            } else if state.finding_purchase_executor.is_some() {
+                return plain_http_error(
+                    StatusCode::UNAUTHORIZED,
+                    "buyer challenge authentication failed",
+                );
+            } else if let Err(response) =
+                validate_service_auth(&headers, &state.config.service_token)
+            {
+                return response;
+            }
+        }
+        chio_finding::FindingChallengeAuthorization::VenueAudit(_) => {
+            if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
+                return response;
+            }
+        }
     }
 
     // A buyer signs for itself, while a venue audit signs under the
@@ -302,6 +332,15 @@ pub(crate) async fn handle_submit_finding_challenge(
         }
         Err(error) => plain_http_error(StatusCode::UNPROCESSABLE_ENTITY, &error.to_string()),
     }
+}
+
+fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .strip_prefix("Bearer ")
+        .filter(|token| !token.is_empty())
 }
 
 fn coordinator_unavailable(error: &ChallengeCoordinatorError) -> bool {

@@ -25,8 +25,8 @@ use chio_kernel::{
     DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES, DPOP_SCHEMA,
 };
 use chio_open_market::bidding::{
-    BidMintContext, BidRequest, RequestedScope, SignedAcceptedBid, SignedBidRequest,
-    SignedReservationReceipt, VerifiedReservationReceipt, BID_REQUEST_SCHEMA,
+    BidMintContext, BidRequest, RequestedScope, SignedAcceptedBid, SignedAskResponse,
+    SignedBidRequest, SignedReservationReceipt, VerifiedReservationReceipt, BID_REQUEST_SCHEMA,
 };
 use chio_open_market::finding_admission::{
     accept_finding_purchase, bid_with_finding_purchase, verify_finding_admission,
@@ -66,6 +66,19 @@ use super::finding_status_verifier::MarketFindingStatusVerifier;
 use super::FindingMarketConfig;
 
 const MAX_CREDENTIAL_TEXT_BYTES: usize = 512;
+const FINDING_OPERATOR_PURCHASE_JOB_SCHEMA: &str = "chio.finding.operator-purchase-job.v1";
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FindingOperatorPurchaseJob {
+    schema: String,
+    principal_id: String,
+    request_sha256: String,
+    prepared_at: u64,
+    bid: SignedBidRequest,
+    ask: SignedAskResponse,
+    buyer_signature: String,
+}
 
 /// One buyer identity and scoped credential installed by the operator.
 pub struct FindingOperatorBuyerCredential {
@@ -132,13 +145,15 @@ pub struct FindingOperatorPurchaseExecutor {
     bundle_store: SqliteFindingOperatorBundleStore,
     payload_store: Arc<SqliteFindingPayloadStore>,
     payment_adapter: SqliteFindingOperatorPaymentAdapter,
-    receipt_db_path: PathBuf,
+    receipt_store: Arc<SqliteReceiptStore>,
     payload_tenant_id: TenantId,
     payload_key: Arc<TenantKey>,
     market: FindingMarketConfig,
     authority_status: Arc<dyn FindingAuthorityStatusResolver>,
     keys: FindingOperatorPurchaseKeys,
     buyers: Vec<FindingOperatorBuyerCredential>,
+    #[cfg(test)]
+    stop_after_reservation_once: std::sync::atomic::AtomicBool,
 }
 
 impl FindingOperatorPurchaseExecutor {
@@ -211,19 +226,34 @@ impl FindingOperatorPurchaseExecutor {
         );
         let payment_adapter = SqliteFindingOperatorPaymentAdapter::open(&storage.operator_db_path)
             .map_err(|error| error.to_string())?;
+        let receipt_store = Arc::new(
+            SqliteReceiptStore::open(&storage.receipt_db_path)
+                .map_err(|error| error.to_string())?,
+        );
+        receipt_store
+            .wait_for_writer_ready(std::time::Duration::from_secs(30))
+            .map_err(|error| error.to_string())?;
         Ok(Self {
             authority: storage.authority,
             bundle_store,
             payload_store,
             payment_adapter,
-            receipt_db_path: storage.receipt_db_path,
+            receipt_store,
             payload_tenant_id: storage.payload_tenant_id,
             payload_key: Arc::new(storage.payload_key),
             market,
             authority_status,
             keys,
             buyers,
+            #[cfg(test)]
+            stop_after_reservation_once: std::sync::atomic::AtomicBool::new(false),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn stop_after_reservation_once(&self) {
+        self.stop_after_reservation_once
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
     fn credential(
@@ -393,9 +423,7 @@ impl FindingOperatorPurchaseExecutor {
             deadlines: chio_kernel::HotPathDeadlineConfig::default(),
         });
         kernel
-            .set_receipt_store_handle(Arc::new(
-                SqliteReceiptStore::open(&self.receipt_db_path).map_err(execution_unavailable)?,
-            ))
+            .set_receipt_store_handle(self.receipt_store.clone())
             .map_err(execution_internal)?;
         kernel
             .set_durable_admission_store(
@@ -487,6 +515,159 @@ impl FindingOperatorPurchaseExecutor {
         Ok(())
     }
 
+    fn load_purchase_job(
+        &self,
+        buyer: &AuthenticatedFindingBuyer,
+        request: &FindingPurchaseRequest,
+        request_sha256: &str,
+    ) -> Result<Option<FindingOperatorPurchaseJob>, FindingPurchaseExecutionError> {
+        let Some(record) = self
+            .bundle_store
+            .get_purchase_job(&request.request_id)
+            .map_err(execution_unavailable)?
+        else {
+            return Ok(None);
+        };
+        if record.principal_id != buyer.principal_id() || record.request_sha256 != request_sha256 {
+            return Err(FindingPurchaseExecutionError::Conflict(
+                "purchase request id is bound to another prepared transaction".to_owned(),
+            ));
+        }
+        let job: FindingOperatorPurchaseJob = serde_json::from_slice(&record.job_json)
+            .map_err(|error| execution_internal(error.to_string()))?;
+        if canonical_json_bytes(&job).map_err(execution_internal)? != record.job_json {
+            return Err(execution_internal(
+                "prepared purchase job is not typed canonical JSON",
+            ));
+        }
+        if job.schema != FINDING_OPERATOR_PURCHASE_JOB_SCHEMA
+            || job.principal_id != buyer.principal_id()
+            || job.request_sha256 != request_sha256
+        {
+            return Err(execution_internal(
+                "prepared purchase job failed its identity binding",
+            ));
+        }
+        Ok(Some(job))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_purchase_job(
+        &self,
+        buyer: &AuthenticatedFindingBuyer,
+        credential: &FindingOperatorBuyerCredential,
+        request: &FindingPurchaseRequest,
+        request_sha256: &str,
+        bundle: &FindingOperatorBundle,
+        witness: &VerifiedFindingAdmission,
+        now: u64,
+    ) -> Result<FindingOperatorPurchaseJob, FindingPurchaseExecutionError> {
+        let deadline_secs = request.deadline_secs.unwrap_or(3_600);
+        let bid = SignedBidRequest::sign(
+            BidRequest {
+                schema: BID_REQUEST_SCHEMA.to_owned(),
+                agent_id: credential.signing_key.public_key().to_hex(),
+                payout_destination: Some(credential.payout_destination.clone()),
+                listing_id: bundle.admission.body.listing_id.clone(),
+                max_price_per_call: request.max_price.clone(),
+                window_seconds: deadline_secs,
+                requested_scope: RequestedScope {
+                    server_id: bundle.admission.body.server_id.clone(),
+                    tool_name: bundle.seller_authorization.body.provider_tool.clone(),
+                    max_invocations: Some(1),
+                    capability_scope_prefix: bundle.admission.body.capability_scope.clone(),
+                },
+                issued_at: now,
+            },
+            &credential.signing_key,
+        )
+        .map_err(execution_internal)?;
+        let verified_ask = bid_with_finding_purchase(
+            &bid,
+            BidMintContext {
+                listing: &bundle.listing,
+                issuer_keypair: self.seller_key(bundle)?,
+                agent_subject: credential.signing_key.public_key(),
+                token_id: format!("finding-token-{}", request.request_id),
+                now,
+                grant_constraints: Vec::new(),
+                dpop_required: None,
+            },
+            witness,
+            &bundle.finding,
+        )
+        .map_err(execution_internal)?;
+        let ask = verified_ask.signed_ask().clone();
+        let ask_digest = canonical_json_bytes(&ask.body)
+            .map(|bytes| sha256_hex(&bytes))
+            .map_err(execution_internal)?;
+        let job = FindingOperatorPurchaseJob {
+            schema: FINDING_OPERATOR_PURCHASE_JOB_SCHEMA.to_owned(),
+            principal_id: buyer.principal_id().to_owned(),
+            request_sha256: request_sha256.to_owned(),
+            prepared_at: now,
+            bid,
+            ask,
+            buyer_signature: credential.signing_key.sign(ask_digest.as_bytes()).to_hex(),
+        };
+        self.validate_purchase_job(&job, credential, request, request_sha256, bundle)?;
+        let bytes = canonical_json_bytes(&job).map_err(execution_internal)?;
+        self.bundle_store
+            .put_purchase_job(
+                &request.request_id,
+                buyer.principal_id(),
+                request_sha256,
+                &bytes,
+            )
+            .map_err(execution_unavailable)?;
+        Ok(job)
+    }
+
+    fn validate_purchase_job(
+        &self,
+        job: &FindingOperatorPurchaseJob,
+        credential: &FindingOperatorBuyerCredential,
+        request: &FindingPurchaseRequest,
+        request_sha256: &str,
+        bundle: &FindingOperatorBundle,
+    ) -> Result<(), FindingPurchaseExecutionError> {
+        let expected_window = request.deadline_secs.unwrap_or(3_600);
+        let bid_digest = canonical_json_bytes(&job.bid.body)
+            .map(|bytes| sha256_hex(&bytes))
+            .map_err(execution_internal)?;
+        let ask_digest = canonical_json_bytes(&job.ask.body)
+            .map(|bytes| sha256_hex(&bytes))
+            .map_err(execution_internal)?;
+        let signature =
+            chio_core::Signature::from_hex(&job.buyer_signature).map_err(execution_internal)?;
+        if job.schema != FINDING_OPERATOR_PURCHASE_JOB_SCHEMA
+            || job.principal_id != credential.principal_id
+            || job.request_sha256 != request_sha256
+            || job.prepared_at != job.bid.body.issued_at
+            || job.bid.signer_key != credential.signing_key.public_key()
+            || !matches!(job.bid.verify_signature(), Ok(true))
+            || !matches!(job.ask.verify_signature(), Ok(true))
+            || job.ask.body.bid_digest != bid_digest
+            || job.ask.body.listing_id != bundle.admission.body.listing_id
+            || job.ask.body.agent_id != credential.signing_key.public_key().to_hex()
+            || job.bid.body.max_price_per_call != request.max_price
+            || job.bid.body.window_seconds != expected_window
+            || job.bid.body.payout_destination.as_deref()
+                != Some(credential.payout_destination.as_str())
+            || (job.ask.signer_key != bundle.seller_authorization.body.issuer
+                && job.ask.signer_key != bundle.seller_authorization.body.seller)
+            || !credential
+                .signing_key
+                .public_key()
+                .verify(ask_digest.as_bytes(), &signature)
+        {
+            return Err(execution_internal(
+                "prepared purchase job failed signature or request binding",
+            ));
+        }
+        Ok(())
+    }
+
     fn recover_terminal(
         &self,
         buyer: &AuthenticatedFindingBuyer,
@@ -508,8 +689,7 @@ impl FindingOperatorPurchaseExecutor {
         store
             .verify_public_purchase_reservation(&public_request, reservation_id)
             .map_err(execution_internal)?;
-        let receipt_store =
-            SqliteReceiptStore::open(&self.receipt_db_path).map_err(execution_unavailable)?;
+        let receipt_store = self.receipt_store.clone();
 
         if let Some(row) = store
             .get_purchase_record_by_reservation(reservation_id)
@@ -654,12 +834,12 @@ impl FindingOperatorPurchaseExecutor {
             currency: &request.max_price.currency,
             deadline_secs: request.deadline_secs,
         };
-        if let Some(existing) = self
+        let existing_reservation = self
             .authority
             .finding_purchase_store()
             .resolve_public_purchase_reservation(&public_request)
-            .map_err(execution_unavailable)?
-        {
+            .map_err(execution_unavailable)?;
+        if let Some(existing) = existing_reservation.as_ref() {
             if matches!(
                 existing.state,
                 FindingPurchaseReservationState::Consumed
@@ -667,41 +847,42 @@ impl FindingOperatorPurchaseExecutor {
             ) {
                 return self.recover_terminal(authenticated, request, &existing.reservation_id);
             }
+        }
+        let request_bytes = canonical_json_bytes(request).map_err(execution_internal)?;
+        let request_sha256 = sha256_hex(&request_bytes);
+        let stored_job = self.load_purchase_job(authenticated, request, &request_sha256)?;
+        if existing_reservation.is_some() && stored_job.is_none() {
             return Err(FindingPurchaseExecutionError::Pending(
-                "durable reservation has not reached a terminal".to_owned(),
+                "legacy durable reservation has no prepared recovery job".to_owned(),
             ));
         }
-        let bundle = self.load_bundle(&request.finding_id, now)?;
-        let witness = self.admission_witness(&bundle, now)?;
-        let seller_key = self.seller_key(&bundle)?;
-        let deadline_secs = request.deadline_secs.unwrap_or(3_600);
-        let bid = SignedBidRequest::sign(
-            BidRequest {
-                schema: BID_REQUEST_SCHEMA.to_owned(),
-                agent_id: credential.signing_key.public_key().to_hex(),
-                payout_destination: Some(credential.payout_destination.clone()),
-                listing_id: bundle.admission.body.listing_id.clone(),
-                max_price_per_call: request.max_price.clone(),
-                window_seconds: deadline_secs,
-                requested_scope: RequestedScope {
-                    server_id: bundle.admission.body.server_id.clone(),
-                    tool_name: bundle.seller_authorization.body.provider_tool.clone(),
-                    max_invocations: Some(1),
-                    capability_scope_prefix: bundle.admission.body.capability_scope.clone(),
-                },
-                issued_at: now,
-            },
-            &credential.signing_key,
-        )
-        .map_err(execution_internal)?;
+        let prepared_at = stored_job.as_ref().map_or(now, |job| job.prepared_at);
+        let bundle = self.load_bundle(&request.finding_id, prepared_at)?;
+        let witness = self.admission_witness(&bundle, prepared_at)?;
+        let job = match stored_job {
+            Some(job) => {
+                self.validate_purchase_job(&job, credential, request, &request_sha256, &bundle)?;
+                job
+            }
+            None => self.prepare_purchase_job(
+                authenticated,
+                credential,
+                request,
+                &request_sha256,
+                &bundle,
+                &witness,
+                now,
+            )?,
+        };
+        let bid = &job.bid;
         let ask = bid_with_finding_purchase(
-            &bid,
+            bid,
             BidMintContext {
                 listing: &bundle.listing,
-                issuer_keypair: seller_key,
+                issuer_keypair: self.seller_key(&bundle)?,
                 agent_subject: credential.signing_key.public_key(),
                 token_id: format!("finding-token-{}", request.request_id),
-                now,
+                now: job.prepared_at,
                 grant_constraints: Vec::new(),
                 dpop_required: None,
             },
@@ -709,16 +890,23 @@ impl FindingOperatorPurchaseExecutor {
             &bundle.finding,
         )
         .map_err(execution_internal)?;
-        let ask_digest = canonical_json_bytes(&ask.body)
+        if canonical_json_bytes(ask.signed_ask()).map_err(execution_internal)?
+            != canonical_json_bytes(&job.ask).map_err(execution_internal)?
+        {
+            return Err(execution_internal(
+                "prepared purchase ask could not be reconstructed exactly",
+            ));
+        }
+        let signed_ask = ask.signed_ask();
+        let ask_digest = canonical_json_bytes(&signed_ask.body)
             .map(|bytes| sha256_hex(&bytes))
             .map_err(execution_internal)?;
-        let buyer_signature = credential.signing_key.sign(ask_digest.as_bytes()).to_hex();
         let reservation_id = super::finding_purchase_coordinator::derive_reservation_id(
             &ask_digest,
             &credential.signing_key.public_key().to_hex(),
         );
         let coordinator = self.coordinator()?;
-        let reservation_receipt = match coordinator.resolve(&reservation_id) {
+        match coordinator.resolve(&reservation_id) {
             Ok(existing)
                 if matches!(
                     existing.state,
@@ -728,31 +916,48 @@ impl FindingOperatorPurchaseExecutor {
             {
                 return self.recover_terminal(authenticated, request, &reservation_id);
             }
-            Ok(_) => {
-                return Err(FindingPurchaseExecutionError::Pending(
-                    "durable reservation has not reached a terminal".to_owned(),
+            Ok(existing) if existing.state == FindingPurchaseReservationState::Expired => {
+                return Err(FindingPurchaseExecutionError::Rejected(
+                    "durable purchase reservation expired before recovery".to_owned(),
                 ));
             }
-            Err(PurchaseCoordinatorError::UnknownReservation) => coordinator
-                .reserve_for_public_request(
-                    &bid,
-                    &ask,
-                    &buyer_signature,
-                    &bundle.admission,
-                    &bundle.seller_authorization,
-                    bundle
-                        .market_terms
-                        .body
-                        .backing_requirement
-                        .maximum_sale_exposure
-                        .units,
-                    deadline_secs,
-                    now,
-                    &public_request,
-                )
-                .map_err(execution_internal)?,
+            Ok(_) | Err(PurchaseCoordinatorError::UnknownReservation) => {}
             Err(error) => return Err(execution_internal(error)),
-        };
+        }
+        let reservation_receipt = coordinator
+            .reserve_for_public_request(
+                bid,
+                signed_ask,
+                &job.buyer_signature,
+                &bundle.admission,
+                &bundle.seller_authorization,
+                bundle
+                    .market_terms
+                    .body
+                    .backing_requirement
+                    .maximum_sale_exposure
+                    .units,
+                request.deadline_secs.unwrap_or(3_600),
+                job.prepared_at,
+                &public_request,
+            )
+            .map_err(execution_internal)?;
+        #[cfg(test)]
+        if self
+            .stop_after_reservation_once
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err(FindingPurchaseExecutionError::Pending(
+                "test interruption after durable reservation".to_owned(),
+            ));
+        }
+        if let Some(expected) = existing_reservation.as_ref() {
+            if expected.reservation_id != reservation_id {
+                return Err(FindingPurchaseExecutionError::Pending(
+                    "prepared purchase job names a different reservation".to_owned(),
+                ));
+            }
+        }
         let verified_reservation = VerifiedReservationReceipt::from_signed(
             &reservation_receipt,
             &self.keys.purchase.public_key(),
@@ -762,7 +967,7 @@ impl FindingOperatorPurchaseExecutor {
             &ask,
             &verified_reservation,
             &credential.signing_key,
-            now,
+            job.prepared_at,
             &witness,
             &bundle.finding,
         )
@@ -772,7 +977,7 @@ impl FindingOperatorPurchaseExecutor {
             .map_err(execution_internal)?;
         let context_b64 = purchase_context_b64(
             &bundle,
-            &bid,
+            bid,
             &ask,
             &accepted,
             &reservation_receipt,

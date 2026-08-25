@@ -312,10 +312,14 @@ mod finding_challenge_handlers;
 mod finding_handlers;
 #[path = "trust_control/finding_operator_bundle.rs"]
 pub mod finding_operator_bundle;
+#[path = "trust_control/finding_operator_filing_resolver.rs"]
+pub mod finding_operator_filing_resolver;
 #[path = "trust_control/finding_operator_profile.rs"]
 pub mod finding_operator_profile;
 #[path = "trust_control/finding_operator_purchase.rs"]
 pub mod finding_operator_purchase;
+#[path = "trust_control/finding_operator_seller_routes.rs"]
+pub mod finding_operator_seller_routes;
 #[path = "trust_control/finding_operator_status.rs"]
 pub mod finding_operator_status;
 #[path = "trust_control/finding_purchase_coordinator.rs"]
@@ -377,10 +381,14 @@ pub use self::finding_challenge_handlers::{
     FindingChallengeSubmissionWrite,
 };
 pub(crate) use self::finding_handlers::*;
+pub(crate) use self::finding_operator_seller_routes::{
+    handle_submit_verified_fix, handle_submit_voluntary_retraction,
+};
 pub(crate) use self::finding_purchase_routes::{
     handle_get_finding_proof_bundle, handle_publish_live_finding_status, handle_purchase_finding,
     FINDING_PURCHASE_MAX_BODY_BYTES,
 };
+pub use self::finding_status_handlers::build_operator_voluntary_retraction;
 pub(crate) use self::finding_status_handlers::*;
 // The evidenced-rail seam is part of the finding lane's deployment
 // surface: the dispute-fee charge takes it by injection exactly as the

@@ -748,6 +748,17 @@ fn finding_market_routes() -> Router<TrustServiceState> {
                 .layer(DefaultBodyLimit::max(FINDING_PURCHASE_MAX_BODY_BYTES)),
         )
         .route(
+            FINDING_VERIFIED_FIX_SUBMISSION_PATH,
+            post(handle_submit_verified_fix).layer(DefaultBodyLimit::max(
+                super::super::finding_operator_seller_routes::FINDING_VERIFIED_FIX_SUBMISSION_MAX_BODY_BYTES,
+            )),
+        )
+        .route(
+            FINDING_VOLUNTARY_RETRACTION_PATH,
+            post(handle_submit_voluntary_retraction)
+                .layer(DefaultBodyLimit::max(4096)),
+        )
+        .route(
             FINDING_OPERATOR_LIVE_STATUS_PATH,
             post(handle_publish_live_finding_status),
         )

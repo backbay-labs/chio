@@ -15,6 +15,9 @@ pub(crate) async fn serve_async(
     finding_purchase_executor: Option<
         super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
     >,
+    finding_seller_submission_executor: Option<
+        super::super::finding_operator_seller_routes::SharedFindingSellerSubmissionExecutor,
+    >,
     finding_authority_status_resolver: Option<
         Arc<dyn super::super::finding_challenge_coordinator::FindingAuthorityStatusResolver>,
     >,
@@ -27,6 +30,7 @@ pub(crate) async fn serve_async(
         injected_joint_authority_store,
         finding_rail,
         finding_purchase_executor,
+        finding_seller_submission_executor,
         finding_authority_status_resolver,
         finding_challenge_executor,
     )
@@ -39,6 +43,9 @@ async fn serve_async_inner(
     finding_rail: Option<Arc<dyn super::super::finding_handlers::FindingRailObserver>>,
     finding_purchase_executor: Option<
         super::super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+    >,
+    finding_seller_submission_executor: Option<
+        super::super::finding_operator_seller_routes::SharedFindingSellerSubmissionExecutor,
     >,
     finding_authority_status_resolver: Option<
         Arc<dyn super::super::finding_challenge_coordinator::FindingAuthorityStatusResolver>,
@@ -129,6 +136,7 @@ async fn serve_async_inner(
         cluster_progress,
         finding_rail,
         finding_purchase_executor,
+        finding_seller_submission_executor,
         finding_authority_status_resolver,
         finding_challenge_executor,
     };

@@ -24,7 +24,7 @@ pub struct RevokeCapabilityResponse {
 }
 
 pub fn serve(config: TrustServiceConfig) -> Result<(), CliError> {
-    serve_with_optional_finding_challenge_executor(config, None, None, None, None, None)
+    serve_with_optional_finding_challenge_executor(config, None, None, None, None, None, None)
 }
 
 /// Serve trust control with a checked cognition-market challenge runtime.
@@ -40,6 +40,7 @@ pub fn serve_with_finding_challenge_runtime(
     serve_with_optional_finding_challenge_executor(
         config,
         Some(joint_authority_store),
+        None,
         None,
         None,
         Some(authority_status_resolver),
@@ -72,6 +73,7 @@ pub fn serve_with_finding_market_runtime(
         Some(joint_authority_store),
         Some(rail),
         Some(purchase_executor),
+        None,
         Some(authority_status_resolver),
         Some(challenge_executor),
     )
@@ -112,6 +114,9 @@ fn serve_with_optional_finding_challenge_executor(
     joint_authority_store: Option<Arc<SqliteAuthorityStore>>,
     rail: Option<Arc<dyn super::finding_handlers::FindingRailObserver>>,
     purchase_executor: Option<super::finding_purchase_routes::SharedFindingPurchaseExecutor>,
+    seller_submission_executor: Option<
+        super::finding_operator_seller_routes::SharedFindingSellerSubmissionExecutor,
+    >,
     authority_status_resolver: Option<
         Arc<dyn super::finding_challenge_coordinator::FindingAuthorityStatusResolver>,
     >,
@@ -132,6 +137,7 @@ fn serve_with_optional_finding_challenge_executor(
             joint_authority_store,
             rail,
             purchase_executor,
+            seller_submission_executor,
             authority_status_resolver,
             executor,
         )
@@ -157,6 +163,7 @@ pub fn serve_with_finding_purchase_executor(
         None,
         Some(rail),
         Some(executor),
+        None,
         Some(authority_status_resolver),
         None,
     )
@@ -203,8 +210,79 @@ pub fn serve_with_finding_purchase_runtime(
         Some(joint_authority_store),
         Some(rail),
         Some(executor),
+        None,
         Some(authority_status_resolver),
         None,
+    )
+}
+
+/// Serve the installed single-operator market with scoped seller submission.
+/// Privileged authoring keys stay behind the injected seller executor.
+pub fn serve_with_finding_operator_runtime(
+    config: TrustServiceConfig,
+    joint_authority_store: Arc<SqliteAuthorityStore>,
+    purchase_executor: super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+    seller_submission_executor: super::finding_operator_seller_routes::SharedFindingSellerSubmissionExecutor,
+    rail: Arc<dyn super::finding_handlers::FindingRailObserver>,
+    authority_status_resolver: Arc<
+        dyn super::finding_challenge_coordinator::FindingAuthorityStatusResolver,
+    >,
+) -> Result<(), CliError> {
+    if config.joint_authority_db_path.is_none() {
+        return Err(CliError::cli_other_error(
+            "finding operator runtime requires the configured joint authority database".to_owned(),
+        ));
+    }
+    joint_authority_store
+        .verify_database_path(config.joint_authority_db_path.as_deref().ok_or_else(|| {
+            CliError::cli_other_error(
+                "finding operator runtime has no configured authority database".to_owned(),
+            )
+        })?)
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "finding operator authority does not match the configured database: {error}"
+            ))
+        })?;
+    validate_finding_market_mutation_fence(
+        &joint_authority_store.mutation_fence(),
+        &purchase_executor.mutation_fence(),
+    )?;
+    serve_with_optional_finding_challenge_executor(
+        config,
+        Some(joint_authority_store),
+        Some(rail),
+        Some(purchase_executor),
+        Some(seller_submission_executor),
+        Some(authority_status_resolver),
+        None,
+    )
+}
+
+/// Serve purchase, scoped seller admission, and challenge filing from one
+/// serving authority and one market configuration.
+pub fn serve_with_finding_operator_market_runtime(
+    config: TrustServiceConfig,
+    challenge_runtime: FindingChallengeSubmissionRuntime,
+    purchase_executor: super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+    seller_submission_executor: super::finding_operator_seller_routes::SharedFindingSellerSubmissionExecutor,
+    rail: Arc<dyn super::finding_handlers::FindingRailObserver>,
+) -> Result<(), CliError> {
+    validate_finding_challenge_runtime(&config, &challenge_runtime)?;
+    validate_finding_market_mutation_fence(
+        &challenge_runtime.mutation_fence(),
+        &purchase_executor.mutation_fence(),
+    )?;
+    let (joint_authority_store, challenge_executor, authority_status_resolver) =
+        challenge_runtime.into_parts();
+    serve_with_optional_finding_challenge_executor(
+        config,
+        Some(joint_authority_store),
+        Some(rail),
+        Some(purchase_executor),
+        Some(seller_submission_executor),
+        Some(authority_status_resolver),
+        Some(challenge_executor),
     )
 }
 

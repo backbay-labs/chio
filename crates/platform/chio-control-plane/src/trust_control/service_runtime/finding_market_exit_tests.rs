@@ -611,6 +611,7 @@ fn market_state(
         cluster_progress: None,
         finding_rail: Some(rail),
         finding_purchase_executor: None,
+        finding_seller_submission_executor: None,
         finding_authority_status_resolver: Some(Arc::new(
             TestStatusOperatorAuthorityResolver::default(),
         )),

@@ -1177,6 +1177,7 @@ fn challenge_route_state(
         cluster_progress: None,
         finding_rail: Some(deployment.rail.clone()),
         finding_purchase_executor: None,
+        finding_seller_submission_executor: None,
         finding_authority_status_resolver: Some(Arc::new(TestAuthorityStatusResolver::live())),
         finding_challenge_executor: Some(executor),
     }

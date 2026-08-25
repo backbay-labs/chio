@@ -4,17 +4,27 @@ use std::collections::BTreeMap;
 use std::fs::OpenOptions;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::process::Command;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chio_control_plane::trust_control::finding_operator_profile::{
     FindingOperatorBuyerProfile, FindingOperatorPaths, FindingOperatorProfile,
     FindingOperatorSecretSeeds, FindingOperatorSellerProfile, FINDING_OPERATOR_PROFILE_SCHEMA,
 };
+use chio_control_plane::trust_control::finding_operator_filing_resolver::FindingOperatorFilingResolver;
 use chio_control_plane::trust_control::finding_operator_purchase::{
     FindingOperatorPurchaseExecutor, FindingOperatorPurchaseStorage,
 };
+use chio_control_plane::trust_control::finding_operator_seller_routes::{
+    FindingSellerSubmissionError, FindingSellerSubmissionExecutor,
+    FindingVerifiedFixSubmissionRequest, FindingVerifiedFixSubmissionResponse,
+    FindingVoluntaryRetractionRequest, FindingVoluntaryRetractionResponse,
+};
 use chio_control_plane::trust_control::finding_operator_status::FindingOperatorAuthorityStatusResolver;
+use chio_control_plane::trust_control::finding_challenge_coordinator::FindingChallengeCoordinator;
+use chio_control_plane::trust_control::finding_status_publisher::FindingStatusEpochPublisher;
+use chio_control_plane::trust_control::FindingChallengeSubmissionRuntime;
 use chio_control_plane::trust_control::{
     FindingAuthorityPin, FindingMarketConfig, FindingPoolPin, FindingStatusOperatorPin,
     FindingStatusServiceBond, TrustServiceConfig, VenueLedgerRailObserver,
@@ -23,13 +33,454 @@ use chio_control_plane::trust_control::{
 use chio_core::{canonical_json_bytes, sha256_hex, Keypair};
 use chio_store_sqlite::{
     SqliteAuthorityStore, SqliteFindingOperatorBundleStore,
-    SqliteFindingOperatorPaymentAdapter, SqliteFindingPayloadStore, SqliteReceiptStore, TenantId,
-    TenantKey,
+    SqliteFindingOperatorPaymentAdapter, SqliteFindingPayloadStore, SqliteReceiptStore,
+    FindingDisputeLockDisposition, TenantId, TenantKey,
+};
+use subtle::ConstantTimeEq;
+
+use super::finding_verified_fix::{
+    read_canonical_file, reconcile_admission_jobs, write_private_atomic,
 };
 
 const PROFILE_FILE: &str = "operator-profile.json";
+const CLIENT_PROFILE_FILE: &str = "client-profile.json";
+const BUYER_CLIENT_FILE: &str = "buyer-client.json";
+const SELLER_CLIENT_FILE: &str = "seller-client.json";
 const PROFILE_MAX_BYTES: usize = 1024 * 1024;
 const ROLE_WINDOW_SECS: u64 = 10 * 365 * 24 * 60 * 60;
+const SELLER_SUBMISSION_JOB_SCHEMA: &str = "chio.finding.seller-submission-job.v1";
+const SELLER_SUBMISSION_JOB_MAX_BYTES: usize = 1024 * 1024;
+const SELLER_RETRACTION_JOB_SCHEMA: &str = "chio.finding.seller-retraction-job.v1";
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FindingSellerSubmissionJob {
+    schema: String,
+    request_id: String,
+    request_sha256: String,
+    seller_principal: String,
+    package_path: String,
+    result: Option<FindingVerifiedFixSubmissionResponse>,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FindingSellerRetractionJob {
+    schema: String,
+    request_id: String,
+    seller_principal: String,
+    result: Option<FindingVoluntaryRetractionResponse>,
+}
+
+struct OperatorSellerSubmissionExecutor {
+    profile_path: PathBuf,
+    reports_directory: PathBuf,
+    packages_directory: PathBuf,
+    profile: FindingOperatorProfile,
+    authority: Arc<SqliteAuthorityStore>,
+    sellers: Vec<(String, String, Keypair)>,
+    submission_lock: Mutex<()>,
+}
+
+impl OperatorSellerSubmissionExecutor {
+    fn new(
+        profile_path: PathBuf,
+        profile: &FindingOperatorProfile,
+        paths: &ResolvedOperatorPaths,
+        authority: Arc<SqliteAuthorityStore>,
+    ) -> Result<Self, String> {
+        let sellers = profile
+            .sellers
+            .iter()
+            .map(|seller| {
+                Keypair::from_seed_hex(&seller.signing_seed).map(|key| {
+                    (
+                        seller.principal_id.clone(),
+                        seller.bearer_token.clone(),
+                        key,
+                    )
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+        Ok(Self {
+            profile_path,
+            reports_directory: paths.reports_directory.clone(),
+            packages_directory: paths.packages_directory.clone(),
+            profile: profile.clone(),
+            authority,
+            sellers,
+            submission_lock: Mutex::new(()),
+        })
+    }
+
+    fn authenticate(&self, token: &str) -> Result<(String, Keypair), FindingSellerSubmissionError> {
+        self.sellers
+            .iter()
+            .find(|(_, expected, _)| bool::from(expected.as_bytes().ct_eq(token.as_bytes())))
+            .map(|(principal, _, key)| (principal.clone(), key.clone()))
+            .ok_or(FindingSellerSubmissionError::Authentication)
+    }
+
+    fn run_submission(
+        &self,
+        principal: &str,
+        request: &FindingVerifiedFixSubmissionRequest,
+    ) -> Result<FindingVerifiedFixSubmissionResponse, FindingSellerSubmissionError> {
+        request
+            .validate()
+            .map_err(FindingSellerSubmissionError::Invalid)?;
+        let repository = PathBuf::from(&request.repository);
+        if !repository.is_absolute() {
+            return Err(FindingSellerSubmissionError::Invalid(
+                "verified-fix repository must be an absolute path".to_owned(),
+            ));
+        }
+        let request_bytes = canonical_json_bytes(request)
+            .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+        let request_sha256 = sha256_hex(&request_bytes);
+        let package_path = self
+            .packages_directory
+            .join(format!("{}.draft.json", request.request_id));
+        let job_path = self
+            .reports_directory
+            .join(format!("{}.seller-submission-job.json", request.request_id));
+        let mut job = if job_path.exists() {
+            let stored: FindingSellerSubmissionJob = read_canonical_file(
+                &job_path,
+                SELLER_SUBMISSION_JOB_MAX_BYTES,
+            )
+            .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+            if stored.schema != SELLER_SUBMISSION_JOB_SCHEMA
+                || stored.request_id != request.request_id
+                || stored.request_sha256 != request_sha256
+                || stored.seller_principal != principal
+                || stored.package_path != package_path.display().to_string()
+            {
+                return Err(FindingSellerSubmissionError::Conflict);
+            }
+            stored
+        } else {
+            let created = FindingSellerSubmissionJob {
+                schema: SELLER_SUBMISSION_JOB_SCHEMA.to_owned(),
+                request_id: request.request_id.clone(),
+                request_sha256,
+                seller_principal: principal.to_owned(),
+                package_path: package_path.display().to_string(),
+                result: None,
+            };
+            write_private_atomic(
+                &job_path,
+                &canonical_json_bytes(&created)
+                    .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?,
+            )
+            .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+            created
+        };
+        if let Some(result) = job.result.clone() {
+            return Ok(result);
+        }
+
+        if !package_path.exists() {
+            let mut args = vec![
+                "finding".to_owned(),
+                "package".to_owned(),
+                "verified-fix".to_owned(),
+                "--profile".to_owned(),
+                self.profile_path.display().to_string(),
+                "--repository".to_owned(),
+                request.repository.clone(),
+                "--base".to_owned(),
+                request.base_revision.clone(),
+                "--candidate".to_owned(),
+                request.candidate_revision.clone(),
+                "--topic".to_owned(),
+                request.topic.clone(),
+                "--seller".to_owned(),
+                principal.to_owned(),
+                "--price".to_owned(),
+                request.price_units.to_string(),
+                "--output".to_owned(),
+                package_path.display().to_string(),
+                "--json".to_owned(),
+            ];
+            for test in &request.tests {
+                args.push("--test".to_owned());
+                args.push(test.clone());
+            }
+            run_chio_success(&args)?;
+        }
+        let admission = run_chio_json(&[
+            "finding".to_owned(),
+            "admit".to_owned(),
+            "--profile".to_owned(),
+            self.profile_path.display().to_string(),
+            "--package".to_owned(),
+            package_path.display().to_string(),
+            "--json".to_owned(),
+        ])?;
+        let finding_id = admission
+            .get("findingId")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                FindingSellerSubmissionError::Internal(
+                    "admission response omitted findingId".to_owned(),
+                )
+            })?
+            .to_owned();
+        let proof_bundle = admission
+            .get("proofBundle")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                FindingSellerSubmissionError::Internal(
+                    "admission response omitted proofBundle".to_owned(),
+                )
+            })?
+            .to_owned();
+        let activation = admission.get("activation").cloned().ok_or_else(|| {
+            FindingSellerSubmissionError::Internal(
+                "admission response omitted activation".to_owned(),
+            )
+        })?;
+        let result = FindingVerifiedFixSubmissionResponse {
+            schema: "chio.finding.verified-fix-submission-result.v1".to_owned(),
+            request_id: request.request_id.clone(),
+            seller_principal: principal.to_owned(),
+            finding_id,
+            proof_bundle,
+            activation,
+        };
+        job.result = Some(result.clone());
+        write_private_atomic(
+            &job_path,
+            &canonical_json_bytes(&job)
+                .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?,
+        )
+        .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+        Ok(result)
+    }
+}
+
+impl FindingSellerSubmissionExecutor for OperatorSellerSubmissionExecutor {
+    fn submit(
+        &self,
+        bearer_token: &str,
+        request: &FindingVerifiedFixSubmissionRequest,
+    ) -> Result<FindingVerifiedFixSubmissionResponse, FindingSellerSubmissionError> {
+        let (principal, _) = self.authenticate(bearer_token)?;
+        let _guard = self.submission_lock.lock().map_err(|_| {
+            FindingSellerSubmissionError::Pending(
+                "verified-fix submission lock is unavailable".to_owned(),
+            )
+        })?;
+        self.run_submission(&principal, request)
+    }
+
+    fn retract(
+        &self,
+        bearer_token: &str,
+        request: &FindingVoluntaryRetractionRequest,
+    ) -> Result<FindingVoluntaryRetractionResponse, FindingSellerSubmissionError> {
+        let (principal, seller_key) = self.authenticate(bearer_token)?;
+        request
+            .validate()
+            .map_err(FindingSellerSubmissionError::Invalid)?;
+        let _guard = self.submission_lock.lock().map_err(|_| {
+            FindingSellerSubmissionError::Pending(
+                "voluntary retraction lock is unavailable".to_owned(),
+            )
+        })?;
+        let job_path = self
+            .reports_directory
+            .join(format!("{}.seller-retraction-job.json", request.request_id));
+        let mut job = if job_path.exists() {
+            let stored: FindingSellerRetractionJob = read_canonical_file(
+                &job_path,
+                SELLER_SUBMISSION_JOB_MAX_BYTES,
+            )
+            .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+            if stored.schema != SELLER_RETRACTION_JOB_SCHEMA
+                || stored.request_id != request.request_id
+                || stored.seller_principal != principal
+            {
+                return Err(FindingSellerSubmissionError::Conflict);
+            }
+            stored
+        } else {
+            let created = FindingSellerRetractionJob {
+                schema: SELLER_RETRACTION_JOB_SCHEMA.to_owned(),
+                request_id: request.request_id.clone(),
+                seller_principal: principal,
+                result: None,
+            };
+            write_private_atomic(
+                &job_path,
+                &canonical_json_bytes(&created)
+                    .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?,
+            )
+            .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+            created
+        };
+        if let Some(result) = job.result.clone() {
+            return Ok(result);
+        }
+        let bundle = SqliteFindingOperatorBundleStore::open(
+            self.profile_path
+                .parent()
+                .ok_or_else(|| {
+                    FindingSellerSubmissionError::Internal(
+                        "operator profile has no parent directory".to_owned(),
+                    )
+                })?
+                .join(&self.profile.paths.operator_database),
+        )
+        .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?
+        .get(&request.finding_id)
+        .map_err(|_| {
+            FindingSellerSubmissionError::Invalid(
+                "retracted Finding is not retained by this operator".to_owned(),
+            )
+        })?;
+        let bundle: chio_control_plane::trust_control::finding_operator_bundle::FindingOperatorBundle =
+            serde_json::from_slice(&bundle.bundle_json)
+                .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+        if bundle.finding.issuer != seller_key.public_key() {
+            return Err(FindingSellerSubmissionError::Authentication);
+        }
+        let now = unix_time()
+            .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+        let status_key = self
+            .profile
+            .authoring_keys()
+            .map_err(FindingSellerSubmissionError::Internal)?
+            .status_feed_operator;
+        let intent = chio_control_plane::trust_control::build_operator_voluntary_retraction(
+            &self.profile.market,
+            &seller_key,
+            &status_key,
+            &request.finding_id,
+            now,
+        )
+        .map_err(FindingSellerSubmissionError::Internal)?;
+        let encoded_feed = percent_encoding::utf8_percent_encode(
+            &self.profile.market.status_feed_operator.feed_id,
+            percent_encoding::NON_ALPHANUMERIC,
+        );
+        let intent_response = post_operator_bytes(
+            &format!("http://{}", self.profile.listen),
+            &format!("/v1/findings/status/{encoded_feed}/intents"),
+            &self.profile.service_token,
+            &intent,
+        )?;
+        let intent_id = intent_response
+            .get("intent_id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                FindingSellerSubmissionError::Internal(
+                    "status intent response omitted intent_id".to_owned(),
+                )
+            })?
+            .to_owned();
+        let publisher = FindingStatusEpochPublisher::new(
+            self.authority.finding_status_store(),
+            self.profile.market.status_feed_operator.clone(),
+            self.profile.market.status_feed_service_bond.clone(),
+            status_key,
+            self.profile.market.status_max_epoch_age_secs,
+        )
+        .map_err(FindingSellerSubmissionError::Internal)?;
+        // The status ingress samples its commit clock inside the durable
+        // transaction. Sample again after that request instead of advancing
+        // into a future second, which would make immediate reads look like a
+        // clock rollback.
+        let publish_now = unix_time()
+            .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+        let proof = publisher
+            .publish_retraction(&intent_id, &[], publish_now)
+            .map_err(FindingSellerSubmissionError::Internal)?;
+        let result = FindingVoluntaryRetractionResponse {
+            schema: "chio.finding.voluntary-retraction-result.v1".to_owned(),
+            request_id: request.request_id.clone(),
+            finding_id: request.finding_id.clone(),
+            intent_id,
+            proof_sha256: proof.proof_sha256,
+            map_epoch: proof.map_epoch,
+            status: "retracted".to_owned(),
+        };
+        job.result = Some(result.clone());
+        write_private_atomic(
+            &job_path,
+            &canonical_json_bytes(&job)
+                .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?,
+        )
+        .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+        Ok(result)
+    }
+}
+
+fn post_operator_bytes(
+    base_url: &str,
+    path: &str,
+    token: &str,
+    bytes: &[u8],
+) -> Result<serde_json::Value, FindingSellerSubmissionError> {
+    let endpoint = format!("{}{path}", base_url.trim_end_matches('/'));
+    let response = match ureq::post(&endpoint)
+        .set("authorization", &format!("Bearer {token}"))
+        .set("content-type", "application/json")
+        .send_bytes(bytes)
+    {
+        Ok(response) => response,
+        Err(ureq::Error::Status(status, response)) => {
+            let body = response.into_string().unwrap_or_default();
+            return Err(FindingSellerSubmissionError::Invalid(format!(
+                "operator status request failed with HTTP {status}: {}",
+                body.chars().take(4096).collect::<String>()
+            )));
+        }
+        Err(ureq::Error::Transport(error)) => {
+            return Err(FindingSellerSubmissionError::Pending(format!(
+                "operator status request failed: {error}"
+            )));
+        }
+    };
+    serde_json::from_reader(response.into_reader()).map_err(|_| {
+        FindingSellerSubmissionError::Internal(
+            "operator status response was not valid JSON".to_owned(),
+        )
+    })
+}
+
+fn run_chio_json(args: &[String]) -> Result<serde_json::Value, FindingSellerSubmissionError> {
+    let output = run_chio(args)?;
+    serde_json::from_slice(&output)
+        .map_err(|_| FindingSellerSubmissionError::Internal("chio subprocess returned invalid JSON".to_owned()))
+}
+
+fn run_chio_success(args: &[String]) -> Result<(), FindingSellerSubmissionError> {
+    run_chio(args).map(|_| ())
+}
+
+fn run_chio(args: &[String]) -> Result<Vec<u8>, FindingSellerSubmissionError> {
+    let binary = std::env::current_exe()
+        .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+    let output = Command::new(binary)
+        .args(args)
+        .output()
+        .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+    if !output.status.success() {
+        let message = String::from_utf8_lossy(&output.stderr);
+        return Err(FindingSellerSubmissionError::Invalid(
+            message.trim().chars().take(4096).collect(),
+        ));
+    }
+    if output.stdout.len() > SELLER_SUBMISSION_JOB_MAX_BYTES {
+        return Err(FindingSellerSubmissionError::Internal(
+            "chio subprocess response exceeded its size bound".to_owned(),
+        ));
+    }
+    Ok(output.stdout)
+}
 
 struct GeneratedRoles {
     venue: Keypair,
@@ -234,6 +685,26 @@ pub(super) fn cmd_finding_operator_init(
         .map_err(CliError::cli_other_error)?;
     let profile_bytes = canonical_json_bytes(&profile)?;
     write_secret_new(&profile_path, &profile_bytes)?;
+    let client_profile_path = directory.join(CLIENT_PROFILE_FILE);
+    let client_profile = profile.client_profile();
+    client_profile
+        .validate()
+        .map_err(CliError::cli_other_error)?;
+    write_public_new(&client_profile_path, &canonical_json_bytes(&client_profile)?)?;
+    let buyer_client_path = directory.join(BUYER_CLIENT_FILE);
+    let buyer_client = profile
+        .buyer_client_profiles()
+        .into_iter()
+        .next()
+        .ok_or_else(|| CliError::cli_other_error("buyer client profile is missing".to_owned()))?;
+    write_secret_new(&buyer_client_path, &canonical_json_bytes(&buyer_client)?)?;
+    let seller_client_path = directory.join(SELLER_CLIENT_FILE);
+    let seller_client = profile
+        .seller_client_profiles()
+        .into_iter()
+        .next()
+        .ok_or_else(|| CliError::cli_other_error("seller client profile is missing".to_owned()))?;
+    write_secret_new(&seller_client_path, &canonical_json_bytes(&seller_client)?)?;
 
     let paths = ResolvedOperatorPaths::new(directory, &profile.paths);
     SqliteAuthorityStore::provision(&paths.authority_database, &paths.authority_lock_root)
@@ -244,6 +715,9 @@ pub(super) fn cmd_finding_operator_init(
 
     let output = serde_json::json!({
         "profile": profile_path,
+        "clientProfile": client_profile_path,
+        "buyerClient": buyer_client_path,
+        "sellerClient": seller_client_path,
         "listen": profile.listen,
         "buyerPrincipal": buyer_principal,
         "sellerPrincipal": seller_principal,
@@ -253,10 +727,13 @@ pub(super) fn cmd_finding_operator_init(
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
         println!("profile:         {}", profile_path.display());
+        println!("client_profile:  {}", client_profile_path.display());
+        println!("buyer_client:    {}", buyer_client_path.display());
+        println!("seller_client:   {}", seller_client_path.display());
         println!("listen:          http://{}", profile.listen);
         println!("buyer_principal: {}", terminal_safe(buyer_principal));
         println!("seller_principal: {}", terminal_safe(seller_principal));
-        println!("credentials:     retained in the mode-0600 profile");
+        println!("credentials:     retained in separate mode-0600 client files");
     }
     Ok(())
 }
@@ -304,13 +781,52 @@ pub(super) fn cmd_finding_operator_serve(profile_path: &Path) -> Result<(), CliE
         )
         .map_err(CliError::cli_other_error)?,
     );
+    let seller_executor = Arc::new(
+        OperatorSellerSubmissionExecutor::new(
+            profile_path.to_path_buf(),
+            &profile,
+            &paths,
+            authority.clone(),
+        )
+        .map_err(CliError::cli_other_error)?,
+    );
+    let rail = Arc::new(VenueLedgerRailObserver);
+    let challenge_keys = profile
+        .challenge_keys()
+        .map_err(CliError::cli_other_error)?;
+    let filings = Arc::new(
+        FindingOperatorFilingResolver::new(
+            SqliteFindingOperatorBundleStore::open(&paths.operator_database)
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?,
+            profile.market.clone(),
+        )
+        .map_err(CliError::cli_other_error)?,
+    );
+    let challenge = Arc::new(
+        FindingChallengeCoordinator::new(
+            authority.finding_challenge_store(),
+            authority.finding_purchase_store(),
+            authority.finding_status_store(),
+            &profile.market,
+            challenge_keys.evaluator,
+            challenge_keys.finalization,
+            challenge_keys.penalty,
+            resolver.clone(),
+            rail.clone(),
+            filings,
+            FindingDisputeLockDisposition::Returned,
+        )
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?,
+    );
+    let challenge_runtime = FindingChallengeSubmissionRuntime::new(authority, challenge)
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     let config = trust_config(&profile, &paths);
-    chio_control_plane::trust_control::serve_with_finding_purchase_runtime(
+    chio_control_plane::trust_control::serve_with_finding_operator_market_runtime(
         config,
-        authority,
+        challenge_runtime,
         executor,
-        Arc::new(VenueLedgerRailObserver),
-        resolver,
+        seller_executor,
+        rail,
     )
 }
 
@@ -325,20 +841,25 @@ pub(super) fn cmd_finding_operator_tick(
         .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     let payments = SqliteFindingOperatorPaymentAdapter::open(&paths.operator_database)
         .map_err(CliError::cli_other_error)?;
+    let reconciled_jobs = reconcile_admission_jobs(profile_path)?;
     let report = serde_json::json!({
         "schema": "chio.finding.operator-tick.v1",
         "bundleCount": bundles.bundle_count().map_err(|error| CliError::cli_other_error(error.to_string()))?,
+        "proofCount": bundles.proof_count().map_err(|error| CliError::cli_other_error(error.to_string()))?,
         "terminalCount": bundles.terminal_count().map_err(|error| CliError::cli_other_error(error.to_string()))?,
+        "purchaseJobCount": bundles.purchase_job_count().map_err(|error| CliError::cli_other_error(error.to_string()))?,
         "captureCount": payments.capture_count().map_err(CliError::cli_other_error)?,
-        "reconciledJobs": 0,
+        "reconciledJobs": reconciled_jobs,
     });
     if json_output {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
         println!("bundles:         {}", report["bundleCount"]);
+        println!("proofs:          {}", report["proofCount"]);
         println!("terminals:       {}", report["terminalCount"]);
+        println!("purchase_jobs:   {}", report["purchaseJobCount"]);
         println!("captures:        {}", report["captureCount"]);
-        println!("reconciled_jobs: 0");
+        println!("reconciled_jobs: {}", report["reconciledJobs"]);
     }
     Ok(())
 }
@@ -484,6 +1005,16 @@ fn write_secret_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
     use std::io::Write as _;
     file.write_all(bytes)?;
     file.sync_all()?;
+    Ok(())
+}
+
+fn write_public_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
+    write_secret_new(path, bytes)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o644))?;
+    }
     Ok(())
 }
 

@@ -920,10 +920,33 @@ pub(crate) async fn handle_register_finding_collateral(
             return plain_http_error(StatusCode::BAD_REQUEST, "backing failed canonicalization")
         }
     };
+    let envelope_sha256 = chio_core::sha256_hex(envelope_json.as_bytes());
+    match store.get_allocation(&backing.body.allocation_id) {
+        Ok(Some(existing))
+            if existing.backing == backing.body
+                && existing.backing_envelope_sha256 == envelope_sha256 =>
+        {
+            return Json(serde_json::json!({
+                "allocationId": backing.body.allocation_id,
+                "acceptedAt": existing.accepted_at,
+                "exactReplay": true,
+            }))
+            .into_response();
+        }
+        Ok(Some(_)) => {
+            return plain_http_error(
+                StatusCode::CONFLICT,
+                "collateral allocation id is bound to different backing",
+            );
+        }
+        Ok(None) => {}
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
+    }
     match store.register_allocation(&envelope_json, &backing.body, now) {
         Ok(()) => Json(serde_json::json!({
             "allocationId": backing.body.allocation_id,
             "acceptedAt": now,
+            "exactReplay": false,
         }))
         .into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),

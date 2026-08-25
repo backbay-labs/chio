@@ -13,6 +13,58 @@ use super::finding_operator_purchase::{
 use super::FindingMarketConfig;
 
 pub const FINDING_OPERATOR_PROFILE_SCHEMA: &str = "chio.finding.operator-profile.v1";
+pub const FINDING_OPERATOR_CLIENT_PROFILE_SCHEMA: &str = "chio.finding.operator-client-profile.v1";
+pub const FINDING_OPERATOR_BUYER_CLIENT_SCHEMA: &str = "chio.finding.buyer-client.v1";
+pub const FINDING_OPERATOR_SELLER_CLIENT_SCHEMA: &str = "chio.finding.seller-client.v1";
+
+/// Public trust pins and endpoint consumed by independent buyer verifiers.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindingOperatorClientProfile {
+    pub schema: String,
+    pub endpoint: String,
+    pub market: FindingMarketConfig,
+}
+
+impl FindingOperatorClientProfile {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != FINDING_OPERATOR_CLIENT_PROFILE_SCHEMA
+            || !self.endpoint.starts_with("http://")
+            || self.endpoint.trim_end_matches('/').len() <= "http://".len()
+        {
+            return Err("finding operator client profile is invalid".to_owned());
+        }
+        self.market.validate().map_err(|error| error.to_string())
+    }
+}
+
+/// One buyer's scoped credential. It contains no operator service token or
+/// operator signing role.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindingOperatorBuyerClientProfile {
+    pub schema: String,
+    pub endpoint: String,
+    pub market: FindingMarketConfig,
+    pub principal_id: String,
+    pub bearer_token: String,
+    pub signing_seed: String,
+    pub payout_destination: String,
+}
+
+/// One seller's scoped credential. Operator authority keys and the global
+/// service credential are deliberately absent.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindingOperatorSellerClientProfile {
+    pub schema: String,
+    pub endpoint: String,
+    pub market: FindingMarketConfig,
+    pub principal_id: String,
+    pub bearer_token: String,
+    pub signing_seed: String,
+    pub payout_destination: String,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -90,6 +142,13 @@ pub struct FindingOperatorAuthoringKeys {
     pub purchase: Keypair,
     pub failed_delivery: Keypair,
     pub status_feed_operator: Keypair,
+}
+
+/// Private roles used only by the durable challenge coordinator.
+pub struct FindingOperatorChallengeKeys {
+    pub evaluator: Keypair,
+    pub finalization: Keypair,
+    pub penalty: Keypair,
 }
 
 /// One closed profile file consumed by `operator serve`, package authoring,
@@ -242,6 +301,47 @@ impl FindingOperatorProfile {
         })
     }
 
+    #[must_use]
+    pub fn client_profile(&self) -> FindingOperatorClientProfile {
+        FindingOperatorClientProfile {
+            schema: FINDING_OPERATOR_CLIENT_PROFILE_SCHEMA.to_owned(),
+            endpoint: format!("http://{}", self.listen),
+            market: self.market.clone(),
+        }
+    }
+
+    pub fn buyer_client_profiles(&self) -> Vec<FindingOperatorBuyerClientProfile> {
+        let endpoint = format!("http://{}", self.listen);
+        self.buyers
+            .iter()
+            .map(|buyer| FindingOperatorBuyerClientProfile {
+                schema: FINDING_OPERATOR_BUYER_CLIENT_SCHEMA.to_owned(),
+                endpoint: endpoint.clone(),
+                market: self.market.clone(),
+                principal_id: buyer.principal_id.clone(),
+                bearer_token: buyer.bearer_token.clone(),
+                signing_seed: buyer.signing_seed.clone(),
+                payout_destination: buyer.payout_destination.clone(),
+            })
+            .collect()
+    }
+
+    pub fn seller_client_profiles(&self) -> Vec<FindingOperatorSellerClientProfile> {
+        let endpoint = format!("http://{}", self.listen);
+        self.sellers
+            .iter()
+            .map(|seller| FindingOperatorSellerClientProfile {
+                schema: FINDING_OPERATOR_SELLER_CLIENT_SCHEMA.to_owned(),
+                endpoint: endpoint.clone(),
+                market: self.market.clone(),
+                principal_id: seller.principal_id.clone(),
+                bearer_token: seller.bearer_token.clone(),
+                signing_seed: seller.signing_seed.clone(),
+                payout_destination: seller.payout_destination.clone(),
+            })
+            .collect()
+    }
+
     pub fn seller(&self, principal_id: &str) -> Result<&FindingOperatorSellerProfile, String> {
         self.sellers
             .iter()
@@ -266,6 +366,18 @@ impl FindingOperatorProfile {
             )?,
             kernel: canonical_keypair(&self.secrets.kernel, "kernel")?,
             sellers,
+        })
+    }
+
+    pub fn challenge_keys(&self) -> Result<FindingOperatorChallengeKeys, String> {
+        self.validate()?;
+        Ok(FindingOperatorChallengeKeys {
+            evaluator: canonical_keypair(&self.secrets.challenge_evaluator, "challenge evaluator")?,
+            finalization: canonical_keypair(
+                &self.secrets.venue_finalization,
+                "venue finalization",
+            )?,
+            penalty: canonical_keypair(&self.secrets.market_penalty, "market penalty")?,
         })
     }
 

@@ -61,6 +61,9 @@ pub(crate) const FINDING_PURCHASE_PATH: &str = "/v1/findings/{finding_id}/purcha
 pub(crate) const FINDING_OPERATOR_LIVE_STATUS_PATH: &str =
     "/v1/findings/{finding_id}/operator/live-status";
 pub(crate) const FINDING_PROOF_BUNDLE_PATH: &str = "/v1/findings/{finding_id}/proof";
+pub(crate) const FINDING_VERIFIED_FIX_SUBMISSION_PATH: &str =
+    "/v1/findings/operator/verified-fixes";
+pub(crate) const FINDING_VOLUNTARY_RETRACTION_PATH: &str = "/v1/findings/operator/retractions";
 /// Authenticated canonical challenge-envelope submission.
 pub(crate) const FINDING_CHALLENGES_PATH: &str = "/v1/findings/{finding_id}/challenges";
 pub(crate) const FINDING_STATUS_ROOT_PATH: &str = "/v1/findings/status/{feed}/root";

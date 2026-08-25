@@ -26,6 +26,10 @@ pub(crate) struct TrustServiceState {
     /// coordinator, durable store, and purchase-aware kernel are wired.
     pub(crate) finding_purchase_executor:
         Option<super::super::finding_purchase_routes::SharedFindingPurchaseExecutor>,
+    /// Scoped high-level seller workflow. It retains all privileged authoring
+    /// keys inside the operator process.
+    pub(crate) finding_seller_submission_executor:
+        Option<super::super::finding_operator_seller_routes::SharedFindingSellerSubmissionExecutor>,
     /// Fresh authority-status source for admission read paths. Without it,
     /// search and admission endpoints omit admission state fail-closed.
     pub(crate) finding_authority_status_resolver: Option<
