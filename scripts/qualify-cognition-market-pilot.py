@@ -501,15 +501,11 @@ def tampered_purchase_terminal_rejected(
         for (raw,) in rows
         if (value := json.loads(raw))["findingId"] == finding_id
     )
-    signature = result["purchaseRecord"]["signature"]
-    result["purchaseRecord"]["signature"] = (
-        ("0" if signature[0] != "0" else "1") + signature[1:]
-    )
     identity = {
         "deadlineSecs": 3600,
         "findingId": finding_id,
         "maxPrice": {"currency": "USD", "units": 300},
-        "payer": None,
+        "payer": buyer["payer"],
         "schema": "chio.finding.purchase-request.v1",
     }
     canonical_identity = json.dumps(
@@ -518,10 +514,12 @@ def tampered_purchase_terminal_rejected(
     request_id = hashlib.sha256(
         b"chio.finding.public-purchase-request.v1\0" + canonical_identity
     ).hexdigest()
+    if request_id != result["requestId"]:
+        raise RuntimeError("reconstructed purchase request does not match the stored terminal")
     request = {key: value for key, value in identity.items() if value is not None}
     request["requestId"] = request_id
     request_path = directory / "purchase-request.json"
-    result_path = directory / "tampered-purchase-result.json"
+    result_path = directory / "purchase-result.json"
     proof_path = directory / "purchase-proof.json"
     request_path.write_bytes(
         json.dumps(request, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
@@ -535,21 +533,35 @@ def tampered_purchase_terminal_rejected(
     )
     with urllib.request.urlopen(proof_request, timeout=10) as response:
         proof_path.write_bytes(response.read())
+    verification_command = [
+        str(binary),
+        "finding",
+        "verify-bundle",
+        "--profile",
+        str(buyer_profile),
+        "--input",
+        str(proof_path),
+        "--purchase-request",
+        str(request_path),
+        "--purchase-result",
+        str(result_path),
+        "--json",
+    ]
+    unmodified = run(verification_command, check=False)
+    if unmodified.returncode != 0:
+        raise RuntimeError(
+            "unmodified payer-bound purchase terminal failed verification: "
+            f"{unmodified.stderr[-4000:]}"
+        )
+    signature = result["purchaseRecord"]["signature"]
+    result["purchaseRecord"]["signature"] = (
+        ("0" if signature[0] != "0" else "1") + signature[1:]
+    )
+    result_path.write_bytes(
+        json.dumps(result, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+    )
     completed = run(
-        [
-            str(binary),
-            "finding",
-            "verify-bundle",
-            "--profile",
-            str(buyer_profile),
-            "--input",
-            str(proof_path),
-            "--purchase-request",
-            str(request_path),
-            "--purchase-result",
-            str(result_path),
-            "--json",
-        ],
+        verification_command,
         check=False,
     )
     return completed.returncode != 0
@@ -846,8 +858,29 @@ def main() -> None:
     if status:
         raise RuntimeError("cognition-market pilot requires a clean candidate worktree")
     candidate_sha = git(ROOT, "rev-parse", "HEAD")
+    expected_binary = (ROOT / "target/debug/chio").resolve()
+    if arguments.chio.resolve() != expected_binary:
+        raise RuntimeError(
+            "cognition-market pilot only accepts the candidate-built target/debug/chio binary"
+        )
+    run(
+        [
+            "cargo",
+            "build",
+            "--locked",
+            "-p",
+            "chio-cli",
+            "--bin",
+            "chio",
+            "--target-dir",
+            str(ROOT / "target"),
+        ],
+        timeout=1800,
+    )
+    if git(ROOT, "rev-parse", "HEAD") != candidate_sha:
+        raise RuntimeError("candidate HEAD changed while building the pilot binary")
     report = qualify(
-        arguments.chio.resolve(), arguments.output.resolve(), candidate_sha
+        expected_binary, arguments.output.resolve(), candidate_sha
     )
     destination = arguments.output.resolve() / "report.json"
     destination.write_text(

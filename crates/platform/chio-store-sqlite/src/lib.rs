@@ -385,10 +385,10 @@ pub use finding_challenge_store::{
 pub use finding_market_store::{
     finding_fee_idempotency_key, FindingActivationAttemptSnapshot, FindingActivationAttemptState,
     FindingActivationOutcome, FindingActivationPreparationOutcome, FindingAdmissionSnapshot,
-    FindingAllocationSnapshot, FindingAllocationState, FindingFeeEventRecord, FindingFeeIntent,
-    FindingFeeIntentOutcome, FindingFeeIntentResult, FindingFeeState, FindingMarketStoreError,
-    FindingParticipationAdmissionFence, FindingPutOutcome, FindingRecordInput, FindingSearchRow,
-    SqliteFindingMarketStore,
+    FindingAllocationRegistrationOutcome, FindingAllocationSnapshot, FindingAllocationState,
+    FindingFeeEventRecord, FindingFeeIntent, FindingFeeIntentOutcome, FindingFeeIntentResult,
+    FindingFeeState, FindingMarketStoreError, FindingParticipationAdmissionFence,
+    FindingPutOutcome, FindingRecordInput, FindingSearchRow, SqliteFindingMarketStore,
 };
 pub use finding_operator_bundle_store::{
     FindingOperatorBundleRecord, FindingOperatorBundleStoreError,

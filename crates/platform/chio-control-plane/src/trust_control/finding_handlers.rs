@@ -602,6 +602,11 @@ pub(crate) async fn handle_publish_finding(
             "artifactSha256": chio_core::sha256_hex(&strict_bytes),
         }))
         .into_response(),
+        Err(chio_store_sqlite::FindingMarketStoreError::Conflict(error))
+            if error == "collateral allocation id is bound to different backing" =>
+        {
+            plain_http_error(StatusCode::CONFLICT, &error)
+        }
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
 }
@@ -914,15 +919,25 @@ pub(crate) async fn handle_register_finding_collateral(
         Ok(None) => return plain_http_error(StatusCode::BAD_REQUEST, "unknown finding"),
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
-    let envelope_json = match prepare_collateral_registration(&store, backing) {
+    let envelope_json = match prepare_collateral_registration(backing) {
         Ok(json) => json,
         Err(response) => return response,
     };
-    match store.register_allocation(&envelope_json, &backing.body, now) {
-        Ok(()) => Json(serde_json::json!({
+    match store.register_allocation_idempotent(&envelope_json, &backing.body, now) {
+        Ok(chio_store_sqlite::FindingAllocationRegistrationOutcome::Registered { accepted_at }) => {
+            Json(serde_json::json!({
+                "allocationId": backing.body.allocation_id,
+                "acceptedAt": accepted_at,
+                "exactReplay": false,
+            }))
+            .into_response()
+        }
+        Ok(chio_store_sqlite::FindingAllocationRegistrationOutcome::ExactReplay {
+            accepted_at,
+        }) => Json(serde_json::json!({
             "allocationId": backing.body.allocation_id,
-            "acceptedAt": now,
-            "exactReplay": false,
+            "acceptedAt": accepted_at,
+            "exactReplay": true,
         }))
         .into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),

@@ -99,7 +99,7 @@ metadata. Each test receives a private size-capped tmpfs, no network, a
 five-minute deadline, a cleared environment, bounded output, hard memory, CPU,
 process, descriptor, and file-size limits, and no mount of the operator profile
 or state directory. Repository clone and checkout staging also has a
-five-minute deadline, an 8 GiB aggregate storage ceiling, a one-million-entry
+five-minute deadline, a 1 GiB aggregate storage ceiling, a 75,000-entry
 ceiling, and a per-file size limit. Published repository identity strips URL
 credentials, query strings, and fragments.
 
@@ -107,4 +107,5 @@ The sandbox mounts toolchain executables but not the operator account's Cargo
 registry or Git dependency caches. Rust repositories that need third-party
 dependencies must commit a vendored source tree and its offline Cargo
 configuration. The operator retains at most 256 seller submission jobs and
-reserves worst-case headroom within an 8 GiB package/report storage ceiling.
+reserves the full transient staging budget plus publication headroom within an
+8 GiB and 100,000-entry package/report storage ceiling.

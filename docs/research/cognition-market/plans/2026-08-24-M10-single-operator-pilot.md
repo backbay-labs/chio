@@ -49,8 +49,9 @@ collateral exposure backing the listing.
 Seller-controlled tests receive the installed toolchain but never the
 operator's Cargo registry or Git dependency caches. Offline dependencies must
 be vendored into the submitted repository. Seller submission retention is
-limited to 256 jobs and 8 GiB of package/report storage, with worst-case
-headroom reserved before a new job is accepted. Challenge artifact lookup
+limited to 256 jobs and an 8 GiB and 100,000-entry package/report ceiling. The
+full 1 GiB and 75,000-entry transient staging budget plus publication headroom
+is reserved before a new job is accepted. Challenge artifact lookup
 streams one retained bundle at a time and stops at the first digest match.
 
 Durable purchase jobs have a hard 10,000-row ceiling. A new request fails

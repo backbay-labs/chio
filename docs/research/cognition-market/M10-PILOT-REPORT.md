@@ -82,13 +82,14 @@ The requalified candidate also closes the final deployment review findings:
   seller ingress rejects canonical paths and symbolic links that escape it.
   Git hooks, system and global configuration, credentials, and external
   protocol helpers are disabled before checkout. Clone and checkout staging is
-  bounded by a five-minute deadline, an 8 GiB aggregate ceiling, one million
+  bounded by a five-minute deadline, a 1 GiB aggregate ceiling, 75,000
   entries, and a per-file limit. Patch generation has its own five-minute
   deadline and output ceiling. Published repository identity removes URL
   credentials, query strings, and fragments. Failed staging removes its
   partial clone, and completed package files publish atomically. Seller
-  submission retention is capped at 256 jobs and 8 GiB of package/report
-  storage with worst-case headroom reserved before a new job is accepted.
+  submission retention is capped at 256 jobs and an 8 GiB and 100,000-entry
+  package/report ceiling. The full transient staging budget plus publication
+  headroom is reserved before a new job is accepted.
 - Bundle, encrypted payload, and proof bytes are durable before activation.
   Retraction intent bytes are durable before submission, and pre-dispatch
   purchase failures release both reservation exposure and any reserved slot.

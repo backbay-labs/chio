@@ -46,8 +46,8 @@ const MAX_GIT_ERROR_BYTES: usize = 64 * 1024;
 const TEST_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
 const REPOSITORY_STAGE_TIMEOUT: Duration = Duration::from_secs(300);
 const PATCH_GENERATION_TIMEOUT: Duration = Duration::from_secs(300);
-const REPOSITORY_STAGE_MAX_BYTES: u64 = 8 * 1024 * 1024 * 1024;
-const REPOSITORY_STAGE_MAX_ENTRIES: u64 = 1_000_000;
+pub(super) const REPOSITORY_STAGE_MAX_BYTES: u64 = 1024 * 1024 * 1024;
+pub(super) const REPOSITORY_STAGE_MAX_ENTRIES: u64 = 75_000;
 const TEST_SANDBOX_ADDRESS_SPACE_BYTES: u64 = 6 * 1024 * 1024 * 1024;
 const TEST_SANDBOX_FILE_BYTES: u64 = 1024 * 1024 * 1024;
 const TEST_SANDBOX_TMPFS_BYTES: u64 = 4 * 1024 * 1024 * 1024;
@@ -96,10 +96,21 @@ pub(super) fn cmd_finding_package_verified_fix(
     let paths = ResolvedOperatorPaths::new(&root, &profile.paths);
     let repository = fs::canonicalize(request.repository)?;
     require_git_repository(&repository)?;
-    let base = git_stdout(&repository, &["rev-parse", "--verify", &format!("{}^{{commit}}", request.base)])?;
-    let candidate = git_stdout(
+    let base_revision = format!("{}^{{commit}}", request.base);
+    let base = git_stdout_bounded(
         &repository,
-        &["rev-parse", "--verify", &format!("{}^{{commit}}", request.candidate)],
+        &["rev-parse", "--verify", &base_revision],
+        128,
+        REPOSITORY_STAGE_TIMEOUT,
+        "resolve verified-fix base revision",
+    )?;
+    let candidate_revision = format!("{}^{{commit}}", request.candidate);
+    let candidate = git_stdout_bounded(
+        &repository,
+        &["rev-parse", "--verify", &candidate_revision],
+        128,
+        REPOSITORY_STAGE_TIMEOUT,
+        "resolve verified-fix candidate revision",
     )?;
     if base == candidate {
         return Err(CliError::cli_other_error(
@@ -1168,6 +1179,21 @@ fn command_version(command: &str, args: &[&str]) -> Result<String, CliError> {
 
 fn git_stdout(repository: &Path, args: &[&str]) -> Result<String, CliError> {
     let bytes = git_stdout_bytes(repository, args)?;
+    let value = String::from_utf8(bytes)
+        .map_err(|_| CliError::cli_other_error("git output is not UTF-8".to_owned()))?;
+    Ok(value.trim().to_owned())
+}
+
+fn git_stdout_bounded(
+    repository: &Path,
+    args: &[&str],
+    max_bytes: usize,
+    timeout: Duration,
+    label: &str,
+) -> Result<String, CliError> {
+    let mut command = hardened_git_command();
+    command.arg("-C").arg(repository).args(args);
+    let bytes = run_bounded_output_command(command, max_bytes, timeout, label)?;
     let value = String::from_utf8(bytes)
         .map_err(|_| CliError::cli_other_error("git output is not UTF-8".to_owned()))?;
     Ok(value.trim().to_owned())

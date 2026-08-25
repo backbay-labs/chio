@@ -124,6 +124,14 @@ pub enum FindingAllocationState {
     Released,
 }
 
+/// Outcome of an atomic collateral registration. Exact retries return the
+/// venue time recorded by the first successful transaction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindingAllocationRegistrationOutcome {
+    Registered { accepted_at: u64 },
+    ExactReplay { accepted_at: u64 },
+}
+
 /// Snapshot of one collateral allocation: the parsed backing body, its
 /// exact envelope digest, the lifecycle state, and the venue trusted
 /// time at which the collateral authority's registration was accepted.
@@ -620,6 +628,24 @@ impl SqliteFindingMarketStore {
         backing: &FindingBondBacking,
         accepted_at: u64,
     ) -> Result<(), FindingMarketStoreError> {
+        match self.register_allocation_idempotent(backing_envelope_json, backing, accepted_at)? {
+            FindingAllocationRegistrationOutcome::Registered { .. } => Ok(()),
+            FindingAllocationRegistrationOutcome::ExactReplay { .. } => {
+                Err(FindingMarketStoreError::Conflict(
+                    "collateral allocation id was already registered".to_owned(),
+                ))
+            }
+        }
+    }
+
+    /// Register collateral and classify an identical retry in the same
+    /// immediate transaction that enforces allocation exclusivity.
+    pub fn register_allocation_idempotent(
+        &self,
+        backing_envelope_json: &str,
+        backing: &FindingBondBacking,
+        accepted_at: u64,
+    ) -> Result<FindingAllocationRegistrationOutcome, FindingMarketStoreError> {
         backing
             .validate()
             .map_err(|error| invariant(format!("bond backing rejected: {error}")))?;
@@ -633,26 +659,39 @@ impl SqliteFindingMarketStore {
                 "backing envelope bytes do not carry the supplied backing body",
             ));
         }
-        if accepted_at < backing.issued_at || accepted_at >= backing.expires_at {
-            return Err(FindingMarketStoreError::Conflict(
-                "backing allocation is not live at acceptance time".to_owned(),
-            ));
-        }
         let backing_envelope_sha256 = sha256_hex(backing_envelope_json.as_bytes());
         let seller_hex = backing.seller.to_hex();
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
-        let existing: Option<String> = transaction
+        let existing: Option<(String, String, i64)> = transaction
             .query_row(
-                "SELECT state FROM collateral_allocations WHERE allocation_id = ?1",
+                r#"
+                SELECT backing_envelope_sha256, backing_envelope_json, accepted_at
+                FROM collateral_allocations WHERE allocation_id = ?1
+                "#,
                 [backing.allocation_id.as_str()],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()
             .map_err(sqlite_error)?;
-        if existing.is_some() {
+        if let Some((stored_sha256, stored_json, stored_accepted_at)) = existing {
+            verify_stored_digest(
+                stored_json.as_bytes(),
+                &stored_sha256,
+                "collateral backing envelope",
+            )?;
+            if stored_sha256 == backing_envelope_sha256 && stored_json == backing_envelope_json {
+                return Ok(FindingAllocationRegistrationOutcome::ExactReplay {
+                    accepted_at: stored_u64(stored_accepted_at, "accepted_at")?,
+                });
+            }
             return Err(FindingMarketStoreError::Conflict(
-                "collateral allocation id was already registered".to_owned(),
+                "collateral allocation id is bound to different backing".to_owned(),
+            ));
+        }
+        if accepted_at < backing.issued_at || accepted_at >= backing.expires_at {
+            return Err(FindingMarketStoreError::Conflict(
+                "backing allocation is not live at acceptance time".to_owned(),
             ));
         }
         let live_for_listing: i64 = transaction
@@ -704,7 +743,7 @@ impl SqliteFindingMarketStore {
         }
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
-        Ok(())
+        Ok(FindingAllocationRegistrationOutcome::Registered { accepted_at })
     }
 
     /// Consume a live allocation exactly once; a second call rejects.

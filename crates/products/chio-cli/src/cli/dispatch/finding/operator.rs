@@ -54,8 +54,11 @@ const SELLER_SUBMISSION_JOB_SCHEMA: &str = "chio.finding.seller-submission-job.v
 const SELLER_SUBMISSION_JOB_MAX_BYTES: usize = 1024 * 1024;
 const MAX_RETAINED_SELLER_SUBMISSION_JOBS: usize = 256;
 const SELLER_SUBMISSION_STORAGE_CAP_BYTES: u64 = 8 * 1024 * 1024 * 1024;
-const SELLER_SUBMISSION_RESERVED_BYTES: u64 = 64 * 1024 * 1024;
+const SELLER_SUBMISSION_RESERVED_BYTES: u64 =
+    super::finding_verified_fix::REPOSITORY_STAGE_MAX_BYTES + 64 * 1024 * 1024;
 const SELLER_SUBMISSION_STORAGE_MAX_ENTRIES: u64 = 100_000;
+const SELLER_SUBMISSION_RESERVED_ENTRIES: u64 =
+    super::finding_verified_fix::REPOSITORY_STAGE_MAX_ENTRIES + 2;
 const SELLER_RETRACTION_JOB_SCHEMA: &str = "chio.finding.seller-retraction-job.v1";
 const INIT_COMPLETE_FILE: &str = "operator-init-complete.json";
 
@@ -1212,6 +1215,8 @@ fn require_seller_submission_capacity(
 
     let maximum_existing_bytes = SELLER_SUBMISSION_STORAGE_CAP_BYTES
         .saturating_sub(SELLER_SUBMISSION_RESERVED_BYTES);
+    let maximum_existing_entries = SELLER_SUBMISSION_STORAGE_MAX_ENTRIES
+        .saturating_sub(SELLER_SUBMISSION_RESERVED_ENTRIES);
     let mut pending = vec![reports_directory.to_path_buf(), packages_directory.to_path_buf()];
     let mut bytes = 0u64;
     let mut entries = 0u64;
@@ -1222,7 +1227,7 @@ fn require_seller_submission_capacity(
             let entry = entry
                 .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
             entries = entries.saturating_add(1);
-            if entries > SELLER_SUBMISSION_STORAGE_MAX_ENTRIES {
+            if entries > maximum_existing_entries {
                 return Err(FindingSellerSubmissionError::Pending(
                     "seller submission storage entry capacity is exhausted".to_owned(),
                 ));
