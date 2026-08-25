@@ -8,8 +8,6 @@ use super::finding_challenge_coordinator::{FindingAuditRound, FindingFilingResol
 use super::finding_operator_bundle::FindingOperatorBundle;
 use super::{FindingAuthorityPin, FindingMarketConfig};
 
-const MAX_OPERATOR_BUNDLES: u64 = 10_000;
-
 /// Resolver over the exact durable bundles admitted by this operator.
 /// Unsupported artifact families return `None`, which keeps later challenge
 /// phases fail closed instead of inventing historical policy.
@@ -27,23 +25,35 @@ impl FindingOperatorFilingResolver {
         Ok(Self { bundles, market })
     }
 
-    fn retained_bundles(&self) -> Vec<FindingOperatorBundle> {
+    fn find_bundle(
+        &self,
+        mut predicate: impl FnMut(&FindingOperatorBundle) -> bool,
+    ) -> Option<FindingOperatorBundle> {
+        let mut matched = None;
         self.bundles
-            .list(MAX_OPERATOR_BUNDLES)
-            .ok()
-            .into_iter()
-            .flatten()
-            .filter_map(|record| serde_json::from_slice(&record.bundle_json).ok())
-            .collect()
+            .find_bundle(|bytes| {
+                let Ok(bundle) = serde_json::from_slice::<FindingOperatorBundle>(bytes) else {
+                    return false;
+                };
+                if predicate(&bundle) {
+                    matched = Some(bundle);
+                    true
+                } else {
+                    false
+                }
+            })
+            .ok()??;
+        matched
     }
 }
 
 impl FindingFilingResolver for FindingOperatorFilingResolver {
     fn fee_schedule(&self, envelope_sha256: &str) -> Option<SignedOpenMarketFeeSchedule> {
-        self.retained_bundles().into_iter().find_map(|bundle| {
-            (signed_envelope_sha256(&bundle.fee_schedule).ok()?.as_str() == envelope_sha256)
-                .then_some(bundle.fee_schedule)
+        self.find_bundle(|bundle| {
+            signed_envelope_sha256(&bundle.fee_schedule)
+                .is_ok_and(|digest| digest == envelope_sha256)
         })
+        .map(|bundle| bundle.fee_schedule)
     }
 
     fn audit_round(&self, _epoch_envelope_sha256: &str) -> Option<FindingAuditRound> {
@@ -69,10 +79,10 @@ impl FindingFilingResolver for FindingOperatorFilingResolver {
         &self,
         envelope_sha256: &str,
     ) -> Option<SignedFindingAdmission> {
-        self.retained_bundles().into_iter().find_map(|bundle| {
-            (signed_envelope_sha256(&bundle.admission).ok()?.as_str() == envelope_sha256)
-                .then_some(bundle.admission)
+        self.find_bundle(|bundle| {
+            signed_envelope_sha256(&bundle.admission).is_ok_and(|digest| digest == envelope_sha256)
         })
+        .map(|bundle| bundle.admission)
     }
 
     fn venue_policy_for_admission(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
@@ -81,13 +91,11 @@ impl FindingFilingResolver for FindingOperatorFilingResolver {
     }
 
     fn governance_policy_for_profile(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
-        self.retained_bundles().into_iter().find_map(|bundle| {
-            (signed_envelope_sha256(&bundle.verifier_profile)
-                .ok()?
-                .as_str()
-                == envelope_sha256)
-                .then_some(self.market.governance_root.clone())
+        self.find_bundle(|bundle| {
+            signed_envelope_sha256(&bundle.verifier_profile)
+                .is_ok_and(|digest| digest == envelope_sha256)
         })
+        .map(|_| self.market.governance_root.clone())
     }
 
     fn governance_policy_for_case(&self, _envelope_sha256: &str) -> Option<FindingAuthorityPin> {
@@ -144,9 +152,10 @@ impl FindingFilingResolver for FindingOperatorFilingResolver {
     }
 
     fn market_terms(&self, envelope_sha256: &str) -> Option<SignedFindingMarketTerms> {
-        self.retained_bundles().into_iter().find_map(|bundle| {
-            (signed_envelope_sha256(&bundle.market_terms).ok()?.as_str() == envelope_sha256)
-                .then_some(bundle.market_terms)
+        self.find_bundle(|bundle| {
+            signed_envelope_sha256(&bundle.market_terms)
+                .is_ok_and(|digest| digest == envelope_sha256)
         })
+        .map(|bundle| bundle.market_terms)
     }
 }

@@ -52,6 +52,10 @@ const PROFILE_MAX_BYTES: usize = 1024 * 1024;
 const ROLE_WINDOW_SECS: u64 = 10 * 365 * 24 * 60 * 60;
 const SELLER_SUBMISSION_JOB_SCHEMA: &str = "chio.finding.seller-submission-job.v1";
 const SELLER_SUBMISSION_JOB_MAX_BYTES: usize = 1024 * 1024;
+const MAX_RETAINED_SELLER_SUBMISSION_JOBS: usize = 256;
+const SELLER_SUBMISSION_STORAGE_CAP_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+const SELLER_SUBMISSION_RESERVED_BYTES: u64 = 64 * 1024 * 1024;
+const SELLER_SUBMISSION_STORAGE_MAX_ENTRIES: u64 = 100_000;
 const SELLER_RETRACTION_JOB_SCHEMA: &str = "chio.finding.seller-retraction-job.v1";
 const INIT_COMPLETE_FILE: &str = "operator-init-complete.json";
 
@@ -170,6 +174,10 @@ impl OperatorSellerSubmissionExecutor {
             }
             stored
         } else {
+            require_seller_submission_capacity(
+                &self.reports_directory,
+                &self.packages_directory,
+            )?;
             let created = FindingSellerSubmissionJob {
                 schema: SELLER_SUBMISSION_JOB_SCHEMA.to_owned(),
                 request_id: request.request_id.clone(),
@@ -1178,6 +1186,64 @@ fn approved_seller_repository(
     Ok(repository)
 }
 
+fn require_seller_submission_capacity(
+    reports_directory: &Path,
+    packages_directory: &Path,
+) -> Result<(), FindingSellerSubmissionError> {
+    let mut retained_jobs = 0usize;
+    for entry in fs::read_dir(reports_directory)
+        .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?
+    {
+        let entry =
+            entry.map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".seller-submission-job.json")
+        {
+            retained_jobs = retained_jobs.saturating_add(1);
+            if retained_jobs >= MAX_RETAINED_SELLER_SUBMISSION_JOBS {
+                return Err(FindingSellerSubmissionError::Pending(
+                    "seller submission job capacity is exhausted".to_owned(),
+                ));
+            }
+        }
+    }
+
+    let maximum_existing_bytes = SELLER_SUBMISSION_STORAGE_CAP_BYTES
+        .saturating_sub(SELLER_SUBMISSION_RESERVED_BYTES);
+    let mut pending = vec![reports_directory.to_path_buf(), packages_directory.to_path_buf()];
+    let mut bytes = 0u64;
+    let mut entries = 0u64;
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(directory)
+            .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?
+        {
+            let entry = entry
+                .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+            entries = entries.saturating_add(1);
+            if entries > SELLER_SUBMISSION_STORAGE_MAX_ENTRIES {
+                return Err(FindingSellerSubmissionError::Pending(
+                    "seller submission storage entry capacity is exhausted".to_owned(),
+                ));
+            }
+            let metadata = fs::symlink_metadata(entry.path())
+                .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+            if metadata.is_dir() && !metadata.file_type().is_symlink() {
+                pending.push(entry.path());
+            } else {
+                bytes = bytes.saturating_add(metadata.len());
+            }
+            if bytes > maximum_existing_bytes {
+                return Err(FindingSellerSubmissionError::Pending(
+                    "seller submission storage capacity is exhausted".to_owned(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn write_secret_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
@@ -1333,6 +1399,46 @@ mod tests {
         assert!(matches!(
             approved_seller_repository(configured_root, &escape),
             Err(FindingSellerSubmissionError::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn seller_submission_capacity_bounds_jobs_and_storage() {
+        let temporary = tempfile::tempdir().unwrap();
+        let reports = temporary.path().join("reports");
+        let packages = temporary.path().join("packages");
+        fs::create_dir(&reports).unwrap();
+        fs::create_dir(&packages).unwrap();
+        assert!(require_seller_submission_capacity(&reports, &packages).is_ok());
+
+        for index in 0..MAX_RETAINED_SELLER_SUBMISSION_JOBS {
+            fs::write(
+                reports.join(format!("{index}.seller-submission-job.json")),
+                b"{}",
+            )
+            .unwrap();
+        }
+        assert!(matches!(
+            require_seller_submission_capacity(&reports, &packages),
+            Err(FindingSellerSubmissionError::Pending(_))
+        ));
+
+        for entry in fs::read_dir(&reports).unwrap() {
+            fs::remove_file(entry.unwrap().path()).unwrap();
+        }
+        let oversized = packages.join("oversized.draft.json");
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(oversized)
+            .unwrap()
+            .set_len(
+                SELLER_SUBMISSION_STORAGE_CAP_BYTES - SELLER_SUBMISSION_RESERVED_BYTES + 1,
+            )
+            .unwrap();
+        assert!(matches!(
+            require_seller_submission_capacity(&reports, &packages),
+            Err(FindingSellerSubmissionError::Pending(_))
         ));
     }
 }

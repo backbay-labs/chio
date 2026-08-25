@@ -46,6 +46,13 @@ deadline-bound and storage or output-bound, repository identities exclude
 transport credentials, and the maximum admitted sale price cannot exceed the
 collateral exposure backing the listing.
 
+Seller-controlled tests receive the installed toolchain but never the
+operator's Cargo registry or Git dependency caches. Offline dependencies must
+be vendored into the submitted repository. Seller submission retention is
+limited to 256 jobs and 8 GiB of package/report storage, with worst-case
+headroom reserved before a new job is accepted. Challenge artifact lookup
+streams one retained bundle at a time and stops at the first digest match.
+
 Durable purchase jobs have a hard 10,000-row ceiling. A new request fails
 closed at capacity while an existing exact request can still replay its
 original job.

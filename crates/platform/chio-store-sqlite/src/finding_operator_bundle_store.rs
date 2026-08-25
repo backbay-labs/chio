@@ -310,6 +310,52 @@ impl SqliteFindingOperatorBundleStore {
         Ok(records)
     }
 
+    /// Scan retained bundles one row at a time and stop at the first match.
+    /// This keeps digest-addressed policy resolution bounded to one bundle in
+    /// memory even when the store is at its retention ceiling.
+    pub fn find_bundle(
+        &self,
+        mut predicate: impl FnMut(&[u8]) -> bool,
+    ) -> Result<Option<FindingOperatorBundleRecord>, FindingOperatorBundleStoreError> {
+        let conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let mut statement = conn
+            .prepare(
+                "SELECT finding_id, bundle_sha256, bundle_json FROM chio_finding_operator_bundles ORDER BY finding_id ASC",
+            )
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let mut rows = statement
+            .query([])
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        while let Some(row) = rows
+            .next()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?
+        {
+            let record = FindingOperatorBundleRecord {
+                finding_id: row.get(0).map_err(|error| {
+                    FindingOperatorBundleStoreError::Unavailable(error.to_string())
+                })?,
+                bundle_sha256: row.get(1).map_err(|error| {
+                    FindingOperatorBundleStoreError::Unavailable(error.to_string())
+                })?,
+                bundle_json: row.get(2).map_err(|error| {
+                    FindingOperatorBundleStoreError::Unavailable(error.to_string())
+                })?,
+            };
+            validate_finding_id(&record.finding_id)?;
+            if record.bundle_sha256 != sha256_hex(&record.bundle_json) {
+                return Err(FindingOperatorBundleStoreError::DigestMismatch);
+            }
+            validate_canonical_bundle(&record.bundle_json)?;
+            if predicate(&record.bundle_json) {
+                return Ok(Some(record));
+            }
+        }
+        Ok(None)
+    }
+
     pub fn put_proof(
         &self,
         finding_id: &str,
@@ -795,6 +841,29 @@ mod tests {
             store.put(&format!("{:064x}", 1), bundle).unwrap(),
             FindingOperatorBundleWriteOutcome::ExactReplay
         );
+    }
+
+    #[test]
+    fn bundle_lookup_stops_at_the_first_streamed_match() {
+        let store = SqliteFindingOperatorBundleStore::open_in_memory().unwrap();
+        for index in 0..4 {
+            store
+                .put(
+                    &format!("{index:064x}"),
+                    format!(r#"{{"index":{index}}}"#).as_bytes(),
+                )
+                .unwrap();
+        }
+        let mut inspected = 0usize;
+        let found = store
+            .find_bundle(|_| {
+                inspected += 1;
+                inspected == 2
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(inspected, 2);
+        assert_eq!(found.finding_id, format!("{:064x}", 1));
     }
 
     #[test]

@@ -725,7 +725,10 @@ fn run_test_command_with_limits(
             "--dir",
             "/workspace/.tmp",
         ]);
-    add_runtime_mounts(&mut isolated);
+    add_runtime_mounts(
+        &mut isolated,
+        std::env::var_os("HOME").as_deref().map(Path::new),
+    );
     isolated
         .arg("--ro-bind")
         .arg(worktree)
@@ -1030,7 +1033,7 @@ fn hardened_git_command() -> Command {
     command
 }
 
-fn add_runtime_mounts(command: &mut Command) {
+fn add_runtime_mounts(command: &mut Command, home: Option<&Path>) {
     for path in [
         "/usr",
         "/usr/local",
@@ -1047,7 +1050,7 @@ fn add_runtime_mounts(command: &mut Command) {
             command.args(["--ro-bind", path, path]);
         }
     }
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+    if let Some(home) = home {
         let cargo_bin = home.join(".cargo/bin");
         if cargo_bin.is_dir() {
             command.arg("--ro-bind").arg(&cargo_bin).arg(&cargo_bin);
@@ -1069,15 +1072,9 @@ fn add_runtime_mounts(command: &mut Command) {
                 .arg(&rustup_settings)
                 .arg(&rustup_settings);
         }
-        for name in ["registry", "git"] {
-            let source = home.join(".cargo").join(name);
-            if source.is_dir() {
-                command
-                    .arg("--ro-bind")
-                    .arg(source)
-                    .arg(format!("/workspace/.cargo/{name}"));
-            }
-        }
+        // Operator-owned Cargo registry and Git caches may contain private
+        // dependencies. Seller tests receive only the toolchain executables;
+        // repositories that need offline dependencies must vendor them.
     }
 }
 
@@ -1843,6 +1840,33 @@ mod tests {
         )
         .unwrap_err();
         assert!(output.to_string().contains("output exceeded"));
+    }
+
+    #[test]
+    fn sandbox_mounts_exclude_operator_cargo_dependency_caches() {
+        let root = tempfile::tempdir().unwrap();
+        for path in [
+            ".cargo/bin",
+            ".cargo/registry/private-package",
+            ".cargo/git/private-checkout",
+            ".rustup/toolchains/stable",
+        ] {
+            fs::create_dir_all(root.path().join(path)).unwrap();
+        }
+        let mut command = Command::new("bwrap");
+        add_runtime_mounts(&mut command, Some(root.path()));
+        let arguments = command
+            .get_args()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert!(arguments.iter().any(|argument| argument.ends_with(".cargo/bin")));
+        assert!(arguments
+            .iter()
+            .all(|argument| !argument.contains(".cargo/registry")));
+        assert!(arguments
+            .iter()
+            .all(|argument| !argument.contains(".cargo/git")));
     }
 
     #[test]
