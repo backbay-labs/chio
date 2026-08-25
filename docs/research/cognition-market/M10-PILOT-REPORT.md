@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`803986de6829fe890ed40afbf9ada250bc24feca`. The qualifier built the `chio`
+`952b2f02863c709cdea43a23767fe10aadad0edd`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,898 ms minimum, 2,015 ms median, 2,650 ms maximum
-- Recorded normal purchase time: 2,620 ms minimum, 2,842 ms median,
-  2,929 ms maximum
+- Admission time: 1,973 ms minimum, 2,006 ms median, 2,958 ms maximum
+- Recorded normal purchase time: 2,527 ms minimum, 2,834 ms median,
+  2,894 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -77,9 +77,11 @@ The requalified candidate also closes the final deployment review findings:
   size-capped tmpfs plus required read-only toolchains, never the operator
   profile, state tree, Cargo registry, or Git dependency cache. Offline
   dependencies must be vendored in the repository. Tests have no network, a
-  cleared environment, bounded output, PID and user namespaces, a five-minute
-  deadline, and hard memory, CPU, process, descriptor, file-size, and
-  writable-volume limits.
+  cleared environment, bounded output, PID and user namespaces, and one
+  five-minute aggregate baseline-and-candidate deadline. Cgroup v2 enforces
+  hard aggregate memory, swap, and process limits across the descendant tree;
+  process-local CPU, memory, process, descriptor, and file-size rlimits remain
+  defense in depth, and the writable volume is size-capped.
 - Source repositories are copied without hard links into operator-owned state.
   Operator initialization requires an explicit approved repository root, and
   seller ingress rejects canonical paths and symbolic links that escape it.
@@ -98,7 +100,8 @@ The requalified candidate also closes the final deployment review findings:
 - Live seller admission and scheduled `operator tick` reconciliation share one
   cross-process operator lock. Submission and retraction also share one
   non-queued blocking lane, so overlapping work receives a retryable HTTP 503
-  before it can consume unbounded blocking-pool capacity.
+  before it can consume unbounded blocking-pool capacity. Tick reports each
+  terminal-safe failed admission and continues reconciling later jobs.
 - Bundle, encrypted payload, and proof bytes are durable before activation.
   Retraction intent bytes are durable before submission, and pre-dispatch
   purchase failures release both reservation exposure and any reserved slot.
@@ -117,6 +120,10 @@ The requalified candidate also closes the final deployment review findings:
   execution.
   Seller SDKs treat repositories as operator-side absolute coordinates and do
   not require those paths to exist on the buyer or seller client host.
+- Purchase execution uses one non-queued blocking lane rather than a Tokio
+  worker. Public proof reads and egress use a separate one-response lane with
+  64 KiB chunks and a 30-second absolute deadline, so slow or concurrent public
+  requests cannot accumulate unbounded proof work or retained bundles.
 - Python and TypeScript status calls use the Rust verifier with the profile's
   pinned status authority, service bond, freshness window, and durable rollback
   floor. Challenge helpers authenticate the purchase terminal again before
