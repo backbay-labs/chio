@@ -3,9 +3,10 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`a25c21737ee89549daec5072270a69f9de92a1a4`. The pilot used the installed
-`chio` binary, one deployable local operator, and distinct scoped seller and
-buyer credentials. It did not give either agent the global service token.
+`3972655c3a79efac999172de6e4416a656487f23`. The qualifier built the `chio`
+binary from that clean candidate before starting the workload. The pilot used
+one deployable local operator and distinct scoped seller and buyer credentials.
+It did not give either agent the global service token.
 
 This is a local single-operator result. It is not evidence for cross-operator
 fair exchange, stochastic research markets, auctions, or public hosted demand.
@@ -24,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,986 ms minimum, 1,999 ms median, 2,199 ms maximum
-- Recorded normal purchase time: 2,661 ms minimum, 2,826 ms median,
-  2,978 ms maximum
+- Admission time: 1,969 ms minimum, 2,014 ms median, 2,052 ms maximum
+- Recorded normal purchase time: 2,633 ms minimum, 2,834 ms median,
+  2,994 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -62,9 +63,11 @@ bytes and returned the same retraction terminal.
 
 The qualifier also altered signed Finding material in a retrieved proof bundle.
 Both the Rust reference verifier and the TypeScript SDK boundary rejected it.
-It separately corrupted the signed purchase record and the Rust buyer boundary
-rejected that terminal. Python separately exercises altered-proof and terminal
-verification boundaries in its SDK test suite.
+It separately reconstructed the actual payer-bound purchase request and first
+verified its authentic terminal successfully. After corrupting the signed
+purchase record, the Rust buyer boundary rejected that same terminal. Python
+separately exercises altered-proof and terminal verification boundaries in its
+SDK test suite.
 
 ## Release hardening
 
@@ -113,15 +116,15 @@ The requalified candidate also closes the final deployment review findings:
 - Seller request validation and the HTTP body cap cover the same complete
   canonical request surface. Seller prices cannot exceed the operator's 450-unit
   backed sale exposure, and operator profiles reject an ephemeral listen port.
-  The qualifier refuses a dirty worktree before it records the exact candidate
+  The qualifier refuses a dirty worktree, builds `target/debug/chio` itself,
+  and rejects alternate binary paths before it records the exact candidate
   SHA.
 
 ## Reproduction
 
-Run from a built candidate:
+Run from a clean candidate:
 
 ```bash
-cargo build -p chio-cli
 ./scripts/qualify-cognition-market-pilot.py
 ```
 
