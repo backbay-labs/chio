@@ -19,6 +19,11 @@ target/debug/chio finding operator serve \
   --profile "$PWD/.local/cognition-market/operator-profile.json"
 ```
 
+Initialization publishes credentials atomically and is resumable. Repeating
+the same command completes or verifies the same deployment without rotating
+its identity. A retry with different listen, buyer, seller, or payout values
+fails closed. The listen port must be nonzero.
+
 In another terminal, run the seller from the Python SDK environment:
 
 ```bash
@@ -59,6 +64,13 @@ git -C /tmp/fix-sandbox apply /tmp/verified-fix.patch
 terminals, and captures. It is idempotent and suitable for a local service
 timer or cron entry.
 
+The Python and TypeScript buyer SDKs verify status proofs with the profile's
+pinned status authority, service bond, freshness window, and a durable rollback
+floor. Evidence-invalid challenge helpers accept only a purchased verified-fix
+result and authenticate its purchase terminal again before filing. Seller
+prices are capped at 450 units, matching the operator's maximum backed sale
+exposure.
+
 ## System service repository boundary
 
 The included systemd unit keeps operator state writable only under
@@ -81,4 +93,7 @@ Git-based build tooling remains available without mounting shared repository
 metadata. Each test receives a private size-capped tmpfs, no network, a
 five-minute deadline, a cleared environment, bounded output, hard memory, CPU,
 process, descriptor, and file-size limits, and no mount of the operator profile
-or state directory.
+or state directory. Repository clone and checkout staging also has a
+five-minute deadline, an 8 GiB aggregate storage ceiling, a one-million-entry
+ceiling, and a per-file size limit. Published repository identity strips URL
+credentials, query strings, and fragments.

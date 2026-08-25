@@ -565,22 +565,35 @@ def qualify(binary: Path, output: Path, candidate_sha: str) -> dict[str, Any]:
         revisions = create_corpus(repository)
         deployment = temporary_root / "operator"
         port = free_port()
-        run(
-            [
-                str(binary),
-                "finding",
-                "operator",
-                "init",
-                "--directory",
-                str(deployment),
-                "--listen",
-                f"127.0.0.1:{port}",
-                "--json",
-            ]
-        )
+        init_command = [
+            str(binary),
+            "finding",
+            "operator",
+            "init",
+            "--directory",
+            str(deployment),
+            "--listen",
+            f"127.0.0.1:{port}",
+            "--json",
+        ]
+        run(init_command)
         profile = deployment / "operator-profile.json"
         buyer_profile = deployment / "buyer-client.json"
         seller_profile = deployment / "seller-client.json"
+        init_files = [
+            profile,
+            deployment / "client-profile.json",
+            buyer_profile,
+            seller_profile,
+            deployment / "operator-init-complete.json",
+        ]
+        initialized_bytes = {path.name: path.read_bytes() for path in init_files}
+        run(init_command)
+        init_retry_exact = all(
+            path.read_bytes() == initialized_bytes[path.name] for path in init_files
+        )
+        if not init_retry_exact:
+            raise RuntimeError("operator initialization retry changed deployment identity")
         buyer = load_json(buyer_profile)
         operator_profile = load_json(profile)
         operator_database = deployment / str(operator_profile["paths"]["operatorDatabase"])
@@ -797,6 +810,7 @@ def qualify(binary: Path, output: Path, candidate_sha: str) -> dict[str, Any]:
                 },
                 "findings": findings,
                 "generatedAt": int(time.time()),
+                "operatorInit": {"retryExact": init_retry_exact},
                 "operatorTick": tick,
                 "purchases": purchases,
                 "replay": replay,

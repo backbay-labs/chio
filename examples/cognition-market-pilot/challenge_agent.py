@@ -17,12 +17,15 @@ async def run(arguments: argparse.Namespace) -> None:
         chio_binary=arguments.chio,
     ) as buyer:
         verified = await buyer.verified_proof(arguments.finding)
-        purchase = await buyer.purchase(verified, max_price_units=arguments.max_price)
-        challenge = await buyer.challenge_evidence_invalid(verified, purchase)
+        purchased = await buyer.purchase_verified_fix(
+            verified,
+            max_price_units=arguments.max_price,
+        )
+        challenge = await buyer.challenge_evidence_invalid(verified, purchased)
     result = {
         "challengeId": challenge["challengeId"],
         "findingId": arguments.finding,
-        "settlement": purchase["settlement"],
+        "settlement": purchased.purchase["settlement"],
     }
     print(json.dumps(result, separators=(",", ":"), sort_keys=True))
 

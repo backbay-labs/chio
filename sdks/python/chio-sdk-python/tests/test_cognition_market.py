@@ -16,6 +16,7 @@ from chio_sdk.cognition_market import (
     CognitionMarketBuyer,
     CognitionMarketError,
     CognitionMarketSeller,
+    PurchasedVerifiedFix,
     VerifiedFindingProof,
     _canonical_json,
     _request_id,
@@ -23,11 +24,39 @@ from chio_sdk.cognition_market import (
 
 
 def buyer_profile(path: Path) -> Path:
+    status_authority = {
+        "authorityId": "status-operator",
+        "keyEpoch": 1,
+        "keyHex": "a" * 64,
+        "revocationStatusRef": "local/revocations/status",
+        "validFrom": 1,
+        "validUntil": 2_000_000_000,
+    }
     value = {
         "bearerToken": "buyer-secret",
         "endpoint": "http://operator.local",
         "market": {
-            "statusFeedOperator": {"feedId": "finding-status/local"},
+            "statusFeedOperator": {
+                "authority": status_authority,
+                "feedId": "finding-status/local",
+                "revokedFrom": None,
+                "role": "finding_status_operator",
+                "rotationPolicyRef": "local/rotation/status",
+            },
+            "statusFeedServiceBond": {
+                "bond_id": "status-bond",
+                "currency": "USD",
+                "equivocation_slash_units": 100,
+                "evidence_sha256": "b" * 64,
+                "feed_id": "finding-status/local",
+                "inclusion_sla_secs": 300,
+                "locked_units": 100,
+                "missed_inclusion_slash_units": 10,
+                "operator_id": "status-operator",
+                "valid_from": 1,
+                "valid_until": 2_000_000_000,
+            },
+            "statusMaxEpochAgeSecs": 300,
         },
         "payer": "9" * 64,
         "payoutDestination": "0x" + "1" * 40,
@@ -61,7 +90,9 @@ def test_purchase_request_identity_is_scoped_to_the_buyer() -> None:
 
 
 @pytest.mark.asyncio
-async def test_buyer_runs_search_proof_status_and_purchase(tmp_path: Path) -> None:
+async def test_buyer_runs_search_proof_status_and_purchase(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     finding_id = "a" * 64
     seen: list[httpx.Request] = []
 
@@ -76,9 +107,26 @@ async def test_buyer_runs_search_proof_status_and_purchase(tmp_path: Path) -> No
             assert len(body["requestId"]) == 64
             assert body["payer"] == "9" * 64
             return httpx.Response(200, json={"verdict": "allow"})
-        if "/status/" in request.url.path:
-            return httpx.Response(200, json={"status": "live"})
         return httpx.Response(200, json={"count": 1, "results": []})
+
+    def successful_status(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        command = args[0]
+        assert isinstance(command, list)
+        assert command[1:3] == ["finding", "status"]
+        assert kwargs["env"]["CHIO_CONTROL_TOKEN"] == "buyer-secret"
+        authorization_path = Path(command[command.index("--operator-authorization") + 1])
+        authorization = json.loads(authorization_path.read_bytes())
+        assert authorization["operator"]["key"] == "a" * 64
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout=_canonical_json(
+                {"finding_id": finding_id, "proof_kind": "non_inclusion"}
+            ),
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(subprocess, "run", successful_status)
 
     buyer = CognitionMarketBuyer(
         buyer_profile(tmp_path / "buyer.json"),
@@ -94,7 +142,7 @@ async def test_buyer_runs_search_proof_status_and_purchase(tmp_path: Path) -> No
         )["verdict"] == "allow"
     finally:
         await buyer.close()
-    assert len(seen) == 4
+    assert len(seen) == 3
 
 
 @pytest.mark.asyncio
@@ -258,10 +306,28 @@ async def test_buyer_builds_and_files_challenge_with_scoped_key(
         "payerKey": payer_key,
         "purchaseRecord": purchase_record,
     }
+    _, request = _request_id(finding_id, 300, "USD", "9" * 64, 3600)
+    purchased = PurchasedVerifiedFix(
+        finding_id=finding_id,
+        repository="https://example.com/repo.git",
+        base_revision="base",
+        candidate_revision="candidate",
+        patch="diff --git a/file b/file\n",
+        request=request,
+        purchase=purchase,
+    )
 
     def successful_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
         command = args[0]
         assert isinstance(command, list)
+        if command[1:3] == ["finding", "verify-bundle"]:
+            assert "--purchase-request" in command
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=0,
+                stdout=_canonical_json({"purchaseTerminalVerified": True}),
+                stderr=b"",
+            )
         assert command[1:3] == ["finding", "challenge"]
         assert kwargs["env"]["CHIO_CONTROL_TOKEN"] == "buyer-secret"
         key_path = Path(command[command.index("--challenger-key") + 1])
@@ -287,7 +353,7 @@ async def test_buyer_builds_and_files_challenge_with_scoped_key(
         verified = VerifiedFindingProof(finding_id, _canonical_json(proof), {"findingId": finding_id})
         result = await buyer.challenge_evidence_invalid(
             verified,
-            purchase,
+            purchased,
             filed_at=1_800_000_000,
         )
         assert result["challengeId"] == "6" * 64
@@ -312,6 +378,15 @@ def test_profile_rejects_missing_market_pins(tmp_path: Path) -> None:
         )
     )
     with pytest.raises(CognitionMarketError, match="status feed pin"):
+        CognitionMarketBuyer(path)
+
+
+def test_profile_rejects_ephemeral_operator_port(tmp_path: Path) -> None:
+    path = buyer_profile(tmp_path / "buyer.json")
+    value = json.loads(path.read_bytes())
+    value["endpoint"] = "http://127.0.0.1:0"
+    path.write_bytes(_canonical_json(value))
+    with pytest.raises(CognitionMarketError, match="endpoint is invalid"):
         CognitionMarketBuyer(path)
 
 
@@ -381,6 +456,7 @@ async def test_buyer_returns_patch_without_applying_it(
         purchased = await buyer.purchase_verified_fix(verified, max_price_units=300)
         assert purchased.patch == payload["patch"]
         assert purchased.base_revision == "base"
+        assert purchased.request["payer"] == "9" * 64
     finally:
         await buyer.close()
 
@@ -392,6 +468,25 @@ def test_seller_profile_rejects_a_market_signing_seed(tmp_path: Path) -> None:
     path.write_bytes(_canonical_json(value))
     with pytest.raises(CognitionMarketError, match="must not contain"):
         CognitionMarketSeller(path)
+
+
+@pytest.mark.asyncio
+async def test_seller_rejects_price_above_operator_exposure(tmp_path: Path) -> None:
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    seller = CognitionMarketSeller(seller_profile(tmp_path / "seller.json"))
+    try:
+        with pytest.raises(CognitionMarketError, match="sale exposure"):
+            await seller.package_verified_fix(
+                repository=repository,
+                base="base",
+                candidate="candidate",
+                tests=["./check.sh"],
+                topic="rust/fix",
+                price=451,
+            )
+    finally:
+        await seller.close()
 
 
 @pytest.mark.asyncio

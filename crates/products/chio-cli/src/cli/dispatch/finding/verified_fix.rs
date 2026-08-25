@@ -44,6 +44,9 @@ const MAX_PAYLOAD_BYTES: usize = 8 * 1024 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_GIT_ERROR_BYTES: usize = 64 * 1024;
 const TEST_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
+const REPOSITORY_STAGE_TIMEOUT: Duration = Duration::from_secs(300);
+const REPOSITORY_STAGE_MAX_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+const REPOSITORY_STAGE_MAX_ENTRIES: u64 = 1_000_000;
 const TEST_SANDBOX_ADDRESS_SPACE_BYTES: u64 = 6 * 1024 * 1024 * 1024;
 const TEST_SANDBOX_FILE_BYTES: u64 = 1024 * 1024 * 1024;
 const TEST_SANDBOX_TMPFS_BYTES: u64 = 4 * 1024 * 1024 * 1024;
@@ -109,8 +112,7 @@ pub(super) fn cmd_finding_package_verified_fix(
     }
     require_bwrap()?;
 
-    let repository_identity = git_optional_stdout(&repository, &["remote", "get-url", "origin"])
-        .unwrap_or_else(|| repository.display().to_string());
+    let repository_identity = repository_identity(&repository);
     let work_root = paths
         .packages_directory
         .join(format!(".verified-fix-work-{}", uuid::Uuid::new_v4()));
@@ -591,28 +593,32 @@ impl StagedRepositorySet {
         let path = self.root.join(name);
         let template = self.root.join(format!("{name}-git-template"));
         fs::create_dir(&template)?;
-        let status = hardened_git_command()
+        let mut clone = hardened_git_command();
+        clone
             .args(["clone", "--local", "--no-hardlinks", "--no-checkout"])
             .arg(format!("--template={}", template.display()))
             .arg(&self.repository)
-            .arg(&path)
-            .status()?;
-        if !status.success() {
-            return Err(CliError::cli_other_error(format!(
-                "failed to create isolated {name} repository"
-            )));
-        }
-        let status = hardened_git_command()
+            .arg(&path);
+        run_repository_staging_command(
+            clone,
+            &self.root,
+            &format!("create isolated {name} repository"),
+            REPOSITORY_STAGE_TIMEOUT,
+            REPOSITORY_STAGE_MAX_BYTES,
+        )?;
+        let mut checkout = hardened_git_command();
+        checkout
             .arg("-C")
             .arg(&path)
             .args(["checkout", "--detach"])
-            .arg(revision)
-            .status()?;
-        if !status.success() {
-            return Err(CliError::cli_other_error(format!(
-                "failed to check out isolated {name} repository"
-            )));
-        }
+            .arg(revision);
+        run_repository_staging_command(
+            checkout,
+            &self.root,
+            &format!("check out isolated {name} repository"),
+            REPOSITORY_STAGE_TIMEOUT,
+            REPOSITORY_STAGE_MAX_BYTES,
+        )?;
         Ok(path)
     }
 }
@@ -888,18 +894,119 @@ fn stage_repository(source: &Path, work_root: &Path) -> Result<PathBuf, CliError
     let template = work_root.join("git-template");
     fs::create_dir(&template)?;
     let staged = work_root.join("repository");
-    let status = hardened_git_command()
+    let mut clone = hardened_git_command();
+    clone
         .args(["clone", "--local", "--no-hardlinks", "--no-checkout"])
         .arg(format!("--template={}", template.display()))
         .arg(source)
-        .arg(&staged)
-        .status()?;
-    if !status.success() {
-        return Err(CliError::cli_other_error(
-            "failed to stage the source repository in operator-owned storage".to_owned(),
-        ));
-    }
+        .arg(&staged);
+    run_repository_staging_command(
+        clone,
+        work_root,
+        "stage the source repository in operator-owned storage",
+        REPOSITORY_STAGE_TIMEOUT,
+        REPOSITORY_STAGE_MAX_BYTES,
+    )?;
     Ok(staged)
+}
+
+fn run_repository_staging_command(
+    mut command: Command,
+    staging_root: &Path,
+    operation: &str,
+    timeout: Duration,
+    maximum_bytes: u64,
+) -> Result<(), CliError> {
+    command.stdout(Stdio::null()).stderr(Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        command.process_group(0);
+        // SAFETY: setrlimit is async-signal-safe and touches only the child
+        // between fork and exec. It bounds any one file in addition to the
+        // aggregate staging-root accounting below.
+        unsafe {
+            command.pre_exec(move || {
+                let limit = libc::rlimit {
+                    rlim_cur: maximum_bytes,
+                    rlim_max: maximum_bytes,
+                };
+                if libc::setrlimit(libc::RLIMIT_FSIZE, &limit) == 0 {
+                    Ok(())
+                } else {
+                    Err(std::io::Error::last_os_error())
+                }
+            });
+        }
+    }
+    let started = Instant::now();
+    let mut child = command.spawn()?;
+    loop {
+        if let Some(status) = child.try_wait()? {
+            if !status.success() {
+                return Err(CliError::cli_other_error(format!(
+                    "failed to {operation} within the repository staging limits"
+                )));
+            }
+            if !staging_root_within_bound(staging_root, maximum_bytes)? {
+                return Err(CliError::cli_other_error(
+                    "repository staging exceeded its storage bound".to_owned(),
+                ));
+            }
+            return Ok(());
+        }
+        if started.elapsed() >= timeout {
+            terminate_process_group(&mut child);
+            let _ = child.wait();
+            return Err(CliError::cli_other_error(format!(
+                "repository staging exceeded its {} millisecond deadline",
+                timeout.as_millis()
+            )));
+        }
+        match staging_root_within_bound(staging_root, maximum_bytes) {
+            Ok(true) => {}
+            Ok(false) => {
+                terminate_process_group(&mut child);
+                let _ = child.wait();
+                return Err(CliError::cli_other_error(
+                    "repository staging exceeded its storage bound".to_owned(),
+                ));
+            }
+            Err(error) => {
+                terminate_process_group(&mut child);
+                let _ = child.wait();
+                return Err(error);
+            }
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn staging_root_within_bound(root: &Path, maximum_bytes: u64) -> Result<bool, CliError> {
+    let mut pending = vec![root.to_path_buf()];
+    let mut bytes = 0u64;
+    let mut entries = 0u64;
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(directory)? {
+            let entry = entry?;
+            entries = entries.saturating_add(1);
+            if entries > REPOSITORY_STAGE_MAX_ENTRIES {
+                return Ok(false);
+            }
+            let metadata = fs::symlink_metadata(entry.path())?;
+            if metadata.file_type().is_symlink() {
+                bytes = bytes.saturating_add(metadata.len());
+            } else if metadata.is_dir() {
+                pending.push(entry.path());
+            } else if metadata.is_file() {
+                bytes = bytes.saturating_add(metadata.len());
+            }
+            if bytes > maximum_bytes {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
 }
 
 fn hardened_git_command() -> Command {
@@ -1070,6 +1177,34 @@ fn git_stdout(repository: &Path, args: &[&str]) -> Result<String, CliError> {
 
 fn git_optional_stdout(repository: &Path, args: &[&str]) -> Option<String> {
     git_stdout(repository, args).ok().filter(|value| !value.is_empty())
+}
+
+fn repository_identity(repository: &Path) -> String {
+    git_optional_stdout(repository, &["remote", "get-url", "origin"])
+        .and_then(|remote| credential_free_repository_url(&remote))
+        .unwrap_or_else(|| repository.display().to_string())
+}
+
+fn credential_free_repository_url(remote: &str) -> Option<String> {
+    if let Ok(mut parsed) = url::Url::parse(remote) {
+        parsed.set_username("").ok()?;
+        parsed.set_password(None).ok()?;
+        parsed.set_query(None);
+        parsed.set_fragment(None);
+        return Some(parsed.to_string());
+    }
+    if remote.contains("://") {
+        return None;
+    }
+    let without_suffix = remote
+        .split(['?', '#'])
+        .next()
+        .filter(|value| !value.is_empty())?;
+    let identity = without_suffix
+        .rsplit_once('@')
+        .filter(|(_, location)| location.contains(':'))
+        .map_or(without_suffix, |(_, location)| location);
+    Some(identity.to_owned())
 }
 
 fn git_stdout_bytes(repository: &Path, args: &[&str]) -> Result<Vec<u8>, CliError> {
@@ -1592,6 +1727,41 @@ mod tests {
     }
 
     #[test]
+    fn repository_staging_enforces_deadline_and_aggregate_storage() {
+        let root = tempfile::tempdir().unwrap();
+        let mut stalled = Command::new("sh");
+        stalled.args(["-c", "sleep 5"]);
+        let started = Instant::now();
+        let timeout = run_repository_staging_command(
+            stalled,
+            root.path(),
+            "run test staging command",
+            Duration::from_millis(50),
+            1024 * 1024,
+        )
+        .unwrap_err();
+        assert!(timeout.to_string().contains("deadline"));
+        assert!(started.elapsed() < Duration::from_secs(2));
+
+        let mut oversized = Command::new("sh");
+        oversized
+            .current_dir(root.path())
+            .args([
+                "-c",
+                "dd if=/dev/zero of=one bs=700 count=1 status=none && dd if=/dev/zero of=two bs=700 count=1 status=none",
+            ]);
+        let storage = run_repository_staging_command(
+            oversized,
+            root.path(),
+            "run test staging command",
+            Duration::from_secs(2),
+            1024,
+        )
+        .unwrap_err();
+        assert!(storage.to_string().contains("storage bound"));
+    }
+
+    #[test]
     fn private_new_output_is_published_only_after_complete_write() {
         let root = tempfile::tempdir().unwrap();
         let output = root.path().join("package.draft.json");
@@ -1601,6 +1771,22 @@ mod tests {
         assert!(!root.path().join(".package.draft.json.tmp").exists());
         assert!(write_private_new_atomic(&output, b"replacement").is_err());
         assert_eq!(fs::read(&output).unwrap(), bytes);
+    }
+
+    #[test]
+    fn repository_identity_strips_remote_credentials_and_url_secrets() {
+        assert_eq!(
+            credential_free_repository_url(
+                "https://token:secret@example.com/org/repo.git?access_token=hidden#fragment"
+            )
+            .as_deref(),
+            Some("https://example.com/org/repo.git")
+        );
+        assert_eq!(
+            credential_free_repository_url("credential@example.com:org/repo.git?token=hidden")
+                .as_deref(),
+            Some("example.com:org/repo.git")
+        );
     }
 
     #[test]

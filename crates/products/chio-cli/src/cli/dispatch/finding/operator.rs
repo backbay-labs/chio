@@ -53,6 +53,7 @@ const ROLE_WINDOW_SECS: u64 = 10 * 365 * 24 * 60 * 60;
 const SELLER_SUBMISSION_JOB_SCHEMA: &str = "chio.finding.seller-submission-job.v1";
 const SELLER_SUBMISSION_JOB_MAX_BYTES: usize = 1024 * 1024;
 const SELLER_RETRACTION_JOB_SCHEMA: &str = "chio.finding.seller-retraction-job.v1";
+const INIT_COMPLETE_FILE: &str = "operator-init-complete.json";
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -656,134 +657,143 @@ pub(super) fn cmd_finding_operator_init(
     set_operator_umask();
     create_secure_directory(directory)?;
     let profile_path = directory.join(PROFILE_FILE);
-    if profile_path.exists() {
-        return Err(CliError::cli_other_error(format!(
-            "operator profile already exists at {}",
-            profile_path.display()
-        )));
-    }
     for child in ["locks", "packages", "reports"] {
         create_secure_directory(&directory.join(child))?;
     }
 
-    let now = unix_time()?;
-    let valid_from = now.saturating_sub(60);
-    let valid_until = now
-        .checked_add(ROLE_WINDOW_SECS)
-        .ok_or_else(|| CliError::cli_other_error("operator role window overflowed".to_owned()))?;
-    let roles = GeneratedRoles::generate();
-    let pin = |label: &str, keypair: &Keypair| FindingAuthorityPin {
-        authority_id: format!("local-{label}"),
-        key_hex: keypair.public_key().to_hex(),
-        key_epoch: 1,
-        valid_from,
-        valid_until,
-        revocation_status_ref: format!("local/revocations/{label}"),
-    };
-    let status_feed_id = "finding-status/local-cognition-market".to_owned();
-    let status_authority = pin("status-feed-operator", &roles.status_feed_operator);
-    let market = FindingMarketConfig {
-        venue_id: "local-cognition-market".to_owned(),
-        venue: pin("venue", &roles.venue),
-        listing: pin("listing", &roles.listing),
-        governance_root: pin("governance-root", &roles.governance_root),
-        authority_status: pin("authority-status", &roles.authority_status),
-        verifier_report: pin("verifier-report", &roles.verifier_report),
-        collateral: pin("collateral", &roles.collateral),
-        purchase: pin("purchase", &roles.purchase),
-        failed_delivery: pin("failed-delivery", &roles.failed_delivery),
-        challenge_evaluator: pin("challenge-evaluator", &roles.challenge_evaluator),
-        venue_finalization: pin("venue-finalization", &roles.venue_finalization),
-        market_penalty: pin("market-penalty", &roles.market_penalty),
-        settlement_observer: pin("settlement-observer", &roles.settlement_observer),
-        anchor_publisher: pin("anchor-publisher", &roles.anchor_publisher),
-        max_snapshot_age_secs: 3_600,
-        settlement_finality_requirement: chio_settle::FindingFinalityRequirement::Confirmations {
-            min_depth: 1,
-        },
-        audit_authority: pin("audit-authority", &roles.audit_authority),
-        audit_randomness_witness: pin(
-            "audit-randomness-witness",
-            &roles.audit_randomness_witness,
-        ),
-        audit_pool: FindingPoolPin {
-            principal_id: "pool:local-audit".to_owned(),
-            rail_destination: "rail:venue-ledger:local-audit".to_owned(),
-            currency: "USD".to_owned(),
-            authority_epoch: 1,
-        },
-        challenge_administration_pool: FindingPoolPin {
-            principal_id: "pool:local-challenge-administration".to_owned(),
-            rail_destination: "rail:venue-ledger:local-challenge-administration".to_owned(),
-            currency: "USD".to_owned(),
-            authority_epoch: 1,
-        },
-        community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc".to_owned(),
-        status_feed_operator_ref: status_feed_id.clone(),
-        status_feed_operator: FindingStatusOperatorPin {
-            feed_id: status_feed_id,
-            role: FINDING_STATUS_OPERATOR_ROLE.to_owned(),
-            authority: status_authority,
-            rotation_policy_ref: "local/rotation/status-feed".to_owned(),
-            authorization_sha256: sha256_hex(b"local-cognition-market-status-authorization-v1"),
-            revoked_from: None,
-        },
-        status_feed_service_bond: FindingStatusServiceBond {
-            bond_id: "local-status-service-bond".to_owned(),
-            feed_id: "finding-status/local-cognition-market".to_owned(),
-            operator_id: "local-status-feed-operator".to_owned(),
-            locked_units: 1_000,
-            currency: "USD".to_owned(),
+    let profile = if profile_path.exists() {
+        let (profile, _) = load_profile(&profile_path)?;
+        require_matching_init_request(
+            &profile,
+            listen,
+            buyer_principal,
+            buyer_payout,
+            seller_principal,
+            seller_payout,
+        )?;
+        profile
+    } else {
+        let now = unix_time()?;
+        let valid_from = now.saturating_sub(60);
+        let valid_until = now.checked_add(ROLE_WINDOW_SECS).ok_or_else(|| {
+            CliError::cli_other_error("operator role window overflowed".to_owned())
+        })?;
+        let roles = GeneratedRoles::generate();
+        let pin = |label: &str, keypair: &Keypair| FindingAuthorityPin {
+            authority_id: format!("local-{label}"),
+            key_hex: keypair.public_key().to_hex(),
+            key_epoch: 1,
             valid_from,
             valid_until,
-            inclusion_sla_secs: 3_600,
-            missed_inclusion_slash_units: 100,
-            equivocation_slash_units: 1_000,
-            evidence_sha256: sha256_hex(b"local-cognition-market-status-bond-v1"),
-        },
-        status_max_epoch_age_secs: 300,
-        fee_schedule_operator_keys: vec![roles.fee_schedule_operator.public_key().to_hex()],
+            revocation_status_ref: format!("local/revocations/{label}"),
+        };
+        let status_feed_id = "finding-status/local-cognition-market".to_owned();
+        let status_authority = pin("status-feed-operator", &roles.status_feed_operator);
+        let market = FindingMarketConfig {
+            venue_id: "local-cognition-market".to_owned(),
+            venue: pin("venue", &roles.venue),
+            listing: pin("listing", &roles.listing),
+            governance_root: pin("governance-root", &roles.governance_root),
+            authority_status: pin("authority-status", &roles.authority_status),
+            verifier_report: pin("verifier-report", &roles.verifier_report),
+            collateral: pin("collateral", &roles.collateral),
+            purchase: pin("purchase", &roles.purchase),
+            failed_delivery: pin("failed-delivery", &roles.failed_delivery),
+            challenge_evaluator: pin("challenge-evaluator", &roles.challenge_evaluator),
+            venue_finalization: pin("venue-finalization", &roles.venue_finalization),
+            market_penalty: pin("market-penalty", &roles.market_penalty),
+            settlement_observer: pin("settlement-observer", &roles.settlement_observer),
+            anchor_publisher: pin("anchor-publisher", &roles.anchor_publisher),
+            max_snapshot_age_secs: 3_600,
+            settlement_finality_requirement:
+                chio_settle::FindingFinalityRequirement::Confirmations { min_depth: 1 },
+            audit_authority: pin("audit-authority", &roles.audit_authority),
+            audit_randomness_witness: pin(
+                "audit-randomness-witness",
+                &roles.audit_randomness_witness,
+            ),
+            audit_pool: FindingPoolPin {
+                principal_id: "pool:local-audit".to_owned(),
+                rail_destination: "rail:venue-ledger:local-audit".to_owned(),
+                currency: "USD".to_owned(),
+                authority_epoch: 1,
+            },
+            challenge_administration_pool: FindingPoolPin {
+                principal_id: "pool:local-challenge-administration".to_owned(),
+                rail_destination: "rail:venue-ledger:local-challenge-administration".to_owned(),
+                currency: "USD".to_owned(),
+                authority_epoch: 1,
+            },
+            community_fund_destination: "0xcccccccccccccccccccccccccccccccccccccccc".to_owned(),
+            status_feed_operator_ref: status_feed_id.clone(),
+            status_feed_operator: FindingStatusOperatorPin {
+                feed_id: status_feed_id,
+                role: FINDING_STATUS_OPERATOR_ROLE.to_owned(),
+                authority: status_authority,
+                rotation_policy_ref: "local/rotation/status-feed".to_owned(),
+                authorization_sha256: sha256_hex(
+                    b"local-cognition-market-status-authorization-v1",
+                ),
+                revoked_from: None,
+            },
+            status_feed_service_bond: FindingStatusServiceBond {
+                bond_id: "local-status-service-bond".to_owned(),
+                feed_id: "finding-status/local-cognition-market".to_owned(),
+                operator_id: "local-status-feed-operator".to_owned(),
+                locked_units: 1_000,
+                currency: "USD".to_owned(),
+                valid_from,
+                valid_until,
+                inclusion_sla_secs: 3_600,
+                missed_inclusion_slash_units: 100,
+                equivocation_slash_units: 1_000,
+                evidence_sha256: sha256_hex(b"local-cognition-market-status-bond-v1"),
+            },
+            status_max_epoch_age_secs: 300,
+            fee_schedule_operator_keys: vec![roles.fee_schedule_operator.public_key().to_hex()],
+        };
+        let buyer_key = Keypair::generate();
+        let profile = FindingOperatorProfile {
+            schema: FINDING_OPERATOR_PROFILE_SCHEMA.to_owned(),
+            listen,
+            service_token: random_token("service"),
+            paths: FindingOperatorPaths {
+                authority_database: "authority.db".to_owned(),
+                authority_lock_root: "locks".to_owned(),
+                operator_database: "operator.db".to_owned(),
+                receipt_database: "receipts.db".to_owned(),
+                packages_directory: "packages".to_owned(),
+                reports_directory: "reports".to_owned(),
+            },
+            market,
+            secrets: roles.secrets(),
+            payload_key_hex: Keypair::generate().seed_hex(),
+            buyers: vec![FindingOperatorBuyerProfile {
+                principal_id: buyer_principal.to_owned(),
+                bearer_token: random_token("buyer"),
+                signing_seed: buyer_key.seed_hex(),
+                payout_destination: buyer_payout.to_owned(),
+            }],
+            sellers: vec![FindingOperatorSellerProfile {
+                principal_id: seller_principal.to_owned(),
+                bearer_token: random_token("seller"),
+                signing_seed: roles.listing.seed_hex(),
+                payout_destination: seller_payout.to_owned(),
+            }],
+        };
+        profile
+            .validate()
+            .map_err(CliError::cli_other_error)?;
+        let profile_bytes = canonical_json_bytes(&profile)?;
+        write_secret_exact_or_new(&profile_path, &profile_bytes)?;
+        profile
     };
-    let buyer_key = Keypair::generate();
-    let profile = FindingOperatorProfile {
-        schema: FINDING_OPERATOR_PROFILE_SCHEMA.to_owned(),
-        listen,
-        service_token: random_token("service"),
-        paths: FindingOperatorPaths {
-            authority_database: "authority.db".to_owned(),
-            authority_lock_root: "locks".to_owned(),
-            operator_database: "operator.db".to_owned(),
-            receipt_database: "receipts.db".to_owned(),
-            packages_directory: "packages".to_owned(),
-            reports_directory: "reports".to_owned(),
-        },
-        market,
-        secrets: roles.secrets(),
-        payload_key_hex: Keypair::generate().seed_hex(),
-        buyers: vec![FindingOperatorBuyerProfile {
-            principal_id: buyer_principal.to_owned(),
-            bearer_token: random_token("buyer"),
-            signing_seed: buyer_key.seed_hex(),
-            payout_destination: buyer_payout.to_owned(),
-        }],
-        sellers: vec![FindingOperatorSellerProfile {
-            principal_id: seller_principal.to_owned(),
-            bearer_token: random_token("seller"),
-            signing_seed: roles.listing.seed_hex(),
-            payout_destination: seller_payout.to_owned(),
-        }],
-    };
-    profile
-        .validate()
-        .map_err(CliError::cli_other_error)?;
-    let profile_bytes = canonical_json_bytes(&profile)?;
-    write_secret_new(&profile_path, &profile_bytes)?;
     let client_profile_path = directory.join(CLIENT_PROFILE_FILE);
     let client_profile = profile.client_profile();
     client_profile
         .validate()
         .map_err(CliError::cli_other_error)?;
-    write_public_new(&client_profile_path, &canonical_json_bytes(&client_profile)?)?;
+    write_public_exact_or_new(&client_profile_path, &canonical_json_bytes(&client_profile)?)?;
     let buyer_client_path = directory.join(BUYER_CLIENT_FILE);
     let buyer_client = profile
         .buyer_client_profiles()
@@ -791,14 +801,14 @@ pub(super) fn cmd_finding_operator_init(
         .into_iter()
         .next()
         .ok_or_else(|| CliError::cli_other_error("buyer client profile is missing".to_owned()))?;
-    write_secret_new(&buyer_client_path, &canonical_json_bytes(&buyer_client)?)?;
+    write_secret_exact_or_new(&buyer_client_path, &canonical_json_bytes(&buyer_client)?)?;
     let seller_client_path = directory.join(SELLER_CLIENT_FILE);
     let seller_client = profile
         .seller_client_profiles()
         .into_iter()
         .next()
         .ok_or_else(|| CliError::cli_other_error("seller client profile is missing".to_owned()))?;
-    write_secret_new(&seller_client_path, &canonical_json_bytes(&seller_client)?)?;
+    write_secret_exact_or_new(&seller_client_path, &canonical_json_bytes(&seller_client)?)?;
 
     let paths = ResolvedOperatorPaths::new(directory, &profile.paths);
     SqliteAuthorityStore::provision(&paths.authority_database, &paths.authority_lock_root)
@@ -806,6 +816,14 @@ pub(super) fn cmd_finding_operator_init(
     initialize_operator_database(&paths.operator_database)?;
     SqliteReceiptStore::open(&paths.receipt_database)
         .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    let completion_path = directory.join(INIT_COMPLETE_FILE);
+    write_public_exact_or_new(
+        &completion_path,
+        &canonical_json_bytes(&serde_json::json!({
+            "profileSha256": sha256_hex(&canonical_json_bytes(&profile)?),
+            "schema": "chio.finding.operator-init-complete.v1",
+        }))?,
+    )?;
 
     let output = serde_json::json!({
         "profile": profile_path,
@@ -1087,6 +1105,29 @@ fn create_secure_directory(path: &Path) -> Result<(), CliError> {
     Ok(())
 }
 
+fn require_matching_init_request(
+    profile: &FindingOperatorProfile,
+    listen: SocketAddr,
+    buyer_principal: &str,
+    buyer_payout: &str,
+    seller_principal: &str,
+    seller_payout: &str,
+) -> Result<(), CliError> {
+    let matches = profile.listen == listen
+        && profile.buyers.len() == 1
+        && profile.sellers.len() == 1
+        && profile.buyers[0].principal_id == buyer_principal
+        && profile.buyers[0].payout_destination == buyer_payout
+        && profile.sellers[0].principal_id == seller_principal
+        && profile.sellers[0].payout_destination == seller_payout;
+    if !matches {
+        return Err(CliError::cli_other_error(
+            "existing operator profile does not match the requested initialization".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn write_secret_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
@@ -1102,13 +1143,81 @@ fn write_secret_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
     Ok(())
 }
 
-fn write_public_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
-    write_secret_new(path, bytes)?;
+fn write_secret_exact_or_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
+    if path.exists() {
+        require_exact_regular_file(path, bytes)?;
+        return set_secret_permissions(path);
+    }
+    let parent = path.parent().ok_or_else(|| {
+        CliError::cli_other_error("operator output path has no parent directory".to_owned())
+    })?;
+    let temporary = parent.join(format!(
+        ".operator-init-{}.tmp",
+        uuid::Uuid::new_v4().simple()
+    ));
+    write_secret_new(&temporary, bytes)?;
+    if let Err(error) = fs::hard_link(&temporary, path) {
+        let _ = fs::remove_file(&temporary);
+        if path.exists() {
+            require_exact_regular_file(path, bytes)?;
+            return set_secret_permissions(path);
+        }
+        return Err(CliError::from(error));
+    }
+    fs::remove_file(&temporary)?;
+    sync_directory(parent)
+}
+
+fn write_public_exact_or_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
+    write_secret_exact_or_new(path, bytes)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
         fs::set_permissions(path, fs::Permissions::from_mode(0o644))?;
     }
+    path.parent()
+        .ok_or_else(|| {
+            CliError::cli_other_error("operator output path has no parent directory".to_owned())
+        })
+        .and_then(sync_directory)
+}
+
+fn require_exact_regular_file(path: &Path, expected: &[u8]) -> Result<(), CliError> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return Err(CliError::cli_other_error(format!(
+            "{} is not a regular non-symlink file",
+            path.display()
+        )));
+    }
+    if metadata.len() != u64::try_from(expected.len()).unwrap_or(u64::MAX) {
+        return Err(CliError::cli_other_error(format!(
+            "{} already contains different initialization data",
+            path.display()
+        )));
+    }
+    let actual = fs::read(path)?;
+    if actual != expected {
+        return Err(CliError::cli_other_error(format!(
+            "{} already contains different initialization data",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+fn set_secret_permissions(path: &Path) -> Result<(), CliError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
+fn sync_directory(path: &Path) -> Result<(), CliError> {
+    let directory = OpenOptions::new().read(true).open(path)?;
+    directory.sync_all()?;
     Ok(())
 }
 

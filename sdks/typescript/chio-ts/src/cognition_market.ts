@@ -25,6 +25,7 @@ const PROOF_RESPONSE_MAX_BYTES = 24 * 1024 * 1024;
 const PURCHASE_RESULT_MAX_BYTES = Math.ceil((257 * 1024 * 1024) / 3) * 4 + 2 * 1024 * 1024;
 const JSON_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 const ERROR_RESPONSE_MAX_BYTES = 4096;
+const VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS = 450;
 
 export class CognitionMarketError extends Error {
   constructor(message: string) {
@@ -71,6 +72,7 @@ export interface PurchasedVerifiedFix {
   baseRevision: string;
   candidateRevision: string;
   patch: string;
+  request: Record<string, unknown>;
   purchase: Record<string, unknown>;
 }
 
@@ -80,16 +82,23 @@ export class CognitionMarketBuyer {
   readonly profile: CognitionMarketClientProfile;
   readonly profilePath: string;
   readonly chioBinary: string;
+  readonly statusFloorPath: string;
   readonly fetch: Fetch;
   readonly timeoutMs: number;
 
   constructor(
     profilePath: string,
-    options: { chioBinary?: string; fetch?: Fetch; timeoutMs?: number } = {},
+    options: {
+      chioBinary?: string;
+      fetch?: Fetch;
+      statusFloorPath?: string;
+      timeoutMs?: number;
+    } = {},
   ) {
     this.profilePath = profilePath;
     this.profile = loadProfile(profilePath, BUYER_SCHEMA);
     this.chioBinary = options.chioBinary ?? "chio";
+    this.statusFloorPath = options.statusFloorPath ?? `${profilePath}.status-floor.json`;
     this.fetch = options.fetch ?? globalThis.fetch;
     this.timeoutMs = requireTimeout(options.timeoutMs ?? 30_000);
   }
@@ -189,19 +198,48 @@ export class CognitionMarketBuyer {
       PURCHASE_RESULT_MAX_BYTES,
     );
     await this.verifyPurchaseTerminal(verified, request, purchase);
-    return purchasedVerifiedFix(verified, purchase);
+    return purchasedVerifiedFix(verified, request, purchase);
   }
 
   async status(findingId: string): Promise<Record<string, unknown>> {
     requireHex64(findingId, "findingId");
-    const feed = this.profile.market.statusFeedOperator.feedId;
-    if (typeof feed !== "string" || feed.length === 0) {
-      throw new CognitionMarketError("client profile has no status feed id");
+    const trust = statusTrustDocuments(this.profile);
+    const directory = mkdtempSync(join(tmpdir(), "chio-market-status-"));
+    try {
+      const authorizationPath = join(directory, "operator-authorization.json");
+      const serviceBondPath = join(directory, "service-bond.json");
+      writeFileSync(authorizationPath, canonicalJson(trust.authorization));
+      writeFileSync(serviceBondPath, canonicalJson(trust.serviceBond));
+      const output = await runChio(
+        this.chioBinary,
+        [
+          "finding", "status",
+          "--id", findingId,
+          "--feed", trust.feed,
+          "--operator-authorization", authorizationPath,
+          "--service-bond", serviceBondPath,
+          "--rollback-floor", this.statusFloorPath,
+          "--max-epoch-age-secs", String(trust.maximumAge),
+          "--control-url", this.profile.endpoint,
+          "--json",
+        ],
+        undefined,
+        { ...process.env, CHIO_CONTROL_TOKEN: this.profile.bearerToken },
+      );
+      const report = parseObject(output, "Rust status verifier response");
+      if (report.finding_id !== findingId) {
+        throw new CognitionMarketError("Rust status verifier returned a different Finding");
+      }
+      if (report.proof_kind !== "non_inclusion" && report.proof_kind !== "inclusion") {
+        throw new CognitionMarketError("Rust status verifier returned an invalid proof kind");
+      }
+      return {
+        ...report,
+        status: report.proof_kind === "non_inclusion" ? "live" : "retracted",
+      };
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
     }
-    return this.jsonRequest(
-      "GET",
-      `/v1/findings/status/${encodeURIComponent(feed)}/proof/${findingId}`,
-    );
   }
 
   async challenge(
@@ -221,11 +259,15 @@ export class CognitionMarketBuyer {
 
   async challengeEvidenceInvalid(
     verified: VerifiedFindingProof,
-    purchaseResult: Record<string, unknown>,
+    purchased: PurchasedVerifiedFix,
     options: { filedAt?: number } = {},
   ): Promise<Record<string, unknown>> {
+    if (purchased.findingId !== verified.findingId) {
+      throw new CognitionMarketError("purchase and proof name different Findings");
+    }
+    await this.verifyPurchaseTerminal(verified, purchased.request, purchased.purchase);
     const filedAt = options.filedAt ?? Math.floor(Date.now() / 1000);
-    const evidence = evidenceInvalidDocument(verified, purchaseResult, filedAt);
+    const evidence = evidenceInvalidDocument(verified, purchased.purchase, filedAt);
     const directory = mkdtempSync(join(tmpdir(), "chio-market-challenge-"));
     try {
       const evidencePath = join(directory, "evidence.json");
@@ -367,10 +409,17 @@ export class CognitionMarketSeller {
         "scoped seller packages are operator-owned and do not accept a local output path",
       );
     }
+    const price = input.price ?? 300;
+    if (!Number.isSafeInteger(price) || price <= 0
+        || price > VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS) {
+      throw new CognitionMarketError(
+        "price must be between 1 and the verified-fix sale exposure",
+      );
+    }
     const identity: Record<string, unknown> = {
       baseRevision: input.base,
       candidateRevision: input.candidate,
-      priceUnits: input.price ?? 300,
+      priceUnits: price,
       repository: resolve(input.repository),
       schema: VERIFIED_FIX_SUBMISSION_SCHEMA,
       tests: input.tests,
@@ -510,6 +559,7 @@ function loadProfile(path: string, schema: string): CognitionMarketClientProfile
     throw new CognitionMarketError("client profile is invalid");
   }
   if (endpoint.protocol !== "http:" || endpoint.username !== "" || endpoint.password !== ""
+      || endpoint.port === "0"
       || endpoint.search !== "" || endpoint.hash !== ""
       || (endpoint.pathname !== "" && endpoint.pathname !== "/")) {
     throw new CognitionMarketError("client profile is invalid");
@@ -569,6 +619,42 @@ function buyerPayer(profile: CognitionMarketClientProfile): string {
     throw new CognitionMarketError("buyer profile omitted its payer identity");
   }
   return profile.payer;
+}
+
+function statusTrustDocuments(profile: CognitionMarketClientProfile): {
+  authorization: Record<string, unknown>;
+  serviceBond: Record<string, unknown>;
+  feed: string;
+  maximumAge: number;
+} {
+  const market = profile.market as Record<string, unknown>;
+  const operator = asObject(market.statusFeedOperator, "status feed operator");
+  const authority = asObject(operator.authority, "status feed authority");
+  const serviceBond = asObject(market.statusFeedServiceBond, "status service bond");
+  const feed = memberString(operator, "feedId");
+  const maximumAge = market.statusMaxEpochAgeSecs;
+  if (feed.length === 0 || !Number.isSafeInteger(maximumAge) || (maximumAge as number) <= 0) {
+    throw new CognitionMarketError("client profile status trust pins are invalid");
+  }
+  return {
+    authorization: {
+      feed_id: feed,
+      operator: {
+        authority_id: memberString(authority, "authorityId"),
+        key: memberString(authority, "keyHex"),
+        key_epoch: authority.keyEpoch,
+        revocation_status_ref: memberString(authority, "revocationStatusRef"),
+        rotation_policy_ref: memberString(operator, "rotationPolicyRef"),
+        valid_from: authority.validFrom,
+        valid_until: authority.validUntil,
+      },
+      revoked_from: operator.revokedFrom ?? null,
+      role: "finding_status_operator",
+    },
+    serviceBond,
+    feed,
+    maximumAge: maximumAge as number,
+  };
 }
 
 function canonicalJson(value: unknown): Uint8Array {
@@ -663,6 +749,7 @@ function requireHex64(value: string, field: string): void {
 
 function purchasedVerifiedFix(
   verified: VerifiedFindingProof,
+  request: Record<string, unknown>,
   purchase: Record<string, unknown>,
 ): PurchasedVerifiedFix {
   if (purchase.findingId !== verified.findingId) {
@@ -704,6 +791,7 @@ function purchasedVerifiedFix(
     baseRevision,
     candidateRevision,
     patch,
+    request,
     purchase,
   };
 }

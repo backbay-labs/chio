@@ -77,7 +77,7 @@ const CURRENCY: &str = "USD";
 const PUBLICATION_FEE_UNITS: u64 = 5;
 const PARTICIPATION_FEE_UNITS: u64 = 3;
 const STAKE_UNITS: u64 = 50;
-const EXPOSURE_UNITS: u64 = 450;
+pub const VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS: u64 = 450;
 const LOCKED_UNITS: u64 = 500;
 const REQUIREMENT_UNITS: u64 = 5_000;
 const DISPUTE_BOND_UNITS: u64 = 10;
@@ -1052,7 +1052,7 @@ fn build_terms(
         seller: seller_key.public_key(),
         backing_requirement: FindingBackingRequirement {
             base_finding_stake: usd(STAKE_UNITS),
-            maximum_sale_exposure: usd(EXPOSURE_UNITS),
+            maximum_sale_exposure: usd(VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS),
             collateral_policy: "venue_ledger_exclusive_v1".to_owned(),
         },
         filing_window_secs: 86_400,
@@ -1143,7 +1143,7 @@ fn build_backing(
         fee_schedule_envelope_sha256: schedule_sha256.to_owned(),
         bond_class: FindingBondClass::Listing,
         locked_amount: usd(LOCKED_UNITS),
-        maximum_sale_exposure: usd(EXPOSURE_UNITS),
+        maximum_sale_exposure: usd(VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS),
         claim_horizon_secs: 604_800,
         audit_horizon_secs: 2_592_000,
         appeal_horizon_secs: 259_200,

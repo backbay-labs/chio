@@ -37,10 +37,19 @@ Purchase reservations, reveals, delivery results, and scheduled status work
 survive process restarts. Exact retries replay the original outcome and do not
 capture payment twice.
 
+Operator initialization is atomic and resumable for an exact deployment
+request. Repository clone and checkout work is deadline-bound and
+storage-bound, repository identities exclude transport credentials, and the
+maximum admitted sale price cannot exceed the collateral exposure backing the
+listing.
+
 The seller workflow packages a patch, replay recipe, deterministic evidence,
 commercial terms, backing, listing, and admission request from normal files.
 The buyer workflow receives a proof bundle that is verified by the Rust
 reference verifier before the SDK returns a verified result.
+Status helpers use that same Rust boundary with the profile's status authority,
+service bond, freshness policy, and a durable rollback floor. Challenge helpers
+authenticate the exact purchase terminal again before deriving evidence.
 
 ## Delivery sequence
 
@@ -53,6 +62,8 @@ reference verifier before the SDK returns a verified result.
 - Compose a non-test `FindingPurchaseExecutor` from the durable stores, kernel
   reveal path, settlement rail, and shared mutation fence.
 - Add strict operator profile parsing and `operator init`, `serve`, and `tick`.
+- Make exact `operator init` retries identity-preserving and reject ephemeral
+  listen ports or changed deployment arguments.
 
 Exit: two distinct local identities can use a restarted operator process to
 complete one purchase, and an exact retry returns the same terminal result with
@@ -79,6 +90,8 @@ verify its proof bundle before purchase using only stable CLI or SDK calls.
 - Use `chio finding verify-bundle --input -` as the cryptographic reference
   boundary. SDK helper logic must not relabel integrity-only checks as full
   verification.
+- Verify status projections through `chio finding status` and require an
+  authenticated purchase wrapper for challenge filing.
 - Add cross-language fixtures and black-box tests against the real operator.
 
 Exit: both clients pass the same black-box lifecycle and reject altered signed

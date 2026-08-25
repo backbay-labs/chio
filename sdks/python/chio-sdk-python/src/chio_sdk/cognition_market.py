@@ -11,13 +11,14 @@ import asyncio
 import base64
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -34,6 +35,7 @@ PROOF_RESPONSE_MAX_BYTES = 24 * 1024 * 1024
 PURCHASE_RESULT_MAX_BYTES = ((257 * 1024 * 1024 + 2) // 3) * 4 + 2 * 1024 * 1024
 JSON_RESPONSE_MAX_BYTES = 2 * 1024 * 1024
 ERROR_RESPONSE_MAX_BYTES = 4096
+VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS = 450
 
 
 class CognitionMarketError(RuntimeError):
@@ -58,6 +60,7 @@ class PurchasedVerifiedFix:
     base_revision: str
     candidate_revision: str
     patch: str
+    request: dict[str, Any]
     purchase: dict[str, Any]
 
 
@@ -88,9 +91,14 @@ def _load_profile(path: str | Path, schema: str) -> dict[str, Any]:
     if not isinstance(endpoint, str):
         raise CognitionMarketError("client profile endpoint is invalid")
     parsed_endpoint = urlsplit(endpoint)
+    try:
+        endpoint_port = parsed_endpoint.port
+    except ValueError as error:
+        raise CognitionMarketError("client profile endpoint is invalid") from error
     if (
         parsed_endpoint.scheme != "http"
         or not parsed_endpoint.hostname
+        or endpoint_port == 0
         or parsed_endpoint.username is not None
         or parsed_endpoint.password is not None
         or parsed_endpoint.query
@@ -170,12 +178,16 @@ class CognitionMarketBuyer:
         profile_path: str | Path,
         *,
         chio_binary: str | Path = "chio",
+        status_floor_path: str | Path | None = None,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.profile_path = Path(profile_path)
         self.profile = _load_profile(self.profile_path, BUYER_SCHEMA)
         self.chio_binary = str(chio_binary)
+        self.status_floor_path = Path(status_floor_path) if status_floor_path is not None else Path(
+            f"{self.profile_path}.status-floor.json"
+        )
         self._client = httpx.AsyncClient(
             base_url=self.profile["endpoint"].rstrip("/"),
             headers={"authorization": f"Bearer {self.profile['bearerToken']}"},
@@ -309,7 +321,7 @@ class CognitionMarketBuyer:
             maximum=PURCHASE_RESULT_MAX_BYTES,
         )
         await self._verify_purchase_terminal(verified, request, purchase)
-        return _purchased_verified_fix(verified, purchase)
+        return _purchased_verified_fix(verified, request, purchase)
 
     async def _verify_purchase_terminal(
         self,
@@ -359,11 +371,58 @@ class CognitionMarketBuyer:
 
     async def status(self, finding_id: str) -> dict[str, Any]:
         _require_hex64(finding_id, "finding_id")
-        feed = self.profile.get("market", {}).get("statusFeedOperator", {}).get("feedId")
-        if not isinstance(feed, str) or not feed:
-            raise CognitionMarketError("client profile has no status feed id")
-        path = f"/v1/findings/status/{quote(feed, safe='')}/proof/{finding_id}"
-        return await self._json_request("GET", path)
+        authorization, service_bond, feed, maximum_age = _status_trust_documents(self.profile)
+
+        def run() -> subprocess.CompletedProcess[bytes]:
+            with tempfile.TemporaryDirectory(prefix="chio-market-status-") as directory:
+                root = Path(directory)
+                authorization_path = root / "operator-authorization.json"
+                service_bond_path = root / "service-bond.json"
+                authorization_path.write_bytes(_canonical_json(authorization))
+                service_bond_path.write_bytes(_canonical_json(service_bond))
+                environment = dict(os.environ)
+                environment["CHIO_CONTROL_TOKEN"] = self.profile["bearerToken"]
+                return subprocess.run(
+                    [
+                        self.chio_binary,
+                        "finding",
+                        "status",
+                        "--id",
+                        finding_id,
+                        "--feed",
+                        feed,
+                        "--operator-authorization",
+                        str(authorization_path),
+                        "--service-bond",
+                        str(service_bond_path),
+                        "--rollback-floor",
+                        str(self.status_floor_path),
+                        "--max-epoch-age-secs",
+                        str(maximum_age),
+                        "--control-url",
+                        self.profile["endpoint"],
+                        "--json",
+                    ],
+                    capture_output=True,
+                    check=False,
+                    timeout=60,
+                    env=environment,
+                )
+
+        completed = await asyncio.to_thread(run)
+        if completed.returncode != 0:
+            message = completed.stderr.decode("utf-8", errors="replace").strip()
+            raise CognitionMarketError(f"Rust status verification failed: {message}")
+        try:
+            report = json.loads(completed.stdout)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise CognitionMarketError("Rust status verifier returned invalid JSON") from error
+        if not isinstance(report, dict) or report.get("finding_id") != finding_id:
+            raise CognitionMarketError("Rust status verifier returned a different Finding")
+        proof_kind = report.get("proof_kind")
+        if proof_kind not in ("non_inclusion", "inclusion"):
+            raise CognitionMarketError("Rust status verifier returned an invalid proof kind")
+        return {**report, "status": "live" if proof_kind == "non_inclusion" else "retracted"}
 
     async def challenge(self, finding_id: str, signed_challenge: bytes) -> dict[str, Any]:
         _require_hex64(finding_id, "finding_id")
@@ -379,15 +438,18 @@ class CognitionMarketBuyer:
     async def challenge_evidence_invalid(
         self,
         verified: VerifiedFindingProof,
-        purchase_result: dict[str, Any],
+        purchased: PurchasedVerifiedFix,
         *,
         filed_at: int | None = None,
     ) -> dict[str, Any]:
         """File an evidence-invalid challenge from one verified proof and purchase."""
+        if purchased.finding_id != verified.finding_id:
+            raise CognitionMarketError("purchase and proof name different Findings")
+        await self._verify_purchase_terminal(verified, purchased.request, purchased.purchase)
         evidence = _evidence_invalid_document(
             self.profile,
             verified,
-            purchase_result,
+            purchased.purchase,
             filed_at=filed_at or int(time.time()),
         )
 
@@ -399,7 +461,7 @@ class CognitionMarketBuyer:
                 evidence_path.write_bytes(_canonical_json(evidence))
                 key_path.write_text(self.profile["signingSeed"], encoding="ascii")
                 key_path.chmod(0o600)
-                environment = dict(__import__("os").environ)
+                environment = dict(os.environ)
                 environment["CHIO_CONTROL_TOKEN"] = self.profile["bearerToken"]
                 return subprocess.run(
                     [
@@ -503,6 +565,15 @@ class CognitionMarketSeller:
             raise CognitionMarketError(
                 "scoped seller packages are operator-owned and do not accept a local output path"
             )
+        if (
+            not isinstance(price, int)
+            or isinstance(price, bool)
+            or price <= 0
+            or price > VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS
+        ):
+            raise CognitionMarketError(
+                "price must be between 1 and the verified-fix sale exposure"
+            )
         repository_path = str(Path(repository).resolve(strict=True))
         identity: dict[str, Any] = {
             "baseRevision": base,
@@ -599,6 +670,7 @@ def _require_hex64(value: str, field: str) -> None:
 
 def _purchased_verified_fix(
     verified: VerifiedFindingProof,
+    request: dict[str, Any],
     purchase: dict[str, Any],
 ) -> PurchasedVerifiedFix:
     if purchase.get("findingId") != verified.finding_id:
@@ -630,8 +702,49 @@ def _purchased_verified_fix(
         base_revision=payload["baseRevision"],
         candidate_revision=payload["candidateRevision"],
         patch=payload["patch"],
+        request=request,
         purchase=purchase,
     )
+
+
+def _status_trust_documents(
+    profile: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], str, int]:
+    try:
+        market = profile["market"]
+        operator = market["statusFeedOperator"]
+        authority = operator["authority"]
+        service_bond = market["statusFeedServiceBond"]
+        maximum_age = market["statusMaxEpochAgeSecs"]
+        feed = operator["feedId"]
+        authorization = {
+            "feed_id": feed,
+            "operator": {
+                "authority_id": authority["authorityId"],
+                "key": authority["keyHex"],
+                "key_epoch": authority["keyEpoch"],
+                "revocation_status_ref": authority["revocationStatusRef"],
+                "rotation_policy_ref": operator["rotationPolicyRef"],
+                "valid_from": authority["validFrom"],
+                "valid_until": authority["validUntil"],
+            },
+            "revoked_from": operator.get("revokedFrom"),
+            "role": "finding_status_operator",
+        }
+    except (AttributeError, KeyError, TypeError) as error:
+        raise CognitionMarketError("client profile status trust pins are incomplete") from error
+    if (
+        not isinstance(market, dict)
+        or not isinstance(operator, dict)
+        or not isinstance(authority, dict)
+        or not isinstance(service_bond, dict)
+        or not isinstance(feed, str)
+        or not isinstance(maximum_age, int)
+        or isinstance(maximum_age, bool)
+        or maximum_age <= 0
+    ):
+        raise CognitionMarketError("client profile status trust pins are invalid")
+    return authorization, service_bond, feed, maximum_age
 
 
 def _verify_reveal_commitment(

@@ -172,6 +172,9 @@ impl FindingOperatorProfile {
         if self.schema != FINDING_OPERATOR_PROFILE_SCHEMA {
             return Err("unsupported finding operator profile schema".to_owned());
         }
+        if self.listen.port() == 0 {
+            return Err("finding operator listen port must be nonzero".to_owned());
+        }
         validate_text(&self.service_token, "service token")?;
         self.market.validate().map_err(|error| error.to_string())?;
         for (path, label) in [

@@ -11,6 +11,7 @@ use axum::http::{header::AUTHORIZATION, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
+use super::finding_verified_fix::VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS;
 use super::{plain_http_error, TrustServiceState};
 
 pub const FINDING_VERIFIED_FIX_SUBMISSION_SCHEMA: &str = "chio.finding.verified-fix-submission.v1";
@@ -28,7 +29,6 @@ const MAX_REVISION_BYTES: usize = 256;
 const MAX_TOPIC_BYTES: usize = 512;
 const MAX_TEST_BYTES: usize = 4096;
 const MAX_TESTS: usize = 16;
-const I_JSON_MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -107,8 +107,8 @@ impl FindingVerifiedFixSubmissionRequest {
         for test in &self.tests {
             require_text(test, MAX_TEST_BYTES, "test")?;
         }
-        if self.price_units == 0 || self.price_units > I_JSON_MAX_SAFE_INTEGER {
-            return Err("price_units must be a nonzero I-JSON safe integer".to_owned());
+        if self.price_units == 0 || self.price_units > VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS {
+            return Err("price_units exceeds the verified-fix sale exposure".to_owned());
         }
         let expected = derive_verified_fix_submission_id(
             &self.repository,
@@ -490,7 +490,7 @@ mod tests {
             "candidate".to_owned(),
             vec!["./check.sh".to_owned()],
             "rust/fix".to_owned(),
-            I_JSON_MAX_SAFE_INTEGER + 1,
+            VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS + 1,
         )
         .is_err());
     }
@@ -508,7 +508,7 @@ mod tests {
                 .map(|_| repeated('\\', MAX_TEST_BYTES))
                 .collect(),
             repeated('"', MAX_TOPIC_BYTES),
-            I_JSON_MAX_SAFE_INTEGER,
+            VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS,
         )
         .unwrap_or_else(|error| panic!("maximum valid request: {error}"));
         let bytes = chio_core::canonical_json_bytes(&request)
