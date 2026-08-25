@@ -29,6 +29,37 @@ pub struct FindingPublicPurchaseTerminal<'a> {
 }
 
 impl SqliteFindingPurchaseStore {
+    /// Resolve the reservation already owned by an exact public request.
+    ///
+    /// This lookup runs before a production executor rebuilds any signed bid
+    /// material. Signed exchange timestamps can change across retries, while
+    /// the public request identity cannot. Returning the durable binding first
+    /// prevents a restart from opening a second reservation for one request.
+    pub fn resolve_public_purchase_reservation(
+        &self,
+        request: &FindingPublicPurchaseRequestBinding<'_>,
+    ) -> Result<Option<FindingPurchaseReservationRecord>, FindingPurchaseStoreError> {
+        require_hex64(request.request_id, "request_id")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let reservation_id = transaction
+            .query_row(
+                "SELECT reservation_id FROM public_purchase_requests WHERE request_id = ?1",
+                [request.request_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(sqlite_error)?;
+        let Some(reservation_id) = reservation_id else {
+            return Ok(None);
+        };
+        let reservation = load_reservation_tx(&transaction, &reservation_id)?
+            .ok_or_else(|| invariant("public purchase binding lost its reservation"))?;
+        validate_public_request_binding_record(&reservation, request)?;
+        require_public_request_binding_tx(&transaction, &reservation, request)?;
+        Ok(Some(reservation))
+    }
+
     /// Open a live reservation and atomically bind the complete public
     /// request policy that authorized it. Exact reservation replays require
     /// the same request binding; a different public request cannot claim the

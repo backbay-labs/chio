@@ -932,7 +932,8 @@ fn bound_intent_id(
 }
 
 /// Externally pinned chain finality this choke point spends against.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum FindingFinalityRequirement {
     /// The chain proves deterministic finality for the observed block.
     Deterministic,

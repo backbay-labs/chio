@@ -11,12 +11,13 @@ use std::sync::Arc;
 
 use base64::Engine as _;
 use chio_kernel::{KernelError, NestedFlowBridge, ToolServerConnection};
+use chio_store_sqlite::{SqliteFindingPayloadStore, TenantId, TenantKey};
 
 /// The tool name every purchased reveal is served under.
 pub const READ_FINDING_TOOL: &str = "read_finding";
 
 /// One sealed payload the server can reveal.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SealedFindingPayload {
     /// Media type advertised by the signed finding; echoed verbatim in
     /// the reveal envelope.
@@ -25,10 +26,77 @@ pub struct SealedFindingPayload {
     pub payload: Vec<u8>,
 }
 
-/// Buyer-blind reveal server over an immutable sealed-payload map.
+/// Fail-closed resolver used by the buyer-blind reveal server.
+pub trait FindingPayloadResolver: Send + Sync {
+    /// Resolve one sealed payload by its public Finding identity.
+    fn resolve(&self, finding_id: &str)
+        -> Result<SealedFindingPayload, FindingPayloadResolveError>;
+}
+
+/// Coarse resolution error. The reveal surface intentionally does not expose
+/// storage or cryptographic details to a buyer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FindingPayloadResolveError;
+
+struct InMemoryFindingPayloadResolver {
+    sealed: HashMap<String, SealedFindingPayload>,
+}
+
+impl FindingPayloadResolver for InMemoryFindingPayloadResolver {
+    fn resolve(
+        &self,
+        finding_id: &str,
+    ) -> Result<SealedFindingPayload, FindingPayloadResolveError> {
+        self.sealed
+            .get(finding_id)
+            .cloned()
+            .ok_or(FindingPayloadResolveError)
+    }
+}
+
+/// Production resolver backed by the encrypted durable payload store.
+pub struct SqliteFindingPayloadResolver {
+    store: Arc<SqliteFindingPayloadStore>,
+    tenant_id: TenantId,
+    key: Arc<TenantKey>,
+}
+
+impl SqliteFindingPayloadResolver {
+    /// Bind a durable store to one operator tenant and its payload key.
+    #[must_use]
+    pub fn new(
+        store: Arc<SqliteFindingPayloadStore>,
+        tenant_id: TenantId,
+        key: Arc<TenantKey>,
+    ) -> Self {
+        Self {
+            store,
+            tenant_id,
+            key,
+        }
+    }
+}
+
+impl FindingPayloadResolver for SqliteFindingPayloadResolver {
+    fn resolve(
+        &self,
+        finding_id: &str,
+    ) -> Result<SealedFindingPayload, FindingPayloadResolveError> {
+        let record = self
+            .store
+            .get(&self.tenant_id, &self.key, finding_id)
+            .map_err(|_| FindingPayloadResolveError)?;
+        Ok(SealedFindingPayload {
+            media_type: record.media_type,
+            payload: record.payload,
+        })
+    }
+}
+
+/// Buyer-blind reveal server over a sealed-payload resolver.
 pub struct FindingRevealServer {
     server_id: String,
-    sealed: Arc<HashMap<String, SealedFindingPayload>>,
+    resolver: Arc<dyn FindingPayloadResolver>,
 }
 
 impl FindingRevealServer {
@@ -38,7 +106,16 @@ impl FindingRevealServer {
     pub fn new(server_id: String, sealed: HashMap<String, SealedFindingPayload>) -> Self {
         Self {
             server_id,
-            sealed: Arc::new(sealed),
+            resolver: Arc::new(InMemoryFindingPayloadResolver { sealed }),
+        }
+    }
+
+    /// Build a reveal server over a production or test payload resolver.
+    #[must_use]
+    pub fn with_resolver(server_id: String, resolver: Arc<dyn FindingPayloadResolver>) -> Self {
+        Self {
+            server_id,
+            resolver,
         }
     }
 }
@@ -68,12 +145,77 @@ impl ToolServerConnection for FindingRevealServer {
             .ok_or_else(|| {
                 KernelError::Internal("read_finding requires a finding_id argument".to_owned())
             })?;
-        let sealed = self.sealed.get(finding_id).ok_or_else(|| {
-            KernelError::Internal("no sealed payload for this finding".to_owned())
+        let sealed = self.resolver.resolve(finding_id).map_err(|_| {
+            KernelError::Internal("sealed finding payload is unavailable".to_owned())
         })?;
         Ok(serde_json::json!({
             "media_type": sealed.media_type,
             "payload_b64": base64::engine::general_purpose::STANDARD.encode(&sealed.payload),
         }))
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use chio_finding::finding_payload_sha256;
+
+    #[tokio::test]
+    async fn durable_resolver_reveals_after_store_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("operator.db");
+        let tenant_id = TenantId::new("operator-alpha");
+        let key = TenantKey::from_bytes([9; 32]);
+        let payload = b"diff --git a/a.rs b/a.rs\n";
+        let digest = finding_payload_sha256("text/x-diff", payload).unwrap();
+        SqliteFindingPayloadStore::open(&path)
+            .unwrap()
+            .put(
+                &tenant_id,
+                &key,
+                "finding-1",
+                "text/x-diff",
+                &digest,
+                payload,
+            )
+            .unwrap();
+
+        let resolver = SqliteFindingPayloadResolver::new(
+            Arc::new(SqliteFindingPayloadStore::open(&path).unwrap()),
+            tenant_id,
+            Arc::new(key),
+        );
+        let server = FindingRevealServer::with_resolver("seller-1".to_owned(), Arc::new(resolver));
+        let response = server
+            .invoke(
+                READ_FINDING_TOOL,
+                serde_json::json!({"finding_id": "finding-1"}),
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(response["media_type"], "text/x-diff");
+        assert_eq!(
+            response["payload_b64"],
+            base64::engine::general_purpose::STANDARD.encode(payload)
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_payload_fails_closed_without_storage_detail() {
+        let server = FindingRevealServer::new("seller-1".to_owned(), HashMap::new());
+        let error = server
+            .invoke(
+                READ_FINDING_TOOL,
+                serde_json::json!({"finding_id": "missing"}),
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "internal error: sealed finding payload is unavailable"
+        );
     }
 }

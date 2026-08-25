@@ -16,6 +16,17 @@ use finding_verify::cmd_finding_verify;
 mod finding_challenge;
 use finding_challenge::cmd_finding_challenge;
 
+#[path = "finding/operator.rs"]
+mod finding_operator;
+use finding_operator::{cmd_finding_operator_init, cmd_finding_operator_serve, cmd_finding_operator_tick};
+
+#[path = "finding/verified_fix.rs"]
+mod finding_verified_fix;
+use finding_verified_fix::{
+    cmd_finding_admit, cmd_finding_package_verified_fix, cmd_finding_verify_bundle,
+    VerifiedFixPackageRequest,
+};
+
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
@@ -50,6 +61,62 @@ pub(crate) fn dispatch_finding(
     control_token: Option<String>,
 ) -> Result<(), CliError> {
     match command {
+        FindingCommands::Operator { command } => match command {
+            FindingOperatorCommands::Init {
+                directory,
+                listen,
+                buyer_principal,
+                buyer_payout,
+                seller_principal,
+                seller_payout,
+            } => cmd_finding_operator_init(
+                &directory,
+                listen,
+                &buyer_principal,
+                &buyer_payout,
+                &seller_principal,
+                &seller_payout,
+                json_output,
+            ),
+            FindingOperatorCommands::Serve { profile } => {
+                cmd_finding_operator_serve(&profile)
+            }
+            FindingOperatorCommands::Tick { profile } => {
+                cmd_finding_operator_tick(&profile, json_output)
+            }
+        },
+        FindingCommands::Package { command } => match command {
+            FindingPackageCommands::VerifiedFix {
+                profile,
+                repository,
+                base,
+                candidate,
+                tests,
+                topic,
+                seller,
+                price,
+                output,
+            } => cmd_finding_package_verified_fix(
+                &VerifiedFixPackageRequest {
+                    profile_path: &profile,
+                    repository: &repository,
+                    base: &base,
+                    candidate: &candidate,
+                    tests: &tests,
+                    topic: &topic,
+                    seller: &seller,
+                    price,
+                    output: output.as_deref(),
+                },
+                json_output,
+            ),
+        },
+        FindingCommands::Admit { profile, package } => {
+            cmd_finding_admit(&profile, &package, json_output)
+        }
+        FindingCommands::VerifyBundle { input, profile } => {
+            cmd_finding_verify_bundle(&profile, &input, json_output)
+        }
         FindingCommands::Publish { file } => cmd_finding_publish(
             &file,
             json_output,

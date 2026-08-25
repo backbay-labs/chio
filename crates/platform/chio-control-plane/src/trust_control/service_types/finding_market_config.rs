@@ -108,7 +108,8 @@ impl FindingAuthorityPin {
 }
 
 /// One governance-pinned pool identity with its rail-tagged destination.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingPoolPin {
     pub principal_id: String,
     pub rail_destination: String,
@@ -143,7 +144,8 @@ impl FindingPoolPin {
 /// `feed_id` and `rotation_policy_ref`. The durable feed floor is keyed by the
 /// stable feed identity and therefore cannot reset when the authorized key
 /// rotates.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingStatusOperatorPin {
     pub feed_id: String,
     pub role: String,
@@ -410,7 +412,8 @@ impl FindingStatusServiceBond {
 /// The finding-market deployment configuration. `None` on
 /// `TrustServiceConfig` keeps every finding surface at 409, matching the
 /// fiscal-runtime gating convention.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingMarketConfig {
     pub venue_id: String,
     pub venue: FindingAuthorityPin,

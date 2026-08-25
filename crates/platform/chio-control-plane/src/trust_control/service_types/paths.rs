@@ -58,6 +58,9 @@ pub(crate) const FINDING_ACTIVATE_PATH: &str = "/v1/findings/{finding_id}/activa
 pub(crate) const FINDING_PARTICIPATION_PATH: &str = "/v1/findings/{finding_id}/participation";
 pub(crate) const FINDING_ADMISSION_PATH: &str = "/v1/findings/{finding_id}/admission";
 pub(crate) const FINDING_PURCHASE_PATH: &str = "/v1/findings/{finding_id}/purchase";
+pub(crate) const FINDING_OPERATOR_LIVE_STATUS_PATH: &str =
+    "/v1/findings/{finding_id}/operator/live-status";
+pub(crate) const FINDING_PROOF_BUNDLE_PATH: &str = "/v1/findings/{finding_id}/proof";
 /// Authenticated canonical challenge-envelope submission.
 pub(crate) const FINDING_CHALLENGES_PATH: &str = "/v1/findings/{finding_id}/challenges";
 pub(crate) const FINDING_STATUS_ROOT_PATH: &str = "/v1/findings/status/{feed}/root";

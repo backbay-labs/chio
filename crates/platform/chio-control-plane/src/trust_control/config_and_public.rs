@@ -162,6 +162,52 @@ pub fn serve_with_finding_purchase_executor(
     )
 }
 
+/// Serve a purchase-only cognition-market runtime over an authority store the
+/// embedding operator already opened under its serving-owner fence.
+///
+/// This is the installed single-operator composition path. It avoids reopening
+/// the authority database after the executor has already bound its durable
+/// stores, while retaining the same path and mutation-fence validation used by
+/// the combined challenge runtime.
+pub fn serve_with_finding_purchase_runtime(
+    config: TrustServiceConfig,
+    joint_authority_store: Arc<SqliteAuthorityStore>,
+    executor: super::finding_purchase_routes::SharedFindingPurchaseExecutor,
+    rail: Arc<dyn super::finding_handlers::FindingRailObserver>,
+    authority_status_resolver: Arc<
+        dyn super::finding_challenge_coordinator::FindingAuthorityStatusResolver,
+    >,
+) -> Result<(), CliError> {
+    if config.joint_authority_db_path.is_none() {
+        return Err(CliError::cli_other_error(
+            "finding purchase runtime requires the configured joint authority database".to_owned(),
+        ));
+    }
+    joint_authority_store
+        .verify_database_path(config.joint_authority_db_path.as_deref().ok_or_else(|| {
+            CliError::cli_other_error(
+                "finding purchase runtime has no configured authority database".to_owned(),
+            )
+        })?)
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "finding purchase authority does not match the configured database: {error}"
+            ))
+        })?;
+    validate_finding_market_mutation_fence(
+        &joint_authority_store.mutation_fence(),
+        &executor.mutation_fence(),
+    )?;
+    serve_with_optional_finding_challenge_executor(
+        config,
+        Some(joint_authority_store),
+        Some(rail),
+        Some(executor),
+        Some(authority_status_resolver),
+        None,
+    )
+}
+
 #[cfg(test)]
 mod finding_market_runtime_tests {
     use chio_kernel::admission_operation::StoreMutationFence;

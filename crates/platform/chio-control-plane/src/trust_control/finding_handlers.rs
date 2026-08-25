@@ -923,6 +923,7 @@ pub(crate) async fn handle_register_finding_collateral(
     match store.register_allocation(&envelope_json, &backing.body, now) {
         Ok(()) => Json(serde_json::json!({
             "allocationId": backing.body.allocation_id,
+            "acceptedAt": now,
         }))
         .into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),

@@ -45,6 +45,7 @@ iroh = { version = "1.0", default-features = false, features = ["tls-ring"], opt
 chio-finding = { workspace = true }
 chio-finding-verifier = { workspace = true }
 chio-open-market = { workspace = true }
+chio-settle = { workspace = true }
 chio-spec-validate = { workspace = true }
 chio-hosted-mcp = { workspace = true }
 chio-http-serve = { workspace = true }
@@ -118,7 +119,6 @@ uuid = { workspace = true, features = ["v4"] }
 chio-credit = { workspace = true }
 chio-open-market = { workspace = true }
 chio-revocation-oracle = { workspace = true }
-chio-settle = { workspace = true }
 chio-test-support = { workspace = true }
 insta = { version = "1.42", features = ["json", "redactions"] }
 jsonschema = { workspace = true }

@@ -31,8 +31,24 @@ impl FindingPurchaseExecutor for FixedTerminalExecutor {
         self.authority.mutation_fence()
     }
 
+    fn authenticate_buyer(
+        &self,
+        bearer_token: &str,
+    ) -> Result<AuthenticatedFindingBuyer, FindingBuyerAuthenticationError> {
+        if bearer_token != BUYER_TOKEN {
+            return Err(FindingBuyerAuthenticationError);
+        }
+        AuthenticatedFindingBuyer::new(
+            "buyer-agent-1".to_owned(),
+            self.result.payer.clone(),
+            self.result.payer_key.clone(),
+        )
+        .map_err(|_| FindingBuyerAuthenticationError)
+    }
+
     async fn execute(
         &self,
+        _buyer: AuthenticatedFindingBuyer,
         _request: FindingPurchaseRequest,
     ) -> Result<FindingPurchaseResult, FindingPurchaseExecutionError> {
         Ok(self.result.clone())
@@ -62,7 +78,7 @@ pub(super) async fn assert_terminal_cannot_rebind_public_request(
     }));
     let (status, body) = send(
         state,
-        authed_post(path, canonical_json_bytes(&other_request)?)?,
+        buyer_post(path, canonical_json_bytes(&other_request)?)?,
     )
     .await?;
     assert_eq!(status, StatusCode::BAD_GATEWAY);

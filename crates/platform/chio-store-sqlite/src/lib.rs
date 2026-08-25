@@ -45,6 +45,9 @@ pub mod evidence_export;
 pub mod execution_nonce_store;
 pub mod finding_challenge_store;
 pub mod finding_market_store;
+pub mod finding_operator_bundle_store;
+pub mod finding_operator_payment;
+pub mod finding_payload_store;
 pub mod finding_pool_ledger;
 pub mod finding_purchase_store;
 pub mod finding_recovery_store;
@@ -386,6 +389,16 @@ pub use finding_market_store::{
     FindingFeeIntentOutcome, FindingFeeIntentResult, FindingFeeState, FindingMarketStoreError,
     FindingParticipationAdmissionFence, FindingPutOutcome, FindingRecordInput, FindingSearchRow,
     SqliteFindingMarketStore,
+};
+pub use finding_operator_bundle_store::{
+    FindingOperatorBundleRecord, FindingOperatorBundleStoreError,
+    FindingOperatorBundleWriteOutcome, FindingOperatorProofRecord, FindingOperatorTerminalRecord,
+    FindingOperatorTerminalWriteOutcome, SqliteFindingOperatorBundleStore,
+};
+pub use finding_operator_payment::SqliteFindingOperatorPaymentAdapter;
+pub use finding_payload_store::{
+    FindingPayloadPutOutcome, FindingPayloadRecord, FindingPayloadStoreError,
+    SqliteFindingPayloadStore,
 };
 pub use finding_purchase_store::{
     FindingFailedDeliveryRow, FindingPayoutDestinationAdmission,

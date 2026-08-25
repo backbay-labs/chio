@@ -112,7 +112,9 @@ pub(crate) use types_cli::{
     TrustUnderwritingAppealCommands, TrustUnderwritingDecisionCommands,
     TrustUnderwritingInputCommands, WorkflowCommands,
 };
-pub(crate) use types_cli::{FindingChallengeClassArg, FindingCommands};
+pub(crate) use types_cli::{
+    FindingChallengeClassArg, FindingCommands, FindingOperatorCommands, FindingPackageCommands,
+};
 #[path = "cli/chio/types.rs"]
 mod chio_types;
 use chio_types::{

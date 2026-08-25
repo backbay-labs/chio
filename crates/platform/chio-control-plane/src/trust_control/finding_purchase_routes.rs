@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use axum::extract::{Path as AxumPath, Request, State};
 use axum::http::{
-    header::{CONTENT_TYPE, WWW_AUTHENTICATE},
+    header::{AUTHORIZATION, CONTENT_TYPE, WWW_AUTHENTICATE},
     HeaderValue, StatusCode,
 };
 use axum::response::{IntoResponse, Response};
@@ -62,6 +62,7 @@ pub const FINDING_PURCHASE_MAX_OUTPUT_BYTES: usize =
 /// signed settlement evidence.
 pub const FINDING_PURCHASE_MAX_RESULT_BYTES: usize =
     FINDING_PURCHASE_MAX_OUTPUT_BYTES.div_ceil(3) * 4 + 2 * 1024 * 1024;
+pub const FINDING_PROOF_BUNDLE_MAX_BYTES: usize = 24 * 1024 * 1024;
 /// Maximum caller-selected delivery window.
 pub const FINDING_PURCHASE_MAX_DEADLINE_SECS: u64 = 7 * 24 * 60 * 60;
 
@@ -367,12 +368,10 @@ impl FindingPurchaseResult {
                 if output.media_type != finding.payload_media_type {
                     return Err("purchased output media type does not match the finding".to_owned());
                 }
-                let reveal = serde_json::json!({
-                    "media_type": output.media_type,
-                    "payload_b64": output.payload_b64,
-                });
-                let digest = chio_core::canonical_json_bytes(&reveal)
-                    .map(|bytes| sha256_hex(&bytes))
+                let payload = base64::engine::general_purpose::STANDARD
+                    .decode(&output.payload_b64)
+                    .map_err(|_| "purchased output is not canonical base64".to_owned())?;
+                let digest = chio_finding::finding_payload_sha256(&output.media_type, &payload)
                     .map_err(|_| "purchased output canonicalization failed".to_owned())?;
                 if digest != finding.payload_sha256
                     || self.delivery_receipt.content_hash != finding.payload_sha256
@@ -473,6 +472,49 @@ pub enum FindingPurchaseExecutionError {
     Internal(String),
 }
 
+/// Authenticated buyer identity resolved from a deployment-owned scoped
+/// credential. Fields are private so callers cannot construct an identity
+/// without the validating constructor.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuthenticatedFindingBuyer {
+    principal_id: String,
+    payer: String,
+    public_key: PublicKey,
+}
+
+impl AuthenticatedFindingBuyer {
+    /// Construct a bounded buyer identity after deployment authentication.
+    pub fn new(principal_id: String, payer: String, public_key: PublicKey) -> Result<Self, String> {
+        require_bounded_text(&principal_id, MAX_PAYER_BYTES, "principal_id")?;
+        require_bounded_text(&payer, MAX_PAYER_BYTES, "payer")?;
+        Ok(Self {
+            principal_id,
+            payer,
+            public_key,
+        })
+    }
+
+    #[must_use]
+    pub fn principal_id(&self) -> &str {
+        &self.principal_id
+    }
+
+    #[must_use]
+    pub fn payer(&self) -> &str {
+        &self.payer
+    }
+
+    #[must_use]
+    pub const fn public_key(&self) -> &PublicKey {
+        &self.public_key
+    }
+}
+
+/// Coarse scoped-authentication failure. Public routes never reveal whether a
+/// token, principal, or key mapping was absent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FindingBuyerAuthenticationError;
+
 /// Deployment-owned end-to-end purchase adapter.
 ///
 /// Implementations must authenticate or immutably resolve `payer`, keep all
@@ -492,10 +534,95 @@ pub trait FindingPurchaseExecutor: Send + Sync {
     /// from the challenge runtime before either route is installed.
     fn mutation_fence(&self) -> chio_kernel::admission_operation::StoreMutationFence;
 
+    /// Resolve one bearer credential to a buyer principal. Production
+    /// implementations must use a constant-time token comparison and must not
+    /// accept the global control-plane service credential.
+    fn authenticate_buyer(
+        &self,
+        bearer_token: &str,
+    ) -> Result<AuthenticatedFindingBuyer, FindingBuyerAuthenticationError>;
+
+    /// Publish or refresh one live non-inclusion proof. This is an
+    /// operator-only admission seam and is never authorized by a buyer token.
+    fn publish_live_status(&self, _finding_id: &str, _now: u64) -> Result<String, String> {
+        Err("finding status publication is unavailable".to_owned())
+    }
+
+    /// Resolve the exact public proof bundle retained at admission.
+    fn public_proof(&self, _finding_id: &str) -> Result<Vec<u8>, String> {
+        Err("finding proof bundle is unavailable".to_owned())
+    }
+
     async fn execute(
         &self,
+        buyer: AuthenticatedFindingBuyer,
         request: FindingPurchaseRequest,
     ) -> Result<FindingPurchaseResult, FindingPurchaseExecutionError>;
+}
+
+/// GET /v1/findings/{finding_id}/proof (public).
+pub(crate) async fn handle_get_finding_proof_bundle(
+    State(state): State<TrustServiceState>,
+    AxumPath(finding_id): AxumPath<String>,
+) -> Response {
+    if require_hex64(&finding_id, "finding_id").is_err() {
+        return plain_http_error(StatusCode::BAD_REQUEST, "finding id is invalid");
+    }
+    let Some(executor) = state.finding_purchase_executor.as_ref() else {
+        return plain_http_error(StatusCode::NOT_FOUND, "finding proof bundle is unavailable");
+    };
+    match executor.public_proof(&finding_id) {
+        Ok(bytes) if bytes.len() <= FINDING_PROOF_BUNDLE_MAX_BYTES => {
+            (StatusCode::OK, [(CONTENT_TYPE, "application/json")], bytes).into_response()
+        }
+        Ok(_) => plain_http_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "finding proof bundle exceeds its serving bound",
+        ),
+        Err(_) => plain_http_error(StatusCode::NOT_FOUND, "finding proof bundle is unavailable"),
+    }
+}
+
+/// POST /v1/findings/{finding_id}/operator/live-status (service-authenticated).
+///
+/// The route exists for the explicit local operator workflow. It is separate
+/// from buyer purchase authentication and cannot publish a retraction.
+pub(crate) async fn handle_publish_live_finding_status(
+    State(state): State<TrustServiceState>,
+    AxumPath(finding_id): AxumPath<String>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
+        return response;
+    }
+    if require_hex64(&finding_id, "finding_id").is_err() {
+        return plain_http_error(StatusCode::BAD_REQUEST, "finding id is invalid");
+    }
+    let Some(executor) = state.finding_purchase_executor.as_ref() else {
+        return plain_http_error(
+            StatusCode::CONFLICT,
+            "finding status publication is not configured",
+        );
+    };
+    let now = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        Ok(duration) => duration.as_secs(),
+        Err(_) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "finding status clock is unavailable",
+            )
+        }
+    };
+    match executor.publish_live_status(&finding_id, now) {
+        Ok(proof_sha256) => canonical_response(
+            StatusCode::OK,
+            &serde_json::json!({
+                "findingId": finding_id,
+                "proofSha256": proof_sha256,
+            }),
+        ),
+        Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error),
+    }
 }
 
 /// Shared executor handle installed explicitly by a deployment.
@@ -690,25 +817,33 @@ pub(crate) async fn handle_purchase_finding(
     AxumPath(finding_id): AxumPath<String>,
     request: Request,
 ) -> Response {
-    if let Err(response) = validate_service_auth(request.headers(), &state.config.service_token) {
-        return if response.status() == StatusCode::UNAUTHORIZED {
-            let mut response = purchase_error(
-                StatusCode::UNAUTHORIZED,
-                "purchase_unauthorized",
-                "purchase request authentication failed",
-            );
-            response
-                .headers_mut()
-                .insert(WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
-            response
-        } else {
-            purchase_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "purchase_auth_unconfigured",
-                "purchase request authentication is unavailable",
-            )
-        };
-    }
+    let executor = state.finding_purchase_executor.clone();
+    let authenticated_buyer = if let Some(executor) = executor.as_ref() {
+        let bearer_token = request
+            .headers()
+            .get(AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.strip_prefix("Bearer "))
+            .filter(|value| !value.is_empty());
+        match bearer_token.and_then(|token| executor.authenticate_buyer(token).ok()) {
+            Some(buyer) => Some(buyer),
+            None => return purchase_authentication_failed(),
+        }
+    } else {
+        if let Err(response) = validate_service_auth(request.headers(), &state.config.service_token)
+        {
+            return if response.status() == StatusCode::UNAUTHORIZED {
+                purchase_authentication_failed()
+            } else {
+                purchase_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "purchase_auth_unconfigured",
+                    "purchase request authentication is unavailable",
+                )
+            };
+        }
+        None
+    };
     let content_type = request
         .headers()
         .get(CONTENT_TYPE)
@@ -790,50 +925,62 @@ pub(crate) async fn handle_purchase_finding(
         Ok(finding) => finding,
         Err(response) => return response,
     };
-    let Some(executor) = state.finding_purchase_executor.as_ref() else {
+    let Some(executor) = executor.as_ref() else {
         return purchase_error(
             StatusCode::SERVICE_UNAVAILABLE,
             "purchase_executor_unavailable",
             "finding purchase executor is not configured",
         );
     };
+    let Some(authenticated_buyer) = authenticated_buyer else {
+        return purchase_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "purchase_auth_unconfigured",
+            "purchase request authentication is unavailable",
+        );
+    };
 
-    let result = match executor.execute(request.clone()).await {
+    let result = match executor.execute(authenticated_buyer, request.clone()).await {
         Ok(result) => result,
-        Err(FindingPurchaseExecutionError::Rejected(_)) => {
+        Err(FindingPurchaseExecutionError::Rejected(error)) => {
+            tracing::warn!(error = %error, finding_id = %finding_id, "finding purchase rejected");
             return purchase_error(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "purchase_rejected",
                 "purchase executor rejected the request",
-            )
+            );
         }
-        Err(FindingPurchaseExecutionError::Conflict(_)) => {
+        Err(FindingPurchaseExecutionError::Conflict(error)) => {
+            tracing::warn!(error = %error, finding_id = %finding_id, "finding purchase conflicted");
             return purchase_error(
                 StatusCode::CONFLICT,
                 "purchase_conflict",
                 "purchase conflicts with durable state",
-            )
+            );
         }
-        Err(FindingPurchaseExecutionError::Pending(_)) => {
+        Err(FindingPurchaseExecutionError::Pending(error)) => {
+            tracing::info!(error = %error, finding_id = %finding_id, "finding purchase pending");
             return purchase_error(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "purchase_pending",
                 "purchase has no safe terminal result yet",
-            )
+            );
         }
-        Err(FindingPurchaseExecutionError::Unavailable(_)) => {
+        Err(FindingPurchaseExecutionError::Unavailable(error)) => {
+            tracing::error!(error = %error, finding_id = %finding_id, "finding purchase storage unavailable");
             return purchase_error(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "purchase_executor_unavailable",
                 "finding purchase executor is temporarily unavailable",
-            )
+            );
         }
-        Err(FindingPurchaseExecutionError::Internal(_)) => {
+        Err(FindingPurchaseExecutionError::Internal(error)) => {
+            tracing::error!(error = %error, finding_id = %finding_id, "finding purchase executor failed");
             return purchase_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "purchase_executor_failed",
                 "finding purchase executor failed",
-            )
+            );
         }
     };
     let admission_digest = match result.verdict {
@@ -940,6 +1087,18 @@ pub(crate) async fn handle_purchase_finding(
         );
     }
     purchase_terminal_response(&result)
+}
+
+fn purchase_authentication_failed() -> Response {
+    let mut response = purchase_error(
+        StatusCode::UNAUTHORIZED,
+        "purchase_unauthorized",
+        "purchase request authentication failed",
+    );
+    response
+        .headers_mut()
+        .insert(WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
+    response
 }
 
 fn require_hex64(value: &str, field: &str) -> Result<(), String> {
