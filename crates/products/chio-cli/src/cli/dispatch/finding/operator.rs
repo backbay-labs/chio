@@ -128,7 +128,10 @@ impl OperatorSellerSubmissionExecutor {
         })
     }
 
-    fn authenticate(&self, token: &str) -> Result<(String, Keypair), FindingSellerSubmissionError> {
+    fn authenticate_seller(
+        &self,
+        token: &str,
+    ) -> Result<(String, Keypair), FindingSellerSubmissionError> {
         self.sellers
             .iter()
             .find(|(_, expected, _)| bool::from(expected.as_bytes().ct_eq(token.as_bytes())))
@@ -282,12 +285,16 @@ impl OperatorSellerSubmissionExecutor {
 }
 
 impl FindingSellerSubmissionExecutor for OperatorSellerSubmissionExecutor {
+    fn authenticate(&self, bearer_token: &str) -> Result<(), FindingSellerSubmissionError> {
+        self.authenticate_seller(bearer_token).map(|_| ())
+    }
+
     fn submit(
         &self,
         bearer_token: &str,
         request: &FindingVerifiedFixSubmissionRequest,
     ) -> Result<FindingVerifiedFixSubmissionResponse, FindingSellerSubmissionError> {
-        let (principal, _) = self.authenticate(bearer_token)?;
+        let (principal, _) = self.authenticate_seller(bearer_token)?;
         let _guard = self.submission_lock.lock().map_err(|_| {
             FindingSellerSubmissionError::Pending(
                 "verified-fix submission lock is unavailable".to_owned(),
@@ -301,7 +308,7 @@ impl FindingSellerSubmissionExecutor for OperatorSellerSubmissionExecutor {
         bearer_token: &str,
         request: &FindingVoluntaryRetractionRequest,
     ) -> Result<FindingVoluntaryRetractionResponse, FindingSellerSubmissionError> {
-        let (principal, seller_key) = self.authenticate(bearer_token)?;
+        let (principal, seller_key) = self.authenticate_seller(bearer_token)?;
         request
             .validate()
             .map_err(FindingSellerSubmissionError::Invalid)?;

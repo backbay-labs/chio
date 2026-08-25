@@ -610,6 +610,7 @@ fn market_state(
         finding_rail: Some(Arc::new(VenueLedgerRailObserver)),
         finding_purchase_executor: None,
         finding_seller_submission_executor: None,
+        finding_seller_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
         finding_authority_status_resolver: Some(Arc::new(
             TestTerminalAuthorityStatusResolver::live(),
         )),

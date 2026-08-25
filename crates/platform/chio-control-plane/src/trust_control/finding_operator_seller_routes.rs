@@ -194,6 +194,8 @@ pub enum FindingSellerSubmissionError {
 }
 
 pub trait FindingSellerSubmissionExecutor: Send + Sync {
+    fn authenticate(&self, bearer_token: &str) -> Result<(), FindingSellerSubmissionError>;
+
     fn submit(
         &self,
         bearer_token: &str,
@@ -264,6 +266,9 @@ pub(crate) async fn handle_submit_verified_fix(
     let Some(bearer) = bearer else {
         return seller_authentication_failed();
     };
+    if executor.authenticate(&bearer).is_err() {
+        return seller_authentication_failed();
+    }
     let raw = match axum::body::to_bytes(
         request.into_body(),
         FINDING_VERIFIED_FIX_SUBMISSION_MAX_BODY_BYTES,
@@ -282,7 +287,20 @@ pub(crate) async fn handle_submit_verified_fix(
         Ok(submission) => submission,
         Err(error) => return seller_error(StatusCode::BAD_REQUEST, &error),
     };
-    let outcome = tokio::task::spawn_blocking(move || executor.submit(&bearer, &submission)).await;
+    let permit = match try_acquire_seller_lane(&state.finding_seller_submission_lane) {
+        Ok(permit) => permit,
+        Err(_) => {
+            return seller_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "verified-fix seller lane is busy",
+            )
+        }
+    };
+    let outcome = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        executor.submit(&bearer, &submission)
+    })
+    .await;
     match outcome {
         Ok(Ok(response)) => match chio_core::canonical_json_bytes(&response) {
             Ok(bytes) => (
@@ -336,6 +354,9 @@ pub(crate) async fn handle_submit_voluntary_retraction(
     let Some(bearer) = bearer else {
         return seller_authentication_failed();
     };
+    if executor.authenticate(&bearer).is_err() {
+        return seller_authentication_failed();
+    }
     let raw = match axum::body::to_bytes(request.into_body(), 4096).await {
         Ok(bytes) => bytes,
         Err(_) => {
@@ -352,7 +373,20 @@ pub(crate) async fn handle_submit_voluntary_retraction(
     if let Err(error) = request.validate() {
         return seller_error(StatusCode::BAD_REQUEST, &error);
     }
-    let outcome = tokio::task::spawn_blocking(move || executor.retract(&bearer, &request)).await;
+    let permit = match try_acquire_seller_lane(&state.finding_seller_submission_lane) {
+        Ok(permit) => permit,
+        Err(_) => {
+            return seller_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "verified-fix seller lane is busy",
+            )
+        }
+    };
+    let outcome = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        executor.retract(&bearer, &request)
+    })
+    .await;
     match outcome {
         Ok(Ok(response)) => match chio_core::canonical_json_bytes(&response) {
             Ok(bytes) => (
@@ -456,6 +490,12 @@ fn seller_error(status: StatusCode, message: &str) -> Response {
     plain_http_error(status, message)
 }
 
+fn try_acquire_seller_lane(
+    lane: &Arc<tokio::sync::Semaphore>,
+) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+    lane.clone().try_acquire_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -516,5 +556,15 @@ mod tests {
         assert!(bytes.len() <= FINDING_VERIFIED_FIX_SUBMISSION_MAX_BODY_BYTES);
         parse_submission(&bytes)
             .unwrap_or_else(|error| panic!("maximum valid request must parse: {error}"));
+    }
+
+    #[test]
+    fn seller_lane_rejects_queued_blocking_work() {
+        let lane = Arc::new(tokio::sync::Semaphore::new(1));
+        let active =
+            try_acquire_seller_lane(&lane).unwrap_or_else(|error| panic!("first permit: {error}"));
+        assert!(try_acquire_seller_lane(&lane).is_err());
+        drop(active);
+        assert!(try_acquire_seller_lane(&lane).is_ok());
     }
 }

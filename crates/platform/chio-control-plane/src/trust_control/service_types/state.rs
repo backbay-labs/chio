@@ -30,6 +30,9 @@ pub(crate) struct TrustServiceState {
     /// keys inside the operator process.
     pub(crate) finding_seller_submission_executor:
         Option<super::super::finding_operator_seller_routes::SharedFindingSellerSubmissionExecutor>,
+    /// One non-queued permit acquired before seller work enters Tokio's
+    /// blocking pool. Submission and retraction share this bounded lane.
+    pub(crate) finding_seller_submission_lane: Arc<tokio::sync::Semaphore>,
     /// Fresh authority-status source for admission read paths. Without it,
     /// search and admission endpoints omit admission state fail-closed.
     pub(crate) finding_authority_status_resolver: Option<

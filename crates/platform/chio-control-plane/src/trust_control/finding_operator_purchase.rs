@@ -958,6 +958,11 @@ impl FindingOperatorPurchaseExecutor {
             &ask_digest,
             &credential.signing_key.public_key().to_hex(),
         );
+        if existing_reservation.is_none() && now >= signed_ask.body.expires_at {
+            return Err(FindingPurchaseExecutionError::Rejected(
+                "prepared purchase ask expired before reservation".to_owned(),
+            ));
+        }
         let coordinator = self.coordinator()?;
         match coordinator.resolve(&reservation_id) {
             Ok(existing)

@@ -59,6 +59,13 @@ Durable purchase jobs have a hard 10,000-row ceiling. A new request fails
 closed at capacity while an existing exact request can still replay its
 original job.
 
+Seller admission and scheduled reconciliation serialize through one
+cross-process operator lock. Submission and retraction share one non-queued
+blocking lane, so overlap returns a retryable HTTP 503 instead of consuming
+unbounded worker capacity. Before its first reservation, a prepared purchase
+ask is revalidated against current operator time and an expired ask fails
+closed without reserving funds.
+
 The seller workflow packages a patch, replay recipe, deterministic evidence,
 commercial terms, backing, listing, and admission request from normal files.
 The buyer workflow receives a proof bundle that is verified by the Rust

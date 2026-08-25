@@ -54,6 +54,7 @@ fn metrics_state(service_token: &str) -> TrustServiceState {
         finding_rail: None,
         finding_purchase_executor: None,
         finding_seller_submission_executor: None,
+        finding_seller_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
         finding_authority_status_resolver: None,
         finding_challenge_executor: None,
     }

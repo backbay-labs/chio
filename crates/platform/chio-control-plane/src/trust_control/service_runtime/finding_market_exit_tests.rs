@@ -5,7 +5,6 @@ use super::finding_evidence_test_support::{
     checkpoint_at, make_signed_finding_report as make_signed_report, matched_delivery_metadata,
     FindingReportInputs as ReportInputs,
 };
-
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -612,6 +611,7 @@ fn market_state(
         finding_rail: Some(rail),
         finding_purchase_executor: None,
         finding_seller_submission_executor: None,
+        finding_seller_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
         finding_authority_status_resolver: Some(Arc::new(
             TestStatusOperatorAuthorityResolver::default(),
         )),

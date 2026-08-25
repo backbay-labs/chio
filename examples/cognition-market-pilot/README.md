@@ -66,6 +66,12 @@ git -C /tmp/fix-sandbox apply /tmp/verified-fix.patch
 terminals, and captures. It is idempotent and suitable for a local service
 timer or cron entry. The operator accepts at most 10,000 durable purchase jobs;
 at capacity, new purchases fail closed while exact retries remain replayable.
+Live seller admission and `operator tick` share one cross-process admission
+lock. Only one seller submission or retraction enters blocking execution at a
+time; overlapping requests receive HTTP 503 and can retry the same durable
+identity. A prepared purchase ask is checked against current operator time
+before its first reservation. An expired ask cannot reserve funds, and the
+buyer must prepare a fresh purchase request.
 
 The Python and TypeScript buyer SDKs verify status proofs with the profile's
 pinned status authority, service bond, freshness window, and a durable rollback

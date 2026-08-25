@@ -137,6 +137,7 @@ async fn serve_async_inner(
         finding_rail,
         finding_purchase_executor,
         finding_seller_submission_executor,
+        finding_seller_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
         finding_authority_status_resolver,
         finding_challenge_executor,
     };
