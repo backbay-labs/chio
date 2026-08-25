@@ -1924,7 +1924,8 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
     .await?;
     assert_eq!(status, StatusCode::NOT_FOUND);
 
-    // Reused collateral: the same allocation registers exactly once.
+    // Reused collateral: the same allocation returns the original acceptance
+    // without registering or charging it twice.
     let (status, body) = send(
         &stack.state,
         authed_post(
@@ -1933,13 +1934,14 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
         )?,
     )
     .await?;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let replay = json_body(&body)?;
+    assert_eq!(replay["exactReplay"], serde_json::json!(true));
     assert_eq!(
-        status,
-        StatusCode::BAD_REQUEST,
-        "{}",
-        String::from_utf8_lossy(&body)
+        replay["allocationId"],
+        serde_json::json!(web.backing.body.allocation_id)
     );
-    assert!(String::from_utf8_lossy(&body).contains("already registered"));
+    assert!(replay["acceptedAt"].as_u64().is_some_and(|value| value > 0));
 
     // Rejection sweep over the activation surface. Every leg asserts the
     // specific status and that nothing was admitted.
