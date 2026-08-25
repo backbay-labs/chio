@@ -5,6 +5,9 @@ operator. The agents receive separate scoped credentials. Neither client file
 contains the operator service token, and the seller credential contains no
 market signing key.
 
+Seller packaging requires Git, Bubblewrap (`bwrap`), and util-linux
+`prlimit` on the operator host.
+
 Build Chio and initialize a private deployment directory:
 
 ```bash
@@ -73,6 +76,9 @@ sudo git clone /absolute/path/to/repository \
 Pass the staged `/srv/chio/cognition-market-repositories/project` path as
 `--repository`. Packaging first clones its objects without hard links into the
 operator-owned packages directory, with repository hooks and external Git
-helpers disabled. Baseline and candidate tests then run in isolated worktrees
-with no network, a five-minute deadline, a cleared environment, bounded output,
-and no mount of the operator profile or state directory.
+helpers disabled. It creates self-contained baseline and candidate clones so
+Git-based build tooling remains available without mounting shared repository
+metadata. Each test receives a private size-capped tmpfs, no network, a
+five-minute deadline, a cleared environment, bounded output, hard memory, CPU,
+process, descriptor, and file-size limits, and no mount of the operator profile
+or state directory.

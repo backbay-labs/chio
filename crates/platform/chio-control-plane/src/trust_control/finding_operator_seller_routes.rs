@@ -17,7 +17,10 @@ pub const FINDING_VERIFIED_FIX_SUBMISSION_SCHEMA: &str = "chio.finding.verified-
 pub const FINDING_VOLUNTARY_RETRACTION_REQUEST_SCHEMA: &str =
     "chio.finding.voluntary-retraction-request.v1";
 const VERIFIED_FIX_SUBMISSION_ID_DOMAIN: &[u8] = b"chio.finding.verified-fix-submission-id.v1\0";
-pub(crate) const FINDING_VERIFIED_FIX_SUBMISSION_MAX_BODY_BYTES: usize = 64 * 1024;
+// Validated text rejects control characters, so quote and backslash escaping
+// can at most double its bytes. This cap covers that complete worst case plus
+// the fixed JSON field, schema, request-id, and integer overhead.
+pub(crate) const FINDING_VERIFIED_FIX_SUBMISSION_MAX_BODY_BYTES: usize = 256 * 1024;
 const VOLUNTARY_RETRACTION_REQUEST_ID_DOMAIN: &[u8] =
     b"chio.finding.voluntary-retraction-request-id.v1\0";
 const MAX_REPOSITORY_BYTES: usize = 4096;
@@ -25,6 +28,7 @@ const MAX_REVISION_BYTES: usize = 256;
 const MAX_TOPIC_BYTES: usize = 512;
 const MAX_TEST_BYTES: usize = 4096;
 const MAX_TESTS: usize = 16;
+const I_JSON_MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -103,8 +107,8 @@ impl FindingVerifiedFixSubmissionRequest {
         for test in &self.tests {
             require_text(test, MAX_TEST_BYTES, "test")?;
         }
-        if self.price_units == 0 {
-            return Err("price_units must be nonzero".to_owned());
+        if self.price_units == 0 || self.price_units > I_JSON_MAX_SAFE_INTEGER {
+            return Err("price_units must be a nonzero I-JSON safe integer".to_owned());
         }
         let expected = derive_verified_fix_submission_id(
             &self.repository,
@@ -423,7 +427,11 @@ where
 }
 
 fn require_text(value: &str, maximum: usize, field: &str) -> Result<(), String> {
-    if value.trim() != value || value.is_empty() || value.len() > maximum || value.contains('\0') {
+    if value.trim() != value
+        || value.is_empty()
+        || value.len() > maximum
+        || value.chars().any(char::is_control)
+    {
         return Err(format!("{field} is empty, padded, or oversized"));
     }
     Ok(())
@@ -467,5 +475,46 @@ mod tests {
         let mut altered = request.clone();
         altered.price_units = 301;
         assert!(altered.validate().is_err());
+        assert!(FindingVerifiedFixSubmissionRequest::new(
+            "/srv/repository".to_owned(),
+            "base".to_owned(),
+            "candidate".to_owned(),
+            vec!["printf '\u{0001}'".to_owned()],
+            "rust/fix".to_owned(),
+            300,
+        )
+        .is_err());
+        assert!(FindingVerifiedFixSubmissionRequest::new(
+            "/srv/repository".to_owned(),
+            "base".to_owned(),
+            "candidate".to_owned(),
+            vec!["./check.sh".to_owned()],
+            "rust/fix".to_owned(),
+            I_JSON_MAX_SAFE_INTEGER + 1,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn every_maximum_valid_submission_fits_the_transport_bound() {
+        let repeated = |character: char, length: usize| {
+            std::iter::repeat_n(character, length).collect::<String>()
+        };
+        let request = FindingVerifiedFixSubmissionRequest::new(
+            repeated('\\', MAX_REPOSITORY_BYTES),
+            repeated('\\', MAX_REVISION_BYTES),
+            repeated('"', MAX_REVISION_BYTES),
+            (0..MAX_TESTS)
+                .map(|_| repeated('\\', MAX_TEST_BYTES))
+                .collect(),
+            repeated('"', MAX_TOPIC_BYTES),
+            I_JSON_MAX_SAFE_INTEGER,
+        )
+        .unwrap_or_else(|error| panic!("maximum valid request: {error}"));
+        let bytes = chio_core::canonical_json_bytes(&request)
+            .unwrap_or_else(|error| panic!("canonical maximum request: {error}"));
+        assert!(bytes.len() <= FINDING_VERIFIED_FIX_SUBMISSION_MAX_BODY_BYTES);
+        parse_submission(&bytes)
+            .unwrap_or_else(|error| panic!("maximum valid request must parse: {error}"));
     }
 }

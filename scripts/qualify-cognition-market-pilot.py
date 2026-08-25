@@ -555,7 +555,7 @@ def tampered_purchase_terminal_rejected(
     return completed.returncode != 0
 
 
-def qualify(binary: Path, output: Path) -> dict[str, Any]:
+def qualify(binary: Path, output: Path, candidate_sha: str) -> dict[str, Any]:
     if not binary.is_file():
         raise RuntimeError(f"chio binary does not exist: {binary}")
     output.mkdir(parents=True, exist_ok=True)
@@ -786,7 +786,7 @@ def qualify(binary: Path, output: Path) -> dict[str, Any]:
 
             return {
                 "schema": "chio.cognition-market.pilot-report.v1",
-                "candidateSha": git(ROOT, "rev-parse", "HEAD"),
+                "candidateSha": candidate_sha,
                 "challenge": controlled_challenge,
                 "counts": {
                     "captureCount": captures,
@@ -817,7 +817,22 @@ def main() -> None:
         default=ROOT / "target/cognition-market-pilot",
     )
     arguments = parser.parse_args()
-    report = qualify(arguments.chio.resolve(), arguments.output.resolve())
+    status = run(
+        [
+            "git",
+            "-C",
+            str(ROOT),
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+        ]
+    ).stdout.strip()
+    if status:
+        raise RuntimeError("cognition-market pilot requires a clean candidate worktree")
+    candidate_sha = git(ROOT, "rev-parse", "HEAD")
+    report = qualify(
+        arguments.chio.resolve(), arguments.output.resolve(), candidate_sha
+    )
     destination = arguments.output.resolve() / "report.json"
     destination.write_text(
         json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",

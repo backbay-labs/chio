@@ -291,3 +291,72 @@ async fn cognition_market_production_operator_resumes_after_reserved_restart() -
     );
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cognition_market_prepared_job_revalidates_before_first_reservation() -> TestResult {
+    let deployment = provision(RevealCase::honest())?;
+    let authority = deployment.open()?;
+    let mut state = market_state(authority.clone(), market_config());
+    deployment.seed_and_activate(&state).await?;
+
+    let buyer = keypair(31);
+    let payer = buyer.public_key().to_hex();
+    let request = FindingPurchaseRequest::new(
+        deployment.web.finding_id.clone(),
+        PRICE_UNITS + 50,
+        "USD".to_owned(),
+        Some(payer.clone()),
+        Some(900),
+    )?;
+    let request_body = canonical_json_bytes(&request)?;
+    let path = format!("/v1/findings/{}/purchase", deployment.web.finding_id);
+    let operator_db = deployment
+        .database
+        .with_file_name("operator-prepared-only.db");
+    let interrupted = Arc::new(production_purchase_executor(
+        &deployment,
+        authority.clone(),
+        operator_db.clone(),
+    )?);
+    interrupted.stop_after_purchase_job_once();
+    state.finding_purchase_executor = Some(interrupted.clone());
+
+    let (status, pending_body) = send(&state, buyer_post(&path, request_body.clone())?).await?;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(json_body(&pending_body)?["code"], "purchase_pending");
+    let public_request = FindingPublicPurchaseRequestBinding {
+        request_id: &request.request_id,
+        finding_id: &request.finding_id,
+        requested_payer: request.payer.as_deref(),
+        resolved_payer: &payer,
+        payer_hex: &payer,
+        max_price_units: request.max_price.units,
+        currency: &request.max_price.currency,
+        deadline_secs: request.deadline_secs,
+    };
+    assert!(authority
+        .finding_purchase_store()
+        .resolve_public_purchase_reservation(&public_request)?
+        .is_none());
+    assert_eq!(
+        SqliteFindingOperatorBundleStore::open(&operator_db)?.purchase_job_count()?,
+        1
+    );
+
+    interrupted.set_test_now(ADMISSION_EXPIRES_AT);
+    let (status, rejected_body) = send(&state, buyer_post(&path, request_body)?).await?;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(json_body(&rejected_body)?["code"], "purchase_rejected");
+    assert!(authority
+        .finding_purchase_store()
+        .resolve_public_purchase_reservation(&public_request)?
+        .is_none());
+    assert_eq!(
+        SqliteFindingOperatorPaymentAdapter::open(&operator_db)
+            .map_err(std::io::Error::other)?
+            .capture_count()
+            .map_err(std::io::Error::other)?,
+        0
+    );
+    Ok(())
+}

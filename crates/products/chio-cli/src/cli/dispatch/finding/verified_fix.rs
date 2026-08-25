@@ -44,6 +44,12 @@ const MAX_PAYLOAD_BYTES: usize = 8 * 1024 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_GIT_ERROR_BYTES: usize = 64 * 1024;
 const TEST_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
+const TEST_SANDBOX_ADDRESS_SPACE_BYTES: u64 = 6 * 1024 * 1024 * 1024;
+const TEST_SANDBOX_FILE_BYTES: u64 = 1024 * 1024 * 1024;
+const TEST_SANDBOX_TMPFS_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+const TEST_SANDBOX_PROCESS_LIMIT: u64 = 512;
+const TEST_SANDBOX_OPEN_FILE_LIMIT: u64 = 1024;
+const TEST_SANDBOX_CPU_SECS: u64 = 300;
 const PAYLOAD_TENANT: &str = "cognition-market-pilot";
 const ADMISSION_JOB_SCHEMA: &str = "chio.finding.admission-job.v1";
 
@@ -109,8 +115,11 @@ pub(super) fn cmd_finding_package_verified_fix(
         .packages_directory
         .join(format!(".verified-fix-work-{}", uuid::Uuid::new_v4()));
     create_private_directory(&work_root)?;
-    let staged_repository = stage_repository(&repository, &work_root)?;
-    let mut worktrees = WorktreeSet::new(staged_repository.clone(), work_root);
+    // Install the cleanup guard before clone staging. Any partial clone or
+    // checkout is therefore removed on every ordinary error path.
+    let worktrees = StagedRepositorySet::new(work_root);
+    worktrees.stage(&repository)?;
+    let staged_repository = worktrees.repository.clone();
     let baseline_path = worktrees.add("baseline", &base)?;
     let candidate_path = worktrees.add("candidate", &candidate)?;
     let baseline = run_test_commands(&baseline_path, request.tests)?;
@@ -137,7 +146,7 @@ pub(super) fn cmd_finding_package_verified_fix(
     })?;
     let issued_at = unix_time()?;
     let runner_manifest = canonical_json_bytes(&serde_json::json!({
-        "isolation": "bubblewrap-unshare-net-v1",
+        "isolation": "bubblewrap-rlimit-bounded-tmpfs-v1",
         "runner": "chio finding package verified-fix",
         "tests": request.tests,
         "version": env!("CARGO_PKG_VERSION"),
@@ -179,7 +188,7 @@ pub(super) fn cmd_finding_package_verified_fix(
         },
         Path::to_path_buf,
     );
-    write_private_new(&output, &bytes)?;
+    write_private_new_atomic(&output, &bytes)?;
     let report = serde_json::json!({
         "candidatePassed": true,
         "draft": output,
@@ -473,11 +482,7 @@ pub(super) fn cmd_finding_verify_bundle(
         read_file_bounded(input, MAX_PROOF_BYTES)?
     };
     let proof: FindingOperatorProofBundle = parse_canonical(&bytes, "proof bundle")?;
-    let now = unix_time()?;
-    proof
-        .verify(&market, now)
-        .map_err(CliError::cli_other_error)?;
-    let purchase_verified = match (purchase_request_path, purchase_result_path) {
+    let authorized_terminal = match (purchase_request_path, purchase_result_path) {
         (Some(request_path), Some(result_path)) => {
             let request: FindingPurchaseRequest =
                 read_canonical_file(request_path, 64 * 1024)?;
@@ -496,16 +501,46 @@ pub(super) fn cmd_finding_verify_bundle(
                     &proof.bundle.admission,
                 )
                 .map_err(CliError::transport_shape_error)?;
-            super::verify_purchased_output(&proof.bundle.finding, &result)?;
-            true
+            let terminal_time = result
+                .purchase_record
+                .as_ref()
+                .map(|record| record.body.recorded_at)
+                .or_else(|| {
+                    result
+                        .failed_delivery
+                        .as_ref()
+                        .map(|failed| failed.body.recorded_at)
+                })
+                .ok_or_else(|| {
+                    CliError::transport_shape_error(
+                        "purchase terminal omitted its authenticated time".to_owned(),
+                    )
+                })?;
+            Some((result, terminal_time))
         }
-        (None, None) => false,
+        (None, None) => None,
         _ => {
             return Err(CliError::cli_other_error(
                 "purchase request and result must be supplied together".to_owned(),
             ));
         }
     };
+    // A paid terminal remains deliverable after the listing or admission
+    // expires. Its purchase authority signature authenticates the historical
+    // record time, so verify proof liveness at that terminal rather than at
+    // the retrying client's wall clock. Pre-purchase verification stays live.
+    let verification_time = proof_verification_time(
+        authorized_terminal
+            .as_ref()
+            .map(|(_, terminal_time)| *terminal_time),
+    )?;
+    proof
+        .verify(&market, verification_time)
+        .map_err(CliError::cli_other_error)?;
+    if let Some((result, _)) = authorized_terminal.as_ref() {
+        super::verify_purchased_output(&proof.bundle.finding, result)?;
+    }
+    let purchase_verified = authorized_terminal.is_some();
     let result = serde_json::json!({
         "evaluationTime": proof.bundle.verifier_report.body.evaluation_time,
         "findingId": proof.bundle.finding.finding_id,
@@ -528,50 +563,62 @@ pub(super) fn cmd_finding_verify_bundle(
     Ok(())
 }
 
-struct WorktreeSet {
-    repository: PathBuf,
-    root: PathBuf,
-    paths: Vec<PathBuf>,
+fn proof_verification_time(authenticated_terminal_time: Option<u64>) -> Result<u64, CliError> {
+    match authenticated_terminal_time {
+        Some(terminal_time) => Ok(terminal_time),
+        None => unix_time(),
+    }
 }
 
-impl WorktreeSet {
-    fn new(repository: PathBuf, root: PathBuf) -> Self {
+struct StagedRepositorySet {
+    repository: PathBuf,
+    root: PathBuf,
+}
+
+impl StagedRepositorySet {
+    fn new(root: PathBuf) -> Self {
         Self {
-            repository,
+            repository: root.join("repository"),
             root,
-            paths: Vec::new(),
         }
     }
 
-    fn add(&mut self, name: &str, revision: &str) -> Result<PathBuf, CliError> {
+    fn stage(&self, source: &Path) -> Result<(), CliError> {
+        stage_repository(source, &self.root).map(|_| ())
+    }
+
+    fn add(&self, name: &str, revision: &str) -> Result<PathBuf, CliError> {
         let path = self.root.join(name);
+        let template = self.root.join(format!("{name}-git-template"));
+        fs::create_dir(&template)?;
+        let status = hardened_git_command()
+            .args(["clone", "--local", "--no-hardlinks", "--no-checkout"])
+            .arg(format!("--template={}", template.display()))
+            .arg(&self.repository)
+            .arg(&path)
+            .status()?;
+        if !status.success() {
+            return Err(CliError::cli_other_error(format!(
+                "failed to create isolated {name} repository"
+            )));
+        }
         let status = hardened_git_command()
             .arg("-C")
-            .arg(&self.repository)
-            .args(["worktree", "add", "--detach"])
             .arg(&path)
+            .args(["checkout", "--detach"])
             .arg(revision)
             .status()?;
         if !status.success() {
             return Err(CliError::cli_other_error(format!(
-                "failed to create isolated {name} worktree"
+                "failed to check out isolated {name} repository"
             )));
         }
-        self.paths.push(path.clone());
         Ok(path)
     }
 }
 
-impl Drop for WorktreeSet {
+impl Drop for StagedRepositorySet {
     fn drop(&mut self) {
-        for path in self.paths.iter().rev() {
-            let _ = hardened_git_command()
-                .arg("-C")
-                .arg(&self.repository)
-                .args(["worktree", "remove", "--force"])
-                .arg(path)
-                .status();
-        }
         let _ = fs::remove_dir_all(&self.root);
     }
 }
@@ -598,36 +645,90 @@ fn run_test_command_with_timeout(
     command: &str,
     timeout: Duration,
 ) -> Result<VerifiedFixCommandResult, CliError> {
+    run_test_command_with_limits(
+        worktree,
+        command,
+        timeout,
+        TestSandboxLimits::production(),
+    )
+}
+
+#[derive(Clone, Copy)]
+struct TestSandboxLimits {
+    address_space_bytes: u64,
+    file_bytes: u64,
+    tmpfs_bytes: u64,
+    process_count: u64,
+    open_files: u64,
+    cpu_secs: u64,
+}
+
+impl TestSandboxLimits {
+    const fn production() -> Self {
+        Self {
+            address_space_bytes: TEST_SANDBOX_ADDRESS_SPACE_BYTES,
+            file_bytes: TEST_SANDBOX_FILE_BYTES,
+            tmpfs_bytes: TEST_SANDBOX_TMPFS_BYTES,
+            process_count: TEST_SANDBOX_PROCESS_LIMIT,
+            open_files: TEST_SANDBOX_OPEN_FILE_LIMIT,
+            cpu_secs: TEST_SANDBOX_CPU_SECS,
+        }
+    }
+}
+
+fn run_test_command_with_limits(
+    worktree: &Path,
+    command: &str,
+    timeout: Duration,
+    limits: TestSandboxLimits,
+) -> Result<VerifiedFixCommandResult, CliError> {
     let started = Instant::now();
-    let mut isolated = Command::new("bwrap");
-    isolated.args([
-        "--die-with-parent",
-        "--new-session",
-        "--unshare-net",
-        "--unshare-pid",
-        "--clearenv",
-        "--proc",
-        "/proc",
-        "--dev",
-        "/dev",
-        "--tmpfs",
-        "/tmp",
-        "--dir",
-        "/tmp/chio-home",
-        "--dir",
-        "/tmp/chio-cargo",
-    ]);
+    let mut isolated = Command::new("prlimit");
+    isolated
+        .arg(format!("--as={}", limits.address_space_bytes))
+        .arg(format!("--fsize={}", limits.file_bytes))
+        .arg(format!("--nproc={}", limits.process_count))
+        .arg(format!("--nofile={}", limits.open_files))
+        .arg(format!("--cpu={}", limits.cpu_secs))
+        .args(["--", "bwrap"])
+        .args([
+            "--die-with-parent",
+            "--new-session",
+            "--unshare-user",
+            "--unshare-net",
+            "--unshare-pid",
+            "--unshare-ipc",
+            "--unshare-cgroup-try",
+            "--disable-userns",
+            "--clearenv",
+            "--proc",
+            "/proc",
+            "--dev",
+            "/dev",
+            "--size",
+        ])
+        .arg(limits.tmpfs_bytes.to_string())
+        .args([
+            "--tmpfs",
+            "/workspace",
+            "--dir",
+            "/workspace/.home",
+            "--dir",
+            "/workspace/.cargo",
+            "--dir",
+            "/workspace/.tmp",
+        ]);
     add_runtime_mounts(&mut isolated);
     isolated
-        .arg("--bind")
+        .arg("--ro-bind")
         .arg(worktree)
-        .arg(worktree)
+        .arg("/source")
         .arg("--chdir")
-        .arg(worktree)
+        .arg("/workspace")
         .args([
             "--setenv",
             "HOME",
-            "/tmp/chio-home",
+            "/workspace/.home",
             "--setenv",
             "LANG",
             "C",
@@ -642,14 +743,30 @@ fn run_test_command_with_timeout(
             &sandbox_path(),
             "--setenv",
             "CARGO_HOME",
-            "/tmp/chio-cargo",
+            "/workspace/.cargo",
             "--setenv",
             "CARGO_NET_OFFLINE",
             "true",
+            "--setenv",
+            "GIT_CONFIG_GLOBAL",
+            "/dev/null",
+            "--setenv",
+            "GIT_CONFIG_NOSYSTEM",
+            "1",
+            "--setenv",
+            "GIT_TERMINAL_PROMPT",
+            "0",
+            "--setenv",
+            "TMPDIR",
+            "/workspace/.tmp",
             "--",
             "sh",
             "-c",
         ])
+        .arg(
+            "mkdir -p /workspace/repository && cp -a /source/. /workspace/repository/ && cd /workspace/repository && exec sh -c \"$1\"",
+        )
+        .arg("chio-verified-fix-sandbox")
         .arg(command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -850,7 +967,7 @@ fn add_runtime_mounts(command: &mut Command) {
                 command
                     .arg("--ro-bind")
                     .arg(source)
-                    .arg(format!("/tmp/chio-cargo/{name}"));
+                    .arg(format!("/workspace/.cargo/{name}"));
             }
         }
     }
@@ -892,6 +1009,19 @@ fn require_bwrap() -> Result<(), CliError> {
             "bubblewrap is unavailable for verified-fix isolation".to_owned(),
         ));
     }
+    let output = Command::new("prlimit")
+        .arg("--version")
+        .output()
+        .map_err(|_| {
+            CliError::cli_other_error(
+                "verified-fix packaging requires prlimit for resource isolation".to_owned(),
+            )
+        })?;
+    if !output.status.success() {
+        return Err(CliError::cli_other_error(
+            "prlimit is unavailable for verified-fix resource isolation".to_owned(),
+        ));
+    }
     Ok(())
 }
 
@@ -899,6 +1029,7 @@ fn runtime_fingerprint() -> Result<Vec<u8>, CliError> {
     let os_release = fs::read_to_string("/etc/os-release").unwrap_or_default();
     let git = command_version("git", &["--version"])?;
     let bwrap = command_version("bwrap", &["--version"])?;
+    let prlimit = command_version("prlimit", &["--version"])?;
     let shell = command_version("sh", &["--version"]).unwrap_or_else(|_| "sh".to_owned());
     canonical_json_bytes(&serde_json::json!({
         "arch": std::env::consts::ARCH,
@@ -906,6 +1037,15 @@ fn runtime_fingerprint() -> Result<Vec<u8>, CliError> {
         "git": git,
         "os": std::env::consts::OS,
         "osReleaseSha256": sha256_hex(os_release.as_bytes()),
+        "prlimit": prlimit,
+        "resourceLimits": {
+            "addressSpaceBytes": TEST_SANDBOX_ADDRESS_SPACE_BYTES,
+            "cpuSeconds": TEST_SANDBOX_CPU_SECS,
+            "fileBytes": TEST_SANDBOX_FILE_BYTES,
+            "openFiles": TEST_SANDBOX_OPEN_FILE_LIMIT,
+            "processes": TEST_SANDBOX_PROCESS_LIMIT,
+            "writableTmpfsBytes": TEST_SANDBOX_TMPFS_BYTES,
+        },
         "shell": shell,
     }))
     .map_err(CliError::from)
@@ -1291,8 +1431,37 @@ fn write_private_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
     Ok(())
 }
 
+fn write_private_new_atomic(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
+    let parent = path.parent().ok_or_else(|| {
+        CliError::cli_other_error("output path has no parent directory".to_owned())
+    })?;
+    let file_name = path.file_name().and_then(|name| name.to_str()).ok_or_else(|| {
+        CliError::cli_other_error("output path has no portable file name".to_owned())
+    })?;
+    let temporary = parent.join(format!(".{file_name}.tmp"));
+    if temporary.exists() {
+        let metadata = fs::symlink_metadata(&temporary)?;
+        if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+            return Err(CliError::cli_other_error(format!(
+                "{} is not a regular temporary output file",
+                temporary.display()
+            )));
+        }
+        fs::remove_file(&temporary)?;
+    }
+    write_private_new(&temporary, bytes)?;
+    if let Err(error) = fs::hard_link(&temporary, path) {
+        let _ = fs::remove_file(&temporary);
+        return Err(CliError::from(error));
+    }
+    fs::remove_file(&temporary)?;
+    let directory = OpenOptions::new().read(true).open(parent)?;
+    directory.sync_all()?;
+    Ok(())
+}
+
 fn write_private_exact_or_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
-    match write_private_new(path, bytes) {
+    match write_private_new_atomic(path, bytes) {
         Ok(()) => Ok(()),
         Err(_) if path.is_file() => {
             let existing = fs::read(path)?;
@@ -1400,11 +1569,43 @@ mod tests {
 
         let work_root = root.path().join("work");
         fs::create_dir(&work_root).unwrap();
-        let staged = stage_repository(&source, &work_root).unwrap();
-        let revision = git_stdout(&staged, &["rev-parse", "HEAD"]).unwrap();
-        let mut worktrees = WorktreeSet::new(staged, work_root);
+        let worktrees = StagedRepositorySet::new(work_root);
+        worktrees.stage(&source).unwrap();
+        let revision = git_stdout(&worktrees.repository, &["rev-parse", "HEAD"]).unwrap();
         worktrees.add("candidate", &revision).unwrap();
         assert!(!marker.exists());
+    }
+
+    #[test]
+    fn failed_repository_staging_removes_its_partial_root() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("not-a-repository");
+        fs::create_dir(&source).unwrap();
+        let work_root = root.path().join("work");
+        fs::create_dir(&work_root).unwrap();
+        let result = {
+            let worktrees = StagedRepositorySet::new(work_root.clone());
+            worktrees.stage(&source)
+        };
+        assert!(result.is_err());
+        assert!(!work_root.exists());
+    }
+
+    #[test]
+    fn private_new_output_is_published_only_after_complete_write() {
+        let root = tempfile::tempdir().unwrap();
+        let output = root.path().join("package.draft.json");
+        let bytes = vec![b'x'; 64 * 1024];
+        write_private_new_atomic(&output, &bytes).unwrap();
+        assert_eq!(fs::read(&output).unwrap(), bytes);
+        assert!(!root.path().join(".package.draft.json.tmp").exists());
+        assert!(write_private_new_atomic(&output, b"replacement").is_err());
+        assert_eq!(fs::read(&output).unwrap(), bytes);
+    }
+
+    #[test]
+    fn paid_terminal_uses_its_authenticated_historical_verification_time() {
+        assert_eq!(proof_verification_time(Some(1_700_000_000)).unwrap(), 1_700_000_000);
     }
 
     #[test]
@@ -1415,6 +1616,12 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let worktree = root.path().join("worktree");
         fs::create_dir(&worktree).unwrap();
+        assert!(Command::new("git")
+            .arg("init")
+            .arg(&worktree)
+            .status()
+            .unwrap()
+            .success());
         let secret = root.path().join("operator-profile.json");
         fs::write(&secret, "operator-secret").unwrap();
         fs::set_permissions(&secret, fs::Permissions::from_mode(0o600)).unwrap();
@@ -1422,6 +1629,29 @@ mod tests {
         let result = run_test_command_with_timeout(&worktree, &command, Duration::from_secs(2))
             .unwrap();
         assert_eq!(result.exit_code, 0);
+        let git_result = run_test_command_with_timeout(
+            &worktree,
+            "test \"$(git rev-parse --is-inside-work-tree)\" = true",
+            Duration::from_secs(2),
+        )
+        .unwrap();
+        assert_eq!(git_result.exit_code, 0);
+
+        let bounded_write = run_test_command_with_limits(
+            &worktree,
+            "dd if=/dev/zero of=too-large bs=1048576 count=2 status=none",
+            Duration::from_secs(2),
+            TestSandboxLimits {
+                address_space_bytes: 512 * 1024 * 1024,
+                file_bytes: 4 * 1024 * 1024,
+                tmpfs_bytes: 1024 * 1024,
+                process_count: 64,
+                open_files: 128,
+                cpu_secs: 2,
+            },
+        )
+        .unwrap();
+        assert_ne!(bounded_write.exit_code, 0);
 
         let started = Instant::now();
         let error = run_test_command_with_timeout(

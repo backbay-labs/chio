@@ -153,7 +153,11 @@ pub struct FindingOperatorPurchaseExecutor {
     keys: FindingOperatorPurchaseKeys,
     buyers: Vec<FindingOperatorBuyerCredential>,
     #[cfg(test)]
+    stop_after_purchase_job_once: std::sync::atomic::AtomicBool,
+    #[cfg(test)]
     stop_after_reservation_once: std::sync::atomic::AtomicBool,
+    #[cfg(test)]
+    test_now: std::sync::atomic::AtomicU64,
 }
 
 impl FindingOperatorPurchaseExecutor {
@@ -246,14 +250,41 @@ impl FindingOperatorPurchaseExecutor {
             keys,
             buyers,
             #[cfg(test)]
+            stop_after_purchase_job_once: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(test)]
             stop_after_reservation_once: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(test)]
+            test_now: std::sync::atomic::AtomicU64::new(0),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn stop_after_purchase_job_once(&self) {
+        self.stop_after_purchase_job_once
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
     #[cfg(test)]
     pub(crate) fn stop_after_reservation_once(&self) {
         self.stop_after_reservation_once
             .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_test_now(&self, now: u64) {
+        self.test_now
+            .store(now, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn current_time(&self) -> Result<u64, FindingPurchaseExecutionError> {
+        #[cfg(test)]
+        {
+            let now = self.test_now.load(std::sync::atomic::Ordering::SeqCst);
+            if now != 0 {
+                return Ok(now);
+            }
+        }
+        unix_timestamp_now()
     }
 
     fn credential(
@@ -816,7 +847,7 @@ impl FindingOperatorPurchaseExecutor {
                 "maximum price exceeds the durable payment range".to_owned(),
             ));
         }
-        let now = unix_timestamp_now()?;
+        let now = self.current_time()?;
         let credential = self.credential(authenticated)?;
         if request
             .payer
@@ -862,8 +893,16 @@ impl FindingOperatorPurchaseExecutor {
             ));
         }
         let prepared_at = stored_job.as_ref().map_or(now, |job| job.prepared_at);
-        let bundle = self.load_bundle(&request.finding_id, prepared_at)?;
-        let witness = self.admission_witness(&bundle, prepared_at)?;
+        // A prepared job is only immutable construction evidence. Until a
+        // reservation exists, a retry is a new commitment of market exposure
+        // and must re-check every constituent at the current clock.
+        let validation_time = if stored_job.is_some() && existing_reservation.is_none() {
+            now
+        } else {
+            prepared_at
+        };
+        let bundle = self.load_bundle(&request.finding_id, validation_time)?;
+        let witness = self.admission_witness(&bundle, validation_time)?;
         let job = match stored_job {
             Some(job) => {
                 self.validate_purchase_job(&job, credential, request, &request_sha256, &bundle)?;
@@ -879,6 +918,15 @@ impl FindingOperatorPurchaseExecutor {
                 now,
             )?,
         };
+        #[cfg(test)]
+        if self
+            .stop_after_purchase_job_once
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err(FindingPurchaseExecutionError::Pending(
+                "test interruption after durable purchase job".to_owned(),
+            ));
+        }
         let bid = &job.bid;
         let ask = bid_with_finding_purchase(
             bid,
@@ -1088,7 +1136,7 @@ impl FindingOperatorPurchaseExecutor {
                     execution_internal(error),
                 )
             })?;
-        let finalized_at = unix_timestamp_now()?;
+        let finalized_at = self.current_time()?;
         let payer_key = credential.signing_key.public_key();
         let result = match response.verdict {
             Verdict::Allow => {
