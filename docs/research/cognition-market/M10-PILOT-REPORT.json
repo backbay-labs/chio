@@ -1,15 +1,16 @@
 {
   "admissionMillis": {
-    "max": 2032,
-    "median": 2003.5,
-    "min": 1801
+    "max": 2056,
+    "median": 1992.5,
+    "min": 1670
   },
-  "candidateSha": "e77b19ac1c0c7120d19963bff9f27c91a93c6f45",
+  "candidateSha": "ee11c61a0475028ff4ea56fb5683652a7b3074a2",
   "challenge": {
-    "challengeId": "c9ab9f46a8d197bbb98ef2191906702e481cd7a5185c97fee2e3dc99f685ae18",
-    "findingId": "4a9f5b04e6df7f94e59d1d756c6e319022cccfa7a1924d2eec3273203df050c3",
-    "intentId": "4184b5446f7c6ec99bb0e2fec31ba01ff9eeff68c983a3cf7cc51ae8c1d48fc1",
+    "challengeId": "74e3d88649d5630c5b944da7ef9f61c3c63287969f29e815cb48a17e25744f30",
+    "findingId": "ab7022bee0e71c3b7c40dd68866fdb56b6ff22d86cf9e38698d373e60db94099",
+    "intentId": "10b3abfe0b38f3e6dae2f35630fe01f1ae243cd9bf638f653dcb082260adca57",
     "proofKind": "inclusion",
+    "retractionCrashReplayExact": true,
     "status": "retracted"
   },
   "clients": [
@@ -26,7 +27,7 @@
     "purchaseCount": 5,
     "taskCount": 10
   },
-  "generatedAt": 1787633657,
+  "generatedAt": 1787670115,
   "operatorTick": {
     "bundleCount": 10,
     "captureCount": 5,
@@ -37,9 +38,9 @@
     "terminalCount": 5
   },
   "purchaseMillis": {
-    "max": 2948,
-    "median": 2923.5,
-    "min": 2585
+    "max": 2975,
+    "median": 2847.0,
+    "min": 2644
   },
   "replay": {
     "captureCount": 5,
@@ -54,6 +55,7 @@
   },
   "schema": "chio.cognition-market.pilot-report.v1",
   "tamper": {
+    "purchaseTerminalRustRejected": true,
     "rustRejected": true,
     "typescriptRejected": true
   },

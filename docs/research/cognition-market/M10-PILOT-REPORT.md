@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`e77b19ac1c0c7120d19963bff9f27c91a93c6f45`. The pilot used the installed
+`ee11c61a0475028ff4ea56fb5683652a7b3074a2`. The pilot used the installed
 `chio` binary, one deployable local operator, and distinct scoped seller and
 buyer credentials. It did not give either agent the global service token.
 
@@ -24,13 +24,14 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,801 ms minimum, 2,003.5 ms median, 2,032 ms maximum
-- Recorded normal purchase time: 2,585 ms minimum, 2,923.5 ms median,
-  2,948 ms maximum
+- Admission time: 1,670 ms minimum, 1,992.5 ms median, 2,056 ms maximum
+- Recorded normal purchase time: 2,644 ms minimum, 2,847 ms median,
+  2,975 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
-verifier, purchased the Finding, decoded the verified-fix payload, and wrote the
-patch without applying it to a source workspace.
+verifier, purchased the Finding, verified the signed purchase terminal and
+payload commitment, decoded the verified-fix payload, and wrote the patch
+without applying it to a source workspace.
 
 ## Restart and replay
 
@@ -51,9 +52,33 @@ status read returned an inclusion proof for the retracted Finding, including
 across the status-clock edge that previously caused a one-second rollback
 failure.
 
+The qualifier then removed the locally persisted retraction result to simulate
+a crash after status publication. The retry reused the exact persisted intent
+bytes and returned the same retraction terminal.
+
 The qualifier also altered signed Finding material in a retrieved proof bundle.
 Both the Rust reference verifier and the TypeScript SDK boundary rejected it.
-Python separately exercises altered-proof rejection in its SDK test suite.
+It separately corrupted the signed purchase record and the Rust buyer boundary
+rejected that terminal. Python separately exercises altered-proof and terminal
+verification boundaries in its SDK test suite.
+
+## Release hardening
+
+The requalified candidate also closes the final deployment review findings:
+
+- Seller test commands see only their staged worktree and required read-only
+  runtimes, never the operator profile or state tree. They have no network, a
+  cleared environment, bounded output, a PID namespace, and a five-minute
+  execution deadline.
+- Source repositories are copied without hard links into operator-owned state.
+  Git hooks, system and global configuration, credentials, and external
+  protocol helpers are disabled before worktree checkout.
+- Bundle, encrypted payload, and proof bytes are durable before activation.
+  Retraction intent bytes are durable before submission, and pre-dispatch
+  purchase failures release both reservation exposure and any reserved slot.
+- Seller client credentials contain no market signing seed. Buyer SDKs require
+  a search predicate, use bounded request deadlines, and verify the signed
+  purchase record and reveal commitment before returning a patch.
 
 ## Reproduction
 
