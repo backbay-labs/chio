@@ -114,9 +114,18 @@ pub(crate) fn dispatch_finding(
         FindingCommands::Admit { profile, package } => {
             cmd_finding_admit(&profile, &package, json_output)
         }
-        FindingCommands::VerifyBundle { input, profile } => {
-            cmd_finding_verify_bundle(&profile, &input, json_output)
-        }
+        FindingCommands::VerifyBundle {
+            input,
+            profile,
+            purchase_request,
+            purchase_result,
+        } => cmd_finding_verify_bundle(
+            &profile,
+            &input,
+            purchase_request.as_deref(),
+            purchase_result.as_deref(),
+            json_output,
+        ),
         FindingCommands::Publish { file } => cmd_finding_publish(
             &file,
             json_output,

@@ -102,10 +102,13 @@ def _load_profile(path: str | Path, schema: str) -> dict[str, Any]:
     market = profile.get("market")
     if not isinstance(principal, str) or not principal or principal.strip() != principal:
         raise CognitionMarketError("client profile principal is invalid")
-    if not isinstance(seed, str) or len(seed) != 64 or any(
-        character not in "0123456789abcdef" for character in seed
-    ):
-        raise CognitionMarketError("client profile signing seed is invalid")
+    if schema == BUYER_SCHEMA:
+        if not isinstance(seed, str) or len(seed) != 64 or any(
+            character not in "0123456789abcdef" for character in seed
+        ):
+            raise CognitionMarketError("client profile signing seed is invalid")
+    elif "signingSeed" in profile:
+        raise CognitionMarketError("seller client profile must not contain a signing seed")
     if not isinstance(payout, str) or len(payout) != 42 or not payout.startswith("0x") or any(
         character not in "0123456789abcdef" for character in payout[2:]
     ):
@@ -128,7 +131,12 @@ def _request_id(
     payer: str | None,
     deadline_secs: int | None,
 ) -> tuple[str, dict[str, Any]]:
-    if not isinstance(max_price_units, int) or isinstance(max_price_units, bool) or max_price_units <= 0:
+    if (
+        not isinstance(max_price_units, int)
+        or isinstance(max_price_units, bool)
+        or max_price_units <= 0
+        or max_price_units > 2**63 - 1
+    ):
         raise CognitionMarketError("max_price_units must be a positive integer")
     if not isinstance(currency, str) or not currency or len(currency) > 16:
         raise CognitionMarketError("currency is invalid")
@@ -178,13 +186,14 @@ class CognitionMarketBuyer:
     async def search(
         self,
         *,
-        topic_prefix: str | None = None,
+        topic_prefix: str,
         limit: int = 20,
         cursor: str | None = None,
     ) -> dict[str, Any]:
+        if not topic_prefix or topic_prefix.strip() != topic_prefix:
+            raise CognitionMarketError("topic_prefix must be non-empty and trimmed")
         params: dict[str, str | int] = {"limit": limit}
-        if topic_prefix is not None:
-            params["topicPrefix"] = topic_prefix
+        params["topicPrefix"] = topic_prefix
         if cursor is not None:
             params["cursor"] = cursor
         return await self._json_request("GET", "/v1/findings/search", params=params)
@@ -270,13 +279,67 @@ class CognitionMarketBuyer:
         deadline_secs: int | None = 3600,
     ) -> PurchasedVerifiedFix:
         """Purchase and decode a verified patch without applying it."""
-        purchase = await self.purchase(
-            verified,
-            max_price_units=max_price_units,
-            currency=currency,
-            deadline_secs=deadline_secs,
+        _, request = _request_id(
+            verified.finding_id,
+            max_price_units,
+            currency,
+            None,
+            deadline_secs,
         )
+        purchase = await self._json_request(
+            "POST",
+            f"/v1/findings/{verified.finding_id}/purchase",
+            content=_canonical_json(request),
+            headers={"content-type": "application/json"},
+        )
+        await self._verify_purchase_terminal(verified, request, purchase)
         return _purchased_verified_fix(verified, purchase)
+
+    async def _verify_purchase_terminal(
+        self,
+        verified: VerifiedFindingProof,
+        request: dict[str, Any],
+        purchase: dict[str, Any],
+    ) -> None:
+        def run() -> subprocess.CompletedProcess[bytes]:
+            with tempfile.TemporaryDirectory(prefix="chio-market-purchase-") as directory:
+                root = Path(directory)
+                proof_path = root / "proof.json"
+                request_path = root / "request.json"
+                result_path = root / "result.json"
+                proof_path.write_bytes(verified.proof)
+                request_path.write_bytes(_canonical_json(request))
+                result_path.write_bytes(_canonical_json(purchase))
+                return subprocess.run(
+                    [
+                        self.chio_binary,
+                        "finding",
+                        "verify-bundle",
+                        "--profile",
+                        str(self.profile_path),
+                        "--input",
+                        str(proof_path),
+                        "--purchase-request",
+                        str(request_path),
+                        "--purchase-result",
+                        str(result_path),
+                        "--json",
+                    ],
+                    capture_output=True,
+                    check=False,
+                    timeout=60,
+                )
+
+        completed = await asyncio.to_thread(run)
+        if completed.returncode != 0:
+            message = completed.stderr.decode("utf-8", errors="replace").strip()
+            raise CognitionMarketError(f"Rust purchase verification failed: {message}")
+        try:
+            report = json.loads(completed.stdout)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise CognitionMarketError("Rust purchase verifier returned invalid JSON") from error
+        if not isinstance(report, dict) or report.get("purchaseTerminalVerified") is not True:
+            raise CognitionMarketError("Rust purchase verifier did not authorize the terminal")
 
     async def status(self, finding_id: str) -> dict[str, Any]:
         _require_hex64(finding_id, "finding_id")
@@ -491,6 +554,7 @@ def _purchased_verified_fix(
     encoded = output.get("payloadB64")
     if not isinstance(encoded, str) or not encoded:
         raise CognitionMarketError("verified-fix payload is missing")
+    _verify_reveal_commitment(verified, VERIFIED_FIX_MEDIA_TYPE, encoded)
     try:
         raw = base64.b64decode(encoded, validate=True)
         payload = json.loads(raw)
@@ -513,6 +577,24 @@ def _purchased_verified_fix(
     )
 
 
+def _verify_reveal_commitment(
+    verified: VerifiedFindingProof,
+    media_type: str,
+    payload_b64: str,
+) -> None:
+    try:
+        proof = json.loads(verified.proof)
+        finding = proof["bundle"]["finding"]
+        committed = finding["payload_sha256"]
+    except (KeyError, TypeError, json.JSONDecodeError) as error:
+        raise CognitionMarketError("verified proof omits the payload commitment") from error
+    actual = hashlib.sha256(
+        _canonical_json({"media_type": media_type, "payload_b64": payload_b64})
+    ).hexdigest()
+    if not isinstance(committed, str) or actual != committed:
+        raise CognitionMarketError("purchased output does not match the verified Finding")
+
+
 def _evidence_invalid_document(
     profile: dict[str, Any],
     verified: VerifiedFindingProof,
@@ -523,6 +605,7 @@ def _evidence_invalid_document(
     try:
         proof = json.loads(verified.proof)
         bundle = proof["bundle"]
+        finding = bundle["finding"]
         admission = bundle["admission"]["body"]
         schedule = bundle["feeSchedule"]["body"]
         terms = bundle["marketTerms"]["body"]
@@ -539,7 +622,9 @@ def _evidence_invalid_document(
     if payer_key != _public_key_from_profile_purchase(profile, purchase):
         raise CognitionMarketError("purchase payer does not match the scoped buyer")
     checkpoint_sha256 = hashlib.sha256(_canonical_json(checkpoint_body)).hexdigest()
-    checkpoint_ref = f"checkpoint:{checkpoint_body['checkpoint_seq']}"
+    checkpoint_ref = finding.get("evidence_checkpoint_ref")
+    if not isinstance(checkpoint_ref, str) or not checkpoint_ref:
+        raise CognitionMarketError("verified Finding omits its evidence checkpoint reference")
     purchase_digest = hashlib.sha256(_canonical_json(purchase_record)).hexdigest()
     fee_schedule_digest = admission["fee_schedule_envelope_sha256"]
     challenge_pool = admission["challenge_administration_pool"]

@@ -56,13 +56,13 @@ impl FindingFilingResolver for FindingOperatorFilingResolver {
         listing_id: &str,
         backing_envelope_sha256: &str,
     ) -> Option<SignedFindingAdmission> {
-        self.retained_bundles().into_iter().find_map(|bundle| {
-            let admission = bundle.admission;
-            (admission.body.finding_id == finding_id
-                && admission.body.listing_id == listing_id
-                && admission.body.backing_envelope_sha256 == backing_envelope_sha256)
-                .then_some(admission)
-        })
+        let record = self.bundles.get(finding_id).ok()?;
+        let bundle: FindingOperatorBundle = serde_json::from_slice(&record.bundle_json).ok()?;
+        let admission = bundle.admission;
+        (admission.body.finding_id == finding_id
+            && admission.body.listing_id == listing_id
+            && admission.body.backing_envelope_sha256 == backing_envelope_sha256)
+            .then_some(admission)
     }
 
     fn admission_by_envelope_sha256(

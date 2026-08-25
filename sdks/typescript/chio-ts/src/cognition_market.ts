@@ -38,7 +38,7 @@ export interface CognitionMarketClientProfile {
   };
   principalId: string;
   bearerToken: string;
-  signingSeed: string;
+  signingSeed?: string;
   payoutDestination: string;
 }
 
@@ -49,7 +49,7 @@ export interface VerifiedFindingProof {
 }
 
 export interface FindingSearchOptions {
-  topicPrefix?: string;
+  topicPrefix: string;
   limit?: number;
   cursor?: string;
 }
@@ -76,29 +76,33 @@ export class CognitionMarketBuyer {
   readonly profilePath: string;
   readonly chioBinary: string;
   readonly fetch: Fetch;
+  readonly timeoutMs: number;
 
   constructor(
     profilePath: string,
-    options: { chioBinary?: string; fetch?: Fetch } = {},
+    options: { chioBinary?: string; fetch?: Fetch; timeoutMs?: number } = {},
   ) {
     this.profilePath = profilePath;
     this.profile = loadProfile(profilePath, BUYER_SCHEMA);
     this.chioBinary = options.chioBinary ?? "chio";
     this.fetch = options.fetch ?? globalThis.fetch;
+    this.timeoutMs = requireTimeout(options.timeoutMs ?? 30_000);
   }
 
-  async search(options: FindingSearchOptions = {}): Promise<Record<string, unknown>> {
+  async search(options: FindingSearchOptions): Promise<Record<string, unknown>> {
+    if (options.topicPrefix.length === 0 || options.topicPrefix.trim() !== options.topicPrefix) {
+      throw new CognitionMarketError("topicPrefix must be non-empty and trimmed");
+    }
     const query = new URLSearchParams();
     query.set("limit", String(options.limit ?? 20));
-    if (options.topicPrefix !== undefined) query.set("topicPrefix", options.topicPrefix);
+    query.set("topicPrefix", options.topicPrefix);
     if (options.cursor !== undefined) query.set("cursor", options.cursor);
     return this.jsonRequest("GET", `/v1/findings/search?${query.toString()}`);
   }
 
   async proof(findingId: string): Promise<Uint8Array> {
     requireHex64(findingId, "findingId");
-    const response = await this.request("GET", `/v1/findings/${findingId}/proof`);
-    const proof = new Uint8Array(await response.arrayBuffer());
+    const proof = await this.request("GET", `/v1/findings/${findingId}/proof`);
     if (proof.length === 0 || proof.length > 24 * 1024 * 1024) {
       throw new CognitionMarketError("proof bundle is empty or oversized");
     }
@@ -159,7 +163,19 @@ export class CognitionMarketBuyer {
     verified: VerifiedFindingProof,
     options: FindingPurchaseOptions,
   ): Promise<PurchasedVerifiedFix> {
-    return purchasedVerifiedFix(verified, await this.purchase(verified, options));
+    const request = purchaseRequest(
+      verified.findingId,
+      options.maxPriceUnits,
+      options.currency ?? "USD",
+      options.deadlineSecs ?? 3600,
+    );
+    const purchase = await this.jsonRequest(
+      "POST",
+      `/v1/findings/${verified.findingId}/purchase`,
+      canonicalJson(request),
+    );
+    await this.verifyPurchaseTerminal(verified, request, purchase);
+    return purchasedVerifiedFix(verified, purchase);
   }
 
   async status(findingId: string): Promise<Record<string, unknown>> {
@@ -201,7 +217,11 @@ export class CognitionMarketBuyer {
       const evidencePath = join(directory, "evidence.json");
       const keyPath = join(directory, "challenger.seed");
       writeFileSync(evidencePath, canonicalJson(evidence));
-      writeFileSync(keyPath, this.profile.signingSeed, { encoding: "ascii", mode: 0o600 });
+      const signingSeed = this.profile.signingSeed;
+      if (signingSeed === undefined) {
+        throw new CognitionMarketError("buyer profile omitted its signing seed");
+      }
+      writeFileSync(keyPath, signingSeed, { encoding: "ascii", mode: 0o600 });
       chmodSync(keyPath, 0o600);
       const output = await runChio(
         this.chioBinary,
@@ -228,38 +248,85 @@ export class CognitionMarketBuyer {
     path: string,
     body?: Uint8Array,
   ): Promise<Record<string, unknown>> {
-    const response = await this.request(method, path, body);
-    return parseObject(new Uint8Array(await response.arrayBuffer()), "operator response");
+    return parseObject(await this.request(method, path, body), "operator response");
   }
 
-  private async request(method: string, path: string, body?: Uint8Array): Promise<Response> {
+  private async request(method: string, path: string, body?: Uint8Array): Promise<Uint8Array> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     const init: RequestInit = {
       method,
+      signal: controller.signal,
       headers: {
         authorization: `Bearer ${this.profile.bearerToken}`,
         "content-type": "application/json",
       },
     };
     if (body !== undefined) init.body = body;
-    const response = await this.fetch(`${this.profile.endpoint.replace(/\/$/, "")}${path}`, init);
-    if (!response.ok) {
-      const text = (await response.text()).slice(0, 4096);
-      throw new CognitionMarketError(`operator returned HTTP ${response.status}: ${text}`);
+    try {
+      const response = await this.fetch(
+        `${this.profile.endpoint.replace(/\/$/, "")}${path}`,
+        init,
+      );
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (!response.ok) {
+        const text = Buffer.from(bytes).toString("utf8").slice(0, 4096);
+        throw new CognitionMarketError(`operator returned HTTP ${response.status}: ${text}`);
+      }
+      return bytes;
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new CognitionMarketError("operator request timed out");
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
     }
-    return response;
+  }
+
+  private async verifyPurchaseTerminal(
+    verified: VerifiedFindingProof,
+    request: Record<string, unknown>,
+    purchase: Record<string, unknown>,
+  ): Promise<void> {
+    const directory = mkdtempSync(join(tmpdir(), "chio-market-purchase-"));
+    try {
+      const proofPath = join(directory, "proof.json");
+      const requestPath = join(directory, "request.json");
+      const resultPath = join(directory, "result.json");
+      writeFileSync(proofPath, verified.proof);
+      writeFileSync(requestPath, canonicalJson(request));
+      writeFileSync(resultPath, canonicalJson(purchase));
+      const output = await runChio(this.chioBinary, [
+        "finding", "verify-bundle",
+        "--profile", this.profilePath,
+        "--input", proofPath,
+        "--purchase-request", requestPath,
+        "--purchase-result", resultPath,
+        "--json",
+      ]);
+      const report = parseObject(output, "Rust purchase verifier response");
+      if (report.purchaseTerminalVerified !== true) {
+        throw new CognitionMarketError("Rust purchase verifier did not authorize the terminal");
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   }
 }
 
 export class CognitionMarketSeller {
   readonly credential: CognitionMarketClientProfile;
   readonly fetch: Fetch;
+  readonly timeoutMs: number;
 
   constructor(
     credentialPath: string,
-    options: { fetch?: Fetch } = {},
+    options: { fetch?: Fetch; timeoutMs?: number } = {},
   ) {
     this.credential = loadProfile(credentialPath, SELLER_SCHEMA);
     this.fetch = options.fetch ?? globalThis.fetch;
+    this.timeoutMs = requireTimeout(options.timeoutMs ?? 300_000);
   }
 
   async packageVerifiedFix(input: {
@@ -313,25 +380,35 @@ export class CognitionMarketSeller {
     path: string,
     body: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    const response = await this.fetch(
-      `${this.credential.endpoint.replace(/\/$/, "")}${path}`,
-      {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetch(
+        `${this.credential.endpoint.replace(/\/$/, "")}${path}`,
+        {
         method: "POST",
+        signal: controller.signal,
         headers: {
           authorization: `Bearer ${this.credential.bearerToken}`,
           "content-type": "application/json",
         },
         body: canonicalJson(body),
-      },
-    );
-    if (!response.ok) {
-      const text = (await response.text()).slice(0, 4096);
-      throw new CognitionMarketError(`operator returned HTTP ${response.status}: ${text}`);
+        },
+      );
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (!response.ok) {
+        const text = Buffer.from(bytes).toString("utf8").slice(0, 4096);
+        throw new CognitionMarketError(`operator returned HTTP ${response.status}: ${text}`);
+      }
+      return parseObject(bytes, "Finding admission response");
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new CognitionMarketError("operator request timed out");
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
     }
-    return parseObject(
-      new Uint8Array(await response.arrayBuffer()),
-      "Finding admission response",
-    );
   }
 }
 
@@ -346,10 +423,16 @@ function loadProfile(path: string, schema: string): CognitionMarketClientProfile
       || value.bearerToken.trim() !== value.bearerToken || value.bearerToken.length > 4096
       || typeof value.principalId !== "string" || value.principalId.length === 0
       || value.principalId.trim() !== value.principalId
-      || typeof value.signingSeed !== "string" || !/^[0-9a-f]{64}$/.test(value.signingSeed)
       || typeof value.payoutDestination !== "string"
       || !/^0x[0-9a-f]{40}$/.test(value.payoutDestination)) {
     throw new CognitionMarketError("client profile is invalid");
+  }
+  if (schema === BUYER_SCHEMA
+      && (typeof value.signingSeed !== "string" || !/^[0-9a-f]{64}$/.test(value.signingSeed))) {
+    throw new CognitionMarketError("client profile signing seed is invalid");
+  }
+  if (schema === SELLER_SCHEMA && Object.hasOwn(value, "signingSeed")) {
+    throw new CognitionMarketError("seller client profile must not contain a signing seed");
   }
   let endpoint: URL;
   try {
@@ -515,6 +598,7 @@ function purchasedVerifiedFix(
       || output.payloadB64.length === 0) {
     throw new CognitionMarketError("purchase did not return a verified-fix payload");
   }
+  verifyRevealCommitment(verified, VERIFIED_FIX_MEDIA_TYPE, output.payloadB64);
   let payload: Record<string, unknown>;
   try {
     const raw = Buffer.from(output.payloadB64, "base64");
@@ -546,6 +630,20 @@ function purchasedVerifiedFix(
   };
 }
 
+function verifyRevealCommitment(
+  verified: VerifiedFindingProof,
+  mediaType: string,
+  payloadB64: string,
+): void {
+  const proof = parseObject(verified.proof, "verified proof bundle");
+  const finding = memberObject(memberObject(proof, "bundle"), "finding");
+  const committed = memberString(finding, "payload_sha256");
+  const actual = digestJson({ media_type: mediaType, payload_b64: payloadB64 });
+  if (actual !== committed) {
+    throw new CognitionMarketError("purchased output does not match the verified Finding");
+  }
+}
+
 function evidenceInvalidDocument(
   verified: VerifiedFindingProof,
   purchase: Record<string, unknown>,
@@ -571,7 +669,7 @@ function evidenceInvalidDocument(
     throw new CognitionMarketError("purchase payer does not match its authenticated key");
   }
   const checkpointSha256 = digestJson(checkpointBody);
-  const checkpointRef = `checkpoint:${memberNumber(checkpointBody, "checkpoint_seq")}`;
+  const checkpointRef = memberString(memberObject(bundle, "finding"), "evidence_checkpoint_ref");
   const purchaseDigest = digestJson(purchaseRecord);
   const scheduleDigest = memberString(admission, "fee_schedule_envelope_sha256");
   const challengePool = memberObject(admission, "challenge_administration_pool");
@@ -667,4 +765,11 @@ function memberNumber(value: Record<string, unknown>, field: string): number {
 
 function digestJson(value: unknown): string {
   return createHash("sha256").update(canonicalJson(value)).digest("hex");
+}
+
+function requireTimeout(value: number): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new CognitionMarketError("timeoutMs must be a positive safe integer");
+  }
+  return value;
 }

@@ -35,6 +35,12 @@ pub(crate) enum FindingCommands {
         /// Strict canonical operator profile containing public deployment pins.
         #[arg(long)]
         profile: PathBuf,
+        /// Exact canonical purchase request to bind to an optional result.
+        #[arg(long, requires = "purchase_result")]
+        purchase_request: Option<PathBuf>,
+        /// Exact canonical purchase result whose signed terminal is verified.
+        #[arg(long, requires = "purchase_request")]
+        purchase_result: Option<PathBuf>,
     },
 
     /// Publish a canonical `chio.finding.v1` artifact to the venue index.

@@ -349,7 +349,9 @@ impl FindingPurchaseResult {
         Ok(())
     }
 
-    fn validate_authorized(
+    /// Verify the complete terminal against its exact public request and the
+    /// retained Finding/admission trust boundary.
+    pub fn validate_authorized(
         &self,
         request: &FindingPurchaseRequest,
         finding: &Finding,

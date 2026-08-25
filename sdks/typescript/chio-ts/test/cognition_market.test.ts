@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -25,7 +26,7 @@ function sellerProfileFile(): string {
   const path = join(directory, "seller.json");
   writeFileSync(
     path,
-    "{\"bearerToken\":\"seller-secret\",\"endpoint\":\"http://operator.local\",\"market\":{\"statusFeedOperator\":{\"feedId\":\"finding-status/local\"}},\"payoutDestination\":\"0x3333333333333333333333333333333333333333\",\"principalId\":\"seller-1\",\"schema\":\"chio.finding.seller-client.v1\",\"signingSeed\":\"4444444444444444444444444444444444444444444444444444444444444444\"}",
+    "{\"bearerToken\":\"seller-secret\",\"endpoint\":\"http://operator.local\",\"market\":{\"statusFeedOperator\":{\"feedId\":\"finding-status/local\"}},\"payoutDestination\":\"0x3333333333333333333333333333333333333333\",\"principalId\":\"seller-1\",\"schema\":\"chio.finding.seller-client.v1\"}",
   );
   return path;
 }
@@ -138,7 +139,16 @@ test("buyer returns a patch without applying it", async () => {
     repository: "/srv/example",
     schema: "chio.finding.verified-fix-payload.v1",
   })).toString("base64");
+  const commitment = createHash("sha256").update(Buffer.from(JSON.stringify({
+    media_type: "application/vnd.chio.verified-fix+json",
+    payload_b64: payload,
+  }))).digest("hex");
+  const directory = mkdtempSync(join(tmpdir(), "chio-market-ts-verifier-"));
+  const verifier = join(directory, "chio");
+  writeFileSync(verifier, "#!/bin/sh\nprintf '%s' '{\"purchaseTerminalVerified\":true}'\n");
+  chmodSync(verifier, 0o700);
   const buyer = new CognitionMarketBuyer(profileFile(), {
+    chioBinary: verifier,
     fetch: async () => Response.json({
       findingId,
       output: {
@@ -151,10 +161,25 @@ test("buyer returns a patch without applying it", async () => {
   });
   const verified: VerifiedFindingProof = {
     findingId,
-    proof: new Uint8Array([1]),
+    proof: Buffer.from(JSON.stringify({
+      bundle: { finding: { payload_sha256: commitment } },
+    })),
     verification: { findingId },
   };
   const purchased = await buyer.purchaseVerifiedFix(verified, { maxPriceUnits: 300 });
   assert.equal(purchased.baseRevision, "base");
   assert.equal(purchased.patch, "diff --git a/example.ts b/example.ts\n");
+});
+
+test("buyer request deadline aborts a stalled transport", async () => {
+  const buyer = new CognitionMarketBuyer(profileFile(), {
+    timeoutMs: 5,
+    fetch: async (_input, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+    }),
+  });
+  await assert.rejects(
+    buyer.search({ topicPrefix: "rust" }),
+    /operator request timed out/,
+  );
 });

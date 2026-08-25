@@ -811,6 +811,11 @@ impl FindingOperatorPurchaseExecutor {
         authenticated: &AuthenticatedFindingBuyer,
         request: &FindingPurchaseRequest,
     ) -> Result<FindingPurchaseResult, FindingPurchaseExecutionError> {
+        if request.max_price.units > i64::MAX as u64 {
+            return Err(FindingPurchaseExecutionError::Rejected(
+                "maximum price exceeds the durable payment range".to_owned(),
+            ));
+        }
         let now = unix_timestamp_now()?;
         let credential = self.credential(authenticated)?;
         if request
@@ -974,7 +979,14 @@ impl FindingOperatorPurchaseExecutor {
         .map_err(execution_internal)?;
         coordinator
             .reserve_slot(&reservation_id, now)
-            .map_err(execution_internal)?;
+            .map_err(|error| {
+                release_predispatch_reservation(
+                    &coordinator,
+                    &reservation_id,
+                    now,
+                    execution_internal(error),
+                )
+            })?;
         let context_b64 = purchase_context_b64(
             &bundle,
             bid,
@@ -982,7 +994,10 @@ impl FindingOperatorPurchaseExecutor {
             &accepted,
             &reservation_receipt,
             &reservation_id,
-        )?;
+        )
+        .map_err(|error| {
+            release_predispatch_reservation(&coordinator, &reservation_id, now, error)
+        })?;
         let publisher = FindingStatusEpochPublisher::new(
             self.authority.finding_status_store(),
             self.market.status_feed_operator.clone(),
@@ -990,10 +1005,24 @@ impl FindingOperatorPurchaseExecutor {
             self.keys.status_operator.clone(),
             self.market.status_max_epoch_age_secs,
         )
-        .map_err(execution_internal)?;
+        .map_err(|error| {
+            release_predispatch_reservation(
+                &coordinator,
+                &reservation_id,
+                now,
+                execution_internal(error),
+            )
+        })?;
         let status = publisher
             .publish_non_inclusion(&request.finding_id, &[], now)
-            .map_err(execution_internal)?;
+            .map_err(|error| {
+                release_predispatch_reservation(
+                    &coordinator,
+                    &reservation_id,
+                    now,
+                    execution_internal(error),
+                )
+            })?;
         let status_proof_b64 = STANDARD.encode(status.proof_bytes);
         let arguments = serde_json::json!({"finding_id": request.finding_id});
         let capability = ask.body.token_offer.clone();
@@ -1003,18 +1032,32 @@ impl FindingOperatorPurchaseExecutor {
                 capability_id: capability.id.clone(),
                 tool_server: bundle.admission.body.server_id.clone(),
                 tool_name: READ_FINDING_TOOL.to_owned(),
-                action_hash: sha256_hex(
-                    &canonical_json_bytes(&arguments).map_err(execution_internal)?,
-                ),
+                action_hash: sha256_hex(&canonical_json_bytes(&arguments).map_err(|error| {
+                    release_predispatch_reservation(
+                        &coordinator,
+                        &reservation_id,
+                        now,
+                        execution_internal(error),
+                    )
+                })?),
                 nonce: request.request_id.clone(),
                 issued_at: now,
                 agent_key: credential.signing_key.public_key(),
             },
             &credential.signing_key,
         )
-        .map_err(execution_internal)?;
-        let response = self
-            .build_kernel(&bundle)?
+        .map_err(|error| {
+            release_predispatch_reservation(
+                &coordinator,
+                &reservation_id,
+                now,
+                execution_internal(error),
+            )
+        })?;
+        let kernel = self.build_kernel(&bundle).map_err(|error| {
+            release_predispatch_reservation(&coordinator, &reservation_id, now, error)
+        })?;
+        let response = kernel
             .evaluate_tool_call_blocking(&ToolCallRequest {
                 request_id: request.request_id.clone(),
                 capability,
@@ -1037,7 +1080,14 @@ impl FindingOperatorPurchaseExecutor {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
-            .map_err(execution_internal)?;
+            .map_err(|error| {
+                release_predispatch_reservation(
+                    &coordinator,
+                    &reservation_id,
+                    now,
+                    execution_internal(error),
+                )
+            })?;
         let finalized_at = unix_timestamp_now()?;
         let payer_key = credential.signing_key.public_key();
         let result = match response.verdict {
@@ -1318,4 +1368,18 @@ fn execution_internal(error: impl std::fmt::Display) -> FindingPurchaseExecution
 
 fn execution_unavailable(error: impl std::fmt::Display) -> FindingPurchaseExecutionError {
     FindingPurchaseExecutionError::Unavailable(error.to_string())
+}
+
+fn release_predispatch_reservation(
+    coordinator: &FindingPurchaseCoordinator,
+    reservation_id: &str,
+    now: u64,
+    original: FindingPurchaseExecutionError,
+) -> FindingPurchaseExecutionError {
+    match coordinator.release(reservation_id, now) {
+        Ok(()) => original,
+        Err(release_error) => FindingPurchaseExecutionError::Internal(format!(
+            "{original}; durable pre-dispatch release failed: {release_error}"
+        )),
+    }
 }

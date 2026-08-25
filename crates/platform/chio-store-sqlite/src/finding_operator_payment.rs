@@ -180,12 +180,21 @@ impl SqliteFindingOperatorPaymentAdapter {
                     RailSettlementStatus::Released,
                 )
             }
-            SettlementAction::Refund { transaction_id } => {
+            SettlementAction::Refund {
+                transaction_id,
+                amount_units,
+                currency,
+                reference,
+            } => {
                 let binds_capture = (record.state == "captured"
                     && record.transaction_id.as_deref() == Some(transaction_id))
                     || (record.state == "refunded"
                         && record.prior_transaction_id.as_deref() == Some(transaction_id));
-                if !binds_capture {
+                if !binds_capture
+                    || amount_units != record.amount_units
+                    || currency != record.currency
+                    || reference != record.reference
+                {
                     return Err("refund does not bind a captured payment".to_owned());
                 }
                 (
@@ -297,28 +306,40 @@ impl PaymentAdapter for SqliteFindingOperatorPaymentAdapter {
     fn refund(
         &self,
         transaction_id: &str,
-        _amount_units: u64,
-        _currency: &str,
-        _reference: &str,
+        amount_units: u64,
+        currency: &str,
+        reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
+        validate_text(transaction_id, "refund_identifier").map_err(PaymentError::RailError)?;
         let conn = self
             .pool
             .get()
             .map_err(|error| PaymentError::RailError(error.to_string()))?;
-        let authorization_id: Option<String> = conn
+        let payment: Option<(String, String)> = conn
             .query_row(
-                "SELECT authorization_id FROM chio_finding_operator_payments WHERE transaction_id = ?1",
+                r#"
+                SELECT authorization_id,
+                       CASE WHEN state = 'refunded'
+                            THEN prior_transaction_id ELSE transaction_id END
+                FROM chio_finding_operator_payments
+                WHERE authorization_id = ?1 OR transaction_id = ?1 OR prior_transaction_id = ?1
+                "#,
                 [transaction_id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
             .map_err(|error| PaymentError::RailError(error.to_string()))?;
         drop(conn);
-        let authorization_id = authorization_id
+        let (authorization_id, captured_transaction_id) = payment
             .ok_or_else(|| PaymentError::RailError("captured payment was not found".to_owned()))?;
         self.settle(
             &authorization_id,
-            SettlementAction::Refund { transaction_id },
+            SettlementAction::Refund {
+                transaction_id: &captured_transaction_id,
+                amount_units,
+                currency,
+                reference,
+            },
         )
         .map_err(PaymentError::RailError)
     }
@@ -336,6 +357,9 @@ enum SettlementAction<'a> {
     },
     Refund {
         transaction_id: &'a str,
+        amount_units: u64,
+        currency: &'a str,
+        reference: &'a str,
     },
 }
 
@@ -555,5 +579,56 @@ mod tests {
         let mut changed = request("purchase-3");
         changed.amount_units = 26;
         assert!(adapter.authorize(&changed).is_err());
+    }
+
+    #[test]
+    fn refund_accepts_capture_or_authorization_id_and_replays_exactly() {
+        let adapter = SqliteFindingOperatorPaymentAdapter::open_in_memory().unwrap();
+        let authorization = adapter.authorize(&request("purchase-refund")).unwrap();
+        let captured = adapter
+            .capture(
+                &authorization.authorization_id,
+                25,
+                "USD",
+                "purchase-refund",
+            )
+            .unwrap();
+        let refunded = adapter
+            .refund(
+                &authorization.authorization_id,
+                25,
+                "USD",
+                "purchase-refund",
+            )
+            .unwrap();
+        let replayed = adapter
+            .refund(&captured.transaction_id, 25, "USD", "purchase-refund")
+            .unwrap();
+        let replayed_by_refund = adapter
+            .refund(&refunded.transaction_id, 25, "USD", "purchase-refund")
+            .unwrap();
+        assert_eq!(refunded.transaction_id, replayed.transaction_id);
+        assert_eq!(refunded.transaction_id, replayed_by_refund.transaction_id);
+        assert_eq!(
+            replayed_by_refund.settlement_status,
+            RailSettlementStatus::Refunded
+        );
+    }
+
+    #[test]
+    fn refund_rejects_changed_payment_inputs() {
+        let adapter = SqliteFindingOperatorPaymentAdapter::open_in_memory().unwrap();
+        let authorization = adapter.authorize(&request("purchase-refund-bind")).unwrap();
+        let captured = adapter
+            .capture(
+                &authorization.authorization_id,
+                25,
+                "USD",
+                "purchase-refund-bind",
+            )
+            .unwrap();
+        assert!(adapter
+            .refund(&captured.transaction_id, 26, "USD", "purchase-refund-bind",)
+            .is_err());
     }
 }

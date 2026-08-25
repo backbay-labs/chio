@@ -484,6 +484,77 @@ def tampered_proof_rejected(
     return {"rustRejected": rust.returncode != 0, "typescriptRejected": typescript.returncode == 0}
 
 
+def tampered_purchase_terminal_rejected(
+    binary: Path,
+    buyer_profile: Path,
+    buyer: dict[str, Any],
+    finding_id: str,
+    operator_database: Path,
+    directory: Path,
+) -> bool:
+    with sqlite3.connect(operator_database) as connection:
+        rows = connection.execute(
+            "SELECT result_json FROM chio_finding_operator_terminals"
+        ).fetchall()
+    result = next(
+        value
+        for (raw,) in rows
+        if (value := json.loads(raw))["findingId"] == finding_id
+    )
+    signature = result["purchaseRecord"]["signature"]
+    result["purchaseRecord"]["signature"] = (
+        ("0" if signature[0] != "0" else "1") + signature[1:]
+    )
+    identity = {
+        "deadlineSecs": 3600,
+        "findingId": finding_id,
+        "maxPrice": {"currency": "USD", "units": 300},
+        "payer": None,
+        "schema": "chio.finding.purchase-request.v1",
+    }
+    canonical_identity = json.dumps(
+        identity, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode()
+    request_id = hashlib.sha256(
+        b"chio.finding.public-purchase-request.v1\0" + canonical_identity
+    ).hexdigest()
+    request = {key: value for key, value in identity.items() if value is not None}
+    request["requestId"] = request_id
+    request_path = directory / "purchase-request.json"
+    result_path = directory / "tampered-purchase-result.json"
+    proof_path = directory / "purchase-proof.json"
+    request_path.write_bytes(
+        json.dumps(request, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+    )
+    result_path.write_bytes(
+        json.dumps(result, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+    )
+    proof_request = urllib.request.Request(
+        f"{buyer['endpoint']}/v1/findings/{finding_id}/proof",
+        headers={"authorization": f"Bearer {buyer['bearerToken']}"},
+    )
+    with urllib.request.urlopen(proof_request, timeout=10) as response:
+        proof_path.write_bytes(response.read())
+    completed = run(
+        [
+            str(binary),
+            "finding",
+            "verify-bundle",
+            "--profile",
+            str(buyer_profile),
+            "--input",
+            str(proof_path),
+            "--purchase-request",
+            str(request_path),
+            "--purchase-result",
+            str(result_path),
+            "--json",
+        ],
+        check=False,
+    )
+    return completed.returncode != 0
+
+
 def qualify(binary: Path, output: Path) -> dict[str, Any]:
     if not binary.is_file():
         raise RuntimeError(f"chio binary does not exist: {binary}")
@@ -615,6 +686,34 @@ def qualify(binary: Path, output: Path) -> dict[str, Any]:
                     )
                 ).stdout
             )
+            retraction_job = (
+                deployment
+                / str(operator_profile["paths"]["reportsDirectory"])
+                / f"{retraction['requestId']}.seller-retraction-job.json"
+            )
+            pending_retraction = load_json(retraction_job)
+            pending_retraction["result"] = None
+            retraction_job.write_bytes(
+                json.dumps(
+                    pending_retraction,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode()
+            )
+            replayed_retraction = json.loads(
+                run(
+                    agent_command(
+                        "retract_agent.py",
+                        "--credential",
+                        str(seller_profile),
+                        "--finding",
+                        str(findings[9]["findingId"]),
+                    )
+                ).stdout
+            )
+            if replayed_retraction != retraction:
+                raise RuntimeError("voluntary retraction crash replay changed its terminal")
             feed_id = buyer["market"]["statusFeedOperator"]["feedId"]
             status = request_json(
                 str(buyer["endpoint"]),
@@ -627,6 +726,7 @@ def qualify(binary: Path, output: Path) -> dict[str, Any]:
                 "findingId": findings[9]["findingId"],
                 "intentId": retraction["intentId"],
                 "proofKind": status["proof_kind"],
+                "retractionCrashReplayExact": True,
                 "status": retraction["status"],
             }
             if controlled_challenge["proofKind"] != "inclusion" or controlled_challenge["status"] != "retracted":
@@ -637,6 +737,14 @@ def qualify(binary: Path, output: Path) -> dict[str, Any]:
                 buyer_profile,
                 buyer,
                 str(findings[1]["findingId"]),
+                temporary_root,
+            )
+            tamper["purchaseTerminalRustRejected"] = tampered_purchase_terminal_rejected(
+                binary,
+                buyer_profile,
+                buyer,
+                str(findings[1]["findingId"]),
+                operator_database,
                 temporary_root,
             )
             if not all(tamper.values()):

@@ -4,6 +4,8 @@ use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -17,6 +19,9 @@ use chio_control_plane::trust_control::finding_operator_profile::{
     FINDING_OPERATOR_SELLER_CLIENT_SCHEMA,
 };
 use chio_control_plane::trust_control::finding_operator_status::FindingOperatorAuthorityStatusResolver;
+use chio_control_plane::trust_control::finding_purchase_routes::{
+    FindingPurchaseRequest, FindingPurchaseResult, FINDING_PURCHASE_MAX_RESULT_BYTES,
+};
 use chio_control_plane::trust_control::finding_verified_fix::{
     FindingOperatorProofBundle, FindingVerifiedFixDraft, VerifiedFixAuthoringInput,
     VerifiedFixCommandResult,
@@ -35,7 +40,10 @@ use super::finding_operator::{load_profile, ResolvedOperatorPaths};
 
 const MAX_DRAFT_BYTES: usize = 32 * 1024 * 1024;
 const MAX_PROOF_BYTES: usize = 24 * 1024 * 1024;
+const MAX_PAYLOAD_BYTES: usize = 8 * 1024 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
+const MAX_GIT_ERROR_BYTES: usize = 64 * 1024;
+const TEST_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
 const PAYLOAD_TENANT: &str = "cognition-market-pilot";
 const ADMISSION_JOB_SCHEMA: &str = "chio.finding.admission-job.v1";
 
@@ -95,11 +103,14 @@ pub(super) fn cmd_finding_package_verified_fix(
     }
     require_bwrap()?;
 
+    let repository_identity = git_optional_stdout(&repository, &["remote", "get-url", "origin"])
+        .unwrap_or_else(|| repository.display().to_string());
     let work_root = paths
         .packages_directory
         .join(format!(".verified-fix-work-{}", uuid::Uuid::new_v4()));
     create_private_directory(&work_root)?;
-    let mut worktrees = WorktreeSet::new(repository.clone(), work_root);
+    let staged_repository = stage_repository(&repository, &work_root)?;
+    let mut worktrees = WorktreeSet::new(staged_repository.clone(), work_root);
     let baseline_path = worktrees.add("baseline", &base)?;
     let candidate_path = worktrees.add("candidate", &candidate)?;
     let baseline = run_test_commands(&baseline_path, request.tests)?;
@@ -116,15 +127,14 @@ pub(super) fn cmd_finding_package_verified_fix(
             failure.exit_code
         )));
     }
-    let patch = git_stdout_bytes(
-        &repository,
+    let patch = git_stdout_bytes_bounded(
+        &staged_repository,
         &["diff", "--binary", "--full-index", &base, &candidate, "--"],
+        MAX_DRAFT_BYTES,
     )?;
     let patch = String::from_utf8(patch).map_err(|_| {
         CliError::cli_other_error("git emitted a non-UTF-8 binary patch".to_owned())
     })?;
-    let repository_identity = git_optional_stdout(&repository, &["remote", "get-url", "origin"])
-        .unwrap_or_else(|| repository.display().to_string());
     let issued_at = unix_time()?;
     let runner_manifest = canonical_json_bytes(&serde_json::json!({
         "isolation": "bubblewrap-unshare-net-v1",
@@ -154,6 +164,7 @@ pub(super) fn cmd_finding_package_verified_fix(
     draft
         .verify_static(&profile)
         .map_err(CliError::cli_other_error)?;
+    decode_canonical_b64(&draft.payload_b64, MAX_PAYLOAD_BYTES, "payload")?;
     let bytes = canonical_json_bytes(&draft)?;
     if bytes.len() > MAX_DRAFT_BYTES {
         return Err(CliError::cli_other_error(
@@ -354,6 +365,40 @@ fn run_finding_admission(
     let finalization = draft
         .finalize(&profile, accepted_at, evaluation_time)
         .map_err(CliError::cli_other_error)?;
+    // Persist every byte needed by the purchase and proof paths before the
+    // listing can become active. A crash can therefore leave a retained but
+    // inactive package, never an active listing whose reveal is unavailable.
+    let bundle_bytes = canonical_json_bytes(&finalization.bundle)?;
+    let bundle_store = SqliteFindingOperatorBundleStore::open(&paths.operator_database)
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    bundle_store
+        .put(&draft.finding.finding_id, &bundle_bytes)
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    let payload = decode_canonical_b64(&draft.payload_b64, MAX_PAYLOAD_BYTES, "payload")?;
+    SqliteFindingPayloadStore::open(&paths.operator_database)
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?
+        .put(
+            &TenantId::new(PAYLOAD_TENANT),
+            &TenantKey::from_bytes(
+                profile
+                    .payload_key_bytes()
+                    .map_err(CliError::cli_other_error)?,
+            ),
+            &draft.finding.finding_id,
+            &draft.finding.payload_media_type,
+            &draft.finding.payload_sha256,
+            &payload,
+        )
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    let proof_path = paths
+        .reports_directory
+        .join(format!("{}.proof.json", draft.finding.finding_id));
+    let proof_bytes = canonical_json_bytes(&finalization.proof)?;
+    bundle_store
+        .put_proof(&draft.finding.finding_id, &proof_bytes)
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    write_private_exact_or_new(&proof_path, &proof_bytes)?;
+
     post_bytes(
         &base_url,
         &format!(
@@ -405,36 +450,6 @@ fn run_finding_admission(
     }
     write_private_atomic(&job_path, &canonical_json_bytes(&job)?)?;
 
-    let bundle_bytes = canonical_json_bytes(&finalization.bundle)?;
-    let bundle_store = SqliteFindingOperatorBundleStore::open(&paths.operator_database)
-        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
-    bundle_store
-        .put(&draft.finding.finding_id, &bundle_bytes)
-        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
-    let payload = decode_canonical_b64(&draft.payload_b64, 8 * 1024 * 1024, "payload")?;
-    SqliteFindingPayloadStore::open(&paths.operator_database)
-        .map_err(|error| CliError::cli_other_error(error.to_string()))?
-        .put(
-            &TenantId::new(PAYLOAD_TENANT),
-            &TenantKey::from_bytes(
-                profile
-                    .payload_key_bytes()
-                    .map_err(CliError::cli_other_error)?,
-            ),
-            &draft.finding.finding_id,
-            &draft.finding.payload_media_type,
-            &draft.finding.payload_sha256,
-            &payload,
-        )
-        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
-    let proof_path = paths
-        .reports_directory
-        .join(format!("{}.proof.json", draft.finding.finding_id));
-    let proof_bytes = canonical_json_bytes(&finalization.proof)?;
-    bundle_store
-        .put_proof(&draft.finding.finding_id, &proof_bytes)
-        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
-    write_private_exact_or_new(&proof_path, &proof_bytes)?;
     job.completed = true;
     write_private_atomic(&job_path, &canonical_json_bytes(&job)?)?;
     Ok(FindingAdmissionRunResult {
@@ -447,6 +462,8 @@ fn run_finding_admission(
 pub(super) fn cmd_finding_verify_bundle(
     profile_path: &Path,
     input: &Path,
+    purchase_request_path: Option<&Path>,
+    purchase_result_path: Option<&Path>,
     json_output: bool,
 ) -> Result<(), CliError> {
     let market = load_verification_market(profile_path)?;
@@ -460,9 +477,39 @@ pub(super) fn cmd_finding_verify_bundle(
     proof
         .verify(&market, now)
         .map_err(CliError::cli_other_error)?;
+    let purchase_verified = match (purchase_request_path, purchase_result_path) {
+        (Some(request_path), Some(result_path)) => {
+            let request: FindingPurchaseRequest =
+                read_canonical_file(request_path, 64 * 1024)?;
+            request.validate().map_err(CliError::transport_shape_error)?;
+            if request.max_price.units > i64::MAX as u64 {
+                return Err(CliError::transport_shape_error(
+                    "purchase request exceeds the durable payment range".to_owned(),
+                ));
+            }
+            let result: FindingPurchaseResult =
+                read_canonical_file(result_path, FINDING_PURCHASE_MAX_RESULT_BYTES)?;
+            result
+                .validate_authorized(
+                    &request,
+                    &proof.bundle.finding,
+                    &proof.bundle.admission,
+                )
+                .map_err(CliError::transport_shape_error)?;
+            super::verify_purchased_output(&proof.bundle.finding, &result)?;
+            true
+        }
+        (None, None) => false,
+        _ => {
+            return Err(CliError::cli_other_error(
+                "purchase request and result must be supplied together".to_owned(),
+            ));
+        }
+    };
     let result = serde_json::json!({
         "evaluationTime": proof.bundle.verifier_report.body.evaluation_time,
         "findingId": proof.bundle.finding.finding_id,
+        "purchaseTerminalVerified": purchase_verified,
         "requiredFacetsVerified": true,
         "schema": "chio.finding.verify-bundle-result.v1",
         "verifierReportId": proof.bundle.verifier_report.body.report_id,
@@ -472,6 +519,7 @@ pub(super) fn cmd_finding_verify_bundle(
     } else {
         println!("finding_id:              {}", proof.bundle.finding.finding_id);
         println!("required_facets_verified: true");
+        println!("purchase_terminal_verified: {purchase_verified}");
         println!(
             "verifier_report_id:       {}",
             proof.bundle.verifier_report.body.report_id
@@ -497,7 +545,7 @@ impl WorktreeSet {
 
     fn add(&mut self, name: &str, revision: &str) -> Result<PathBuf, CliError> {
         let path = self.root.join(name);
-        let status = Command::new("git")
+        let status = hardened_git_command()
             .arg("-C")
             .arg(&self.repository)
             .args(["worktree", "add", "--detach"])
@@ -517,14 +565,14 @@ impl WorktreeSet {
 impl Drop for WorktreeSet {
     fn drop(&mut self) {
         for path in self.paths.iter().rev() {
-            let _ = Command::new("git")
+            let _ = hardened_git_command()
                 .arg("-C")
                 .arg(&self.repository)
                 .args(["worktree", "remove", "--force"])
                 .arg(path)
                 .status();
         }
-        let _ = fs::remove_dir(&self.root);
+        let _ = fs::remove_dir_all(&self.root);
     }
 }
 
@@ -542,19 +590,35 @@ fn run_test_command(
     worktree: &Path,
     command: &str,
 ) -> Result<VerifiedFixCommandResult, CliError> {
+    run_test_command_with_timeout(worktree, command, TEST_COMMAND_TIMEOUT)
+}
+
+fn run_test_command_with_timeout(
+    worktree: &Path,
+    command: &str,
+    timeout: Duration,
+) -> Result<VerifiedFixCommandResult, CliError> {
     let started = Instant::now();
-    let mut child = Command::new("bwrap")
-        .args([
-            "--die-with-parent",
-            "--unshare-net",
-            "--ro-bind",
-            "/",
-            "/",
-            "--tmpfs",
-            "/tmp",
-            "--dir",
-            "/tmp/chio-home",
-        ])
+    let mut isolated = Command::new("bwrap");
+    isolated.args([
+        "--die-with-parent",
+        "--new-session",
+        "--unshare-net",
+        "--unshare-pid",
+        "--clearenv",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--tmpfs",
+        "/tmp",
+        "--dir",
+        "/tmp/chio-home",
+        "--dir",
+        "/tmp/chio-cargo",
+    ]);
+    add_runtime_mounts(&mut isolated);
+    isolated
         .arg("--bind")
         .arg(worktree)
         .arg(worktree)
@@ -573,17 +637,30 @@ fn run_test_command(
             "--setenv",
             "TZ",
             "UTC",
+            "--setenv",
+            "PATH",
+            &sandbox_path(),
+            "--setenv",
+            "CARGO_HOME",
+            "/tmp/chio-cargo",
+            "--setenv",
+            "CARGO_NET_OFFLINE",
+            "true",
             "--",
             "sh",
-            "-lc",
+            "-c",
         ])
         .arg(command)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| {
-            CliError::cli_other_error(format!("failed to start isolated test command: {error}"))
-        })?;
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        isolated.process_group(0);
+    }
+    let mut child = isolated.spawn().map_err(|error| {
+        CliError::cli_other_error(format!("failed to start isolated test command: {error}"))
+    })?;
     let stdout = child
         .stdout
         .take()
@@ -592,9 +669,38 @@ fn run_test_command(
         .stderr
         .take()
         .ok_or_else(|| CliError::cli_other_error("test stderr pipe is unavailable".to_owned()))?;
-    let stdout_reader = thread::spawn(move || read_and_digest(stdout));
-    let stderr_reader = thread::spawn(move || read_and_digest(stderr));
-    let status = child.wait()?;
+    let overflow = Arc::new(AtomicBool::new(false));
+    let stdout_overflow = Arc::clone(&overflow);
+    let stderr_overflow = Arc::clone(&overflow);
+    let stdout_reader = thread::spawn(move || read_and_digest(stdout, &stdout_overflow));
+    let stderr_reader = thread::spawn(move || read_and_digest(stderr, &stderr_overflow));
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if overflow.load(Ordering::Acquire) {
+            terminate_process_group(&mut child);
+            let _ = child.wait();
+            let _ = join_digest(stdout_reader, "stdout");
+            let _ = join_digest(stderr_reader, "stderr");
+            return Err(CliError::cli_other_error(
+                "test command output exceeded the 4 MiB evidence bound".to_owned(),
+            ));
+        }
+        if started.elapsed() >= timeout {
+            terminate_process_group(&mut child);
+            let _ = child.wait();
+            let _ = join_digest(stdout_reader, "stdout");
+            let _ = join_digest(stderr_reader, "stderr");
+            return Err(CliError::cli_other_error(
+                format!(
+                    "test command exceeded the {} millisecond execution deadline",
+                    timeout.as_millis()
+                ),
+            ));
+        }
+        thread::sleep(Duration::from_millis(20));
+    };
     let (stdout_sha256, stdout_overflow) = join_digest(stdout_reader, "stdout")?;
     let (stderr_sha256, stderr_overflow) = join_digest(stderr_reader, "stderr")?;
     if stdout_overflow || stderr_overflow {
@@ -611,7 +717,10 @@ fn run_test_command(
     })
 }
 
-fn read_and_digest(mut reader: impl Read) -> Result<(String, bool), std::io::Error> {
+fn read_and_digest(
+    mut reader: impl Read,
+    overflow: &AtomicBool,
+) -> Result<(String, bool), std::io::Error> {
     use sha2::Digest as _;
     let mut digest = sha2::Sha256::new();
     let mut total = 0usize;
@@ -622,6 +731,9 @@ fn read_and_digest(mut reader: impl Read) -> Result<(String, bool), std::io::Err
             break;
         }
         total = total.saturating_add(read);
+        if total > MAX_COMMAND_OUTPUT_BYTES {
+            overflow.store(true, Ordering::Release);
+        }
         digest.update(&buffer[..read]);
     }
     Ok((hex::encode(digest.finalize()), total > MAX_COMMAND_OUTPUT_BYTES))
@@ -639,6 +751,124 @@ fn join_digest(
 
 fn exit_code(status: ExitStatus) -> i32 {
     status.code().unwrap_or(255)
+}
+
+fn terminate_process_group(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        if let Ok(pid) = i32::try_from(child.id()) {
+            // SAFETY: `pid` is the live child process group created above. A
+            // negative PID targets only that group, never the operator.
+            unsafe {
+                libc::kill(-pid, libc::SIGKILL);
+            }
+        }
+    }
+    let _ = child.kill();
+}
+
+fn stage_repository(source: &Path, work_root: &Path) -> Result<PathBuf, CliError> {
+    let template = work_root.join("git-template");
+    fs::create_dir(&template)?;
+    let staged = work_root.join("repository");
+    let status = hardened_git_command()
+        .args(["clone", "--local", "--no-hardlinks", "--no-checkout"])
+        .arg(format!("--template={}", template.display()))
+        .arg(source)
+        .arg(&staged)
+        .status()?;
+    if !status.success() {
+        return Err(CliError::cli_other_error(
+            "failed to stage the source repository in operator-owned storage".to_owned(),
+        ));
+    }
+    Ok(staged)
+}
+
+fn hardened_git_command() -> Command {
+    let mut command = Command::new("git");
+    command
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_PAGER", "cat")
+        .args([
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "credential.helper=",
+            "-c",
+            "protocol.ext.allow=never",
+        ]);
+    command
+}
+
+fn add_runtime_mounts(command: &mut Command) {
+    for path in [
+        "/usr",
+        "/usr/local",
+        "/bin",
+        "/sbin",
+        "/lib",
+        "/lib64",
+        "/etc/alternatives",
+        "/etc/ld.so.cache",
+        "/etc/localtime",
+        "/etc/ssl",
+    ] {
+        if Path::new(path).exists() {
+            command.args(["--ro-bind", path, path]);
+        }
+    }
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        let cargo_bin = home.join(".cargo/bin");
+        if cargo_bin.is_dir() {
+            command.arg("--ro-bind").arg(&cargo_bin).arg(&cargo_bin);
+        }
+        let rustup_toolchains = home.join(".rustup/toolchains");
+        if rustup_toolchains.is_dir() {
+            command
+                .arg("--ro-bind")
+                .arg(&rustup_toolchains)
+                .arg(&rustup_toolchains);
+            command
+                .args(["--setenv", "RUSTUP_HOME"])
+                .arg(home.join(".rustup"));
+        }
+        let rustup_settings = home.join(".rustup/settings.toml");
+        if rustup_settings.is_file() {
+            command
+                .arg("--ro-bind")
+                .arg(&rustup_settings)
+                .arg(&rustup_settings);
+        }
+        for name in ["registry", "git"] {
+            let source = home.join(".cargo").join(name);
+            if source.is_dir() {
+                command
+                    .arg("--ro-bind")
+                    .arg(source)
+                    .arg(format!("/tmp/chio-cargo/{name}"));
+            }
+        }
+    }
+}
+
+fn sandbox_path() -> String {
+    let mut paths = vec![
+        "/usr/local/sbin".to_owned(),
+        "/usr/local/bin".to_owned(),
+        "/usr/sbin".to_owned(),
+        "/usr/bin".to_owned(),
+        "/sbin".to_owned(),
+        "/bin".to_owned(),
+    ];
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        paths.push(home.join(".cargo/bin").display().to_string());
+    }
+    paths.join(":")
 }
 
 fn require_git_repository(path: &Path) -> Result<(), CliError> {
@@ -703,7 +933,7 @@ fn git_optional_stdout(repository: &Path, args: &[&str]) -> Option<String> {
 }
 
 fn git_stdout_bytes(repository: &Path, args: &[&str]) -> Result<Vec<u8>, CliError> {
-    let output = Command::new("git")
+    let output = hardened_git_command()
         .arg("-C")
         .arg(repository)
         .args(args)
@@ -715,6 +945,61 @@ fn git_stdout_bytes(repository: &Path, args: &[&str]) -> Result<Vec<u8>, CliErro
         )));
     }
     Ok(output.stdout)
+}
+
+fn git_stdout_bytes_bounded(
+    repository: &Path,
+    args: &[&str],
+    max_bytes: usize,
+) -> Result<Vec<u8>, CliError> {
+    let mut child = hardened_git_command()
+        .arg("-C")
+        .arg(repository)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| CliError::cli_other_error("git stdout pipe is unavailable".to_owned()))?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| CliError::cli_other_error("git stderr pipe is unavailable".to_owned()))?;
+    let stderr_reader = thread::spawn(move || {
+        let mut prefix = Vec::new();
+        stderr
+            .by_ref()
+            .take((MAX_GIT_ERROR_BYTES + 1) as u64)
+            .read_to_end(&mut prefix)?;
+        std::io::copy(&mut stderr, &mut std::io::sink())?;
+        Ok::<_, std::io::Error>(prefix)
+    });
+    let mut bytes = Vec::new();
+    stdout
+        .by_ref()
+        .take((max_bytes + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > max_bytes {
+        terminate_process_group(&mut child);
+    }
+    let status = child.wait()?;
+    let stderr = stderr_reader
+        .join()
+        .map_err(|_| CliError::cli_other_error("git stderr reader panicked".to_owned()))??;
+    if bytes.len() > max_bytes {
+        return Err(CliError::cli_other_error(format!(
+            "git output exceeded the {max_bytes} byte bound"
+        )));
+    }
+    if !status.success() {
+        return Err(CliError::cli_other_error(format!(
+            "git command failed: {}",
+            String::from_utf8_lossy(&stderr).trim()
+        )));
+    }
+    Ok(bytes)
 }
 
 fn seller_authorization_status(
@@ -1065,6 +1350,88 @@ fn wait_until(timestamp: u64) -> Result<(), CliError> {
             return Ok(());
         }
         thread::sleep(Duration::from_millis(25));
+    }
+}
+
+#[cfg(all(test, unix))]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt as _;
+
+    #[test]
+    fn staged_worktree_disables_source_repository_hooks() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        fs::create_dir(&source).unwrap();
+        assert!(Command::new("git")
+            .arg("init")
+            .arg(&source)
+            .status()
+            .unwrap()
+            .success());
+        fs::write(source.join("file.txt"), "content").unwrap();
+        assert!(Command::new("git")
+            .arg("-C")
+            .arg(&source)
+            .args(["add", "file.txt"])
+            .status()
+            .unwrap()
+            .success());
+        assert!(Command::new("git")
+            .arg("-C")
+            .arg(&source)
+            .args([
+                "-c",
+                "user.name=Chio Test",
+                "-c",
+                "user.email=chio@example.invalid",
+                "commit",
+                "-m",
+                "test",
+            ])
+            .status()
+            .unwrap()
+            .success());
+        let marker = root.path().join("hook-ran");
+        let hook = source.join(".git/hooks/post-checkout");
+        fs::write(&hook, format!("#!/bin/sh\ntouch '{}'\n", marker.display())).unwrap();
+        fs::set_permissions(&hook, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let work_root = root.path().join("work");
+        fs::create_dir(&work_root).unwrap();
+        let staged = stage_repository(&source, &work_root).unwrap();
+        let revision = git_stdout(&staged, &["rev-parse", "HEAD"]).unwrap();
+        let mut worktrees = WorktreeSet::new(staged, work_root);
+        worktrees.add("candidate", &revision).unwrap();
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn isolated_test_cannot_read_operator_sibling_and_has_a_deadline() {
+        if require_bwrap().is_err() {
+            return;
+        }
+        let root = tempfile::tempdir().unwrap();
+        let worktree = root.path().join("worktree");
+        fs::create_dir(&worktree).unwrap();
+        let secret = root.path().join("operator-profile.json");
+        fs::write(&secret, "operator-secret").unwrap();
+        fs::set_permissions(&secret, fs::Permissions::from_mode(0o600)).unwrap();
+        let command = format!("test ! -e '{}'", secret.display());
+        let result = run_test_command_with_timeout(&worktree, &command, Duration::from_secs(2))
+            .unwrap();
+        assert_eq!(result.exit_code, 0);
+
+        let started = Instant::now();
+        let error = run_test_command_with_timeout(
+            &worktree,
+            "sleep 5",
+            Duration::from_millis(50),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("execution deadline"));
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 }
 

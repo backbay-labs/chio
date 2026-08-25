@@ -14,6 +14,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
+ReadOnlyPaths=/srv/chio/cognition-market-repositories
 ReadWritePaths=/var/lib/chio/cognition-market
 
 [Install]

@@ -2,7 +2,8 @@
 
 This example runs a seller agent and buyer agent against one local Chio
 operator. The agents receive separate scoped credentials. Neither client file
-contains the operator service token.
+contains the operator service token, and the seller credential contains no
+market signing key.
 
 Build Chio and initialize a private deployment directory:
 
@@ -54,3 +55,24 @@ git -C /tmp/fix-sandbox apply /tmp/verified-fix.patch
 `chio finding operator tick` reports retained bundles, purchase jobs,
 terminals, and captures. It is idempotent and suitable for a local service
 timer or cron entry.
+
+## System service repository boundary
+
+The included systemd unit keeps operator state writable only under
+`/var/lib/chio/cognition-market` and exposes seller source repositories
+read-only under `/srv/chio/cognition-market-repositories`. Prepare both roots
+before starting the service:
+
+```bash
+sudo install -d -o chio -g chio -m 0700 /var/lib/chio/cognition-market
+sudo install -d -o root -g chio -m 0750 /srv/chio/cognition-market-repositories
+sudo git clone /absolute/path/to/repository \
+  /srv/chio/cognition-market-repositories/project
+```
+
+Pass the staged `/srv/chio/cognition-market-repositories/project` path as
+`--repository`. Packaging first clones its objects without hard links into the
+operator-owned packages directory, with repository hooks and external Git
+helpers disabled. Baseline and candidate tests then run in isolated worktrees
+with no network, a five-minute deadline, a cleared environment, bounded output,
+and no mount of the operator profile or state directory.

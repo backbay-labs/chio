@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -42,7 +43,6 @@ def seller_profile(path: Path) -> Path:
         "payoutDestination": "0x" + "3" * 40,
         "principalId": "seller-1",
         "schema": "chio.finding.seller-client.v1",
-        "signingSeed": "4" * 64,
     }
     path.write_bytes(_canonical_json(value))
     return path
@@ -223,6 +223,7 @@ async def test_buyer_builds_and_files_challenge_with_scoped_key(
     proof = {
         "bundle": {
             "admission": {"body": admission, "signature": "admission-signature"},
+            "finding": {"evidence_checkpoint_ref": "committed-checkpoint-7"},
             "feeSchedule": {"body": {"disputeFee": {"currency": "USD", "units": 10}}},
             "marketTerms": {
                 "body": {
@@ -302,7 +303,9 @@ def test_profile_rejects_missing_market_pins(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_buyer_returns_patch_without_applying_it(tmp_path: Path) -> None:
+async def test_buyer_returns_patch_without_applying_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     finding_id = "7" * 64
     payload = {
         "baseRevision": "base",
@@ -314,6 +317,19 @@ async def test_buyer_returns_patch_without_applying_it(tmp_path: Path) -> None:
         "schema": "chio.finding.verified-fix-payload.v1",
     }
 
+    payload_b64 = base64.b64encode(_canonical_json(payload)).decode("ascii")
+    commitment = hashlib.sha256(
+        _canonical_json(
+            {
+                "media_type": "application/vnd.chio.verified-fix+json",
+                "payload_b64": payload_b64,
+            }
+        )
+    ).hexdigest()
+    proof = _canonical_json(
+        {"bundle": {"finding": {"payload_sha256": commitment}}}
+    )
+
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path.endswith("/purchase")
         return httpx.Response(
@@ -322,21 +338,44 @@ async def test_buyer_returns_patch_without_applying_it(tmp_path: Path) -> None:
                 "findingId": finding_id,
                 "output": {
                     "mediaType": "application/vnd.chio.verified-fix+json",
-                    "payloadB64": base64.b64encode(_canonical_json(payload)).decode("ascii"),
+                    "payloadB64": payload_b64,
                 },
                 "settlement": "captured",
                 "verdict": "allow",
             },
         )
 
+    def successful_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        command = args[0]
+        assert isinstance(command, list)
+        assert "--purchase-request" in command
+        assert "--purchase-result" in command
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout=_canonical_json({"purchaseTerminalVerified": True}),
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(subprocess, "run", successful_run)
+
     buyer = CognitionMarketBuyer(
         buyer_profile(tmp_path / "buyer.json"),
         transport=httpx.MockTransport(handler),
     )
     try:
-        verified = VerifiedFindingProof(finding_id, b"proof", {"findingId": finding_id})
+        verified = VerifiedFindingProof(finding_id, proof, {"findingId": finding_id})
         purchased = await buyer.purchase_verified_fix(verified, max_price_units=300)
         assert purchased.patch == payload["patch"]
         assert purchased.base_revision == "base"
     finally:
         await buyer.close()
+
+
+def test_seller_profile_rejects_a_market_signing_seed(tmp_path: Path) -> None:
+    path = seller_profile(tmp_path / "seller.json")
+    value = json.loads(path.read_bytes())
+    value["signingSeed"] = "4" * 64
+    path.write_bytes(_canonical_json(value))
+    with pytest.raises(CognitionMarketError, match="must not contain"):
+        CognitionMarketSeller(path)

@@ -26,6 +26,7 @@ const MAX_BUNDLE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_TERMINAL_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PROOF_BYTES: usize = 24 * 1024 * 1024;
 const MAX_PURCHASE_JOB_BYTES: usize = 2 * 1024 * 1024;
+const MAX_RETAINED_BUNDLES: i64 = 10_000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FindingOperatorBundleRecord {
@@ -81,6 +82,8 @@ pub enum FindingOperatorBundleStoreError {
     TooLarge,
     #[error("finding operator bundle conflicts with durable state")]
     Conflict,
+    #[error("finding operator bundle store reached its 10000-bundle capacity")]
+    Capacity,
     #[error("finding operator bundle was not found")]
     NotFound,
     #[error("finding operator bundle failed its durable digest check")]
@@ -206,6 +209,16 @@ impl SqliteFindingOperatorBundleStore {
                 return Ok(FindingOperatorBundleWriteOutcome::ExactReplay);
             }
             return Err(FindingOperatorBundleStoreError::Conflict);
+        }
+        let retained: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM chio_finding_operator_bundles",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        if retained >= MAX_RETAINED_BUNDLES {
+            return Err(FindingOperatorBundleStoreError::Capacity);
         }
         tx.execute(
             "INSERT INTO chio_finding_operator_bundles (finding_id, bundle_sha256, bundle_json, created_at) VALUES (?1, ?2, ?3, ?4)",
@@ -738,6 +751,37 @@ mod tests {
             store.put(&"b".repeat(64), b"{ \"a\": 1 }"),
             Err(FindingOperatorBundleStoreError::Invalid("bundle_json"))
         ));
+    }
+
+    #[test]
+    fn admission_capacity_matches_the_complete_resolver_scan() {
+        let store = SqliteFindingOperatorBundleStore::open_in_memory().unwrap();
+        let bundle = br#"{"a":1}"#;
+        let digest = sha256_hex(bundle);
+        {
+            let mut conn = store.pool.get().unwrap();
+            let tx = conn.transaction().unwrap();
+            for index in 0..MAX_RETAINED_BUNDLES {
+                tx.execute(
+                    "INSERT INTO chio_finding_operator_bundles (finding_id, bundle_sha256, bundle_json, created_at) VALUES (?1, ?2, ?3, 1)",
+                    params![format!("{index:064x}"), digest, bundle],
+                )
+                .unwrap();
+            }
+            tx.commit().unwrap();
+        }
+        assert_eq!(
+            store.list(MAX_RETAINED_BUNDLES as u64).unwrap().len(),
+            10_000
+        );
+        assert!(matches!(
+            store.put(&"f".repeat(64), bundle),
+            Err(FindingOperatorBundleStoreError::Capacity)
+        ));
+        assert_eq!(
+            store.put(&format!("{:064x}", 1), bundle).unwrap(),
+            FindingOperatorBundleWriteOutcome::ExactReplay
+        );
     }
 
     #[test]

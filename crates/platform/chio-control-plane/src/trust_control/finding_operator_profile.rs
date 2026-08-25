@@ -62,7 +62,6 @@ pub struct FindingOperatorSellerClientProfile {
     pub market: FindingMarketConfig,
     pub principal_id: String,
     pub bearer_token: String,
-    pub signing_seed: String,
     pub payout_destination: String,
 }
 
@@ -336,7 +335,6 @@ impl FindingOperatorProfile {
                 market: self.market.clone(),
                 principal_id: seller.principal_id.clone(),
                 bearer_token: seller.bearer_token.clone(),
-                signing_seed: seller.signing_seed.clone(),
                 payout_destination: seller.payout_destination.clone(),
             })
             .collect()

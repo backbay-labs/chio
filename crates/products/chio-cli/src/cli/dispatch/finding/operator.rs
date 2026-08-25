@@ -8,6 +8,8 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine as _;
 use chio_control_plane::trust_control::finding_operator_profile::{
     FindingOperatorBuyerProfile, FindingOperatorPaths, FindingOperatorProfile,
     FindingOperatorSecretSeeds, FindingOperatorSellerProfile, FINDING_OPERATOR_PROFILE_SCHEMA,
@@ -50,7 +52,7 @@ const PROFILE_MAX_BYTES: usize = 1024 * 1024;
 const ROLE_WINDOW_SECS: u64 = 10 * 365 * 24 * 60 * 60;
 const SELLER_SUBMISSION_JOB_SCHEMA: &str = "chio.finding.seller-submission-job.v1";
 const SELLER_SUBMISSION_JOB_MAX_BYTES: usize = 1024 * 1024;
-const SELLER_RETRACTION_JOB_SCHEMA: &str = "chio.finding.seller-retraction-job.v1";
+const SELLER_RETRACTION_JOB_SCHEMA: &str = "chio.finding.seller-retraction-job.v2";
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -68,7 +70,11 @@ struct FindingSellerSubmissionJob {
 struct FindingSellerRetractionJob {
     schema: String,
     request_id: String,
+    request_sha256: String,
+    finding_id: String,
     seller_principal: String,
+    intent_b64: Option<String>,
+    intent_id: Option<String>,
     result: Option<FindingVoluntaryRetractionResponse>,
 }
 
@@ -293,6 +299,10 @@ impl FindingSellerSubmissionExecutor for OperatorSellerSubmissionExecutor {
         let job_path = self
             .reports_directory
             .join(format!("{}.seller-retraction-job.json", request.request_id));
+        let request_sha256 = sha256_hex(
+            &canonical_json_bytes(request)
+                .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?,
+        );
         let mut job = if job_path.exists() {
             let stored: FindingSellerRetractionJob = read_canonical_file(
                 &job_path,
@@ -301,7 +311,10 @@ impl FindingSellerSubmissionExecutor for OperatorSellerSubmissionExecutor {
             .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
             if stored.schema != SELLER_RETRACTION_JOB_SCHEMA
                 || stored.request_id != request.request_id
+                || stored.request_sha256 != request_sha256
+                || stored.finding_id != request.finding_id
                 || stored.seller_principal != principal
+                || stored.intent_b64.is_some() != stored.intent_id.is_some()
             {
                 return Err(FindingSellerSubmissionError::Conflict);
             }
@@ -310,7 +323,11 @@ impl FindingSellerSubmissionExecutor for OperatorSellerSubmissionExecutor {
             let created = FindingSellerRetractionJob {
                 schema: SELLER_RETRACTION_JOB_SCHEMA.to_owned(),
                 request_id: request.request_id.clone(),
+                request_sha256,
+                finding_id: request.finding_id.clone(),
                 seller_principal: principal,
+                intent_b64: None,
+                intent_id: None,
                 result: None,
             };
             write_private_atomic(
@@ -322,6 +339,12 @@ impl FindingSellerSubmissionExecutor for OperatorSellerSubmissionExecutor {
             created
         };
         if let Some(result) = job.result.clone() {
+            if result.request_id != request.request_id
+                || result.finding_id != request.finding_id
+                || job.intent_id.as_deref() != Some(result.intent_id.as_str())
+            {
+                return Err(FindingSellerSubmissionError::Conflict);
+            }
             return Ok(result);
         }
         let bundle = SqliteFindingOperatorBundleStore::open(
@@ -347,21 +370,88 @@ impl FindingSellerSubmissionExecutor for OperatorSellerSubmissionExecutor {
         if bundle.finding.issuer != seller_key.public_key() {
             return Err(FindingSellerSubmissionError::Authentication);
         }
-        let now = unix_time()
-            .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
         let status_key = self
             .profile
             .authoring_keys()
             .map_err(FindingSellerSubmissionError::Internal)?
             .status_feed_operator;
-        let intent = chio_control_plane::trust_control::build_operator_voluntary_retraction(
-            &self.profile.market,
-            &seller_key,
-            &status_key,
-            &request.finding_id,
-            now,
-        )
-        .map_err(FindingSellerSubmissionError::Internal)?;
+        let intent = if let Some(encoded) = job.intent_b64.as_ref() {
+            let bytes = STANDARD.decode(encoded).map_err(|_| {
+                FindingSellerSubmissionError::Internal(
+                    "stored voluntary retraction intent is not base64".to_owned(),
+                )
+            })?;
+            if bytes.len() > SELLER_SUBMISSION_JOB_MAX_BYTES || STANDARD.encode(&bytes) != *encoded {
+                return Err(FindingSellerSubmissionError::Internal(
+                    "stored voluntary retraction intent is invalid".to_owned(),
+                ));
+            }
+            bytes
+        } else {
+            let now = unix_time()
+                .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+            let bytes = chio_control_plane::trust_control::build_operator_voluntary_retraction(
+                &self.profile.market,
+                &seller_key,
+                &status_key,
+                &request.finding_id,
+                now,
+            )
+            .map_err(FindingSellerSubmissionError::Internal)?;
+            let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| {
+                FindingSellerSubmissionError::Internal(
+                    "voluntary retraction intent is not valid JSON".to_owned(),
+                )
+            })?;
+            let intent_id = value
+                .get("body")
+                .and_then(|body| body.get("intent_id"))
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| {
+                    FindingSellerSubmissionError::Internal(
+                        "voluntary retraction intent omitted intent_id".to_owned(),
+                    )
+                })?
+                .to_owned();
+            job.intent_b64 = Some(STANDARD.encode(&bytes));
+            job.intent_id = Some(intent_id);
+            write_private_atomic(
+                &job_path,
+                &canonical_json_bytes(&job)
+                    .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?,
+            )
+            .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+            bytes
+        };
+        let expected_intent_id = job.intent_id.clone().ok_or_else(|| {
+            FindingSellerSubmissionError::Internal(
+                "stored voluntary retraction intent omitted its id".to_owned(),
+            )
+        })?;
+        let intent_value: serde_json::Value = serde_json::from_slice(&intent).map_err(|_| {
+            FindingSellerSubmissionError::Internal(
+                "stored voluntary retraction intent is not valid JSON".to_owned(),
+            )
+        })?;
+        let intent_body = intent_value.get("body").ok_or_else(|| {
+            FindingSellerSubmissionError::Internal(
+                "stored voluntary retraction intent omitted its body".to_owned(),
+            )
+        })?;
+        if canonical_json_bytes(&intent_value)
+            .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?
+            != intent
+            || intent_body
+                .get("intent_id")
+                .and_then(serde_json::Value::as_str)
+                != Some(expected_intent_id.as_str())
+            || intent_body
+                .get("finding_id")
+                .and_then(serde_json::Value::as_str)
+                != Some(request.finding_id.as_str())
+        {
+            return Err(FindingSellerSubmissionError::Conflict);
+        }
         let encoded_feed = percent_encoding::utf8_percent_encode(
             &self.profile.market.status_feed_operator.feed_id,
             percent_encoding::NON_ALPHANUMERIC,
@@ -381,6 +471,9 @@ impl FindingSellerSubmissionExecutor for OperatorSellerSubmissionExecutor {
                 )
             })?
             .to_owned();
+        if intent_id != expected_intent_id {
+            return Err(FindingSellerSubmissionError::Conflict);
+        }
         let publisher = FindingStatusEpochPublisher::new(
             self.authority.finding_status_store(),
             self.profile.market.status_feed_operator.clone(),
