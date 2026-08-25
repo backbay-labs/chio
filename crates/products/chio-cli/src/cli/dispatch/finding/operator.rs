@@ -52,7 +52,7 @@ const PROFILE_MAX_BYTES: usize = 1024 * 1024;
 const ROLE_WINDOW_SECS: u64 = 10 * 365 * 24 * 60 * 60;
 const SELLER_SUBMISSION_JOB_SCHEMA: &str = "chio.finding.seller-submission-job.v1";
 const SELLER_SUBMISSION_JOB_MAX_BYTES: usize = 1024 * 1024;
-const SELLER_RETRACTION_JOB_SCHEMA: &str = "chio.finding.seller-retraction-job.v2";
+const SELLER_RETRACTION_JOB_SCHEMA: &str = "chio.finding.seller-retraction-job.v1";
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
