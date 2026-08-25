@@ -8,3 +8,4 @@ export * from "./errors.ts";
 export * from "./dpop.ts";
 export * from "./receipt_query_client.ts";
 export * from "./finding.ts";
+export * from "./cognition_market.ts";

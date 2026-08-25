@@ -23,6 +23,7 @@ See [`docs/guides/WEB_BACKEND_QUICKSTART.md`](../docs/guides/WEB_BACKEND_QUICKST
 ## Flagship Examples
 
 - [`agent-commerce-network/`](./agent-commerce-network/): buyer/provider/reviewer topology with approvals, budgets, settlement, federation, and live receipt capture
+- [`cognition-market-pilot/`](./cognition-market-pilot/): scoped seller and buyer coding agents that admit, verify, purchase, and explicitly consume verified patches
 - [`internet-of-agents-incident-network/`](./internet-of-agents-incident-network/): recursive cross-org incident-response network with a live happy path for OpenAI SDK orchestration, MCP tools, ACP provider jobs, and offline review
 - [`internet-of-agents-web3-network/`](./internet-of-agents-web3-network/): four-org Chio-mediated agent-commerce web3 topology with RFQ routing, subcontracted review, trust-control, API sidecars, MCP edges, passports, reputation, federation, budgets, x402-style payment proof, guardrails, and optional Base Sepolia evidence
 - [`hello-tool/`](./hello-tool/): minimal Rust-native tool example

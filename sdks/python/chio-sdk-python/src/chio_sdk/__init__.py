@@ -57,6 +57,13 @@ from chio_sdk.finding import (
     FindingBidCeilingPolicy,
     finding_bid_ceiling,
 )
+from chio_sdk.cognition_market import (
+    CognitionMarketBuyer,
+    CognitionMarketError,
+    CognitionMarketSeller,
+    PurchasedVerifiedFix,
+    VerifiedFindingProof,
+)
 
 __all__ = [
     # Client
@@ -74,6 +81,11 @@ __all__ = [
     "FindingBidCeilingInput",
     "FindingBidCeilingPolicy",
     "finding_bid_ceiling",
+    "CognitionMarketBuyer",
+    "CognitionMarketError",
+    "CognitionMarketSeller",
+    "PurchasedVerifiedFix",
+    "VerifiedFindingProof",
     # Models -- capabilities
     "CapabilityToken",
     "CapabilityTokenBody",
