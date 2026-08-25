@@ -44,7 +44,13 @@ use admission_lock::FindingAdmissionJobLock;
 #[path = "verified_fix_sandbox.rs"]
 mod sandbox;
 use sandbox::{
-    require_sandbox, run_test_commands, runtime_fingerprint, PACKAGE_TEST_TIMEOUT,
+    require_sandbox, run_test_commands, runtime_fingerprint, PACKAGE_WORK_TIMEOUT,
+};
+#[path = "verified_fix_repository_sandbox.rs"]
+mod repository_sandbox;
+use repository_sandbox::{
+    approved_repository, isolated_git_stdout_bounded, isolated_repository_identity,
+    stage_repository_isolated,
 };
 #[cfg(test)]
 use sandbox::{
@@ -57,8 +63,8 @@ const MAX_PROOF_BYTES: usize = 24 * 1024 * 1024;
 const MAX_PAYLOAD_BYTES: usize = 8 * 1024 * 1024;
 const MAX_GIT_ERROR_BYTES: usize = 64 * 1024;
 const MAX_REPOSITORY_IDENTITY_BYTES: usize = 8 * 1024;
+#[cfg(test)]
 const REPOSITORY_STAGE_TIMEOUT: Duration = Duration::from_secs(300);
-const PATCH_GENERATION_TIMEOUT: Duration = Duration::from_secs(300);
 pub(super) const REPOSITORY_STAGE_MAX_BYTES: u64 = 1024 * 1024 * 1024;
 pub(super) const REPOSITORY_STAGE_MAX_ENTRIES: u64 = 75_000;
 const PAYLOAD_TENANT: &str = "cognition-market-pilot";
@@ -101,22 +107,33 @@ pub(super) fn cmd_finding_package_verified_fix(
 ) -> Result<(), CliError> {
     let (profile, root) = load_profile(request.profile_path)?;
     let paths = ResolvedOperatorPaths::new(&root, &profile.paths);
-    let repository = fs::canonicalize(request.repository)?;
-    require_git_repository(&repository)?;
+    let package_deadline = Instant::now()
+        .checked_add(PACKAGE_WORK_TIMEOUT)
+        .ok_or_else(|| CliError::cli_other_error("package work deadline overflowed".to_owned()))?;
+    let (approved_root, repository) =
+        approved_repository(&profile.seller_repository_root, request.repository)?;
+    require_sandbox()?;
+    require_isolated_git_repository(
+        &approved_root,
+        &repository,
+        remaining_package_time(package_deadline)?,
+    )?;
     let base_revision = format!("{}^{{commit}}", request.base);
-    let base = git_stdout_bounded(
+    let base = isolated_git_stdout_bounded(
+        &approved_root,
         &repository,
         &["rev-parse", "--verify", &base_revision],
         128,
-        REPOSITORY_STAGE_TIMEOUT,
+        remaining_package_time(package_deadline)?,
         "resolve verified-fix base revision",
     )?;
     let candidate_revision = format!("{}^{{commit}}", request.candidate);
-    let candidate = git_stdout_bounded(
+    let candidate = isolated_git_stdout_bounded(
+        &approved_root,
         &repository,
         &["rev-parse", "--verify", &candidate_revision],
         128,
-        REPOSITORY_STAGE_TIMEOUT,
+        remaining_package_time(package_deadline)?,
         "resolve verified-fix candidate revision",
     )?;
     if base == candidate {
@@ -129,9 +146,11 @@ pub(super) fn cmd_finding_package_verified_fix(
             "at least one non-empty --test command is required".to_owned(),
         ));
     }
-    require_sandbox()?;
-
-    let repository_identity = repository_identity(&repository)?;
+    let repository_identity = isolated_repository_identity(
+        &approved_root,
+        &repository,
+        remaining_package_time(package_deadline)?,
+    )?;
     let work_root = paths
         .packages_directory
         .join(format!(".verified-fix-work-{}", uuid::Uuid::new_v4()));
@@ -139,15 +158,12 @@ pub(super) fn cmd_finding_package_verified_fix(
     // Install the cleanup guard before clone staging. Any partial clone or
     // checkout is therefore removed on every ordinary error path.
     let worktrees = StagedRepositorySet::new(work_root);
-    worktrees.stage(&repository)?;
+    worktrees.stage(&repository, &approved_root, package_deadline)?;
     let staged_repository = worktrees.repository.clone();
-    let baseline_path = worktrees.add("baseline", &base)?;
-    let candidate_path = worktrees.add("candidate", &candidate)?;
-    let test_deadline = Instant::now()
-        .checked_add(PACKAGE_TEST_TIMEOUT)
-        .ok_or_else(|| CliError::cli_other_error("package test deadline overflowed".to_owned()))?;
-    let baseline = run_test_commands(&baseline_path, request.tests, test_deadline)?;
-    let candidate_results = run_test_commands(&candidate_path, request.tests, test_deadline)?;
+    let baseline_path = worktrees.add("baseline", &base, package_deadline)?;
+    let candidate_path = worktrees.add("candidate", &candidate, package_deadline)?;
+    let baseline = run_test_commands(&baseline_path, request.tests, package_deadline)?;
+    let candidate_results = run_test_commands(&candidate_path, request.tests, package_deadline)?;
     if !baseline.iter().any(|result| result.exit_code != 0) {
         return Err(CliError::cli_other_error(
             "verified-fix baseline unexpectedly passed every test".to_owned(),
@@ -164,13 +180,14 @@ pub(super) fn cmd_finding_package_verified_fix(
         &staged_repository,
         &["diff", "--binary", "--full-index", &base, &candidate, "--"],
         MAX_DRAFT_BYTES,
+        remaining_package_time(package_deadline)?,
     )?;
     let patch = String::from_utf8(patch).map_err(|_| {
         CliError::cli_other_error("git emitted a non-UTF-8 binary patch".to_owned())
     })?;
     let issued_at = unix_time()?;
     let runner_manifest = canonical_json_bytes(&serde_json::json!({
-        "aggregateTestDeadlineMillis": PACKAGE_TEST_TIMEOUT.as_millis(),
+        "aggregatePackageDeadlineMillis": PACKAGE_WORK_TIMEOUT.as_millis(),
         "isolation": "bubblewrap-cgroup-v2-rlimit-bounded-tmpfs-v1",
         "runner": "chio finding package verified-fix",
         "tests": request.tests,
@@ -663,17 +680,27 @@ impl StagedRepositorySet {
         }
     }
 
-    fn stage(&self, source: &Path) -> Result<(), CliError> {
-        stage_repository(source, &self.root).map(|_| ())
+    fn stage(
+        &self,
+        source: &Path,
+        approved_root: &Path,
+        deadline: Instant,
+    ) -> Result<(), CliError> {
+        stage_repository_isolated(
+            source,
+            approved_root,
+            &self.root,
+            remaining_package_time(deadline)?,
+        )
     }
 
-    fn add(&self, name: &str, revision: &str) -> Result<PathBuf, CliError> {
+    fn add(&self, name: &str, revision: &str, deadline: Instant) -> Result<PathBuf, CliError> {
         let path = self.root.join(name);
         let template = self.root.join(format!("{name}-git-template"));
         fs::create_dir(&template)?;
         let mut clone = hardened_git_command();
         clone
-            .args(["clone", "--local", "--no-hardlinks", "--no-checkout"])
+            .args(["clone", "--no-local", "--no-checkout"])
             .arg(format!("--template={}", template.display()))
             .arg(&self.repository)
             .arg(&path);
@@ -681,7 +708,7 @@ impl StagedRepositorySet {
             clone,
             &self.root,
             &format!("create isolated {name} repository"),
-            REPOSITORY_STAGE_TIMEOUT,
+            remaining_package_time(deadline)?,
             REPOSITORY_STAGE_MAX_BYTES,
         )?;
         let mut checkout = hardened_git_command();
@@ -694,7 +721,7 @@ impl StagedRepositorySet {
             checkout,
             &self.root,
             &format!("check out isolated {name} repository"),
-            REPOSITORY_STAGE_TIMEOUT,
+            remaining_package_time(deadline)?,
             REPOSITORY_STAGE_MAX_BYTES,
         )?;
         Ok(path)
@@ -705,26 +732,6 @@ impl Drop for StagedRepositorySet {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);
     }
-}
-
-fn stage_repository(source: &Path, work_root: &Path) -> Result<PathBuf, CliError> {
-    let template = work_root.join("git-template");
-    fs::create_dir(&template)?;
-    let staged = work_root.join("repository");
-    let mut clone = hardened_git_command();
-    clone
-        .args(["clone", "--local", "--no-hardlinks", "--no-checkout"])
-        .arg(format!("--template={}", template.display()))
-        .arg(source)
-        .arg(&staged);
-    run_repository_staging_command(
-        clone,
-        work_root,
-        "stage the source repository in operator-owned storage",
-        REPOSITORY_STAGE_TIMEOUT,
-        REPOSITORY_STAGE_MAX_BYTES,
-    )?;
-    Ok(staged)
 }
 
 fn run_repository_staging_command(
@@ -818,13 +825,26 @@ fn staging_root_within_bound(root: &Path, maximum_bytes: u64) -> Result<bool, Cl
     let mut bytes = 0u64;
     let mut entries = 0u64;
     while let Some(directory) = pending.pop() {
-        for entry in fs::read_dir(directory)? {
-            let entry = entry?;
+        let directory_entries = match fs::read_dir(directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(CliError::from(error)),
+        };
+        for entry in directory_entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(CliError::from(error)),
+            };
             entries = entries.saturating_add(1);
             if entries > REPOSITORY_STAGE_MAX_ENTRIES {
                 return Ok(false);
             }
-            let metadata = fs::symlink_metadata(entry.path())?;
+            let metadata = match fs::symlink_metadata(entry.path()) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(CliError::from(error)),
+            };
             if metadata.file_type().is_symlink() {
                 bytes = bytes.saturating_add(metadata.len());
             } else if metadata.is_dir() {
@@ -860,12 +880,17 @@ fn hardened_git_command() -> Command {
     command
 }
 
-fn require_git_repository(path: &Path) -> Result<(), CliError> {
-    let inside = git_stdout_bounded(
-        path,
+fn require_isolated_git_repository(
+    approved_root: &Path,
+    repository: &Path,
+    timeout: Duration,
+) -> Result<(), CliError> {
+    let inside = isolated_git_stdout_bounded(
+        approved_root,
+        repository,
         &["rev-parse", "--is-inside-work-tree"],
         16,
-        REPOSITORY_STAGE_TIMEOUT,
+        timeout,
         "verify seller repository",
     )?;
     if inside != "true" {
@@ -876,6 +901,7 @@ fn require_git_repository(path: &Path) -> Result<(), CliError> {
     Ok(())
 }
 
+#[cfg(test)]
 fn git_stdout_bounded(
     repository: &Path,
     args: &[&str],
@@ -891,6 +917,7 @@ fn git_stdout_bounded(
     Ok(value.trim().to_owned())
 }
 
+#[cfg(test)]
 fn git_optional_stdout_bounded(
     repository: &Path,
     args: &[&str],
@@ -909,6 +936,7 @@ fn git_optional_stdout_bounded(
     Ok((!value.trim().is_empty()).then(|| value.trim().to_owned()))
 }
 
+#[cfg(test)]
 fn repository_identity(repository: &Path) -> Result<String, CliError> {
     Ok(git_optional_stdout_bounded(
         repository,
@@ -947,15 +975,22 @@ fn git_stdout_bytes_bounded(
     repository: &Path,
     args: &[&str],
     max_bytes: usize,
+    timeout: Duration,
 ) -> Result<Vec<u8>, CliError> {
     let mut command = hardened_git_command();
     command.arg("-C").arg(repository).args(args);
-    run_bounded_output_command(
-        command,
-        max_bytes,
-        PATCH_GENERATION_TIMEOUT,
-        "git command",
-    )
+    run_bounded_output_command(command, max_bytes, timeout, "git command")
+}
+
+fn remaining_package_time(deadline: Instant) -> Result<Duration, CliError> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return Err(CliError::cli_other_error(format!(
+            "verified-fix packaging exceeded the {} millisecond aggregate deadline",
+            PACKAGE_WORK_TIMEOUT.as_millis()
+        )));
+    }
+    Ok(remaining)
 }
 
 fn run_bounded_output_command(

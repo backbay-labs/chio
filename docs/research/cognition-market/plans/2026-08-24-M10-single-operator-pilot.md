@@ -69,10 +69,14 @@ time and an expired ask fails closed without reserving funds. Purchase
 execution runs in one non-queued blocking lane. Public proof reads and egress
 use a separate one-response lane, bounded chunks, and an absolute deadline.
 
-Seller-controlled baseline and candidate commands share one five-minute
-package deadline. Their complete descendant tree is constrained by cgroup v2
-aggregate memory, swap, and process limits, in addition to the existing
-process-local rlimits and isolated writable volume.
+All seller-controlled Git reads, repository staging, baseline and candidate
+commands, and patch generation share one five-minute package deadline. Source
+Git operations run in a filesystem namespace that exposes only the approved
+repository root, and the operator-owned stage uses a full non-local object
+transfer. Git metadata and alternate object stores therefore cannot reach
+operator-readable paths outside that root. Test-command descendant trees are
+constrained by cgroup v2 aggregate memory, swap, and process limits, in addition
+to the existing process-local rlimits and isolated writable volume.
 
 The seller workflow packages a patch, replay recipe, deterministic evidence,
 commercial terms, backing, listing, and admission request from normal files.

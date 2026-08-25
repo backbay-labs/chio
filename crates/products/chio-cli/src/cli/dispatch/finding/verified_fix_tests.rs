@@ -43,7 +43,8 @@ fn staged_worktree_disables_source_repository_hooks() {
     let work_root = root.path().join("work");
     fs::create_dir(&work_root).unwrap();
     let worktrees = StagedRepositorySet::new(work_root);
-    worktrees.stage(&source).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    worktrees.stage(&source, root.path(), deadline).unwrap();
     let revision = git_stdout_bounded(
         &worktrees.repository,
         &["rev-parse", "HEAD"],
@@ -52,8 +53,83 @@ fn staged_worktree_disables_source_repository_hooks() {
         "resolve staged repository revision",
     )
     .unwrap();
-    worktrees.add("candidate", &revision).unwrap();
+    worktrees.add("candidate", &revision, deadline).unwrap();
     assert!(!marker.exists());
+}
+
+#[test]
+fn source_git_sandbox_rejects_an_external_alternate_object_store() {
+    if require_sandbox().is_err() {
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let approved = root.path().join("approved");
+    let source = approved.join("source");
+    let outside = root.path().join("outside");
+    fs::create_dir_all(&approved).unwrap();
+    for repository in [&source, &outside] {
+        assert!(Command::new("git")
+            .arg("init")
+            .arg(repository)
+            .status()
+            .unwrap()
+            .success());
+    }
+    fs::write(outside.join("secret.txt"), "operator secret").unwrap();
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&outside)
+        .args(["add", "secret.txt"])
+        .status()
+        .unwrap()
+        .success());
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&outside)
+        .args([
+            "-c",
+            "user.name=Chio Test",
+            "-c",
+            "user.email=chio@example.invalid",
+            "commit",
+            "-m",
+            "secret",
+        ])
+        .status()
+        .unwrap()
+        .success());
+    let outside_commit = String::from_utf8(
+        Command::new("git")
+            .arg("-C")
+            .arg(&outside)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    let outside_objects = fs::canonicalize(outside.join(".git/objects")).unwrap();
+    let alternates = source.join(".git/objects/info/alternates");
+    fs::create_dir_all(alternates.parent().unwrap()).unwrap();
+    fs::write(&alternates, format!("{}\n", outside_objects.display())).unwrap();
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&source)
+        .args(["cat-file", "-e", outside_commit.trim()])
+        .status()
+        .unwrap()
+        .success());
+
+    let error = isolated_git_stdout_bounded(
+        &approved,
+        &source,
+        &["cat-file", "-t", outside_commit.trim()],
+        64,
+        Duration::from_secs(1),
+        "read seller object",
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("failed"));
 }
 
 #[test]
@@ -65,9 +141,31 @@ fn failed_repository_staging_removes_its_partial_root() {
     fs::create_dir(&work_root).unwrap();
     let result = {
         let worktrees = StagedRepositorySet::new(work_root.clone());
-        worktrees.stage(&source)
+        worktrees.stage(
+            &source,
+            root.path(),
+            Instant::now() + Duration::from_secs(5),
+        )
     };
     assert!(result.is_err());
+    assert!(!work_root.exists());
+}
+
+#[test]
+fn expired_package_deadline_stops_before_repository_staging() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    fs::create_dir(&source).unwrap();
+    let work_root = root.path().join("work");
+    fs::create_dir(&work_root).unwrap();
+    let result = {
+        let worktrees = StagedRepositorySet::new(work_root.clone());
+        worktrees.stage(&source, root.path(), Instant::now())
+    };
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("aggregate deadline"));
     assert!(!work_root.exists());
 }
 

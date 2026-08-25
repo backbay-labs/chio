@@ -47,16 +47,17 @@ pub(super) async fn serve_public_proof(
             )
         }
     };
-    let proof = tokio::task::spawn_blocking(move || executor.public_proof(&finding_id)).await;
+    let proof =
+        read_public_proof_blocking(move || executor.public_proof(&finding_id), permit).await;
     match proof {
-        Ok(Ok(bytes)) if bytes.len() <= FINDING_PROOF_BUNDLE_MAX_BYTES => {
+        Ok((Ok(bytes), permit)) if bytes.len() <= FINDING_PROOF_BUNDLE_MAX_BYTES => {
             proof_stream_response(bytes, permit)
         }
-        Ok(Ok(_)) => plain_http_error(
+        Ok((Ok(_), _permit)) => plain_http_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "finding proof bundle exceeds its serving bound",
         ),
-        Ok(Err(_)) => {
+        Ok((Err(_), _permit)) => {
             plain_http_error(StatusCode::NOT_FOUND, "finding proof bundle is unavailable")
         }
         Err(_) => plain_http_error(
@@ -64,6 +65,13 @@ pub(super) async fn serve_public_proof(
             "finding proof reader failed",
         ),
     }
+}
+
+async fn read_public_proof_blocking(
+    read: impl FnOnce() -> Result<Vec<u8>, String> + Send + 'static,
+    permit: OwnedSemaphorePermit,
+) -> Result<(Result<Vec<u8>, String>, OwnedSemaphorePermit), tokio::task::JoinError> {
+    tokio::task::spawn_blocking(move || (read(), permit)).await
 }
 
 struct ProofStreamState {
@@ -134,6 +142,51 @@ mod tests {
         let response = proof_stream_response(b"{}".to_vec(), permit);
         assert!(lane.clone().try_acquire_owned().is_err());
         drop(response);
+        assert!(lane.try_acquire_owned().is_ok());
+    }
+
+    #[tokio::test]
+    async fn cancelled_proof_handler_does_not_release_an_active_reader() {
+        let lane = Arc::new(Semaphore::new(1));
+        let permit = lane
+            .clone()
+            .try_acquire_owned()
+            .unwrap_or_else(|error| panic!("proof permit: {error}"));
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let reader = tokio::spawn(async move {
+            read_public_proof_blocking(
+                move || {
+                    let _ = started_tx.send(());
+                    let _ = release_rx.recv();
+                    Ok(b"{}".to_vec())
+                },
+                permit,
+            )
+            .await
+        });
+        started_rx
+            .await
+            .unwrap_or_else(|error| panic!("proof reader start: {error}"));
+        reader.abort();
+        match reader.await {
+            Err(error) => assert!(error.is_cancelled()),
+            Ok(_) => panic!("cancelled proof handler unexpectedly completed"),
+        }
+        assert!(lane.clone().try_acquire_owned().is_err());
+        let _ = release_tx.send(());
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if lane.available_permits() == 1 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| {
+            panic!("proof permit was not released after the blocking reader exited")
+        });
         assert!(lane.try_acquire_owned().is_ok());
     }
 

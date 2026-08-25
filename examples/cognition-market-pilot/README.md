@@ -105,12 +105,17 @@ Pass the staged `/srv/chio/cognition-market-repositories/project` path as
 `operator init --repository-root`. Operator ingress canonicalizes each submitted
 path and rejects anything outside that root. Packaging first clones its objects without hard links into the
 operator-owned packages directory, with repository hooks and external Git
-helpers disabled. It creates self-contained baseline and candidate clones so
-Git-based build tooling remains available without mounting shared repository
-metadata. Each test receives a private size-capped tmpfs, no network, a cleared
+helpers disabled. Seller-controlled Git reads and the initial clone run inside
+a filesystem namespace that exposes only the approved repository root, so Git
+worktree, common-directory, and alternate-object indirection cannot reach
+operator-readable paths outside it. A full non-local transfer produces the
+self-contained staged, baseline, and candidate clones. Git-based build tooling
+therefore remains available without mounting shared repository metadata. Each
+test receives a private size-capped tmpfs, no network, a cleared
 environment, bounded output, hard memory, CPU, process, descriptor, and
 file-size limits, and no mount of the operator profile or state directory.
-Baseline and candidate commands share one five-minute aggregate deadline.
+All seller-controlled Git reads, staging, baseline and candidate commands, and
+patch generation share one five-minute aggregate package deadline.
 Memory, swap, and process limits are enforced across the complete descendant
 tree by cgroup v2, with process-local rlimits retained as defense in depth.
 Repository clone and checkout staging also has a

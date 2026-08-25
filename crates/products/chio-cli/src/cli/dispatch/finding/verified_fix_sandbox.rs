@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 const MAX_COMMAND_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const TEST_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
-pub(super) const PACKAGE_TEST_TIMEOUT: Duration = Duration::from_secs(300);
+pub(super) const PACKAGE_WORK_TIMEOUT: Duration = Duration::from_secs(300);
 const TEST_SANDBOX_ADDRESS_SPACE_BYTES: u64 = 6 * 1024 * 1024 * 1024;
 const TEST_SANDBOX_FILE_BYTES: u64 = 1024 * 1024 * 1024;
 const TEST_SANDBOX_TMPFS_BYTES: u64 = 4 * 1024 * 1024 * 1024;
@@ -40,7 +40,7 @@ pub(super) fn run_test_commands(
 fn package_test_deadline_error() -> CliError {
     CliError::cli_other_error(format!(
         "verified-fix baseline and candidate tests exceeded the {} millisecond aggregate deadline",
-        PACKAGE_TEST_TIMEOUT.as_millis()
+        PACKAGE_WORK_TIMEOUT.as_millis()
     ))
 }
 
@@ -609,7 +609,7 @@ pub(super) fn runtime_fingerprint() -> Result<Vec<u8>, CliError> {
         "resourceLimits": {
             "addressSpaceBytesPerProcess": TEST_SANDBOX_ADDRESS_SPACE_BYTES,
             "aggregateMemoryBytes": TEST_SANDBOX_ADDRESS_SPACE_BYTES,
-            "aggregateTestDeadlineMillis": PACKAGE_TEST_TIMEOUT.as_millis(),
+            "aggregatePackageDeadlineMillis": PACKAGE_WORK_TIMEOUT.as_millis(),
             "cpuSecondsPerProcess": TEST_SANDBOX_CPU_SECS,
             "fileBytesPerProcess": TEST_SANDBOX_FILE_BYTES,
             "openFilesPerProcess": TEST_SANDBOX_OPEN_FILE_LIMIT,
