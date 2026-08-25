@@ -23,11 +23,20 @@ crate    = "chio-core-types"
 path     = "fuzz/fuzz_targets/canonical_json.rs"
 triggers = [
     "crates/core/chio-core-types/src/canonical.rs",
+    "crates/economy/chio-finding/**",
+    "crates/economy/chio-settle/src/finding_enforcement/**",
+    "crates/platform/chio-control-plane/src/trust_control/finding*.rs",
+    "crates/platform/chio-control-plane/src/trust_control/**/finding*.rs",
+    "crates/platform/chio-store-sqlite/src/finding*.rs",
+    "crates/products/chio-cli/src/**/finding.rs",
+    "crates/products/chio-cli/src/**/finding/**",
+    "sdks/python/chio-sdk-python/src/chio_sdk/cognition_market.py",
+    "sdks/typescript/chio-ts/src/cognition_market.ts",
     "spec/schemas/canonical/**",
     "tests/bindings/vectors/canonical/**",
 ]
 seeds    = "fuzz/corpus/canonical_json"
-notes    = "Round-trips canonical JSON; catches sort drift and float canonicalization regressions."
+notes    = "Round-trips canonical JSON; catches sort drift, float canonicalization, and signed cognition-market artifact regressions."
 
 [targets.capability_receipt]
 crate    = "chio-core-types"
@@ -238,10 +247,13 @@ crate    = "chio-kernel-core"
 path     = "fuzz/fuzz_targets/receipt_log_replay.rs"
 triggers = [
     "crates/kernel/chio-kernel-core/src/**",
+    "crates/platform/chio-control-plane/src/trust_control/finding_operator_purchase.rs",
+    "crates/platform/chio-store-sqlite/src/finding_operator_bundle_store.rs",
+    "crates/platform/chio-store-sqlite/src/finding_operator_payment.rs",
     "spec/schemas/receipt/**",
 ]
 seeds    = "fuzz/corpus/receipt_log_replay"
-notes    = "Receipt log replay decode plus chain-invariant state-machine."
+notes    = "Receipt log replay decode plus chain-invariant state-machine, including cognition-market terminal and payment paths."
 
 [targets.eval_receipt_bundle]
 crate    = "chio-eval-receipt"
@@ -303,12 +315,15 @@ triggers = [
     "crates/core/chio-core/src/merkle*.rs",
     "crates/core/chio-core/src/hashing*.rs",
     "crates/kernel/chio-kernel/src/checkpoint*.rs",
+    "crates/platform/chio-control-plane/src/trust_control/finding_operator_status.rs",
+    "crates/platform/chio-control-plane/src/trust_control/finding_status_handlers.rs",
+    "crates/platform/chio-store-sqlite/src/finding_operator_bundle_store.rs",
     "spec/schemas/receipt/**",
     "fuzz/fuzz_targets/merkle_checkpoint.rs",
     "fuzz/corpus/fuzz_merkle_checkpoint/**",
 ]
 seeds    = "fuzz/corpus/fuzz_merkle_checkpoint"
-notes    = "Merkle tree inclusion proofs and signed checkpoint validation."
+notes    = "Merkle tree inclusion proofs, signed checkpoint validation, and cognition-market public status proof coverage."
 
 [targets.revocation_oracle_merkle]
 crate    = "chio-revocation-oracle"
