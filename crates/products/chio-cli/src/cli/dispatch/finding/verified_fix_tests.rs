@@ -3,6 +3,9 @@ use std::os::unix::fs::PermissionsExt as _;
 
 #[test]
 fn staged_worktree_disables_source_repository_hooks() {
+    if require_sandbox().is_err() {
+        return;
+    }
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source");
     fs::create_dir(&source).unwrap();
