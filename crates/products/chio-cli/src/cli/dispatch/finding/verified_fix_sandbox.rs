@@ -275,12 +275,8 @@ pub(super) fn run_test_command_with_limits(
     let started = Instant::now();
     let cgroup = SandboxCgroup::prepare(limits)?;
     let mut isolated = cgroup.wrap_command(limits);
+    add_test_rlimits(&mut isolated, limits);
     isolated
-        .arg(format!("--as={}", limits.address_space_bytes))
-        .arg(format!("--fsize={}", limits.file_bytes))
-        .arg(format!("--nproc={}", limits.process_count))
-        .arg(format!("--nofile={}", limits.open_files))
-        .arg(format!("--cpu={}", limits.cpu_secs))
         .args(["--", "bwrap"])
         .args([
             "--die-with-parent",
@@ -426,6 +422,39 @@ pub(super) fn run_test_command_with_limits(
         stderr_sha256,
         duration_millis: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
     })
+}
+
+fn add_test_rlimits(command: &mut Command, limits: TestSandboxLimits) {
+    command
+        .arg(format!("--as={}", limits.address_space_bytes))
+        .arg(format!("--fsize={}", limits.file_bytes))
+        .arg(format!("--nofile={}", limits.open_files))
+        .arg(format!("--cpu={}", limits.cpu_secs));
+    // RLIMIT_NPROC counts every process and thread owned by the host user.
+    // The direct and user-scope cgroup paths already apply the intended
+    // per-sandbox process bound through pids.max or TasksMax.
+}
+
+#[cfg(test)]
+mod rlimit_tests {
+    use super::{add_test_rlimits, TestSandboxLimits};
+    use std::process::Command;
+
+    #[test]
+    fn host_user_process_count_is_not_used_as_the_sandbox_bound() {
+        let mut command = Command::new("prlimit");
+        add_test_rlimits(&mut command, TestSandboxLimits::production());
+        let arguments = command
+            .get_args()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert!(arguments.iter().all(|argument| !argument.starts_with("--nproc=")));
+        assert!(arguments.iter().any(|argument| argument.starts_with("--as=")));
+        assert!(arguments
+            .iter()
+            .any(|argument| argument.starts_with("--nofile=")));
+    }
 }
 
 fn read_and_digest(
