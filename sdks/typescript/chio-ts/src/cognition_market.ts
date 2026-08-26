@@ -575,7 +575,10 @@ function loadProfile(path: string, schema: string): CognitionMarketClientProfile
   } catch {
     throw new CognitionMarketError("client profile is invalid");
   }
-  if (endpoint.protocol !== "http:" || endpoint.username !== "" || endpoint.password !== ""
+  const loopbackHttp = endpoint.protocol === "http:"
+    && (endpoint.hostname === "127.0.0.1" || endpoint.hostname === "[::1]");
+  if ((endpoint.protocol !== "https:" && !loopbackHttp)
+      || endpoint.username !== "" || endpoint.password !== ""
       || endpoint.port === "0"
       || endpoint.search !== "" || endpoint.hash !== ""
       || (endpoint.pathname !== "" && endpoint.pathname !== "/")) {

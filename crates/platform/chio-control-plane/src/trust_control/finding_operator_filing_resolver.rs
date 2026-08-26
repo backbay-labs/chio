@@ -2,11 +2,16 @@
 
 use chio_finding::{signed_envelope_sha256, SignedFindingAdmission, SignedFindingMarketTerms};
 use chio_open_market::fee_schedule::SignedOpenMarketFeeSchedule;
-use chio_store_sqlite::SqliteFindingOperatorBundleStore;
+use chio_store_sqlite::{
+    FindingOperatorBundleArtifactIndex, FindingOperatorBundleArtifactKind,
+    FindingOperatorBundleStoreError, SqliteFindingOperatorBundleStore,
+};
 
 use super::finding_challenge_coordinator::{FindingAuditRound, FindingFilingResolver};
 use super::finding_operator_bundle::FindingOperatorBundle;
 use super::{FindingAuthorityPin, FindingMarketConfig};
+
+const ARTIFACT_INDEX_BACKFILL_BATCH: u64 = 16;
 
 /// Resolver over the exact durable bundles admitted by this operator.
 /// Unsupported artifact families return `None`, which keeps later challenge
@@ -22,42 +27,95 @@ impl FindingOperatorFilingResolver {
         market: FindingMarketConfig,
     ) -> Result<Self, String> {
         market.validate().map_err(|error| error.to_string())?;
+        loop {
+            let records = bundles
+                .list_without_complete_artifact_index(ARTIFACT_INDEX_BACKFILL_BATCH)
+                .map_err(|error| error.to_string())?;
+            if records.is_empty() {
+                break;
+            }
+            for record in records {
+                let bundle: FindingOperatorBundle = serde_json::from_slice(&record.bundle_json)
+                    .map_err(|error| format!("retained operator bundle is invalid: {error}"))?;
+                let indexes = finding_operator_bundle_artifact_indexes(&bundle)?;
+                bundles
+                    .put_with_artifact_indexes(&record.finding_id, &record.bundle_json, &indexes)
+                    .map_err(|error| error.to_string())?;
+            }
+        }
         Ok(Self { bundles, market })
     }
 
-    fn find_bundle(
+    fn indexed_bundle(
         &self,
-        mut predicate: impl FnMut(&FindingOperatorBundle) -> bool,
-    ) -> Option<FindingOperatorBundle> {
-        let mut matched = None;
-        self.bundles
-            .find_bundle(|bytes| {
-                let Ok(bundle) = serde_json::from_slice::<FindingOperatorBundle>(bytes) else {
-                    return false;
-                };
-                if predicate(&bundle) {
-                    matched = Some(bundle);
-                    true
-                } else {
-                    false
-                }
-            })
-            .ok()??;
-        matched
+        kind: FindingOperatorBundleArtifactKind,
+        envelope_sha256: &str,
+    ) -> Result<Option<FindingOperatorBundle>, String> {
+        let record = match self.bundles.get_by_artifact(kind, envelope_sha256) {
+            Ok(record) => record,
+            Err(FindingOperatorBundleStoreError::NotFound) => return Ok(None),
+            Err(error) => return Err(error.to_string()),
+        };
+        let bundle: FindingOperatorBundle = serde_json::from_slice(&record.bundle_json)
+            .map_err(|error| format!("retained operator bundle is invalid: {error}"))?;
+        let expected = finding_operator_bundle_artifact_indexes(&bundle)?
+            .into_iter()
+            .find(|index| index.kind == kind)
+            .ok_or_else(|| "retained operator bundle artifact index is incomplete".to_owned())?;
+        if expected.envelope_sha256 != envelope_sha256 {
+            return Err("retained operator bundle artifact index is inconsistent".to_owned());
+        }
+        Ok(Some(bundle))
     }
 }
 
+/// Derive the four challenge-facing signed-envelope indexes carried by one
+/// verified operator bundle.
+pub fn finding_operator_bundle_artifact_indexes(
+    bundle: &FindingOperatorBundle,
+) -> Result<[FindingOperatorBundleArtifactIndex; 4], String> {
+    Ok([
+        FindingOperatorBundleArtifactIndex {
+            kind: FindingOperatorBundleArtifactKind::FeeSchedule,
+            envelope_sha256: signed_envelope_sha256(&bundle.fee_schedule)
+                .map_err(|error| error.to_string())?,
+        },
+        FindingOperatorBundleArtifactIndex {
+            kind: FindingOperatorBundleArtifactKind::Admission,
+            envelope_sha256: signed_envelope_sha256(&bundle.admission)
+                .map_err(|error| error.to_string())?,
+        },
+        FindingOperatorBundleArtifactIndex {
+            kind: FindingOperatorBundleArtifactKind::VerifierProfile,
+            envelope_sha256: signed_envelope_sha256(&bundle.verifier_profile)
+                .map_err(|error| error.to_string())?,
+        },
+        FindingOperatorBundleArtifactIndex {
+            kind: FindingOperatorBundleArtifactKind::MarketTerms,
+            envelope_sha256: signed_envelope_sha256(&bundle.market_terms)
+                .map_err(|error| error.to_string())?,
+        },
+    ])
+}
+
 impl FindingFilingResolver for FindingOperatorFilingResolver {
-    fn fee_schedule(&self, envelope_sha256: &str) -> Option<SignedOpenMarketFeeSchedule> {
-        self.find_bundle(|bundle| {
-            signed_envelope_sha256(&bundle.fee_schedule)
-                .is_ok_and(|digest| digest == envelope_sha256)
-        })
-        .map(|bundle| bundle.fee_schedule)
+    fn fee_schedule(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<SignedOpenMarketFeeSchedule>, String> {
+        Ok(self
+            .indexed_bundle(
+                FindingOperatorBundleArtifactKind::FeeSchedule,
+                envelope_sha256,
+            )?
+            .map(|bundle| bundle.fee_schedule))
     }
 
-    fn audit_round(&self, _epoch_envelope_sha256: &str) -> Option<FindingAuditRound> {
-        None
+    fn audit_round(
+        &self,
+        _epoch_envelope_sha256: &str,
+    ) -> Result<Option<FindingAuditRound>, String> {
+        Ok(None)
     }
 
     fn admission_for_backing(
@@ -65,52 +123,73 @@ impl FindingFilingResolver for FindingOperatorFilingResolver {
         finding_id: &str,
         listing_id: &str,
         backing_envelope_sha256: &str,
-    ) -> Option<SignedFindingAdmission> {
-        let record = self.bundles.get(finding_id).ok()?;
-        let bundle: FindingOperatorBundle = serde_json::from_slice(&record.bundle_json).ok()?;
+    ) -> Result<Option<SignedFindingAdmission>, String> {
+        let record = match self.bundles.get(finding_id) {
+            Ok(record) => record,
+            Err(FindingOperatorBundleStoreError::NotFound) => return Ok(None),
+            Err(error) => return Err(error.to_string()),
+        };
+        let bundle: FindingOperatorBundle = serde_json::from_slice(&record.bundle_json)
+            .map_err(|error| format!("retained operator bundle is invalid: {error}"))?;
         let admission = bundle.admission;
-        (admission.body.finding_id == finding_id
+        Ok((admission.body.finding_id == finding_id
             && admission.body.listing_id == listing_id
             && admission.body.backing_envelope_sha256 == backing_envelope_sha256)
-            .then_some(admission)
+            .then_some(admission))
     }
 
     fn admission_by_envelope_sha256(
         &self,
         envelope_sha256: &str,
-    ) -> Option<SignedFindingAdmission> {
-        self.find_bundle(|bundle| {
-            signed_envelope_sha256(&bundle.admission).is_ok_and(|digest| digest == envelope_sha256)
-        })
-        .map(|bundle| bundle.admission)
+    ) -> Result<Option<SignedFindingAdmission>, String> {
+        Ok(self
+            .indexed_bundle(
+                FindingOperatorBundleArtifactKind::Admission,
+                envelope_sha256,
+            )?
+            .map(|bundle| bundle.admission))
     }
 
-    fn venue_policy_for_admission(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
-        self.admission_by_envelope_sha256(envelope_sha256)
-            .map(|_| self.market.venue.clone())
+    fn venue_policy_for_admission(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(self
+            .admission_by_envelope_sha256(envelope_sha256)?
+            .map(|_| self.market.venue.clone()))
     }
 
-    fn governance_policy_for_profile(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
-        self.find_bundle(|bundle| {
-            signed_envelope_sha256(&bundle.verifier_profile)
-                .is_ok_and(|digest| digest == envelope_sha256)
-        })
-        .map(|_| self.market.governance_root.clone())
+    fn governance_policy_for_profile(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(self
+            .indexed_bundle(
+                FindingOperatorBundleArtifactKind::VerifierProfile,
+                envelope_sha256,
+            )?
+            .map(|_| self.market.governance_root.clone()))
     }
 
-    fn governance_policy_for_case(&self, _envelope_sha256: &str) -> Option<FindingAuthorityPin> {
-        None
+    fn governance_policy_for_case(
+        &self,
+        _envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(None)
     }
 
     fn governance_policy_for_activation(
         &self,
         _envelope_sha256: &str,
-    ) -> Option<FindingAuthorityPin> {
-        None
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(None)
     }
 
-    fn penalty_policy_for_penalty(&self, _envelope_sha256: &str) -> Option<FindingAuthorityPin> {
-        None
+    fn penalty_policy_for_penalty(
+        &self,
+        _envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(None)
     }
 
     fn retain_penalty_policy(
@@ -121,8 +200,11 @@ impl FindingFilingResolver for FindingOperatorFilingResolver {
         Err("operator penalty policy retention is not configured".to_owned())
     }
 
-    fn evaluator_policy_for_outcome(&self, _envelope_sha256: &str) -> Option<FindingAuthorityPin> {
-        None
+    fn evaluator_policy_for_outcome(
+        &self,
+        _envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(None)
     }
 
     fn retain_evaluator_policy(
@@ -133,29 +215,36 @@ impl FindingFilingResolver for FindingOperatorFilingResolver {
         Err("operator evaluator policy retention is not configured".to_owned())
     }
 
-    fn audit_policy_for_epoch(&self, _epoch_envelope_sha256: &str) -> Option<FindingAuthorityPin> {
-        None
+    fn audit_policy_for_epoch(
+        &self,
+        _epoch_envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(None)
     }
 
     fn randomness_witness_policy_for_epoch(
         &self,
         _epoch_envelope_sha256: &str,
-    ) -> Option<FindingAuthorityPin> {
-        None
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(None)
     }
 
     fn governance_policy_for_audit_authorization(
         &self,
         _authorization_envelope_sha256: &str,
-    ) -> Option<FindingAuthorityPin> {
-        None
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(None)
     }
 
-    fn market_terms(&self, envelope_sha256: &str) -> Option<SignedFindingMarketTerms> {
-        self.find_bundle(|bundle| {
-            signed_envelope_sha256(&bundle.market_terms)
-                .is_ok_and(|digest| digest == envelope_sha256)
-        })
-        .map(|bundle| bundle.market_terms)
+    fn market_terms(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<SignedFindingMarketTerms>, String> {
+        Ok(self
+            .indexed_bundle(
+                FindingOperatorBundleArtifactKind::MarketTerms,
+                envelope_sha256,
+            )?
+            .map(|bundle| bundle.market_terms))
     }
 }

@@ -263,7 +263,7 @@ fn patch_output_runner_enforces_deadline_and_output_bound() {
 }
 
 #[test]
-fn sandbox_mounts_exclude_operator_cargo_dependency_caches() {
+fn sandbox_mounts_only_explicit_runtime_components() {
     let root = tempfile::tempdir().unwrap();
     for path in [
         ".cargo/bin",
@@ -274,19 +274,22 @@ fn sandbox_mounts_exclude_operator_cargo_dependency_caches() {
         fs::create_dir_all(root.path().join(path)).unwrap();
     }
     let mut command = Command::new("bwrap");
-    add_runtime_mounts(&mut command, Some(root.path()));
+    add_runtime_mounts(&mut command, Some(root.path())).unwrap();
     let arguments = command
         .get_args()
         .map(|argument| argument.to_string_lossy().into_owned())
         .collect::<Vec<_>>();
 
-    assert!(arguments.iter().any(|argument| argument.ends_with(".cargo/bin")));
+    for forbidden in ["/usr", "/usr/local", "/etc/ssl", "/lib", "/lib64"] {
+        assert!(!arguments.windows(3).any(|window| {
+            window[0] == "--ro-bind" && (window[1] == forbidden || window[2] == forbidden)
+        }));
+    }
+    assert!(arguments.iter().any(|argument| argument == "/runtime/bin/sh"));
+    let temporary_root = root.path().to_string_lossy().into_owned();
     assert!(arguments
         .iter()
-        .all(|argument| !argument.contains(".cargo/registry")));
-    assert!(arguments
-        .iter()
-        .all(|argument| !argument.contains(".cargo/git")));
+        .all(|argument| !argument.contains(temporary_root.as_str())));
 }
 
 #[test]

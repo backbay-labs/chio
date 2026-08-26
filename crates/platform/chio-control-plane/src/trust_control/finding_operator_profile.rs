@@ -176,6 +176,11 @@ impl FindingOperatorProfile {
         if self.listen.port() == 0 {
             return Err("finding operator listen port must be nonzero".to_owned());
         }
+        if !self.listen.ip().is_loopback() {
+            return Err(
+                "finding operator HTTP listener must use a literal loopback address".to_owned(),
+            );
+        }
         validate_absolute_path(&self.seller_repository_root, "seller repository root")?;
         validate_text(&self.service_token, "service token")?;
         self.market.validate().map_err(|error| error.to_string())?;

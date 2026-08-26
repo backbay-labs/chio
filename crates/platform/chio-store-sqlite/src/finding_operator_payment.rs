@@ -20,6 +20,10 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 
+fn configure_pooled_connection(connection: &mut rusqlite::Connection) -> rusqlite::Result<()> {
+    connection.execute_batch("PRAGMA busy_timeout = 5000;")
+}
+
 const SCHEMA_KEY: &str = "finding_operator_payment";
 const SUPPORTED_SCHEMA_VERSION: i32 = 0;
 const SCHEMA_ANCHORS: &[&str] = &[
@@ -42,7 +46,7 @@ impl SqliteFindingOperatorPaymentAdapter {
         if let Some(parent) = crate::sqlite_parent_dir_to_create(path) {
             fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
-        let manager = SqliteConnectionManager::file(path);
+        let manager = SqliteConnectionManager::file(path).with_init(configure_pooled_connection);
         let pool = Pool::builder()
             .max_size(8)
             .build(manager)
@@ -53,7 +57,7 @@ impl SqliteFindingOperatorPaymentAdapter {
     }
 
     pub fn open_in_memory() -> Result<Self, String> {
-        let manager = SqliteConnectionManager::memory();
+        let manager = SqliteConnectionManager::memory().with_init(configure_pooled_connection);
         let pool = Pool::builder()
             .max_size(1)
             .build(manager)
@@ -910,6 +914,22 @@ mod tests {
             .unwrap();
         assert_eq!(captured.transaction_id, replayed_capture.transaction_id);
         assert_eq!(reopened.capture_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn every_pooled_connection_has_busy_timeout() {
+        let dir = tempfile::tempdir().unwrap();
+        let adapter =
+            SqliteFindingOperatorPaymentAdapter::open(dir.path().join("operator.db")).unwrap();
+        let first = adapter.pool.get().unwrap();
+        let second = adapter.pool.get().unwrap();
+
+        for connection in [&first, &second] {
+            let busy_timeout = connection
+                .query_row("PRAGMA busy_timeout", [], |row| row.get::<_, i64>(0))
+                .unwrap();
+            assert!(busy_timeout >= 5_000);
+        }
     }
 
     #[test]

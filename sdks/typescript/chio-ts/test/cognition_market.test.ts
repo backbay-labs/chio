@@ -28,7 +28,7 @@ function profileFile(): string {
     path,
     canonical({
       bearerToken: "buyer-secret",
-      endpoint: "http://operator.local",
+      endpoint: "https://operator.local",
       market: {
         statusFeedOperator: {
           authority: {
@@ -74,7 +74,7 @@ function sellerProfileFile(): string {
   const path = join(directory, "seller.json");
   writeFileSync(
     path,
-    "{\"bearerToken\":\"seller-secret\",\"endpoint\":\"http://operator.local\",\"market\":{\"statusFeedOperator\":{\"feedId\":\"finding-status/local\"}},\"payoutDestination\":\"0x3333333333333333333333333333333333333333\",\"principalId\":\"seller-1\",\"schema\":\"chio.finding.seller-client.v1\"}",
+    "{\"bearerToken\":\"seller-secret\",\"endpoint\":\"https://operator.local\",\"market\":{\"statusFeedOperator\":{\"feedId\":\"finding-status/local\"}},\"payoutDestination\":\"0x3333333333333333333333333333333333333333\",\"principalId\":\"seller-1\",\"schema\":\"chio.finding.seller-client.v1\"}",
   );
   return path;
 }
@@ -224,7 +224,7 @@ test("seller retracts with the same scoped credential", async () => {
   const seller = new CognitionMarketSeller(sellerProfileFile(), {
     fetch: async (input, init) => {
       const request = new Request(input, init);
-      assert.equal(request.url, "http://operator.local/v1/findings/operator/retractions");
+      assert.equal(request.url, "https://operator.local/v1/findings/operator/retractions");
       assert.equal(request.headers.get("authorization"), "Bearer seller-secret");
       const body = JSON.parse(await request.text()) as Record<string, unknown>;
       assert.equal(body.findingId, findingId);
@@ -240,7 +240,7 @@ test("buyer rejects a credential without the pinned status feed", () => {
   const path = join(directory, "buyer.json");
   writeFileSync(
     path,
-    "{\"bearerToken\":\"buyer-secret\",\"endpoint\":\"http://operator.local\",\"market\":{},\"payer\":\"9999999999999999999999999999999999999999999999999999999999999999\",\"payoutDestination\":\"0x1111111111111111111111111111111111111111\",\"principalId\":\"buyer-1\",\"schema\":\"chio.finding.buyer-client.v1\",\"signingSeed\":\"2222222222222222222222222222222222222222222222222222222222222222\"}",
+    "{\"bearerToken\":\"buyer-secret\",\"endpoint\":\"https://operator.local\",\"market\":{},\"payer\":\"9999999999999999999999999999999999999999999999999999999999999999\",\"payoutDestination\":\"0x1111111111111111111111111111111111111111\",\"principalId\":\"buyer-1\",\"schema\":\"chio.finding.buyer-client.v1\",\"signingSeed\":\"2222222222222222222222222222222222222222222222222222222222222222\"}",
   );
   assert.throws(() => new CognitionMarketBuyer(path), /client profile is invalid/);
 });
@@ -251,6 +251,22 @@ test("buyer rejects an ephemeral operator port", () => {
   profile.endpoint = "http://127.0.0.1:0";
   writeFileSync(path, canonical(profile));
   assert.throws(() => new CognitionMarketBuyer(path), /client profile is invalid/);
+});
+
+test("buyer requires https away from literal loopback", () => {
+  const path = profileFile();
+  const profile = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  profile.endpoint = "http://operator.example";
+  writeFileSync(path, canonical(profile));
+  assert.throws(() => new CognitionMarketBuyer(path), /client profile is invalid/);
+});
+
+test("buyer allows literal loopback http", () => {
+  const path = profileFile();
+  const profile = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  profile.endpoint = "http://127.0.0.1:8787";
+  writeFileSync(path, canonical(profile));
+  assert.doesNotThrow(() => new CognitionMarketBuyer(path));
 });
 
 test("buyer authenticates a purchase terminal again before challenge filing", async () => {

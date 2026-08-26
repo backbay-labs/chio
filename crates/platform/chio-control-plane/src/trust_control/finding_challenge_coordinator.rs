@@ -370,6 +370,8 @@ pub enum ChallengeCoordinatorError {
     ChallengeEnvelope(String),
     #[error("raw finding artifact rejected: {0}")]
     FindingArtifact(String),
+    #[error("published filing artifact resolver is unavailable: {0}")]
+    FilingResolver(String),
     #[error("challenge does not bind the supplied finding: {0}")]
     FindingBinding(&'static str),
     #[error("challenge class is not compatible with the finding: {0}")]
@@ -557,11 +559,15 @@ pub(crate) struct ResolvedFindingAuditSelection {
 pub trait FindingFilingResolver: Send + Sync {
     /// The signed open-market fee schedule published under this envelope
     /// digest, or `None` when the venue published no such schedule.
-    fn fee_schedule(&self, envelope_sha256: &str) -> Option<SignedOpenMarketFeeSchedule>;
+    fn fee_schedule(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<SignedOpenMarketFeeSchedule>, String>;
 
     /// The audit round published under this epoch envelope digest, or
     /// `None` when the venue published no such round.
-    fn audit_round(&self, epoch_envelope_sha256: &str) -> Option<FindingAuditRound>;
+    fn audit_round(&self, epoch_envelope_sha256: &str)
+        -> Result<Option<FindingAuditRound>, String>;
 
     /// The retained activated admission for one challenged backing. This
     /// includes a superseded admission because a challenge adjudicates the
@@ -571,28 +577,39 @@ pub trait FindingFilingResolver: Send + Sync {
         finding_id: &str,
         listing_id: &str,
         backing_envelope_sha256: &str,
-    ) -> Option<SignedFindingAdmission>;
+    ) -> Result<Option<SignedFindingAdmission>, String>;
 
     /// The retained admission envelope named by a historical purchase
     /// record. Purchase-authority rotation is resolved from this exact
     /// venue-signed snapshot rather than from the deployment's current key.
-    fn admission_by_envelope_sha256(&self, envelope_sha256: &str)
-        -> Option<SignedFindingAdmission>;
+    fn admission_by_envelope_sha256(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<SignedFindingAdmission>, String>;
 
     /// The venue authority lifecycle policy that authenticated this exact
     /// retained admission envelope. Key rotation must not strand an
     /// admission that governed a historical purchase or challenged backing.
-    fn venue_policy_for_admission(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin>;
+    fn venue_policy_for_admission(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String>;
 
     /// The governance policy that authenticated this exact retained
     /// verifier profile. A profile remains usable across governance-key
     /// rotation only when the venue retained the policy that signed it.
-    fn governance_policy_for_profile(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin>;
+    fn governance_policy_for_profile(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String>;
 
     /// The retained governance policy that authenticated this exact signed
     /// case envelope. A sanction remains enforceable across governance-key
     /// rotation only when the venue retained the policy that admitted it.
-    fn governance_policy_for_case(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin>;
+    fn governance_policy_for_case(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String>;
 
     /// The retained governance policy that authenticated this exact trust
     /// activation. Activation and appeal cases can legitimately span a
@@ -600,11 +617,14 @@ pub trait FindingFilingResolver: Send + Sync {
     fn governance_policy_for_activation(
         &self,
         envelope_sha256: &str,
-    ) -> Option<FindingAuthorityPin>;
+    ) -> Result<Option<FindingAuthorityPin>, String>;
 
     /// The retained penalty-authority policy that authenticated this exact
     /// signed penalty envelope.
-    fn penalty_policy_for_penalty(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin>;
+    fn penalty_policy_for_penalty(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String>;
 
     /// Retain the trusted policy used to mint an exact penalty so a later
     /// appeal can authenticate it after authority rotation.
@@ -616,7 +636,10 @@ pub trait FindingFilingResolver: Send + Sync {
 
     /// The evaluator policy retained when this exact signed outcome was
     /// minted. Outcome-authored role fields never select their own trust.
-    fn evaluator_policy_for_outcome(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin>;
+    fn evaluator_policy_for_outcome(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String>;
 
     /// Retain the configured evaluator policy before the exact signed
     /// outcome becomes reachable from the durable verdict record.
@@ -629,7 +652,10 @@ pub trait FindingFilingResolver: Send + Sync {
     /// The retained audit-authority policy that authenticated this exact
     /// audit epoch. Reusing a signer key for a renewed lifecycle policy must
     /// not replace the policy of an in-flight historical round.
-    fn audit_policy_for_epoch(&self, epoch_envelope_sha256: &str) -> Option<FindingAuthorityPin>;
+    fn audit_policy_for_epoch(
+        &self,
+        epoch_envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String>;
 
     /// The retained randomness-witness policy that authenticated this exact
     /// audit epoch. An in-flight round remains verifiable across witness-key
@@ -637,7 +663,7 @@ pub trait FindingFilingResolver: Send + Sync {
     fn randomness_witness_policy_for_epoch(
         &self,
         epoch_envelope_sha256: &str,
-    ) -> Option<FindingAuthorityPin>;
+    ) -> Result<Option<FindingAuthorityPin>, String>;
 
     /// The retained governance policy that authenticated this exact audit
     /// authorization. The authorization digest, rather than a caller-named
@@ -645,11 +671,14 @@ pub trait FindingFilingResolver: Send + Sync {
     fn governance_policy_for_audit_authorization(
         &self,
         authorization_envelope_sha256: &str,
-    ) -> Option<FindingAuthorityPin>;
+    ) -> Result<Option<FindingAuthorityPin>, String>;
 
     /// The seller-signed market terms this venue admitted under this
     /// envelope digest, or `None` when the venue admitted no such terms.
-    fn market_terms(&self, envelope_sha256: &str) -> Option<SignedFindingMarketTerms>;
+    fn market_terms(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<SignedFindingMarketTerms>, String>;
 }
 
 /// The pinned public roles this coordinator verifies against. None of
@@ -1119,6 +1148,7 @@ impl FindingChallengeCoordinator {
                 let round = self
                     .filings
                     .audit_round(&audit.audit_epoch_envelope_sha256)
+                    .map_err(ChallengeCoordinatorError::FilingResolver)?
                     .ok_or(ChallengeCoordinatorError::UnknownAuditRound)?;
                 if self.envelope_digest(&round.epoch)? != audit.audit_epoch_envelope_sha256 {
                     return Err(ChallengeCoordinatorError::AuditRoundBinding(
@@ -1133,6 +1163,7 @@ impl FindingChallengeCoordinator {
                 let historical_policy = self
                     .filings
                     .audit_policy_for_epoch(&audit.audit_epoch_envelope_sha256)
+                    .map_err(ChallengeCoordinatorError::FilingResolver)?
                     .ok_or(ChallengeCoordinatorError::UnknownAuditAuthorityPolicy)?;
                 self.require_live_role(&historical_policy, now, now, "historical audit")?
             }
@@ -1464,6 +1495,7 @@ impl FindingChallengeCoordinator {
         let profile_governance_policy = self
             .filings
             .governance_policy_for_profile(&profile_envelope_sha256)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownProfileGovernancePolicy)?;
         let (governance_authority, governance_authority_status) = self.resolve_live_role(
             &profile_governance_policy,
@@ -1838,6 +1870,7 @@ impl FindingChallengeCoordinator {
                 let historical_policy = self
                     .filings
                     .audit_policy_for_epoch(&audit.audit_epoch_envelope_sha256)
+                    .map_err(ChallengeCoordinatorError::FilingResolver)?
                     .ok_or(ChallengeCoordinatorError::UnknownAuditAuthorityPolicy)?;
                 self.require_live_role(
                     &historical_policy,
@@ -2933,6 +2966,7 @@ impl FindingChallengeCoordinator {
                 &challenge.listing_id,
                 &challenge.backing_envelope_sha256,
             )
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownAdmission)?;
         if self.envelope_digest(&admission)? != challenge.venue_admission_envelope_sha256 {
             return Err(ChallengeCoordinatorError::AdmissionBinding(
@@ -2943,6 +2977,7 @@ impl FindingChallengeCoordinator {
         let venue_policy = self
             .filings
             .venue_policy_for_admission(&admission_digest)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownAdmission)?;
         let venue_authority = self.require_live_role(
             &venue_policy,
@@ -3651,6 +3686,7 @@ impl FindingChallengeCoordinator {
         let round = self
             .filings
             .audit_round(&audit.audit_epoch_envelope_sha256)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownAuditRound)?;
         // Re-derived from the resolved envelope, so a resolver answering
         // with any other round is caught here rather than authorizing a
@@ -3663,6 +3699,7 @@ impl FindingChallengeCoordinator {
         let historical_policy = self
             .filings
             .audit_policy_for_epoch(&audit.audit_epoch_envelope_sha256)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownAuditAuthorityPolicy)?;
         let audit_authority = self.require_live_role(
             &historical_policy,
@@ -3673,6 +3710,7 @@ impl FindingChallengeCoordinator {
         let witness_policy = self
             .filings
             .randomness_witness_policy_for_epoch(&audit.audit_epoch_envelope_sha256)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownAuditRandomnessWitnessPolicy)?;
         let randomness_witness = self.require_live_role(
             &witness_policy,
@@ -3698,6 +3736,7 @@ impl FindingChallengeCoordinator {
         let governance_policy = self
             .filings
             .governance_policy_for_audit_authorization(&authorization_digest)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownAuditGovernancePolicy)?;
         let governance_authority = self.require_live_role(
             &governance_policy,
@@ -3783,6 +3822,7 @@ impl FindingChallengeCoordinator {
         let schedule = self
             .filings
             .fee_schedule(envelope_sha256)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownFeeSchedule)?;
         if self.envelope_digest(&schedule)? != envelope_sha256 {
             return Err(ChallengeCoordinatorError::DisputeTerms(
@@ -3831,6 +3871,7 @@ impl FindingChallengeCoordinator {
         let terms = self
             .filings
             .market_terms(&challenge.terms_envelope_sha256)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownMarketTerms)?;
         if self.envelope_digest(&terms)? != challenge.terms_envelope_sha256 {
             return Err(ChallengeCoordinatorError::FilingTermsBinding(
@@ -3941,6 +3982,7 @@ impl FindingChallengeCoordinator {
         let governance_policy = self
             .filings
             .governance_policy_for_case(&case_envelope_sha256)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownGovernanceCasePolicy)?;
         let governance_key = self.require_live_role(
             &governance_policy,
@@ -3952,6 +3994,7 @@ impl FindingChallengeCoordinator {
         let charter_policy = self
             .filings
             .governance_policy_for_case(&charter_envelope_sha256)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .unwrap_or_else(|| governance_policy.clone());
         let charter_governance_key = self.require_live_role(
             &charter_policy,
@@ -3979,6 +4022,7 @@ impl FindingChallengeCoordinator {
         let venue_policy = self
             .filings
             .venue_policy_for_admission(&admission_digest)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownAdmission)?;
         let historical_venue = self.require_live_role(
             &venue_policy,
@@ -4004,6 +4048,7 @@ impl FindingChallengeCoordinator {
             let activation_policy = self
                 .filings
                 .governance_policy_for_activation(&activation_digest)
+                .map_err(ChallengeCoordinatorError::FilingResolver)?
                 .ok_or(ChallengeCoordinatorError::UnknownGovernanceActivationPolicy)?;
             let activation_at = activation
                 .body
@@ -4029,6 +4074,7 @@ impl FindingChallengeCoordinator {
             let prior_policy = self
                 .filings
                 .penalty_policy_for_penalty(&prior_digest)
+                .map_err(ChallengeCoordinatorError::FilingResolver)?
                 .ok_or(ChallengeCoordinatorError::UnknownPenaltyAuthorityPolicy)?;
             let prior_key = self.require_live_role(
                 &prior_policy,
@@ -4647,6 +4693,7 @@ impl FindingChallengeCoordinator {
         let historical_pin = self
             .filings
             .penalty_policy_for_penalty(&digest)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownPenaltyAuthorityPolicy)?;
         if enforcement.body.penalty_authority_id != historical_pin.authority_id
             || enforcement.body.penalty_key.to_hex() != historical_pin.key_hex
@@ -4782,6 +4829,7 @@ impl FindingChallengeCoordinator {
         let historical_pin = self
             .filings
             .evaluator_policy_for_outcome(&presented)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownEvaluatorPolicy)?;
         if historical_pin.authority_id != outcome.body.evaluator_authority_id
             || historical_pin.key_hex != outcome.body.evaluator_key.to_hex()
@@ -5490,6 +5538,7 @@ impl FindingChallengeCoordinator {
         let admission = self
             .filings
             .admission_by_envelope_sha256(&record.venue_admission_envelope_sha256)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownAdmission)?;
         if self.envelope_digest(&admission)? != record.venue_admission_envelope_sha256 {
             return Err(ChallengeCoordinatorError::AdmissionBinding(
@@ -5500,6 +5549,7 @@ impl FindingChallengeCoordinator {
         let venue_policy = self
             .filings
             .venue_policy_for_admission(&admission_digest)
+            .map_err(ChallengeCoordinatorError::FilingResolver)?
             .ok_or(ChallengeCoordinatorError::UnknownAdmission)?;
         let venue_authority = self.require_live_role(
             &venue_policy,

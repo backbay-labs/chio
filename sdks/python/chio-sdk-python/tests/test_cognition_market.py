@@ -35,7 +35,7 @@ def buyer_profile(path: Path) -> Path:
     }
     value = {
         "bearerToken": "buyer-secret",
-        "endpoint": "http://operator.local",
+        "endpoint": "https://operator.local",
         "market": {
             "statusFeedOperator": {
                 "authority": status_authority,
@@ -72,7 +72,7 @@ def buyer_profile(path: Path) -> Path:
 def seller_profile(path: Path) -> Path:
     value = {
         "bearerToken": "seller-secret",
-        "endpoint": "http://operator.local",
+        "endpoint": "https://operator.local",
         "market": {"statusFeedOperator": {"feedId": "finding-status/local"}},
         "payoutDestination": "0x" + "3" * 40,
         "principalId": "seller-1",
@@ -481,7 +481,7 @@ def test_profile_rejects_missing_market_pins(tmp_path: Path) -> None:
         _canonical_json(
             {
                 "bearerToken": "buyer-secret",
-                "endpoint": "http://operator.local",
+                "endpoint": "https://operator.local",
                 "market": {},
                 "payer": "9" * 64,
                 "payoutDestination": "0x" + "1" * 40,
@@ -502,6 +502,24 @@ def test_profile_rejects_ephemeral_operator_port(tmp_path: Path) -> None:
     path.write_bytes(_canonical_json(value))
     with pytest.raises(CognitionMarketError, match="endpoint is invalid"):
         CognitionMarketBuyer(path)
+
+
+def test_profile_requires_https_off_loopback(tmp_path: Path) -> None:
+    path = buyer_profile(tmp_path / "buyer.json")
+    value = json.loads(path.read_bytes())
+    value["endpoint"] = "http://operator.example"
+    path.write_bytes(_canonical_json(value))
+    with pytest.raises(CognitionMarketError, match="endpoint is invalid"):
+        CognitionMarketBuyer(path)
+
+
+def test_profile_allows_literal_loopback_http(tmp_path: Path) -> None:
+    path = buyer_profile(tmp_path / "buyer.json")
+    value = json.loads(path.read_bytes())
+    value["endpoint"] = "http://127.0.0.1:8787"
+    path.write_bytes(_canonical_json(value))
+    buyer = CognitionMarketBuyer(path)
+    assert buyer.profile["endpoint"] == "http://127.0.0.1:8787"
 
 
 @pytest.mark.asyncio

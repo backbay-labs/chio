@@ -391,6 +391,7 @@ pub use finding_market_store::{
     FindingPutOutcome, FindingRecordInput, FindingSearchRow, SqliteFindingMarketStore,
 };
 pub use finding_operator_bundle_store::{
+    FindingOperatorBundleArtifactIndex, FindingOperatorBundleArtifactKind,
     FindingOperatorBundleRecord, FindingOperatorBundleStoreError,
     FindingOperatorBundleWriteOutcome, FindingOperatorProofRecord,
     FindingOperatorPurchaseJobRecord, FindingOperatorTerminalCapacityRecord,

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import ipaddress
 import json
 import math
 import os
@@ -96,8 +97,14 @@ def _load_profile(path: str | Path, schema: str) -> dict[str, Any]:
         endpoint_port = parsed_endpoint.port
     except ValueError as error:
         raise CognitionMarketError("client profile endpoint is invalid") from error
+    try:
+        loopback_http = parsed_endpoint.scheme == "http" and ipaddress.ip_address(
+            parsed_endpoint.hostname or ""
+        ).is_loopback
+    except ValueError:
+        loopback_http = False
     if (
-        parsed_endpoint.scheme != "http"
+        parsed_endpoint.scheme != "https" and not loopback_http
         or not parsed_endpoint.hostname
         or endpoint_port == 0
         or parsed_endpoint.username is not None

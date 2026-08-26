@@ -15,6 +15,10 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use thiserror::Error;
 
+fn configure_pooled_connection(connection: &mut rusqlite::Connection) -> rusqlite::Result<()> {
+    connection.execute_batch("PRAGMA busy_timeout = 5000;")
+}
+
 const SCHEMA_KEY: &str = "finding_operator_bundle";
 const SUPPORTED_SCHEMA_VERSION: i32 = 0;
 const SCHEMA_ANCHORS: &[&str] = &[
@@ -37,6 +41,35 @@ pub struct FindingOperatorBundleRecord {
     pub finding_id: String,
     pub bundle_sha256: String,
     pub bundle_json: Vec<u8>,
+}
+
+/// Public artifact families resolved by exact signed-envelope digest during a
+/// challenge. The database representation is closed so callers cannot create
+/// an unbounded index namespace.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum FindingOperatorBundleArtifactKind {
+    FeeSchedule,
+    Admission,
+    VerifierProfile,
+    MarketTerms,
+}
+
+impl FindingOperatorBundleArtifactKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::FeeSchedule => "fee_schedule",
+            Self::Admission => "admission",
+            Self::VerifierProfile => "verifier_profile",
+            Self::MarketTerms => "market_terms",
+        }
+    }
+}
+
+/// One durable digest index attached to an immutable operator bundle.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FindingOperatorBundleArtifactIndex {
+    pub kind: FindingOperatorBundleArtifactKind,
+    pub envelope_sha256: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -135,7 +168,7 @@ impl SqliteFindingOperatorBundleStore {
             fs::create_dir_all(parent)
                 .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
         }
-        let manager = SqliteConnectionManager::file(path);
+        let manager = SqliteConnectionManager::file(path).with_init(configure_pooled_connection);
         let pool = Pool::builder()
             .max_size(8)
             .build(manager)
@@ -146,7 +179,7 @@ impl SqliteFindingOperatorBundleStore {
     }
 
     pub fn open_in_memory() -> Result<Self, FindingOperatorBundleStoreError> {
-        let manager = SqliteConnectionManager::memory();
+        let manager = SqliteConnectionManager::memory().with_init(configure_pooled_connection);
         let pool = Pool::builder()
             .max_size(1)
             .build(manager)
@@ -175,6 +208,25 @@ impl SqliteFindingOperatorBundleStore {
                 bundle_json BLOB NOT NULL,
                 created_at INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS chio_finding_operator_bundle_artifacts (
+                artifact_kind TEXT NOT NULL CHECK(
+                    artifact_kind IN (
+                        'fee_schedule',
+                        'admission',
+                        'verifier_profile',
+                        'market_terms'
+                    )
+                ),
+                envelope_sha256 TEXT NOT NULL CHECK(length(envelope_sha256) = 64),
+                finding_id TEXT NOT NULL,
+                PRIMARY KEY (artifact_kind, envelope_sha256, finding_id),
+                FOREIGN KEY (finding_id)
+                    REFERENCES chio_finding_operator_bundles(finding_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS chio_finding_operator_bundle_artifacts_by_finding
+            ON chio_finding_operator_bundle_artifacts(finding_id, artifact_kind);
 
             CREATE TABLE IF NOT EXISTS chio_finding_operator_terminals (
                 request_id TEXT PRIMARY KEY,
@@ -235,8 +287,21 @@ impl SqliteFindingOperatorBundleStore {
         finding_id: &str,
         bundle_json: &[u8],
     ) -> Result<FindingOperatorBundleWriteOutcome, FindingOperatorBundleStoreError> {
+        self.put_with_artifact_indexes(finding_id, bundle_json, &[])
+    }
+
+    /// Retain an immutable bundle and its digest-addressed challenge artifacts
+    /// in one transaction. Exact bundle replays may fill indexes that predate
+    /// the indexed schema, but cannot replace any retained bytes.
+    pub fn put_with_artifact_indexes(
+        &self,
+        finding_id: &str,
+        bundle_json: &[u8],
+        indexes: &[FindingOperatorBundleArtifactIndex],
+    ) -> Result<FindingOperatorBundleWriteOutcome, FindingOperatorBundleStoreError> {
         validate_finding_id(finding_id)?;
         validate_canonical_bundle(bundle_json)?;
+        validate_artifact_indexes(indexes)?;
         let bundle_sha256 = sha256_hex(bundle_json);
         let mut conn = self
             .pool
@@ -253,36 +318,43 @@ impl SqliteFindingOperatorBundleStore {
             )
             .optional()
             .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
-        if let Some((stored_sha256, stored_json)) = existing {
+        let outcome = if let Some((stored_sha256, stored_json)) = existing {
             if stored_sha256 != sha256_hex(&stored_json) {
                 return Err(FindingOperatorBundleStoreError::DigestMismatch);
             }
             if stored_sha256 == bundle_sha256 && stored_json == bundle_json {
-                tx.commit().map_err(|error| {
-                    FindingOperatorBundleStoreError::Unavailable(error.to_string())
-                })?;
-                return Ok(FindingOperatorBundleWriteOutcome::ExactReplay);
+                FindingOperatorBundleWriteOutcome::ExactReplay
+            } else {
+                return Err(FindingOperatorBundleStoreError::Conflict);
             }
-            return Err(FindingOperatorBundleStoreError::Conflict);
-        }
-        let retained: i64 = tx
-            .query_row(
-                "SELECT COUNT(*) FROM chio_finding_operator_bundles",
-                [],
-                |row| row.get(0),
+        } else {
+            let retained: i64 = tx
+                .query_row(
+                    "SELECT COUNT(*) FROM chio_finding_operator_bundles",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+            if retained >= MAX_RETAINED_BUNDLES {
+                return Err(FindingOperatorBundleStoreError::Capacity);
+            }
+            tx.execute(
+                "INSERT INTO chio_finding_operator_bundles (finding_id, bundle_sha256, bundle_json, created_at) VALUES (?1, ?2, ?3, ?4)",
+                params![finding_id, bundle_sha256, bundle_json, now_secs()],
             )
             .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
-        if retained >= MAX_RETAINED_BUNDLES {
-            return Err(FindingOperatorBundleStoreError::Capacity);
+            FindingOperatorBundleWriteOutcome::Inserted
+        };
+        for index in indexes {
+            tx.execute(
+                "INSERT OR IGNORE INTO chio_finding_operator_bundle_artifacts (artifact_kind, envelope_sha256, finding_id) VALUES (?1, ?2, ?3)",
+                params![index.kind.as_str(), index.envelope_sha256, finding_id],
+            )
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
         }
-        tx.execute(
-            "INSERT INTO chio_finding_operator_bundles (finding_id, bundle_sha256, bundle_json, created_at) VALUES (?1, ?2, ?3, ?4)",
-            params![finding_id, bundle_sha256, bundle_json, now_secs()],
-        )
-        .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
         tx.commit()
             .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
-        Ok(FindingOperatorBundleWriteOutcome::Inserted)
+        Ok(outcome)
     }
 
     pub fn get(
@@ -314,6 +386,106 @@ impl SqliteFindingOperatorBundleStore {
             bundle_sha256,
             bundle_json,
         })
+    }
+
+    /// Resolve a retained bundle through a keyed artifact lookup. This reads
+    /// one candidate bundle and never scans unrelated artifact bodies.
+    pub fn get_by_artifact(
+        &self,
+        kind: FindingOperatorBundleArtifactKind,
+        envelope_sha256: &str,
+    ) -> Result<FindingOperatorBundleRecord, FindingOperatorBundleStoreError> {
+        validate_digest(envelope_sha256, "artifact envelope_sha256")?;
+        let conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let record = conn
+            .query_row(
+                r#"
+                SELECT b.finding_id, b.bundle_sha256, b.bundle_json
+                FROM chio_finding_operator_bundle_artifacts AS a
+                JOIN chio_finding_operator_bundles AS b
+                  ON b.finding_id = a.finding_id
+                WHERE a.artifact_kind = ?1 AND a.envelope_sha256 = ?2
+                ORDER BY b.finding_id ASC
+                LIMIT 1
+                "#,
+                params![kind.as_str(), envelope_sha256],
+                |row| {
+                    Ok(FindingOperatorBundleRecord {
+                        finding_id: row.get(0)?,
+                        bundle_sha256: row.get(1)?,
+                        bundle_json: row.get(2)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?
+            .ok_or(FindingOperatorBundleStoreError::NotFound)?;
+        validate_finding_id(&record.finding_id)?;
+        if record.bundle_sha256 != sha256_hex(&record.bundle_json) {
+            return Err(FindingOperatorBundleStoreError::DigestMismatch);
+        }
+        validate_canonical_bundle(&record.bundle_json)?;
+        Ok(record)
+    }
+
+    /// Return only bundles that have not yet received all four closed artifact
+    /// indexes. This supports one bounded upgrade backfill without rescanning
+    /// fully indexed state on every operator restart.
+    pub fn list_without_complete_artifact_index(
+        &self,
+        limit: u64,
+    ) -> Result<Vec<FindingOperatorBundleRecord>, FindingOperatorBundleStoreError> {
+        if limit == 0 || limit > 10_000 {
+            return Err(FindingOperatorBundleStoreError::Invalid(
+                "bundle artifact backfill limit",
+            ));
+        }
+        let limit = i64::try_from(limit).map_err(|_| {
+            FindingOperatorBundleStoreError::Invalid("bundle artifact backfill limit")
+        })?;
+        let conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let mut statement = conn
+            .prepare(
+                r#"
+                SELECT b.finding_id, b.bundle_sha256, b.bundle_json
+                FROM chio_finding_operator_bundles AS b
+                WHERE (
+                    SELECT COUNT(DISTINCT a.artifact_kind)
+                    FROM chio_finding_operator_bundle_artifacts AS a
+                    WHERE a.finding_id = b.finding_id
+                ) < 4
+                ORDER BY b.finding_id ASC
+                LIMIT ?1
+                "#,
+            )
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let rows = statement
+            .query_map([limit], |row| {
+                Ok(FindingOperatorBundleRecord {
+                    finding_id: row.get(0)?,
+                    bundle_sha256: row.get(1)?,
+                    bundle_json: row.get(2)?,
+                })
+            })
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let mut records = Vec::new();
+        for row in rows {
+            let record = row
+                .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+            validate_finding_id(&record.finding_id)?;
+            if record.bundle_sha256 != sha256_hex(&record.bundle_json) {
+                return Err(FindingOperatorBundleStoreError::DigestMismatch);
+            }
+            validate_canonical_bundle(&record.bundle_json)?;
+            records.push(record);
+        }
+        Ok(records)
     }
 
     /// Return retained bundles in deterministic Finding-id order. The caller
@@ -1317,6 +1489,26 @@ fn validate_digest(
     Ok(())
 }
 
+fn validate_artifact_indexes(
+    indexes: &[FindingOperatorBundleArtifactIndex],
+) -> Result<(), FindingOperatorBundleStoreError> {
+    if indexes.len() > 4 {
+        return Err(FindingOperatorBundleStoreError::Invalid(
+            "bundle artifact indexes",
+        ));
+    }
+    let mut kinds = std::collections::BTreeSet::new();
+    for index in indexes {
+        if !kinds.insert(index.kind) {
+            return Err(FindingOperatorBundleStoreError::Invalid(
+                "bundle artifact indexes",
+            ));
+        }
+        validate_digest(&index.envelope_sha256, "artifact envelope_sha256")?;
+    }
+    Ok(())
+}
+
 fn validate_identifier(
     value: &str,
     field: &'static str,
@@ -1364,6 +1556,91 @@ mod tests {
             FindingOperatorBundleWriteOutcome::ExactReplay
         );
         assert_eq!(reopened.get(&finding_id()).unwrap().bundle_json, bundle);
+    }
+
+    #[test]
+    fn every_pooled_connection_has_busy_timeout() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SqliteFindingOperatorBundleStore::open(dir.path().join("operator.db")).unwrap();
+        let first = store.pool.get().unwrap();
+        let second = store.pool.get().unwrap();
+
+        for connection in [&first, &second] {
+            let busy_timeout = connection
+                .query_row("PRAGMA busy_timeout", [], |row| row.get::<_, i64>(0))
+                .unwrap();
+            assert!(busy_timeout >= 5_000);
+        }
+    }
+
+    #[test]
+    fn artifact_lookup_does_not_read_unrelated_bundles() {
+        let store = SqliteFindingOperatorBundleStore::open_in_memory().unwrap();
+        let unrelated_id = "0".repeat(64);
+        let indexed_id = "f".repeat(64);
+        let unrelated = br#"{"bundle":"unrelated"}"#;
+        let indexed = br#"{"bundle":"indexed"}"#;
+        let envelope_sha256 = "a".repeat(64);
+        store.put(&unrelated_id, unrelated).unwrap();
+        store
+            .put_with_artifact_indexes(
+                &indexed_id,
+                indexed,
+                &[FindingOperatorBundleArtifactIndex {
+                    kind: FindingOperatorBundleArtifactKind::Admission,
+                    envelope_sha256: envelope_sha256.clone(),
+                }],
+            )
+            .unwrap();
+        store
+            .pool
+            .get()
+            .unwrap()
+            .execute(
+                "UPDATE chio_finding_operator_bundles SET bundle_json = '{}' WHERE finding_id = ?1",
+                [&unrelated_id],
+            )
+            .unwrap();
+
+        let resolved = store
+            .get_by_artifact(
+                FindingOperatorBundleArtifactKind::Admission,
+                &envelope_sha256,
+            )
+            .unwrap();
+        assert_eq!(resolved.finding_id, indexed_id);
+        assert_eq!(resolved.bundle_json, indexed);
+    }
+
+    #[test]
+    fn complete_artifact_indexes_are_not_backfilled_again() {
+        let store = SqliteFindingOperatorBundleStore::open_in_memory().unwrap();
+        let bundle = br#"{"bundle":"indexed"}"#;
+        let indexes = [
+            FindingOperatorBundleArtifactIndex {
+                kind: FindingOperatorBundleArtifactKind::FeeSchedule,
+                envelope_sha256: "1".repeat(64),
+            },
+            FindingOperatorBundleArtifactIndex {
+                kind: FindingOperatorBundleArtifactKind::Admission,
+                envelope_sha256: "2".repeat(64),
+            },
+            FindingOperatorBundleArtifactIndex {
+                kind: FindingOperatorBundleArtifactKind::VerifierProfile,
+                envelope_sha256: "3".repeat(64),
+            },
+            FindingOperatorBundleArtifactIndex {
+                kind: FindingOperatorBundleArtifactKind::MarketTerms,
+                envelope_sha256: "4".repeat(64),
+            },
+        ];
+        store
+            .put_with_artifact_indexes(&finding_id(), bundle, &indexes)
+            .unwrap();
+        assert!(store
+            .list_without_complete_artifact_index(10_000)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

@@ -376,6 +376,7 @@ fn coordinator_unavailable(error: &ChallengeCoordinatorError) -> bool {
             | ChallengeCoordinatorError::AuthorityLifecycle { .. }
             | ChallengeCoordinatorError::FeeRail(_)
             | ChallengeCoordinatorError::DisputeBondRail(_)
+            | ChallengeCoordinatorError::FilingResolver(_)
             | ChallengeCoordinatorError::ChallengeStore(_)
             | ChallengeCoordinatorError::PurchaseStore(_)
             | ChallengeCoordinatorError::ChallengeEnvelope(_)
@@ -396,6 +397,9 @@ mod tests {
         ));
         assert!(!coordinator_unavailable(
             &ChallengeCoordinatorError::DisputeBondWindow
+        ));
+        assert!(coordinator_unavailable(
+            &ChallengeCoordinatorError::FilingResolver("store unavailable".to_owned())
         ));
     }
 

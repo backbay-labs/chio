@@ -17,6 +17,10 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use thiserror::Error;
 
+fn configure_pooled_connection(connection: &mut rusqlite::Connection) -> rusqlite::Result<()> {
+    connection.execute_batch("PRAGMA busy_timeout = 5000;")
+}
+
 use crate::encrypted_blob::{
     decrypt_blob_with_aad, try_encrypt_blob_with_aad, BlobStoreError, EncryptedBlob, TenantId,
     TenantKey,
@@ -102,7 +106,7 @@ impl SqliteFindingPayloadStore {
         if let Some(parent) = crate::sqlite_parent_dir_to_create(path) {
             fs::create_dir_all(parent)?;
         }
-        let manager = SqliteConnectionManager::file(path);
+        let manager = SqliteConnectionManager::file(path).with_init(configure_pooled_connection);
         let pool = Pool::builder().max_size(8).build(manager)?;
         let store = Self { pool };
         store.run_migrations()?;
@@ -111,7 +115,7 @@ impl SqliteFindingPayloadStore {
 
     /// Open an isolated in-memory store for tests.
     pub fn open_in_memory() -> Result<Self, FindingPayloadStoreError> {
-        let manager = SqliteConnectionManager::memory();
+        let manager = SqliteConnectionManager::memory().with_init(configure_pooled_connection);
         let pool = Pool::builder().max_size(1).build(manager)?;
         let store = Self { pool };
         store.run_migrations()?;
@@ -409,6 +413,21 @@ mod tests {
                 payload: payload.to_vec(),
             }
         );
+    }
+
+    #[test]
+    fn every_pooled_connection_has_busy_timeout() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SqliteFindingPayloadStore::open(dir.path().join("operator.db")).unwrap();
+        let first = store.pool.get().unwrap();
+        let second = store.pool.get().unwrap();
+
+        for connection in [&first, &second] {
+            let busy_timeout = connection
+                .query_row("PRAGMA busy_timeout", [], |row| row.get::<_, i64>(0))
+                .unwrap();
+            assert!(busy_timeout >= 5_000);
+        }
     }
 
     #[test]

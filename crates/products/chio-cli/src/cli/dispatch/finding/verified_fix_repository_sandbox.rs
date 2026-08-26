@@ -88,7 +88,7 @@ pub(super) fn stage_repository_isolated(
         )
     })?;
     let sandbox_source = Path::new(APPROVED_ROOT_MOUNT).join(source_relative);
-    let mut command = isolated_git_command(approved_root, Some(work_root));
+    let mut command = isolated_git_command(approved_root, Some(work_root))?;
     add_hardened_git_arguments(&mut command);
     command
         .args(["clone", "--no-local", "--no-checkout"])
@@ -123,7 +123,7 @@ fn isolated_source_git_command(
             "verified-fix repository is outside the approved repository root".to_owned(),
         )
     })?;
-    let mut command = isolated_git_command(approved_root, None);
+    let mut command = isolated_git_command(approved_root, None)?;
     add_hardened_git_arguments(&mut command);
     command
         .arg("-C")
@@ -265,7 +265,10 @@ fn read_confined_metadata_file(
         .map_err(|_| CliError::cli_other_error(format!("verified-fix {label} is not UTF-8")))
 }
 
-fn isolated_git_command(approved_root: &Path, work_root: Option<&Path>) -> Command {
+fn isolated_git_command(
+    approved_root: &Path,
+    work_root: Option<&Path>,
+) -> Result<Command, CliError> {
     let mut command = Command::new("bwrap");
     command.args([
         "--die-with-parent",
@@ -284,7 +287,7 @@ fn isolated_git_command(approved_root: &Path, work_root: Option<&Path>) -> Comma
         "--dir",
         "/tmp",
     ]);
-    add_runtime_mounts(&mut command, None);
+    add_runtime_mounts(&mut command, None)?;
     command
         .arg("--ro-bind")
         .arg(approved_root)
@@ -307,7 +310,13 @@ fn isolated_git_command(approved_root: &Path, work_root: Option<&Path>) -> Comma
         "C",
         "--setenv",
         "PATH",
-        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "/runtime/bin",
+        "--setenv",
+        "GIT_EXEC_PATH",
+        "/runtime/git-core",
+        "--setenv",
+        "PYTHONHOME",
+        "/runtime/python",
         "--setenv",
         "GIT_CONFIG_GLOBAL",
         "/dev/null",
@@ -320,7 +329,7 @@ fn isolated_git_command(approved_root: &Path, work_root: Option<&Path>) -> Comma
         "--",
         "git",
     ]);
-    command
+    Ok(command)
 }
 
 fn add_hardened_git_arguments(command: &mut Command) {

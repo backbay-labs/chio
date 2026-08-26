@@ -1,5 +1,6 @@
 use super::*;
 
+use std::collections::BTreeSet;
 use std::fs::File;
 #[cfg(unix)]
 use std::os::fd::AsRawFd as _;
@@ -272,7 +273,6 @@ pub(super) fn run_test_command_with_limits(
     timeout: Duration,
     limits: TestSandboxLimits,
 ) -> Result<VerifiedFixCommandResult, CliError> {
-    let started = Instant::now();
     let cgroup = SandboxCgroup::prepare(limits)?;
     let mut isolated = cgroup.wrap_command(limits);
     add_test_rlimits(&mut isolated, limits);
@@ -308,7 +308,7 @@ pub(super) fn run_test_command_with_limits(
     add_runtime_mounts(
         &mut isolated,
         std::env::var_os("HOME").as_deref().map(Path::new),
-    );
+    )?;
     isolated
         .arg("--ro-bind")
         .arg(worktree)
@@ -331,6 +331,12 @@ pub(super) fn run_test_command_with_limits(
             "--setenv",
             "PATH",
             &sandbox_path(),
+            "--setenv",
+            "GIT_EXEC_PATH",
+            "/runtime/git-core",
+            "--setenv",
+            "PYTHONHOME",
+            "/runtime/python",
             "--setenv",
             "CARGO_HOME",
             "/workspace/.cargo",
@@ -360,6 +366,7 @@ pub(super) fn run_test_command_with_limits(
         .arg(command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    let started = Instant::now();
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt as _;
@@ -508,64 +515,285 @@ fn terminate_sandbox(child: &mut std::process::Child, cgroup: &SandboxCgroup) {
     let _ = child.kill();
 }
 
-pub(super) fn add_runtime_mounts(command: &mut Command, home: Option<&Path>) {
-    for path in [
-        "/usr",
-        "/usr/local",
-        "/bin",
-        "/sbin",
-        "/lib",
-        "/lib64",
-        "/etc/alternatives",
-        "/etc/ld.so.cache",
-        "/etc/localtime",
-        "/etc/ssl",
-    ] {
-        if Path::new(path).exists() {
-            command.args(["--ro-bind", path, path]);
+#[derive(Clone)]
+struct RuntimeMountSpec {
+    files: Vec<(PathBuf, PathBuf)>,
+    trees: Vec<(PathBuf, PathBuf)>,
+    masks: Vec<PathBuf>,
+    symlinks: Vec<(PathBuf, PathBuf)>,
+}
+
+#[derive(Default)]
+struct RuntimeMountSpecBuilder {
+    files: BTreeSet<(PathBuf, PathBuf)>,
+    trees: BTreeSet<(PathBuf, PathBuf)>,
+    masks: BTreeSet<PathBuf>,
+    symlinks: BTreeSet<(PathBuf, PathBuf)>,
+}
+
+impl RuntimeMountSpecBuilder {
+    fn add_executable(&mut self, name: &str, required: bool) -> Result<Option<PathBuf>, String> {
+        let Some(path) = executable_on_path(name) else {
+            if required {
+                return Err(format!("required sandbox runtime executable {name} is unavailable"));
+            }
+            return Ok(None);
+        };
+        let source = fs::canonicalize(&path)
+            .map_err(|error| format!("sandbox runtime executable {name} is invalid: {error}"))?;
+        self.files
+            .insert((source.clone(), Path::new("/runtime/bin").join(name)));
+        self.add_dynamic_dependencies(&source)?;
+        Ok(Some(source))
+    }
+
+    fn add_dynamic_dependencies(&mut self, executable: &Path) -> Result<(), String> {
+        let output = Command::new("ldd")
+            .arg(executable)
+            .output()
+            .map_err(|error| format!("failed to inspect sandbox runtime dependencies: {error}"))?;
+        if output.stdout.len().saturating_add(output.stderr.len()) > 1024 * 1024 {
+            return Err("sandbox runtime dependency output exceeded its size bound".to_owned());
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        for line in stdout
+            .lines()
+            .chain(stderr.lines())
+        {
+            for token in line.split_whitespace() {
+                let path = token.trim_end_matches(':');
+                if !path.starts_with('/') {
+                    continue;
+                }
+                let source = PathBuf::from(path);
+                if source.is_file() {
+                    self.files.insert((source.clone(), source));
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn add_tree_dependencies(&mut self, root: &Path) -> Result<(), String> {
+        let mut pending = vec![root.to_path_buf()];
+        let mut visited = 0usize;
+        while let Some(path) = pending.pop() {
+            let entries = fs::read_dir(&path)
+                .map_err(|error| format!("failed to inspect sandbox runtime tree: {error}"))?;
+            for entry in entries {
+                let entry = entry
+                    .map_err(|error| format!("failed to inspect sandbox runtime tree: {error}"))?;
+                visited = visited.saturating_add(1);
+                if visited > 20_000 {
+                    return Err("sandbox runtime tree exceeded its entry bound".to_owned());
+                }
+                let metadata = entry
+                    .file_type()
+                    .map_err(|error| format!("failed to inspect sandbox runtime tree: {error}"))?;
+                if metadata.is_dir() {
+                    pending.push(entry.path());
+                } else if metadata.is_file() && is_elf(&entry.path())? {
+                    self.add_dynamic_dependencies(&entry.path())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn finish(self) -> RuntimeMountSpec {
+        RuntimeMountSpec {
+            files: self.files.into_iter().collect(),
+            trees: self.trees.into_iter().collect(),
+            masks: self.masks.into_iter().collect(),
+            symlinks: self.symlinks.into_iter().collect(),
         }
     }
-    if let Some(home) = home {
-        let cargo_bin = home.join(".cargo/bin");
-        if cargo_bin.is_dir() {
-            command.arg("--ro-bind").arg(&cargo_bin).arg(&cargo_bin);
+}
+
+static RUNTIME_MOUNT_SPEC: std::sync::OnceLock<Result<RuntimeMountSpec, String>> =
+    std::sync::OnceLock::new();
+
+pub(super) fn add_runtime_mounts(
+    command: &mut Command,
+    _home: Option<&Path>,
+) -> Result<(), CliError> {
+    let spec = RUNTIME_MOUNT_SPEC
+        .get_or_init(build_runtime_mount_spec)
+        .as_ref()
+        .map_err(|error| CliError::cli_other_error(error.clone()))?;
+    let mut directories = BTreeSet::new();
+    for (_, destination) in spec.files.iter().chain(spec.trees.iter()) {
+        collect_parent_directories(destination, &mut directories);
+    }
+    for destination in spec.masks.iter().chain(spec.symlinks.iter().map(|(_, path)| path)) {
+        collect_parent_directories(destination, &mut directories);
+    }
+    let mut directories = directories.into_iter().collect::<Vec<_>>();
+    directories.sort_by_key(|path| path.components().count());
+    for directory in directories {
+        command.arg("--dir").arg(directory);
+    }
+    for (source, destination) in &spec.trees {
+        command
+            .arg("--ro-bind")
+            .arg(source)
+            .arg(destination);
+    }
+    for (source, destination) in &spec.files {
+        command
+            .arg("--ro-bind")
+            .arg(source)
+            .arg(destination);
+    }
+    for destination in &spec.masks {
+        command.arg("--tmpfs").arg(destination);
+    }
+    for (target, destination) in &spec.symlinks {
+        command
+            .arg("--symlink")
+            .arg(target)
+            .arg(destination);
+    }
+    Ok(())
+}
+
+fn build_runtime_mount_spec() -> Result<RuntimeMountSpec, String> {
+    let mut builder = RuntimeMountSpecBuilder::default();
+    for required in ["sh", "cp", "mkdir", "git", "env"] {
+        builder.add_executable(required, true)?;
+    }
+    for optional in [
+        "bash", "rm", "touch", "sed", "grep", "find", "cat", "sort", "cut", "tr", "wc",
+        "xargs", "basename", "dirname", "readlink", "realpath", "dd", "sleep",
+    ] {
+        builder.add_executable(optional, false)?;
+    }
+    let shell = builder
+        .add_executable("sh", true)?
+        .ok_or_else(|| "required sandbox shell is unavailable".to_owned())?;
+    builder
+        .files
+        .insert((shell, PathBuf::from("/bin/sh")));
+    let environment = builder
+        .add_executable("env", true)?
+        .ok_or_else(|| "required sandbox environment executable is unavailable".to_owned())?;
+    builder
+        .files
+        .insert((environment, PathBuf::from("/usr/bin/env")));
+
+    let git = executable_on_path("git")
+        .ok_or_else(|| "required sandbox Git executable is unavailable".to_owned())?;
+    let git_exec = bounded_runtime_path(&git, &["--exec-path"], "Git runtime")?;
+    builder.add_tree_dependencies(&git_exec)?;
+    builder
+        .trees
+        .insert((git_exec, PathBuf::from("/runtime/git-core")));
+
+    if let Some(python) = builder.add_executable("python3", false)? {
+        let stdlib = bounded_runtime_path(
+            &python,
+            &[
+                "-I",
+                "-S",
+                "-c",
+                "import sysconfig; print(sysconfig.get_path('stdlib'))",
+            ],
+            "Python standard library",
+        )?;
+        let version = stdlib
+            .file_name()
+            .ok_or_else(|| "Python standard library path is invalid".to_owned())?
+            .to_owned();
+        builder.add_tree_dependencies(&stdlib)?;
+        if stdlib.join("site-packages").is_dir() {
+            builder.masks.insert(
+                Path::new("/runtime/python/lib")
+                    .join(&version)
+                    .join("site-packages"),
+            );
         }
-        let rustup_toolchains = home.join(".rustup/toolchains");
-        if rustup_toolchains.is_dir() {
-            command
-                .arg("--ro-bind")
-                .arg(&rustup_toolchains)
-                .arg(&rustup_toolchains);
-            command
-                .args(["--setenv", "RUSTUP_HOME"])
-                .arg(home.join(".rustup"));
+        builder.trees.insert((
+            stdlib,
+            Path::new("/runtime/python/lib").join(version),
+        ));
+    }
+
+    if builder.add_executable("node", false)?.is_some() {
+        if let Some(npm) = executable_on_path("npm") {
+            let npm_root = bounded_runtime_path(&npm, &["root", "-g"], "npm runtime")?;
+            let npm_package = fs::canonicalize(npm_root.join("npm"))
+                .map_err(|error| format!("npm runtime is invalid: {error}"))?;
+            builder.add_tree_dependencies(&npm_package)?;
+            builder
+                .trees
+                .insert((npm_package, PathBuf::from("/runtime/npm")));
+            builder.symlinks.insert((
+                PathBuf::from("/runtime/npm/bin/npm-cli.js"),
+                PathBuf::from("/runtime/bin/npm"),
+            ));
+            builder.symlinks.insert((
+                PathBuf::from("/runtime/npm/bin/npx-cli.js"),
+                PathBuf::from("/runtime/bin/npx"),
+            ));
         }
-        let rustup_settings = home.join(".rustup/settings.toml");
-        if rustup_settings.is_file() {
-            command
-                .arg("--ro-bind")
-                .arg(&rustup_settings)
-                .arg(&rustup_settings);
+    }
+    Ok(builder.finish())
+}
+
+fn executable_on_path(name: &str) -> Option<PathBuf> {
+    std::env::var_os("PATH").and_then(|path| {
+        std::env::split_paths(&path)
+            .map(|directory| directory.join(name))
+            .find(|candidate| candidate.is_file())
+    })
+}
+
+fn bounded_runtime_path(executable: &Path, args: &[&str], label: &str) -> Result<PathBuf, String> {
+    let output = Command::new(executable)
+        .args(args)
+        .output()
+        .map_err(|error| format!("failed to inspect {label}: {error}"))?;
+    if !output.status.success() || output.stdout.len() > 4096 {
+        return Err(format!("failed to inspect {label}"));
+    }
+    let value = std::str::from_utf8(&output.stdout)
+        .map_err(|_| format!("{label} path is not UTF-8"))?
+        .trim();
+    if value.is_empty() || !Path::new(value).is_absolute() {
+        return Err(format!("{label} path is invalid"));
+    }
+    let path = fs::canonicalize(value).map_err(|error| format!("{label} is invalid: {error}"))?;
+    if !path.is_dir() {
+        return Err(format!("{label} is not a directory"));
+    }
+    Ok(path)
+}
+
+fn is_elf(path: &Path) -> Result<bool, String> {
+    use std::io::Read as _;
+    let mut file = File::open(path)
+        .map_err(|error| format!("failed to inspect sandbox runtime file: {error}"))?;
+    let mut magic = [0u8; 4];
+    Ok(file.read(&mut magic).is_ok() && magic == *b"\x7fELF")
+}
+
+fn collect_parent_directories(path: &Path, directories: &mut BTreeSet<PathBuf>) {
+    let mut current = PathBuf::from("/");
+    let Some(parent) = path.parent() else {
+        return;
+    };
+    for component in parent.components() {
+        if let std::path::Component::Normal(name) = component {
+            current.push(name);
+            directories.insert(current.clone());
         }
-        // Operator-owned Cargo registry and Git caches may contain private
-        // dependencies. Seller tests receive only the toolchain executables;
-        // repositories that need offline dependencies must vendor them.
     }
 }
 
 fn sandbox_path() -> String {
-    let mut paths = vec![
-        "/usr/local/sbin".to_owned(),
-        "/usr/local/bin".to_owned(),
-        "/usr/sbin".to_owned(),
-        "/usr/bin".to_owned(),
-        "/sbin".to_owned(),
-        "/bin".to_owned(),
-    ];
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
-        paths.push(home.join(".cargo/bin").display().to_string());
-    }
-    paths.join(":")
+    "/runtime/bin".to_owned()
 }
 
 pub(super) fn require_sandbox() -> Result<(), CliError> {

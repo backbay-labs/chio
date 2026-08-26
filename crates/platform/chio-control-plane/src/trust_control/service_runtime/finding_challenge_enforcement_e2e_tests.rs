@@ -679,12 +679,18 @@ impl PublishedArtifacts {
 }
 
 impl FindingFilingResolver for PublishedArtifacts {
-    fn fee_schedule(&self, envelope_sha256: &str) -> Option<SignedOpenMarketFeeSchedule> {
-        self.fee_schedules.get(envelope_sha256).cloned()
+    fn fee_schedule(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<SignedOpenMarketFeeSchedule>, String> {
+        Ok(self.fee_schedules.get(envelope_sha256).cloned())
     }
 
-    fn audit_round(&self, epoch_envelope_sha256: &str) -> Option<FindingAuditRound> {
-        self.audit_rounds.get(epoch_envelope_sha256).cloned()
+    fn audit_round(
+        &self,
+        epoch_envelope_sha256: &str,
+    ) -> Result<Option<FindingAuditRound>, String> {
+        Ok(self.audit_rounds.get(epoch_envelope_sha256).cloned())
     }
 
     fn admission_for_backing(
@@ -692,58 +698,75 @@ impl FindingFilingResolver for PublishedArtifacts {
         finding_id: &str,
         listing_id: &str,
         backing_envelope_sha256: &str,
-    ) -> Option<SignedFindingAdmission> {
-        self.admissions
+    ) -> Result<Option<SignedFindingAdmission>, String> {
+        Ok(self
+            .admissions
             .get(&(
                 finding_id.to_owned(),
                 listing_id.to_owned(),
                 backing_envelope_sha256.to_owned(),
             ))
-            .cloned()
+            .cloned())
     }
 
     fn admission_by_envelope_sha256(
         &self,
         envelope_sha256: &str,
-    ) -> Option<SignedFindingAdmission> {
-        self.admissions_by_digest.get(envelope_sha256).cloned()
+    ) -> Result<Option<SignedFindingAdmission>, String> {
+        Ok(self.admissions_by_digest.get(envelope_sha256).cloned())
     }
 
-    fn venue_policy_for_admission(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
-        self.venue_policies.get(envelope_sha256).cloned()
+    fn venue_policy_for_admission(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(self.venue_policies.get(envelope_sha256).cloned())
     }
 
-    fn governance_policy_for_profile(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
-        self.profile_governance_policies
+    fn governance_policy_for_profile(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(self
+            .profile_governance_policies
             .get(envelope_sha256)
-            .cloned()
+            .cloned())
     }
 
-    fn governance_policy_for_case(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
-        self.case_governance_policies
+    fn governance_policy_for_case(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(self
+            .case_governance_policies
             .read()
-            .ok()?
+            .map_err(|_| "case-governance-policy index lock is poisoned".to_owned())?
             .get(envelope_sha256)
-            .cloned()
+            .cloned())
     }
 
     fn governance_policy_for_activation(
         &self,
         envelope_sha256: &str,
-    ) -> Option<FindingAuthorityPin> {
-        self.case_governance_policies
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(self
+            .case_governance_policies
             .read()
-            .ok()?
+            .map_err(|_| "case-governance-policy index lock is poisoned".to_owned())?
             .get(envelope_sha256)
-            .cloned()
+            .cloned())
     }
 
-    fn penalty_policy_for_penalty(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
-        self.penalty_policies
+    fn penalty_policy_for_penalty(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(self
+            .penalty_policies
             .read()
-            .ok()?
+            .map_err(|_| "penalty-policy index lock is poisoned".to_owned())?
             .get(envelope_sha256)
-            .cloned()
+            .cloned())
     }
 
     fn retain_penalty_policy(
@@ -767,12 +790,16 @@ impl FindingFilingResolver for PublishedArtifacts {
         }
     }
 
-    fn evaluator_policy_for_outcome(&self, envelope_sha256: &str) -> Option<FindingAuthorityPin> {
-        self.evaluator_policies
+    fn evaluator_policy_for_outcome(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(self
+            .evaluator_policies
             .read()
-            .ok()?
+            .map_err(|_| "evaluator-policy index lock is poisoned".to_owned())?
             .get(envelope_sha256)
-            .cloned()
+            .cloned())
     }
 
     fn retain_evaluator_policy(
@@ -796,30 +823,38 @@ impl FindingFilingResolver for PublishedArtifacts {
         }
     }
 
-    fn audit_policy_for_epoch(&self, epoch_envelope_sha256: &str) -> Option<FindingAuthorityPin> {
-        self.audit_policies.get(epoch_envelope_sha256).cloned()
+    fn audit_policy_for_epoch(
+        &self,
+        epoch_envelope_sha256: &str,
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(self.audit_policies.get(epoch_envelope_sha256).cloned())
     }
 
     fn randomness_witness_policy_for_epoch(
         &self,
         epoch_envelope_sha256: &str,
-    ) -> Option<FindingAuthorityPin> {
-        self.audit_witness_policies
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(self
+            .audit_witness_policies
             .get(epoch_envelope_sha256)
-            .cloned()
+            .cloned())
     }
 
     fn governance_policy_for_audit_authorization(
         &self,
         authorization_envelope_sha256: &str,
-    ) -> Option<FindingAuthorityPin> {
-        self.audit_governance_policies
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        Ok(self
+            .audit_governance_policies
             .get(authorization_envelope_sha256)
-            .cloned()
+            .cloned())
     }
 
-    fn market_terms(&self, envelope_sha256: &str) -> Option<SignedFindingMarketTerms> {
-        self.market_terms.get(envelope_sha256).cloned()
+    fn market_terms(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<Option<SignedFindingMarketTerms>, String> {
+        Ok(self.market_terms.get(envelope_sha256).cloned())
     }
 }
 
@@ -9609,11 +9644,11 @@ fn finding_challenge_audit_policy_is_retained_by_exact_round() -> TestResult {
 
     assert_eq!(
         filings.audit_policy_for_epoch(&original_digest),
-        Some(original_policy)
+        Ok(Some(original_policy))
     );
     assert_eq!(
         filings.audit_policy_for_epoch(&renewed_digest),
-        Some(renewed_policy)
+        Ok(Some(renewed_policy))
     );
     Ok(())
 }
