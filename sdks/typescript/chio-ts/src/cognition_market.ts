@@ -519,6 +519,7 @@ async function readBoundedResponse(
   const contentLength = response.headers.get("content-length");
   if (contentLength !== null && /^\d+$/.test(contentLength)
       && BigInt(contentLength) > BigInt(maximum)) {
+    if (response.body !== null) await response.body.cancel().catch(() => undefined);
     throw new CognitionMarketError(`${label} exceeds the SDK size bound`);
   }
   if (response.body === null) return new Uint8Array();

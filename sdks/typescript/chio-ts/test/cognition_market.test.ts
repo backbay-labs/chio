@@ -461,13 +461,18 @@ test("buyer cancels an oversized streaming response", async () => {
 
 test("buyer rejects purchase responses above the retained terminal bound", async () => {
   const findingId = "9".repeat(64);
+  let cancelled = false;
   const verified: VerifiedFindingProof = {
     findingId,
     proof: new Uint8Array(),
     verification: { findingId },
   };
   const buyer = new CognitionMarketBuyer(profileFile(), {
-    fetch: async () => new Response("{}", {
+    fetch: async () => new Response(new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
+      },
+    }), {
       headers: { "content-length": String(16 * 1024 * 1024 + 1) },
     }),
   });
@@ -476,4 +481,5 @@ test("buyer rejects purchase responses above the retained terminal bound", async
     buyer.purchase(verified, { maxPriceUnits: 300 }),
     /exceeds the SDK size bound/,
   );
+  assert.equal(cancelled, true);
 });
