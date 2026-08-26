@@ -257,6 +257,8 @@ impl FindingVerifiedFixDraft {
             &checkpoint_key,
         )
         .map_err(string_error)?;
+        let finding_issued_at =
+            post_checkpoint_issued_at(input.issued_at, checkpoint.body.issued_at, expires_at)?;
         let checkpoint_ref = format!("{}#1", checkpoint_log_id(&checkpoint));
         let evidence_receipts = receipts
             .iter()
@@ -290,13 +292,13 @@ impl FindingVerifiedFixDraft {
             &checkpoint_ref,
             &profile.market.status_feed_operator.feed_id,
             &input.topic,
-            input.issued_at,
+            finding_issued_at,
             expires_at,
         )?;
         let finding_sha256 = digest(&finding)?;
         let listing_id = format!("finding-{}", &finding.finding_id[..24]);
         let fee_schedule =
-            build_fee_schedule(profile, &keys.fee_schedule_operator, input.issued_at)?;
+            build_fee_schedule(profile, &keys.fee_schedule_operator, finding_issued_at)?;
         let schedule_sha256 = signed_fee_schedule_digest(&fee_schedule).map_err(string_error)?;
         let market_terms = build_terms(
             seller,
@@ -304,7 +306,7 @@ impl FindingVerifiedFixDraft {
             &finding_sha256,
             &listing_id,
             &profile_sha256,
-            input.issued_at,
+            finding_issued_at,
             expires_at,
         )?;
         let terms_sha256 = digest(&market_terms)?;
@@ -313,7 +315,7 @@ impl FindingVerifiedFixDraft {
             &finding,
             &finding_sha256,
             &listing_id,
-            input.issued_at,
+            finding_issued_at,
             expires_at,
         )?;
         let authorization_sha256 = digest(&seller_authorization)?;
@@ -327,7 +329,7 @@ impl FindingVerifiedFixDraft {
             &terms_sha256,
             &profile_sha256,
             &schedule_sha256,
-            input.issued_at,
+            finding_issued_at,
             expires_at,
         )?;
         let listing = build_listing(
@@ -336,7 +338,7 @@ impl FindingVerifiedFixDraft {
             &finding,
             &listing_id,
             input.price_units,
-            input.issued_at,
+            finding_issued_at,
             expires_at,
         )?;
         let trust_root_snapshot_sha256 = digest(&profile.market)?;
@@ -386,6 +388,9 @@ impl FindingVerifiedFixDraft {
             if sha256_hex(&bytes) != blob.sha256 {
                 return Err("verified-fix recipe dependency digest mismatch".to_owned());
             }
+        }
+        if self.evidence_checkpoint.body.issued_at > self.finding.issued_at {
+            return Err("verified-fix checkpoint was issued after the Finding".to_owned());
         }
         self.verifier_profile
             .body
@@ -1596,6 +1601,18 @@ fn validate_authoring_input(input: &VerifiedFixAuthoringInput) -> Result<(), Str
     Ok(())
 }
 
+fn post_checkpoint_issued_at(
+    requested_issued_at: u64,
+    checkpoint_issued_at: u64,
+    expires_at: u64,
+) -> Result<u64, String> {
+    let issued_at = requested_issued_at.max(checkpoint_issued_at);
+    if issued_at >= expires_at {
+        return Err("verified-fix checkpoint exhausted the artifact lifetime".to_owned());
+    }
+    Ok(issued_at)
+}
+
 fn operator_namespace(profile: &FindingOperatorProfile) -> String {
     format!("http://{}", profile.listen)
 }
@@ -1637,4 +1654,16 @@ fn decode_bounded(encoded: &str, max_bytes: usize, label: &'static str) -> Resul
 
 fn string_error(error: impl std::fmt::Display) -> String {
     error.to_string()
+}
+
+#[cfg(test)]
+mod ordering_tests {
+    use super::post_checkpoint_issued_at;
+
+    #[test]
+    fn finding_issuance_never_predates_its_checkpoint() {
+        assert_eq!(post_checkpoint_issued_at(10, 11, 20), Ok(11));
+        assert_eq!(post_checkpoint_issued_at(12, 11, 20), Ok(12));
+        assert!(post_checkpoint_issued_at(10, 20, 20).is_err());
+    }
 }
