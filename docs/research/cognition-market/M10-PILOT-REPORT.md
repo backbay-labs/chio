@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`a977fcfbe104a6f0c48000c75fb92640e6f83031`. The qualifier built the `chio`
+`d9125201ed84627154aa5a8fc5d3e56ebce399d9`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 3,981 ms minimum, 3,999.5 ms median, 4,334 ms maximum
-- Recorded normal purchase time: 2,655 ms minimum, 2,851.5 ms median,
-  2,945 ms maximum
+- Admission time: 3,976 ms minimum, 4,005 ms median, 4,218 ms maximum
+- Recorded normal purchase time: 2,647 ms minimum, 2,871 ms median,
+  2,928 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -121,7 +121,9 @@ The requalified candidate also closes the final deployment review findings:
   cross-process operator lock. Submission and retraction also share one
   non-queued blocking lane, so overlapping work receives a retryable HTTP 503
   before it can consume unbounded blocking-pool capacity. Challenge submission
-  has its own non-queued lane and acquires it before untrusted envelope parsing.
+  has its own non-queued lane and acquires it before collecting or parsing the
+  untrusted envelope body. A busy lane rejects the request without polling its
+  body.
   Schema validation, authentication, signature verification, synchronous
   SQLite integrity checks, and settlement coordination all run on Tokio's
   bounded blocking pool while that permit is held. Tick reports each
@@ -185,12 +187,19 @@ The requalified candidate also closes the final deployment review findings:
   through integrity validation, execution, and durable terminal verification.
   Successful purchase terminals stream in 64 KiB chunks under a 30-second
   absolute deadline, retaining the same permit through response completion,
-  cancellation, or deadline. Public proof reads and egress use a separate
+  cancellation, or deadline. Each streamed chunk owns only its bounded bytes,
+  so a slow client cannot retain the complete multi-megabyte response after
+  the deadline releases its permit. Public proof reads and egress use a separate
   one-response lane with the same chunk and deadline bounds, so slow or
   concurrent public requests cannot accumulate unbounded response buffers or
   retained bundles. A true missing proof returns 404, a transient store failure
   returns 503, and retained proof integrity failure returns 500 without exposing
   storage internals.
+- Voluntary retraction validates the retained Finding and its seller identity
+  before it creates a durable quota-counted job. Distinct unknown Finding ids
+  therefore cannot exhaust the shared seller job allowance. Missing retained
+  Findings remain invalid requests, transient store failures remain retryable,
+  and retained-bundle integrity failures remain internal failures.
 - Python and TypeScript status calls use the Rust verifier with the profile's
   pinned status authority, service bond, freshness window, and durable rollback
   floor. Challenge helpers authenticate the purchase terminal again before
