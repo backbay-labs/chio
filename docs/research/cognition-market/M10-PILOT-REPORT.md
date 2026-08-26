@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`659b6c857bc78f0dc53582c576f8230210756736`. The qualifier built the `chio`
+`d99a064c8767342e04e857859535ba7febb3a199`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 2,954 ms minimum, 3,026 ms median, 3,974 ms maximum
-- Recorded normal purchase time: 2,684 ms minimum, 2,858 ms median,
-  2,913 ms maximum
+- Admission time: 3,920 ms minimum, 4,018 ms median, 4,160 ms maximum
+- Recorded normal purchase time: 2,549 ms minimum, 2,934 ms median,
+  2,995 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -76,10 +76,12 @@ The requalified candidate also closes the final deployment review findings:
 - Seller test commands receive a self-contained Git clone copied into a private
   size-capped tmpfs plus only selected runtime executables, their exact shared
   libraries, Git's support tree, the Python standard library without
-  site-packages, and the npm runtime. They never receive broad `/usr`,
-  `/usr/local`, or `/etc/ssl` trees, the operator profile, the state tree, the
-  Cargo registry, or a Git dependency cache. Offline dependencies must be
-  vendored in the repository. Tests have no network, a
+  site-packages, the npm runtime, the selected Rust sysroot, and exact native
+  linker components. They never receive broad `/usr`, `/usr/local`, or
+  `/etc/ssl` trees, the operator profile, the state tree, the Cargo registry,
+  or a Git dependency cache. Offline dependencies must be vendored in the
+  repository. A real path-vendored Rust package passes `cargo test --offline`
+  inside this boundary. Tests have no network, a
   cleared environment, bounded output, PID and user namespaces, and one
   five-minute aggregate deadline shared by source Git reads, staging, baseline
   and candidate tests, and patch generation. Cgroup v2 enforces hard aggregate
@@ -179,7 +181,9 @@ The requalified candidate also closes the final deployment review findings:
 - Purchase execution uses one non-queued blocking lane rather than a Tokio
   worker. Public proof reads and egress use a separate one-response lane with
   64 KiB chunks and a 30-second absolute deadline, so slow or concurrent public
-  requests cannot accumulate unbounded proof work or retained bundles.
+  requests cannot accumulate unbounded proof work or retained bundles. A true
+  missing proof returns 404, a transient store failure returns 503, and retained
+  proof integrity failure returns 500 without exposing storage internals.
 - Python and TypeScript status calls use the Rust verifier with the profile's
   pinned status authority, service bond, freshness window, and durable rollback
   floor. Challenge helpers authenticate the purchase terminal again before
@@ -194,7 +198,9 @@ The requalified candidate also closes the final deployment review findings:
   backed sale exposure, and operator profiles reject an ephemeral listen port.
   The qualifier refuses a dirty worktree, builds `target/debug/chio` itself,
   and rejects alternate binary paths before it records the exact candidate
-  SHA.
+  SHA. Authoring timestamps the Finding and its market artifacts at or after
+  the actual evidence checkpoint, and static verification rejects the inverse
+  ordering.
 
 ## Reproduction
 
