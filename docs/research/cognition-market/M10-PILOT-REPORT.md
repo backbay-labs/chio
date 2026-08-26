@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`ef6caa70d656d311399e509f74460e1981db19a3`. The qualifier built the `chio`
+`f36da12a53a1694011ec74ea22a62e349db6a5a3`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,952 ms minimum, 2,009 ms median, 2,081 ms maximum
-- Recorded normal purchase time: 2,660 ms minimum, 2,812 ms median,
-  2,960 ms maximum
+- Admission time: 1,984 ms minimum, 2,003 ms median, 2,417 ms maximum
+- Recorded normal purchase time: 2,654 ms minimum, 2,834 ms median,
+  2,969 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -137,7 +137,12 @@ The requalified candidate also closes the final deployment review findings:
   durably reserves its maximum terminal footprint before the market reservation
   can open or payment can run, and terminal insertion consumes that claim in
   the same transaction. Capacity exhaustion therefore returns a retryable
-  response with no reservation and no charge.
+  response with no reservation and no charge. A restart that reaches bundle
+  expiry before reservation releases its earlier terminal-capacity claim, and
+  other pre-reservation validation exits do the same. Recovery of a released
+  reservation checks for a retained terminal before reserving capacity, so a
+  stable pre-dispatch rejection remains replayable even while terminal storage
+  is full.
 - Status-floor lock guards explicitly unlock before close, so an immediate
   sequential retry can read a retraction retained by a rejected rollback.
 - Seller client credentials contain no market signing seed. Buyer SDKs require
@@ -147,7 +152,9 @@ The requalified candidate also closes the final deployment review findings:
   and verify the signed purchase record and reveal commitment before returning
   either a generic purchase result or a decoded patch. The public
   operator route rejects omitted or mismatched payer identities before purchase
-  execution.
+  execution. Rust response validation and both SDKs also require the returned
+  payer identity to equal the signed payer key and the buyer credential's
+  requested payer, closing terminal substitution before any result is trusted.
   Seller SDKs treat repositories as operator-side absolute coordinates and do
   not require those paths to exist on the buyer or seller client host.
 - Purchase execution uses one non-queued blocking lane rather than a Tokio
