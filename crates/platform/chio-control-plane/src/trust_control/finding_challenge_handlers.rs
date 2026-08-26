@@ -279,47 +279,6 @@ pub(crate) async fn handle_submit_finding_challenge(
         }
     }
 
-    let raw_finding = match store.get_finding_bytes(&finding_id) {
-        Ok(Some(bytes)) => bytes,
-        Ok(None) => return plain_http_error(StatusCode::NOT_FOUND, "unknown finding"),
-        Err(_) => {
-            return plain_http_error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "finding store is unavailable",
-            )
-        }
-    };
-    let (_, stored_finding) = match strict_artifact_ingress::<Finding>(
-        &raw_finding,
-        FINDING_PUBLISH_MAX_BODY_BYTES,
-        FINDING_SCHEMA_JSON,
-        FINDING_SCHEMA_LABEL,
-    ) {
-        Ok(accepted) => accepted,
-        Err(_) => {
-            return plain_http_error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "stored finding failed integrity verification",
-            )
-        }
-    };
-    if chio_finding::verify_finding(&stored_finding).is_err()
-        || stored_finding.finding_id != finding_id
-    {
-        return plain_http_error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "stored finding failed integrity verification",
-        );
-    }
-    if chio_core::sha256_hex(raw_finding.as_bytes())
-        != request.challenge.body.finding_artifact_sha256
-    {
-        return plain_http_error(
-            StatusCode::BAD_REQUEST,
-            "challenge does not bind the stored finding",
-        );
-    }
-
     let permit = match try_acquire_challenge_lane(&state.finding_challenge_submission_lane) {
         Ok(permit) => permit,
         Err(_) => {
@@ -330,22 +289,65 @@ pub(crate) async fn handle_submit_finding_challenge(
         }
     };
     let executor = Arc::clone(executor);
-    let outcome = tokio::task::spawn_blocking(move || {
+    let response = tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        executor.submit(
+        let raw_finding = match store.get_finding_bytes(&finding_id) {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => return plain_http_error(StatusCode::NOT_FOUND, "unknown finding"),
+            Err(_) => {
+                return plain_http_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "finding store is unavailable",
+                )
+            }
+        };
+        let (_, stored_finding) = match strict_artifact_ingress::<Finding>(
+            &raw_finding,
+            FINDING_PUBLISH_MAX_BODY_BYTES,
+            FINDING_SCHEMA_JSON,
+            FINDING_SCHEMA_LABEL,
+        ) {
+            Ok(accepted) => accepted,
+            Err(_) => {
+                return plain_http_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "stored finding failed integrity verification",
+                )
+            }
+        };
+        if chio_finding::verify_finding(&stored_finding).is_err()
+            || stored_finding.finding_id != finding_id
+        {
+            return plain_http_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "stored finding failed integrity verification",
+            );
+        }
+        if chio_core::sha256_hex(raw_finding.as_bytes())
+            != request.challenge.body.finding_artifact_sha256
+        {
+            return plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "challenge does not bind the stored finding",
+            );
+        }
+
+        match executor.submit(
             &request,
             &raw_challenge_envelope,
             &raw_finding,
             unix_timestamp_now(),
-        )
+        ) {
+            Ok(outcome) => Json(FindingChallengeSubmissionResponse::from(outcome)).into_response(),
+            Err(error) if coordinator_unavailable(&error) => {
+                plain_http_error(StatusCode::SERVICE_UNAVAILABLE, &error.to_string())
+            }
+            Err(error) => plain_http_error(StatusCode::UNPROCESSABLE_ENTITY, &error.to_string()),
+        }
     })
     .await;
-    match outcome {
-        Ok(Ok(outcome)) => Json(FindingChallengeSubmissionResponse::from(outcome)).into_response(),
-        Ok(Err(error)) if coordinator_unavailable(&error) => {
-            plain_http_error(StatusCode::SERVICE_UNAVAILABLE, &error.to_string())
-        }
-        Ok(Err(error)) => plain_http_error(StatusCode::UNPROCESSABLE_ENTITY, &error.to_string()),
+    match response {
+        Ok(response) => response,
         Err(_) => plain_http_error(
             StatusCode::SERVICE_UNAVAILABLE,
             "finding challenge submission worker failed",

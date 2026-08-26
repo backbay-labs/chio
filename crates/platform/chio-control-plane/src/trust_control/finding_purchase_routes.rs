@@ -937,6 +937,24 @@ pub(crate) async fn handle_purchase_finding(
     };
     let store = authority.finding_market_store();
     let purchase_store = authority.finding_purchase_store();
+    let Some(executor) = executor else {
+        return purchase_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "purchase_executor_unavailable",
+            "finding purchase executor is not configured",
+        );
+    };
+    let Some(authenticated_buyer) = authenticated_buyer else {
+        return purchase_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "purchase_auth_unconfigured",
+            "purchase request authentication is unavailable",
+        );
+    };
+
+    let response = bounded_serving::execute_purchase(
+        state.finding_purchase_execution_lane,
+        move |runtime| {
     let raw_finding = match store.get_finding_bytes(&finding_id) {
         Ok(Some(raw)) => raw,
         Ok(None) => {
@@ -958,45 +976,7 @@ pub(crate) async fn handle_purchase_finding(
         Ok(finding) => finding,
         Err(response) => return response,
     };
-    let Some(executor) = executor else {
-        return purchase_error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "purchase_executor_unavailable",
-            "finding purchase executor is not configured",
-        );
-    };
-    let Some(authenticated_buyer) = authenticated_buyer else {
-        return purchase_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "purchase_auth_unconfigured",
-            "purchase request authentication is unavailable",
-        );
-    };
-
-    let execution = match bounded_serving::execute_purchase(
-        executor,
-        authenticated_buyer,
-        request.clone(),
-        state.finding_purchase_execution_lane,
-    )
-    .await
-    {
-        Ok(execution) => execution,
-        Err(bounded_serving::PurchaseLaneError::Busy) => {
-            return purchase_error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "purchase_busy",
-                "finding purchase execution lane is busy",
-            )
-        }
-        Err(bounded_serving::PurchaseLaneError::Worker) => {
-            return purchase_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "purchase_executor_failed",
-                "finding purchase execution worker failed",
-            )
-        }
-    };
+    let execution = runtime.block_on(executor.execute(authenticated_buyer, request.clone()));
     let result = match execution {
         Ok(result) => result,
         Err(FindingPurchaseExecutionError::Rejected(error)) => {
@@ -1144,6 +1124,22 @@ pub(crate) async fn handle_purchase_finding(
         );
     }
     purchase_terminal_response(&result)
+        },
+    )
+    .await;
+    match response {
+        Ok(response) => response,
+        Err(bounded_serving::PurchaseLaneError::Busy) => purchase_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "purchase_busy",
+            "finding purchase execution lane is busy",
+        ),
+        Err(bounded_serving::PurchaseLaneError::Worker) => purchase_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "purchase_executor_failed",
+            "finding purchase execution worker failed",
+        ),
+    }
 }
 
 fn purchase_authentication_failed() -> Response {

@@ -3014,6 +3014,37 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
         status_proof_b64,
     }));
 
+    // Load shedding precedes the mutex-backed market lookup. An unknown
+    // Finding would return 404 if the handler touched SQLite before acquiring
+    // the non-queued execution lane.
+    let busy_finding_id = "e".repeat(64);
+    let busy_request = FindingPurchaseRequest::new(
+        busy_finding_id.clone(),
+        PRICE_UNITS + 50,
+        "USD".to_owned(),
+        Some(payer.clone()),
+        Some(900),
+    )?;
+    let active_purchase = state
+        .finding_purchase_execution_lane
+        .clone()
+        .try_acquire_owned()?;
+    let (status, body) = send(
+        &state,
+        buyer_post(
+            &format!("/v1/findings/{busy_finding_id}/purchase"),
+            canonical_json_bytes(&busy_request)?,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        json_body(&body)?["code"],
+        serde_json::json!("purchase_busy")
+    );
+    drop(active_purchase);
+    assert_eq!(attempts.load(Ordering::SeqCst), 0);
+
     // Once the scoped runtime is installed, the global service token is not a
     // buyer credential.
     let (status, body) = send(&state, authed_post(&path, request_body.clone())?).await?;

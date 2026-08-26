@@ -3832,6 +3832,29 @@ async fn finding_challenge_live_route_submits_to_the_durable_coordinator_exactly
     });
     let state = challenge_route_state(&deployment, executor.clone());
 
+    // Load shedding precedes the mutex-backed market lookup. An unknown
+    // Finding would return 404 if the handler touched SQLite before acquiring
+    // the non-queued challenge lane.
+    let busy_finding_id = hex64('9');
+    let mut busy_challenge = challenge.body.clone();
+    busy_challenge.finding_id = busy_finding_id.clone();
+    busy_challenge.finding_artifact_sha256 = hex64('8');
+    busy_challenge.challenge_id = compute_challenge_id(&busy_challenge)?;
+    let busy_challenge = SignedExportEnvelope::sign(busy_challenge, &keypair(41))?;
+    let busy_raw = canonical_json_string(&busy_challenge)?;
+    let active_challenge = state
+        .finding_challenge_submission_lane
+        .clone()
+        .try_acquire_owned()?;
+    let (status, _) = submit_challenge_route(&state, &busy_finding_id, &busy_raw, true).await?;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    drop(active_challenge);
+    assert!(executor
+        .raw_findings
+        .lock()
+        .map_err(|_| "route finding observation lock poisoned")?
+        .is_empty());
+
     let oversized = " ".repeat(1024 * 1024 + 1);
     let (status, _) = submit_challenge_route(&state, &finding.finding_id, &oversized, true).await?;
     assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);

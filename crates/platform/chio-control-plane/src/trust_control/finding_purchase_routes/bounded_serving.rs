@@ -15,19 +15,20 @@ pub(super) enum PurchaseLaneError {
     Worker,
 }
 
-pub(super) async fn execute_purchase(
-    executor: SharedFindingPurchaseExecutor,
-    buyer: AuthenticatedFindingBuyer,
-    request: FindingPurchaseRequest,
+pub(super) async fn execute_purchase<T>(
     lane: Arc<Semaphore>,
-) -> Result<Result<FindingPurchaseResult, FindingPurchaseExecutionError>, PurchaseLaneError> {
+    execute: impl FnOnce(tokio::runtime::Handle) -> T + Send + 'static,
+) -> Result<T, PurchaseLaneError>
+where
+    T: Send + 'static,
+{
     let permit = lane
         .try_acquire_owned()
         .map_err(|_| PurchaseLaneError::Busy)?;
     let runtime = tokio::runtime::Handle::current();
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        runtime.block_on(executor.execute(buyer, request))
+        execute(runtime)
     })
     .await
     .map_err(|_| PurchaseLaneError::Worker)
