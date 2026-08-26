@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`cab8aab18491534fffe937941161510ecff49414`. The qualifier built the `chio`
+`99924de5945268709d49f77234e3394f1edac51b`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 3,983 ms minimum, 4,006 ms median, 4,269 ms maximum
-- Recorded normal purchase time: 2,635 ms minimum, 2,853.5 ms median,
-  2,955 ms maximum
+- Admission time: 3,965 ms minimum, 4,003 ms median, 4,325 ms maximum
+- Recorded normal purchase time: 2,622 ms minimum, 2,824 ms median,
+  2,937 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -185,8 +185,12 @@ The requalified candidate also closes the final deployment review findings:
   Seller SDKs treat repositories as operator-side absolute coordinates and do
   not require those paths to exist on the buyer or seller client host.
 - Purchase execution uses one non-queued blocking lane rather than a Tokio
-  worker. The permit is acquired before the market lookup and remains held
-  through integrity validation, execution, and durable terminal verification.
+  worker. After authentication and content-type validation, the permit is
+  acquired before collecting the request body. A busy lane rejects without
+  polling the body, and body collection has a 30-second absolute deadline that
+  releases the permit on timeout. The permit then remains held through the
+  market lookup, integrity validation, execution, and durable terminal
+  verification.
   Successful purchase terminals stream in 64 KiB chunks under a 30-second
   absolute deadline, retaining the same permit through response completion,
   cancellation, or deadline. Each streamed chunk owns only its bounded bytes,
