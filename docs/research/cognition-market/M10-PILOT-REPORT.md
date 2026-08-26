@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`4c93d36fbf0a9ce375fa22f95f24ee4a5969e08f`. The qualifier built the `chio`
+`0d1770c810b3407cb81df62afb29259c65b57949`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,971 ms minimum, 2,008 ms median, 2,695 ms maximum
-- Recorded normal purchase time: 2,698 ms minimum, 2,844 ms median,
-  2,989 ms maximum
+- Admission time: 1,969 ms minimum, 2,005 ms median, 2,022 ms maximum
+- Recorded normal purchase time: 2,617 ms minimum, 2,852 ms median,
+  2,967 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -117,18 +117,25 @@ The requalified candidate also closes the final deployment review findings:
   replay verifies proof liveness at its authenticated terminal time. An open
   or slot-reserved purchase that expires across restart moves to a durable
   expired state and returns a stable rejection instead of an endless pending
-  response.
+  response. Expired slot-reserved work first selects the exact payment through
+  its governed intent binding, releases a hold or refunds a capture exactly
+  once, and only then closes the reservation. A crash between payment reversal
+  and expiry safely replays the same terminal payment action.
   Purchase-job retention is capped at 10,000 rows, failing new requests closed
   while preserving exact replay at capacity. Retained public terminal bodies
-  have a transactionally enforced 256 MiB aggregate ceiling, with exact
-  retained replay checked before capacity admission.
+  have a transactionally enforced 256 MiB aggregate ceiling. Each request
+  durably reserves its maximum terminal footprint before the market reservation
+  can open or payment can run, and terminal insertion consumes that claim in
+  the same transaction. Capacity exhaustion therefore returns a retryable
+  response with no reservation and no charge.
 - Status-floor lock guards explicitly unlock before close, so an immediate
   sequential retry can read a retraction retained by a rejected rollback.
 - Seller client credentials contain no market signing seed. Buyer SDKs require
   a search predicate, bind purchase identities to the credential's payer key,
-  use bounded request deadlines and response streams, and verify the signed
-  purchase record and reveal commitment before returning either a generic
-  purchase result or a decoded patch. The public
+  use bounded response streams and an absolute wall-clock deadline covering
+  the complete HTTP response rather than only periods of network inactivity,
+  and verify the signed purchase record and reveal commitment before returning
+  either a generic purchase result or a decoded patch. The public
   operator route rejects omitted or mismatched payer identities before purchase
   execution.
   Seller SDKs treat repositories as operator-side absolute coordinates and do
