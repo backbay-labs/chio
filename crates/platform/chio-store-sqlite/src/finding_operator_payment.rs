@@ -10,6 +10,8 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::sha256_hex;
+#[cfg(test)]
+use chio_kernel::payment::GovernedPaymentContext;
 use chio_kernel::payment::{
     PaymentAdapter, PaymentAuthorization, PaymentAuthorizationState, PaymentAuthorizeRequest,
     PaymentError, PaymentRailMode, PaymentResult, RailSettlementStatus,
@@ -78,12 +80,24 @@ impl SqliteFindingOperatorPaymentAdapter {
                 payee TEXT NOT NULL,
                 amount_units INTEGER NOT NULL CHECK(amount_units > 0),
                 currency TEXT NOT NULL CHECK(length(currency) = 3),
+                governed_intent_id TEXT,
+                governed_intent_hash TEXT,
                 state TEXT NOT NULL CHECK(state IN ('held', 'captured', 'released', 'refunded')),
                 transaction_id TEXT,
                 prior_transaction_id TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
+            "#,
+        )
+        .map_err(|error| error.to_string())?;
+        ensure_payment_column(&conn, "governed_intent_id", "TEXT")?;
+        ensure_payment_column(&conn, "governed_intent_hash", "TEXT")?;
+        conn.execute_batch(
+            r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS chio_finding_operator_payments_governed_intent
+            ON chio_finding_operator_payments(governed_intent_id)
+            WHERE governed_intent_id IS NOT NULL;
             "#,
         )
         .map_err(|error| error.to_string())?;
@@ -98,6 +112,14 @@ impl SqliteFindingOperatorPaymentAdapter {
     ) -> Result<PaymentAuthorization, String> {
         validate_request(request)?;
         let authorization_id = authorization_id(request);
+        let governed_intent_id = request
+            .governed
+            .as_ref()
+            .map(|value| value.intent_id.as_str());
+        let governed_intent_hash = request
+            .governed
+            .as_ref()
+            .map(|value| value.intent_hash.as_str());
         let amount_units = i64::try_from(request.amount_units)
             .map_err(|_| "payment amount exceeds SQLite integer range".to_owned())?;
         let mut conn = self.pool.get().map_err(|error| error.to_string())?;
@@ -111,6 +133,8 @@ impl SqliteFindingOperatorPaymentAdapter {
                 || existing.payee != request.payee
                 || existing.amount_units != request.amount_units
                 || existing.currency != request.currency
+                || existing.governed_intent_id.as_deref() != governed_intent_id
+                || existing.governed_intent_hash.as_deref() != governed_intent_hash
             {
                 return Err("payment authorization conflicts with durable state".to_owned());
             }
@@ -122,8 +146,9 @@ impl SqliteFindingOperatorPaymentAdapter {
             r#"
             INSERT INTO chio_finding_operator_payments
                 (authorization_id, reference, payer, payee, amount_units, currency,
-                 state, transaction_id, prior_transaction_id, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'held', NULL, NULL, ?7, ?7)
+                 governed_intent_id, governed_intent_hash, state, transaction_id,
+                 prior_transaction_id, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'held', NULL, NULL, ?9, ?9)
             "#,
             params![
                 authorization_id,
@@ -132,6 +157,8 @@ impl SqliteFindingOperatorPaymentAdapter {
                 request.payee,
                 amount_units,
                 request.currency,
+                governed_intent_id,
+                governed_intent_hash,
                 now,
             ],
         )
@@ -257,6 +284,125 @@ impl SqliteFindingOperatorPaymentAdapter {
             .map_err(|error| error.to_string())?;
         u64::try_from(count).map_err(|_| "payment count was negative".to_owned())
     }
+
+    /// Release or refund any durable local-credit payment before an expired
+    /// purchase reservation is closed. Replays are exact and terminal.
+    pub fn reconcile_expired_reference(
+        &self,
+        reference: &str,
+        payer: &str,
+        amount_units: u64,
+        currency: &str,
+    ) -> Result<(), String> {
+        validate_reconciliation_binding(payer, amount_units, currency)?;
+        validate_text(reference, "reference")?;
+        let conn = self.pool.get().map_err(|error| error.to_string())?;
+        let Some(record) = load_by_reference(&conn, reference)? else {
+            return Ok(());
+        };
+        drop(conn);
+        self.reconcile_record(record, payer, amount_units, currency)
+    }
+
+    /// Reconcile the payment bound to one governed cognition-market intent.
+    /// Legacy rows without this binding fail closed if they could be live.
+    pub fn reconcile_expired_governed_intent(
+        &self,
+        governed_intent_id: &str,
+        payer: &str,
+        amount_units: u64,
+        currency: &str,
+    ) -> Result<(), String> {
+        validate_reconciliation_binding(payer, amount_units, currency)?;
+        validate_text(governed_intent_id, "governed_intent_id")?;
+        let conn = self.pool.get().map_err(|error| error.to_string())?;
+        let record = load_by_governed_intent_id(&conn, governed_intent_id)?;
+        if record.is_none() {
+            let amount_units = i64::try_from(amount_units)
+                .map_err(|_| "payment amount exceeds SQLite integer range".to_owned())?;
+            let legacy_live: i64 = conn
+                .query_row(
+                    r#"
+                    SELECT COUNT(*) FROM chio_finding_operator_payments
+                    WHERE governed_intent_id IS NULL
+                      AND payer = ?1 AND amount_units = ?2 AND currency = ?3
+                      AND state IN ('held', 'captured')
+                    "#,
+                    params![payer, amount_units, currency],
+                    |row| row.get(0),
+                )
+                .map_err(|error| error.to_string())?;
+            if legacy_live != 0 {
+                return Err(
+                    "legacy live payment cannot be bound to the expired governed intent".to_owned(),
+                );
+            }
+            return Ok(());
+        }
+        drop(conn);
+        self.reconcile_record(
+            record.ok_or_else(|| "governed payment disappeared".to_owned())?,
+            payer,
+            amount_units,
+            currency,
+        )
+    }
+
+    fn reconcile_record(
+        &self,
+        record: PaymentRecord,
+        payer: &str,
+        amount_units: u64,
+        currency: &str,
+    ) -> Result<(), String> {
+        if record.payer != payer
+            || record.amount_units != amount_units
+            || record.currency != currency
+        {
+            return Err("expired payment reconciliation conflicts with durable state".to_owned());
+        }
+        let reference = record.reference.clone();
+        match record.state.as_str() {
+            "held" => {
+                self.settle(
+                    &record.authorization_id,
+                    SettlementAction::Release {
+                        reference: &reference,
+                    },
+                )?;
+            }
+            "captured" => {
+                let transaction_id = record.transaction_id.as_deref().ok_or_else(|| {
+                    "captured payment omitted its durable transaction id".to_owned()
+                })?;
+                self.settle(
+                    &record.authorization_id,
+                    SettlementAction::Refund {
+                        transaction_id,
+                        amount_units,
+                        currency,
+                        reference: &reference,
+                    },
+                )?;
+            }
+            "released" | "refunded" => {}
+            _ => return Err("stored payment state is unsupported".to_owned()),
+        }
+        Ok(())
+    }
+
+    /// Count payments refunded by recovery after a prior capture.
+    pub fn refund_count(&self) -> Result<u64, String> {
+        let conn = self.pool.get().map_err(|error| error.to_string())?;
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM chio_finding_operator_payments WHERE state = 'refunded'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        u64::try_from(count).map_err(|_| "payment count was negative".to_owned())
+    }
 }
 
 impl PaymentAdapter for SqliteFindingOperatorPaymentAdapter {
@@ -370,6 +516,8 @@ struct PaymentRecord {
     payee: String,
     amount_units: u64,
     currency: String,
+    governed_intent_id: Option<String>,
+    governed_intent_hash: Option<String>,
     state: String,
     transaction_id: Option<String>,
     prior_transaction_id: Option<String>,
@@ -389,13 +537,20 @@ fn load_by_authorization(
     load_record(conn, "authorization_id", authorization_id)
 }
 
+fn load_by_governed_intent_id(
+    conn: &rusqlite::Connection,
+    governed_intent_id: &str,
+) -> Result<Option<PaymentRecord>, String> {
+    load_record(conn, "governed_intent_id", governed_intent_id)
+}
+
 fn load_record(
     conn: &rusqlite::Connection,
     column: &str,
     value: &str,
 ) -> Result<Option<PaymentRecord>, String> {
     let sql = format!(
-        "SELECT authorization_id, reference, payer, payee, amount_units, currency, state, transaction_id, prior_transaction_id FROM chio_finding_operator_payments WHERE {column} = ?1"
+        "SELECT authorization_id, reference, payer, payee, amount_units, currency, governed_intent_id, governed_intent_hash, state, transaction_id, prior_transaction_id FROM chio_finding_operator_payments WHERE {column} = ?1"
     );
     conn.query_row(&sql, [value], |row| {
         let amount_units: i64 = row.get("amount_units")?;
@@ -406,6 +561,8 @@ fn load_record(
             row.get("payee")?,
             amount_units,
             row.get("currency")?,
+            row.get("governed_intent_id")?,
+            row.get("governed_intent_hash")?,
             row.get("state")?,
             row.get("transaction_id")?,
             row.get("prior_transaction_id")?,
@@ -421,6 +578,8 @@ fn load_record(
             payee,
             amount_units,
             currency,
+            governed_intent_id,
+            governed_intent_hash,
             state,
             transaction_id,
             prior_transaction_id,
@@ -433,6 +592,8 @@ fn load_record(
                 amount_units: u64::try_from(amount_units)
                     .map_err(|_| "stored payment amount was negative".to_owned())?,
                 currency,
+                governed_intent_id,
+                governed_intent_hash,
                 state,
                 transaction_id,
                 prior_transaction_id,
@@ -440,6 +601,30 @@ fn load_record(
         },
     )
     .transpose()
+}
+
+fn ensure_payment_column(
+    conn: &rusqlite::Connection,
+    column: &str,
+    definition: &str,
+) -> Result<(), String> {
+    if !matches!(column, "governed_intent_id" | "governed_intent_hash") || definition != "TEXT" {
+        return Err("unsupported operator payment migration column".to_owned());
+    }
+    let exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('chio_finding_operator_payments') WHERE name = ?1)",
+            [column],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if !exists {
+        conn.execute_batch(&format!(
+            "ALTER TABLE chio_finding_operator_payments ADD COLUMN {column} {definition}"
+        ))
+        .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 fn validate_request(request: &PaymentAuthorizeRequest) -> Result<(), String> {
@@ -455,6 +640,25 @@ fn validate_request(request: &PaymentAuthorizeRequest) -> Result<(), String> {
             .bytes()
             .all(|byte| byte.is_ascii_uppercase())
     {
+        return Err("payment currency must be three uppercase letters".to_owned());
+    }
+    if let Some(governed) = request.governed.as_ref() {
+        validate_text(&governed.intent_id, "governed_intent_id")?;
+        validate_text(&governed.intent_hash, "governed_intent_hash")?;
+    }
+    Ok(())
+}
+
+fn validate_reconciliation_binding(
+    payer: &str,
+    amount_units: u64,
+    currency: &str,
+) -> Result<(), String> {
+    validate_text(payer, "payer")?;
+    if amount_units == 0 || amount_units > i64::MAX as u64 {
+        return Err("payment amount is outside the supported range".to_owned());
+    }
+    if currency.len() != 3 || !currency.bytes().all(|byte| byte.is_ascii_uppercase()) {
         return Err("payment currency must be three uppercase letters".to_owned());
     }
     Ok(())
@@ -536,6 +740,19 @@ mod tests {
             governed: None,
             commerce: None,
         }
+    }
+
+    fn governed_request(reference: &str, intent_id: &str) -> PaymentAuthorizeRequest {
+        let mut request = request(reference);
+        request.governed = Some(GovernedPaymentContext {
+            intent_id: intent_id.to_owned(),
+            intent_hash: "a".repeat(64),
+            purpose: "purchase".to_owned(),
+            server_id: "seller-1".to_owned(),
+            tool_name: "read_finding".to_owned(),
+            approval_token_id: None,
+        });
+        request
     }
 
     #[test]
@@ -630,5 +847,114 @@ mod tests {
         assert!(adapter
             .refund(&captured.transaction_id, 26, "USD", "purchase-refund-bind",)
             .is_err());
+    }
+
+    #[test]
+    fn expired_reconciliation_releases_a_hold_exactly_once() {
+        let adapter = SqliteFindingOperatorPaymentAdapter::open_in_memory().unwrap();
+        let authorization = adapter
+            .authorize(&request("purchase-expired-hold"))
+            .unwrap();
+        adapter
+            .reconcile_expired_reference("purchase-expired-hold", "buyer-1", 25, "USD")
+            .unwrap();
+        adapter
+            .reconcile_expired_reference("purchase-expired-hold", "buyer-1", 25, "USD")
+            .unwrap();
+        assert!(adapter
+            .capture(
+                &authorization.authorization_id,
+                25,
+                "USD",
+                "purchase-expired-hold",
+            )
+            .is_err());
+        assert_eq!(adapter.capture_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn expired_reconciliation_refunds_a_capture_exactly_once() {
+        let adapter = SqliteFindingOperatorPaymentAdapter::open_in_memory().unwrap();
+        let authorization = adapter
+            .authorize(&request("purchase-expired-capture"))
+            .unwrap();
+        adapter
+            .capture(
+                &authorization.authorization_id,
+                25,
+                "USD",
+                "purchase-expired-capture",
+            )
+            .unwrap();
+        adapter
+            .reconcile_expired_reference("purchase-expired-capture", "buyer-1", 25, "USD")
+            .unwrap();
+        adapter
+            .reconcile_expired_reference("purchase-expired-capture", "buyer-1", 25, "USD")
+            .unwrap();
+        assert_eq!(adapter.capture_count().unwrap(), 1);
+        assert_eq!(adapter.refund_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn expired_governed_intent_selects_the_exact_capture() {
+        let adapter = SqliteFindingOperatorPaymentAdapter::open_in_memory().unwrap();
+        let request = governed_request("durable-operation-1", "intent-request-1");
+        let authorization = adapter.authorize(&request).unwrap();
+        adapter
+            .capture(
+                &authorization.authorization_id,
+                25,
+                "USD",
+                "durable-operation-1",
+            )
+            .unwrap();
+        adapter
+            .reconcile_expired_governed_intent("intent-request-1", "buyer-1", 25, "USD")
+            .unwrap();
+        assert_eq!(adapter.capture_count().unwrap(), 1);
+        assert_eq!(adapter.refund_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn legacy_payment_table_adds_governed_intent_binding_on_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy-operator.db");
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE chio_finding_operator_payments (
+                authorization_id TEXT PRIMARY KEY,
+                reference TEXT NOT NULL UNIQUE,
+                payer TEXT NOT NULL,
+                payee TEXT NOT NULL,
+                amount_units INTEGER NOT NULL CHECK(amount_units > 0),
+                currency TEXT NOT NULL CHECK(length(currency) = 3),
+                state TEXT NOT NULL CHECK(state IN ('held', 'captured', 'released', 'refunded')),
+                transaction_id TEXT,
+                prior_transaction_id TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .unwrap();
+        drop(conn);
+
+        let adapter = SqliteFindingOperatorPaymentAdapter::open(&path).unwrap();
+        let request = governed_request("durable-operation-migrated", "intent-request-migrated");
+        adapter.authorize(&request).unwrap();
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        let governed_columns: i64 = conn
+            .query_row(
+                r#"
+                SELECT COUNT(*) FROM pragma_table_info('chio_finding_operator_payments')
+                WHERE name IN ('governed_intent_id', 'governed_intent_hash')
+                "#,
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(governed_columns, 2);
     }
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -573,3 +574,27 @@ async def test_buyer_stops_streaming_an_oversized_response(
     finally:
         await buyer.close()
     assert chunks_read == 2
+
+
+@pytest.mark.asyncio
+async def test_buyer_applies_an_absolute_stream_deadline(tmp_path: Path) -> None:
+    finding_id = "7" * 64
+
+    class SlowDripResponse(httpx.AsyncByteStream):
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            for _ in range(3):
+                await asyncio.sleep(0.04)
+                yield b"x"
+
+    buyer = CognitionMarketBuyer(
+        buyer_profile(tmp_path / "buyer.json"),
+        timeout=0.08,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, stream=SlowDripResponse())
+        ),
+    )
+    try:
+        with pytest.raises(CognitionMarketError, match="absolute request deadline"):
+            await buyer.proof(finding_id)
+    finally:
+        await buyer.close()

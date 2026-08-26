@@ -11,6 +11,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import math
 import os
 import subprocess
 import tempfile
@@ -182,12 +183,15 @@ class CognitionMarketBuyer:
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise CognitionMarketError("timeout must be a positive finite number")
         self.profile_path = Path(profile_path)
         self.profile = _load_profile(self.profile_path, BUYER_SCHEMA)
         self.chio_binary = str(chio_binary)
         self.status_floor_path = Path(status_floor_path) if status_floor_path is not None else Path(
             f"{self.profile_path}.status-floor.json"
         )
+        self._deadline_seconds = timeout
         self._client = httpx.AsyncClient(
             base_url=self.profile["endpoint"].rstrip("/"),
             headers={"authorization": f"Bearer {self.profile['bearerToken']}"},
@@ -227,6 +231,7 @@ class CognitionMarketBuyer:
             f"/v1/findings/{finding_id}/proof",
             maximum=PROOF_RESPONSE_MAX_BYTES,
             label="proof bundle",
+            deadline_seconds=self._deadline_seconds,
         )
         if not proof:
             raise CognitionMarketError("proof bundle is empty or exceeds the SDK size bound")
@@ -514,6 +519,7 @@ class CognitionMarketBuyer:
             path,
             maximum=maximum,
             label="operator response",
+            deadline_seconds=self._deadline_seconds,
             **kwargs,
         )
         try:
@@ -535,7 +541,10 @@ class CognitionMarketSeller:
         timeout: float = 300.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise CognitionMarketError("timeout must be a positive finite number")
         self.credential = _load_profile(credential_path, SELLER_SCHEMA)
+        self._deadline_seconds = timeout
         self._client = httpx.AsyncClient(
             base_url=self.credential["endpoint"].rstrip("/"),
             headers={"authorization": f"Bearer {self.credential['bearerToken']}"},
@@ -628,6 +637,7 @@ class CognitionMarketSeller:
             path,
             maximum=JSON_RESPONSE_MAX_BYTES,
             label="operator response",
+            deadline_seconds=self._deadline_seconds,
             content=_canonical_json(request),
             headers={"content-type": "application/json"},
         )
@@ -647,15 +657,24 @@ async def _request_bytes(
     *,
     maximum: int,
     label: str,
+    deadline_seconds: float,
     **kwargs: Any,
 ) -> bytes:
-    async with client.stream(method, path, **kwargs) as response:
-        if response.is_success:
-            return await _read_bounded_response(response, maximum, label)
-        error_label = f"operator HTTP {response.status_code} error response"
-        body = await _read_bounded_response(response, ERROR_RESPONSE_MAX_BYTES, error_label)
-        message = body.decode("utf-8", errors="replace")
-        raise CognitionMarketError(f"operator returned HTTP {response.status_code}: {message}")
+    try:
+        async with asyncio.timeout(deadline_seconds):
+            async with client.stream(method, path, **kwargs) as response:
+                if response.is_success:
+                    return await _read_bounded_response(response, maximum, label)
+                error_label = f"operator HTTP {response.status_code} error response"
+                body = await _read_bounded_response(
+                    response, ERROR_RESPONSE_MAX_BYTES, error_label
+                )
+                message = body.decode("utf-8", errors="replace")
+                raise CognitionMarketError(
+                    f"operator returned HTTP {response.status_code}: {message}"
+                )
+    except TimeoutError as error:
+        raise CognitionMarketError(f"{label} exceeded the absolute request deadline") from error
 
 
 async def _read_bounded_response(

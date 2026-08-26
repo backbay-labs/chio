@@ -40,9 +40,10 @@ use chio_open_market::purchase_verification::{
 };
 use chio_store_sqlite::{
     FindingAllocationState, FindingPublicPurchaseRequestBinding, FindingPublicPurchaseTerminal,
-    FindingPublicPurchaseTerminalKind, FindingPurchaseReservationState, SqliteAuthorityStore,
-    SqliteFindingOperatorBundleStore, SqliteFindingOperatorPaymentAdapter,
-    SqliteFindingPayloadStore, SqliteReceiptStore, TenantId, TenantKey,
+    FindingPublicPurchaseTerminalKind, FindingPurchaseReservationRecord,
+    FindingPurchaseReservationState, SqliteAuthorityStore, SqliteFindingOperatorBundleStore,
+    SqliteFindingOperatorPaymentAdapter, SqliteFindingPayloadStore, SqliteReceiptStore, TenantId,
+    TenantKey,
 };
 use subtle::ConstantTimeEq;
 
@@ -157,6 +158,8 @@ pub struct FindingOperatorPurchaseExecutor {
     #[cfg(test)]
     stop_after_reservation_once: std::sync::atomic::AtomicBool,
     #[cfg(test)]
+    stop_after_kernel_response_once: std::sync::atomic::AtomicBool,
+    #[cfg(test)]
     test_now: std::sync::atomic::AtomicU64,
 }
 
@@ -254,6 +257,8 @@ impl FindingOperatorPurchaseExecutor {
             #[cfg(test)]
             stop_after_reservation_once: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
+            stop_after_kernel_response_once: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(test)]
             test_now: std::sync::atomic::AtomicU64::new(0),
         })
     }
@@ -267,6 +272,12 @@ impl FindingOperatorPurchaseExecutor {
     #[cfg(test)]
     pub(crate) fn stop_after_reservation_once(&self) {
         self.stop_after_reservation_once
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn stop_after_kernel_response_once(&self) {
+        self.stop_after_kernel_response_once
             .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
@@ -544,6 +555,69 @@ impl FindingOperatorPurchaseExecutor {
             )
             .map_err(execution_unavailable)?;
         Ok(())
+    }
+
+    fn reserve_terminal_capacity(
+        &self,
+        buyer: &AuthenticatedFindingBuyer,
+        request: &FindingPurchaseRequest,
+        request_sha256: &str,
+    ) -> Result<(), FindingPurchaseExecutionError> {
+        self.bundle_store
+            .reserve_terminal_capacity(&request.request_id, buyer.principal_id(), request_sha256)
+            .map_err(execution_unavailable)?;
+        Ok(())
+    }
+
+    fn release_terminal_capacity(
+        &self,
+        buyer: &AuthenticatedFindingBuyer,
+        request: &FindingPurchaseRequest,
+        request_sha256: &str,
+    ) -> Result<(), FindingPurchaseExecutionError> {
+        self.bundle_store
+            .release_terminal_capacity(&request.request_id, buyer.principal_id(), request_sha256)
+            .map_err(execution_unavailable)?;
+        Ok(())
+    }
+
+    fn expire_open_reservation(
+        &self,
+        buyer: &AuthenticatedFindingBuyer,
+        request: &FindingPurchaseRequest,
+        request_sha256: &str,
+        reservation: &FindingPurchaseReservationRecord,
+        now: u64,
+    ) -> Result<(), FindingPurchaseExecutionError> {
+        if !self
+            .coordinator()?
+            .expire_reservation(&reservation.reservation_id, now)
+            .map_err(execution_internal)?
+        {
+            return Err(execution_internal(
+                "due purchase reservation did not reach the expired terminal",
+            ));
+        }
+        self.release_terminal_capacity(buyer, request, request_sha256)
+    }
+
+    fn reconcile_and_expire_slot_reservation(
+        &self,
+        buyer: &AuthenticatedFindingBuyer,
+        request: &FindingPurchaseRequest,
+        request_sha256: &str,
+        reservation: &FindingPurchaseReservationRecord,
+        now: u64,
+    ) -> Result<(), FindingPurchaseExecutionError> {
+        self.payment_adapter
+            .reconcile_expired_governed_intent(
+                &format!("intent-{}", request.request_id),
+                &reservation.payer_hex,
+                reservation.amount_units,
+                &reservation.currency,
+            )
+            .map_err(execution_unavailable)?;
+        self.expire_open_reservation(buyer, request, request_sha256, reservation, now)
     }
 
     fn load_purchase_job(
@@ -859,6 +933,8 @@ impl FindingOperatorPurchaseExecutor {
             ));
         }
         let payer = authenticated.payer().to_owned();
+        let request_bytes = canonical_json_bytes(request).map_err(execution_internal)?;
+        let request_sha256 = sha256_hex(&request_bytes);
         let payer_hex = credential.signing_key.public_key().to_hex();
         let public_request = FindingPublicPurchaseRequestBinding {
             request_id: &request.request_id,
@@ -879,26 +955,35 @@ impl FindingOperatorPurchaseExecutor {
             match existing.state {
                 FindingPurchaseReservationState::Consumed
                 | FindingPurchaseReservationState::Released => {
+                    self.reserve_terminal_capacity(authenticated, request, &request_sha256)?;
                     return self.recover_terminal(authenticated, request, &existing.reservation_id);
                 }
                 FindingPurchaseReservationState::Expired => {
+                    self.release_terminal_capacity(authenticated, request, &request_sha256)?;
                     return Err(FindingPurchaseExecutionError::Rejected(
                         "durable purchase reservation expired before recovery".to_owned(),
                     ));
                 }
-                FindingPurchaseReservationState::Open
-                | FindingPurchaseReservationState::SlotReserved
-                    if now >= existing.expires_at =>
-                {
-                    if !self
-                        .coordinator()?
-                        .expire_reservation(&existing.reservation_id, now)
-                        .map_err(execution_internal)?
-                    {
-                        return Err(execution_internal(
-                            "due purchase reservation did not reach the expired terminal",
-                        ));
-                    }
+                FindingPurchaseReservationState::Open if now >= existing.expires_at => {
+                    self.expire_open_reservation(
+                        authenticated,
+                        request,
+                        &request_sha256,
+                        existing,
+                        now,
+                    )?;
+                    return Err(FindingPurchaseExecutionError::Rejected(
+                        "durable purchase reservation expired before recovery".to_owned(),
+                    ));
+                }
+                FindingPurchaseReservationState::SlotReserved if now >= existing.expires_at => {
+                    self.reconcile_and_expire_slot_reservation(
+                        authenticated,
+                        request,
+                        &request_sha256,
+                        existing,
+                        now,
+                    )?;
                     return Err(FindingPurchaseExecutionError::Rejected(
                         "durable purchase reservation expired before recovery".to_owned(),
                     ));
@@ -907,8 +992,6 @@ impl FindingOperatorPurchaseExecutor {
                 | FindingPurchaseReservationState::SlotReserved => {}
             }
         }
-        let request_bytes = canonical_json_bytes(request).map_err(execution_internal)?;
-        let request_sha256 = sha256_hex(&request_bytes);
         let stored_job = self.load_purchase_job(authenticated, request, &request_sha256)?;
         if existing_reservation.is_some() && stored_job.is_none() {
             return Err(FindingPurchaseExecutionError::Pending(
@@ -995,6 +1078,7 @@ impl FindingOperatorPurchaseExecutor {
                         | FindingPurchaseReservationState::Released
                 ) =>
             {
+                self.reserve_terminal_capacity(authenticated, request, &request_sha256)?;
                 return self.recover_terminal(authenticated, request, &reservation_id);
             }
             Ok(existing) if existing.state == FindingPurchaseReservationState::Expired => {
@@ -1005,6 +1089,7 @@ impl FindingOperatorPurchaseExecutor {
             Ok(_) | Err(PurchaseCoordinatorError::UnknownReservation) => {}
             Err(error) => return Err(execution_internal(error)),
         }
+        self.reserve_terminal_capacity(authenticated, request, &request_sha256)?;
         let reservation_receipt = coordinator
             .reserve_for_public_request(
                 bid,
@@ -1022,7 +1107,15 @@ impl FindingOperatorPurchaseExecutor {
                 job.prepared_at,
                 &public_request,
             )
-            .map_err(execution_internal)?;
+            .map_err(|error| {
+                release_terminal_capacity_after_error(
+                    &self.bundle_store,
+                    authenticated,
+                    request,
+                    &request_sha256,
+                    execution_internal(error),
+                )
+            })?;
         #[cfg(test)]
         if self
             .stop_after_reservation_once
@@ -1039,11 +1132,23 @@ impl FindingOperatorPurchaseExecutor {
                 ));
             }
         }
+        let release_predispatch = |original| {
+            release_predispatch_reservation(
+                &coordinator,
+                &self.bundle_store,
+                authenticated,
+                request,
+                &request_sha256,
+                &reservation_id,
+                now,
+                original,
+            )
+        };
         let verified_reservation = VerifiedReservationReceipt::from_signed(
             &reservation_receipt,
             &self.keys.purchase.public_key(),
         )
-        .map_err(execution_internal)?;
+        .map_err(|error| release_predispatch(execution_internal(error)))?;
         let accepted = accept_finding_purchase(
             &ask,
             &verified_reservation,
@@ -1052,17 +1157,10 @@ impl FindingOperatorPurchaseExecutor {
             &witness,
             &bundle.finding,
         )
-        .map_err(execution_internal)?;
+        .map_err(|error| release_predispatch(execution_internal(error)))?;
         coordinator
             .reserve_slot(&reservation_id, now)
-            .map_err(|error| {
-                release_predispatch_reservation(
-                    &coordinator,
-                    &reservation_id,
-                    now,
-                    execution_internal(error),
-                )
-            })?;
+            .map_err(|error| release_predispatch(execution_internal(error)))?;
         let context_b64 = purchase_context_b64(
             &bundle,
             bid,
@@ -1071,9 +1169,7 @@ impl FindingOperatorPurchaseExecutor {
             &reservation_receipt,
             &reservation_id,
         )
-        .map_err(|error| {
-            release_predispatch_reservation(&coordinator, &reservation_id, now, error)
-        })?;
+        .map_err(&release_predispatch)?;
         let publisher = FindingStatusEpochPublisher::new(
             self.authority.finding_status_store(),
             self.market.status_feed_operator.clone(),
@@ -1081,24 +1177,10 @@ impl FindingOperatorPurchaseExecutor {
             self.keys.status_operator.clone(),
             self.market.status_max_epoch_age_secs,
         )
-        .map_err(|error| {
-            release_predispatch_reservation(
-                &coordinator,
-                &reservation_id,
-                now,
-                execution_internal(error),
-            )
-        })?;
+        .map_err(|error| release_predispatch(execution_internal(error)))?;
         let status = publisher
             .publish_non_inclusion(&request.finding_id, &[], now)
-            .map_err(|error| {
-                release_predispatch_reservation(
-                    &coordinator,
-                    &reservation_id,
-                    now,
-                    execution_internal(error),
-                )
-            })?;
+            .map_err(|error| release_predispatch(execution_internal(error)))?;
         let status_proof_b64 = STANDARD.encode(status.proof_bytes);
         let arguments = serde_json::json!({"finding_id": request.finding_id});
         let capability = ask.body.token_offer.clone();
@@ -1108,31 +1190,18 @@ impl FindingOperatorPurchaseExecutor {
                 capability_id: capability.id.clone(),
                 tool_server: bundle.admission.body.server_id.clone(),
                 tool_name: READ_FINDING_TOOL.to_owned(),
-                action_hash: sha256_hex(&canonical_json_bytes(&arguments).map_err(|error| {
-                    release_predispatch_reservation(
-                        &coordinator,
-                        &reservation_id,
-                        now,
-                        execution_internal(error),
-                    )
-                })?),
+                action_hash: sha256_hex(
+                    &canonical_json_bytes(&arguments)
+                        .map_err(|error| release_predispatch(execution_internal(error)))?,
+                ),
                 nonce: request.request_id.clone(),
                 issued_at: now,
                 agent_key: credential.signing_key.public_key(),
             },
             &credential.signing_key,
         )
-        .map_err(|error| {
-            release_predispatch_reservation(
-                &coordinator,
-                &reservation_id,
-                now,
-                execution_internal(error),
-            )
-        })?;
-        let kernel = self.build_kernel(&bundle).map_err(|error| {
-            release_predispatch_reservation(&coordinator, &reservation_id, now, error)
-        })?;
+        .map_err(|error| release_predispatch(execution_internal(error)))?;
+        let kernel = self.build_kernel(&bundle).map_err(&release_predispatch)?;
         let response = kernel
             .evaluate_tool_call_blocking(&ToolCallRequest {
                 request_id: request.request_id.clone(),
@@ -1156,14 +1225,16 @@ impl FindingOperatorPurchaseExecutor {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
-            .map_err(|error| {
-                release_predispatch_reservation(
-                    &coordinator,
-                    &reservation_id,
-                    now,
-                    execution_internal(error),
-                )
-            })?;
+            .map_err(|error| release_predispatch(execution_internal(error)))?;
+        #[cfg(test)]
+        if self
+            .stop_after_kernel_response_once
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err(FindingPurchaseExecutionError::Pending(
+                "test interruption after durable kernel response".to_owned(),
+            ));
+        }
         let finalized_at = self.current_time()?;
         let payer_key = credential.signing_key.public_key();
         let result = match response.verdict {
@@ -1448,14 +1519,43 @@ fn execution_unavailable(error: impl std::fmt::Display) -> FindingPurchaseExecut
 
 fn release_predispatch_reservation(
     coordinator: &FindingPurchaseCoordinator,
+    bundle_store: &SqliteFindingOperatorBundleStore,
+    buyer: &AuthenticatedFindingBuyer,
+    request: &FindingPurchaseRequest,
+    request_sha256: &str,
     reservation_id: &str,
     now: u64,
     original: FindingPurchaseExecutionError,
 ) -> FindingPurchaseExecutionError {
-    match coordinator.release(reservation_id, now) {
-        Ok(()) => original,
+    let reservation_release = coordinator.release(reservation_id, now);
+    let capacity_release = bundle_store.release_terminal_capacity(
+        &request.request_id,
+        buyer.principal_id(),
+        request_sha256,
+    );
+    match (reservation_release, capacity_release) {
+        (Ok(()), Ok(_)) => original,
+        (reservation, capacity) => FindingPurchaseExecutionError::Internal(format!(
+            "{original}; durable pre-dispatch cleanup failed: reservation={reservation:?}, capacity={capacity:?}"
+        )),
+    }
+}
+
+fn release_terminal_capacity_after_error(
+    bundle_store: &SqliteFindingOperatorBundleStore,
+    buyer: &AuthenticatedFindingBuyer,
+    request: &FindingPurchaseRequest,
+    request_sha256: &str,
+    original: FindingPurchaseExecutionError,
+) -> FindingPurchaseExecutionError {
+    match bundle_store.release_terminal_capacity(
+        &request.request_id,
+        buyer.principal_id(),
+        request_sha256,
+    ) {
+        Ok(_) => original,
         Err(release_error) => FindingPurchaseExecutionError::Internal(format!(
-            "{original}; durable pre-dispatch release failed: {release_error}"
+            "{original}; durable terminal-capacity release failed: {release_error}"
         )),
     }
 }

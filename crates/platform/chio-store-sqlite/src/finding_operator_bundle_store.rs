@@ -74,6 +74,12 @@ pub enum FindingOperatorTerminalWriteOutcome {
     ExactReplay,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FindingOperatorTerminalCapacityOutcome {
+    Reserved,
+    ExactReplay,
+}
+
 #[derive(Debug, Error)]
 pub enum FindingOperatorBundleStoreError {
     #[error("finding operator bundle store is unavailable: {0}")]
@@ -157,6 +163,14 @@ impl SqliteFindingOperatorBundleStore {
                 request_sha256 TEXT NOT NULL CHECK(length(request_sha256) = 64),
                 result_sha256 TEXT NOT NULL CHECK(length(result_sha256) = 64),
                 result_json BLOB NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS chio_finding_operator_terminal_capacity (
+                request_id TEXT PRIMARY KEY,
+                principal_id TEXT NOT NULL,
+                request_sha256 TEXT NOT NULL CHECK(length(request_sha256) = 64),
+                reserved_bytes INTEGER NOT NULL CHECK(reserved_bytes > 0),
                 created_at INTEGER NOT NULL
             );
 
@@ -544,23 +558,6 @@ impl SqliteFindingOperatorBundleStore {
         request_sha256: &str,
         result_json: &[u8],
     ) -> Result<FindingOperatorTerminalWriteOutcome, FindingOperatorBundleStoreError> {
-        self.put_terminal_with_capacity(
-            request_id,
-            principal_id,
-            request_sha256,
-            result_json,
-            MAX_RETAINED_TERMINAL_BYTES,
-        )
-    }
-
-    fn put_terminal_with_capacity(
-        &self,
-        request_id: &str,
-        principal_id: &str,
-        request_sha256: &str,
-        result_json: &[u8],
-        maximum_retained_bytes: i64,
-    ) -> Result<FindingOperatorTerminalWriteOutcome, FindingOperatorBundleStoreError> {
         validate_digest(request_id, "request_id")?;
         validate_identifier(principal_id, "principal_id")?;
         validate_digest(request_sha256, "request_sha256")?;
@@ -590,24 +587,26 @@ impl SqliteFindingOperatorBundleStore {
             }
             return Err(FindingOperatorBundleStoreError::Conflict);
         }
-        let retained_bytes: i64 = tx
-            .query_row(
-                "SELECT COALESCE(SUM(length(result_json)), 0) FROM chio_finding_operator_terminals",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
         let incoming_bytes = i64::try_from(result_json.len()).map_err(|_| {
             FindingOperatorBundleStoreError::Unavailable(
                 "purchase terminal length exceeded the SQLite integer range".to_owned(),
             )
         })?;
-        if retained_bytes < 0
-            || maximum_retained_bytes < 0
-            || retained_bytes
-                .checked_add(incoming_bytes)
-                .is_none_or(|total| total > maximum_retained_bytes)
-        {
+        let capacity: Option<(String, String, i64)> = tx
+            .query_row(
+                "SELECT principal_id, request_sha256, reserved_bytes FROM chio_finding_operator_terminal_capacity WHERE request_id = ?1",
+                [request_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let Some((reserved_principal, reserved_request_sha256, reserved_bytes)) = capacity else {
+            return Err(FindingOperatorBundleStoreError::TerminalCapacity);
+        };
+        if reserved_principal != principal_id || reserved_request_sha256 != request_sha256 {
+            return Err(FindingOperatorBundleStoreError::Conflict);
+        }
+        if reserved_bytes < incoming_bytes {
             return Err(FindingOperatorBundleStoreError::TerminalCapacity);
         }
         tx.execute(
@@ -615,9 +614,164 @@ impl SqliteFindingOperatorBundleStore {
             params![request_id, principal_id, request_sha256, result_sha256, result_json, now_secs()],
         )
         .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        tx.execute(
+            "DELETE FROM chio_finding_operator_terminal_capacity WHERE request_id = ?1",
+            [request_id],
+        )
+        .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
         tx.commit()
             .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
         Ok(FindingOperatorTerminalWriteOutcome::Inserted)
+    }
+
+    /// Reserve enough durable terminal space before any purchase can settle.
+    pub fn reserve_terminal_capacity(
+        &self,
+        request_id: &str,
+        principal_id: &str,
+        request_sha256: &str,
+    ) -> Result<FindingOperatorTerminalCapacityOutcome, FindingOperatorBundleStoreError> {
+        self.reserve_terminal_capacity_with_limit(
+            request_id,
+            principal_id,
+            request_sha256,
+            i64::try_from(MAX_TERMINAL_BYTES).map_err(|_| {
+                FindingOperatorBundleStoreError::Unavailable(
+                    "terminal reservation exceeded the SQLite integer range".to_owned(),
+                )
+            })?,
+            MAX_RETAINED_TERMINAL_BYTES,
+        )
+    }
+
+    fn reserve_terminal_capacity_with_limit(
+        &self,
+        request_id: &str,
+        principal_id: &str,
+        request_sha256: &str,
+        requested_bytes: i64,
+        maximum_retained_bytes: i64,
+    ) -> Result<FindingOperatorTerminalCapacityOutcome, FindingOperatorBundleStoreError> {
+        validate_digest(request_id, "request_id")?;
+        validate_identifier(principal_id, "principal_id")?;
+        validate_digest(request_sha256, "request_sha256")?;
+        if requested_bytes <= 0 || maximum_retained_bytes < 0 {
+            return Err(FindingOperatorBundleStoreError::TerminalCapacity);
+        }
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        if let Some(existing) = load_terminal(&tx, request_id)? {
+            if existing.result_sha256 != sha256_hex(&existing.result_json) {
+                return Err(FindingOperatorBundleStoreError::DigestMismatch);
+            }
+            if existing.principal_id == principal_id && existing.request_sha256 == request_sha256 {
+                tx.commit().map_err(|error| {
+                    FindingOperatorBundleStoreError::Unavailable(error.to_string())
+                })?;
+                return Ok(FindingOperatorTerminalCapacityOutcome::ExactReplay);
+            }
+            return Err(FindingOperatorBundleStoreError::Conflict);
+        }
+        let existing: Option<(String, String, i64)> = tx
+            .query_row(
+                "SELECT principal_id, request_sha256, reserved_bytes FROM chio_finding_operator_terminal_capacity WHERE request_id = ?1",
+                [request_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        if let Some((existing_principal, existing_request_sha256, existing_bytes)) = existing {
+            if existing_principal == principal_id
+                && existing_request_sha256 == request_sha256
+                && existing_bytes == requested_bytes
+            {
+                tx.commit().map_err(|error| {
+                    FindingOperatorBundleStoreError::Unavailable(error.to_string())
+                })?;
+                return Ok(FindingOperatorTerminalCapacityOutcome::ExactReplay);
+            }
+            return Err(FindingOperatorBundleStoreError::Conflict);
+        }
+        let retained_bytes: i64 = tx
+            .query_row(
+                "SELECT COALESCE(SUM(length(result_json)), 0) FROM chio_finding_operator_terminals",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let reserved_bytes: i64 = tx
+            .query_row(
+                "SELECT COALESCE(SUM(reserved_bytes), 0) FROM chio_finding_operator_terminal_capacity",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        if retained_bytes < 0
+            || reserved_bytes < 0
+            || retained_bytes
+                .checked_add(reserved_bytes)
+                .and_then(|total| total.checked_add(requested_bytes))
+                .is_none_or(|total| total > maximum_retained_bytes)
+        {
+            return Err(FindingOperatorBundleStoreError::TerminalCapacity);
+        }
+        tx.execute(
+            "INSERT INTO chio_finding_operator_terminal_capacity (request_id, principal_id, request_sha256, reserved_bytes, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![request_id, principal_id, request_sha256, requested_bytes, now_secs()],
+        )
+        .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        tx.commit()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        Ok(FindingOperatorTerminalCapacityOutcome::Reserved)
+    }
+
+    /// Release an unused capacity claim after a purchase becomes terminal
+    /// without a retained route response.
+    pub fn release_terminal_capacity(
+        &self,
+        request_id: &str,
+        principal_id: &str,
+        request_sha256: &str,
+    ) -> Result<bool, FindingOperatorBundleStoreError> {
+        validate_digest(request_id, "request_id")?;
+        validate_identifier(principal_id, "principal_id")?;
+        validate_digest(request_sha256, "request_sha256")?;
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let existing: Option<(String, String)> = tx
+            .query_row(
+                "SELECT principal_id, request_sha256 FROM chio_finding_operator_terminal_capacity WHERE request_id = ?1",
+                [request_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let Some((existing_principal, existing_request_sha256)) = existing else {
+            tx.commit()
+                .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+            return Ok(false);
+        };
+        if existing_principal != principal_id || existing_request_sha256 != request_sha256 {
+            return Err(FindingOperatorBundleStoreError::Conflict);
+        }
+        tx.execute(
+            "DELETE FROM chio_finding_operator_terminal_capacity WHERE request_id = ?1",
+            [request_id],
+        )
+        .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        tx.commit()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        Ok(true)
     }
 
     pub fn get_terminal(
@@ -1005,6 +1159,12 @@ mod tests {
         let result = br#"{"schema":"chio.finding.purchase-result.v1"}"#;
         assert_eq!(
             store
+                .reserve_terminal_capacity(&request_id, "buyer-1", &request_sha256)
+                .unwrap(),
+            FindingOperatorTerminalCapacityOutcome::Reserved
+        );
+        assert_eq!(
+            store
                 .put_terminal(&request_id, "buyer-1", &request_sha256, result)
                 .unwrap(),
             FindingOperatorTerminalWriteOutcome::Inserted
@@ -1040,38 +1200,70 @@ mod tests {
         let capacity = i64::try_from(first.len() + second.len() - 1).unwrap();
         assert_eq!(
             store
-                .put_terminal_with_capacity(
+                .reserve_terminal_capacity_with_limit(
                     &first_request_id,
                     "buyer-1",
                     &request_sha256,
-                    first,
+                    i64::try_from(first.len()).unwrap(),
                     capacity,
                 )
                 .unwrap(),
-            FindingOperatorTerminalWriteOutcome::Inserted
+            FindingOperatorTerminalCapacityOutcome::Reserved
+        );
+        assert_eq!(
+            store
+                .reserve_terminal_capacity_with_limit(
+                    &first_request_id,
+                    "buyer-1",
+                    &request_sha256,
+                    i64::try_from(first.len()).unwrap(),
+                    capacity,
+                )
+                .unwrap(),
+            FindingOperatorTerminalCapacityOutcome::ExactReplay
         );
         assert!(matches!(
-            store.put_terminal_with_capacity(
+            store.reserve_terminal_capacity_with_limit(
                 &second_request_id,
                 "buyer-1",
                 &request_sha256,
-                second,
+                i64::try_from(second.len()).unwrap(),
                 capacity,
             ),
             Err(FindingOperatorBundleStoreError::TerminalCapacity)
         ));
         assert_eq!(
             store
-                .put_terminal_with_capacity(
-                    &first_request_id,
-                    "buyer-1",
-                    &request_sha256,
-                    first,
-                    capacity,
-                )
+                .put_terminal(&first_request_id, "buyer-1", &request_sha256, first,)
+                .unwrap(),
+            FindingOperatorTerminalWriteOutcome::Inserted
+        );
+        assert_eq!(
+            store
+                .put_terminal(&first_request_id, "buyer-1", &request_sha256, first)
                 .unwrap(),
             FindingOperatorTerminalWriteOutcome::ExactReplay
         );
         assert_eq!(store.terminal_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn terminal_capacity_release_is_bound_and_idempotent() {
+        let store = SqliteFindingOperatorBundleStore::open_in_memory().unwrap();
+        let request_id = "e".repeat(64);
+        let request_sha256 = "f".repeat(64);
+        store
+            .reserve_terminal_capacity(&request_id, "buyer-1", &request_sha256)
+            .unwrap();
+        assert!(matches!(
+            store.release_terminal_capacity(&request_id, "buyer-2", &request_sha256),
+            Err(FindingOperatorBundleStoreError::Conflict)
+        ));
+        assert!(store
+            .release_terminal_capacity(&request_id, "buyer-1", &request_sha256)
+            .unwrap());
+        assert!(!store
+            .release_terminal_capacity(&request_id, "buyer-1", &request_sha256)
+            .unwrap());
     }
 }
