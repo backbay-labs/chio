@@ -3832,9 +3832,10 @@ async fn finding_challenge_live_route_submits_to_the_durable_coordinator_exactly
     });
     let state = challenge_route_state(&deployment, executor.clone());
 
-    // Load shedding precedes the mutex-backed market lookup. An unknown
-    // Finding would return 404 if the handler touched SQLite before acquiring
-    // the non-queued challenge lane.
+    // Load shedding precedes both untrusted envelope parsing and the
+    // mutex-backed market lookup. The malformed canonical object would return
+    // 400, and the unknown Finding would return 404, if either path ran before
+    // the non-queued challenge lane was acquired.
     let busy_finding_id = hex64('9');
     let mut busy_challenge = challenge.body.clone();
     busy_challenge.finding_id = busy_finding_id.clone();
@@ -3846,6 +3847,8 @@ async fn finding_challenge_live_route_submits_to_the_durable_coordinator_exactly
         .finding_challenge_submission_lane
         .clone()
         .try_acquire_owned()?;
+    let (status, _) = submit_challenge_route(&state, &busy_finding_id, "{}", true).await?;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     let (status, _) = submit_challenge_route(&state, &busy_finding_id, &busy_raw, true).await?;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     drop(active_challenge);

@@ -1128,7 +1128,7 @@ pub(crate) async fn handle_purchase_finding(
     )
     .await;
     match response {
-        Ok(response) => response,
+        Ok((response, permit)) => bounded_serving::serve_purchase_response(response, permit).await,
         Err(bounded_serving::PurchaseLaneError::Busy) => purchase_error(
             StatusCode::SERVICE_UNAVAILABLE,
             "purchase_busy",

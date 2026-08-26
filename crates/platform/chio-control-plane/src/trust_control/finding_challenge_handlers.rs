@@ -207,78 +207,6 @@ pub(crate) async fn handle_submit_finding_challenge(
         );
     };
 
-    let (_, request) = match strict_artifact_ingress::<FindingChallengeSubmissionRequest>(
-        &raw_challenge_envelope,
-        FINDING_CHALLENGE_SUBMIT_MAX_BODY_BYTES,
-        FINDING_CHALLENGE_SCHEMA_JSON,
-        FINDING_CHALLENGE_SCHEMA_LABEL,
-    ) {
-        Ok(accepted) => accepted,
-        Err(response) => return response,
-    };
-    if request.challenge.body.finding_id != finding_id {
-        return plain_http_error(
-            StatusCode::BAD_REQUEST,
-            "challenge finding id does not match the request path",
-        );
-    }
-
-    match &request.challenge.body.authorization {
-        chio_finding::FindingChallengeAuthorization::BuyerSubmission(submission) => {
-            let authenticated = state
-                .finding_purchase_executor
-                .as_ref()
-                .and_then(|executor| {
-                    bearer_token(&headers).and_then(|token| executor.authenticate_buyer(token).ok())
-                });
-            if let Some(buyer) = authenticated {
-                if buyer.public_key() != &submission.challenger {
-                    return plain_http_error(
-                        StatusCode::UNAUTHORIZED,
-                        "buyer challenge credential does not match the challenger",
-                    );
-                }
-            } else if state.finding_purchase_executor.is_some() {
-                return plain_http_error(
-                    StatusCode::UNAUTHORIZED,
-                    "buyer challenge authentication failed",
-                );
-            } else if let Err(response) =
-                validate_service_auth(&headers, &state.config.service_token)
-            {
-                return response;
-            }
-        }
-        chio_finding::FindingChallengeAuthorization::VenueAudit(_) => {
-            if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-                return response;
-            }
-        }
-    }
-
-    // A buyer signs for itself, while a venue audit signs under the
-    // authority retained for the round it names. The coordinator resolves
-    // that historical policy after binding the exact durable envelope.
-    // Checking an audit against only the deployment's current key here
-    // would strand an otherwise valid in-flight round after rotation.
-    if matches!(
-        &request.challenge.body.authorization,
-        chio_finding::FindingChallengeAuthorization::BuyerSubmission(_)
-    ) {
-        let audit_authority = match config.audit_authority.key() {
-            Ok(authority) => authority,
-            Err(_) => {
-                return plain_http_error(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "finding challenge audit authority is misconfigured",
-                )
-            }
-        };
-        if verify_signed_challenge(&request.challenge, &audit_authority).is_err() {
-            return plain_http_error(StatusCode::BAD_REQUEST, "signed challenge rejected");
-        }
-    }
-
     let permit = match try_acquire_challenge_lane(&state.finding_challenge_submission_lane) {
         Ok(permit) => permit,
         Err(_) => {
@@ -289,8 +217,77 @@ pub(crate) async fn handle_submit_finding_challenge(
         }
     };
     let executor = Arc::clone(executor);
+    let purchase_executor = state.finding_purchase_executor.clone();
+    let service_token = state.config.service_token.clone();
     let response = tokio::task::spawn_blocking(move || {
         let _permit = permit;
+        let (_, request) = match strict_artifact_ingress::<FindingChallengeSubmissionRequest>(
+            &raw_challenge_envelope,
+            FINDING_CHALLENGE_SUBMIT_MAX_BODY_BYTES,
+            FINDING_CHALLENGE_SCHEMA_JSON,
+            FINDING_CHALLENGE_SCHEMA_LABEL,
+        ) {
+            Ok(accepted) => accepted,
+            Err(response) => return response,
+        };
+        if request.challenge.body.finding_id != finding_id {
+            return plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "challenge finding id does not match the request path",
+            );
+        }
+
+        match &request.challenge.body.authorization {
+            chio_finding::FindingChallengeAuthorization::BuyerSubmission(submission) => {
+                let authenticated = purchase_executor.as_ref().and_then(|executor| {
+                    bearer_token(&headers).and_then(|token| executor.authenticate_buyer(token).ok())
+                });
+                if let Some(buyer) = authenticated {
+                    if buyer.public_key() != &submission.challenger {
+                        return plain_http_error(
+                            StatusCode::UNAUTHORIZED,
+                            "buyer challenge credential does not match the challenger",
+                        );
+                    }
+                } else if purchase_executor.is_some() {
+                    return plain_http_error(
+                        StatusCode::UNAUTHORIZED,
+                        "buyer challenge authentication failed",
+                    );
+                } else if let Err(response) = validate_service_auth(&headers, &service_token) {
+                    return response;
+                }
+            }
+            chio_finding::FindingChallengeAuthorization::VenueAudit(_) => {
+                if let Err(response) = validate_service_auth(&headers, &service_token) {
+                    return response;
+                }
+            }
+        }
+
+        // A buyer signs for itself, while a venue audit signs under the
+        // authority retained for the round it names. The coordinator resolves
+        // that historical policy after binding the exact durable envelope.
+        // Checking an audit against only the deployment's current key here
+        // would strand an otherwise valid in-flight round after rotation.
+        if matches!(
+            &request.challenge.body.authorization,
+            chio_finding::FindingChallengeAuthorization::BuyerSubmission(_)
+        ) {
+            let audit_authority = match config.audit_authority.key() {
+                Ok(authority) => authority,
+                Err(_) => {
+                    return plain_http_error(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "finding challenge audit authority is misconfigured",
+                    )
+                }
+            };
+            if verify_signed_challenge(&request.challenge, &audit_authority).is_err() {
+                return plain_http_error(StatusCode::BAD_REQUEST, "signed challenge rejected");
+            }
+        }
+
         let raw_finding = match store.get_finding_bytes(&finding_id) {
             Ok(Some(bytes)) => bytes,
             Ok(None) => return plain_http_error(StatusCode::NOT_FOUND, "unknown finding"),
