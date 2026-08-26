@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`49976891c362cc17d0da2602a272a6508ff2865a`. The qualifier built the `chio`
+`659b6c857bc78f0dc53582c576f8230210756736`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,979 ms minimum, 2,012 ms median, 2,734 ms maximum
-- Recorded normal purchase time: 2,621 ms minimum, 2,824 ms median,
-  2,938 ms maximum
+- Admission time: 2,954 ms minimum, 3,026 ms median, 3,974 ms maximum
+- Recorded normal purchase time: 2,684 ms minimum, 2,858 ms median,
+  2,913 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -74,9 +74,12 @@ SDK test suite.
 The requalified candidate also closes the final deployment review findings:
 
 - Seller test commands receive a self-contained Git clone copied into a private
-  size-capped tmpfs plus required read-only toolchains, never the operator
-  profile, state tree, Cargo registry, or Git dependency cache. Offline
-  dependencies must be vendored in the repository. Tests have no network, a
+  size-capped tmpfs plus only selected runtime executables, their exact shared
+  libraries, Git's support tree, the Python standard library without
+  site-packages, and the npm runtime. They never receive broad `/usr`,
+  `/usr/local`, or `/etc/ssl` trees, the operator profile, the state tree, the
+  Cargo registry, or a Git dependency cache. Offline dependencies must be
+  vendored in the repository. Tests have no network, a
   cleared environment, bounded output, PID and user namespaces, and one
   five-minute aggregate deadline shared by source Git reads, staging, baseline
   and candidate tests, and patch generation. Cgroup v2 enforces hard aggregate
@@ -159,7 +162,10 @@ The requalified candidate also closes the final deployment review findings:
 - Status-floor lock guards explicitly unlock before close, so an immediate
   sequential retry can read a retraction retained by a rejected rollback.
 - Seller client credentials contain no market signing seed. Buyer SDKs require
-  a search predicate, bind purchase identities to the credential's payer key,
+  HTTPS for remote operators and permit HTTP only for literal loopback
+  addresses. The built-in HTTP operator binds only to a literal loopback
+  address, so remote deployment requires TLS termination. Buyer SDKs require a
+  search predicate, bind purchase identities to the credential's payer key,
   use bounded response streams and an absolute wall-clock deadline covering
   the complete HTTP response rather than only periods of network inactivity,
   and verify the signed purchase record and reveal commitment before returning
@@ -177,8 +183,12 @@ The requalified candidate also closes the final deployment review findings:
 - Python and TypeScript status calls use the Rust verifier with the profile's
   pinned status authority, service bond, freshness window, and durable rollback
   floor. Challenge helpers authenticate the purchase terminal again before
-  deriving evidence. Challenge policy lookup streams one retained bundle at a
-  time and stops at the first digest match instead of materializing the store.
+  deriving evidence. Challenge artifacts have durable envelope-digest indexes,
+  so a missing digest performs a keyed lookup without reading unrelated bundle
+  bodies. The bounded legacy backfill runs in 16-bundle batches at startup.
+  Filing-store failures remain retryable service outages instead of becoming
+  false artifact absences, and every pooled bundle, payload, and payment SQLite
+  connection installs the five-second busy timeout.
 - Seller request validation and the HTTP body cap cover the same complete
   canonical request surface. Seller prices cannot exceed the operator's 450-unit
   backed sale exposure, and operator profiles reject an ephemeral listen port.
