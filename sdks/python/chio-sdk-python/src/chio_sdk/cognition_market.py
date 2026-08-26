@@ -289,13 +289,15 @@ class CognitionMarketBuyer:
             self.profile["payer"],
             deadline_secs,
         )
-        return await self._json_request(
+        purchase = await self._json_request(
             "POST",
             f"/v1/findings/{verified.finding_id}/purchase",
             content=_canonical_json(request),
             headers={"content-type": "application/json"},
             maximum=PURCHASE_RESULT_MAX_BYTES,
         )
+        await self._verify_purchase_terminal(verified, request, purchase)
+        return purchase
 
     async def purchase_verified_fix(
         self,

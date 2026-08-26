@@ -69,12 +69,16 @@ git -C /tmp/fix-sandbox apply /tmp/verified-fix.patch
 terminals, and captures. It is idempotent and suitable for a local service
 timer or cron entry. The operator accepts at most 10,000 durable purchase jobs;
 at capacity, new purchases fail closed while exact retries remain replayable.
+Retained purchase-result bodies also have a 256 MiB aggregate ceiling, and
+exact retained replays remain available when that ceiling is reached.
 Live seller admission and `operator tick` share one cross-process admission
 lock. Only one seller submission or retraction enters blocking execution at a
 time; overlapping requests receive HTTP 503 and can retry the same durable
 identity. A prepared purchase ask is checked against current operator time
 before its first reservation. An expired ask cannot reserve funds, and the
-buyer must prepare a fresh purchase request. Purchase execution uses one
+buyer must prepare a fresh purchase request. An open reservation that expires
+during a restart is durably expired and returns the same rejection on every
+retry. Purchase execution uses one
 non-queued blocking lane. Public proof reads use a separate one-response lane,
 64 KiB streaming chunks, and a 30-second absolute egress deadline. A busy lane
 returns HTTP 503 instead of accumulating work.

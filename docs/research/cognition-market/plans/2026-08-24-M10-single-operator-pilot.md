@@ -57,7 +57,9 @@ streams one retained bundle at a time and stops at the first digest match.
 
 Durable purchase jobs have a hard 10,000-row ceiling. A new request fails
 closed at capacity while an existing exact request can still replay its
-original job.
+original job. Retained public purchase terminals have a 256 MiB aggregate
+ceiling, enforced transactionally before insertion while exact retained
+replays bypass the capacity check.
 
 Seller admission and scheduled reconciliation serialize through one
 cross-process operator lock. Submission and retraction share one non-queued
@@ -66,6 +68,9 @@ unbounded worker capacity. Reconciliation records a terminal-safe failure for
 each failed admission and continues with later jobs. Before its first
 reservation, a prepared purchase ask is revalidated against current operator
 time and an expired ask fails closed without reserving funds. Purchase
+recovery moves an expired open or slot-reserved reservation to the durable
+expired state, so every later retry receives the same rejection instead of
+waiting forever on an orphaned reservation. Purchase
 execution runs in one non-queued blocking lane. Public proof reads and egress
 use a separate one-response lane, bounded chunks, and an absolute deadline.
 

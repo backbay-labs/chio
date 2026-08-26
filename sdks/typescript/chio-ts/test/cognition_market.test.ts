@@ -85,7 +85,7 @@ test("buyer executes search, proof, status, and purchase with scoped auth", asyn
   const verifier = join(directory, "chio");
   writeFileSync(
     verifier,
-    `#!/bin/sh\nprintf '%s' '{"finding_id":"${findingId}","proof_kind":"non_inclusion"}'\n`,
+    `#!/bin/sh\ncase "$*" in\n  *--purchase-result*) printf '%s' '{"purchaseTerminalVerified":true}' ;;\n  *) printf '%s' '{"finding_id":"${findingId}","proof_kind":"non_inclusion"}' ;;\nesac\n`,
   );
   chmodSync(verifier, 0o700);
   const requests: Request[] = [];
@@ -120,6 +120,30 @@ test("buyer executes search, proof, status, and purchase with scoped auth", asyn
   };
   assert.equal((await buyer.purchase(verified, { maxPriceUnits: 300 })).verdict, "allow");
   assert.equal(requests.length, 3);
+});
+
+test("buyer rejects an unverified generic purchase terminal", async () => {
+  const findingId = "a".repeat(64);
+  const directory = mkdtempSync(join(tmpdir(), "chio-market-ts-purchase-reject-"));
+  const verifier = join(directory, "chio");
+  writeFileSync(
+    verifier,
+    "#!/bin/sh\nprintf '%s' '{\"purchaseTerminalVerified\":false}'\n",
+  );
+  chmodSync(verifier, 0o700);
+  const buyer = new CognitionMarketBuyer(profileFile(), {
+    chioBinary: verifier,
+    fetch: async () => Response.json({ verdict: "allow" }),
+  });
+  const verified: VerifiedFindingProof = {
+    findingId,
+    proof: new Uint8Array([1]),
+    verification: { findingId },
+  };
+  await assert.rejects(
+    buyer.purchase(verified, { maxPriceUnits: 300 }),
+    /did not authorize the terminal/,
+  );
 });
 
 test("buyer rejects noncanonical credential files", () => {

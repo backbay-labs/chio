@@ -876,12 +876,35 @@ impl FindingOperatorPurchaseExecutor {
             .resolve_public_purchase_reservation(&public_request)
             .map_err(execution_unavailable)?;
         if let Some(existing) = existing_reservation.as_ref() {
-            if matches!(
-                existing.state,
+            match existing.state {
                 FindingPurchaseReservationState::Consumed
-                    | FindingPurchaseReservationState::Released
-            ) {
-                return self.recover_terminal(authenticated, request, &existing.reservation_id);
+                | FindingPurchaseReservationState::Released => {
+                    return self.recover_terminal(authenticated, request, &existing.reservation_id);
+                }
+                FindingPurchaseReservationState::Expired => {
+                    return Err(FindingPurchaseExecutionError::Rejected(
+                        "durable purchase reservation expired before recovery".to_owned(),
+                    ));
+                }
+                FindingPurchaseReservationState::Open
+                | FindingPurchaseReservationState::SlotReserved
+                    if now >= existing.expires_at =>
+                {
+                    if !self
+                        .coordinator()?
+                        .expire_reservation(&existing.reservation_id, now)
+                        .map_err(execution_internal)?
+                    {
+                        return Err(execution_internal(
+                            "due purchase reservation did not reach the expired terminal",
+                        ));
+                    }
+                    return Err(FindingPurchaseExecutionError::Rejected(
+                        "durable purchase reservation expired before recovery".to_owned(),
+                    ));
+                }
+                FindingPurchaseReservationState::Open
+                | FindingPurchaseReservationState::SlotReserved => {}
             }
         }
         let request_bytes = canonical_json_bytes(request).map_err(execution_internal)?;

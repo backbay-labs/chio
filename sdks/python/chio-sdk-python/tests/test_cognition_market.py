@@ -112,6 +112,15 @@ async def test_buyer_runs_search_proof_status_and_purchase(
     def successful_status(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
         command = args[0]
         assert isinstance(command, list)
+        if command[1:3] == ["finding", "verify-bundle"]:
+            assert "--purchase-request" in command
+            assert "--purchase-result" in command
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=0,
+                stdout=_canonical_json({"purchaseTerminalVerified": True}),
+                stderr=b"",
+            )
         assert command[1:3] == ["finding", "status"]
         assert kwargs["env"]["CHIO_CONTROL_TOKEN"] == "buyer-secret"
         authorization_path = Path(command[command.index("--operator-authorization") + 1])
@@ -143,6 +152,37 @@ async def test_buyer_runs_search_proof_status_and_purchase(
     finally:
         await buyer.close()
     assert len(seen) == 3
+
+
+@pytest.mark.asyncio
+async def test_buyer_purchase_rejects_an_unverified_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    finding_id = "a" * 64
+
+    def rejected_verification(
+        *args: object, **kwargs: object
+    ) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(
+            args=args,
+            returncode=0,
+            stdout=_canonical_json({"purchaseTerminalVerified": False}),
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(subprocess, "run", rejected_verification)
+    buyer = CognitionMarketBuyer(
+        buyer_profile(tmp_path / "buyer.json"),
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"verdict": "allow"})
+        ),
+    )
+    verified = VerifiedFindingProof(finding_id, b"proof", {"findingId": finding_id})
+    try:
+        with pytest.raises(CognitionMarketError, match="did not authorize"):
+            await buyer.purchase(verified, max_price_units=300)
+    finally:
+        await buyer.close()
 
 
 @pytest.mark.asyncio

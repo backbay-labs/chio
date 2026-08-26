@@ -172,12 +172,14 @@ export class CognitionMarketBuyer {
       buyerPayer(this.profile),
       options.deadlineSecs ?? 3600,
     );
-    return this.jsonRequest(
+    const purchase = await this.jsonRequest(
       "POST",
       `/v1/findings/${verified.findingId}/purchase`,
       canonicalJson(request),
       PURCHASE_RESULT_MAX_BYTES,
     );
+    await this.verifyPurchaseTerminal(verified, request, purchase);
+    return purchase;
   }
 
   async purchaseVerifiedFix(

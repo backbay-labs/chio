@@ -1,6 +1,7 @@
 use super::*;
 
 use std::fs::File;
+#[cfg(unix)]
 use std::os::fd::AsRawFd as _;
 use std::sync::atomic::{AtomicBool, Ordering};
 
