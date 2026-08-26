@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`88b71e389a820090730de5fa8d099ebb11eef532`. The qualifier built the `chio`
+`2512975a9099cdde35e2e122322cab8024a9d146`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 3,976 ms minimum, 3,999.5 ms median, 4,036 ms maximum
-- Recorded normal purchase time: 2,565 ms minimum, 2,950 ms median,
-  2,952 ms maximum
+- Admission time: 3,725 ms minimum, 3,997 ms median, 4,038 ms maximum
+- Recorded normal purchase time: 2,684 ms minimum, 2,878 ms median,
+  2,960 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -119,12 +119,12 @@ The requalified candidate also closes the final deployment review findings:
   generation.
 - Live seller admission and scheduled `operator tick` reconciliation share one
   cross-process operator lock. Submission and retraction also share one
-  non-queued blocking lane, so overlapping work receives a retryable HTTP 503
-  before it can consume unbounded blocking-pool capacity. Challenge submission
-  has its own non-queued lane and acquires it before collecting or parsing the
-  untrusted envelope body. A busy lane rejects the request without polling its
-  body. Body collection has a 30-second absolute deadline, and a timeout drops
-  the lane permit before returning HTTP 408.
+  non-queued blocking lane acquired after seller authentication and before any
+  request-body polling. A busy lane returns retryable HTTP 503 without polling
+  the body. Both seller body reads have a 30-second absolute deadline, and a
+  timeout drops the lane permit before returning HTTP 408. The same permit is
+  retained through blocking seller execution. Challenge submission has its own
+  non-queued lane with the same pre-body admission and deadline behavior.
   Schema validation, authentication, signature verification, synchronous
   SQLite integrity checks, and settlement coordination all run on Tokio's
   bounded blocking pool while that permit is held. Tick reports each
@@ -183,7 +183,10 @@ The requalified candidate also closes the final deployment review findings:
   payer identity to equal the signed payer key and the buyer credential's
   requested payer, closing terminal substitution before any result is trusted.
   Seller SDKs treat repositories as operator-side absolute coordinates and do
-  not require those paths to exist on the buyer or seller client host.
+  not require those paths to exist on the buyer or seller client host. The
+  TypeScript verifier boundary consumes subprocess stdin errors and returns a
+  `CognitionMarketError` rejection if the Rust verifier exits before reading a
+  proof, instead of allowing an unhandled stream error to terminate the buyer.
 - Purchase execution uses one non-queued blocking lane rather than a Tokio
   worker. After authentication and content-type validation, the permit is
   acquired before collecting the request body. A busy lane rejects without
@@ -205,7 +208,9 @@ The requalified candidate also closes the final deployment review findings:
   before it creates a durable quota-counted job. Distinct unknown Finding ids
   therefore cannot exhaust the shared seller job allowance. Missing retained
   Findings remain invalid requests, transient store failures remain retryable,
-  and retained-bundle integrity failures remain internal failures.
+  and retained-bundle integrity failures remain internal failures. Retryable
+  status-intent responses, including SQLite-backed HTTP 503, remain retryable
+  seller outcomes instead of being flattened into permanent HTTP 400 failures.
 - Python and TypeScript status calls use the Rust verifier with the profile's
   pinned status authority, service bond, freshness window, and durable rollback
   floor. Challenge helpers authenticate the purchase terminal again before
