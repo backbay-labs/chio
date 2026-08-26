@@ -1,6 +1,6 @@
 use super::*;
 
-use super::sandbox::add_runtime_mounts;
+use super::sandbox::{add_runtime_mounts, RuntimeMountProfile};
 
 const APPROVED_ROOT_MOUNT: &str = "/approved";
 const STAGING_ROOT_MOUNT: &str = "/work";
@@ -287,7 +287,7 @@ fn isolated_git_command(
         "--dir",
         "/tmp",
     ]);
-    add_runtime_mounts(&mut command, None)?;
+    add_runtime_mounts(&mut command, RuntimeMountProfile::Git)?;
     command
         .arg("--ro-bind")
         .arg(approved_root)

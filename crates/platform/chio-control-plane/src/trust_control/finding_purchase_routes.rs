@@ -528,6 +528,16 @@ impl AuthenticatedFindingBuyer {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FindingBuyerAuthenticationError;
 
+/// Typed public-proof read failures. Callers can retry transient store
+/// outages, distinguish retained-integrity failures, and treat only a true
+/// absence as not found without receiving storage internals.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FindingPublicProofError {
+    NotFound,
+    Unavailable,
+    Integrity,
+}
+
 /// Deployment-owned end-to-end purchase adapter.
 ///
 /// Implementations must authenticate or immutably resolve `payer`, keep all
@@ -562,8 +572,8 @@ pub trait FindingPurchaseExecutor: Send + Sync {
     }
 
     /// Resolve the exact public proof bundle retained at admission.
-    fn public_proof(&self, _finding_id: &str) -> Result<Vec<u8>, String> {
-        Err("finding proof bundle is unavailable".to_owned())
+    fn public_proof(&self, _finding_id: &str) -> Result<Vec<u8>, FindingPublicProofError> {
+        Err(FindingPublicProofError::Unavailable)
     }
 
     async fn execute(

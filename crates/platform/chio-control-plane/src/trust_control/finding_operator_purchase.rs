@@ -39,11 +39,11 @@ use chio_open_market::purchase_verification::{
     derive_payment_operation_id, derive_purchase_intent_id, PurchaseVerificationAuthorities,
 };
 use chio_store_sqlite::{
-    FindingAllocationState, FindingPublicPurchaseRequestBinding, FindingPublicPurchaseTerminal,
-    FindingPublicPurchaseTerminalKind, FindingPurchaseReservationRecord,
-    FindingPurchaseReservationState, SqliteAuthorityStore, SqliteFindingOperatorBundleStore,
-    SqliteFindingOperatorPaymentAdapter, SqliteFindingPayloadStore, SqliteReceiptStore, TenantId,
-    TenantKey,
+    FindingAllocationState, FindingOperatorBundleStoreError, FindingPublicPurchaseRequestBinding,
+    FindingPublicPurchaseTerminal, FindingPublicPurchaseTerminalKind,
+    FindingPurchaseReservationRecord, FindingPurchaseReservationState, SqliteAuthorityStore,
+    SqliteFindingOperatorBundleStore, SqliteFindingOperatorPaymentAdapter,
+    SqliteFindingPayloadStore, SqliteReceiptStore, TenantId, TenantKey,
 };
 use subtle::ConstantTimeEq;
 
@@ -53,10 +53,10 @@ use super::finding_purchase_coordinator::{
     CoordinatorReservationReader, FindingPurchaseCoordinator, PurchaseCoordinatorError,
 };
 use super::finding_purchase_routes::{
-    AuthenticatedFindingBuyer, FindingBuyerAuthenticationError, FindingPurchaseExecutionError,
-    FindingPurchaseExecutor, FindingPurchaseRequest, FindingPurchaseResult,
-    FindingPurchaseSettlementTerminal, FindingPurchaseVerdict, FindingPurchasedOutput,
-    FINDING_PURCHASE_RESULT_SCHEMA,
+    AuthenticatedFindingBuyer, FindingBuyerAuthenticationError, FindingPublicProofError,
+    FindingPurchaseExecutionError, FindingPurchaseExecutor, FindingPurchaseRequest,
+    FindingPurchaseResult, FindingPurchaseSettlementTerminal, FindingPurchaseVerdict,
+    FindingPurchasedOutput, FINDING_PURCHASE_RESULT_SCHEMA,
 };
 use super::finding_purchase_verifier::MarketFindingPurchaseVerifier;
 use super::finding_reveal_server::{
@@ -1581,11 +1581,17 @@ impl FindingPurchaseExecutor for FindingOperatorPurchaseExecutor {
         Ok(sha256_hex(&proof.proof_bytes))
     }
 
-    fn public_proof(&self, finding_id: &str) -> Result<Vec<u8>, String> {
+    fn public_proof(&self, finding_id: &str) -> Result<Vec<u8>, FindingPublicProofError> {
         self.bundle_store
             .get_proof(finding_id)
             .map(|record| record.proof_json)
-            .map_err(|error| error.to_string())
+            .map_err(|error| match error {
+                FindingOperatorBundleStoreError::NotFound => FindingPublicProofError::NotFound,
+                FindingOperatorBundleStoreError::Unavailable(_) => {
+                    FindingPublicProofError::Unavailable
+                }
+                _ => FindingPublicProofError::Integrity,
+            })
     }
 
     async fn execute(

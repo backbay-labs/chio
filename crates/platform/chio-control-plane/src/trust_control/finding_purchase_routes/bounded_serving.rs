@@ -57,9 +57,7 @@ pub(super) async fn serve_public_proof(
             StatusCode::INTERNAL_SERVER_ERROR,
             "finding proof bundle exceeds its serving bound",
         ),
-        Ok((Err(_), _permit)) => {
-            plain_http_error(StatusCode::NOT_FOUND, "finding proof bundle is unavailable")
-        }
+        Ok((Err(error), _permit)) => public_proof_error_response(error),
         Err(_) => plain_http_error(
             StatusCode::SERVICE_UNAVAILABLE,
             "finding proof reader failed",
@@ -68,10 +66,32 @@ pub(super) async fn serve_public_proof(
 }
 
 async fn read_public_proof_blocking(
-    read: impl FnOnce() -> Result<Vec<u8>, String> + Send + 'static,
+    read: impl FnOnce() -> Result<Vec<u8>, FindingPublicProofError> + Send + 'static,
     permit: OwnedSemaphorePermit,
-) -> Result<(Result<Vec<u8>, String>, OwnedSemaphorePermit), tokio::task::JoinError> {
+) -> Result<
+    (
+        Result<Vec<u8>, FindingPublicProofError>,
+        OwnedSemaphorePermit,
+    ),
+    tokio::task::JoinError,
+> {
     tokio::task::spawn_blocking(move || (read(), permit)).await
+}
+
+fn public_proof_error_response(error: FindingPublicProofError) -> Response {
+    match error {
+        FindingPublicProofError::NotFound => {
+            plain_http_error(StatusCode::NOT_FOUND, "finding proof bundle is unavailable")
+        }
+        FindingPublicProofError::Unavailable => plain_http_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "finding proof store is unavailable",
+        ),
+        FindingPublicProofError::Integrity => plain_http_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "retained finding proof failed integrity verification",
+        ),
+    }
 }
 
 struct ProofStreamState {
@@ -131,6 +151,22 @@ fn proof_stream_response(bytes: Vec<u8>, permit: OwnedSemaphorePermit) -> Respon
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn proof_read_failures_preserve_missing_retryable_and_integrity_classes() {
+        assert_eq!(
+            public_proof_error_response(FindingPublicProofError::NotFound).status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            public_proof_error_response(FindingPublicProofError::Unavailable).status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        assert_eq!(
+            public_proof_error_response(FindingPublicProofError::Integrity).status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
 
     #[tokio::test]
     async fn proof_response_holds_nonqueued_lane_until_body_drop() {

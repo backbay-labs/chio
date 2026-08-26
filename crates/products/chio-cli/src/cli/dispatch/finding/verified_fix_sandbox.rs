@@ -307,7 +307,7 @@ pub(super) fn run_test_command_with_limits(
         ]);
     add_runtime_mounts(
         &mut isolated,
-        std::env::var_os("HOME").as_deref().map(Path::new),
+        RuntimeMountProfile::SellerTest,
     )?;
     isolated
         .arg("--ro-bind")
@@ -343,6 +343,18 @@ pub(super) fn run_test_command_with_limits(
             "--setenv",
             "CARGO_NET_OFFLINE",
             "true",
+            "--setenv",
+            "RUSTC",
+            "/runtime/rust/bin/rustc",
+            "--setenv",
+            "RUSTDOC",
+            "/runtime/rust/bin/rustdoc",
+            "--setenv",
+            "RUSTFLAGS",
+            "-C linker=/usr/bin/cc -C link-arg=-L/runtime/link/lib",
+            "--setenv",
+            "LIBRARY_PATH",
+            "/runtime/link/lib",
             "--setenv",
             "GIT_CONFIG_GLOBAL",
             "/dev/null",
@@ -602,6 +614,126 @@ impl RuntimeMountSpecBuilder {
         Ok(())
     }
 
+    fn add_runtime_file(&mut self, source: PathBuf, destination: PathBuf) -> Result<(), String> {
+        if is_elf(&source)? {
+            self.add_dynamic_dependencies(&source)?;
+        }
+        self.files.insert((source, destination));
+        Ok(())
+    }
+
+    fn add_rust_toolchain(&mut self) -> Result<(), String> {
+        let (Some(rustc), Some(_cargo)) =
+            (executable_on_path("rustc"), executable_on_path("cargo"))
+        else {
+            return Ok(());
+        };
+        let sysroot = bounded_runtime_path(
+            &rustc,
+            &["--print", "sysroot"],
+            "Rust toolchain sysroot",
+        )?;
+        for executable in ["cargo", "rustc"] {
+            if !sysroot.join("bin").join(executable).is_file() {
+                return Err(format!(
+                    "Rust toolchain sysroot lacks required {executable} executable"
+                ));
+            }
+            self.symlinks.insert((
+                Path::new("/runtime/rust/bin").join(executable),
+                Path::new("/runtime/bin").join(executable),
+            ));
+        }
+        if sysroot.join("bin/rustdoc").is_file() {
+            self.symlinks.insert((
+                PathBuf::from("/runtime/rust/bin/rustdoc"),
+                PathBuf::from("/runtime/bin/rustdoc"),
+            ));
+        }
+        self.add_tree_dependencies(&sysroot)?;
+        self.trees
+            .insert((sysroot, PathBuf::from("/runtime/rust")));
+
+        let cc = self
+            .add_executable("cc", true)?
+            .ok_or_else(|| "Rust sandbox requires a native C linker driver".to_owned())?;
+        self.add_runtime_file(cc.clone(), cc.clone())?;
+        self.symlinks
+            .insert((cc.clone(), PathBuf::from("/usr/bin/cc")));
+        for executable in ["ld", "as", "ar"] {
+            let source = self
+                .add_executable(executable, true)?
+                .ok_or_else(|| format!("Rust sandbox requires native {executable}"))?;
+            self.add_runtime_file(source.clone(), source.clone())?;
+            self.symlinks
+                .insert((source, Path::new("/usr/bin").join(executable)));
+        }
+        for program in ["cc1", "collect2", "lto-wrapper", "lto1"] {
+            if let Some((source, destination)) = bounded_runtime_file(
+                &cc,
+                &[&format!("-print-prog-name={program}")],
+                "native compiler program",
+            )? {
+                self.add_runtime_file(source, destination.clone())?;
+                self.symlinks
+                    .insert((destination, Path::new("/runtime/bin").join(program)));
+            }
+        }
+        for artifact in [
+            "crt1.o",
+            "Scrt1.o",
+            "crti.o",
+            "crtn.o",
+            "crtbegin.o",
+            "crtbeginS.o",
+            "crtend.o",
+            "crtendS.o",
+            "libgcc.a",
+            "libgcc_eh.a",
+            "libgcc.so",
+            "libgcc_s.so",
+            "libgcc_s.so.1",
+            "liblto_plugin.so",
+            "libc.a",
+            "libc.so",
+            "libc.so.6",
+            "libc_nonshared.a",
+            "libdl.a",
+            "libm.so",
+            "libm.so.6",
+            "libmvec.so.1",
+            "libdl.so",
+            "libdl.so.2",
+            "libpthread.a",
+            "librt.so",
+            "librt.so.1",
+            "librt.a",
+            "libpthread.so",
+            "libpthread.so.0",
+            "libutil.a",
+            "libutil.so",
+            "libutil.so.1",
+            "libresolv.so",
+            "libresolv.so.2",
+        ] {
+            if let Some((source, destination)) = bounded_runtime_file(
+                &cc,
+                &[&format!("-print-file-name={artifact}")],
+                "native linker artifact",
+            )? {
+                self.add_runtime_file(source.clone(), destination.clone())?;
+                if let Ok(relative) = destination.strip_prefix("/usr/lib") {
+                    self.add_runtime_file(source, Path::new("/lib").join(relative))?;
+                }
+                self.symlinks.insert((
+                    destination,
+                    Path::new("/runtime/link/lib").join(artifact),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     fn finish(self) -> RuntimeMountSpec {
         RuntimeMountSpec {
             files: self.files.into_iter().collect(),
@@ -615,12 +747,27 @@ impl RuntimeMountSpecBuilder {
 static RUNTIME_MOUNT_SPEC: std::sync::OnceLock<Result<RuntimeMountSpec, String>> =
     std::sync::OnceLock::new();
 
+static GIT_RUNTIME_MOUNT_SPEC: std::sync::OnceLock<Result<RuntimeMountSpec, String>> =
+    std::sync::OnceLock::new();
+
+#[derive(Clone, Copy)]
+pub(super) enum RuntimeMountProfile {
+    Git,
+    SellerTest,
+}
+
 pub(super) fn add_runtime_mounts(
     command: &mut Command,
-    _home: Option<&Path>,
+    profile: RuntimeMountProfile,
 ) -> Result<(), CliError> {
-    let spec = RUNTIME_MOUNT_SPEC
-        .get_or_init(build_runtime_mount_spec)
+    let spec = match profile {
+        RuntimeMountProfile::Git => GIT_RUNTIME_MOUNT_SPEC.get_or_init(|| {
+            build_runtime_mount_spec(RuntimeMountProfile::Git)
+        }),
+        RuntimeMountProfile::SellerTest => RUNTIME_MOUNT_SPEC.get_or_init(|| {
+            build_runtime_mount_spec(RuntimeMountProfile::SellerTest)
+        }),
+    }
         .as_ref()
         .map_err(|error| CliError::cli_other_error(error.clone()))?;
     let mut directories = BTreeSet::new();
@@ -659,16 +806,14 @@ pub(super) fn add_runtime_mounts(
     Ok(())
 }
 
-fn build_runtime_mount_spec() -> Result<RuntimeMountSpec, String> {
+fn build_runtime_mount_spec(profile: RuntimeMountProfile) -> Result<RuntimeMountSpec, String> {
     let mut builder = RuntimeMountSpecBuilder::default();
-    for required in ["sh", "cp", "mkdir", "git", "env"] {
+    let required = match profile {
+        RuntimeMountProfile::Git => &["sh", "git", "env"][..],
+        RuntimeMountProfile::SellerTest => &["sh", "cp", "mkdir", "git", "env"][..],
+    };
+    for required in required {
         builder.add_executable(required, true)?;
-    }
-    for optional in [
-        "bash", "rm", "touch", "sed", "grep", "find", "cat", "sort", "cut", "tr", "wc",
-        "xargs", "basename", "dirname", "readlink", "realpath", "dd", "sleep",
-    ] {
-        builder.add_executable(optional, false)?;
     }
     let shell = builder
         .add_executable("sh", true)?
@@ -690,6 +835,17 @@ fn build_runtime_mount_spec() -> Result<RuntimeMountSpec, String> {
     builder
         .trees
         .insert((git_exec, PathBuf::from("/runtime/git-core")));
+
+    if matches!(profile, RuntimeMountProfile::Git) {
+        return Ok(builder.finish());
+    }
+
+    for optional in [
+        "bash", "rm", "touch", "sed", "grep", "find", "cat", "sort", "cut", "tr", "wc",
+        "xargs", "basename", "dirname", "readlink", "realpath", "dd", "sleep",
+    ] {
+        builder.add_executable(optional, false)?;
+    }
 
     if let Some(python) = builder.add_executable("python3", false)? {
         let stdlib = bounded_runtime_path(
@@ -739,6 +895,7 @@ fn build_runtime_mount_spec() -> Result<RuntimeMountSpec, String> {
             ));
         }
     }
+    builder.add_rust_toolchain()?;
     Ok(builder.finish())
 }
 
@@ -771,6 +928,54 @@ fn bounded_runtime_path(executable: &Path, args: &[&str], label: &str) -> Result
     Ok(path)
 }
 
+fn bounded_runtime_file(
+    executable: &Path,
+    args: &[&str],
+    label: &str,
+) -> Result<Option<(PathBuf, PathBuf)>, String> {
+    let output = Command::new(executable)
+        .args(args)
+        .output()
+        .map_err(|error| format!("failed to inspect {label}: {error}"))?;
+    if output.stdout.len().saturating_add(output.stderr.len()) > 4096 {
+        return Err(format!("{label} output exceeded its size bound"));
+    }
+    if !output.status.success() {
+        return Err(format!("failed to inspect {label}"));
+    }
+    let value = std::str::from_utf8(&output.stdout)
+        .map_err(|_| format!("{label} path is not UTF-8"))?
+        .trim();
+    if value.is_empty() || !Path::new(value).is_absolute() {
+        return Ok(None);
+    }
+    let destination = normalize_absolute_runtime_path(Path::new(value))?;
+    let source = match fs::canonicalize(value) {
+        Ok(path) if path.is_file() => path,
+        Ok(_) | Err(_) => return Ok(None),
+    };
+    Ok(Some((source, destination)))
+}
+
+fn normalize_absolute_runtime_path(path: &Path) -> Result<PathBuf, String> {
+    let mut normalized = PathBuf::from("/");
+    for component in path.components() {
+        match component {
+            std::path::Component::RootDir | std::path::Component::CurDir => {}
+            std::path::Component::Normal(name) => normalized.push(name),
+            std::path::Component::ParentDir => {
+                if !normalized.pop() {
+                    return Err("sandbox runtime path escaped the filesystem root".to_owned());
+                }
+            }
+            std::path::Component::Prefix(_) => {
+                return Err("sandbox runtime path used an unsupported prefix".to_owned());
+            }
+        }
+    }
+    Ok(normalized)
+}
+
 fn is_elf(path: &Path) -> Result<bool, String> {
     use std::io::Read as _;
     let mut file = File::open(path)
@@ -793,7 +998,7 @@ fn collect_parent_directories(path: &Path, directories: &mut BTreeSet<PathBuf>) 
 }
 
 fn sandbox_path() -> String {
-    "/runtime/bin".to_owned()
+    "/usr/bin:/runtime/bin".to_owned()
 }
 
 pub(super) fn require_sandbox() -> Result<(), CliError> {
@@ -854,12 +1059,15 @@ pub(super) fn runtime_fingerprint() -> Result<Vec<u8>, CliError> {
     let git = command_version("git", &["--version"])?;
     let bwrap = command_version("bwrap", &["--version"])?;
     let prlimit = command_version("prlimit", &["--version"])?;
+    let cargo = command_version("cargo", &["--version"]).unwrap_or_else(|_| "unavailable".to_owned());
+    let rustc = command_version("rustc", &["--version"]).unwrap_or_else(|_| "unavailable".to_owned());
     let systemd_run =
         command_version("systemd-run", &["--version"]).unwrap_or_else(|_| "unavailable".to_owned());
     let shell = command_version("sh", &["--version"]).unwrap_or_else(|_| "sh".to_owned());
     canonical_json_bytes(&serde_json::json!({
         "arch": std::env::consts::ARCH,
         "bubblewrap": bwrap,
+        "cargo": cargo,
         "git": git,
         "os": std::env::consts::OS,
         "osReleaseSha256": sha256_hex(os_release.as_bytes()),
@@ -875,6 +1083,7 @@ pub(super) fn runtime_fingerprint() -> Result<Vec<u8>, CliError> {
             "swapBytesAggregate": 0,
             "writableTmpfsBytes": TEST_SANDBOX_TMPFS_BYTES,
         },
+        "rustc": rustc,
         "shell": shell,
         "systemdRun": systemd_run,
     }))

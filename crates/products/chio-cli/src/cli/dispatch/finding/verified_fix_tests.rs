@@ -274,7 +274,7 @@ fn sandbox_mounts_only_explicit_runtime_components() {
         fs::create_dir_all(root.path().join(path)).unwrap();
     }
     let mut command = Command::new("bwrap");
-    add_runtime_mounts(&mut command, Some(root.path())).unwrap();
+    add_runtime_mounts(&mut command, RuntimeMountProfile::SellerTest).unwrap();
     let arguments = command
         .get_args()
         .map(|argument| argument.to_string_lossy().into_owned())
@@ -286,6 +286,12 @@ fn sandbox_mounts_only_explicit_runtime_components() {
         }));
     }
     assert!(arguments.iter().any(|argument| argument == "/runtime/bin/sh"));
+    assert!(arguments
+        .iter()
+        .any(|argument| argument == "/runtime/rust/bin/cargo"));
+    assert!(arguments
+        .iter()
+        .all(|argument| !argument.contains("/.cargo/registry") && !argument.contains("/.cargo/git")));
     let temporary_root = root.path().to_string_lossy().into_owned();
     assert!(arguments
         .iter()
@@ -424,4 +430,59 @@ fn isolated_test_cannot_read_operator_sibling_and_has_a_deadline() {
     .unwrap_err();
     assert!(error.to_string().contains("execution deadline"));
     assert!(started.elapsed() < Duration::from_secs(2));
+}
+
+#[test]
+fn isolated_test_supports_offline_path_vendored_rust() {
+    if require_sandbox().is_err() {
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let worktree = root.path().join("worktree");
+    fs::create_dir_all(worktree.join("src")).unwrap();
+    fs::create_dir_all(worktree.join("vendor/helper/src")).unwrap();
+    fs::write(
+        worktree.join("Cargo.toml"),
+        "[package]\nname = \"seller-fix\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nhelper = { path = \"vendor/helper\" }\n",
+    )
+    .unwrap();
+    fs::write(
+        worktree.join("src/lib.rs"),
+        "pub fn answer() -> u32 { helper::answer() }\n\n#[test]\nfn uses_vendored_helper() { assert_eq!(answer(), 42); }\n",
+    )
+    .unwrap();
+    fs::write(
+        worktree.join("vendor/helper/Cargo.toml"),
+        "[package]\nname = \"helper\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .unwrap();
+    fs::write(
+        worktree.join("vendor/helper/src/lib.rs"),
+        "pub fn answer() -> u32 { 42 }\n",
+    )
+    .unwrap();
+    fs::write(worktree.join("smoke.rs"), "fn main() {}\n").unwrap();
+
+    for command in [
+        "cargo --version",
+        "rustc --version",
+        "cc --version",
+        "collect2 --version",
+        "rustc -C linker=/usr/bin/cc -C link-arg=-L/runtime/link/lib smoke.rs -o smoke-rust",
+    ] {
+        let result = run_test_command_with_timeout(&worktree, command, Duration::from_secs(10))
+            .unwrap();
+        assert_eq!(
+            result.exit_code,
+            0,
+            "sandbox command failed: {command}"
+        );
+    }
+    let result = run_test_command_with_timeout(
+        &worktree,
+        "cargo test --offline --quiet",
+        Duration::from_secs(30),
+    )
+    .unwrap();
+    assert_eq!(result.exit_code, 0);
 }
