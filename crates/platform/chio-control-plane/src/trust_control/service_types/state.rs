@@ -39,6 +39,9 @@ pub(crate) struct TrustServiceState {
     /// One non-queued permit acquired before seller work enters Tokio's
     /// blocking pool. Submission and retraction share this bounded lane.
     pub(crate) finding_seller_submission_lane: Arc<tokio::sync::Semaphore>,
+    /// One non-queued permit acquired before challenge coordination enters
+    /// Tokio's blocking pool. Buyer submissions and venue audits share it.
+    pub(crate) finding_challenge_submission_lane: Arc<tokio::sync::Semaphore>,
     /// Fresh authority-status source for admission read paths. Without it,
     /// search and admission endpoints omit admission state fail-closed.
     pub(crate) finding_authority_status_resolver: Option<

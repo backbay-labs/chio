@@ -320,18 +320,43 @@ pub(crate) async fn handle_submit_finding_challenge(
         );
     }
 
-    match executor.submit(
-        &request,
-        &raw_challenge_envelope,
-        &raw_finding,
-        unix_timestamp_now(),
-    ) {
-        Ok(outcome) => Json(FindingChallengeSubmissionResponse::from(outcome)).into_response(),
-        Err(error) if coordinator_unavailable(&error) => {
+    let permit = match try_acquire_challenge_lane(&state.finding_challenge_submission_lane) {
+        Ok(permit) => permit,
+        Err(_) => {
+            return plain_http_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "finding challenge submission lane is busy",
+            )
+        }
+    };
+    let executor = Arc::clone(executor);
+    let outcome = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        executor.submit(
+            &request,
+            &raw_challenge_envelope,
+            &raw_finding,
+            unix_timestamp_now(),
+        )
+    })
+    .await;
+    match outcome {
+        Ok(Ok(outcome)) => Json(FindingChallengeSubmissionResponse::from(outcome)).into_response(),
+        Ok(Err(error)) if coordinator_unavailable(&error) => {
             plain_http_error(StatusCode::SERVICE_UNAVAILABLE, &error.to_string())
         }
-        Err(error) => plain_http_error(StatusCode::UNPROCESSABLE_ENTITY, &error.to_string()),
+        Ok(Err(error)) => plain_http_error(StatusCode::UNPROCESSABLE_ENTITY, &error.to_string()),
+        Err(_) => plain_http_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "finding challenge submission worker failed",
+        ),
     }
+}
+
+fn try_acquire_challenge_lane(
+    lane: &Arc<tokio::sync::Semaphore>,
+) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+    lane.clone().try_acquire_owned()
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<&str> {
@@ -361,7 +386,7 @@ fn coordinator_unavailable(error: &ChallengeCoordinatorError) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::coordinator_unavailable;
+    use super::{coordinator_unavailable, try_acquire_challenge_lane};
     use crate::trust_control::finding_challenge_coordinator::ChallengeCoordinatorError;
 
     #[test]
@@ -372,5 +397,15 @@ mod tests {
         assert!(!coordinator_unavailable(
             &ChallengeCoordinatorError::DisputeBondWindow
         ));
+    }
+
+    #[test]
+    fn challenge_submission_lane_is_non_queued() {
+        let lane = std::sync::Arc::new(tokio::sync::Semaphore::new(1));
+        let permit = try_acquire_challenge_lane(&lane)
+            .unwrap_or_else(|error| panic!("first challenge permit: {error}"));
+        assert!(try_acquire_challenge_lane(&lane).is_err());
+        drop(permit);
+        assert!(try_acquire_challenge_lane(&lane).is_ok());
     }
 }

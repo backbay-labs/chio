@@ -509,6 +509,91 @@ async fn cognition_market_pre_reservation_crash_releases_capacity_on_bundle_expi
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cognition_market_reclaims_abandoned_capacity_before_a_new_purchase() -> TestResult {
+    let deployment = provision(RevealCase::honest())?;
+    let authority = deployment.open()?;
+    let mut state = market_state(authority.clone(), market_config());
+    deployment.seed_and_activate(&state).await?;
+
+    let payer = keypair(31).public_key().to_hex();
+    let path = format!("/v1/findings/{}/purchase", deployment.web.finding_id);
+    let operator_db = deployment
+        .database
+        .with_file_name("operator-abandoned-terminal-capacity.db");
+    let started_at = unix_timestamp_now();
+    let interrupted = Arc::new(production_purchase_executor(
+        &deployment,
+        authority.clone(),
+        operator_db.clone(),
+    )?);
+    interrupted.set_test_now(started_at);
+    state.finding_purchase_executor = Some(interrupted.clone());
+
+    for index in 0..16 {
+        let request = FindingPurchaseRequest::new(
+            deployment.web.finding_id.clone(),
+            PRICE_UNITS + 50 + index,
+            "USD".to_owned(),
+            Some(payer.clone()),
+            Some(1),
+        )?;
+        interrupted.stop_after_terminal_capacity_once();
+        let (status, body) =
+            send(&state, buyer_post(&path, canonical_json_bytes(&request)?)?).await?;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(json_body(&body)?["code"], "purchase_pending");
+    }
+    let conn = rusqlite::Connection::open(&operator_db)?;
+    let capacity_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM chio_finding_operator_terminal_capacity",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(capacity_count, 16);
+    drop(conn);
+
+    let resumed = Arc::new(production_purchase_executor(
+        &deployment,
+        authority,
+        operator_db.clone(),
+    )?);
+    resumed.set_test_now(started_at.saturating_add(1));
+    resumed.stop_after_terminal_capacity_once();
+    state.finding_purchase_executor = Some(resumed);
+    let next = FindingPurchaseRequest::new(
+        deployment.web.finding_id.clone(),
+        PRICE_UNITS + 100,
+        "USD".to_owned(),
+        Some(payer),
+        Some(900),
+    )?;
+    let (status, body) = send(&state, buyer_post(&path, canonical_json_bytes(&next)?)?).await?;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(json_body(&body)?["code"], "purchase_pending");
+    let conn = rusqlite::Connection::open(&operator_db)?;
+    let capacity_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM chio_finding_operator_terminal_capacity",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(capacity_count, 1);
+    let retained_request: String = conn.query_row(
+        "SELECT request_id FROM chio_finding_operator_terminal_capacity",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(retained_request, next.request_id);
+    assert_eq!(
+        SqliteFindingOperatorPaymentAdapter::open(&operator_db)
+            .map_err(std::io::Error::other)?
+            .capture_count()
+            .map_err(std::io::Error::other)?,
+        0
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cognition_market_predispatch_release_is_a_stable_rejection() -> TestResult {
     let deployment = provision(RevealCase::honest())?;
     let authority = deployment.open()?;

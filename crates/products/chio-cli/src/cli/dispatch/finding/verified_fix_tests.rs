@@ -132,7 +132,37 @@ fn source_git_sandbox_rejects_an_external_alternate_object_store() {
         "read seller object",
     )
     .unwrap_err();
-    assert!(error.to_string().contains("failed"));
+    assert!(error
+        .to_string()
+        .contains("outside the approved repository root"));
+}
+
+#[test]
+fn source_git_sandbox_rejects_repository_config_includes() {
+    let root = tempfile::tempdir().unwrap();
+    let approved = root.path().join("approved");
+    let source = approved.join("source");
+    fs::create_dir_all(&approved).unwrap();
+    assert!(Command::new("git")
+        .arg("init")
+        .arg(&source)
+        .status()
+        .unwrap()
+        .success());
+    let config = source.join(".git/config");
+    let mut file = OpenOptions::new().append(true).open(config).unwrap();
+    writeln!(file, "[include]\n\tpath = /usr/local/operator-private.conf").unwrap();
+
+    let error = isolated_git_stdout_bounded(
+        &approved,
+        &source,
+        &["rev-parse", "HEAD"],
+        64,
+        Duration::from_secs(1),
+        "read seller revision",
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("config includes are not allowed"));
 }
 
 #[test]

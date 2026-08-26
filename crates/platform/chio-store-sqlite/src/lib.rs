@@ -393,8 +393,9 @@ pub use finding_market_store::{
 pub use finding_operator_bundle_store::{
     FindingOperatorBundleRecord, FindingOperatorBundleStoreError,
     FindingOperatorBundleWriteOutcome, FindingOperatorProofRecord,
-    FindingOperatorPurchaseJobRecord, FindingOperatorTerminalRecord,
-    FindingOperatorTerminalWriteOutcome, SqliteFindingOperatorBundleStore,
+    FindingOperatorPurchaseJobRecord, FindingOperatorTerminalCapacityRecord,
+    FindingOperatorTerminalRecord, FindingOperatorTerminalWriteOutcome,
+    SqliteFindingOperatorBundleStore,
 };
 pub use finding_operator_payment::SqliteFindingOperatorPaymentAdapter;
 pub use finding_payload_store::{

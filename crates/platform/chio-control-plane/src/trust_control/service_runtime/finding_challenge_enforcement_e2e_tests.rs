@@ -1181,6 +1181,7 @@ fn challenge_route_state(
         finding_proof_egress_lane: Arc::new(tokio::sync::Semaphore::new(1)),
         finding_seller_submission_executor: None,
         finding_seller_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
+        finding_challenge_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
         finding_authority_status_resolver: Some(Arc::new(TestAuthorityStatusResolver::live())),
         finding_challenge_executor: Some(executor),
     }

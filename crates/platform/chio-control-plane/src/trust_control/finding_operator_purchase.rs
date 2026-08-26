@@ -603,6 +603,86 @@ impl FindingOperatorPurchaseExecutor {
         Ok(())
     }
 
+    fn reconcile_orphaned_terminal_capacity(
+        &self,
+        now: u64,
+    ) -> Result<(), FindingPurchaseExecutionError> {
+        let claims = self
+            .bundle_store
+            .terminal_capacity_claims()
+            .map_err(execution_unavailable)?;
+        if claims.is_empty() {
+            return Ok(());
+        }
+        let coordinator = self.coordinator()?;
+        for claim in claims {
+            let Some(job_record) = self
+                .bundle_store
+                .get_purchase_job(&claim.request_id)
+                .map_err(execution_unavailable)?
+            else {
+                // The store API predates prepared purchase jobs and permits a
+                // standalone claim. Preserve opaque claims because no signed
+                // expiry or coordinator identity exists to authorize release.
+                continue;
+            };
+            if job_record.principal_id != claim.principal_id
+                || job_record.request_sha256 != claim.request_sha256
+            {
+                return Err(execution_internal(
+                    "terminal capacity claim conflicts with its prepared purchase job",
+                ));
+            }
+            let job: FindingOperatorPurchaseJob = serde_json::from_slice(&job_record.job_json)
+                .map_err(|error| execution_internal(error.to_string()))?;
+            let bid_digest = canonical_json_bytes(&job.bid.body)
+                .map(|bytes| sha256_hex(&bytes))
+                .map_err(execution_internal)?;
+            let ask_digest = canonical_json_bytes(&job.ask.body)
+                .map(|bytes| sha256_hex(&bytes))
+                .map_err(execution_internal)?;
+            let buyer_signature =
+                chio_core::Signature::from_hex(&job.buyer_signature).map_err(execution_internal)?;
+            if job.schema != FINDING_OPERATOR_PURCHASE_JOB_SCHEMA
+                || job.principal_id != claim.principal_id
+                || job.request_sha256 != claim.request_sha256
+                || job.prepared_at != job.bid.body.issued_at
+                || !matches!(job.bid.verify_signature(), Ok(true))
+                || !matches!(job.ask.verify_signature(), Ok(true))
+                || job.ask.body.bid_digest != bid_digest
+                || !job
+                    .bid
+                    .signer_key
+                    .verify(ask_digest.as_bytes(), &buyer_signature)
+            {
+                return Err(execution_internal(
+                    "terminal capacity claim has an invalid prepared purchase job",
+                ));
+            }
+            if now < job.ask.body.expires_at {
+                continue;
+            }
+            let reservation_id = super::finding_purchase_coordinator::derive_reservation_id(
+                &ask_digest,
+                &job.bid.signer_key.to_hex(),
+            );
+            match coordinator.resolve(&reservation_id) {
+                Err(PurchaseCoordinatorError::UnknownReservation) => {
+                    self.bundle_store
+                        .release_terminal_capacity(
+                            &claim.request_id,
+                            &claim.principal_id,
+                            &claim.request_sha256,
+                        )
+                        .map_err(execution_unavailable)?;
+                }
+                Ok(_) => {}
+                Err(error) => return Err(execution_unavailable(error)),
+            }
+        }
+        Ok(())
+    }
+
     fn recover_released_reservation(
         &self,
         buyer: &AuthenticatedFindingBuyer,
@@ -964,6 +1044,7 @@ impl FindingOperatorPurchaseExecutor {
             ));
         }
         let now = self.current_time()?;
+        self.reconcile_orphaned_terminal_capacity(now)?;
         let credential = self.credential(authenticated)?;
         if request
             .payer

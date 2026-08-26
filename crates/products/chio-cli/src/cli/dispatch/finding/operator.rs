@@ -222,91 +222,109 @@ impl OperatorSellerSubmissionExecutor {
             )
             .map_err(seller_artifact_capacity_error)?;
 
-        if !package_path.exists() {
-            let mut args = vec![
+        let outcome: Result<
+            FindingVerifiedFixSubmissionResponse,
+            FindingSellerSubmissionError,
+        > = (|| {
+            if !package_path.exists() {
+                let mut args = vec![
+                    "finding".to_owned(),
+                    "package".to_owned(),
+                    "verified-fix".to_owned(),
+                    "--profile".to_owned(),
+                    self.profile_path.display().to_string(),
+                    "--repository".to_owned(),
+                    repository.display().to_string(),
+                    "--base".to_owned(),
+                    request.base_revision.clone(),
+                    "--candidate".to_owned(),
+                    request.candidate_revision.clone(),
+                    "--topic".to_owned(),
+                    request.topic.clone(),
+                    "--seller".to_owned(),
+                    principal.to_owned(),
+                    "--price".to_owned(),
+                    request.price_units.to_string(),
+                    "--output".to_owned(),
+                    package_path.display().to_string(),
+                    "--json".to_owned(),
+                ];
+                for test in &request.tests {
+                    args.push("--test".to_owned());
+                    args.push(test.clone());
+                }
+                run_chio_success(&args)?;
+            }
+            let admission = run_chio_json(&[
                 "finding".to_owned(),
-                "package".to_owned(),
-                "verified-fix".to_owned(),
+                "admit".to_owned(),
                 "--profile".to_owned(),
                 self.profile_path.display().to_string(),
-                "--repository".to_owned(),
-                repository.display().to_string(),
-                "--base".to_owned(),
-                request.base_revision.clone(),
-                "--candidate".to_owned(),
-                request.candidate_revision.clone(),
-                "--topic".to_owned(),
-                request.topic.clone(),
-                "--seller".to_owned(),
-                principal.to_owned(),
-                "--price".to_owned(),
-                request.price_units.to_string(),
-                "--output".to_owned(),
+                "--package".to_owned(),
                 package_path.display().to_string(),
                 "--json".to_owned(),
-            ];
-            for test in &request.tests {
-                args.push("--test".to_owned());
-                args.push(test.clone());
-            }
-            run_chio_success(&args)?;
-        }
-        let admission = run_chio_json(&[
-            "finding".to_owned(),
-            "admit".to_owned(),
-            "--profile".to_owned(),
-            self.profile_path.display().to_string(),
-            "--package".to_owned(),
-            package_path.display().to_string(),
-            "--json".to_owned(),
-        ])?;
-        let finding_id = admission
-            .get("findingId")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| {
-                FindingSellerSubmissionError::Internal(
-                    "admission response omitted findingId".to_owned(),
+            ])?;
+            let finding_id = admission
+                .get("findingId")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| {
+                    FindingSellerSubmissionError::Internal(
+                        "admission response omitted findingId".to_owned(),
+                    )
+                })?
+                .to_owned();
+            self.artifact_store
+                .commit_seller_artifact_capacity(
+                    &request.request_id,
+                    principal,
+                    &job.request_sha256,
+                    &finding_id,
                 )
-            })?
-            .to_owned();
-        self.artifact_store
-            .commit_seller_artifact_capacity(
+                .map_err(seller_artifact_capacity_error)?;
+            let proof_bundle = admission
+                .get("proofBundle")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| {
+                    FindingSellerSubmissionError::Internal(
+                        "admission response omitted proofBundle".to_owned(),
+                    )
+                })?
+                .to_owned();
+            let activation = admission.get("activation").cloned().ok_or_else(|| {
+                FindingSellerSubmissionError::Internal(
+                    "admission response omitted activation".to_owned(),
+                )
+            })?;
+            let result = FindingVerifiedFixSubmissionResponse {
+                schema: "chio.finding.verified-fix-submission-result.v1".to_owned(),
+                request_id: request.request_id.clone(),
+                seller_principal: principal.to_owned(),
+                finding_id,
+                proof_bundle,
+                activation,
+            };
+            job.result = Some(result.clone());
+            write_private_atomic(
+                &job_path,
+                &canonical_json_bytes(&job)
+                    .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?,
+            )
+            .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+            Ok(result)
+        })();
+        match outcome {
+            Ok(result) => Ok(result),
+            Err(original) => match self.artifact_store.release_seller_artifact_capacity(
                 &request.request_id,
                 principal,
                 &job.request_sha256,
-                &finding_id,
-            )
-            .map_err(seller_artifact_capacity_error)?;
-        let proof_bundle = admission
-            .get("proofBundle")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| {
-                FindingSellerSubmissionError::Internal(
-                    "admission response omitted proofBundle".to_owned(),
-                )
-            })?
-            .to_owned();
-        let activation = admission.get("activation").cloned().ok_or_else(|| {
-            FindingSellerSubmissionError::Internal(
-                "admission response omitted activation".to_owned(),
-            )
-        })?;
-        let result = FindingVerifiedFixSubmissionResponse {
-            schema: "chio.finding.verified-fix-submission-result.v1".to_owned(),
-            request_id: request.request_id.clone(),
-            seller_principal: principal.to_owned(),
-            finding_id,
-            proof_bundle,
-            activation,
-        };
-        job.result = Some(result.clone());
-        write_private_atomic(
-            &job_path,
-            &canonical_json_bytes(&job)
-                .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?,
-        )
-        .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
-        Ok(result)
+            ) {
+                Ok(_) => Err(original),
+                Err(cleanup) => Err(FindingSellerSubmissionError::Internal(format!(
+                    "{original}; seller artifact capacity cleanup failed: {cleanup}"
+                ))),
+            },
+        }
     }
 }
 

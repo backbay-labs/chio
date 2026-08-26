@@ -70,6 +70,14 @@ pub struct FindingOperatorTerminalRecord {
     pub result_json: Vec<u8>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FindingOperatorTerminalCapacityRecord {
+    pub request_id: String,
+    pub principal_id: String,
+    pub request_sha256: String,
+    pub reserved_bytes: u64,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FindingOperatorTerminalWriteOutcome {
     Inserted,
@@ -755,6 +763,50 @@ impl SqliteFindingOperatorBundleStore {
         Ok(FindingOperatorTerminalCapacityOutcome::Reserved)
     }
 
+    /// List the bounded set of durable capacity claims for restart recovery.
+    pub fn terminal_capacity_claims(
+        &self,
+    ) -> Result<Vec<FindingOperatorTerminalCapacityRecord>, FindingOperatorBundleStoreError> {
+        let conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let mut statement = conn
+            .prepare(
+                "SELECT request_id, principal_id, request_sha256, reserved_bytes FROM chio_finding_operator_terminal_capacity ORDER BY request_id ASC",
+            )
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            })
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let mut claims = Vec::new();
+        for row in rows {
+            let (request_id, principal_id, request_sha256, reserved_bytes) = row
+                .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+            validate_digest(&request_id, "request_id")?;
+            validate_identifier(&principal_id, "principal_id")?;
+            validate_digest(&request_sha256, "request_sha256")?;
+            let reserved_bytes = u64::try_from(reserved_bytes)
+                .ok()
+                .filter(|value| *value > 0)
+                .ok_or(FindingOperatorBundleStoreError::DigestMismatch)?;
+            claims.push(FindingOperatorTerminalCapacityRecord {
+                request_id,
+                principal_id,
+                request_sha256,
+                reserved_bytes,
+            });
+        }
+        Ok(claims)
+    }
+
     /// Release an unused capacity claim after a purchase becomes terminal
     /// without a retained route response.
     pub fn release_terminal_capacity(
@@ -822,6 +874,61 @@ impl SqliteFindingOperatorBundleStore {
             i64::try_from(maximum_aggregate_bytes)
                 .map_err(|_| FindingOperatorBundleStoreError::SellerArtifactCapacity)?,
         )
+    }
+
+    /// Release an uncommitted seller-artifact claim after packaging or
+    /// admission fails. A committed claim is immutable and returns `false`.
+    pub fn release_seller_artifact_capacity(
+        &self,
+        request_id: &str,
+        principal_id: &str,
+        request_sha256: &str,
+    ) -> Result<bool, FindingOperatorBundleStoreError> {
+        validate_digest(request_id, "request_id")?;
+        validate_identifier(principal_id, "principal_id")?;
+        validate_digest(request_sha256, "request_sha256")?;
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let existing: Option<(String, String, i64, Option<String>)> = tx
+            .query_row(
+                "SELECT principal_id, request_sha256, reserved_bytes, committed_finding_id FROM chio_finding_operator_seller_artifact_capacity WHERE request_id = ?1",
+                [request_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let Some((existing_principal, existing_request_sha256, reserved_bytes, committed)) =
+            existing
+        else {
+            tx.commit()
+                .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+            return Ok(false);
+        };
+        if existing_principal != principal_id || existing_request_sha256 != request_sha256 {
+            return Err(FindingOperatorBundleStoreError::Conflict);
+        }
+        if committed.is_some() || reserved_bytes == 0 {
+            tx.commit()
+                .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+            return Ok(false);
+        }
+        let changed = tx
+            .execute(
+                "DELETE FROM chio_finding_operator_seller_artifact_capacity WHERE request_id = ?1 AND committed_finding_id IS NULL AND reserved_bytes = ?2",
+                params![request_id, reserved_bytes],
+            )
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        if changed != 1 {
+            return Err(FindingOperatorBundleStoreError::Conflict);
+        }
+        tx.commit()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        Ok(true)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1534,6 +1641,26 @@ mod tests {
     }
 
     #[test]
+    fn terminal_capacity_claims_are_listed_with_exact_bindings() {
+        let store = SqliteFindingOperatorBundleStore::open_in_memory().unwrap();
+        let request_id = "a".repeat(64);
+        let request_sha256 = "b".repeat(64);
+        store
+            .reserve_terminal_capacity(&request_id, "buyer-1", &request_sha256)
+            .unwrap();
+
+        assert_eq!(
+            store.terminal_capacity_claims().unwrap(),
+            vec![FindingOperatorTerminalCapacityRecord {
+                request_id,
+                principal_id: "buyer-1".to_owned(),
+                request_sha256,
+                reserved_bytes: u64::try_from(MAX_TERMINAL_BYTES).unwrap(),
+            }]
+        );
+    }
+
+    #[test]
     fn seller_artifact_capacity_bounds_database_and_file_storage() {
         let store = SqliteFindingOperatorBundleStore::open_in_memory().unwrap();
         {
@@ -1649,6 +1776,9 @@ mod tests {
                 .unwrap(),
             FindingOperatorSellerArtifactCapacityOutcome::ExactReplay
         );
+        assert!(!store
+            .release_seller_artifact_capacity(&first_request, "seller-1", &request_sha256,)
+            .unwrap());
         assert!(matches!(
             store.commit_seller_artifact_capacity(
                 &second_request,
@@ -1658,5 +1788,11 @@ mod tests {
             ),
             Err(FindingOperatorBundleStoreError::NotFound)
         ));
+        assert!(store
+            .release_seller_artifact_capacity(&second_request, "seller-1", &request_sha256,)
+            .unwrap());
+        assert!(!store
+            .release_seller_artifact_capacity(&second_request, "seller-1", &request_sha256,)
+            .unwrap());
     }
 }

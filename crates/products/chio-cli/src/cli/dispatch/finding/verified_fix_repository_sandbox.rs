@@ -79,6 +79,7 @@ pub(super) fn stage_repository_isolated(
     work_root: &Path,
     timeout: Duration,
 ) -> Result<(), CliError> {
+    validate_repository_metadata_confined(approved_root, source)?;
     let template = work_root.join("git-template");
     fs::create_dir(&template)?;
     let source_relative = source.strip_prefix(approved_root).map_err(|_| {
@@ -116,6 +117,7 @@ fn isolated_source_git_command(
     approved_root: &Path,
     repository: &Path,
 ) -> Result<Command, CliError> {
+    validate_repository_metadata_confined(approved_root, repository)?;
     let relative = repository.strip_prefix(approved_root).map_err(|_| {
         CliError::cli_other_error(
             "verified-fix repository is outside the approved repository root".to_owned(),
@@ -127,6 +129,140 @@ fn isolated_source_git_command(
         .arg("-C")
         .arg(Path::new(APPROVED_ROOT_MOUNT).join(relative));
     Ok(command)
+}
+
+fn validate_repository_metadata_confined(
+    approved_root: &Path,
+    repository: &Path,
+) -> Result<(), CliError> {
+    let git_marker = repository.join(".git");
+    let metadata = fs::symlink_metadata(&git_marker).map_err(|_| {
+        CliError::cli_other_error("verified-fix repository has no readable Git metadata".to_owned())
+    })?;
+    let git_directory = if metadata.is_dir() {
+        confined_metadata_path(approved_root, &git_marker, "Git directory")?
+    } else if metadata.is_file() {
+        let marker = read_confined_metadata_file(approved_root, &git_marker, 4096, "Git marker")?;
+        let relative = marker
+            .trim()
+            .strip_prefix("gitdir:")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                CliError::cli_other_error("verified-fix Git marker is invalid".to_owned())
+            })?;
+        let path = Path::new(relative);
+        let candidate = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            repository.join(path)
+        };
+        confined_metadata_path(approved_root, &candidate, "Git directory")?
+    } else {
+        return Err(CliError::cli_other_error(
+            "verified-fix Git marker is not a file or directory".to_owned(),
+        ));
+    };
+
+    let common_marker = git_directory.join("commondir");
+    let common_directory = if common_marker.exists() {
+        let relative = read_confined_metadata_file(
+            approved_root,
+            &common_marker,
+            4096,
+            "Git common-directory marker",
+        )?;
+        let path = Path::new(relative.trim());
+        if path.as_os_str().is_empty() {
+            return Err(CliError::cli_other_error(
+                "verified-fix Git common-directory marker is empty".to_owned(),
+            ));
+        }
+        let candidate = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            git_directory.join(path)
+        };
+        confined_metadata_path(approved_root, &candidate, "Git common directory")?
+    } else {
+        git_directory.clone()
+    };
+    let object_directory = confined_metadata_path(
+        approved_root,
+        &common_directory.join("objects"),
+        "Git object directory",
+    )?;
+    let alternates = object_directory.join("info/alternates");
+    if alternates.exists() {
+        let entries = read_confined_metadata_file(
+            approved_root,
+            &alternates,
+            64 * 1024,
+            "Git alternates file",
+        )?;
+        for entry in entries.lines().map(str::trim).filter(|line| !line.is_empty()) {
+            let path = Path::new(entry);
+            let candidate = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                object_directory.join(path)
+            };
+            confined_metadata_path(approved_root, &candidate, "Git alternate object directory")?;
+        }
+    }
+    for config in [
+        git_directory.join("config"),
+        common_directory.join("config"),
+        common_directory.join("config.worktree"),
+    ] {
+        if !config.exists() {
+            continue;
+        }
+        let contents =
+            read_confined_metadata_file(approved_root, &config, 1024 * 1024, "Git config")?;
+        if contents.lines().any(|line| {
+            let normalized = line.trim().to_ascii_lowercase();
+            normalized.starts_with("[include") || normalized.starts_with("include.path")
+        }) {
+            return Err(CliError::cli_other_error(
+                "verified-fix repository config includes are not allowed".to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn confined_metadata_path(
+    approved_root: &Path,
+    candidate: &Path,
+    label: &str,
+) -> Result<PathBuf, CliError> {
+    let canonical = fs::canonicalize(candidate).map_err(|_| {
+        CliError::cli_other_error(format!("verified-fix {label} is unavailable"))
+    })?;
+    if !canonical.starts_with(approved_root) {
+        return Err(CliError::cli_other_error(format!(
+            "verified-fix {label} is outside the approved repository root"
+        )));
+    }
+    Ok(canonical)
+}
+
+fn read_confined_metadata_file(
+    approved_root: &Path,
+    path: &Path,
+    maximum_bytes: usize,
+    label: &str,
+) -> Result<String, CliError> {
+    confined_metadata_path(approved_root, path, label)?;
+    let bytes = fs::read(path)?;
+    if bytes.len() > maximum_bytes {
+        return Err(CliError::cli_other_error(format!(
+            "verified-fix {label} exceeds its size bound"
+        )));
+    }
+    String::from_utf8(bytes)
+        .map_err(|_| CliError::cli_other_error(format!("verified-fix {label} is not UTF-8")))
 }
 
 fn isolated_git_command(approved_root: &Path, work_root: Option<&Path>) -> Command {
