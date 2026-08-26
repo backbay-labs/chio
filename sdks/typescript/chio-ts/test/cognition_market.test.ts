@@ -439,3 +439,22 @@ test("buyer cancels an oversized streaming response", async () => {
   assert.ok(emitted < 100);
   assert.equal(cancelled, true);
 });
+
+test("buyer rejects purchase responses above the retained terminal bound", async () => {
+  const findingId = "9".repeat(64);
+  const verified: VerifiedFindingProof = {
+    findingId,
+    proof: new Uint8Array(),
+    verification: { findingId },
+  };
+  const buyer = new CognitionMarketBuyer(profileFile(), {
+    fetch: async () => new Response("{}", {
+      headers: { "content-length": String(16 * 1024 * 1024 + 1) },
+    }),
+  });
+
+  await assert.rejects(
+    buyer.purchase(verified, { maxPriceUnits: 300 }),
+    /exceeds the SDK size bound/,
+  );
+});

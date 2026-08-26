@@ -6,6 +6,7 @@
 //! configured submission executor. Deployments that do not configure that
 //! executor fail closed before any filing side effect.
 
+use axum::body::{Body, Bytes};
 use axum::extract::Request;
 use chio_finding::{verify_signed_challenge, Finding, SignedFindingChallenge};
 use chio_store_sqlite::{FindingChallengeAuthorizationBranch, FindingChallengeWriteOutcome};
@@ -33,6 +34,7 @@ const FINDING_SCHEMA_LABEL: &str = "chio-finding/v1/finding.schema.json";
 /// derived fields and the signed-envelope wrapper. One MiB admits every valid
 /// CLI construction while keeping parsing and canonicalization bounded.
 pub(crate) const FINDING_CHALLENGE_SUBMIT_MAX_BODY_BYTES: usize = 1024 * 1024;
+const FINDING_CHALLENGE_BODY_READ_DEADLINE: Duration = Duration::from_secs(30);
 
 /// Closed route request over the registered signed challenge envelope.
 ///
@@ -218,15 +220,10 @@ pub(crate) async fn handle_submit_finding_challenge(
     };
     let (parts, body) = request.into_parts();
     let headers = parts.headers;
-    let raw_challenge_envelope =
-        match axum::body::to_bytes(body, FINDING_CHALLENGE_SUBMIT_MAX_BODY_BYTES).await {
-            Ok(bytes) => bytes,
-            Err(_) => {
-                return plain_http_error(
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    "finding challenge exceeds the body bound",
-                )
-            }
+    let (raw_challenge_envelope, permit) =
+        match collect_challenge_body(body, permit, FINDING_CHALLENGE_BODY_READ_DEADLINE).await {
+            Ok(collected) => collected,
+            Err(response) => return response,
         };
     let executor = Arc::clone(executor);
     let purchase_executor = state.finding_purchase_executor.clone();
@@ -373,6 +370,29 @@ pub(crate) async fn handle_submit_finding_challenge(
     }
 }
 
+async fn collect_challenge_body(
+    body: Body,
+    permit: tokio::sync::OwnedSemaphorePermit,
+    deadline: Duration,
+) -> Result<(Bytes, tokio::sync::OwnedSemaphorePermit), Response> {
+    match tokio::time::timeout(
+        deadline,
+        axum::body::to_bytes(body, FINDING_CHALLENGE_SUBMIT_MAX_BODY_BYTES),
+    )
+    .await
+    {
+        Ok(Ok(bytes)) => Ok((bytes, permit)),
+        Ok(Err(_)) => Err(plain_http_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "finding challenge exceeds the body bound",
+        )),
+        Err(_) => Err(plain_http_error(
+            StatusCode::REQUEST_TIMEOUT,
+            "finding challenge body read timed out",
+        )),
+    }
+}
+
 fn try_acquire_challenge_lane(
     lane: &Arc<tokio::sync::Semaphore>,
 ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
@@ -407,8 +427,12 @@ fn coordinator_unavailable(error: &ChallengeCoordinatorError) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{coordinator_unavailable, try_acquire_challenge_lane};
+    use super::{collect_challenge_body, coordinator_unavailable, try_acquire_challenge_lane};
     use crate::trust_control::finding_challenge_coordinator::ChallengeCoordinatorError;
+    use axum::body::{Body, Bytes};
+    use axum::http::StatusCode;
+    use futures_util::stream;
+    use std::time::Duration;
 
     #[test]
     fn dispute_bond_rail_failures_are_retryable_service_outages() {
@@ -430,6 +454,21 @@ mod tests {
             .unwrap_or_else(|error| panic!("first challenge permit: {error}"));
         assert!(try_acquire_challenge_lane(&lane).is_err());
         drop(permit);
+        assert!(try_acquire_challenge_lane(&lane).is_ok());
+    }
+
+    #[tokio::test]
+    async fn challenge_body_deadline_releases_the_submission_lane() {
+        let lane = std::sync::Arc::new(tokio::sync::Semaphore::new(1));
+        let permit = try_acquire_challenge_lane(&lane)
+            .unwrap_or_else(|error| panic!("challenge permit: {error}"));
+        let body = Body::from_stream(stream::pending::<Result<Bytes, std::io::Error>>());
+        assert!(try_acquire_challenge_lane(&lane).is_err());
+        let response = match collect_challenge_body(body, permit, Duration::from_millis(10)).await {
+            Ok(_) => panic!("stalled challenge body unexpectedly completed"),
+            Err(response) => response,
+        };
+        assert_eq!(response.status(), StatusCode::REQUEST_TIMEOUT);
         assert!(try_acquire_challenge_lane(&lane).is_ok());
     }
 }

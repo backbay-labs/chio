@@ -653,6 +653,29 @@ async def test_buyer_stops_streaming_an_oversized_response(
 
 
 @pytest.mark.asyncio
+async def test_buyer_rejects_purchase_response_above_retained_terminal_bound(
+    tmp_path: Path,
+) -> None:
+    finding_id = "9" * 64
+    verified = VerifiedFindingProof(finding_id, b"", {"findingId": finding_id})
+    buyer = CognitionMarketBuyer(
+        buyer_profile(tmp_path / "buyer.json"),
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(
+                200,
+                content=b"{}",
+                headers={"content-length": str(16 * 1024 * 1024 + 1)},
+            )
+        ),
+    )
+    try:
+        with pytest.raises(CognitionMarketError, match="exceeds the SDK size bound"):
+            await buyer.purchase(verified, max_price_units=300)
+    finally:
+        await buyer.close()
+
+
+@pytest.mark.asyncio
 async def test_buyer_applies_an_absolute_stream_deadline(tmp_path: Path) -> None:
     finding_id = "7" * 64
 

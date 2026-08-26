@@ -22,7 +22,8 @@ const VOLUNTARY_RETRACTION_DOMAIN = Buffer.from(
 const VERIFIED_FIX_PAYLOAD_SCHEMA = "chio.finding.verified-fix-payload.v1";
 const VERIFIED_FIX_MEDIA_TYPE = "application/vnd.chio.verified-fix+json";
 const PROOF_RESPONSE_MAX_BYTES = 24 * 1024 * 1024;
-const PURCHASE_RESULT_MAX_BYTES = Math.ceil((257 * 1024 * 1024) / 3) * 4 + 2 * 1024 * 1024;
+// Matches the single-operator store's maximum retained terminal size.
+const PURCHASE_RESULT_MAX_BYTES = 16 * 1024 * 1024;
 const JSON_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 const ERROR_RESPONSE_MAX_BYTES = 4096;
 const VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS = 450;

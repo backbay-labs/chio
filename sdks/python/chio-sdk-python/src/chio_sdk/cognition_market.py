@@ -34,7 +34,8 @@ VOLUNTARY_RETRACTION_DOMAIN = b"chio.finding.voluntary-retraction-request-id.v1\
 VERIFIED_FIX_PAYLOAD_SCHEMA = "chio.finding.verified-fix-payload.v1"
 VERIFIED_FIX_MEDIA_TYPE = "application/vnd.chio.verified-fix+json"
 PROOF_RESPONSE_MAX_BYTES = 24 * 1024 * 1024
-PURCHASE_RESULT_MAX_BYTES = ((257 * 1024 * 1024 + 2) // 3) * 4 + 2 * 1024 * 1024
+# Matches the single-operator store's maximum retained terminal size.
+PURCHASE_RESULT_MAX_BYTES = 16 * 1024 * 1024
 JSON_RESPONSE_MAX_BYTES = 2 * 1024 * 1024
 ERROR_RESPONSE_MAX_BYTES = 4096
 VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS = 450
