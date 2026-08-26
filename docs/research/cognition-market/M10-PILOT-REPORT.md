@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`1eaf08fdda3f169d79e3911fe5c8d206634499fc`. The qualifier built the `chio`
+`d5fbcb60142b0c45aa79714a61f30c8bac33fe62`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 3,956 ms minimum, 4,012.5 ms median, 4,568 ms maximum
-- Recorded normal purchase time: 2,650 ms minimum, 2,819.5 ms median,
-  3,013 ms maximum
+- Admission time: 3,557 ms minimum, 4,012.5 ms median, 4,939 ms maximum
+- Recorded normal purchase time: 2,638 ms minimum, 2,878.5 ms median,
+  3,052 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
