@@ -243,7 +243,7 @@ pub(crate) async fn handle_submit_finding_challenge(
             }
         };
         let (_, request) = match strict_artifact_ingress::<FindingChallengeSubmissionRequest>(
-            &raw_challenge_envelope,
+            raw_challenge_envelope,
             FINDING_CHALLENGE_SUBMIT_MAX_BODY_BYTES,
             FINDING_CHALLENGE_SCHEMA_JSON,
             FINDING_CHALLENGE_SCHEMA_LABEL,
@@ -352,7 +352,7 @@ pub(crate) async fn handle_submit_finding_challenge(
 
         match executor.submit(
             &request,
-            &raw_challenge_envelope,
+            raw_challenge_envelope,
             &raw_finding,
             unix_timestamp_now(),
         ) {
