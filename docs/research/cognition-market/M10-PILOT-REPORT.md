@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`d5fbcb60142b0c45aa79714a61f30c8bac33fe62`. The qualifier built the `chio`
+`cab8aab18491534fffe937941161510ecff49414`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 3,557 ms minimum, 4,012.5 ms median, 4,939 ms maximum
-- Recorded normal purchase time: 2,638 ms minimum, 2,878.5 ms median,
-  3,052 ms maximum
+- Admission time: 3,983 ms minimum, 4,006 ms median, 4,269 ms maximum
+- Recorded normal purchase time: 2,635 ms minimum, 2,853.5 ms median,
+  2,955 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -123,7 +123,8 @@ The requalified candidate also closes the final deployment review findings:
   before it can consume unbounded blocking-pool capacity. Challenge submission
   has its own non-queued lane and acquires it before collecting or parsing the
   untrusted envelope body. A busy lane rejects the request without polling its
-  body.
+  body. Body collection has a 30-second absolute deadline, and a timeout drops
+  the lane permit before returning HTTP 408.
   Schema validation, authentication, signature verification, synchronous
   SQLite integrity checks, and settlement coordination all run on Tokio's
   bounded blocking pool while that permit is held. Tick reports each
@@ -174,6 +175,7 @@ The requalified candidate also closes the final deployment review findings:
   search predicate, bind purchase identities to the credential's payer key,
   use bounded response streams and an absolute wall-clock deadline covering
   the complete HTTP response rather than only periods of network inactivity,
+  cap purchase results at the operator's 16 MiB per-terminal retention bound,
   and verify the signed purchase record and reveal commitment before returning
   either a generic purchase result or a decoded patch. The public
   operator route rejects omitted or mismatched payer identities before purchase
