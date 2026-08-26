@@ -7,6 +7,7 @@ import test from "node:test";
 
 import {
   CognitionMarketBuyer,
+  CognitionMarketError,
   CognitionMarketSeller,
   type PurchasedVerifiedFix,
   type VerifiedFindingProof,
@@ -243,6 +244,23 @@ test("buyer rejects a credential without the pinned status feed", () => {
     "{\"bearerToken\":\"buyer-secret\",\"endpoint\":\"https://operator.local\",\"market\":{},\"payer\":\"9999999999999999999999999999999999999999999999999999999999999999\",\"payoutDestination\":\"0x1111111111111111111111111111111111111111\",\"principalId\":\"buyer-1\",\"schema\":\"chio.finding.buyer-client.v1\",\"signingSeed\":\"2222222222222222222222222222222222222222222222222222222222222222\"}",
   );
   assert.throws(() => new CognitionMarketBuyer(path), /client profile is invalid/);
+});
+
+test("buyer converts an early verifier stdin close into an SDK rejection", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "chio-market-ts-stdin-close-"));
+  const verifier = join(directory, "chio");
+  writeFileSync(verifier, "#!/bin/sh\nexit 7\n");
+  chmodSync(verifier, 0o700);
+  const buyer = new CognitionMarketBuyer(profileFile(), { chioBinary: verifier });
+
+  await assert.rejects(
+    buyer.verifyProof(new Uint8Array(2 * 1024 * 1024)),
+    (error: unknown) => {
+      assert.ok(error instanceof CognitionMarketError);
+      assert.match(error.message, /failed to write chio input|chio command failed/);
+      return true;
+    },
+  );
 });
 
 test("buyer rejects an ephemeral operator port", () => {

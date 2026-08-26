@@ -4,8 +4,9 @@
 //! deployment-owned executor performs privileged package authoring and
 //! admission without disclosing operator keys or the global service token.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
+use axum::body::{Body, Bytes};
 use axum::extract::{Request, State};
 use axum::http::{header::AUTHORIZATION, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -22,6 +23,8 @@ const VERIFIED_FIX_SUBMISSION_ID_DOMAIN: &[u8] = b"chio.finding.verified-fix-sub
 // can at most double its bytes. This cap covers that complete worst case plus
 // the fixed JSON field, schema, request-id, and integer overhead.
 pub(crate) const FINDING_VERIFIED_FIX_SUBMISSION_MAX_BODY_BYTES: usize = 256 * 1024;
+const FINDING_VOLUNTARY_RETRACTION_MAX_BODY_BYTES: usize = 4096;
+const FINDING_SELLER_BODY_READ_DEADLINE: Duration = Duration::from_secs(30);
 const VOLUNTARY_RETRACTION_REQUEST_ID_DOMAIN: &[u8] =
     b"chio.finding.voluntary-retraction-request-id.v1\0";
 const MAX_REPOSITORY_BYTES: usize = 4096;
@@ -269,24 +272,6 @@ pub(crate) async fn handle_submit_verified_fix(
     if executor.authenticate(&bearer).is_err() {
         return seller_authentication_failed();
     }
-    let raw = match axum::body::to_bytes(
-        request.into_body(),
-        FINDING_VERIFIED_FIX_SUBMISSION_MAX_BODY_BYTES,
-    )
-    .await
-    {
-        Ok(bytes) => bytes,
-        Err(_) => {
-            return seller_error(
-                StatusCode::PAYLOAD_TOO_LARGE,
-                "verified-fix submission exceeds the body bound",
-            )
-        }
-    };
-    let submission = match parse_submission(&raw) {
-        Ok(submission) => submission,
-        Err(error) => return seller_error(StatusCode::BAD_REQUEST, &error),
-    };
     let permit = match try_acquire_seller_lane(&state.finding_seller_submission_lane) {
         Ok(permit) => permit,
         Err(_) => {
@@ -295,6 +280,32 @@ pub(crate) async fn handle_submit_verified_fix(
                 "verified-fix seller lane is busy",
             )
         }
+    };
+    let (raw, permit) = match collect_seller_body(
+        request.into_body(),
+        FINDING_VERIFIED_FIX_SUBMISSION_MAX_BODY_BYTES,
+        permit,
+        FINDING_SELLER_BODY_READ_DEADLINE,
+    )
+    .await
+    {
+        Ok(collected) => collected,
+        Err(SellerBodyError::TooLarge) => {
+            return seller_error(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "verified-fix submission exceeds the body bound",
+            )
+        }
+        Err(SellerBodyError::Timeout) => {
+            return seller_error(
+                StatusCode::REQUEST_TIMEOUT,
+                "verified-fix submission body read timed out",
+            )
+        }
+    };
+    let submission = match parse_submission(&raw) {
+        Ok(submission) => submission,
+        Err(error) => return seller_error(StatusCode::BAD_REQUEST, &error),
     };
     let outcome = tokio::task::spawn_blocking(move || {
         let _permit = permit;
@@ -357,12 +368,34 @@ pub(crate) async fn handle_submit_voluntary_retraction(
     if executor.authenticate(&bearer).is_err() {
         return seller_authentication_failed();
     }
-    let raw = match axum::body::to_bytes(request.into_body(), 4096).await {
-        Ok(bytes) => bytes,
+    let permit = match try_acquire_seller_lane(&state.finding_seller_submission_lane) {
+        Ok(permit) => permit,
         Err(_) => {
+            return seller_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "verified-fix seller lane is busy",
+            )
+        }
+    };
+    let (raw, permit) = match collect_seller_body(
+        request.into_body(),
+        FINDING_VOLUNTARY_RETRACTION_MAX_BODY_BYTES,
+        permit,
+        FINDING_SELLER_BODY_READ_DEADLINE,
+    )
+    .await
+    {
+        Ok(collected) => collected,
+        Err(SellerBodyError::TooLarge) => {
             return seller_error(
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "retraction request is too large",
+            )
+        }
+        Err(SellerBodyError::Timeout) => {
+            return seller_error(
+                StatusCode::REQUEST_TIMEOUT,
+                "retraction request body read timed out",
             )
         }
     };
@@ -373,15 +406,6 @@ pub(crate) async fn handle_submit_voluntary_retraction(
     if let Err(error) = request.validate() {
         return seller_error(StatusCode::BAD_REQUEST, &error);
     }
-    let permit = match try_acquire_seller_lane(&state.finding_seller_submission_lane) {
-        Ok(permit) => permit,
-        Err(_) => {
-            return seller_error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "verified-fix seller lane is busy",
-            )
-        }
-    };
     let outcome = tokio::task::spawn_blocking(move || {
         let _permit = permit;
         executor.retract(&bearer, &request)
@@ -496,9 +520,28 @@ fn try_acquire_seller_lane(
     lane.clone().try_acquire_owned()
 }
 
+enum SellerBodyError {
+    TooLarge,
+    Timeout,
+}
+
+async fn collect_seller_body(
+    body: Body,
+    maximum: usize,
+    permit: tokio::sync::OwnedSemaphorePermit,
+    deadline: Duration,
+) -> Result<(Bytes, tokio::sync::OwnedSemaphorePermit), SellerBodyError> {
+    match tokio::time::timeout(deadline, axum::body::to_bytes(body, maximum)).await {
+        Ok(Ok(bytes)) => Ok((bytes, permit)),
+        Ok(Err(_)) => Err(SellerBodyError::TooLarge),
+        Err(_) => Err(SellerBodyError::Timeout),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures_util::stream;
 
     #[test]
     fn submission_identity_binds_every_input() {
@@ -565,6 +608,18 @@ mod tests {
             try_acquire_seller_lane(&lane).unwrap_or_else(|error| panic!("first permit: {error}"));
         assert!(try_acquire_seller_lane(&lane).is_err());
         drop(active);
+        assert!(try_acquire_seller_lane(&lane).is_ok());
+    }
+
+    #[tokio::test]
+    async fn seller_body_deadline_releases_the_submission_lane() {
+        let lane = Arc::new(tokio::sync::Semaphore::new(1));
+        let permit =
+            try_acquire_seller_lane(&lane).unwrap_or_else(|error| panic!("seller permit: {error}"));
+        let body = Body::from_stream(stream::pending::<Result<Bytes, std::io::Error>>());
+        assert!(try_acquire_seller_lane(&lane).is_err());
+        let result = collect_seller_body(body, 4096, permit, Duration::from_millis(10)).await;
+        assert!(matches!(result, Err(SellerBodyError::Timeout)));
         assert!(try_acquire_seller_lane(&lane).is_ok());
     }
 }

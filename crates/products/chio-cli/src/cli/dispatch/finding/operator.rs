@@ -602,10 +602,7 @@ fn post_operator_bytes(
         Ok(response) => response,
         Err(ureq::Error::Status(status, response)) => {
             let body = response.into_string().unwrap_or_default();
-            return Err(FindingSellerSubmissionError::Invalid(format!(
-                "operator status request failed with HTTP {status}: {}",
-                body.chars().take(4096).collect::<String>()
-            )));
+            return Err(operator_status_error(status, &body));
         }
         Err(ureq::Error::Transport(error)) => {
             return Err(FindingSellerSubmissionError::Pending(format!(
@@ -618,6 +615,18 @@ fn post_operator_bytes(
             "operator status response was not valid JSON".to_owned(),
         )
     })
+}
+
+fn operator_status_error(status: u16, body: &str) -> FindingSellerSubmissionError {
+    let message = format!(
+        "operator status request failed with HTTP {status}: {}",
+        body.chars().take(4096).collect::<String>()
+    );
+    if matches!(status, 408 | 425 | 429 | 500 | 502 | 503 | 504) {
+        FindingSellerSubmissionError::Pending(message)
+    } else {
+        FindingSellerSubmissionError::Invalid(message)
+    }
 }
 
 fn run_chio_json(args: &[String]) -> Result<serde_json::Value, FindingSellerSubmissionError> {
@@ -1556,6 +1565,18 @@ mod tests {
         assert!(matches!(
             retraction_bundle_store_error(FindingOperatorBundleStoreError::DigestMismatch),
             FindingSellerSubmissionError::Internal(_)
+        ));
+    }
+
+    #[test]
+    fn retraction_status_failures_preserve_retryable_operator_responses() {
+        assert!(matches!(
+            operator_status_error(503, "database is busy"),
+            FindingSellerSubmissionError::Pending(_)
+        ));
+        assert!(matches!(
+            operator_status_error(400, "invalid intent"),
+            FindingSellerSubmissionError::Invalid(_)
         ));
     }
 }

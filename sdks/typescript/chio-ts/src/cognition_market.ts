@@ -725,10 +725,11 @@ function runChio(
     const stderr: Buffer[] = [];
     let outputBytes = 0;
     let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const finish = (action: () => void): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer !== undefined) clearTimeout(timer);
       action();
     };
     const capture = (target: Buffer[]) => (chunk: Buffer): void => {
@@ -745,6 +746,12 @@ function runChio(
     child.on("error", (error) => finish(() => reject(
       new CognitionMarketError(`failed to start chio: ${error.message}`),
     )));
+    child.stdin.on("error", (error) => {
+      child.kill();
+      finish(() => reject(
+        new CognitionMarketError(`failed to write chio input: ${error.message}`),
+      ));
+    });
     child.on("close", (code) => {
       if (code !== 0) {
         finish(() => reject(new CognitionMarketError(
@@ -754,7 +761,7 @@ function runChio(
         finish(() => resolve(Buffer.concat(stdout)));
       }
     });
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       child.kill();
       finish(() => reject(new CognitionMarketError("chio command timed out")));
     }, 60_000);
