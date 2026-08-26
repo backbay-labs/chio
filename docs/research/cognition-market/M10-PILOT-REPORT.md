@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`f36da12a53a1694011ec74ea22a62e349db6a5a3`. The qualifier built the `chio`
+`49976891c362cc17d0da2602a272a6508ff2865a`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,984 ms minimum, 2,003 ms median, 2,417 ms maximum
-- Recorded normal purchase time: 2,654 ms minimum, 2,834 ms median,
-  2,969 ms maximum
+- Admission time: 1,979 ms minimum, 2,012 ms median, 2,734 ms maximum
+- Recorded normal purchase time: 2,621 ms minimum, 2,824 ms median,
+  2,938 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -81,17 +81,21 @@ The requalified candidate also closes the final deployment review findings:
   five-minute aggregate deadline shared by source Git reads, staging, baseline
   and candidate tests, and patch generation. Cgroup v2 enforces hard aggregate
   memory, swap, and process limits across each test descendant tree;
-  process-local CPU, memory, process, descriptor, and file-size rlimits remain
-  defense in depth, and the writable volume is size-capped. Unix-only cgroup
-  file-descriptor wiring is target-gated so the CLI remains buildable on
-  Windows.
+  process-local CPU, memory, descriptor, and file-size rlimits remain defense
+  in depth, and the writable volume is size-capped. Process count is not also
+  imposed through `RLIMIT_NPROC`, whose per-host-user semantics could reject a
+  valid sandbox because unrelated desktop processes share the operator UID.
+  Unix-only cgroup file-descriptor wiring is target-gated so the CLI remains
+  buildable on Windows.
 - Source repositories are copied without hard links into operator-owned state.
   Operator initialization requires an explicit approved repository root, and
   seller ingress rejects canonical paths and symbolic links that escape it.
   Source Git reads and the initial clone run in a filesystem namespace exposing
-  only that approved root. A full non-local transfer prevents worktree,
-  common-directory, config-include, or alternate-object metadata from retaining
-  access to operator-readable paths outside it.
+  only that approved root. Before every source Git command, the operator
+  resolves the Git directory, common directory, object directory, and alternate
+  object stores and rejects any path outside the approved root. Repository
+  config includes are rejected. A full non-local transfer then prevents this
+  source metadata from retaining access in staged worktrees.
   Git hooks, system and global configuration, credentials, and external
   protocol helpers are disabled before checkout. Clone and checkout staging is
   bounded by a five-minute deadline, a 1 GiB aggregate ceiling, 75,000
@@ -111,9 +115,14 @@ The requalified candidate also closes the final deployment review findings:
 - Live seller admission and scheduled `operator tick` reconciliation share one
   cross-process operator lock. Submission and retraction also share one
   non-queued blocking lane, so overlapping work receives a retryable HTTP 503
-  before it can consume unbounded blocking-pool capacity. Tick reports each
-  terminal-safe failed admission and continues reconciling later jobs.
+  before it can consume unbounded blocking-pool capacity. Challenge submission
+  has its own non-queued lane and performs synchronous SQLite and settlement
+  coordination on Tokio's bounded blocking pool. Tick reports each terminal-safe
+  failed admission and continues reconciling later jobs.
 - Bundle, encrypted payload, and proof bytes are durable before activation.
+  A seller artifact-capacity claim is released if package construction or
+  admission fails, while an admitted Finding keeps its committed immutable
+  claim.
   Retraction intent bytes are durable before submission, and pre-dispatch
   purchase failures release both reservation exposure and any reserved slot.
   A prepared job without a reservation revalidates current market policy and
@@ -142,7 +151,11 @@ The requalified candidate also closes the final deployment review findings:
   other pre-reservation validation exits do the same. Recovery of a released
   reservation checks for a retained terminal before reserving capacity, so a
   stable pre-dispatch rejection remains replayable even while terminal storage
-  is full.
+  is full. Before accepting unrelated new purchase work, the operator also
+  scans the bounded claim set and releases every cryptographically validated,
+  expired prepared claim whose exact reservation is unknown to the durable
+  coordinator. Known reservations and older opaque standalone claims remain
+  untouched.
 - Status-floor lock guards explicitly unlock before close, so an immediate
   sequential retry can read a retraction retained by a rejected rollback.
 - Seller client credentials contain no market signing seed. Buyer SDKs require
