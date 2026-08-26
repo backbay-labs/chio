@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`2512975a9099cdde35e2e122322cab8024a9d146`. The qualifier built the `chio`
+`6dcef86ce94ca720136ba4ed7af1473abab9d36b`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 3,725 ms minimum, 3,997 ms median, 4,038 ms maximum
-- Recorded normal purchase time: 2,684 ms minimum, 2,878 ms median,
-  2,960 ms maximum
+- Admission time: 3,989 ms minimum, 4,006 ms median, 4,305 ms maximum
+- Recorded normal purchase time: 2,685 ms minimum, 2,898 ms median,
+  2,937 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -124,7 +124,10 @@ The requalified candidate also closes the final deployment review findings:
   the body. Both seller body reads have a 30-second absolute deadline, and a
   timeout drops the lane permit before returning HTTP 408. The same permit is
   retained through blocking seller execution. Challenge submission has its own
-  non-queued lane with the same pre-body admission and deadline behavior.
+  non-queued lane with the same pre-body admission and deadline behavior. The
+  operator also bounds the package subprocess at 330 seconds and the subsequent
+  admission/recovery subprocess at 300 seconds, including process-group
+  termination and bounded output.
   Schema validation, authentication, signature verification, synchronous
   SQLite integrity checks, and settlement coordination all run on Tokio's
   bounded blocking pool while that permit is held. Tick reports each
@@ -187,6 +190,9 @@ The requalified candidate also closes the final deployment review findings:
   TypeScript verifier boundary consumes subprocess stdin errors and returns a
   `CognitionMarketError` rejection if the Rust verifier exits before reading a
   proof, instead of allowing an unhandled stream error to terminate the buyer.
+  Seller clients use a 720-second absolute request deadline, leaving one minute
+  beyond the server's 30-second body, 330-second package, and 300-second
+  admission maximum path.
 - Purchase execution uses one non-queued blocking lane rather than a Tokio
   worker. After authentication and content-type validation, the permit is
   acquired before collecting the request body. A busy lane rejects without
@@ -211,6 +217,9 @@ The requalified candidate also closes the final deployment review findings:
   and retained-bundle integrity failures remain internal failures. Retryable
   status-intent responses, including SQLite-backed HTTP 503, remain retryable
   seller outcomes instead of being flattened into permanent HTTP 400 failures.
+  Nonrecoverable package failures release their artifact claim, durably remove
+  any draft, and then durably remove their quota-counted job. Admission failures
+  remain retryable and retain their exact package and job for reconciliation.
 - Python and TypeScript status calls use the Rust verifier with the profile's
   pinned status authority, service bond, freshness window, and durable rollback
   floor. Challenge helpers authenticate the purchase terminal again before
