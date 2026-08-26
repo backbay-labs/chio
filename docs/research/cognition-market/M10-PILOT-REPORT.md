@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`0d1770c810b3407cb81df62afb29259c65b57949`. The qualifier built the `chio`
+`ef6caa70d656d311399e509f74460e1981db19a3`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,969 ms minimum, 2,005 ms median, 2,022 ms maximum
-- Recorded normal purchase time: 2,617 ms minimum, 2,852 ms median,
-  2,967 ms maximum
+- Admission time: 1,952 ms minimum, 2,009 ms median, 2,081 ms maximum
+- Recorded normal purchase time: 2,660 ms minimum, 2,812 ms median,
+  2,960 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -99,11 +99,15 @@ The requalified candidate also closes the final deployment review findings:
   deadline and output ceiling. Published repository identity removes URL
   credentials, query strings, and fragments. Failed staging removes its
   partial clone, and completed package files publish atomically. Seller
-  submission and retraction retention is capped at 256 jobs combined
-  under an 8 GiB and 100,000-entry package/report ceiling. The full transient
-  staging budget plus publication headroom is reserved before a new job is
-  accepted. Revision and published repository-identity lookups use the same
-  timed, output-bounded process-group runner as patch generation.
+  submission and retraction retention is capped at 256 jobs combined. Reports,
+  packages, the complete operator SQLite allocation, and outstanding
+  worst-case payload, bundle, and proof claims share one 8 GiB ceiling. The
+  full transient staging budget plus publication and database headroom is
+  durably reserved before a new job is accepted, then consumed only after all
+  three artifacts exist under the admitted Finding identity. The file tree is
+  also capped at 100,000 entries. Revision and published repository-identity
+  lookups use the same timed, output-bounded process-group runner as patch
+  generation.
 - Live seller admission and scheduled `operator tick` reconciliation share one
   cross-process operator lock. Submission and retraction also share one
   non-queued blocking lane, so overlapping work receives a retryable HTTP 503
@@ -117,10 +121,16 @@ The requalified candidate also closes the final deployment review findings:
   replay verifies proof liveness at its authenticated terminal time. An open
   or slot-reserved purchase that expires across restart moves to a durable
   expired state and returns a stable rejection instead of an endless pending
-  response. Expired slot-reserved work first selects the exact payment through
-  its governed intent binding, releases a hold or refunds a capture exactly
-  once, and only then closes the reservation. A crash between payment reversal
-  and expiry safely replays the same terminal payment action.
+  response. A crash after terminal-capacity reservation but before the market
+  reservation releases that claim when the prepared ask expires. A successful
+  pre-dispatch cleanup records a stable rejection, so its released reservation
+  cannot become an endless pending retry. Expired slot-reserved work first
+  selects the exact payment through its governed intent binding, releases a
+  hold or refunds a capture exactly once, and only then closes the reservation.
+  Legacy held payments gain that binding either on exact authorization replay
+  or through the durable payment journal's request and operation identity. A
+  crash between payment reversal and expiry safely replays the same terminal
+  payment action.
   Purchase-job retention is capped at 10,000 rows, failing new requests closed
   while preserving exact replay at capacity. Retained public terminal bodies
   have a transactionally enforced 256 MiB aggregate ceiling. Each request
