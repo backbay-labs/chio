@@ -368,7 +368,7 @@ impl FindingSellerSubmissionExecutor for OperatorSellerSubmissionExecutor {
             &canonical_json_bytes(request)
                 .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?,
         );
-        let mut job = if job_path.exists() {
+        let (mut job, create_job) = if job_path.exists() {
             let stored: FindingSellerRetractionJob = read_canonical_file(
                 &job_path,
                 SELLER_SUBMISSION_JOB_MAX_BYTES,
@@ -383,29 +383,21 @@ impl FindingSellerSubmissionExecutor for OperatorSellerSubmissionExecutor {
             {
                 return Err(FindingSellerSubmissionError::Conflict);
             }
-            stored
+            (stored, false)
         } else {
-            require_seller_submission_capacity(
-                &self.reports_directory,
-                &self.packages_directory,
-            )?;
-            let created = FindingSellerRetractionJob {
-                schema: SELLER_RETRACTION_JOB_SCHEMA.to_owned(),
-                request_id: request.request_id.clone(),
-                request_sha256,
-                finding_id: request.finding_id.clone(),
-                seller_principal: principal,
-                intent_b64: None,
-                intent_id: None,
-                result: None,
-            };
-            write_private_atomic(
-                &job_path,
-                &canonical_json_bytes(&created)
-                    .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?,
+            (
+                FindingSellerRetractionJob {
+                    schema: SELLER_RETRACTION_JOB_SCHEMA.to_owned(),
+                    request_id: request.request_id.clone(),
+                    request_sha256,
+                    finding_id: request.finding_id.clone(),
+                    seller_principal: principal.clone(),
+                    intent_b64: None,
+                    intent_id: None,
+                    result: None,
+                },
+                true,
             )
-            .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
-            created
         };
         if let Some(result) = job.result.clone() {
             if result.request_id != request.request_id
@@ -416,28 +408,27 @@ impl FindingSellerSubmissionExecutor for OperatorSellerSubmissionExecutor {
             }
             return Ok(result);
         }
-        let bundle = SqliteFindingOperatorBundleStore::open(
-            self.profile_path
-                .parent()
-                .ok_or_else(|| {
-                    FindingSellerSubmissionError::Internal(
-                        "operator profile has no parent directory".to_owned(),
-                    )
-                })?
-                .join(&self.profile.paths.operator_database),
-        )
-        .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?
-        .get(&request.finding_id)
-        .map_err(|_| {
-            FindingSellerSubmissionError::Invalid(
-                "retracted Finding is not retained by this operator".to_owned(),
-            )
-        })?;
+        let bundle = self
+            .artifact_store
+            .get(&request.finding_id)
+            .map_err(retraction_bundle_store_error)?;
         let bundle: chio_control_plane::trust_control::finding_operator_bundle::FindingOperatorBundle =
             serde_json::from_slice(&bundle.bundle_json)
                 .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
         if bundle.finding.issuer != seller_key.public_key() {
             return Err(FindingSellerSubmissionError::Authentication);
+        }
+        if create_job {
+            require_seller_submission_capacity(
+                &self.reports_directory,
+                &self.packages_directory,
+            )?;
+            write_private_atomic(
+                &job_path,
+                &canonical_json_bytes(&job)
+                    .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?,
+            )
+            .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
         }
         let status_key = self
             .profile
@@ -577,6 +568,22 @@ impl FindingSellerSubmissionExecutor for OperatorSellerSubmissionExecutor {
         )
         .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
         Ok(result)
+    }
+}
+
+fn retraction_bundle_store_error(
+    error: FindingOperatorBundleStoreError,
+) -> FindingSellerSubmissionError {
+    match error {
+        FindingOperatorBundleStoreError::NotFound => FindingSellerSubmissionError::Invalid(
+            "retracted Finding is not retained by this operator".to_owned(),
+        ),
+        FindingOperatorBundleStoreError::Unavailable(_) => FindingSellerSubmissionError::Pending(
+            "retained Finding bundle is temporarily unavailable".to_owned(),
+        ),
+        _ => FindingSellerSubmissionError::Internal(
+            "retained Finding bundle failed integrity verification".to_owned(),
+        ),
     }
 }
 
@@ -1531,6 +1538,24 @@ mod tests {
         assert!(matches!(
             require_seller_submission_capacity(&reports, &packages),
             Err(FindingSellerSubmissionError::Pending(_))
+        ));
+    }
+
+    #[test]
+    fn retraction_bundle_failures_preserve_missing_retryable_and_integrity_classes() {
+        assert!(matches!(
+            retraction_bundle_store_error(FindingOperatorBundleStoreError::NotFound),
+            FindingSellerSubmissionError::Invalid(_)
+        ));
+        assert!(matches!(
+            retraction_bundle_store_error(FindingOperatorBundleStoreError::Unavailable(
+                "database is busy".to_owned()
+            )),
+            FindingSellerSubmissionError::Pending(_)
+        ));
+        assert!(matches!(
+            retraction_bundle_store_error(FindingOperatorBundleStoreError::DigestMismatch),
+            FindingSellerSubmissionError::Internal(_)
         ));
     }
 }

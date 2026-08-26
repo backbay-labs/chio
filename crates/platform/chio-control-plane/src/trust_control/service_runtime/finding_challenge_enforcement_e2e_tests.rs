@@ -24,7 +24,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
-use axum::body::{to_bytes, Body};
+use axum::body::{to_bytes, Body, Bytes};
 use axum::http::header::AUTHORIZATION;
 use axum::http::{Request as HttpRequest, StatusCode};
 use chio_core::canonical_json_bytes;
@@ -148,6 +148,7 @@ use chio_store_sqlite::{
     FindingRetractionIntentCommitLiveness, SqliteAuthorityStore, SqliteFindingChallengeStore,
     SqliteFindingPurchaseStore,
 };
+use futures_util::stream;
 
 use crate::trust_control::finding_challenge_coordinator::{
     anchor_evidence_intent_commitment, derive_anchor_evidence_intent_key, derive_defect_key,
@@ -3847,6 +3848,24 @@ async fn finding_challenge_live_route_submits_to_the_durable_coordinator_exactly
         .finding_challenge_submission_lane
         .clone()
         .try_acquire_owned()?;
+    let body_polled = Arc::new(AtomicBool::new(false));
+    let body_poll_observation = Arc::clone(&body_polled);
+    let unpolled_body = Body::from_stream(stream::once(async move {
+        body_poll_observation.store(true, Ordering::SeqCst);
+        Ok::<Bytes, std::io::Error>(Bytes::from_static(b"{}"))
+    }));
+    let response = build_router(state.clone())
+        .oneshot(
+            HttpRequest::builder()
+                .method("POST")
+                .uri(format!("/v1/findings/{busy_finding_id}/challenges"))
+                .header("content-type", "application/json")
+                .header(AUTHORIZATION, "Bearer challenge-service-secret")
+                .body(unpolled_body)?,
+        )
+        .await?;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert!(!body_polled.load(Ordering::SeqCst));
     let (status, _) = submit_challenge_route(&state, &busy_finding_id, "{}", true).await?;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     let (status, _) = submit_challenge_route(&state, &busy_finding_id, &busy_raw, true).await?;

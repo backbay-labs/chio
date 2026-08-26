@@ -6,6 +6,7 @@
 //! configured submission executor. Deployments that do not configure that
 //! executor fail closed before any filing side effect.
 
+use axum::extract::Request;
 use chio_finding::{verify_signed_challenge, Finding, SignedFindingChallenge};
 use chio_store_sqlite::{FindingChallengeAuthorizationBranch, FindingChallengeWriteOutcome};
 
@@ -193,8 +194,7 @@ impl FindingChallengeSubmissionExecutor for FindingChallengeCoordinator {
 pub(crate) async fn handle_submit_finding_challenge(
     State(state): State<TrustServiceState>,
     AxumPath(finding_id): AxumPath<String>,
-    headers: HeaderMap,
-    raw_challenge_envelope: String,
+    request: Request,
 ) -> Response {
     let (config, store) = match finding_market_context(&state) {
         Ok(context) => context,
@@ -216,11 +216,32 @@ pub(crate) async fn handle_submit_finding_challenge(
             )
         }
     };
+    let (parts, body) = request.into_parts();
+    let headers = parts.headers;
+    let raw_challenge_envelope =
+        match axum::body::to_bytes(body, FINDING_CHALLENGE_SUBMIT_MAX_BODY_BYTES).await {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                return plain_http_error(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "finding challenge exceeds the body bound",
+                )
+            }
+        };
     let executor = Arc::clone(executor);
     let purchase_executor = state.finding_purchase_executor.clone();
     let service_token = state.config.service_token.clone();
     let response = tokio::task::spawn_blocking(move || {
         let _permit = permit;
+        let raw_challenge_envelope = match std::str::from_utf8(&raw_challenge_envelope) {
+            Ok(raw) => raw,
+            Err(_) => {
+                return plain_http_error(
+                    StatusCode::BAD_REQUEST,
+                    "finding challenge body is not UTF-8",
+                )
+            }
+        };
         let (_, request) = match strict_artifact_ingress::<FindingChallengeSubmissionRequest>(
             &raw_challenge_envelope,
             FINDING_CHALLENGE_SUBMIT_MAX_BODY_BYTES,
