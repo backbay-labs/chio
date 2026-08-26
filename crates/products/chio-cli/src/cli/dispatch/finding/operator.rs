@@ -34,9 +34,9 @@ use chio_control_plane::trust_control::{
 };
 use chio_core::{canonical_json_bytes, sha256_hex, Keypair};
 use chio_store_sqlite::{
-    SqliteAuthorityStore, SqliteFindingOperatorBundleStore,
-    SqliteFindingOperatorPaymentAdapter, SqliteFindingPayloadStore, SqliteReceiptStore,
-    FindingDisputeLockDisposition, TenantId, TenantKey,
+    FindingDisputeLockDisposition, FindingOperatorBundleStoreError, SqliteAuthorityStore,
+    SqliteFindingOperatorBundleStore, SqliteFindingOperatorPaymentAdapter,
+    SqliteFindingPayloadStore, SqliteReceiptStore, TenantId, TenantKey,
 };
 use subtle::ConstantTimeEq;
 
@@ -92,6 +92,7 @@ struct OperatorSellerSubmissionExecutor {
     packages_directory: PathBuf,
     profile: FindingOperatorProfile,
     authority: Arc<SqliteAuthorityStore>,
+    artifact_store: SqliteFindingOperatorBundleStore,
     sellers: Vec<(String, String, Keypair)>,
     submission_lock: Mutex<()>,
 }
@@ -123,6 +124,8 @@ impl OperatorSellerSubmissionExecutor {
             packages_directory: paths.packages_directory.clone(),
             profile: profile.clone(),
             authority,
+            artifact_store: SqliteFindingOperatorBundleStore::open(&paths.operator_database)
+                .map_err(|error| error.to_string())?,
             sellers,
             submission_lock: Mutex::new(()),
         })
@@ -204,6 +207,21 @@ impl OperatorSellerSubmissionExecutor {
             return Ok(result);
         }
 
+        let retained_file_bytes = seller_submission_storage_bytes(
+            &self.reports_directory,
+            &self.packages_directory,
+        )?;
+        self.artifact_store
+            .reserve_seller_artifact_capacity(
+                &request.request_id,
+                principal,
+                &job.request_sha256,
+                retained_file_bytes,
+                SELLER_SUBMISSION_RESERVED_BYTES,
+                SELLER_SUBMISSION_STORAGE_CAP_BYTES,
+            )
+            .map_err(seller_artifact_capacity_error)?;
+
         if !package_path.exists() {
             let mut args = vec![
                 "finding".to_owned(),
@@ -251,6 +269,14 @@ impl OperatorSellerSubmissionExecutor {
                 )
             })?
             .to_owned();
+        self.artifact_store
+            .commit_seller_artifact_capacity(
+                &request.request_id,
+                principal,
+                &job.request_sha256,
+                &finding_id,
+            )
+            .map_err(seller_artifact_capacity_error)?;
         let proof_bundle = admission
             .get("proofBundle")
             .and_then(serde_json::Value::as_str)
@@ -1230,6 +1256,14 @@ fn require_seller_submission_capacity(
         }
     }
 
+    seller_submission_storage_bytes(reports_directory, packages_directory).map(|_| ())
+}
+
+fn seller_submission_storage_bytes(
+    reports_directory: &Path,
+    packages_directory: &Path,
+) -> Result<u64, FindingSellerSubmissionError> {
+
     let maximum_existing_bytes = SELLER_SUBMISSION_STORAGE_CAP_BYTES
         .saturating_sub(SELLER_SUBMISSION_RESERVED_BYTES);
     let maximum_existing_entries = SELLER_SUBMISSION_STORAGE_MAX_ENTRIES
@@ -1263,7 +1297,20 @@ fn require_seller_submission_capacity(
             }
         }
     }
-    Ok(())
+    Ok(bytes)
+}
+
+fn seller_artifact_capacity_error(
+    error: FindingOperatorBundleStoreError,
+) -> FindingSellerSubmissionError {
+    match error {
+        FindingOperatorBundleStoreError::SellerArtifactCapacity => {
+            FindingSellerSubmissionError::Pending(
+                "seller submission storage capacity is exhausted".to_owned(),
+            )
+        }
+        other => FindingSellerSubmissionError::Internal(other.to_string()),
+    }
 }
 
 fn write_secret_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {

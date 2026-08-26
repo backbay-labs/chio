@@ -29,6 +29,8 @@ const MAX_PURCHASE_JOB_BYTES: usize = 2 * 1024 * 1024;
 const MAX_RETAINED_BUNDLES: i64 = 10_000;
 const MAX_RETAINED_PURCHASE_JOBS: i64 = 10_000;
 const MAX_RETAINED_TERMINAL_BYTES: i64 = 256 * 1024 * 1024;
+const MAX_RETAINED_SELLER_ARTIFACT_CLAIMS: i64 = 256;
+const MAX_SELLER_ARTIFACT_BYTES: i64 = (8 + 4 + 24) * 1024 * 1024 + 256 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FindingOperatorBundleRecord {
@@ -80,6 +82,13 @@ pub enum FindingOperatorTerminalCapacityOutcome {
     ExactReplay,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FindingOperatorSellerArtifactCapacityOutcome {
+    Reserved,
+    ExactReplay,
+    Committed,
+}
+
 #[derive(Debug, Error)]
 pub enum FindingOperatorBundleStoreError {
     #[error("finding operator bundle store is unavailable: {0}")]
@@ -98,6 +107,8 @@ pub enum FindingOperatorBundleStoreError {
         "finding operator bundle store reached its {MAX_RETAINED_TERMINAL_BYTES}-byte purchase-terminal capacity"
     )]
     TerminalCapacity,
+    #[error("finding operator seller artifact capacity is exhausted")]
+    SellerArtifactCapacity,
     #[error("finding operator bundle was not found")]
     NotFound,
     #[error("finding operator bundle failed its durable digest check")]
@@ -188,6 +199,20 @@ impl SqliteFindingOperatorBundleStore {
                 job_sha256 TEXT NOT NULL CHECK(length(job_sha256) = 64),
                 job_json BLOB NOT NULL,
                 created_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS chio_finding_operator_seller_artifact_capacity (
+                request_id TEXT PRIMARY KEY,
+                principal_id TEXT NOT NULL,
+                request_sha256 TEXT NOT NULL CHECK(length(request_sha256) = 64),
+                reserved_bytes INTEGER NOT NULL CHECK(reserved_bytes >= 0),
+                committed_finding_id TEXT,
+                created_at INTEGER NOT NULL,
+                CHECK(
+                    (reserved_bytes > 0 AND committed_finding_id IS NULL)
+                    OR
+                    (reserved_bytes = 0 AND length(committed_finding_id) = 64)
+                )
             );
             "#,
         )
@@ -774,6 +799,187 @@ impl SqliteFindingOperatorBundleStore {
         Ok(true)
     }
 
+    /// Reserve the worst-case encrypted payload, bundle, and proof footprint
+    /// inside the operator's aggregate seller-storage budget.
+    pub fn reserve_seller_artifact_capacity(
+        &self,
+        request_id: &str,
+        principal_id: &str,
+        request_sha256: &str,
+        externally_retained_bytes: u64,
+        externally_reserved_bytes: u64,
+        maximum_aggregate_bytes: u64,
+    ) -> Result<FindingOperatorSellerArtifactCapacityOutcome, FindingOperatorBundleStoreError> {
+        self.reserve_seller_artifact_capacity_with_limits(
+            request_id,
+            principal_id,
+            request_sha256,
+            i64::try_from(externally_retained_bytes)
+                .map_err(|_| FindingOperatorBundleStoreError::SellerArtifactCapacity)?,
+            i64::try_from(externally_reserved_bytes)
+                .map_err(|_| FindingOperatorBundleStoreError::SellerArtifactCapacity)?,
+            MAX_SELLER_ARTIFACT_BYTES,
+            i64::try_from(maximum_aggregate_bytes)
+                .map_err(|_| FindingOperatorBundleStoreError::SellerArtifactCapacity)?,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reserve_seller_artifact_capacity_with_limits(
+        &self,
+        request_id: &str,
+        principal_id: &str,
+        request_sha256: &str,
+        externally_retained_bytes: i64,
+        externally_reserved_bytes: i64,
+        requested_bytes: i64,
+        maximum_aggregate_bytes: i64,
+    ) -> Result<FindingOperatorSellerArtifactCapacityOutcome, FindingOperatorBundleStoreError> {
+        validate_digest(request_id, "request_id")?;
+        validate_identifier(principal_id, "principal_id")?;
+        validate_digest(request_sha256, "request_sha256")?;
+        if externally_retained_bytes < 0
+            || externally_reserved_bytes < 0
+            || requested_bytes <= 0
+            || maximum_aggregate_bytes < 0
+        {
+            return Err(FindingOperatorBundleStoreError::SellerArtifactCapacity);
+        }
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let existing: Option<(String, String, i64, Option<String>)> = tx
+            .query_row(
+                "SELECT principal_id, request_sha256, reserved_bytes, committed_finding_id FROM chio_finding_operator_seller_artifact_capacity WHERE request_id = ?1",
+                [request_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        if let Some((existing_principal, existing_request_sha256, existing_bytes, committed)) =
+            existing
+        {
+            if existing_principal != principal_id || existing_request_sha256 != request_sha256 {
+                return Err(FindingOperatorBundleStoreError::Conflict);
+            }
+            if committed.is_some() && existing_bytes == 0 {
+                tx.commit().map_err(|error| {
+                    FindingOperatorBundleStoreError::Unavailable(error.to_string())
+                })?;
+                return Ok(FindingOperatorSellerArtifactCapacityOutcome::Committed);
+            }
+            if committed.is_none() && existing_bytes == requested_bytes {
+                tx.commit().map_err(|error| {
+                    FindingOperatorBundleStoreError::Unavailable(error.to_string())
+                })?;
+                return Ok(FindingOperatorSellerArtifactCapacityOutcome::ExactReplay);
+            }
+            return Err(FindingOperatorBundleStoreError::DigestMismatch);
+        }
+        let claim_count: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM chio_finding_operator_seller_artifact_capacity",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        if !(0..MAX_RETAINED_SELLER_ARTIFACT_CLAIMS).contains(&claim_count) {
+            return Err(FindingOperatorBundleStoreError::SellerArtifactCapacity);
+        }
+        let database_bytes = seller_database_bytes(&tx)?;
+        let reserved_bytes: i64 = tx
+            .query_row(
+                "SELECT COALESCE(SUM(reserved_bytes), 0) FROM chio_finding_operator_seller_artifact_capacity",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let total = externally_retained_bytes
+            .checked_add(externally_reserved_bytes)
+            .and_then(|value| value.checked_add(database_bytes))
+            .and_then(|value| value.checked_add(reserved_bytes))
+            .and_then(|value| value.checked_add(requested_bytes));
+        if reserved_bytes < 0 || total.is_none_or(|value| value > maximum_aggregate_bytes) {
+            return Err(FindingOperatorBundleStoreError::SellerArtifactCapacity);
+        }
+        tx.execute(
+            "INSERT INTO chio_finding_operator_seller_artifact_capacity (request_id, principal_id, request_sha256, reserved_bytes, committed_finding_id, created_at) VALUES (?1, ?2, ?3, ?4, NULL, ?5)",
+            params![request_id, principal_id, request_sha256, requested_bytes, now_secs()],
+        )
+        .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        tx.commit()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        Ok(FindingOperatorSellerArtifactCapacityOutcome::Reserved)
+    }
+
+    /// Consume an exact seller-artifact reservation only after all three
+    /// durable artifacts exist under the admitted Finding identity.
+    pub fn commit_seller_artifact_capacity(
+        &self,
+        request_id: &str,
+        principal_id: &str,
+        request_sha256: &str,
+        finding_id: &str,
+    ) -> Result<FindingOperatorSellerArtifactCapacityOutcome, FindingOperatorBundleStoreError> {
+        validate_digest(request_id, "request_id")?;
+        validate_identifier(principal_id, "principal_id")?;
+        validate_digest(request_sha256, "request_sha256")?;
+        validate_finding_id(finding_id)?;
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let existing: Option<(String, String, i64, Option<String>)> = tx
+            .query_row(
+                "SELECT principal_id, request_sha256, reserved_bytes, committed_finding_id FROM chio_finding_operator_seller_artifact_capacity WHERE request_id = ?1",
+                [request_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let Some((existing_principal, existing_request_sha256, reserved_bytes, committed)) =
+            existing
+        else {
+            return Err(FindingOperatorBundleStoreError::SellerArtifactCapacity);
+        };
+        if existing_principal != principal_id || existing_request_sha256 != request_sha256 {
+            return Err(FindingOperatorBundleStoreError::Conflict);
+        }
+        if let Some(committed) = committed {
+            if reserved_bytes == 0 && committed == finding_id {
+                tx.commit().map_err(|error| {
+                    FindingOperatorBundleStoreError::Unavailable(error.to_string())
+                })?;
+                return Ok(FindingOperatorSellerArtifactCapacityOutcome::ExactReplay);
+            }
+            return Err(FindingOperatorBundleStoreError::Conflict);
+        }
+        let artifact_bytes = seller_finding_artifact_bytes(&tx, finding_id)?
+            .ok_or(FindingOperatorBundleStoreError::NotFound)?;
+        if artifact_bytes > reserved_bytes {
+            return Err(FindingOperatorBundleStoreError::SellerArtifactCapacity);
+        }
+        let changed = tx
+            .execute(
+                "UPDATE chio_finding_operator_seller_artifact_capacity SET reserved_bytes = 0, committed_finding_id = ?2 WHERE request_id = ?1 AND reserved_bytes = ?3 AND committed_finding_id IS NULL",
+                params![request_id, finding_id, reserved_bytes],
+            )
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        if changed != 1 {
+            return Err(FindingOperatorBundleStoreError::Conflict);
+        }
+        tx.commit()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        Ok(FindingOperatorSellerArtifactCapacityOutcome::Committed)
+    }
+
     pub fn get_terminal(
         &self,
         request_id: &str,
@@ -817,6 +1023,66 @@ impl SqliteFindingOperatorBundleStore {
             FindingOperatorBundleStoreError::Unavailable("negative row count".to_owned())
         })
     }
+}
+
+fn seller_database_bytes(
+    conn: &rusqlite::Connection,
+) -> Result<i64, FindingOperatorBundleStoreError> {
+    let page_count: i64 = conn
+        .query_row("PRAGMA page_count", [], |row| row.get(0))
+        .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+    let page_size: i64 = conn
+        .query_row("PRAGMA page_size", [], |row| row.get(0))
+        .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+    if page_count < 0 || page_size <= 0 {
+        return Err(FindingOperatorBundleStoreError::DigestMismatch);
+    }
+    page_count
+        .checked_mul(page_size)
+        .ok_or(FindingOperatorBundleStoreError::SellerArtifactCapacity)
+}
+
+fn seller_finding_artifact_bytes(
+    conn: &rusqlite::Connection,
+    finding_id: &str,
+) -> Result<Option<i64>, FindingOperatorBundleStoreError> {
+    let payload_bytes: Option<i64> = conn
+        .query_row(
+            "SELECT length(ciphertext) FROM chio_finding_payloads WHERE finding_id = ?1",
+            [finding_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+    let bundle_bytes: Option<i64> = conn
+        .query_row(
+            "SELECT length(bundle_json) FROM chio_finding_operator_bundles WHERE finding_id = ?1",
+            [finding_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+    let proof_bytes: Option<i64> = conn
+        .query_row(
+            "SELECT length(proof_json) FROM chio_finding_operator_proofs WHERE finding_id = ?1",
+            [finding_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+    let (Some(payload_bytes), Some(bundle_bytes), Some(proof_bytes)) =
+        (payload_bytes, bundle_bytes, proof_bytes)
+    else {
+        return Ok(None);
+    };
+    if payload_bytes < 0 || bundle_bytes < 0 || proof_bytes < 0 {
+        return Err(FindingOperatorBundleStoreError::DigestMismatch);
+    }
+    payload_bytes
+        .checked_add(bundle_bytes)
+        .and_then(|value| value.checked_add(proof_bytes))
+        .map(Some)
+        .ok_or(FindingOperatorBundleStoreError::SellerArtifactCapacity)
 }
 
 fn load_terminal(
@@ -1265,5 +1531,132 @@ mod tests {
         assert!(!store
             .release_terminal_capacity(&request_id, "buyer-1", &request_sha256)
             .unwrap());
+    }
+
+    #[test]
+    fn seller_artifact_capacity_bounds_database_and_file_storage() {
+        let store = SqliteFindingOperatorBundleStore::open_in_memory().unwrap();
+        {
+            let conn = store.pool.get().unwrap();
+            conn.execute_batch(
+                "CREATE TABLE chio_finding_payloads (finding_id TEXT PRIMARY KEY, ciphertext BLOB NOT NULL)",
+            )
+            .unwrap();
+        }
+        let database_bytes = {
+            let conn = store.pool.get().unwrap();
+            seller_database_bytes(&conn).unwrap()
+        };
+        let first_request = "1".repeat(64);
+        let second_request = "2".repeat(64);
+        let third_request = "3".repeat(64);
+        let request_sha256 = "4".repeat(64);
+        let maximum_bytes = database_bytes + 250;
+
+        assert_eq!(
+            store
+                .reserve_seller_artifact_capacity_with_limits(
+                    &first_request,
+                    "seller-1",
+                    &request_sha256,
+                    40,
+                    10,
+                    100,
+                    maximum_bytes,
+                )
+                .unwrap(),
+            FindingOperatorSellerArtifactCapacityOutcome::Reserved
+        );
+        assert_eq!(
+            store
+                .reserve_seller_artifact_capacity_with_limits(
+                    &first_request,
+                    "seller-1",
+                    &request_sha256,
+                    40,
+                    10,
+                    100,
+                    maximum_bytes,
+                )
+                .unwrap(),
+            FindingOperatorSellerArtifactCapacityOutcome::ExactReplay
+        );
+        assert_eq!(
+            store
+                .reserve_seller_artifact_capacity_with_limits(
+                    &second_request,
+                    "seller-1",
+                    &request_sha256,
+                    40,
+                    10,
+                    100,
+                    maximum_bytes,
+                )
+                .unwrap(),
+            FindingOperatorSellerArtifactCapacityOutcome::Reserved
+        );
+        assert!(matches!(
+            store.reserve_seller_artifact_capacity_with_limits(
+                &third_request,
+                "seller-1",
+                &request_sha256,
+                40,
+                10,
+                100,
+                maximum_bytes,
+            ),
+            Err(FindingOperatorBundleStoreError::SellerArtifactCapacity)
+        ));
+
+        let finding_id = "5".repeat(64);
+        {
+            let conn = store.pool.get().unwrap();
+            conn.execute(
+                "INSERT INTO chio_finding_payloads (finding_id, ciphertext) VALUES (?1, ?2)",
+                params![finding_id, vec![0u8; 20]],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO chio_finding_operator_bundles (finding_id, bundle_sha256, bundle_json, created_at) VALUES (?1, ?2, ?3, 1)",
+                params![finding_id, "6".repeat(64), vec![0u8; 20]],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO chio_finding_operator_proofs (finding_id, proof_sha256, proof_json, created_at) VALUES (?1, ?2, ?3, 1)",
+                params![finding_id, "7".repeat(64), vec![0u8; 20]],
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            store
+                .commit_seller_artifact_capacity(
+                    &first_request,
+                    "seller-1",
+                    &request_sha256,
+                    &finding_id,
+                )
+                .unwrap(),
+            FindingOperatorSellerArtifactCapacityOutcome::Committed
+        );
+        assert_eq!(
+            store
+                .commit_seller_artifact_capacity(
+                    &first_request,
+                    "seller-1",
+                    &request_sha256,
+                    &finding_id,
+                )
+                .unwrap(),
+            FindingOperatorSellerArtifactCapacityOutcome::ExactReplay
+        );
+        assert!(matches!(
+            store.commit_seller_artifact_capacity(
+                &second_request,
+                "seller-1",
+                &request_sha256,
+                &"8".repeat(64),
+            ),
+            Err(FindingOperatorBundleStoreError::NotFound)
+        ));
     }
 }

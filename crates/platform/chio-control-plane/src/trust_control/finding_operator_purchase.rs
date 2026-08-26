@@ -68,6 +68,8 @@ use super::FindingMarketConfig;
 
 const MAX_CREDENTIAL_TEXT_BYTES: usize = 512;
 const FINDING_OPERATOR_PURCHASE_JOB_SCHEMA: &str = "chio.finding.operator-purchase-job.v1";
+const PREDISPATCH_RELEASE_REJECTION: &str =
+    "purchase failed before dispatch and its reservation was released";
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -157,6 +159,10 @@ pub struct FindingOperatorPurchaseExecutor {
     stop_after_purchase_job_once: std::sync::atomic::AtomicBool,
     #[cfg(test)]
     stop_after_reservation_once: std::sync::atomic::AtomicBool,
+    #[cfg(test)]
+    stop_after_terminal_capacity_once: std::sync::atomic::AtomicBool,
+    #[cfg(test)]
+    fail_predispatch_once: std::sync::atomic::AtomicBool,
     #[cfg(test)]
     stop_after_kernel_response_once: std::sync::atomic::AtomicBool,
     #[cfg(test)]
@@ -257,6 +263,10 @@ impl FindingOperatorPurchaseExecutor {
             #[cfg(test)]
             stop_after_reservation_once: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
+            stop_after_terminal_capacity_once: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(test)]
+            fail_predispatch_once: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(test)]
             stop_after_kernel_response_once: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
             test_now: std::sync::atomic::AtomicU64::new(0),
@@ -272,6 +282,18 @@ impl FindingOperatorPurchaseExecutor {
     #[cfg(test)]
     pub(crate) fn stop_after_reservation_once(&self) {
         self.stop_after_reservation_once
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn stop_after_terminal_capacity_once(&self) {
+        self.stop_after_terminal_capacity_once
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fail_predispatch_once(&self) {
+        self.fail_predispatch_once
             .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
@@ -581,6 +603,25 @@ impl FindingOperatorPurchaseExecutor {
         Ok(())
     }
 
+    fn recover_released_reservation(
+        &self,
+        buyer: &AuthenticatedFindingBuyer,
+        request: &FindingPurchaseRequest,
+        request_sha256: &str,
+        reservation_id: &str,
+    ) -> Result<FindingPurchaseResult, FindingPurchaseExecutionError> {
+        self.reserve_terminal_capacity(buyer, request, request_sha256)?;
+        match self.recover_terminal(buyer, request, reservation_id) {
+            Err(FindingPurchaseExecutionError::Pending(_)) => {
+                self.release_terminal_capacity(buyer, request, request_sha256)?;
+                Err(FindingPurchaseExecutionError::Rejected(
+                    PREDISPATCH_RELEASE_REJECTION.to_owned(),
+                ))
+            }
+            result => result,
+        }
+    }
+
     fn expire_open_reservation(
         &self,
         buyer: &AuthenticatedFindingBuyer,
@@ -612,6 +653,7 @@ impl FindingOperatorPurchaseExecutor {
         self.payment_adapter
             .reconcile_expired_governed_intent(
                 &format!("intent-{}", request.request_id),
+                &request.request_id,
                 &reservation.payer_hex,
                 reservation.amount_units,
                 &reservation.currency,
@@ -953,10 +995,17 @@ impl FindingOperatorPurchaseExecutor {
             .map_err(execution_unavailable)?;
         if let Some(existing) = existing_reservation.as_ref() {
             match existing.state {
-                FindingPurchaseReservationState::Consumed
-                | FindingPurchaseReservationState::Released => {
+                FindingPurchaseReservationState::Consumed => {
                     self.reserve_terminal_capacity(authenticated, request, &request_sha256)?;
                     return self.recover_terminal(authenticated, request, &existing.reservation_id);
+                }
+                FindingPurchaseReservationState::Released => {
+                    return self.recover_released_reservation(
+                        authenticated,
+                        request,
+                        &request_sha256,
+                        &existing.reservation_id,
+                    );
                 }
                 FindingPurchaseReservationState::Expired => {
                     self.release_terminal_capacity(authenticated, request, &request_sha256)?;
@@ -1065,23 +1114,27 @@ impl FindingOperatorPurchaseExecutor {
             &credential.signing_key.public_key().to_hex(),
         );
         if existing_reservation.is_none() && now >= signed_ask.body.expires_at {
+            self.release_terminal_capacity(authenticated, request, &request_sha256)?;
             return Err(FindingPurchaseExecutionError::Rejected(
                 "prepared purchase ask expired before reservation".to_owned(),
             ));
         }
         let coordinator = self.coordinator()?;
         match coordinator.resolve(&reservation_id) {
-            Ok(existing)
-                if matches!(
-                    existing.state,
-                    FindingPurchaseReservationState::Consumed
-                        | FindingPurchaseReservationState::Released
-                ) =>
-            {
+            Ok(existing) if existing.state == FindingPurchaseReservationState::Consumed => {
                 self.reserve_terminal_capacity(authenticated, request, &request_sha256)?;
                 return self.recover_terminal(authenticated, request, &reservation_id);
             }
+            Ok(existing) if existing.state == FindingPurchaseReservationState::Released => {
+                return self.recover_released_reservation(
+                    authenticated,
+                    request,
+                    &request_sha256,
+                    &reservation_id,
+                );
+            }
             Ok(existing) if existing.state == FindingPurchaseReservationState::Expired => {
+                self.release_terminal_capacity(authenticated, request, &request_sha256)?;
                 return Err(FindingPurchaseExecutionError::Rejected(
                     "durable purchase reservation expired before recovery".to_owned(),
                 ));
@@ -1090,6 +1143,15 @@ impl FindingOperatorPurchaseExecutor {
             Err(error) => return Err(execution_internal(error)),
         }
         self.reserve_terminal_capacity(authenticated, request, &request_sha256)?;
+        #[cfg(test)]
+        if self
+            .stop_after_terminal_capacity_once
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err(FindingPurchaseExecutionError::Pending(
+                "test interruption after durable terminal-capacity reservation".to_owned(),
+            ));
+        }
         let reservation_receipt = coordinator
             .reserve_for_public_request(
                 bid,
@@ -1161,6 +1223,15 @@ impl FindingOperatorPurchaseExecutor {
         coordinator
             .reserve_slot(&reservation_id, now)
             .map_err(|error| release_predispatch(execution_internal(error)))?;
+        #[cfg(test)]
+        if self
+            .fail_predispatch_once
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err(release_predispatch(execution_internal(
+                "test pre-dispatch failure",
+            )));
+        }
         let context_b64 = purchase_context_b64(
             &bundle,
             bid,
@@ -1534,7 +1605,9 @@ fn release_predispatch_reservation(
         request_sha256,
     );
     match (reservation_release, capacity_release) {
-        (Ok(()), Ok(_)) => original,
+        (Ok(()), Ok(_)) => {
+            FindingPurchaseExecutionError::Rejected(PREDISPATCH_RELEASE_REJECTION.to_owned())
+        }
         (reservation, capacity) => FindingPurchaseExecutionError::Internal(format!(
             "{original}; durable pre-dispatch cleanup failed: reservation={reservation:?}, capacity={capacity:?}"
         )),
