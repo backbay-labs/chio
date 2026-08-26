@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`6dcef86ce94ca720136ba4ed7af1473abab9d36b`. The qualifier built the `chio`
+`7e7b0daa25b577e3bc58d86db582ac0266da9d2e`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 3,989 ms minimum, 4,006 ms median, 4,305 ms maximum
-- Recorded normal purchase time: 2,685 ms minimum, 2,898 ms median,
-  2,937 ms maximum
+- Admission time: 3,814 ms minimum, 3,986.5 ms median, 4,125 ms maximum
+- Recorded normal purchase time: 2,609 ms minimum, 2,850 ms median,
+  2,950 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -178,6 +178,8 @@ The requalified candidate also closes the final deployment review findings:
   search predicate, bind purchase identities to the credential's payer key,
   use bounded response streams and an absolute wall-clock deadline covering
   the complete HTTP response rather than only periods of network inactivity,
+  cancel the response body before rejecting an oversized declared content
+  length so pooled transport resources are released,
   cap purchase results at the operator's 16 MiB per-terminal retention bound,
   and verify the signed purchase record and reveal commitment before returning
   either a generic purchase result or a decoded patch. The public
