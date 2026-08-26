@@ -481,8 +481,9 @@ fn run_finding_admission(
     let bundle_bytes = canonical_json_bytes(&finalization.bundle)?;
     let bundle_store = SqliteFindingOperatorBundleStore::open(&paths.operator_database)
         .map_err(|error| CliError::cli_other_error(error.to_string()))?;
-    let artifact_indexes = finding_operator_bundle_artifact_indexes(&finalization.bundle)
-        .map_err(CliError::cli_other_error)?;
+    let artifact_indexes =
+        finding_operator_bundle_artifact_indexes(&finalization.bundle, Some(&profile.market))
+            .map_err(CliError::cli_other_error)?;
     bundle_store
         .put_with_artifact_indexes(
             &draft.finding.finding_id,

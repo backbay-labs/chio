@@ -5,8 +5,12 @@ use chio_store_sqlite::{
     SqliteFindingPayloadStore, TenantId, TenantKey,
 };
 
+use crate::trust_control::finding_challenge_coordinator::FindingFilingResolver;
 use crate::trust_control::finding_operator_bundle::{
     FindingOperatorBundle, FINDING_OPERATOR_BUNDLE_SCHEMA,
+};
+use crate::trust_control::finding_operator_filing_resolver::{
+    finding_operator_bundle_artifact_indexes, FindingOperatorFilingResolver,
 };
 use crate::trust_control::finding_operator_purchase::{
     FindingOperatorBuyerCredential, FindingOperatorPurchaseExecutor, FindingOperatorPurchaseKeys,
@@ -14,6 +18,75 @@ use crate::trust_control::finding_operator_purchase::{
 };
 
 const OPERATOR_PAYLOAD_KEY_BYTES: [u8; 32] = [73; 32];
+
+#[test]
+fn operator_filing_resolver_retains_pre_rotation_authority_policies() -> TestResult {
+    let deployment = provision(RevealCase::honest())?;
+    let bundle = production_operator_bundle(&deployment.web);
+    let original = market_config();
+    bundle.verify_at(&original, unix_timestamp_now())?;
+    let bundle_json = bundle.to_canonical_json()?;
+    let indexes = finding_operator_bundle_artifact_indexes(&bundle, Some(&original))
+        .map_err(std::io::Error::other)?;
+    let store = SqliteFindingOperatorBundleStore::open(
+        deployment
+            .database
+            .with_file_name("operator-historical-filing-policies.db"),
+    )?;
+    store.put_with_artifact_indexes(&deployment.web.finding_id, &bundle_json, &indexes)?;
+
+    let mut rotated = original.clone();
+    rotated.venue = authority_pin(80, "rotated-venue");
+    rotated.governance_root = authority_pin(81, "rotated-governance");
+    rotated.validate()?;
+    let resolver = FindingOperatorFilingResolver::new(store, rotated.clone())
+        .map_err(std::io::Error::other)?;
+    let admission_digest = signed_envelope_sha256(&bundle.admission)?;
+    let profile_digest = signed_envelope_sha256(&bundle.verifier_profile)?;
+
+    assert_ne!(rotated.venue, original.venue);
+    assert_ne!(rotated.governance_root, original.governance_root);
+    assert_eq!(
+        resolver
+            .venue_policy_for_admission(&admission_digest)
+            .map_err(std::io::Error::other)?,
+        Some(original.venue)
+    );
+    assert_eq!(
+        resolver
+            .governance_policy_for_profile(&profile_digest)
+            .map_err(std::io::Error::other)?,
+        Some(original.governance_root)
+    );
+
+    let legacy_store = SqliteFindingOperatorBundleStore::open(
+        deployment
+            .database
+            .with_file_name("operator-legacy-filing-policies.db"),
+    )?;
+    let legacy_indexes =
+        finding_operator_bundle_artifact_indexes(&bundle, None).map_err(std::io::Error::other)?;
+    legacy_store.put_with_artifact_indexes(
+        &deployment.web.finding_id,
+        &bundle_json,
+        &legacy_indexes,
+    )?;
+    let legacy =
+        FindingOperatorFilingResolver::new(legacy_store, rotated).map_err(std::io::Error::other)?;
+    assert_eq!(
+        legacy
+            .venue_policy_for_admission(&admission_digest)
+            .map_err(std::io::Error::other)?,
+        None
+    );
+    assert_eq!(
+        legacy
+            .governance_policy_for_profile(&profile_digest)
+            .map_err(std::io::Error::other)?,
+        None
+    );
+    Ok(())
+}
 
 fn production_operator_bundle(web: &MarketWeb) -> FindingOperatorBundle {
     let mut listing = web.listing_entry();

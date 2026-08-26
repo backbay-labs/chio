@@ -27,6 +27,7 @@ const SCHEMA_ANCHORS: &[&str] = &[
     "chio_finding_operator_payments",
 ];
 const MAX_BUNDLE_BYTES: usize = 4 * 1024 * 1024;
+const MAX_ARTIFACT_AUTHORITY_POLICY_BYTES: usize = 16 * 1024;
 const MAX_TERMINAL_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PROOF_BYTES: usize = 24 * 1024 * 1024;
 const MAX_PURCHASE_JOB_BYTES: usize = 2 * 1024 * 1024;
@@ -41,6 +42,15 @@ pub struct FindingOperatorBundleRecord {
     pub finding_id: String,
     pub bundle_sha256: String,
     pub bundle_json: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FindingOperatorIndexedBundleRecord {
+    pub finding_id: String,
+    pub bundle_sha256: String,
+    pub bundle_json: Vec<u8>,
+    pub authority_policy_sha256: Option<String>,
+    pub authority_policy_json: Option<Vec<u8>>,
 }
 
 /// Public artifact families resolved by exact signed-envelope digest during a
@@ -70,6 +80,11 @@ impl FindingOperatorBundleArtifactKind {
 pub struct FindingOperatorBundleArtifactIndex {
     pub kind: FindingOperatorBundleArtifactKind,
     pub envelope_sha256: String,
+    /// Canonical policy bytes that were externally authenticated when this
+    /// artifact was admitted. Only admission and verifier-profile indexes may
+    /// carry a policy. Legacy backfill leaves this absent and therefore cannot
+    /// invent historical authority after rotation.
+    pub authority_policy_json: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -228,6 +243,23 @@ impl SqliteFindingOperatorBundleStore {
             CREATE INDEX IF NOT EXISTS chio_finding_operator_bundle_artifacts_by_finding
             ON chio_finding_operator_bundle_artifacts(finding_id, artifact_kind);
 
+            CREATE TABLE IF NOT EXISTS chio_finding_operator_artifact_authority_policies (
+                artifact_kind TEXT NOT NULL CHECK(
+                    artifact_kind IN ('admission', 'verifier_profile')
+                ),
+                envelope_sha256 TEXT NOT NULL CHECK(length(envelope_sha256) = 64),
+                finding_id TEXT NOT NULL,
+                policy_sha256 TEXT NOT NULL CHECK(length(policy_sha256) = 64),
+                policy_json BLOB NOT NULL,
+                PRIMARY KEY (artifact_kind, envelope_sha256, finding_id),
+                FOREIGN KEY (artifact_kind, envelope_sha256, finding_id)
+                    REFERENCES chio_finding_operator_bundle_artifacts(
+                        artifact_kind,
+                        envelope_sha256,
+                        finding_id
+                    )
+            );
+
             CREATE TABLE IF NOT EXISTS chio_finding_operator_terminals (
                 request_id TEXT PRIMARY KEY,
                 principal_id TEXT NOT NULL,
@@ -351,6 +383,44 @@ impl SqliteFindingOperatorBundleStore {
                 params![index.kind.as_str(), index.envelope_sha256, finding_id],
             )
             .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+            if let Some(policy_json) = index.authority_policy_json.as_ref() {
+                let policy_sha256 = sha256_hex(policy_json);
+                let retained_policy = tx
+                    .query_row(
+                        "SELECT policy_sha256, policy_json FROM chio_finding_operator_artifact_authority_policies WHERE artifact_kind = ?1 AND envelope_sha256 = ?2 ORDER BY finding_id ASC LIMIT 1",
+                        params![index.kind.as_str(), index.envelope_sha256],
+                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
+                    )
+                    .optional()
+                    .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+                if retained_policy
+                    .as_ref()
+                    .is_some_and(|stored| stored.0 != policy_sha256 || stored.1 != *policy_json)
+                {
+                    return Err(FindingOperatorBundleStoreError::Conflict);
+                }
+                tx.execute(
+                    "INSERT OR IGNORE INTO chio_finding_operator_artifact_authority_policies (artifact_kind, envelope_sha256, finding_id, policy_sha256, policy_json) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![
+                        index.kind.as_str(),
+                        index.envelope_sha256,
+                        finding_id,
+                        policy_sha256,
+                        policy_json,
+                    ],
+                )
+                .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+                let stored = tx
+                    .query_row(
+                        "SELECT policy_sha256, policy_json FROM chio_finding_operator_artifact_authority_policies WHERE artifact_kind = ?1 AND envelope_sha256 = ?2 AND finding_id = ?3",
+                        params![index.kind.as_str(), index.envelope_sha256, finding_id],
+                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
+                    )
+                    .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+                if stored.0 != policy_sha256 || stored.1 != *policy_json {
+                    return Err(FindingOperatorBundleStoreError::Conflict);
+                }
+            }
         }
         tx.commit()
             .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
@@ -394,7 +464,7 @@ impl SqliteFindingOperatorBundleStore {
         &self,
         kind: FindingOperatorBundleArtifactKind,
         envelope_sha256: &str,
-    ) -> Result<FindingOperatorBundleRecord, FindingOperatorBundleStoreError> {
+    ) -> Result<FindingOperatorIndexedBundleRecord, FindingOperatorBundleStoreError> {
         validate_digest(envelope_sha256, "artifact envelope_sha256")?;
         let conn = self
             .pool
@@ -403,20 +473,30 @@ impl SqliteFindingOperatorBundleStore {
         let record = conn
             .query_row(
                 r#"
-                SELECT b.finding_id, b.bundle_sha256, b.bundle_json
+                SELECT b.finding_id,
+                       b.bundle_sha256,
+                       b.bundle_json,
+                       p.policy_sha256,
+                       p.policy_json
                 FROM chio_finding_operator_bundle_artifacts AS a
                 JOIN chio_finding_operator_bundles AS b
                   ON b.finding_id = a.finding_id
+                LEFT JOIN chio_finding_operator_artifact_authority_policies AS p
+                  ON p.artifact_kind = a.artifact_kind
+                 AND p.envelope_sha256 = a.envelope_sha256
+                 AND p.finding_id = a.finding_id
                 WHERE a.artifact_kind = ?1 AND a.envelope_sha256 = ?2
-                ORDER BY b.finding_id ASC
+                ORDER BY (p.policy_json IS NULL) ASC, b.finding_id ASC
                 LIMIT 1
                 "#,
                 params![kind.as_str(), envelope_sha256],
                 |row| {
-                    Ok(FindingOperatorBundleRecord {
+                    Ok(FindingOperatorIndexedBundleRecord {
                         finding_id: row.get(0)?,
                         bundle_sha256: row.get(1)?,
                         bundle_json: row.get(2)?,
+                        authority_policy_sha256: row.get(3)?,
+                        authority_policy_json: row.get(4)?,
                     })
                 },
             )
@@ -428,6 +508,24 @@ impl SqliteFindingOperatorBundleStore {
             return Err(FindingOperatorBundleStoreError::DigestMismatch);
         }
         validate_canonical_bundle(&record.bundle_json)?;
+        match (
+            record.authority_policy_sha256.as_deref(),
+            record.authority_policy_json.as_deref(),
+        ) {
+            (None, None) => {}
+            (Some(policy_sha256), Some(policy_json)) => {
+                validate_digest(policy_sha256, "artifact authority policy sha256")?;
+                validate_canonical_json(
+                    policy_json,
+                    MAX_ARTIFACT_AUTHORITY_POLICY_BYTES,
+                    "artifact authority policy",
+                )?;
+                if sha256_hex(policy_json) != policy_sha256 {
+                    return Err(FindingOperatorBundleStoreError::DigestMismatch);
+                }
+            }
+            _ => return Err(FindingOperatorBundleStoreError::DigestMismatch),
+        }
         Ok(record)
     }
 
@@ -1505,6 +1603,22 @@ fn validate_artifact_indexes(
             ));
         }
         validate_digest(&index.envelope_sha256, "artifact envelope_sha256")?;
+        if let Some(policy_json) = index.authority_policy_json.as_deref() {
+            if !matches!(
+                index.kind,
+                FindingOperatorBundleArtifactKind::Admission
+                    | FindingOperatorBundleArtifactKind::VerifierProfile
+            ) {
+                return Err(FindingOperatorBundleStoreError::Invalid(
+                    "artifact authority policy kind",
+                ));
+            }
+            validate_canonical_json(
+                policy_json,
+                MAX_ARTIFACT_AUTHORITY_POLICY_BYTES,
+                "artifact authority policy",
+            )?;
+        }
     }
     Ok(())
 }
@@ -1577,11 +1691,24 @@ mod tests {
     fn artifact_lookup_does_not_read_unrelated_bundles() {
         let store = SqliteFindingOperatorBundleStore::open_in_memory().unwrap();
         let unrelated_id = "0".repeat(64);
+        let legacy_id = "1".repeat(64);
         let indexed_id = "f".repeat(64);
         let unrelated = br#"{"bundle":"unrelated"}"#;
+        let legacy = br#"{"bundle":"legacy"}"#;
         let indexed = br#"{"bundle":"indexed"}"#;
         let envelope_sha256 = "a".repeat(64);
         store.put(&unrelated_id, unrelated).unwrap();
+        store
+            .put_with_artifact_indexes(
+                &legacy_id,
+                legacy,
+                &[FindingOperatorBundleArtifactIndex {
+                    kind: FindingOperatorBundleArtifactKind::Admission,
+                    envelope_sha256: envelope_sha256.clone(),
+                    authority_policy_json: None,
+                }],
+            )
+            .unwrap();
         store
             .put_with_artifact_indexes(
                 &indexed_id,
@@ -1589,6 +1716,7 @@ mod tests {
                 &[FindingOperatorBundleArtifactIndex {
                     kind: FindingOperatorBundleArtifactKind::Admission,
                     envelope_sha256: envelope_sha256.clone(),
+                    authority_policy_json: Some(br#"{"authority":"old"}"#.to_vec()),
                 }],
             )
             .unwrap();
@@ -1610,6 +1738,44 @@ mod tests {
             .unwrap();
         assert_eq!(resolved.finding_id, indexed_id);
         assert_eq!(resolved.bundle_json, indexed);
+        assert_eq!(
+            resolved.authority_policy_json.as_deref(),
+            Some(br#"{"authority":"old"}"#.as_slice())
+        );
+        assert_eq!(
+            resolved.authority_policy_sha256.as_deref(),
+            Some(sha256_hex(br#"{"authority":"old"}"#).as_str())
+        );
+
+        assert!(matches!(
+            store.put_with_artifact_indexes(
+                &"e".repeat(64),
+                br#"{"bundle":"conflicting-policy"}"#,
+                &[FindingOperatorBundleArtifactIndex {
+                    kind: FindingOperatorBundleArtifactKind::Admission,
+                    envelope_sha256,
+                    authority_policy_json: Some(br#"{"authority":"new"}"#.to_vec()),
+                }],
+            ),
+            Err(FindingOperatorBundleStoreError::Conflict)
+        ));
+
+        store
+            .pool
+            .get()
+            .unwrap()
+            .execute(
+                "UPDATE chio_finding_operator_artifact_authority_policies SET policy_json = ?1 WHERE artifact_kind = 'admission' AND envelope_sha256 = ?2",
+                params![b"{}".as_slice(), "a".repeat(64)],
+            )
+            .unwrap();
+        assert!(matches!(
+            store.get_by_artifact(
+                FindingOperatorBundleArtifactKind::Admission,
+                &"a".repeat(64),
+            ),
+            Err(FindingOperatorBundleStoreError::DigestMismatch)
+        ));
     }
 
     #[test]
@@ -1620,18 +1786,22 @@ mod tests {
             FindingOperatorBundleArtifactIndex {
                 kind: FindingOperatorBundleArtifactKind::FeeSchedule,
                 envelope_sha256: "1".repeat(64),
+                authority_policy_json: None,
             },
             FindingOperatorBundleArtifactIndex {
                 kind: FindingOperatorBundleArtifactKind::Admission,
                 envelope_sha256: "2".repeat(64),
+                authority_policy_json: None,
             },
             FindingOperatorBundleArtifactIndex {
                 kind: FindingOperatorBundleArtifactKind::VerifierProfile,
                 envelope_sha256: "3".repeat(64),
+                authority_policy_json: None,
             },
             FindingOperatorBundleArtifactIndex {
                 kind: FindingOperatorBundleArtifactKind::MarketTerms,
                 envelope_sha256: "4".repeat(64),
+                authority_policy_json: None,
             },
         ];
         store
