@@ -1493,6 +1493,9 @@ fn pending_participation_intent_is_recoverable_without_an_admission_lookup() {
 mod participation_fence;
 #[path = "finding_market_store_tests/sales_block.rs"]
 mod sales_block;
+
+#[path = "finding_market_store_tests/collateral_registration.rs"]
+mod collateral_registration;
 use participation_fence::activate_participation_admission;
 
 #[test]

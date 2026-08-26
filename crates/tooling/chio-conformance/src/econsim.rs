@@ -331,8 +331,10 @@ mod tests {
     #[test]
     fn complete_held_matrix_signs_and_verifies() {
         let signed = sign_econsim_qualification_matrix(matrix(), &Keypair::from_seed(&[7; 32]))
-            .expect("complete econsim matrix signs");
-        assert!(signed.verify_signature().expect("signature verifies"));
+            .unwrap_or_else(|error| panic!("complete econsim matrix signs: {error}"));
+        assert!(signed
+            .verify_signature()
+            .unwrap_or_else(|error| panic!("signature verifies: {error}")));
     }
 
     #[test]

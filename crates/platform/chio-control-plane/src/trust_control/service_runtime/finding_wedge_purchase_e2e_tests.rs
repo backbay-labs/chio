@@ -17,10 +17,10 @@ use super::finding_evidence_test_support::{
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
-use axum::body::Body;
+use axum::body::{Body, Bytes};
 use axum::http::Request;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
@@ -126,7 +126,12 @@ use chio_store_sqlite::{
     FindingPublicPurchaseRequestBinding, FindingPurchaseEncumbranceState,
     FindingPurchaseReservationState, FindingPurchaseSlotState, SqliteFindingStatusStore,
 };
+use futures_util::stream;
 
+#[path = "finding_wedge_purchase_e2e_tests/durable_finalization_tests.rs"]
+mod durable_finalization_tests;
+#[path = "finding_wedge_purchase_e2e_tests/operator_recovery_tests.rs"]
+mod operator_recovery_tests;
 #[path = "finding_wedge_purchase_e2e_tests/public_route_support.rs"]
 mod public_route_support;
 use public_route_support::{
@@ -141,9 +146,10 @@ use crate::trust_control::finding_purchase_coordinator::{
     PurchaseCoordinatorError,
 };
 use crate::trust_control::finding_purchase_routes::{
-    FindingPurchaseExecutionError, FindingPurchaseExecutor, FindingPurchaseRequest,
-    FindingPurchaseResult, FindingPurchaseSettlementTerminal, FindingPurchaseVerdict,
-    FindingPurchasedOutput, FINDING_PURCHASE_MAX_BODY_BYTES, FINDING_PURCHASE_MAX_OUTPUT_BYTES,
+    AuthenticatedFindingBuyer, FindingBuyerAuthenticationError, FindingPurchaseExecutionError,
+    FindingPurchaseExecutor, FindingPurchaseRequest, FindingPurchaseResult,
+    FindingPurchaseSettlementTerminal, FindingPurchaseVerdict, FindingPurchasedOutput,
+    FINDING_PURCHASE_MAX_BODY_BYTES, FINDING_PURCHASE_MAX_OUTPUT_BYTES,
     FINDING_PURCHASE_RESULT_SCHEMA,
 };
 use crate::trust_control::finding_purchase_verifier::MarketFindingPurchaseVerifier;
@@ -157,6 +163,7 @@ type AnyError = Box<dyn std::error::Error>;
 type TestResult = Result<(), AnyError>;
 
 const SERVICE_TOKEN: &str = "service-secret";
+const BUYER_TOKEN: &str = "buyer-secret";
 const VENUE_ID: &str = "venue-wedge";
 const LISTING_ID: &str = "listing-finding-purchase-0001";
 const SERVER_ID: &str = "finding-server.seller.example";
@@ -603,6 +610,11 @@ fn market_state(
         cluster_progress: None,
         finding_rail: Some(Arc::new(VenueLedgerRailObserver)),
         finding_purchase_executor: None,
+        finding_purchase_execution_lane: Arc::new(tokio::sync::Semaphore::new(1)),
+        finding_proof_egress_lane: Arc::new(tokio::sync::Semaphore::new(1)),
+        finding_seller_submission_executor: None,
+        finding_seller_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
+        finding_challenge_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
         finding_authority_status_resolver: Some(Arc::new(
             TestTerminalAuthorityStatusResolver::live(),
         )),
@@ -640,6 +652,15 @@ fn authed_post(uri: &str, body: impl Into<Body>) -> Result<Request<Body>, AnyErr
         .method("POST")
         .uri(uri)
         .header(AUTHORIZATION, format!("Bearer {SERVICE_TOKEN}"))
+        .header("content-type", "application/json")
+        .body(body.into())?)
+}
+
+fn buyer_post(uri: &str, body: impl Into<Body>) -> Result<Request<Body>, AnyError> {
+    Ok(Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header(AUTHORIZATION, format!("Bearer {BUYER_TOKEN}"))
         .header("content-type", "application/json")
         .body(body.into())?)
 }
@@ -2625,8 +2646,21 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
         self.authority.mutation_fence()
     }
 
+    fn authenticate_buyer(
+        &self,
+        bearer_token: &str,
+    ) -> Result<AuthenticatedFindingBuyer, FindingBuyerAuthenticationError> {
+        if bearer_token != BUYER_TOKEN {
+            return Err(FindingBuyerAuthenticationError);
+        }
+        let payer = self.buyer.public_key().to_hex();
+        AuthenticatedFindingBuyer::new("buyer-agent-1".to_owned(), payer, self.buyer.public_key())
+            .map_err(|_| FindingBuyerAuthenticationError)
+    }
+
     async fn execute(
         &self,
+        authenticated_buyer: AuthenticatedFindingBuyer,
         request: FindingPurchaseRequest,
     ) -> Result<FindingPurchaseResult, FindingPurchaseExecutionError> {
         self.attempts.fetch_add(1, Ordering::SeqCst);
@@ -2641,7 +2675,17 @@ impl FindingPurchaseExecutor for RoutedPurchaseExecutor {
         }
         let payer_key = self.buyer.public_key();
         let payer_hex = payer_key.to_hex();
-        let payer = request.payer.clone().unwrap_or_else(|| payer_hex.clone());
+        if authenticated_buyer.public_key() != &payer_key
+            || authenticated_buyer.payer() != payer_hex
+        {
+            return Err(FindingPurchaseExecutionError::Rejected(
+                "authenticated buyer does not match the executor key".to_owned(),
+            ));
+        }
+        let payer = request
+            .payer
+            .clone()
+            .unwrap_or_else(|| authenticated_buyer.payer().to_owned());
         if payer != payer_hex {
             return Err(FindingPurchaseExecutionError::Rejected(
                 "payer is not mapped to the authenticated buyer key".to_owned(),
@@ -2971,7 +3015,71 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
         status_proof_b64,
     }));
 
-    let (status, first_body) = send(&state, authed_post(&path, request_body.clone())?).await?;
+    // Load shedding precedes the mutex-backed market lookup. An unknown
+    // Finding would return 404 if the handler touched SQLite before acquiring
+    // the non-queued execution lane.
+    let busy_finding_id = "e".repeat(64);
+    let active_purchase = state
+        .finding_purchase_execution_lane
+        .clone()
+        .try_acquire_owned()?;
+    let body_polled = Arc::new(AtomicBool::new(false));
+    let body_poll_observation = Arc::clone(&body_polled);
+    let unpolled_body = Body::from_stream(stream::once(async move {
+        body_poll_observation.store(true, Ordering::SeqCst);
+        Ok::<Bytes, std::io::Error>(Bytes::from_static(b"{}"))
+    }));
+    let (status, body) = send(
+        &state,
+        buyer_post(
+            &format!("/v1/findings/{busy_finding_id}/purchase"),
+            unpolled_body,
+        )?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        json_body(&body)?["code"],
+        serde_json::json!("purchase_busy")
+    );
+    assert!(!body_polled.load(Ordering::SeqCst));
+    drop(active_purchase);
+    assert_eq!(attempts.load(Ordering::SeqCst), 0);
+
+    // Once the scoped runtime is installed, the global service token is not a
+    // buyer credential.
+    let (status, body) = send(&state, authed_post(&path, request_body.clone())?).await?;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        json_body(&body)?["code"],
+        serde_json::json!("purchase_unauthorized")
+    );
+
+    // The public operator route requires the authenticated payer in the
+    // request identity, so payer-omitted requests cannot collide across buyers.
+    let payer_omitted = FindingPurchaseRequest::new(
+        expected_finding_id.clone(),
+        PRICE_UNITS + 50,
+        "USD".to_owned(),
+        None,
+        Some(900),
+    )?;
+    let (status, body) = send(
+        &state,
+        buyer_post(&path, canonical_json_bytes(&payer_omitted)?)?,
+    )
+    .await?;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        json_body(&body)?["code"],
+        serde_json::json!("purchase_payer_required")
+    );
+    assert_eq!(calls.captures.load(Ordering::SeqCst), 0);
+    assert_eq!(calls.releases.load(Ordering::SeqCst), 0);
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    assert_eq!(attempts.load(Ordering::SeqCst), 0);
+
+    let (status, first_body) = send(&state, buyer_post(&path, request_body.clone())?).await?;
     assert_eq!(
         status,
         StatusCode::OK,
@@ -3051,7 +3159,7 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
     rotated_purchase.purchase.key_hex = keypair(18).public_key().to_hex();
     rotated_purchase.purchase.key_epoch = 2;
     purchase_clock.store(replay_now, Ordering::SeqCst);
-    let (status, replay_body) = send(&state, authed_post(&path, request_body)?).await?;
+    let (status, replay_body) = send(&state, buyer_post(&path, request_body)?).await?;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(replay_body, first_body);
     assert_eq!(calls.captures.load(Ordering::SeqCst), 1);
@@ -3085,7 +3193,7 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
         authority,
         result: forged,
     }));
-    let (status, body) = send(&state, authed_post(&path, canonical_json_bytes(&request)?)?).await?;
+    let (status, body) = send(&state, buyer_post(&path, canonical_json_bytes(&request)?)?).await?;
     assert_eq!(status, StatusCode::BAD_GATEWAY);
     assert_eq!(
         json_body(&body)?["code"],
@@ -5932,101 +6040,6 @@ async fn wedge_purchase_reservation_atomically_rejects_retracted_finding() -> Te
         .finding_purchase_store()
         .get_reservation(&exchange.reservation_id)?
         .is_none());
-    Ok(())
-}
-
-#[test]
-fn public_purchase_output_bound_cannot_reject_a_kernel_captured_output() {
-    assert_eq!(
-        FINDING_PURCHASE_MAX_OUTPUT_BYTES,
-        chio_kernel::tool_outcome::MAX_RAW_INVOCATION_OUTCOME_BYTES
-    );
-}
-
-/// Terminal selection and realized spend come from the durable kernel
-/// verdict and outcome, never from coordinator-call parameters.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn wedge_purchase_finalization_uses_the_durable_verdict_and_capture() -> TestResult {
-    let lane = open_lane(LaneOptions::standard()).await?;
-    let response = lane.reveal("wedge-overspend-1", "nonce-overspend-1")?;
-    assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
-
-    let purchase_store = lane.authority.finding_purchase_store();
-    let allocation_id = lane.deployment.web.allocation_id.clone();
-    let reservation_id = lane.purchase.handshake.reservation_id.clone();
-    let now = unix_timestamp_now();
-    purchase_store.register_community_fund_destination(
-        &allocation_id,
-        COMMUNITY_FUND_DESTINATION,
-        now,
-    )?;
-
-    let mut future_body = response.receipt.body();
-    future_body.timestamp = now.saturating_add(1);
-    let future_receipt = ChioReceipt::sign(future_body, &keypair(40))?;
-    assert!(matches!(
-        lane.coordinator.finalize_delivery(
-            &reservation_id,
-            &future_receipt,
-            &lane.deployment.web.admission,
-            &lane.deployment.web.backing,
-            now,
-        ),
-        Err(PurchaseCoordinatorError::TerminalEvidence(message))
-            if message.contains("ahead of the finalization clock")
-    ));
-
-    let (checkpoint, inclusion_proof) = denial_checkpoint(&response.receipt)?;
-    let refused = lane.coordinator.finalize_denial(
-        &reservation_id,
-        &response.receipt,
-        &lane.deployment.web.admission,
-        &checkpoint,
-        &inclusion_proof,
-        now,
-    );
-    assert!(matches!(
-        refused,
-        Err(PurchaseCoordinatorError::TerminalEvidence(_))
-    ));
-
-    // The refusal left the buyer payout unadmitted, kept the purchase slot
-    // reserved, and wrote no terminal record. Buyer payout promotion belongs
-    // to the same transaction as a valid settlement record.
-    assert_eq!(
-        purchase_store.list_payout_destinations(&allocation_id)?,
-        vec![(0_u8, COMMUNITY_FUND_DESTINATION.to_string())]
-    );
-    let slot = purchase_store
-        .get_slot(&reservation_id)?
-        .ok_or_else(|| missing("slot after the refused settlement"))?;
-    assert_eq!(slot.state, FindingPurchaseSlotState::Reserved);
-    let purchase_key = derive_purchase_key(
-        &lane.purchase.accepted_bid_envelope_sha256,
-        &derive_payment_operation_id(&reservation_id),
-    );
-    assert!(purchase_store.get_purchase_record(&purchase_key)?.is_none());
-
-    let record = lane.coordinator.finalize_delivery(
-        &reservation_id,
-        &response.receipt,
-        &lane.deployment.web.admission,
-        &lane.deployment.web.backing,
-        now,
-    )?;
-    verify_signed_purchase_record(&record, &keypair(16).public_key())?;
-    assert_eq!(record.body.accepted_price, usd(PRICE_UNITS));
-    assert_eq!(record.body.realized_spend, usd(PRICE_UNITS));
-    assert!(purchase_store
-        .get_purchase_record(&record.body.purchase_key)?
-        .is_some());
-    assert_eq!(
-        purchase_store.list_payout_destinations(&allocation_id)?,
-        vec![
-            (0_u8, COMMUNITY_FUND_DESTINATION.to_string()),
-            (1_u8, BUYER_PAYOUT.to_string()),
-        ]
-    );
     Ok(())
 }
 

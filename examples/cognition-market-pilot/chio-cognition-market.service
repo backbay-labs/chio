@@ -1,0 +1,25 @@
+[Unit]
+Description=Chio single-operator cognition market
+After=network.target
+
+[Service]
+Type=simple
+User=chio
+Group=chio
+UMask=0077
+ExecStart=/usr/local/bin/chio finding operator serve --profile /var/lib/chio/cognition-market/operator-profile.json
+Restart=on-failure
+RestartSec=2
+Delegate=memory pids
+MemoryMax=8G
+MemorySwapMax=0
+TasksMax=768
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/srv/chio/cognition-market-repositories
+ReadWritePaths=/var/lib/chio/cognition-market
+
+[Install]
+WantedBy=multi-user.target

@@ -1712,6 +1712,17 @@ impl FindingPurchaseCoordinator {
             .release_reservation(reservation_id, now)
             .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))
     }
+
+    /// Move one due reservation to the durable expired terminal.
+    pub fn expire_reservation(
+        &self,
+        reservation_id: &str,
+        now: u64,
+    ) -> Result<bool, PurchaseCoordinatorError> {
+        self.store
+            .expire_reservation(reservation_id, now)
+            .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))
+    }
 }
 
 /// Reservation reader over the coordinator store for the kernel's

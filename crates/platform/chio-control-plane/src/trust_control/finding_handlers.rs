@@ -14,9 +14,9 @@
 //! standalone artifact surfaces (publish, recipes, profiles).
 
 use chio_finding::{
-    required_finding_facets, verify_signed_authority_status, verify_signed_bond_backing,
-    verify_signed_profile, verify_signed_seller_authorization, verify_signed_verifier_report,
-    Finding, FindingAuthorityKeyPolicy, FindingFacetKind, FindingFacetOutcome, FindingFeeEvent,
+    required_finding_facets, verify_signed_authority_status, verify_signed_profile,
+    verify_signed_seller_authorization, verify_signed_verifier_report, Finding,
+    FindingAuthorityKeyPolicy, FindingFacetKind, FindingFacetOutcome, FindingFeeEvent,
     FindingGuaranteeClass, FindingPayee, FindingReplayRecipeInput, SignedFindingAdmission,
     SignedFindingAuthorityStatus, SignedFindingBondBacking, SignedFindingChallengeVerifierProfile,
     SignedFindingMarketTerms, SignedFindingSellerAuthorization, SignedFindingVerifierReport,
@@ -53,6 +53,12 @@ use admission_view::{
 #[path = "finding_handlers/participation.rs"]
 mod participation;
 use participation::reconcile_participation_fee_intent;
+#[path = "finding_handlers/collateral_replay.rs"]
+mod collateral_replay;
+use collateral_replay::{
+    prepare_collateral_registration, verify_collateral_authority_lifecycle,
+    FindingCollateralRegistrationRequest,
+};
 
 /// Publish body cap: strict canonical findings are small; anything larger
 /// is hostile or malformed. Enforced at the route layer and re-checked
@@ -78,55 +84,6 @@ const PROFILE_SCHEMA_JSON: &str = include_str!(
 struct FindingProfileRegistrationRequest {
     profile: SignedFindingChallengeVerifierProfile,
     governance_authority_status: SignedFindingAuthorityStatus,
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct FindingCollateralRegistrationRequest {
-    backing: SignedFindingBondBacking,
-    collateral_authority_status: SignedFindingAuthorityStatus,
-}
-
-fn verify_collateral_authority_lifecycle(
-    backing: &SignedFindingBondBacking,
-    authority_status: &SignedFindingAuthorityStatus,
-    config: &FindingMarketConfig,
-    now: u64,
-) -> Result<PublicKey, String> {
-    if !config.collateral.covers(backing.body.issued_at) || !config.collateral.covers(now) {
-        return Err("finding collateral authority is not live".to_owned());
-    }
-    let collateral_key = config.collateral.key().map_err(|error| error.to_string())?;
-    verify_signed_bond_backing(backing, &collateral_key).map_err(|error| error.to_string())?;
-    let status_key = config
-        .authority_status
-        .key()
-        .map_err(|error| error.to_string())?;
-    verify_signed_authority_status(authority_status, &status_key)
-        .map_err(|error| error.to_string())?;
-    let status = &authority_status.body;
-    if !config.authority_status.covers(status.observed_at) || !config.authority_status.covers(now) {
-        return Err("authority-status signer is not live".to_owned());
-    }
-    if status.status_ref != config.collateral.revocation_status_ref
-        || status.authority_id != config.collateral.authority_id
-        || status.key != collateral_key
-        || status.key_epoch != config.collateral.key_epoch
-    {
-        return Err("collateral authority status does not bind the deployment pin".to_owned());
-    }
-    if status.observed_at < backing.body.issued_at {
-        return Err("collateral authority status predates backing issuance".to_owned());
-    }
-    if status.observed_at > now
-        || now.saturating_sub(status.observed_at) > FINDING_AUTHORITY_STATUS_MAX_AGE_SECS
-    {
-        return Err("collateral authority status is not a fresh current reading".to_owned());
-    }
-    if status.revoked_from.is_some() {
-        return Err("collateral authority is revoked".to_owned());
-    }
-    Ok(collateral_key)
 }
 
 /// Deterministic instruction the venue-ledger rail settles. Its canonical
@@ -599,6 +556,11 @@ pub(crate) async fn handle_publish_finding(
             "artifactSha256": chio_core::sha256_hex(&strict_bytes),
         }))
         .into_response(),
+        Err(chio_store_sqlite::FindingMarketStoreError::Conflict(error))
+            if error == "collateral allocation id is bound to different backing" =>
+        {
+            plain_http_error(StatusCode::CONFLICT, &error)
+        }
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
 }
@@ -911,18 +873,25 @@ pub(crate) async fn handle_register_finding_collateral(
         Ok(None) => return plain_http_error(StatusCode::BAD_REQUEST, "unknown finding"),
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
-    let envelope_json = match chio_core::canonical_json_bytes(&backing)
-        .map_err(|_| ())
-        .and_then(|bytes| String::from_utf8(bytes).map_err(|_| ()))
-    {
+    let envelope_json = match prepare_collateral_registration(backing) {
         Ok(json) => json,
-        Err(()) => {
-            return plain_http_error(StatusCode::BAD_REQUEST, "backing failed canonicalization")
-        }
+        Err(response) => return response,
     };
-    match store.register_allocation(&envelope_json, &backing.body, now) {
-        Ok(()) => Json(serde_json::json!({
+    match store.register_allocation_idempotent(&envelope_json, &backing.body, now) {
+        Ok(chio_store_sqlite::FindingAllocationRegistrationOutcome::Registered { accepted_at }) => {
+            Json(serde_json::json!({
+                "allocationId": backing.body.allocation_id,
+                "acceptedAt": accepted_at,
+                "exactReplay": false,
+            }))
+            .into_response()
+        }
+        Ok(chio_store_sqlite::FindingAllocationRegistrationOutcome::ExactReplay {
+            accepted_at,
+        }) => Json(serde_json::json!({
             "allocationId": backing.body.allocation_id,
+            "acceptedAt": accepted_at,
+            "exactReplay": true,
         }))
         .into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),

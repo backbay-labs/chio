@@ -26,6 +26,22 @@ pub(crate) struct TrustServiceState {
     /// coordinator, durable store, and purchase-aware kernel are wired.
     pub(crate) finding_purchase_executor:
         Option<super::super::finding_purchase_routes::SharedFindingPurchaseExecutor>,
+    /// One non-queued permit held while a synchronous purchase adapter runs on
+    /// Tokio's blocking pool.
+    pub(crate) finding_purchase_execution_lane: Arc<tokio::sync::Semaphore>,
+    /// One non-queued permit held until a public proof response is fully sent
+    /// or its egress deadline terminates the stream.
+    pub(crate) finding_proof_egress_lane: Arc<tokio::sync::Semaphore>,
+    /// Scoped high-level seller workflow. It retains all privileged authoring
+    /// keys inside the operator process.
+    pub(crate) finding_seller_submission_executor:
+        Option<super::super::finding_operator_seller_routes::SharedFindingSellerSubmissionExecutor>,
+    /// One non-queued permit acquired before seller work enters Tokio's
+    /// blocking pool. Submission and retraction share this bounded lane.
+    pub(crate) finding_seller_submission_lane: Arc<tokio::sync::Semaphore>,
+    /// One non-queued permit acquired before challenge coordination enters
+    /// Tokio's blocking pool. Buyer submissions and venue audits share it.
+    pub(crate) finding_challenge_submission_lane: Arc<tokio::sync::Semaphore>,
     /// Fresh authority-status source for admission read paths. Without it,
     /// search and admission endpoints omit admission state fail-closed.
     pub(crate) finding_authority_status_resolver: Option<

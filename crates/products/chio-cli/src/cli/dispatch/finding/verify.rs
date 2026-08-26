@@ -1151,7 +1151,10 @@ mod tests {
         )
         .err()
         .ok_or_else(|| CliError::cli_other_error("retracted Finding was revived".to_string()))?;
-        assert!(error.to_string().contains("durably retracted"));
+        assert!(
+            error.to_string().contains("durably retracted"),
+            "unexpected error: {error}"
+        );
         Ok(())
     }
 

@@ -84,6 +84,8 @@ pub use public_request::{
 #[path = "finding_purchase_reservation_input.rs"]
 mod reservation_input;
 use reservation_input::{encumbrance_matches, reservation_matches, validate_reservation_input};
+#[path = "finding_purchase_store/operator_recovery.rs"]
+mod operator_recovery;
 
 const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
 /// Revision 12 retains pre-v11 terminals as undisclosable history; revision 11

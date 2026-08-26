@@ -5,7 +5,6 @@ use super::finding_evidence_test_support::{
     checkpoint_at, make_signed_finding_report as make_signed_report, matched_delivery_metadata,
     FindingReportInputs as ReportInputs,
 };
-
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -611,6 +610,11 @@ fn market_state(
         cluster_progress: None,
         finding_rail: Some(rail),
         finding_purchase_executor: None,
+        finding_purchase_execution_lane: Arc::new(tokio::sync::Semaphore::new(1)),
+        finding_proof_egress_lane: Arc::new(tokio::sync::Semaphore::new(1)),
+        finding_seller_submission_executor: None,
+        finding_seller_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
+        finding_challenge_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
         finding_authority_status_resolver: Some(Arc::new(
             TestStatusOperatorAuthorityResolver::default(),
         )),
@@ -1923,7 +1927,8 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
     .await?;
     assert_eq!(status, StatusCode::NOT_FOUND);
 
-    // Reused collateral: the same allocation registers exactly once.
+    // Reused collateral: the same allocation returns the original acceptance
+    // without registering or charging it twice.
     let (status, body) = send(
         &stack.state,
         authed_post(
@@ -1932,13 +1937,11 @@ pub(super) async fn run_finding_publish_discover_admission() -> TestResult {
         )?,
     )
     .await?;
-    assert_eq!(
-        status,
-        StatusCode::BAD_REQUEST,
-        "{}",
-        String::from_utf8_lossy(&body)
-    );
-    assert!(String::from_utf8_lossy(&body).contains("already registered"));
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let replay = json_body(&body)?;
+    assert_eq!(replay["exactReplay"], serde_json::json!(true));
+    assert_eq!(replay["allocationId"], web.backing.body.allocation_id);
+    assert!(replay["acceptedAt"].as_u64().is_some_and(|value| value > 0));
 
     // Rejection sweep over the activation surface. Every leg asserts the
     // specific status and that nothing was admitted.
@@ -3227,7 +3230,6 @@ async fn unpaid_epoch_drops_the_marker_until_renewal() -> TestResult {
     stack.seed_market().await?;
     let (status, body) = stack.activate().await?;
     assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
-
     tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
     assert!(
         stack.admission_marker().await?.is_none(),
@@ -3401,7 +3403,6 @@ async fn expired_admission_loses_the_marker() -> TestResult {
     let (status, body) = stack.activate().await?;
     assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
     assert!(stack.admission_marker().await?.is_some());
-
     let remaining = expires_at.saturating_sub(unix_timestamp_now()) + 1;
     tokio::time::sleep(std::time::Duration::from_secs(remaining)).await;
     assert!(

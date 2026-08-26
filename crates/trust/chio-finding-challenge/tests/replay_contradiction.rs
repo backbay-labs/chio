@@ -395,7 +395,8 @@ fn a_recipe_preimage_that_is_not_the_committed_one_rejects_before_evaluation() -
 
 #[test]
 fn a_committed_recipe_must_bind_the_challenged_finding_and_profile() -> TestResult {
-    let cases: [(&str, fn(&mut FindingReplayRecipeInput)); 4] = [
+    type RecipeMutation = fn(&mut FindingReplayRecipeInput);
+    let cases: [(&str, RecipeMutation); 4] = [
         ("context_sha256", |recipe| {
             recipe.context_sha256 = HEX64_ALT.to_string()
         }),

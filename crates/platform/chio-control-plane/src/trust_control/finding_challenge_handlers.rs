@@ -6,6 +6,8 @@
 //! configured submission executor. Deployments that do not configure that
 //! executor fail closed before any filing side effect.
 
+use axum::body::{Body, Bytes};
+use axum::extract::Request;
 use chio_finding::{verify_signed_challenge, Finding, SignedFindingChallenge};
 use chio_store_sqlite::{FindingChallengeAuthorizationBranch, FindingChallengeWriteOutcome};
 
@@ -32,6 +34,7 @@ const FINDING_SCHEMA_LABEL: &str = "chio-finding/v1/finding.schema.json";
 /// derived fields and the signed-envelope wrapper. One MiB admits every valid
 /// CLI construction while keeping parsing and canonicalization bounded.
 pub(crate) const FINDING_CHALLENGE_SUBMIT_MAX_BODY_BYTES: usize = 1024 * 1024;
+const FINDING_CHALLENGE_BODY_READ_DEADLINE: Duration = Duration::from_secs(30);
 
 /// Closed route request over the registered signed challenge envelope.
 ///
@@ -193,12 +196,8 @@ impl FindingChallengeSubmissionExecutor for FindingChallengeCoordinator {
 pub(crate) async fn handle_submit_finding_challenge(
     State(state): State<TrustServiceState>,
     AxumPath(finding_id): AxumPath<String>,
-    headers: HeaderMap,
-    raw_challenge_envelope: String,
+    request: Request,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
     let (config, store) = match finding_market_context(&state) {
         Ok(context) => context,
         Err(response) => return response,
@@ -210,98 +209,203 @@ pub(crate) async fn handle_submit_finding_challenge(
         );
     };
 
-    let (_, request) = match strict_artifact_ingress::<FindingChallengeSubmissionRequest>(
-        &raw_challenge_envelope,
-        FINDING_CHALLENGE_SUBMIT_MAX_BODY_BYTES,
-        FINDING_CHALLENGE_SCHEMA_JSON,
-        FINDING_CHALLENGE_SCHEMA_LABEL,
-    ) {
-        Ok(accepted) => accepted,
-        Err(response) => return response,
+    let permit = match try_acquire_challenge_lane(&state.finding_challenge_submission_lane) {
+        Ok(permit) => permit,
+        Err(_) => {
+            return plain_http_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "finding challenge submission lane is busy",
+            )
+        }
     };
-    if request.challenge.body.finding_id != finding_id {
-        return plain_http_error(
-            StatusCode::BAD_REQUEST,
-            "challenge finding id does not match the request path",
-        );
-    }
-
-    // A buyer signs for itself, while a venue audit signs under the
-    // authority retained for the round it names. The coordinator resolves
-    // that historical policy after binding the exact durable envelope.
-    // Checking an audit against only the deployment's current key here
-    // would strand an otherwise valid in-flight round after rotation.
-    if matches!(
-        &request.challenge.body.authorization,
-        chio_finding::FindingChallengeAuthorization::BuyerSubmission(_)
-    ) {
-        let audit_authority = match config.audit_authority.key() {
-            Ok(authority) => authority,
+    let (parts, body) = request.into_parts();
+    let headers = parts.headers;
+    let (raw_challenge_envelope, permit) =
+        match collect_challenge_body(body, permit, FINDING_CHALLENGE_BODY_READ_DEADLINE).await {
+            Ok(collected) => collected,
+            Err(response) => return response,
+        };
+    let executor = Arc::clone(executor);
+    let purchase_executor = state.finding_purchase_executor.clone();
+    let service_token = state.config.service_token.clone();
+    let response = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        let raw_challenge_envelope = match std::str::from_utf8(&raw_challenge_envelope) {
+            Ok(raw) => raw,
             Err(_) => {
                 return plain_http_error(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "finding challenge audit authority is misconfigured",
+                    StatusCode::BAD_REQUEST,
+                    "finding challenge body is not UTF-8",
                 )
             }
         };
-        if verify_signed_challenge(&request.challenge, &audit_authority).is_err() {
-            return plain_http_error(StatusCode::BAD_REQUEST, "signed challenge rejected");
-        }
-    }
-
-    let raw_finding = match store.get_finding_bytes(&finding_id) {
-        Ok(Some(bytes)) => bytes,
-        Ok(None) => return plain_http_error(StatusCode::NOT_FOUND, "unknown finding"),
-        Err(_) => {
+        let (_, request) = match strict_artifact_ingress::<FindingChallengeSubmissionRequest>(
+            raw_challenge_envelope,
+            FINDING_CHALLENGE_SUBMIT_MAX_BODY_BYTES,
+            FINDING_CHALLENGE_SCHEMA_JSON,
+            FINDING_CHALLENGE_SCHEMA_LABEL,
+        ) {
+            Ok(accepted) => accepted,
+            Err(response) => return response,
+        };
+        if request.challenge.body.finding_id != finding_id {
             return plain_http_error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "finding store is unavailable",
-            )
+                StatusCode::BAD_REQUEST,
+                "challenge finding id does not match the request path",
+            );
         }
-    };
-    let (_, stored_finding) = match strict_artifact_ingress::<Finding>(
-        &raw_finding,
-        FINDING_PUBLISH_MAX_BODY_BYTES,
-        FINDING_SCHEMA_JSON,
-        FINDING_SCHEMA_LABEL,
-    ) {
-        Ok(accepted) => accepted,
-        Err(_) => {
+
+        match &request.challenge.body.authorization {
+            chio_finding::FindingChallengeAuthorization::BuyerSubmission(submission) => {
+                let authenticated = purchase_executor.as_ref().and_then(|executor| {
+                    bearer_token(&headers).and_then(|token| executor.authenticate_buyer(token).ok())
+                });
+                if let Some(buyer) = authenticated {
+                    if buyer.public_key() != &submission.challenger {
+                        return plain_http_error(
+                            StatusCode::UNAUTHORIZED,
+                            "buyer challenge credential does not match the challenger",
+                        );
+                    }
+                } else if purchase_executor.is_some() {
+                    return plain_http_error(
+                        StatusCode::UNAUTHORIZED,
+                        "buyer challenge authentication failed",
+                    );
+                } else if let Err(response) = validate_service_auth(&headers, &service_token) {
+                    return response;
+                }
+            }
+            chio_finding::FindingChallengeAuthorization::VenueAudit(_) => {
+                if let Err(response) = validate_service_auth(&headers, &service_token) {
+                    return response;
+                }
+            }
+        }
+
+        // A buyer signs for itself, while a venue audit signs under the
+        // authority retained for the round it names. The coordinator resolves
+        // that historical policy after binding the exact durable envelope.
+        // Checking an audit against only the deployment's current key here
+        // would strand an otherwise valid in-flight round after rotation.
+        if matches!(
+            &request.challenge.body.authorization,
+            chio_finding::FindingChallengeAuthorization::BuyerSubmission(_)
+        ) {
+            let audit_authority = match config.audit_authority.key() {
+                Ok(authority) => authority,
+                Err(_) => {
+                    return plain_http_error(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "finding challenge audit authority is misconfigured",
+                    )
+                }
+            };
+            if verify_signed_challenge(&request.challenge, &audit_authority).is_err() {
+                return plain_http_error(StatusCode::BAD_REQUEST, "signed challenge rejected");
+            }
+        }
+
+        let raw_finding = match store.get_finding_bytes(&finding_id) {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => return plain_http_error(StatusCode::NOT_FOUND, "unknown finding"),
+            Err(_) => {
+                return plain_http_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "finding store is unavailable",
+                )
+            }
+        };
+        let (_, stored_finding) = match strict_artifact_ingress::<Finding>(
+            &raw_finding,
+            FINDING_PUBLISH_MAX_BODY_BYTES,
+            FINDING_SCHEMA_JSON,
+            FINDING_SCHEMA_LABEL,
+        ) {
+            Ok(accepted) => accepted,
+            Err(_) => {
+                return plain_http_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "stored finding failed integrity verification",
+                )
+            }
+        };
+        if chio_finding::verify_finding(&stored_finding).is_err()
+            || stored_finding.finding_id != finding_id
+        {
             return plain_http_error(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "stored finding failed integrity verification",
-            )
+            );
         }
-    };
-    if chio_finding::verify_finding(&stored_finding).is_err()
-        || stored_finding.finding_id != finding_id
-    {
-        return plain_http_error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "stored finding failed integrity verification",
-        );
-    }
-    if chio_core::sha256_hex(raw_finding.as_bytes())
-        != request.challenge.body.finding_artifact_sha256
-    {
-        return plain_http_error(
-            StatusCode::BAD_REQUEST,
-            "challenge does not bind the stored finding",
-        );
-    }
+        if chio_core::sha256_hex(raw_finding.as_bytes())
+            != request.challenge.body.finding_artifact_sha256
+        {
+            return plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "challenge does not bind the stored finding",
+            );
+        }
 
-    match executor.submit(
-        &request,
-        &raw_challenge_envelope,
-        &raw_finding,
-        unix_timestamp_now(),
-    ) {
-        Ok(outcome) => Json(FindingChallengeSubmissionResponse::from(outcome)).into_response(),
-        Err(error) if coordinator_unavailable(&error) => {
-            plain_http_error(StatusCode::SERVICE_UNAVAILABLE, &error.to_string())
+        match executor.submit(
+            &request,
+            raw_challenge_envelope,
+            &raw_finding,
+            unix_timestamp_now(),
+        ) {
+            Ok(outcome) => Json(FindingChallengeSubmissionResponse::from(outcome)).into_response(),
+            Err(error) if coordinator_unavailable(&error) => {
+                plain_http_error(StatusCode::SERVICE_UNAVAILABLE, &error.to_string())
+            }
+            Err(error) => plain_http_error(StatusCode::UNPROCESSABLE_ENTITY, &error.to_string()),
         }
-        Err(error) => plain_http_error(StatusCode::UNPROCESSABLE_ENTITY, &error.to_string()),
+    })
+    .await;
+    match response {
+        Ok(response) => response,
+        Err(_) => plain_http_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "finding challenge submission worker failed",
+        ),
     }
+}
+
+async fn collect_challenge_body(
+    body: Body,
+    permit: tokio::sync::OwnedSemaphorePermit,
+    deadline: Duration,
+) -> Result<(Bytes, tokio::sync::OwnedSemaphorePermit), Response> {
+    match tokio::time::timeout(
+        deadline,
+        axum::body::to_bytes(body, FINDING_CHALLENGE_SUBMIT_MAX_BODY_BYTES),
+    )
+    .await
+    {
+        Ok(Ok(bytes)) => Ok((bytes, permit)),
+        Ok(Err(_)) => Err(plain_http_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "finding challenge exceeds the body bound",
+        )),
+        Err(_) => Err(plain_http_error(
+            StatusCode::REQUEST_TIMEOUT,
+            "finding challenge body read timed out",
+        )),
+    }
+}
+
+fn try_acquire_challenge_lane(
+    lane: &Arc<tokio::sync::Semaphore>,
+) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+    lane.clone().try_acquire_owned()
+}
+
+fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .strip_prefix("Bearer ")
+        .filter(|token| !token.is_empty())
 }
 
 fn coordinator_unavailable(error: &ChallengeCoordinatorError) -> bool {
@@ -312,6 +416,7 @@ fn coordinator_unavailable(error: &ChallengeCoordinatorError) -> bool {
             | ChallengeCoordinatorError::AuthorityLifecycle { .. }
             | ChallengeCoordinatorError::FeeRail(_)
             | ChallengeCoordinatorError::DisputeBondRail(_)
+            | ChallengeCoordinatorError::FilingResolver(_)
             | ChallengeCoordinatorError::ChallengeStore(_)
             | ChallengeCoordinatorError::PurchaseStore(_)
             | ChallengeCoordinatorError::ChallengeEnvelope(_)
@@ -322,8 +427,12 @@ fn coordinator_unavailable(error: &ChallengeCoordinatorError) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::coordinator_unavailable;
+    use super::{collect_challenge_body, coordinator_unavailable, try_acquire_challenge_lane};
     use crate::trust_control::finding_challenge_coordinator::ChallengeCoordinatorError;
+    use axum::body::{Body, Bytes};
+    use axum::http::StatusCode;
+    use futures_util::stream;
+    use std::time::Duration;
 
     #[test]
     fn dispute_bond_rail_failures_are_retryable_service_outages() {
@@ -333,5 +442,33 @@ mod tests {
         assert!(!coordinator_unavailable(
             &ChallengeCoordinatorError::DisputeBondWindow
         ));
+        assert!(coordinator_unavailable(
+            &ChallengeCoordinatorError::FilingResolver("store unavailable".to_owned())
+        ));
+    }
+
+    #[test]
+    fn challenge_submission_lane_is_non_queued() {
+        let lane = std::sync::Arc::new(tokio::sync::Semaphore::new(1));
+        let permit = try_acquire_challenge_lane(&lane)
+            .unwrap_or_else(|error| panic!("first challenge permit: {error}"));
+        assert!(try_acquire_challenge_lane(&lane).is_err());
+        drop(permit);
+        assert!(try_acquire_challenge_lane(&lane).is_ok());
+    }
+
+    #[tokio::test]
+    async fn challenge_body_deadline_releases_the_submission_lane() {
+        let lane = std::sync::Arc::new(tokio::sync::Semaphore::new(1));
+        let permit = try_acquire_challenge_lane(&lane)
+            .unwrap_or_else(|error| panic!("challenge permit: {error}"));
+        let body = Body::from_stream(stream::pending::<Result<Bytes, std::io::Error>>());
+        assert!(try_acquire_challenge_lane(&lane).is_err());
+        let response = match collect_challenge_body(body, permit, Duration::from_millis(10)).await {
+            Ok(_) => panic!("stalled challenge body unexpectedly completed"),
+            Err(response) => response,
+        };
+        assert_eq!(response.status(), StatusCode::REQUEST_TIMEOUT);
+        assert!(try_acquire_challenge_lane(&lane).is_ok());
     }
 }

@@ -168,6 +168,67 @@ fn compute_intent_id(body: &FindingStatusIntentSubmission) -> Result<String, Res
     Ok(sha256_hex(&bytes))
 }
 
+/// Build the exact seller-signed, operator-countersigned voluntary retraction
+/// submitted to the status outbox. The caller still has to send it through
+/// the authenticated route, which reloads the retained Finding and proves the
+/// seller key is its issuer.
+pub fn build_operator_voluntary_retraction(
+    market: &FindingMarketConfig,
+    seller: &chio_core::crypto::Keypair,
+    status_operator: &chio_core::crypto::Keypair,
+    finding_id: &str,
+    issued_at: u64,
+) -> Result<Vec<u8>, String> {
+    market.validate().map_err(|error| error.to_string())?;
+    require_hex64(finding_id, "finding_id").map_err(|_| "finding_id is invalid".to_owned())?;
+    let expected_operator = market
+        .status_feed_operator
+        .authority
+        .key()
+        .map_err(|error| error.to_string())?;
+    if status_operator.public_key() != expected_operator {
+        return Err("status operator key does not match the configured pin".to_owned());
+    }
+    let source_authority_id = seller.public_key().to_hex();
+    let source_receipt = SignedExportEnvelope::sign(
+        FindingVoluntaryRetractionReceipt {
+            schema: FINDING_VOLUNTARY_RETRACTION_RECEIPT_SCHEMA.to_owned(),
+            feed_id: market.status_feed_operator.feed_id.clone(),
+            key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+            finding_id: finding_id.to_owned(),
+            source_authority_id: source_authority_id.clone(),
+            issued_at,
+        },
+        seller,
+    )
+    .map_err(|error| error.to_string())?;
+    let source_receipt_sha256 =
+        chio_finding::signed_envelope_sha256(&source_receipt).map_err(|error| error.to_string())?;
+    let inclusion_deadline = issued_at
+        .checked_add(market.status_feed_service_bond.inclusion_sla_secs)
+        .ok_or_else(|| "status intent inclusion deadline overflowed".to_owned())?;
+    let mut body = FindingStatusIntentSubmission {
+        schema: FINDING_STATUS_INTENT_SCHEMA.to_owned(),
+        intent_id: String::new(),
+        feed_id: market.status_feed_operator.feed_id.clone(),
+        key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
+        finding_id: finding_id.to_owned(),
+        source: FindingStatusIntentSource::Voluntary,
+        source_authority_id,
+        source_receipt_sha256,
+        source_receipt,
+        operator_id: market.status_feed_operator.authority.authority_id.clone(),
+        operator_key_epoch: market.status_feed_operator.authority.key_epoch,
+        issued_at,
+        inclusion_deadline,
+    };
+    body.intent_id = compute_intent_id(&body)
+        .map_err(|_| "status intent identity cannot be derived".to_owned())?;
+    let signed =
+        SignedExportEnvelope::sign(body, status_operator).map_err(|error| error.to_string())?;
+    canonical_json_bytes(&signed).map_err(|error| error.to_string())
+}
+
 fn require_hex64(value: &str, label: &'static str) -> Result<(), Response> {
     if value.len() != 64
         || !value
@@ -1045,6 +1106,11 @@ mod tests {
             cluster_progress: None,
             finding_rail: None,
             finding_purchase_executor: None,
+            finding_purchase_execution_lane: Arc::new(tokio::sync::Semaphore::new(1)),
+            finding_proof_egress_lane: Arc::new(tokio::sync::Semaphore::new(1)),
+            finding_seller_submission_executor: None,
+            finding_seller_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
+            finding_challenge_submission_lane: Arc::new(tokio::sync::Semaphore::new(1)),
             finding_authority_status_resolver: None,
             finding_challenge_executor: None,
         }

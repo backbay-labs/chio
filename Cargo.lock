@@ -3182,6 +3182,7 @@ dependencies = [
  "chrono",
  "ciborium",
  "clap 4.6.0",
+ "futures-util",
  "hex",
  "libc",
  "nix",

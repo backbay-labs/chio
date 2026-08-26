@@ -1,7 +1,7 @@
 //! Retention behavior tests (co-archive-and-delete, watermark, chain
 //! exemption, size convergence, recovery).
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chio_kernel::{ReceiptStoreError, RetentionConfig};
 
@@ -1799,9 +1799,9 @@ fn repair_creates_missing_watermark_ledger_on_legacy_store(
     let removed = store.retention_repair(archive_path)?;
     assert!(removed > 0, "repair removed the extra claim-log rows");
     drop(store);
-
     // The repair recorded a watermark and the store reopens healthy.
     let repaired = SqliteReceiptStore::open(&path)?;
+    repaired.wait_for_writer_ready(Duration::from_secs(10))?;
     assert!(repaired.receipt_store_health()?.healthy);
 
     let _ = std::fs::remove_file(&path);

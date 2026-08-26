@@ -403,23 +403,23 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-control-plane/src/trust_control/finding_challenge_coordinator.rs": allow(
         "2026-08-31",
-        "cognition challenge lifecycle coordinator; capped to current size until split",
-        max_lines=6_481,
+        "cognition challenge lifecycle coordinator with fallible historical resolver handling; capped to current M10 size until split",
+        max_lines=6_516,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_challenge_enforcement_e2e_tests.rs": allow(
         "2026-08-31",
-        "cognition challenge enforcement end-to-end regression suite with explicit unavailable-status and authority-rotation coverage; capped to current size until split",
-        max_lines=11_436,
+        "cognition challenge enforcement end-to-end regression suite with unavailable-status, authority-rotation, and bounded admission coverage; capped to current M10 size until split",
+        max_lines=11_458,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs": allow(
         "2026-08-31",
-        "cognition market exit regression suite with status-gated activation and admission-view coverage; capped to current size until split",
-        max_lines=3_437,
+        "cognition market exit regression suite with status-gated activation, admission-view, and replay coverage; capped to current M10 size until split",
+        max_lines=3_438,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
         "2026-08-31",
-        "cognition purchase and recovery end-to-end regression suite with durable public-terminal replay and closeout dogfood evidence; capped until split",
-        max_lines=6_201,
+        "cognition purchase and recovery end-to-end regression suite with bounded buyer admission and durable replay coverage; capped to current M10 size until split",
+        max_lines=6_213,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
         "2026-08-31",

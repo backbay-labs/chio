@@ -5,6 +5,44 @@ use super::*;
 /// pinned evidence, purchase a reveal, and open a dispute.
 #[derive(Subcommand)]
 pub(crate) enum FindingCommands {
+    /// Initialize, serve, or reconcile a single-operator cognition market.
+    Operator {
+        #[command(subcommand)]
+        command: FindingOperatorCommands,
+    },
+
+    /// Build a signed cognition-market package from ordinary development files.
+    Package {
+        #[command(subcommand)]
+        command: FindingPackageCommands,
+    },
+
+    /// Admit a verified-fix draft through the running local operator.
+    Admit {
+        /// Strict canonical operator profile.
+        #[arg(long)]
+        profile: PathBuf,
+        /// Draft emitted by `chio finding package verified-fix`.
+        #[arg(long)]
+        package: PathBuf,
+    },
+
+    /// Re-run the Rust reference verifier over a public proof bundle.
+    VerifyBundle {
+        /// Proof bundle file, or `-` for standard input.
+        #[arg(long)]
+        input: PathBuf,
+        /// Strict canonical operator profile containing public deployment pins.
+        #[arg(long)]
+        profile: PathBuf,
+        /// Exact canonical purchase request to bind to an optional result.
+        #[arg(long, requires = "purchase_result")]
+        purchase_request: Option<PathBuf>,
+        /// Exact canonical purchase result whose signed terminal is verified.
+        #[arg(long, requires = "purchase_request")]
+        purchase_result: Option<PathBuf>,
+    },
+
     /// Publish a canonical `chio.finding.v1` artifact to the venue index.
     Publish {
         /// Canonical artifact file. The bytes are sent verbatim; the venue
@@ -188,6 +226,82 @@ pub(crate) enum FindingCommands {
         /// produced, and their digests, without transmitting anything.
         #[arg(long, default_value_t = false)]
         dry_run: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum FindingPackageCommands {
+    /// Prove a failing baseline and passing candidate, then package their patch.
+    VerifiedFix {
+        /// Strict canonical operator profile.
+        #[arg(long)]
+        profile: PathBuf,
+        /// Git repository containing both revisions.
+        #[arg(long)]
+        repository: PathBuf,
+        /// Baseline commit or revision that must fail at least one test.
+        #[arg(long)]
+        base: String,
+        /// Candidate commit or revision that must pass every test.
+        #[arg(long)]
+        candidate: String,
+        /// Test command. Repeat this flag to run more than one command.
+        #[arg(long = "test", required = true)]
+        tests: Vec<String>,
+        /// Finding topic used by market discovery.
+        #[arg(long)]
+        topic: String,
+        /// Configured seller principal used to sign the Finding.
+        #[arg(long, default_value = "coding-agent-seller")]
+        seller: String,
+        /// Listing price in USD minor units.
+        #[arg(long, default_value_t = 300)]
+        price: u64,
+        /// Output path. Defaults to the profile's packages directory.
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum FindingOperatorCommands {
+    /// Create a strict local operator profile and its durable stores.
+    Init {
+        /// New or empty deployment directory.
+        #[arg(long)]
+        directory: PathBuf,
+        /// HTTP address for the operator service.
+        #[arg(long, default_value = "127.0.0.1:7143")]
+        listen: std::net::SocketAddr,
+        /// Existing root containing every seller-accessible source repository.
+        #[arg(long)]
+        repository_root: PathBuf,
+        /// Initial buyer principal installed in the profile.
+        #[arg(long, default_value = "coding-agent-buyer")]
+        buyer_principal: String,
+        /// Canonical EVM destination used for initial buyer compensation.
+        #[arg(long, default_value = "0x1111111111111111111111111111111111111111")]
+        buyer_payout: String,
+        /// Initial seller principal installed in the profile.
+        #[arg(long, default_value = "coding-agent-seller")]
+        seller_principal: String,
+        /// Canonical EVM destination used for initial seller proceeds.
+        #[arg(long, default_value = "0x2222222222222222222222222222222222222222")]
+        seller_payout: String,
+    },
+
+    /// Run the production-composed purchase service from one profile.
+    Serve {
+        /// Strict canonical operator profile created by `operator init`.
+        #[arg(long)]
+        profile: PathBuf,
+    },
+
+    /// Reconcile durable operator work and print current health counters.
+    Tick {
+        /// Strict canonical operator profile created by `operator init`.
+        #[arg(long)]
+        profile: PathBuf,
     },
 }
 
