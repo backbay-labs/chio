@@ -41,7 +41,8 @@ use chio_store_sqlite::{
 use subtle::ConstantTimeEq;
 
 use super::finding_verified_fix::{
-    read_canonical_file, reconcile_admission_jobs, write_private_atomic,
+    read_canonical_file, reconcile_admission_jobs, run_bounded_output_command_capture,
+    write_private_atomic,
 };
 
 const PROFILE_FILE: &str = "operator-profile.json";
@@ -60,6 +61,8 @@ const SELLER_SUBMISSION_STORAGE_MAX_ENTRIES: u64 = 100_000;
 const SELLER_SUBMISSION_RESERVED_ENTRIES: u64 =
     super::finding_verified_fix::REPOSITORY_STAGE_MAX_ENTRIES + 2;
 const SELLER_RETRACTION_JOB_SCHEMA: &str = "chio.finding.seller-retraction-job.v1";
+const SELLER_PACKAGE_COMMAND_TIMEOUT: Duration = Duration::from_secs(330);
+const SELLER_ADMISSION_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
 const INIT_COMPLETE_FILE: &str = "operator-init-complete.json";
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -319,7 +322,16 @@ impl OperatorSellerSubmissionExecutor {
                 principal,
                 &job.request_sha256,
             ) {
-                Ok(_) => Err(original),
+                Ok(_) => match reclaim_nonrecoverable_submission_files(
+                    &original,
+                    &job_path,
+                    &package_path,
+                ) {
+                    Ok(()) => Err(original),
+                    Err(cleanup) => Err(FindingSellerSubmissionError::Internal(format!(
+                        "{original}; failed verified-fix reclamation failed: {cleanup}"
+                    ))),
+                },
                 Err(cleanup) => Err(FindingSellerSubmissionError::Internal(format!(
                     "{original}; seller artifact capacity cleanup failed: {cleanup}"
                 ))),
@@ -630,34 +642,64 @@ fn operator_status_error(status: u16, body: &str) -> FindingSellerSubmissionErro
 }
 
 fn run_chio_json(args: &[String]) -> Result<serde_json::Value, FindingSellerSubmissionError> {
-    let output = run_chio(args)?;
+    let output = run_chio(
+        args,
+        ChioCommandFailure::Pending,
+        SELLER_ADMISSION_COMMAND_TIMEOUT,
+    )?;
     serde_json::from_slice(&output)
         .map_err(|_| FindingSellerSubmissionError::Internal("chio subprocess returned invalid JSON".to_owned()))
 }
 
 fn run_chio_success(args: &[String]) -> Result<(), FindingSellerSubmissionError> {
-    run_chio(args).map(|_| ())
+    run_chio(
+        args,
+        ChioCommandFailure::Invalid,
+        SELLER_PACKAGE_COMMAND_TIMEOUT,
+    )
+    .map(|_| ())
 }
 
-fn run_chio(args: &[String]) -> Result<Vec<u8>, FindingSellerSubmissionError> {
+#[derive(Clone, Copy)]
+enum ChioCommandFailure {
+    Invalid,
+    Pending,
+}
+
+fn run_chio(
+    args: &[String],
+    failure: ChioCommandFailure,
+    timeout: Duration,
+) -> Result<Vec<u8>, FindingSellerSubmissionError> {
     let binary = std::env::current_exe()
         .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
-    let output = Command::new(binary)
-        .args(args)
-        .output()
-        .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
+    let mut command = Command::new(binary);
+    command.args(args);
+    let output = run_bounded_output_command_capture(
+        command,
+        SELLER_SUBMISSION_JOB_MAX_BYTES,
+        timeout,
+        "chio seller command",
+    )
+    .map_err(|error| FindingSellerSubmissionError::Internal(error.to_string()))?;
     if !output.status.success() {
         let message = String::from_utf8_lossy(&output.stderr);
-        return Err(FindingSellerSubmissionError::Invalid(
+        return Err(classify_chio_command_failure(
+            failure,
             message.trim().chars().take(4096).collect(),
         ));
     }
-    if output.stdout.len() > SELLER_SUBMISSION_JOB_MAX_BYTES {
-        return Err(FindingSellerSubmissionError::Internal(
-            "chio subprocess response exceeded its size bound".to_owned(),
-        ));
-    }
     Ok(output.stdout)
+}
+
+fn classify_chio_command_failure(
+    failure: ChioCommandFailure,
+    message: String,
+) -> FindingSellerSubmissionError {
+    match failure {
+        ChioCommandFailure::Invalid => FindingSellerSubmissionError::Invalid(message),
+        ChioCommandFailure::Pending => FindingSellerSubmissionError::Pending(message),
+    }
 }
 
 struct GeneratedRoles {
@@ -1347,6 +1389,41 @@ fn seller_artifact_capacity_error(
     }
 }
 
+fn reclaim_nonrecoverable_submission_files(
+    error: &FindingSellerSubmissionError,
+    job_path: &Path,
+    package_path: &Path,
+) -> Result<(), FindingSellerSubmissionError> {
+    if !matches!(error, FindingSellerSubmissionError::Invalid(_)) {
+        return Ok(());
+    }
+    remove_submission_file(package_path, "failed verified-fix package")?;
+    remove_submission_file(job_path, "failed verified-fix job")
+}
+
+fn remove_submission_file(
+    path: &Path,
+    label: &str,
+) -> Result<(), FindingSellerSubmissionError> {
+    match fs::remove_file(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(FindingSellerSubmissionError::Internal(format!(
+                "cannot remove {label}: {error}"
+            )))
+        }
+    }
+    let parent = path.parent().ok_or_else(|| {
+        FindingSellerSubmissionError::Internal(format!("{label} path has no parent directory"))
+    })?;
+    sync_directory(parent).map_err(|error| {
+        FindingSellerSubmissionError::Internal(format!(
+            "cannot durably remove {label}: {error}"
+        ))
+    })
+}
+
 fn write_secret_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
@@ -1577,6 +1654,50 @@ mod tests {
         assert!(matches!(
             operator_status_error(400, "invalid intent"),
             FindingSellerSubmissionError::Invalid(_)
+        ));
+    }
+
+    #[test]
+    fn failed_verified_fix_jobs_reclaim_only_nonrecoverable_files() {
+        let temporary = tempfile::tempdir().unwrap();
+        let job = temporary.path().join("request.seller-submission-job.json");
+        let package = temporary.path().join("request.draft.json");
+        fs::write(&job, b"job").unwrap();
+        fs::write(&package, b"package").unwrap();
+        reclaim_nonrecoverable_submission_files(
+            &FindingSellerSubmissionError::Pending("retry".to_owned()),
+            &job,
+            &package,
+        )
+        .unwrap();
+        assert!(job.exists());
+        assert!(package.exists());
+
+        reclaim_nonrecoverable_submission_files(
+            &FindingSellerSubmissionError::Invalid("bad revision".to_owned()),
+            &job,
+            &package,
+        )
+        .unwrap();
+        assert!(!job.exists());
+        assert!(!package.exists());
+    }
+
+    #[test]
+    fn package_failures_are_reclaimable_while_admission_failures_remain_retryable() {
+        assert!(matches!(
+            classify_chio_command_failure(
+                ChioCommandFailure::Invalid,
+                "package failed".to_owned()
+            ),
+            FindingSellerSubmissionError::Invalid(_)
+        ));
+        assert!(matches!(
+            classify_chio_command_failure(
+                ChioCommandFailure::Pending,
+                "admission failed".to_owned()
+            ),
+            FindingSellerSubmissionError::Pending(_)
         ));
     }
 }

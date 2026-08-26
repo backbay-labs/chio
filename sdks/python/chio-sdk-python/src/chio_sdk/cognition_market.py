@@ -39,6 +39,10 @@ PURCHASE_RESULT_MAX_BYTES = 16 * 1024 * 1024
 JSON_RESPONSE_MAX_BYTES = 2 * 1024 * 1024
 ERROR_RESPONSE_MAX_BYTES = 4096
 VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS = 450
+# The operator can spend five minutes inside the bounded packaging sandbox.
+# Retain the server's bounded admission interval plus margin for body ingress,
+# durable publication, activation, and response transport.
+SELLER_REQUEST_DEADLINE_SECONDS = 720.0
 
 
 class CognitionMarketError(RuntimeError):
@@ -556,7 +560,7 @@ class CognitionMarketSeller:
         self,
         credential_path: str | Path,
         *,
-        timeout: float = 300.0,
+        timeout: float = SELLER_REQUEST_DEADLINE_SECONDS,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         if not math.isfinite(timeout) or timeout <= 0:

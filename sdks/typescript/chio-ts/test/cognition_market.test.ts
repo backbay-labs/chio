@@ -208,6 +208,7 @@ test("seller packages and admits with only its scoped credential", async () => {
       });
     },
   });
+  assert.equal(seller.timeoutMs, 720_000);
   const packageRequest = await seller.packageVerifiedFix({
     repository: "/srv/operator-repositories/example",
     base: "base",

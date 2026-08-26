@@ -1017,13 +1017,13 @@ fn run_bounded_output_command(
     Ok(output.stdout)
 }
 
-struct BoundedCommandOutput {
-    status: ExitStatus,
-    stdout: Vec<u8>,
-    stderr: Vec<u8>,
+pub(super) struct BoundedCommandOutput {
+    pub(super) status: ExitStatus,
+    pub(super) stdout: Vec<u8>,
+    pub(super) stderr: Vec<u8>,
 }
 
-fn run_bounded_output_command_capture(
+pub(super) fn run_bounded_output_command_capture(
     mut command: Command,
     max_bytes: usize,
     timeout: Duration,

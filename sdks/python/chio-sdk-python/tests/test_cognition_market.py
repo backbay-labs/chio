@@ -325,6 +325,7 @@ async def test_seller_uses_only_scoped_credential_for_package_and_admission(
         transport=httpx.MockTransport(handler),
     )
     try:
+        assert seller._deadline_seconds == 720.0
         package = await seller.package_verified_fix(
             repository=repository,
             base="base",

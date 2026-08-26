@@ -27,6 +27,10 @@ const PURCHASE_RESULT_MAX_BYTES = 16 * 1024 * 1024;
 const JSON_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 const ERROR_RESPONSE_MAX_BYTES = 4096;
 const VERIFIED_FIX_MAXIMUM_SALE_EXPOSURE_UNITS = 450;
+// The operator can spend five minutes inside the bounded packaging sandbox.
+// Retain the server's bounded admission interval plus margin for body ingress,
+// durable publication, activation, and response transport.
+const SELLER_REQUEST_TIMEOUT_MS = 720_000;
 
 export class CognitionMarketError extends Error {
   constructor(message: string) {
@@ -402,7 +406,7 @@ export class CognitionMarketSeller {
   ) {
     this.credential = loadProfile(credentialPath, SELLER_SCHEMA);
     this.fetch = options.fetch ?? globalThis.fetch;
-    this.timeoutMs = requireTimeout(options.timeoutMs ?? 300_000);
+    this.timeoutMs = requireTimeout(options.timeoutMs ?? SELLER_REQUEST_TIMEOUT_MS);
   }
 
   async packageVerifiedFix(input: {
