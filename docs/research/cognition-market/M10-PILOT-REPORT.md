@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`8bbe3cb8b2d1f0bc042b517667ef2d75dec06812`. The qualifier built the `chio`
+`4c93d36fbf0a9ce375fa22f95f24ee4a5969e08f`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 1,938 ms minimum, 2,014 ms median, 2,377 ms maximum
-- Recorded normal purchase time: 2,589 ms minimum, 2,825 ms median,
-  2,931 ms maximum
+- Admission time: 1,971 ms minimum, 2,008 ms median, 2,695 ms maximum
+- Recorded normal purchase time: 2,698 ms minimum, 2,844 ms median,
+  2,989 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -82,7 +82,9 @@ The requalified candidate also closes the final deployment review findings:
   and candidate tests, and patch generation. Cgroup v2 enforces hard aggregate
   memory, swap, and process limits across each test descendant tree;
   process-local CPU, memory, process, descriptor, and file-size rlimits remain
-  defense in depth, and the writable volume is size-capped.
+  defense in depth, and the writable volume is size-capped. Unix-only cgroup
+  file-descriptor wiring is target-gated so the CLI remains buildable on
+  Windows.
 - Source repositories are copied without hard links into operator-owned state.
   Operator initialization requires an explicit approved repository root, and
   seller ingress rejects canonical paths and symbolic links that escape it.
@@ -112,15 +114,21 @@ The requalified candidate also closes the final deployment review findings:
   purchase failures release both reservation exposure and any reserved slot.
   A prepared job without a reservation revalidates current market policy and
   rejects an expired signed ask before reserving funds, while a completed paid
-  replay verifies proof liveness at its authenticated terminal time.
+  replay verifies proof liveness at its authenticated terminal time. An open
+  or slot-reserved purchase that expires across restart moves to a durable
+  expired state and returns a stable rejection instead of an endless pending
+  response.
   Purchase-job retention is capped at 10,000 rows, failing new requests closed
-  while preserving exact replay at capacity.
+  while preserving exact replay at capacity. Retained public terminal bodies
+  have a transactionally enforced 256 MiB aggregate ceiling, with exact
+  retained replay checked before capacity admission.
 - Status-floor lock guards explicitly unlock before close, so an immediate
   sequential retry can read a retraction retained by a rejected rollback.
 - Seller client credentials contain no market signing seed. Buyer SDKs require
   a search predicate, bind purchase identities to the credential's payer key,
   use bounded request deadlines and response streams, and verify the signed
-  purchase record and reveal commitment before returning a patch. The public
+  purchase record and reveal commitment before returning either a generic
+  purchase result or a decoded patch. The public
   operator route rejects omitted or mismatched payer identities before purchase
   execution.
   Seller SDKs treat repositories as operator-side absolute coordinates and do
