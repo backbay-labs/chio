@@ -610,15 +610,15 @@ impl FindingOperatorPurchaseExecutor {
         request_sha256: &str,
         reservation_id: &str,
     ) -> Result<FindingPurchaseResult, FindingPurchaseExecutionError> {
-        self.reserve_terminal_capacity(buyer, request, request_sha256)?;
         match self.recover_terminal(buyer, request, reservation_id) {
-            Err(FindingPurchaseExecutionError::Pending(_)) => {
-                self.release_terminal_capacity(buyer, request, request_sha256)?;
-                Err(FindingPurchaseExecutionError::Rejected(
-                    PREDISPATCH_RELEASE_REJECTION.to_owned(),
-                ))
+            Err(FindingPurchaseExecutionError::Pending(_)) => Err(
+                FindingPurchaseExecutionError::Rejected(PREDISPATCH_RELEASE_REJECTION.to_owned()),
+            ),
+            Ok(result) => {
+                self.reserve_terminal_capacity(buyer, request, request_sha256)?;
+                Ok(result)
             }
-            result => result,
+            Err(error) => Err(error),
         }
     }
 
@@ -1041,6 +1041,19 @@ impl FindingOperatorPurchaseExecutor {
                 | FindingPurchaseReservationState::SlotReserved => {}
             }
         }
+        let release_unreserved_capacity = |original| {
+            if existing_reservation.is_none() {
+                release_terminal_capacity_after_error(
+                    &self.bundle_store,
+                    authenticated,
+                    request,
+                    &request_sha256,
+                    original,
+                )
+            } else {
+                original
+            }
+        };
         let stored_job = self.load_purchase_job(authenticated, request, &request_sha256)?;
         if existing_reservation.is_some() && stored_job.is_none() {
             return Err(FindingPurchaseExecutionError::Pending(
@@ -1056,38 +1069,50 @@ impl FindingOperatorPurchaseExecutor {
         } else {
             prepared_at
         };
-        let bundle = self.load_bundle(&request.finding_id, validation_time)?;
-        let witness = self.admission_witness(&bundle, validation_time)?;
+        let bundle = self
+            .load_bundle(&request.finding_id, validation_time)
+            .map_err(&release_unreserved_capacity)?;
+        let witness = self
+            .admission_witness(&bundle, validation_time)
+            .map_err(&release_unreserved_capacity)?;
         let job = match stored_job {
             Some(job) => {
-                self.validate_purchase_job(&job, credential, request, &request_sha256, &bundle)?;
+                self.validate_purchase_job(&job, credential, request, &request_sha256, &bundle)
+                    .map_err(&release_unreserved_capacity)?;
                 job
             }
-            None => self.prepare_purchase_job(
-                authenticated,
-                credential,
-                request,
-                &request_sha256,
-                &bundle,
-                &witness,
-                now,
-            )?,
+            None => self
+                .prepare_purchase_job(
+                    authenticated,
+                    credential,
+                    request,
+                    &request_sha256,
+                    &bundle,
+                    &witness,
+                    now,
+                )
+                .map_err(&release_unreserved_capacity)?,
         };
         #[cfg(test)]
         if self
             .stop_after_purchase_job_once
             .swap(false, std::sync::atomic::Ordering::SeqCst)
         {
-            return Err(FindingPurchaseExecutionError::Pending(
-                "test interruption after durable purchase job".to_owned(),
+            return Err(release_unreserved_capacity(
+                FindingPurchaseExecutionError::Pending(
+                    "test interruption after durable purchase job".to_owned(),
+                ),
             ));
         }
         let bid = &job.bid;
+        let seller_key = self
+            .seller_key(&bundle)
+            .map_err(&release_unreserved_capacity)?;
         let ask = bid_with_finding_purchase(
             bid,
             BidMintContext {
                 listing: &bundle.listing,
-                issuer_keypair: self.seller_key(&bundle)?,
+                issuer_keypair: seller_key,
                 agent_subject: credential.signing_key.public_key(),
                 token_id: format!("finding-token-{}", request.request_id),
                 now: job.prepared_at,
@@ -1097,18 +1122,20 @@ impl FindingOperatorPurchaseExecutor {
             &witness,
             &bundle.finding,
         )
-        .map_err(execution_internal)?;
-        if canonical_json_bytes(ask.signed_ask()).map_err(execution_internal)?
-            != canonical_json_bytes(&job.ask).map_err(execution_internal)?
+        .map_err(|error| release_unreserved_capacity(execution_internal(error)))?;
+        if canonical_json_bytes(ask.signed_ask())
+            .map_err(|error| release_unreserved_capacity(execution_internal(error)))?
+            != canonical_json_bytes(&job.ask)
+                .map_err(|error| release_unreserved_capacity(execution_internal(error)))?
         {
-            return Err(execution_internal(
+            return Err(release_unreserved_capacity(execution_internal(
                 "prepared purchase ask could not be reconstructed exactly",
-            ));
+            )));
         }
         let signed_ask = ask.signed_ask();
         let ask_digest = canonical_json_bytes(&signed_ask.body)
             .map(|bytes| sha256_hex(&bytes))
-            .map_err(execution_internal)?;
+            .map_err(|error| release_unreserved_capacity(execution_internal(error)))?;
         let reservation_id = super::finding_purchase_coordinator::derive_reservation_id(
             &ask_digest,
             &credential.signing_key.public_key().to_hex(),
@@ -1119,7 +1146,7 @@ impl FindingOperatorPurchaseExecutor {
                 "prepared purchase ask expired before reservation".to_owned(),
             ));
         }
-        let coordinator = self.coordinator()?;
+        let coordinator = self.coordinator().map_err(&release_unreserved_capacity)?;
         match coordinator.resolve(&reservation_id) {
             Ok(existing) if existing.state == FindingPurchaseReservationState::Consumed => {
                 self.reserve_terminal_capacity(authenticated, request, &request_sha256)?;
@@ -1140,7 +1167,9 @@ impl FindingOperatorPurchaseExecutor {
                 ));
             }
             Ok(_) | Err(PurchaseCoordinatorError::UnknownReservation) => {}
-            Err(error) => return Err(execution_internal(error)),
+            Err(error) => {
+                return Err(release_unreserved_capacity(execution_internal(error)));
+            }
         }
         self.reserve_terminal_capacity(authenticated, request, &request_sha256)?;
         #[cfg(test)]

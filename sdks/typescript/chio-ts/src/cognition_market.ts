@@ -357,6 +357,13 @@ export class CognitionMarketBuyer {
     request: Record<string, unknown>,
     purchase: Record<string, unknown>,
   ): Promise<void> {
+    const payer = memberString(request, "payer");
+    if (memberString(purchase, "payer") !== payer
+        || memberString(purchase, "payerKey") !== payer) {
+      throw new CognitionMarketError(
+        "purchase payer does not bind the requested signed payer key",
+      );
+    }
     const directory = mkdtempSync(join(tmpdir(), "chio-market-purchase-"));
     try {
       const proofPath = join(directory, "proof.json");

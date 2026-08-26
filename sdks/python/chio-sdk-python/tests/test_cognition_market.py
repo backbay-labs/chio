@@ -107,7 +107,14 @@ async def test_buyer_runs_search_proof_status_and_purchase(
             assert body["schema"] == "chio.finding.purchase-request.v1"
             assert len(body["requestId"]) == 64
             assert body["payer"] == "9" * 64
-            return httpx.Response(200, json={"verdict": "allow"})
+            return httpx.Response(
+                200,
+                json={
+                    "verdict": "allow",
+                    "payer": "9" * 64,
+                    "payerKey": "9" * 64,
+                },
+            )
         return httpx.Response(200, json={"count": 1, "results": []})
 
     def successful_status(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
@@ -175,7 +182,14 @@ async def test_buyer_purchase_rejects_an_unverified_terminal(
     buyer = CognitionMarketBuyer(
         buyer_profile(tmp_path / "buyer.json"),
         transport=httpx.MockTransport(
-            lambda _: httpx.Response(200, json={"verdict": "allow"})
+            lambda _: httpx.Response(
+                200,
+                json={
+                    "verdict": "allow",
+                    "payer": "9" * 64,
+                    "payerKey": "9" * 64,
+                },
+            )
         ),
     )
     verified = VerifiedFindingProof(finding_id, b"proof", {"findingId": finding_id})
@@ -184,6 +198,48 @@ async def test_buyer_purchase_rejects_an_unverified_terminal(
             await buyer.purchase(verified, max_price_units=300)
     finally:
         await buyer.close()
+
+
+@pytest.mark.asyncio
+async def test_buyer_purchase_rejects_a_substituted_signed_payer_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    finding_id = "a" * 64
+    verifier_called = False
+
+    def trusted_verification(
+        *args: object, **kwargs: object
+    ) -> subprocess.CompletedProcess[bytes]:
+        nonlocal verifier_called
+        verifier_called = True
+        return subprocess.CompletedProcess(
+            args=args,
+            returncode=0,
+            stdout=_canonical_json({"purchaseTerminalVerified": True}),
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(subprocess, "run", trusted_verification)
+    buyer = CognitionMarketBuyer(
+        buyer_profile(tmp_path / "buyer.json"),
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(
+                200,
+                json={
+                    "verdict": "allow",
+                    "payer": "9" * 64,
+                    "payerKey": "8" * 64,
+                },
+            )
+        ),
+    )
+    verified = VerifiedFindingProof(finding_id, b"proof", {"findingId": finding_id})
+    try:
+        with pytest.raises(CognitionMarketError, match="signed payer key"):
+            await buyer.purchase(verified, max_price_units=300)
+    finally:
+        await buyer.close()
+    assert verifier_called is False
 
 
 @pytest.mark.asyncio
@@ -326,7 +382,7 @@ async def test_buyer_builds_and_files_challenge_with_scoped_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     finding_id = "e" * 64
-    payer_key = "f" * 64
+    payer_key = "9" * 64
     admission = {
         "backing_envelope_sha256": "1" * 64,
         "challenge_administration_pool": {
@@ -360,11 +416,11 @@ async def test_buyer_builds_and_files_challenge_with_scoped_key(
     purchase_record = {"body": {"purchase_key": "purchase-1"}, "signature": "purchase"}
     purchase = {
         "deliveryReceipt": {"id": "delivery-1"},
-        "payer": "buyer-1",
+        "payer": payer_key,
         "payerKey": payer_key,
         "purchaseRecord": purchase_record,
     }
-    _, request = _request_id(finding_id, 300, "USD", "9" * 64, 3600)
+    _, request = _request_id(finding_id, 300, "USD", payer_key, 3600)
     purchased = PurchasedVerifiedFix(
         finding_id=finding_id,
         repository="https://example.com/repo.git",
@@ -482,6 +538,8 @@ async def test_buyer_returns_patch_without_applying_it(
             200,
             json={
                 "findingId": finding_id,
+                "payer": "9" * 64,
+                "payerKey": "9" * 64,
                 "output": {
                     "mediaType": "application/vnd.chio.verified-fix+json",
                     "payloadB64": payload_b64,

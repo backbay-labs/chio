@@ -102,7 +102,11 @@ test("buyer executes search, proof, status, and purchase with scoped auth", asyn
       assert.equal(typeof body.requestId, "string");
       assert.equal((body.requestId as string).length, 64);
       assert.equal(body.payer, "9".repeat(64));
-      return Response.json({ verdict: "allow" });
+      return Response.json({
+        verdict: "allow",
+        payer: "9".repeat(64),
+        payerKey: "9".repeat(64),
+      });
     }
     return Response.json({ count: 1, results: [] });
   };
@@ -133,7 +137,11 @@ test("buyer rejects an unverified generic purchase terminal", async () => {
   chmodSync(verifier, 0o700);
   const buyer = new CognitionMarketBuyer(profileFile(), {
     chioBinary: verifier,
-    fetch: async () => Response.json({ verdict: "allow" }),
+    fetch: async () => Response.json({
+      verdict: "allow",
+      payer: "9".repeat(64),
+      payerKey: "9".repeat(64),
+    }),
   });
   const verified: VerifiedFindingProof = {
     findingId,
@@ -143,6 +151,34 @@ test("buyer rejects an unverified generic purchase terminal", async () => {
   await assert.rejects(
     buyer.purchase(verified, { maxPriceUnits: 300 }),
     /did not authorize the terminal/,
+  );
+});
+
+test("buyer rejects a substituted signed payer key", async () => {
+  const findingId = "a".repeat(64);
+  const directory = mkdtempSync(join(tmpdir(), "chio-market-ts-payer-substitution-"));
+  const verifier = join(directory, "chio");
+  writeFileSync(
+    verifier,
+    "#!/bin/sh\nprintf '%s' '{\"purchaseTerminalVerified\":true}'\n",
+  );
+  chmodSync(verifier, 0o700);
+  const buyer = new CognitionMarketBuyer(profileFile(), {
+    chioBinary: verifier,
+    fetch: async () => Response.json({
+      verdict: "allow",
+      payer: "9".repeat(64),
+      payerKey: "8".repeat(64),
+    }),
+  });
+  const verified: VerifiedFindingProof = {
+    findingId,
+    proof: new Uint8Array([1]),
+    verification: { findingId },
+  };
+  await assert.rejects(
+    buyer.purchase(verified, { maxPriceUnits: 300 }),
+    /signed payer key/,
   );
 });
 
@@ -219,7 +255,7 @@ test("buyer rejects an ephemeral operator port", () => {
 
 test("buyer authenticates a purchase terminal again before challenge filing", async () => {
   const findingId = "e".repeat(64);
-  const payerKey = "f".repeat(64);
+  const payerKey = "9".repeat(64);
   const proof = {
     bundle: {
       admission: {
@@ -275,7 +311,7 @@ test("buyer authenticates a purchase terminal again before challenge filing", as
     baseRevision: "base",
     candidateRevision: "candidate",
     patch: "diff --git a/file b/file\n",
-    request: { findingId, requestId: "7".repeat(64) },
+    request: { findingId, payer: payerKey, requestId: "7".repeat(64) },
     purchase,
   };
   const result = await buyer.challengeEvidenceInvalid(
@@ -309,6 +345,8 @@ test("buyer returns a patch without applying it", async () => {
     chioBinary: verifier,
     fetch: async () => Response.json({
       findingId,
+      payer: "9".repeat(64),
+      payerKey: "9".repeat(64),
       output: {
         mediaType: "application/vnd.chio.verified-fix+json",
         payloadB64: payload,

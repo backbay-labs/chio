@@ -237,6 +237,13 @@ pub struct FindingPurchaseResult {
 }
 
 impl FindingPurchaseResult {
+    fn validate_payer_binding(payer: &str, payer_key: &PublicKey) -> Result<(), String> {
+        if payer != payer_key.to_hex() {
+            return Err("purchase payer does not bind its signed payer key".to_owned());
+        }
+        Ok(())
+    }
+
     /// Validate the response shape and all caller-visible conservation rules.
     /// This verifies embedded signatures, but only the route's stronger
     /// `validate_authorized` check pins the purchase authorities.
@@ -248,6 +255,7 @@ impl FindingPurchaseResult {
             return Err("purchase result does not bind the request".to_owned());
         }
         require_bounded_text(&self.payer, MAX_PAYER_BYTES, "payer")?;
+        Self::validate_payer_binding(&self.payer, &self.payer_key)?;
         if request
             .payer
             .as_deref()
@@ -1176,12 +1184,33 @@ fn require_bounded_text(value: &str, max_bytes: usize, field: &str) -> Result<()
 
 #[cfg(test)]
 mod tests {
-    use super::retained_at_or_after_terminal;
+    use chio_core::Keypair;
+
+    use super::{retained_at_or_after_terminal, FindingPurchaseResult};
 
     #[test]
     fn durable_terminal_row_may_be_recorded_after_the_signed_terminal() {
         assert!(retained_at_or_after_terminal(101, 100));
         assert!(retained_at_or_after_terminal(100, 100));
         assert!(!retained_at_or_after_terminal(99, 100));
+    }
+
+    #[test]
+    fn purchase_payer_text_must_name_the_signed_payer_key() {
+        let payer_key = Keypair::from_seed(&[1; 32]).public_key();
+        let other_key = Keypair::from_seed(&[2; 32]).public_key();
+        assert_eq!(payer_key.to_hex().len(), 64);
+        assert_ne!(payer_key, other_key);
+        assert_eq!(
+            FindingPurchaseResult::validate_payer_binding(&payer_key.to_hex(), &payer_key),
+            Ok(())
+        );
+
+        let payer = other_key.to_hex();
+        assert_ne!(payer, payer_key.to_hex());
+        assert_eq!(
+            FindingPurchaseResult::validate_payer_binding(&payer, &payer_key),
+            Err("purchase payer does not bind its signed payer key".to_owned())
+        );
     }
 }

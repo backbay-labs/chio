@@ -336,6 +336,16 @@ class CognitionMarketBuyer:
         request: dict[str, Any],
         purchase: dict[str, Any],
     ) -> None:
+        payer = request.get("payer")
+        if (
+            not isinstance(payer, str)
+            or purchase.get("payer") != payer
+            or purchase.get("payerKey") != payer
+        ):
+            raise CognitionMarketError(
+                "purchase payer does not bind the requested signed payer key"
+            )
+
         def run() -> subprocess.CompletedProcess[bytes]:
             with tempfile.TemporaryDirectory(prefix="chio-market-purchase-") as directory:
                 root = Path(directory)

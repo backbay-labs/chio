@@ -441,6 +441,74 @@ async fn cognition_market_pre_reservation_crash_releases_terminal_capacity_on_ex
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cognition_market_pre_reservation_crash_releases_capacity_on_bundle_expiry() -> TestResult {
+    let deployment = provision(RevealCase::honest())?;
+    let authority = deployment.open()?;
+    let mut state = market_state(authority.clone(), market_config());
+    deployment.seed_and_activate(&state).await?;
+
+    let payer = keypair(31).public_key().to_hex();
+    let request = FindingPurchaseRequest::new(
+        deployment.web.finding_id.clone(),
+        PRICE_UNITS + 50,
+        "USD".to_owned(),
+        Some(payer),
+        Some(900),
+    )?;
+    let request_body = canonical_json_bytes(&request)?;
+    let path = format!("/v1/findings/{}/purchase", deployment.web.finding_id);
+    let operator_db = deployment
+        .database
+        .with_file_name("operator-pre-reservation-bundle-expiry.db");
+    let interrupted = Arc::new(production_purchase_executor(
+        &deployment,
+        authority.clone(),
+        operator_db.clone(),
+    )?);
+    interrupted.set_test_now(unix_timestamp_now());
+    interrupted.stop_after_terminal_capacity_once();
+    state.finding_purchase_executor = Some(interrupted);
+
+    let (status, pending_body) = send(&state, buyer_post(&path, request_body.clone())?).await?;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(json_body(&pending_body)?["code"], "purchase_pending");
+    let conn = rusqlite::Connection::open(&operator_db)?;
+    let capacity_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM chio_finding_operator_terminal_capacity",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(capacity_count, 1);
+    drop(conn);
+
+    let resumed = Arc::new(production_purchase_executor(
+        &deployment,
+        authority,
+        operator_db.clone(),
+    )?);
+    resumed.set_test_now(ADMISSION_EXPIRES_AT);
+    state.finding_purchase_executor = Some(resumed);
+    let (status, rejected_body) = send(&state, buyer_post(&path, request_body)?).await?;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(json_body(&rejected_body)?["code"], "purchase_rejected");
+    let conn = rusqlite::Connection::open(&operator_db)?;
+    let capacity_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM chio_finding_operator_terminal_capacity",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(capacity_count, 0);
+    assert_eq!(
+        SqliteFindingOperatorPaymentAdapter::open(&operator_db)
+            .map_err(std::io::Error::other)?
+            .capture_count()
+            .map_err(std::io::Error::other)?,
+        0
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cognition_market_predispatch_release_is_a_stable_rejection() -> TestResult {
     let deployment = provision(RevealCase::honest())?;
     let authority = deployment.open()?;
@@ -488,9 +556,18 @@ async fn cognition_market_predispatch_release_is_a_stable_rejection() -> TestRes
         .ok_or_else(|| missing("released purchase reservation missing"))?;
     assert_eq!(reservation.state, FindingPurchaseReservationState::Released);
 
+    let capacity_store = SqliteFindingOperatorBundleStore::open(&operator_db)?;
+    for index in 0..16 {
+        capacity_store.reserve_terminal_capacity(
+            &format!("{index:064x}"),
+            "capacity-fixture",
+            &"f".repeat(64),
+        )?;
+    }
+
     state.finding_purchase_executor = Some(Arc::new(production_purchase_executor(
         &deployment,
-        authority,
+        authority.clone(),
         operator_db.clone(),
     )?));
     let (status, replay_body) = send(&state, buyer_post(&path, request_body)?).await?;
@@ -502,7 +579,7 @@ async fn cognition_market_predispatch_release_is_a_stable_rejection() -> TestRes
         [],
         |row| row.get(0),
     )?;
-    assert_eq!(capacity_count, 0);
+    assert_eq!(capacity_count, 16);
     assert_eq!(
         SqliteFindingOperatorPaymentAdapter::open(&operator_db)
             .map_err(std::io::Error::other)?
