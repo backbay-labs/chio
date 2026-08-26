@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`88ac67a1a4bebe9023a279051e943c7e9be3ea2e`. The qualifier built the `chio`
+`a977fcfbe104a6f0c48000c75fb92640e6f83031`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 3,854 ms minimum, 4,007.5 ms median, 4,231 ms maximum
-- Recorded normal purchase time: 2,644 ms minimum, 2,903.5 ms median,
-  4,320 ms maximum
+- Admission time: 3,981 ms minimum, 3,999.5 ms median, 4,334 ms maximum
+- Recorded normal purchase time: 2,655 ms minimum, 2,851.5 ms median,
+  2,945 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -121,10 +121,11 @@ The requalified candidate also closes the final deployment review findings:
   cross-process operator lock. Submission and retraction also share one
   non-queued blocking lane, so overlapping work receives a retryable HTTP 503
   before it can consume unbounded blocking-pool capacity. Challenge submission
-  has its own non-queued lane, acquires it before the market lookup, and keeps
-  synchronous SQLite integrity checks and settlement coordination on Tokio's
-  bounded blocking pool. Tick reports each terminal-safe failed admission and
-  continues reconciling later jobs.
+  has its own non-queued lane and acquires it before untrusted envelope parsing.
+  Schema validation, authentication, signature verification, synchronous
+  SQLite integrity checks, and settlement coordination all run on Tokio's
+  bounded blocking pool while that permit is held. Tick reports each
+  terminal-safe failed admission and continues reconciling later jobs.
 - Bundle, encrypted payload, and proof bytes are durable before activation.
   A seller artifact-capacity claim is released if package construction or
   admission fails, while an admitted Finding keeps its committed immutable
@@ -182,11 +183,14 @@ The requalified candidate also closes the final deployment review findings:
 - Purchase execution uses one non-queued blocking lane rather than a Tokio
   worker. The permit is acquired before the market lookup and remains held
   through integrity validation, execution, and durable terminal verification.
-  Public proof reads and egress use a separate one-response lane with 64 KiB
-  chunks and a 30-second absolute deadline, so slow or concurrent public
-  requests cannot accumulate unbounded proof work or retained bundles. A true
-  missing proof returns 404, a transient store failure returns 503, and retained
-  proof integrity failure returns 500 without exposing storage internals.
+  Successful purchase terminals stream in 64 KiB chunks under a 30-second
+  absolute deadline, retaining the same permit through response completion,
+  cancellation, or deadline. Public proof reads and egress use a separate
+  one-response lane with the same chunk and deadline bounds, so slow or
+  concurrent public requests cannot accumulate unbounded response buffers or
+  retained bundles. A true missing proof returns 404, a transient store failure
+  returns 503, and retained proof integrity failure returns 500 without exposing
+  storage internals.
 - Python and TypeScript status calls use the Rust verifier with the profile's
   pinned status authority, service bond, freshness window, and durable rollback
   floor. Challenge helpers authenticate the purchase terminal again before
