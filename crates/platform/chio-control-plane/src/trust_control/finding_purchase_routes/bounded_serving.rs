@@ -10,25 +10,43 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 const FINDING_RESPONSE_CHUNK_BYTES: usize = 64 * 1024;
 const FINDING_RESPONSE_EGRESS_DEADLINE: Duration = Duration::from_secs(30);
 
-pub(super) enum PurchaseLaneError {
-    Busy,
-    Worker,
+pub(super) enum PurchaseBodyError {
+    TooLarge,
+    Timeout,
+}
+
+pub(super) fn try_acquire_purchase_lane(
+    lane: &Arc<Semaphore>,
+) -> Result<OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+    lane.clone().try_acquire_owned()
+}
+
+pub(super) async fn collect_purchase_body(
+    body: Body,
+    permit: OwnedSemaphorePermit,
+    deadline: Duration,
+) -> Result<(Bytes, OwnedSemaphorePermit), PurchaseBodyError> {
+    match tokio::time::timeout(
+        deadline,
+        axum::body::to_bytes(body, FINDING_PURCHASE_MAX_BODY_BYTES),
+    )
+    .await
+    {
+        Ok(Ok(bytes)) => Ok((bytes, permit)),
+        Ok(Err(_)) => Err(PurchaseBodyError::TooLarge),
+        Err(_) => Err(PurchaseBodyError::Timeout),
+    }
 }
 
 pub(super) async fn execute_purchase<T>(
-    lane: Arc<Semaphore>,
+    permit: OwnedSemaphorePermit,
     execute: impl FnOnce(tokio::runtime::Handle) -> T + Send + 'static,
-) -> Result<(T, OwnedSemaphorePermit), PurchaseLaneError>
+) -> Result<(T, OwnedSemaphorePermit), tokio::task::JoinError>
 where
     T: Send + 'static,
 {
-    let permit = lane
-        .try_acquire_owned()
-        .map_err(|_| PurchaseLaneError::Busy)?;
     let runtime = tokio::runtime::Handle::current();
-    tokio::task::spawn_blocking(move || (execute(runtime), permit))
-        .await
-        .map_err(|_| PurchaseLaneError::Worker)
+    tokio::task::spawn_blocking(move || (execute(runtime), permit)).await
 }
 
 pub(super) async fn serve_purchase_response(
@@ -299,5 +317,17 @@ mod tests {
         assert!(lane.clone().try_acquire_owned().is_err());
         drop(active);
         assert!(lane.try_acquire_owned().is_ok());
+    }
+
+    #[tokio::test]
+    async fn purchase_body_deadline_releases_the_execution_lane() {
+        let lane = Arc::new(Semaphore::new(1));
+        let permit = try_acquire_purchase_lane(&lane)
+            .unwrap_or_else(|_| panic!("purchase permit unavailable"));
+        let body = Body::from_stream(stream::pending::<Result<Bytes, std::io::Error>>());
+        assert!(try_acquire_purchase_lane(&lane).is_err());
+        let result = collect_purchase_body(body, permit, Duration::from_millis(10)).await;
+        assert!(matches!(result, Err(PurchaseBodyError::Timeout)));
+        assert!(try_acquire_purchase_lane(&lane).is_ok());
     }
 }

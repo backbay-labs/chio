@@ -17,10 +17,10 @@ use super::finding_evidence_test_support::{
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
-use axum::body::Body;
+use axum::body::{Body, Bytes};
 use axum::http::Request;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
@@ -126,6 +126,7 @@ use chio_store_sqlite::{
     FindingPublicPurchaseRequestBinding, FindingPurchaseEncumbranceState,
     FindingPurchaseReservationState, FindingPurchaseSlotState, SqliteFindingStatusStore,
 };
+use futures_util::stream;
 
 #[path = "finding_wedge_purchase_e2e_tests/durable_finalization_tests.rs"]
 mod durable_finalization_tests;
@@ -3018,22 +3019,21 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
     // Finding would return 404 if the handler touched SQLite before acquiring
     // the non-queued execution lane.
     let busy_finding_id = "e".repeat(64);
-    let busy_request = FindingPurchaseRequest::new(
-        busy_finding_id.clone(),
-        PRICE_UNITS + 50,
-        "USD".to_owned(),
-        Some(payer.clone()),
-        Some(900),
-    )?;
     let active_purchase = state
         .finding_purchase_execution_lane
         .clone()
         .try_acquire_owned()?;
+    let body_polled = Arc::new(AtomicBool::new(false));
+    let body_poll_observation = Arc::clone(&body_polled);
+    let unpolled_body = Body::from_stream(stream::once(async move {
+        body_poll_observation.store(true, Ordering::SeqCst);
+        Ok::<Bytes, std::io::Error>(Bytes::from_static(b"{}"))
+    }));
     let (status, body) = send(
         &state,
         buyer_post(
             &format!("/v1/findings/{busy_finding_id}/purchase"),
-            canonical_json_bytes(&busy_request)?,
+            unpolled_body,
         )?,
     )
     .await?;
@@ -3042,6 +3042,7 @@ async fn cognition_market_live_purchase_route_exit() -> TestResult {
         json_body(&body)?["code"],
         serde_json::json!("purchase_busy")
     );
+    assert!(!body_polled.load(Ordering::SeqCst));
     drop(active_purchase);
     assert_eq!(attempts.load(Ordering::SeqCst), 0);
 

@@ -13,6 +13,7 @@
 //! authority-status resolver that keep its market views and mutations live.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::{Path as AxumPath, Request, State};
 use axum::http::{
@@ -72,6 +73,7 @@ pub const FINDING_PURCHASE_MAX_DEADLINE_SECS: u64 = 7 * 24 * 60 * 60;
 const PURCHASE_REQUEST_ID_DOMAIN: &[u8] = b"chio.finding.public-purchase-request.v1\0";
 const MAX_PAYER_BYTES: usize = 512;
 const MAX_MEDIA_TYPE_BYTES: usize = 255;
+const FINDING_PURCHASE_BODY_READ_DEADLINE: Duration = Duration::from_secs(30);
 
 /// Buyer policy inputs for one end-to-end purchase.
 ///
@@ -871,23 +873,49 @@ pub(crate) async fn handle_purchase_finding(
             "purchase request content type must be application/json",
         );
     }
-    let raw = match axum::body::to_bytes(request.into_body(), FINDING_PURCHASE_MAX_BODY_BYTES).await
-    {
-        Ok(bytes) => match String::from_utf8(bytes.to_vec()) {
-            Ok(raw) => raw,
+    let permit =
+        match bounded_serving::try_acquire_purchase_lane(&state.finding_purchase_execution_lane) {
+            Ok(permit) => permit,
             Err(_) => {
                 return purchase_error(
-                    StatusCode::BAD_REQUEST,
-                    "purchase_request_not_utf8",
-                    "purchase request is not UTF-8",
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "purchase_busy",
+                    "finding purchase execution lane is busy",
                 )
             }
-        },
-        Err(_) => {
+        };
+    let (raw, permit) = match bounded_serving::collect_purchase_body(
+        request.into_body(),
+        permit,
+        FINDING_PURCHASE_BODY_READ_DEADLINE,
+    )
+    .await
+    {
+        Ok((bytes, permit)) => {
+            let raw = match String::from_utf8(bytes.to_vec()) {
+                Ok(raw) => raw,
+                Err(_) => {
+                    return purchase_error(
+                        StatusCode::BAD_REQUEST,
+                        "purchase_request_not_utf8",
+                        "purchase request is not UTF-8",
+                    )
+                }
+            };
+            (raw, permit)
+        }
+        Err(bounded_serving::PurchaseBodyError::TooLarge) => {
             return purchase_error(
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "purchase_request_too_large",
                 "purchase request exceeds the body bound",
+            )
+        }
+        Err(bounded_serving::PurchaseBodyError::Timeout) => {
+            return purchase_error(
+                StatusCode::REQUEST_TIMEOUT,
+                "purchase_body_timeout",
+                "purchase request body read timed out",
             )
         }
     };
@@ -953,7 +981,7 @@ pub(crate) async fn handle_purchase_finding(
     };
 
     let response = bounded_serving::execute_purchase(
-        state.finding_purchase_execution_lane,
+        permit,
         move |runtime| {
     let raw_finding = match store.get_finding_bytes(&finding_id) {
         Ok(Some(raw)) => raw,
@@ -1129,12 +1157,7 @@ pub(crate) async fn handle_purchase_finding(
     .await;
     match response {
         Ok((response, permit)) => bounded_serving::serve_purchase_response(response, permit).await,
-        Err(bounded_serving::PurchaseLaneError::Busy) => purchase_error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "purchase_busy",
-            "finding purchase execution lane is busy",
-        ),
-        Err(bounded_serving::PurchaseLaneError::Worker) => purchase_error(
+        Err(_) => purchase_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "purchase_executor_failed",
             "finding purchase execution worker failed",
