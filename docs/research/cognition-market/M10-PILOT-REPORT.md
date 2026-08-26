@@ -3,7 +3,7 @@
 ## Verdict
 
 The M10 product exit passed on candidate
-`99924de5945268709d49f77234e3394f1edac51b`. The qualifier built the `chio`
+`88b71e389a820090730de5fa8d099ebb11eef532`. The qualifier built the `chio`
 binary from that clean candidate before starting the workload. The pilot used
 one deployable local operator and distinct scoped seller and buyer credentials.
 It did not give either agent the global service token.
@@ -25,9 +25,9 @@ case-insensitive headers, secret redaction, and retry classification.
 - Duplicate captures: 0
 - Pilot failures: 0
 - Client coverage: four Python purchases and one TypeScript purchase
-- Admission time: 3,965 ms minimum, 4,003 ms median, 4,325 ms maximum
-- Recorded normal purchase time: 2,622 ms minimum, 2,824 ms median,
-  2,937 ms maximum
+- Admission time: 3,976 ms minimum, 3,999.5 ms median, 4,036 ms maximum
+- Recorded normal purchase time: 2,565 ms minimum, 2,950 ms median,
+  2,952 ms maximum
 
 Every buyer retrieved a public proof, passed it through the Rust reference
 verifier, purchased the Finding, verified the signed purchase terminal and
@@ -211,7 +211,12 @@ The requalified candidate also closes the final deployment review findings:
   floor. Challenge helpers authenticate the purchase terminal again before
   deriving evidence. Challenge artifacts have durable envelope-digest indexes,
   so a missing digest performs a keyed lookup without reading unrelated bundle
-  bodies. The bounded legacy backfill runs in 16-bundle batches at startup.
+  bodies. Admission and verifier-profile indexes atomically retain the
+  canonical authority policy that authenticated each artifact. Rotation and
+  restart therefore resolve the exact historical venue or governance pin,
+  while legacy policy-less indexes remain fail closed and conflicting policies
+  for one artifact digest are rejected. The bounded legacy backfill runs in
+  16-bundle batches at startup.
   Filing-store failures remain retryable service outages instead of becoming
   false artifact absences, and every pooled bundle, payload, and payment SQLite
   connection installs the five-second busy timeout.
