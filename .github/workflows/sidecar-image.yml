@@ -17,9 +17,9 @@ concurrency:
   cancel-in-progress: false
 
 # Workflow-level principle-of-least-privilege default. Consistent with
-# release-binaries.yml and release-pypi.yml. The build-and-push job
-# extends this with `packages: write` + `id-token: write` for ghcr
-# push and OIDC attestation.
+# release-binaries.yml and release-pypi.yml. Native build jobs add
+# `packages: write` for digest pushes. The assembly job also adds
+# `id-token: write` for OIDC attestation.
 permissions:
   contents: read
 
@@ -27,13 +27,23 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  build-and-push:
-    name: Build and push multi-arch sidecar image
-    runs-on: ubuntu-latest
+  build:
+    name: Build sidecar image (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            artifact: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            artifact: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
     permissions:
       contents: read
       packages: write
-      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -49,11 +59,6 @@ jobs:
             echo "sidecar-image refuses non-semver release tag: ${tag}" >&2
             exit 1
           fi
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
-        with:
-          platforms: linux/amd64,linux/arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
@@ -98,25 +103,174 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=Apache-2.0
 
-      - name: Build and push
-        id: build
+      - name: Build native-platform smoke image
+        if: github.event_name != 'push'
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           context: .
           file: deploy/docker/Dockerfile.sidecar
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' }}
+          platforms: ${{ matrix.platform }}
+          push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: mode=max
           sbom: true
-          cache-from: type=gha,scope=sidecar
-          cache-to: type=gha,scope=sidecar,mode=max
+          cache-from: type=gha,scope=sidecar-${{ matrix.artifact }}
+          cache-to: type=gha,scope=sidecar-${{ matrix.artifact }},mode=max
 
-      - name: Export image digest
+      - name: Build and push native-platform image by digest
         if: github.event_name == 'push'
+        id: build_push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          file: deploy/docker/Dockerfile.sidecar
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+          outputs: type=image,name=${{ steps.image.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=sidecar-${{ matrix.artifact }}
+          cache-to: type=gha,scope=sidecar-${{ matrix.artifact }},mode=max
+
+      - name: Export native-platform digest
+        if: github.event_name == 'push'
+        shell: bash
         run: |
-          echo "Pushed image digest: ${{ steps.build.outputs.digest }}"
+          set -euo pipefail
+          digest="${{ steps.build_push.outputs.digest }}"
+          if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::native build emitted an invalid digest: ${digest}" >&2
+            exit 1
+          fi
+          mkdir -p "${RUNNER_TEMP}/sidecar-digests"
+          touch "${RUNNER_TEMP}/sidecar-digests/${digest#sha256:}"
+
+      - name: Upload native-platform digest
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sidecar-digest-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/sidecar-digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  assemble-and-sign:
+    name: Assemble and sign multi-arch sidecar image
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Log in to ghcr.io
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Normalize image repository
+        id: image
+        env:
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          owner="$(printf '%s' "$REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          echo "name=${REGISTRY}/${owner}/chio-sidecar" >> "$GITHUB_OUTPUT"
+
+      - name: Compute image metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+            # Intentionally do NOT emit `:latest` on tag pushes. An older
+            # patch release (e.g. v0.1.1) tagged after a newer one
+            # (e.g. v0.2.0) would otherwise overwrite `:latest` back to
+            # the older image since we have no version-ordering check.
+          labels: |
+            org.opencontainers.image.title=chio-sidecar
+            org.opencontainers.image.description=Chio sidecar runtime
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Download native-platform digests
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: sidecar-digest-*
+          path: ${{ runner.temp }}/sidecar-digests
+          merge-multiple: true
+
+      - name: Assemble and verify multi-arch manifest
+        id: manifest
+        shell: bash
+        env:
+          DIGEST_DIR: ${{ runner.temp }}/sidecar-digests
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+          METADATA_JSON: ${{ steps.meta.outputs.json }}
+        run: |
+          set -euo pipefail
+          mapfile -t digest_files < <(find "${DIGEST_DIR}" -maxdepth 1 -type f -printf '%f\n' | sort)
+          if [[ "${#digest_files[@]}" -ne 2 ]]; then
+            echo "::error::expected two native-platform digests, found ${#digest_files[@]}" >&2
+            exit 1
+          fi
+
+          sources=()
+          for digest in "${digest_files[@]}"; do
+            if [[ ! "${digest}" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::invalid native-platform digest artifact: ${digest}" >&2
+              exit 1
+            fi
+            sources+=("${IMAGE_NAME}@sha256:${digest}")
+          done
+
+          mapfile -t tags < <(jq -r '.tags[]' <<< "${METADATA_JSON}")
+          if [[ "${#tags[@]}" -eq 0 ]]; then
+            echo "::error::metadata action emitted no image tags" >&2
+            exit 1
+          fi
+          tag_args=()
+          for tag in "${tags[@]}"; do
+            tag_args+=(--tag "${tag}")
+          done
+          docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
+
+          manifest_json="$(docker buildx imagetools inspect "${tags[0]}" --raw)"
+          mapfile -t platforms < <(
+            jq -r '
+              .manifests[]?
+              | select(.platform.os == "linux")
+              | select(.platform.architecture == "amd64" or .platform.architecture == "arm64")
+              | "\(.platform.os)/\(.platform.architecture)"
+            ' <<< "${manifest_json}" | sort -u
+          )
+          if [[ "${#platforms[@]}" -ne 2 || "${platforms[0]}" != "linux/amd64" || "${platforms[1]}" != "linux/arm64" ]]; then
+            printf '::error::unexpected sidecar platforms: %s\n' "${platforms[*]:-none}" >&2
+            exit 1
+          fi
+
+          digest="$(
+            docker buildx imagetools inspect "${tags[0]}" --format '{{json .Manifest}}' \
+              | jq -r '.digest'
+          )"
+          if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::assembled manifest emitted an invalid digest: ${digest}" >&2
+            exit 1
+          fi
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "Pushed multi-arch image digest: ${digest}"
 
       # Sigstore keyless cosign signing of the multi-arch image manifest by
       # digest. Signing the digest covers every tag (semver, sha, latest)
@@ -125,21 +279,19 @@ jobs:
       # signing key is held in secrets. Verification recipe:
       # docs/install/PUBLISHING.md, section "Sidecar image signing".
       - name: Install cosign
-        if: github.event_name == 'push'
         uses: sigstore/cosign-installer@1aa8e0f2454b781fbf0fbf306a4c9533a0c57409
         with:
           cosign-release: v2.4.1
 
       - name: Cosign sign image by digest
-        if: github.event_name == 'push'
         env:
           IMAGE_NAME: ${{ steps.image.outputs.name }}
-          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_DIGEST: ${{ steps.manifest.outputs.digest }}
           COSIGN_EXPERIMENTAL: "1"
         run: |
           set -euo pipefail
           if [ -z "${IMAGE_DIGEST}" ]; then
-            echo "::error::build-push-action did not emit a digest; refusing to sign" >&2
+            echo "::error::manifest assembly did not emit a digest; refusing to sign" >&2
             exit 1
           fi
           ref="${IMAGE_NAME}@${IMAGE_DIGEST}"

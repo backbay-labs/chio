@@ -36,6 +36,10 @@ WORKDIR /workspace
 #     them), so their absence breaks the workspace Cargo.lock
 #     resolution.
 #   - `contracts/` is embedded by chio-web3-bindings via Alloy's sol! macro.
+#   - `spec/` contains schemas embedded by control-plane handlers via
+#     `include_str!` and other compile-time protocol inputs.
+#   - `fixtures/` contains proof-room assets embedded by the chio-proof-room
+#     build script, which is reachable from chio-cli.
 #
 # Note on protobuf: the vendored Envoy protos consumed by
 # chio-envoy-ext-authz's tonic-build live under
@@ -45,6 +49,8 @@ WORKDIR /workspace
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY contracts ./contracts
+COPY spec ./spec
+COPY fixtures ./fixtures
 COPY bench ./bench
 COPY integrations/editors ./integrations/editors
 COPY wit ./wit
@@ -78,10 +84,13 @@ COPY xtask ./xtask
 # --workspace` in CI.
 COPY integrations ./integrations
 
-# Build a release binary, locked to the committed Cargo.lock.
-RUN cargo build --release --locked --package chio-cli --bin chio \
- && strip target/release/chio \
- && cp target/release/chio /chio
+# Build with the workspace's container-specific profile, which uses thin LTO
+# instead of the memory-heavy fat LTO release profile. Keep Cargo at one job so
+# the native GitHub ARM runner stays within its memory envelope while compiling
+# and linking the full chio-cli dependency graph.
+RUN cargo build --profile docker-release --locked --jobs 1 --package chio-cli --bin chio \
+ && strip target/docker-release/chio \
+ && cp target/docker-release/chio /chio
 
 ############################
 # Stage 2: minimal runtime

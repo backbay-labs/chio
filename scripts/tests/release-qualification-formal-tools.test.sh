@@ -4,12 +4,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WORKFLOW="${REPO_ROOT}/.github/workflows/release-qualification.yml"
+GENERATOR="${REPO_ROOT}/scripts/generate-proof-report.sh"
+CHECKER="${REPO_ROOT}/scripts/check-proof-report.sh"
 
-python3 - <<'PY' "${WORKFLOW}"
+python3 - <<'PY' "${WORKFLOW}" "${GENERATOR}" "${CHECKER}"
 from pathlib import Path
 import sys
 
 workflow = Path(sys.argv[1])
+generator = Path(sys.argv[2]).read_text(encoding="utf-8")
+checker = Path(sys.argv[3]).read_text(encoding="utf-8")
 lines = workflow.read_text(encoding="utf-8").splitlines()
 
 required_markers = {
@@ -75,6 +79,15 @@ if late_portable:
         "portable wasm tool install steps must precede ./scripts/qualify-release.sh "
         f"(late line numbers: {late_portable}, release line: {release_step})"
     )
+
+for command in (
+    "cd formal/lean4/Chio && lean --version",
+    "cd formal/lean4/Chio && lake --version",
+):
+    if command not in generator or command not in checker:
+        raise SystemExit(
+            "strict proof reports must probe the checked-in Lean project: " + command
+        )
 
 print("PASS: release-qualification installs strict formal tools before ci-workspace")
 PY

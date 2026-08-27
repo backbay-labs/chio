@@ -102,6 +102,8 @@ jobs:
           python3 scripts/check-review-slices.py
           bash ./scripts/check-regression-tests.sh
           bash ./scripts/tests/check-regression-tests.test.sh
+          bash ./scripts/tests/check-sidecar-docker-context.test.sh
+          bash ./scripts/tests/check-sidecar-image-workflow.test.sh
           python3 scripts/check-mutants-examine-globs.py
           bash scripts/tests/check-mutants-examine-globs.test.sh
           python3 scripts/check-rust-public-surface.py
