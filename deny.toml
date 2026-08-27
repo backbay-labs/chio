@@ -78,12 +78,6 @@ ignore = [
     "RUSTSEC-2026-0247",
     "RUSTSEC-2026-0250",
     "RUSTSEC-2026-0251",
-    # last-checked = 2026-08-12; Chio's direct caches use fixed lru 0.18.2. Alloy 1.8.3
-    # still pins lru 0.16, and moving to Alloy 2 requires a coordinated API migration.
-    # Its only pop call uses a u64 block-number key, whose Drop cannot panic, so the
-    # panic-during-key-drop precondition is unreachable. Clear this exception with the
-    # Alloy 2 migration.
-    "RUSTSEC-2026-0253",
 ]
 
 # cargo-deny 0.16 enforces an explicit allow-list only: unlisted licenses are

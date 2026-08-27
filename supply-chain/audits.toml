@@ -463,6 +463,12 @@ criteria = "safe-to-deploy"
 version = "1.0.4"
 notes = "Conditional compilation helper macro; trivial code, no IO or unsafe."
 
+[[audits.chacha20]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+delta = "0.10.0 -> 0.10.2"
+notes = "Local cargo-vet review of the full published-source diff after upstream yanked 0.10.0. The delta removes an SSE4.1-only counter extraction from the SSE2 RNG path by storing the complete counter vector, adds the documented legacy core export, fixes RNG offset arithmetic, and widens the existing AArch64 NEON batch from four to eight blocks. Pointer loads and stores remain bounded by fixed-size state and block arrays, the crate remains no_std with no build script or IO capability, and the remaining changes are documentation, lints, and tests."
+
 [[audits.chio-mcp-remote]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
