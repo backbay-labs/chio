@@ -190,6 +190,14 @@ jobs:
       - name: SDK parity contract lane
         run: ./scripts/check-sdk-parity.sh
 
+      - name: Install Proof Room dashboard dependencies
+        working-directory: crates/products/chio-cli/dashboard
+        run: npm ci
+
+      - name: Export Proof Room static UI
+        working-directory: crates/products/chio-cli/dashboard
+        run: npm run build
+
       - name: Release qualification
         env:
           GH_TOKEN: ${{ github.token }}
