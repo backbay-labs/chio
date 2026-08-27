@@ -17,6 +17,10 @@ run_check() {
   shift
   local log_path="${log_root}/${slug}.log"
   "$@" 2>&1 | tee "${log_path}"
+  if ! grep -Eq "test result: ok\. [1-9][0-9]* passed" "${log_path}"; then
+    echo "trust-control check ${slug} did not run a nonzero passing test count" >&2
+    exit 1
+  fi
 }
 
 run_check node-identity \
@@ -41,7 +45,7 @@ run_check replay-and-failover \
 
 run_check duplicate-event-rejection \
   cargo test -p chio-store-sqlite --lib \
-  budget_store::tests::budget_store_event_id_reuse_rejects_authority_rollover_sqlite -- \
+  budget_store::tests::budget_store_event_id_retry_rejects_authority_rollover_sqlite -- \
   --exact --nocapture
 
 run_check stale-lease-rejection \
