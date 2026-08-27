@@ -257,7 +257,7 @@ jobs:
         env:
           CARGO_BUILD_JOBS: "1"
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
-        run: cargo test -p chio-cli --features iroh
+        run: cargo test -p chio-cli --features iroh --bin chio
 
       - name: control-plane default build includes the qualified cognition market
         env:

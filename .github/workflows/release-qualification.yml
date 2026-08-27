@@ -157,9 +157,35 @@ jobs:
           cargo install cargo-ndk --version "$(cat .tooling/cargo-ndk.version)" --locked
           rustup target add aarch64-linux-android
           sudo apt-get update
-          if ! sudo apt-get install -y chromium-driver chromium libcurl4-openssl-dev; then
-            sudo apt-get install -y chromium-driver chromium-browser libcurl4-openssl-dev
+          portable_packages=(
+            apparmor-profiles
+            apparmor-utils
+            bubblewrap
+            chromium-driver
+            chromium
+            libcurl4-openssl-dev
+          )
+          if ! sudo apt-get install -y "${portable_packages[@]}"; then
+            portable_packages[4]=chromium-browser
+            sudo apt-get install -y "${portable_packages[@]}"
           fi
+          bwrap_profile=/usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+          if [[ ! -f "${bwrap_profile}" ]]; then
+            echo "Ubuntu bubblewrap AppArmor profile is unavailable: ${bwrap_profile}" >&2
+            exit 1
+          fi
+          sudo install -m 0644 \
+            "${bwrap_profile}" \
+            /etc/apparmor.d/bwrap-userns-restrict
+          sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict
+          bwrap \
+            --unshare-user \
+            --unshare-net \
+            --disable-userns \
+            --ro-bind / / \
+            --proc /proc \
+            --dev /dev \
+            -- /bin/true
 
       - name: SDK parity contract lane
         run: ./scripts/check-sdk-parity.sh
