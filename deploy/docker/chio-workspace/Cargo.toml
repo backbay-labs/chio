@@ -63,7 +63,7 @@ expect_used = "deny"
 codegen-units = 1
 lto = "fat"
 strip = "symbols"
-panic = "abort"
+panic = "unwind"
 
 [profile.docker-release]
 inherits = "release"
@@ -112,6 +112,8 @@ miette = { version = "7.6.0", features = ["fancy"] }
 chrono = "0.4"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 fips204 = { version = "0.4.6", default-features = false, features = ["ml-dsa-65"] }
+frost-ed25519 = { version = "3.0.0", default-features = false, features = ["serialization"] }
+frost-core = { version = "3.0.0", default-features = false, features = ["serialization"] }
 sev = { version = "7.1.0", default-features = false, features = ["snp", "crypto_nossl"] }
 coset = { version = "0.4.2", default-features = false }
 x509-parser = "0.16"
@@ -199,6 +201,11 @@ chio-core = { path = "crates/core/chio-core" }
 chio-core-types = { path = "crates/core/chio-core-types" }
 chio-credentials = { path = "crates/trust/chio-credentials" }
 chio-credit = { path = "crates/economy/chio-credit" }
+chio-fincred = { path = "crates/economy/chio-fincred" }
+chio-finding = { path = "crates/economy/chio-finding" }
+chio-finding-challenge = { path = "crates/trust/chio-finding-challenge" }
+chio-finding-verifier = { path = "crates/trust/chio-finding-verifier" }
+chio-fiscal = { path = "crates/economy/chio-fiscal" }
 chio-cross-protocol = { path = "crates/protocol/chio-cross-protocol" }
 # `default-features = false` at the workspace root so consumers can opt out of
 # the `default = ["passkey", "sqlite-store"]` graph (e.g. mobile staticlib and
@@ -270,6 +277,7 @@ chio-settle = { path = "crates/economy/chio-settle" }
 chio-siem = { path = "crates/observability/chio-siem" }
 chio-spec-codegen = { path = "crates/tooling/chio-spec-codegen" }
 chio-spec-validate = { path = "crates/tooling/chio-spec-validate" }
+chio-trace-validate = { path = "crates/tooling/chio-trace-validate" }
 chio-store-sqlite = { path = "crates/platform/chio-store-sqlite" }
 chio-swarm-authority = { path = "crates/kernel/chio-swarm-authority" }
 chio-transaction-passport = { path = "crates/platform/chio-transaction-passport" }

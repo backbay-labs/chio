@@ -632,7 +632,7 @@ where
             // Notifications carry no `id` per JSON-RPC 2.0 and must not
             // receive a response. The MCP handshake notification
             // `notifications/initialized` falls in this bucket.
-            method if id.is_none() => {
+            _method if id.is_none() => {
                 summary.passthrough += 1;
                 // Silently swallow the notification (the wrapped child has
                 // already received it from the IDE-facing client in the
