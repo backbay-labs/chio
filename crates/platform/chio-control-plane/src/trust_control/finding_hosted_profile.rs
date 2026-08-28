@@ -164,8 +164,12 @@ pub struct FindingHostedAcpProfile {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingHostedWorkerProfile {
+    pub worker_binary: String,
+    pub worker_binary_sha256: String,
     pub firecracker_binary: String,
+    pub firecracker_sha256: String,
     pub jailer_binary: String,
+    pub jailer_sha256: String,
     pub kernel_image: String,
     pub kernel_sha256: String,
     pub rootfs_image: String,
@@ -348,8 +352,12 @@ impl FindingHostedProfile {
         let signer = self.load_signer(FindingHostedSigningRole::Worker)?;
         FirecrackerExecutor::new(
             FirecrackerWorkerConfig {
+                worker_binary: self.worker.worker_binary.clone().into(),
+                worker_binary_sha256: self.worker.worker_binary_sha256.clone(),
                 firecracker_binary: self.worker.firecracker_binary.clone().into(),
+                firecracker_sha256: self.worker.firecracker_sha256.clone(),
                 jailer_binary: self.worker.jailer_binary.clone().into(),
+                jailer_sha256: self.worker.jailer_sha256.clone(),
                 kernel_image: self.worker.kernel_image.clone().into(),
                 kernel_sha256: self.worker.kernel_sha256.clone(),
                 rootfs_image: self.worker.rootfs_image.clone().into(),
@@ -371,6 +379,10 @@ impl FindingHostedProfile {
                 max_file_size_bytes: self.worker.max_file_size_bytes,
                 max_open_files: self.worker.max_open_files,
                 guest_vsock_port: self.worker.guest_vsock_port,
+                capability_authority: parse_key(
+                    &self.kernel_public_key_hex,
+                    "worker capability authority",
+                )?,
             },
             signer,
         )
@@ -530,6 +542,7 @@ impl FindingHostedProfile {
 
     fn validate_worker(&self) -> Result<(), String> {
         for (path, label) in [
+            (&self.worker.worker_binary, "finding worker binary"),
             (&self.worker.firecracker_binary, "Firecracker binary"),
             (&self.worker.jailer_binary, "Firecracker jailer"),
             (&self.worker.kernel_image, "worker kernel image"),
@@ -538,6 +551,12 @@ impl FindingHostedProfile {
         ] {
             validate_absolute_path(path, label)?;
         }
+        validate_digest(
+            &self.worker.worker_binary_sha256,
+            "finding worker binary digest",
+        )?;
+        validate_digest(&self.worker.firecracker_sha256, "Firecracker binary digest")?;
+        validate_digest(&self.worker.jailer_sha256, "Firecracker jailer digest")?;
         validate_digest(&self.worker.kernel_sha256, "worker kernel digest")?;
         validate_digest(&self.worker.rootfs_sha256, "worker rootfs digest")?;
         let mut uids = BTreeSet::new();

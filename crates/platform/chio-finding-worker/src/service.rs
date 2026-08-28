@@ -142,7 +142,8 @@ impl HostedFindingWorker {
                     .await
                     .map_err(map_store)?;
                 Ok(
-                    if result.guest_status == crate::protocol::FindingWorkerResultStatus::Succeeded
+                    if result.guest_classification
+                        == crate::protocol::FindingWorkerExitClassification::Succeeded
                     {
                         JobOutcome::Completed
                     } else {

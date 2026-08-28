@@ -10,7 +10,7 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use chio_core_types::{canonical_json_bytes, SigningBackend};
+use chio_core_types::{canonical_json_bytes, PublicKey, SigningAlgorithm, SigningBackend};
 use chio_finding_market_store_postgres::HostedMarketJob;
 use nix::unistd::{fchown, geteuid, Gid, Uid};
 use serde::Serialize;
@@ -24,10 +24,11 @@ use uuid::Uuid;
 
 use crate::protocol::{
     sign_attested_result, verify_attested_result, FindingWorkerAttestedResult,
-    FindingWorkerRequest, FindingWorkerResult, FindingWorkerResultStatus,
+    FindingWorkerExitClassification, FindingWorkerRequest, FindingWorkerResult,
 };
 
 const MAX_IMAGE_BYTES: u64 = 32 * 1024 * 1024 * 1024;
+const MAX_BINARY_BYTES: u64 = 1024 * 1024 * 1024;
 const VSOCK_GUEST_CID: u32 = 3;
 const VSOCK_PATH: &str = "/worker.vsock";
 const VM_CONFIG_PATH: &str = "/vm-config.json";
@@ -40,8 +41,12 @@ pub struct FirecrackerIdentity {
 
 #[derive(Clone, Debug)]
 pub struct FirecrackerWorkerConfig {
+    pub worker_binary: PathBuf,
+    pub worker_binary_sha256: String,
     pub firecracker_binary: PathBuf,
+    pub firecracker_sha256: String,
     pub jailer_binary: PathBuf,
+    pub jailer_sha256: String,
     pub kernel_image: PathBuf,
     pub kernel_sha256: String,
     pub rootfs_image: PathBuf,
@@ -55,11 +60,13 @@ pub struct FirecrackerWorkerConfig {
     pub max_file_size_bytes: u64,
     pub max_open_files: u32,
     pub guest_vsock_port: u32,
+    pub capability_authority: PublicKey,
 }
 
 impl FirecrackerWorkerConfig {
     pub fn validate(&self) -> Result<(), WorkerExecutionError> {
         for path in [
+            &self.worker_binary,
             &self.firecracker_binary,
             &self.jailer_binary,
             &self.kernel_image,
@@ -68,8 +75,13 @@ impl FirecrackerWorkerConfig {
         ] {
             validate_absolute_path(path)?;
         }
-        if !valid_digest(&self.kernel_sha256)
+        if !valid_digest(&self.worker_binary_sha256)
+            || !valid_digest(&self.firecracker_sha256)
+            || !valid_digest(&self.jailer_sha256)
+            || !valid_digest(&self.kernel_sha256)
             || !valid_digest(&self.rootfs_sha256)
+            || self.capability_authority.algorithm() != SigningAlgorithm::Ed25519
+            || self.capability_authority.is_weak_ed25519()
             || self.identities.is_empty()
             || self.identities.len() > 1_024
             || !(1..=32).contains(&self.vcpu_count)
@@ -150,7 +162,7 @@ pub struct FirecrackerExecutor {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FirecrackerExecutionResult {
     pub envelope_json: Vec<u8>,
-    pub guest_status: FindingWorkerResultStatus,
+    pub guest_classification: FindingWorkerExitClassification,
 }
 
 impl FirecrackerExecutor {
@@ -195,8 +207,14 @@ impl FirecrackerExecutor {
         let deadline = now
             .checked_add(self.inner.config.execution_timeout.as_secs())
             .ok_or(WorkerExecutionError::Configuration)?;
-        let request = FindingWorkerRequest::from_job(job, deadline)
-            .map_err(|_| WorkerExecutionError::Protocol)?;
+        let request = FindingWorkerRequest::from_job(
+            job,
+            deadline,
+            &self.inner.config.capability_authority,
+            now,
+        )
+        .map_err(|_| WorkerExecutionError::Protocol)?;
+        self.admit_job_limits(&request)?;
         let jail_id = format!("chio-{}", Uuid::new_v4().simple());
         let config = self.inner.config.clone();
         let staging_budget = config
@@ -219,6 +237,9 @@ impl FirecrackerExecutor {
             .inner
             .config
             .execution_timeout
+            .min(Duration::from_millis(
+                request.job.resource_limits.wall_time_millis,
+            ))
             .checked_sub(started.elapsed())
             .ok_or(WorkerExecutionError::Timeout)?;
         let result = exchange_with_guest(
@@ -239,10 +260,13 @@ impl FirecrackerExecutor {
             (Ok(_), Err(error)) => Err(error),
         }?;
         let completed_at = unix_time()?;
-        let guest_status = guest.status;
+        let guest_classification = guest.classification;
         let body = FindingWorkerAttestedResult::from_guest(
             &request,
             guest,
+            self.inner.config.worker_binary_sha256.clone(),
+            self.inner.config.firecracker_sha256.clone(),
+            self.inner.config.jailer_sha256.clone(),
             self.inner.config.kernel_sha256.clone(),
             self.inner.config.rootfs_sha256.clone(),
             completed_at,
@@ -260,7 +284,7 @@ impl FirecrackerExecutor {
             canonical_json_bytes(&envelope).map_err(|_| WorkerExecutionError::Protocol)?;
         Ok(FirecrackerExecutionResult {
             envelope_json,
-            guest_status,
+            guest_classification,
         })
     }
 
@@ -270,6 +294,7 @@ impl FirecrackerExecutor {
             return Err(WorkerExecutionError::HostPreflight);
         }
         for path in [
+            &self.inner.config.worker_binary,
             &self.inner.config.firecracker_binary,
             &self.inner.config.jailer_binary,
             &self.inner.config.kernel_image,
@@ -278,14 +303,57 @@ impl FirecrackerExecutor {
         ] {
             require_trusted_parent_chain(path)?;
         }
-        require_trusted_file(&self.inner.config.firecracker_binary, true)?;
-        require_trusted_file(&self.inner.config.jailer_binary, true)?;
-        require_trusted_file(&self.inner.config.kernel_image, false)?;
-        require_trusted_file(&self.inner.config.rootfs_image, false)?;
+        require_trusted_file_digest(
+            &self.inner.config.worker_binary,
+            true,
+            &self.inner.config.worker_binary_sha256,
+            MAX_BINARY_BYTES,
+        )?;
+        require_trusted_file_digest(
+            &self.inner.config.firecracker_binary,
+            true,
+            &self.inner.config.firecracker_sha256,
+            MAX_BINARY_BYTES,
+        )?;
+        require_trusted_file_digest(
+            &self.inner.config.jailer_binary,
+            true,
+            &self.inner.config.jailer_sha256,
+            MAX_BINARY_BYTES,
+        )?;
+        require_trusted_file_digest(
+            &self.inner.config.kernel_image,
+            false,
+            &self.inner.config.kernel_sha256,
+            MAX_IMAGE_BYTES,
+        )?;
+        require_trusted_file_digest(
+            &self.inner.config.rootfs_image,
+            false,
+            &self.inner.config.rootfs_sha256,
+            MAX_IMAGE_BYTES,
+        )?;
         require_trusted_directory(&self.inner.config.jail_root)?;
         let kvm = fs::metadata("/dev/kvm").map_err(|_| WorkerExecutionError::HostPreflight)?;
         if !kvm.file_type().is_char_device() {
             return Err(WorkerExecutionError::HostPreflight);
+        }
+        Ok(())
+    }
+
+    fn admit_job_limits(&self, request: &FindingWorkerRequest) -> Result<(), WorkerExecutionError> {
+        let limits = &request.job.resource_limits;
+        let configured_memory = u64::from(self.inner.config.memory_mib)
+            .checked_mul(1024 * 1024)
+            .ok_or(WorkerExecutionError::Configuration)?;
+        let configured_wall_millis = u64::try_from(self.inner.config.execution_timeout.as_millis())
+            .map_err(|_| WorkerExecutionError::Configuration)?;
+        if limits.memory_bytes > configured_memory
+            || limits.wall_time_millis > configured_wall_millis
+            || limits.output_bytes > self.inner.config.max_file_size_bytes
+            || limits.open_files > self.inner.config.max_open_files
+        {
+            return Err(WorkerExecutionError::Configuration);
         }
         Ok(())
     }
@@ -729,10 +797,39 @@ fn chown_file(file: &File, identity: FirecrackerIdentity) -> Result<(), WorkerEx
     .map_err(|_| WorkerExecutionError::Staging)
 }
 
-fn require_trusted_file(path: &Path, executable: bool) -> Result<(), WorkerExecutionError> {
-    let metadata = fs::symlink_metadata(path).map_err(|_| WorkerExecutionError::HostPreflight)?;
-    if metadata.file_type().is_symlink() || !trusted_file_metadata(&metadata, executable) {
+fn require_trusted_file_digest(
+    path: &Path,
+    executable: bool,
+    expected_sha256: &str,
+    maximum_bytes: u64,
+) -> Result<(), WorkerExecutionError> {
+    let mut file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+        .map_err(|_| WorkerExecutionError::HostPreflight)?;
+    let metadata = file
+        .metadata()
+        .map_err(|_| WorkerExecutionError::HostPreflight)?;
+    if !trusted_file_metadata(&metadata, executable)
+        || metadata.len() == 0
+        || metadata.len() > maximum_bytes
+    {
         return Err(WorkerExecutionError::HostPreflight);
+    }
+    let mut digest = Sha256::new();
+    let mut buffer = vec![0_u8; 1024 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|_| WorkerExecutionError::HostPreflight)?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    if format!("{:x}", digest.finalize()) != expected_sha256 {
+        return Err(WorkerExecutionError::AssetIntegrity);
     }
     Ok(())
 }
@@ -892,12 +989,16 @@ mod tests {
 
     fn config(root: &Path) -> FirecrackerWorkerConfig {
         FirecrackerWorkerConfig {
+            worker_binary: root.join("chio-finding-worker"),
+            worker_binary_sha256: "0".repeat(64),
             firecracker_binary: root.join("firecracker"),
+            firecracker_sha256: "1".repeat(64),
             jailer_binary: root.join("jailer"),
+            jailer_sha256: "2".repeat(64),
             kernel_image: root.join("kernel"),
-            kernel_sha256: "1".repeat(64),
+            kernel_sha256: "3".repeat(64),
             rootfs_image: root.join("rootfs"),
-            rootfs_sha256: "2".repeat(64),
+            rootfs_sha256: "4".repeat(64),
             jail_root: root.join("jails"),
             identities: vec![FirecrackerIdentity {
                 uid: 1001,
@@ -910,6 +1011,7 @@ mod tests {
             max_file_size_bytes: 16 * 1024 * 1024,
             max_open_files: 128,
             guest_vsock_port: 7000,
+            capability_authority: chio_core_types::Ed25519Backend::generate().public_key(),
         }
     }
 

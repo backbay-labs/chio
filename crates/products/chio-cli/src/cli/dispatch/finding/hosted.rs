@@ -172,6 +172,10 @@ fn validate_referenced_files(profile: &FindingHostedProfile) -> Result<(), CliEr
         FileClass::ReadOnly,
     )?;
     validate_file(
+        Path::new(&profile.worker.worker_binary),
+        FileClass::Executable,
+    )?;
+    validate_file(
         Path::new(&profile.worker.firecracker_binary),
         FileClass::Executable,
     )?;
@@ -181,6 +185,29 @@ fn validate_referenced_files(profile: &FindingHostedProfile) -> Result<(), CliEr
     )?;
     let kernel = Path::new(&profile.worker.kernel_image);
     let rootfs = Path::new(&profile.worker.rootfs_image);
+    for (path, expected, label) in [
+        (
+            Path::new(&profile.worker.worker_binary),
+            &profile.worker.worker_binary_sha256,
+            "finding worker binary",
+        ),
+        (
+            Path::new(&profile.worker.firecracker_binary),
+            &profile.worker.firecracker_sha256,
+            "Firecracker binary",
+        ),
+        (
+            Path::new(&profile.worker.jailer_binary),
+            &profile.worker.jailer_sha256,
+            "Firecracker jailer",
+        ),
+    ] {
+        if sha256_file(path)? != *expected {
+            return Err(CliError::cli_other_error(format!(
+                "{label} digest does not match the hosted profile"
+            )));
+        }
+    }
     validate_file(kernel, FileClass::ReadOnly)?;
     validate_file(rootfs, FileClass::ReadOnly)?;
     if sha256_file(kernel)? != profile.worker.kernel_sha256 {
