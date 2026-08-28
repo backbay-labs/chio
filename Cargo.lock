@@ -3892,6 +3892,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "ureq 2.12.1",
+ "url",
  "uuid",
 ]
 

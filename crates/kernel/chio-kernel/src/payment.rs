@@ -1,3 +1,6 @@
+use std::fmt;
+use std::io::Read;
+use std::net::IpAddr;
 use std::time::Duration;
 
 use chio_core::{
@@ -5,6 +8,7 @@ use chio_core::{
     sha256,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use url::Url;
 
 mod sim;
 pub use sim::SimPaymentAdapter;
@@ -820,7 +824,7 @@ pub enum PaymentError {
 /// authorization request and treats later capture/release/refund actions as
 /// prepaid bookkeeping. This keeps the bridge small while still giving the
 /// kernel a real external authorization hop before execution.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct X402PaymentAdapter {
     base_url: String,
     authorize_path: String,
@@ -833,7 +837,7 @@ pub struct X402PaymentAdapter {
 /// Every monetary transition is confirmed by the external facilitator. Each
 /// response must echo the digest of the exact operation binding, and recovery
 /// queries use the same durable reference as the journaled request.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AcpPaymentAdapter {
     base_url: String,
     authorize_path: String,
@@ -843,6 +847,38 @@ pub struct AcpPaymentAdapter {
     settlement_state_path: String,
     bearer_token: Option<String>,
     http: ureq::Agent,
+}
+
+impl fmt::Debug for X402PaymentAdapter {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("X402PaymentAdapter")
+            .field("base_url", &self.base_url)
+            .field("authorize_path", &self.authorize_path)
+            .field(
+                "bearer_token",
+                &self.bearer_token.as_ref().map(|_| "[REDACTED]"),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for AcpPaymentAdapter {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AcpPaymentAdapter")
+            .field("base_url", &self.base_url)
+            .field("authorize_path", &self.authorize_path)
+            .field("capture_path", &self.capture_path)
+            .field("release_path", &self.release_path)
+            .field("refund_path", &self.refund_path)
+            .field("settlement_state_path", &self.settlement_state_path)
+            .field(
+                "bearer_token",
+                &self.bearer_token.as_ref().map(|_| "[REDACTED]"),
+            )
+            .finish_non_exhaustive()
+    }
 }
 
 impl X402PaymentAdapter {
@@ -1205,6 +1241,8 @@ const ACP_TERMINAL_OPERATION_RESPONSE_SCHEMA: &str =
     "chio.payment.acp-terminal-operation-response.v1";
 const ACP_SETTLEMENT_STATE_REQUEST_SCHEMA: &str = "chio.payment.acp-settlement-state-request.v1";
 const ACP_SETTLEMENT_STATE_RESPONSE_SCHEMA: &str = "chio.payment.acp-settlement-state-response.v1";
+const MAX_PAYMENT_RESPONSE_BYTES: u64 = 256 * 1024;
+const MAX_PAYMENT_BEARER_TOKEN_BYTES: usize = 16 * 1024;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1498,6 +1536,7 @@ fn post_json<B: Serialize, T: DeserializeOwned>(
     path: &str,
     body: &B,
 ) -> Result<T, PaymentError> {
+    validate_payment_endpoint(base_url, path, bearer_token)?;
     let url = format!("{base_url}{path}");
     let payload = serde_json::to_value(body)
         .map_err(|error| PaymentError::RailError(format!("invalid request payload: {error}")))?;
@@ -1506,18 +1545,7 @@ fn post_json<B: Serialize, T: DeserializeOwned>(
         request = request.set("Authorization", &format!("Bearer {token}"));
     }
     match request.send_json(payload) {
-        Ok(response) => {
-            let body = response.into_string().map_err(|error| {
-                PaymentError::RailError(format!(
-                    "failed to read payment rail response body: {error}"
-                ))
-            })?;
-            serde_json::from_str(&body).map_err(|error| {
-                PaymentError::RailError(format!(
-                    "failed to decode payment rail response body: {error}"
-                ))
-            })
-        }
+        Ok(response) => read_payment_json(response),
         Err(error) => Err(map_http_payment_error(error)),
     }
 }
@@ -1529,6 +1557,7 @@ fn get_json<T: DeserializeOwned>(
     path: &str,
     query: &[(&str, &str)],
 ) -> Result<T, PaymentError> {
+    validate_payment_endpoint(base_url, path, bearer_token)?;
     let url = format!("{base_url}{path}");
     let mut request = http.get(&url);
     for (name, value) in query {
@@ -1538,20 +1567,67 @@ fn get_json<T: DeserializeOwned>(
         request = request.set("Authorization", &format!("Bearer {token}"));
     }
     match request.call() {
-        Ok(response) => {
-            let body = response.into_string().map_err(|error| {
-                PaymentError::RailError(format!(
-                    "failed to read payment rail response body: {error}"
-                ))
-            })?;
-            serde_json::from_str(&body).map_err(|error| {
-                PaymentError::RailError(format!(
-                    "failed to decode payment rail response body: {error}"
-                ))
-            })
-        }
+        Ok(response) => read_payment_json(response),
         Err(error) => Err(map_http_payment_error(error)),
     }
+}
+
+fn read_payment_json<T: DeserializeOwned>(response: ureq::Response) -> Result<T, PaymentError> {
+    let mut reader = response
+        .into_reader()
+        .take(MAX_PAYMENT_RESPONSE_BYTES.saturating_add(1));
+    let mut body = Vec::new();
+    reader.read_to_end(&mut body).map_err(|_| {
+        PaymentError::RailError("payment rail response could not be read".to_owned())
+    })?;
+    if body.len() as u64 > MAX_PAYMENT_RESPONSE_BYTES {
+        return Err(PaymentError::RailError(
+            "payment rail response is too large".to_owned(),
+        ));
+    }
+    serde_json::from_slice(&body)
+        .map_err(|_| PaymentError::RailError("payment rail response is invalid".to_owned()))
+}
+
+fn validate_payment_endpoint(
+    base_url: &str,
+    path: &str,
+    bearer_token: Option<&str>,
+) -> Result<(), PaymentError> {
+    let parsed = Url::parse(base_url)
+        .map_err(|_| PaymentError::RailError("payment rail URL is invalid".to_owned()))?;
+    let loopback_http = parsed.scheme() == "http"
+        && parsed.host_str().is_some_and(|host| {
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .parse::<IpAddr>()
+                    .is_ok_and(|address| address.is_loopback())
+        });
+    if (parsed.scheme() != "https" && !loopback_http)
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || parsed.host_str().is_none()
+        || !path.starts_with('/')
+        || path.starts_with("//")
+        || path.contains(['?', '#'])
+        || path.chars().any(char::is_control)
+    {
+        return Err(PaymentError::RailError(
+            "payment rail URL is invalid".to_owned(),
+        ));
+    }
+    if bearer_token.is_some_and(|token| {
+        token.is_empty()
+            || token.len() > MAX_PAYMENT_BEARER_TOKEN_BYTES
+            || token.chars().any(char::is_control)
+    }) {
+        return Err(PaymentError::RailError(
+            "payment rail credential is invalid".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 fn build_http_agent(timeout: Duration) -> ureq::Agent {
@@ -1559,6 +1635,7 @@ fn build_http_agent(timeout: Duration) -> ureq::Agent {
         .timeout_connect(timeout)
         .timeout_read(timeout)
         .timeout_write(timeout)
+        .redirects(0)
         .build()
 }
 
@@ -1577,29 +1654,15 @@ fn default_true() -> bool {
 fn map_http_payment_error(error: ureq::Error) -> PaymentError {
     match error {
         ureq::Error::Status(402, _response) => PaymentError::InsufficientFunds,
-        ureq::Error::Status(status, response) if (400..500).contains(&status) => {
-            PaymentError::Declined(response_error_message(response))
+        ureq::Error::Status(status, _response) if (400..500).contains(&status) => {
+            PaymentError::Declined(format!("payment rail rejected request (HTTP {status})"))
         }
-        ureq::Error::Status(_, response) => {
-            PaymentError::Unavailable(response_error_message(response))
+        ureq::Error::Status(status, _response) => PaymentError::Unavailable(format!(
+            "payment rail returned an unavailable status (HTTP {status})"
+        )),
+        ureq::Error::Transport(_error) => {
+            PaymentError::Unavailable("payment rail transport failed".to_owned())
         }
-        ureq::Error::Transport(error) => PaymentError::Unavailable(error.to_string()),
-    }
-}
-
-fn response_error_message(response: ureq::Response) -> String {
-    let status_text = response.status_text().to_string();
-    match response.into_string() {
-        Ok(body) if !body.trim().is_empty() => serde_json::from_str::<serde_json::Value>(&body)
-            .ok()
-            .and_then(|json| {
-                json.get("error")
-                    .or_else(|| json.get("message"))
-                    .and_then(serde_json::Value::as_str)
-                    .map(ToOwned::to_owned)
-            })
-            .unwrap_or(body),
-        _ => status_text,
     }
 }
 
@@ -2278,6 +2341,76 @@ mod tests {
             .expect_err("an unbound response must fail closed");
         assert!(matches!(error, PaymentError::RailError(_)));
         handle.join().expect("server should exit cleanly");
+    }
+
+    #[test]
+    fn payment_adapters_redact_bearer_credentials_from_debug() {
+        let x402 =
+            X402PaymentAdapter::new("https://payments.example").with_bearer_token("x402-secret");
+        let acp = AcpPaymentAdapter::new("https://acp.example").with_bearer_token("acp-secret");
+
+        let x402_debug = format!("{x402:?}");
+        let acp_debug = format!("{acp:?}");
+        assert!(x402_debug.contains("[REDACTED]"));
+        assert!(acp_debug.contains("[REDACTED]"));
+        assert!(!x402_debug.contains("x402-secret"));
+        assert!(!acp_debug.contains("acp-secret"));
+    }
+
+    #[test]
+    fn payment_adapters_reject_cleartext_non_loopback_endpoints() {
+        let error = X402PaymentAdapter::new("http://payments.example")
+            .authorize(&test_payment_authorize_request())
+            .expect_err("cleartext production payment endpoints must be rejected");
+        assert!(
+            matches!(error, PaymentError::RailError(message) if message == "payment rail URL is invalid")
+        );
+    }
+
+    #[test]
+    fn payment_error_bodies_are_not_reflected() {
+        let (url, _request_rx, handle) = spawn_once_json_server(
+            400,
+            serde_json::json!({"error": "provider-secret-customer-record"}),
+        );
+        let error = X402PaymentAdapter::new(url)
+            .authorize(&test_payment_authorize_request())
+            .expect_err("provider rejection should fail");
+        let display = error.to_string();
+        assert!(display.contains("HTTP 400"));
+        assert!(!display.contains("provider-secret-customer-record"));
+        handle.join().expect("server should exit cleanly");
+    }
+
+    #[test]
+    fn payment_response_body_is_bounded() {
+        let (url, _request_rx, handle) = spawn_once_json_server(
+            200,
+            serde_json::json!({
+                "authorizationId": "oversized",
+                "settled": true,
+                "metadata": {"padding": "x".repeat(MAX_PAYMENT_RESPONSE_BYTES as usize)}
+            }),
+        );
+        let error = X402PaymentAdapter::new(url)
+            .authorize(&test_payment_authorize_request())
+            .expect_err("oversized payment response must be rejected");
+        assert!(
+            matches!(error, PaymentError::RailError(message) if message == "payment rail response is too large")
+        );
+        handle.join().expect("server should exit cleanly");
+    }
+
+    fn test_payment_authorize_request() -> PaymentAuthorizeRequest {
+        PaymentAuthorizeRequest {
+            amount_units: 125,
+            currency: "USD".to_owned(),
+            payer: "agent-1".to_owned(),
+            payee: "tool-server".to_owned(),
+            reference: "payment-test".to_owned(),
+            governed: None,
+            commerce: None,
+        }
     }
 
     fn spawn_once_json_server(

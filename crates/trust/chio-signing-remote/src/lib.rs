@@ -371,31 +371,26 @@ struct VaultSignRequest {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct VaultSignResponse {
     data: VaultSignatureData,
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct VaultSignatureData {
     signature: String,
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct VaultKeyResponse {
     data: VaultKeyData,
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct VaultKeyData {
     keys: std::collections::BTreeMap<String, VaultVersionedPublicKey>,
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct VaultVersionedPublicKey {
     public_key: String,
 }
@@ -573,7 +568,16 @@ mod tests {
         let message = b"vault canonical bytes";
         let encoded_signature = BASE64_STANDARD.encode(keypair.sign(message).to_bytes());
         let (base_url, request_rx, server) = spawn_json_server(serde_json::json!({
-            "data": {"signature": format!("vault:v4:{encoded_signature}")}
+            "request_id": "vault-request-4",
+            "lease_id": "",
+            "renewable": false,
+            "data": {
+                "signature": format!("vault:v4:{encoded_signature}"),
+                "key_version": 4
+            },
+            "warnings": null,
+            "auth": null,
+            "mount_type": "transit"
         }));
         let backend = VaultTransitSigningBackend::new(
             base_url,
@@ -598,11 +602,33 @@ mod tests {
         let configured = Keypair::from_seed(&[34_u8; 32]);
         let returned = Keypair::from_seed(&[35_u8; 32]);
         let (base_url, _request_rx, server) = spawn_json_server(serde_json::json!({
+            "request_id": "vault-key-request-9",
             "data": {
+                "allow_plaintext_backup": false,
+                "deletion_allowed": false,
+                "derived": false,
+                "exportable": false,
                 "keys": {
-                    "9": {"public_key": BASE64_STANDARD.encode(returned.public_key().as_bytes())}
-                }
-            }
+                    "9": {
+                        "creation_time": "2026-08-28T00:00:00Z",
+                        "name": "ed25519",
+                        "public_key": BASE64_STANDARD.encode(returned.public_key().as_bytes())
+                    }
+                },
+                "latest_version": 9,
+                "min_available_version": 0,
+                "min_decryption_version": 1,
+                "min_encryption_version": 0,
+                "name": "finding-audit",
+                "supports_decryption": false,
+                "supports_derivation": false,
+                "supports_encryption": false,
+                "supports_signing": true,
+                "type": "ed25519"
+            },
+            "warnings": null,
+            "auth": null,
+            "mount_type": "transit"
         }));
         let backend = VaultTransitSigningBackend::new(
             base_url,

@@ -97,6 +97,7 @@ chio-underwriting = { workspace = true }
 chio-swarm-authority = { workspace = true }
 uuid = { workspace = true, features = ["v7"] }
 ureq = { version = "2.10", features = ["json"] }
+url = { workspace = true }
 rand = { workspace = true }
 base64 = { workspace = true }
 
