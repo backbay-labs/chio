@@ -1,0 +1,641 @@
+use std::collections::BTreeSet;
+
+use super::*;
+
+const MAX_PRINCIPAL_ID_BYTES: usize = 256;
+const MAX_KEY_ID_BYTES: usize = 128;
+const MAX_CAPABILITY_ID_BYTES: usize = 256;
+const MAX_EVENT_ID_BYTES: usize = 256;
+const MAX_EVENT_KIND_BYTES: usize = 96;
+const MAX_ALLOWED_ACTIONS: usize = 64;
+const MAX_SECURITY_EVENT_BYTES: usize = 1024 * 1024;
+const MAX_AUTH_CAPACITY: u64 = 10_000_000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostedPrincipalRole {
+    Buyer,
+    Seller,
+    Evaluator,
+    Auditor,
+    Operator,
+}
+
+impl HostedPrincipalRole {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Buyer => "buyer",
+            Self::Seller => "seller",
+            Self::Evaluator => "evaluator",
+            Self::Auditor => "auditor",
+            Self::Operator => "operator",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, HostedMarketStoreError> {
+        match value {
+            "buyer" => Ok(Self::Buyer),
+            "seller" => Ok(Self::Seller),
+            "evaluator" => Ok(Self::Evaluator),
+            "auditor" => Ok(Self::Auditor),
+            "operator" => Ok(Self::Operator),
+            _ => Err(HostedMarketStoreError::DigestMismatch),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostedPrincipal {
+    pub tenant_id: HostedTenantId,
+    pub principal_id: String,
+    pub role: HostedPrincipalRole,
+    pub capability_public_key_hex: Option<String>,
+    pub enabled: bool,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostedApiKeyRecord {
+    pub tenant_id: HostedTenantId,
+    pub key_id: String,
+    pub principal_id: String,
+    pub verifier_sha256: String,
+    pub allowed_actions: BTreeSet<String>,
+    pub active_from: u64,
+    pub expires_at: u64,
+    pub revoked_at: Option<u64>,
+    pub rotated_from_key_id: Option<String>,
+    pub created_at: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostedSecurityEventOutcome {
+    Inserted,
+    ExactReplay,
+}
+
+impl PostgresFindingMarketStore {
+    #[allow(clippy::too_many_arguments)]
+    pub async fn put_principal(
+        &self,
+        tenant: &HostedTenantId,
+        principal_id: &str,
+        role: HostedPrincipalRole,
+        capability_public_key_hex: Option<&str>,
+        enabled: bool,
+        now: u64,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        validate_identifier(principal_id, MAX_PRINCIPAL_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("principal_id"))?;
+        if let Some(key) = capability_public_key_hex {
+            let parsed = chio_core_types::PublicKey::from_hex(key)
+                .map_err(|_| HostedMarketStoreError::Invalid("capability_public_key"))?;
+            if parsed.is_weak_ed25519() {
+                return Err(HostedMarketStoreError::Invalid("capability_public_key"));
+            }
+        }
+        let now = checked_i64(now, "principal now")?;
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let existing = sqlx::query(
+            "SELECT role, capability_public_key_hex, enabled FROM chio_finding_market_principals WHERE tenant_id = $1 AND principal_id = $2 FOR UPDATE",
+        )
+        .bind(tenant.as_str())
+        .bind(principal_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        if let Some(row) = existing {
+            let stored_role: String = row.try_get(0).map_err(unavailable)?;
+            let stored_key: Option<String> = row.try_get(1).map_err(unavailable)?;
+            let stored_enabled: bool = row.try_get(2).map_err(unavailable)?;
+            if stored_role != role.as_str()
+                || stored_key.as_deref() != capability_public_key_hex
+                || stored_enabled != enabled
+            {
+                return Err(HostedMarketStoreError::Conflict);
+            }
+            transaction
+                .commit()
+                .await
+                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            return Ok(HostedJobWriteOutcome::ExactReplay);
+        }
+        sqlx::query(
+            "INSERT INTO chio_finding_market_principals (tenant_id, principal_id, role, capability_public_key_hex, enabled, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $6)",
+        )
+        .bind(tenant.as_str())
+        .bind(principal_id)
+        .bind(role.as_str())
+        .bind(capability_public_key_hex)
+        .bind(enabled)
+        .bind(now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        Ok(HostedJobWriteOutcome::Inserted)
+    }
+
+    pub async fn get_principal(
+        &self,
+        tenant: &HostedTenantId,
+        principal_id: &str,
+    ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError> {
+        validate_identifier(principal_id, MAX_PRINCIPAL_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("principal_id"))?;
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let row = sqlx::query(
+            "SELECT principal_id, role, capability_public_key_hex, enabled, created_at, updated_at FROM chio_finding_market_principals WHERE tenant_id = $1 AND principal_id = $2",
+        )
+        .bind(tenant.as_str())
+        .bind(principal_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        row.map(|row| principal_from_row(tenant, &row)).transpose()
+    }
+
+    pub async fn get_principal_by_capability_key(
+        &self,
+        tenant: &HostedTenantId,
+        public_key_hex: &str,
+    ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError> {
+        let parsed = chio_core_types::PublicKey::from_hex(public_key_hex)
+            .map_err(|_| HostedMarketStoreError::Invalid("capability_public_key"))?;
+        if parsed.is_weak_ed25519() {
+            return Err(HostedMarketStoreError::Invalid("capability_public_key"));
+        }
+        let normalized = parsed.to_hex();
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let row = sqlx::query(
+            "SELECT principal_id, role, capability_public_key_hex, enabled, created_at, updated_at FROM chio_finding_market_principals WHERE tenant_id = $1 AND capability_public_key_hex = $2",
+        )
+        .bind(tenant.as_str())
+        .bind(normalized)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        row.map(|row| principal_from_row(tenant, &row)).transpose()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn put_api_key(
+        &self,
+        tenant: &HostedTenantId,
+        key_id: &str,
+        principal_id: &str,
+        verifier_sha256: &str,
+        allowed_actions: &BTreeSet<String>,
+        active_from: u64,
+        expires_at: u64,
+        rotated_from_key_id: Option<&str>,
+        now: u64,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        validate_identifier(key_id, MAX_KEY_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("key_id"))?;
+        validate_identifier(principal_id, MAX_PRINCIPAL_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("principal_id"))?;
+        validate_digest(verifier_sha256, "api_key_verifier")?;
+        validate_allowed_actions(allowed_actions)?;
+        if let Some(previous) = rotated_from_key_id {
+            validate_identifier(previous, MAX_KEY_ID_BYTES)
+                .map_err(|_| HostedMarketStoreError::Invalid("rotated_from_key_id"))?;
+            if previous == key_id {
+                return Err(HostedMarketStoreError::Invalid("rotated_from_key_id"));
+            }
+        }
+        if expires_at <= active_from {
+            return Err(HostedMarketStoreError::Invalid("api_key_window"));
+        }
+        let active_from = checked_i64(active_from, "api_key active_from")?;
+        let expires_at = checked_i64(expires_at, "api_key expires_at")?;
+        let now = checked_i64(now, "api_key now")?;
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let principal_enabled = sqlx::query_scalar::<_, bool>(
+            "SELECT enabled FROM chio_finding_market_principals WHERE tenant_id = $1 AND principal_id = $2 FOR KEY SHARE",
+        )
+        .bind(tenant.as_str())
+        .bind(principal_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?
+        .ok_or(HostedMarketStoreError::NotFound)?;
+        if !principal_enabled {
+            return Err(HostedMarketStoreError::TenantDisabled);
+        }
+        let existing = sqlx::query(
+            "SELECT principal_id, verifier_sha256, allowed_actions, active_from, expires_at, rotated_from_key_id FROM chio_finding_market_api_keys WHERE tenant_id = $1 AND key_id = $2 FOR UPDATE",
+        )
+        .bind(tenant.as_str())
+        .bind(key_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        if let Some(row) = existing {
+            let same = row.try_get::<String, _>(0).map_err(unavailable)? == principal_id
+                && row.try_get::<String, _>(1).map_err(unavailable)? == verifier_sha256
+                && row.try_get::<Vec<String>, _>(2).map_err(unavailable)?
+                    == allowed_actions.iter().cloned().collect::<Vec<_>>()
+                && row.try_get::<i64, _>(3).map_err(unavailable)? == active_from
+                && row.try_get::<i64, _>(4).map_err(unavailable)? == expires_at
+                && row
+                    .try_get::<Option<String>, _>(5)
+                    .map_err(unavailable)?
+                    .as_deref()
+                    == rotated_from_key_id;
+            if !same {
+                return Err(HostedMarketStoreError::Conflict);
+            }
+            transaction
+                .commit()
+                .await
+                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            return Ok(HostedJobWriteOutcome::ExactReplay);
+        }
+        sqlx::query(
+            "INSERT INTO chio_finding_market_api_keys (tenant_id, key_id, principal_id, verifier_sha256, allowed_actions, active_from, expires_at, rotated_from_key_id, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        )
+        .bind(tenant.as_str())
+        .bind(key_id)
+        .bind(principal_id)
+        .bind(verifier_sha256)
+        .bind(allowed_actions.iter().cloned().collect::<Vec<_>>())
+        .bind(active_from)
+        .bind(expires_at)
+        .bind(rotated_from_key_id)
+        .bind(now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        Ok(HostedJobWriteOutcome::Inserted)
+    }
+
+    pub async fn get_active_api_key(
+        &self,
+        tenant: &HostedTenantId,
+        key_id: &str,
+        now: u64,
+    ) -> Result<Option<HostedApiKeyRecord>, HostedMarketStoreError> {
+        validate_identifier(key_id, MAX_KEY_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("key_id"))?;
+        let now_i64 = checked_i64(now, "api_key now")?;
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let row = sqlx::query(
+            "SELECT key_id, principal_id, verifier_sha256, allowed_actions, active_from, expires_at, revoked_at, rotated_from_key_id, created_at FROM chio_finding_market_api_keys WHERE tenant_id = $1 AND key_id = $2 AND active_from <= $3 AND expires_at > $3 AND revoked_at IS NULL",
+        )
+        .bind(tenant.as_str())
+        .bind(key_id)
+        .bind(now_i64)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        row.map(|row| api_key_from_row(tenant, &row)).transpose()
+    }
+
+    pub async fn revoke_api_key(
+        &self,
+        tenant: &HostedTenantId,
+        key_id: &str,
+        revoked_at: u64,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        validate_identifier(key_id, MAX_KEY_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("key_id"))?;
+        let revoked_at = checked_i64(revoked_at, "api_key revoked_at")?;
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let row = sqlx::query(
+            "SELECT active_from, revoked_at FROM chio_finding_market_api_keys WHERE tenant_id = $1 AND key_id = $2 FOR UPDATE",
+        )
+        .bind(tenant.as_str())
+        .bind(key_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?
+        .ok_or(HostedMarketStoreError::NotFound)?;
+        let active_from: i64 = row.try_get(0).map_err(unavailable)?;
+        let existing: Option<i64> = row.try_get(1).map_err(unavailable)?;
+        if revoked_at < active_from {
+            return Err(HostedMarketStoreError::Invalid("api_key revoked_at"));
+        }
+        if let Some(existing) = existing {
+            if existing != revoked_at {
+                return Err(HostedMarketStoreError::Conflict);
+            }
+            transaction
+                .commit()
+                .await
+                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            return Ok(HostedJobWriteOutcome::ExactReplay);
+        }
+        sqlx::query(
+            "UPDATE chio_finding_market_api_keys SET revoked_at = $3 WHERE tenant_id = $1 AND key_id = $2 AND revoked_at IS NULL",
+        )
+        .bind(tenant.as_str())
+        .bind(key_id)
+        .bind(revoked_at)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        Ok(HostedJobWriteOutcome::Inserted)
+    }
+
+    pub async fn consume_dpop_nonce(
+        &self,
+        tenant: &HostedTenantId,
+        capability_id: &str,
+        nonce_sha256: &str,
+        valid_through: u64,
+        now: u64,
+        tenant_capacity: u64,
+    ) -> Result<bool, HostedMarketStoreError> {
+        validate_identifier(capability_id, MAX_CAPABILITY_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("capability_id"))?;
+        validate_digest(nonce_sha256, "nonce_sha256")?;
+        if valid_through <= now || !(1..=MAX_AUTH_CAPACITY).contains(&tenant_capacity) {
+            return Err(HostedMarketStoreError::Invalid("dpop_window"));
+        }
+        let valid_through = checked_i64(valid_through, "dpop valid_through")?;
+        let now = checked_i64(now, "dpop now")?;
+        let capacity = checked_i64(tenant_capacity, "dpop capacity")?;
+        let mut transaction = self.begin_tenant(tenant).await?;
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 1))")
+            .bind(tenant.as_str())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        sqlx::query(
+            "DELETE FROM chio_finding_market_dpop_nonces WHERE tenant_id = $1 AND valid_through <= $2",
+        )
+        .bind(tenant.as_str())
+        .bind(now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM chio_finding_market_dpop_nonces WHERE tenant_id = $1",
+        )
+        .bind(tenant.as_str())
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        if count >= capacity {
+            return Err(HostedMarketStoreError::Capacity);
+        }
+        let inserted = sqlx::query(
+            "INSERT INTO chio_finding_market_dpop_nonces (tenant_id, capability_id, nonce_sha256, valid_through, created_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
+        )
+        .bind(tenant.as_str())
+        .bind(capability_id)
+        .bind(nonce_sha256)
+        .bind(valid_through)
+        .bind(now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?
+        .rows_affected();
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        Ok(inserted == 1)
+    }
+
+    pub async fn consume_capability_use(
+        &self,
+        tenant: &HostedTenantId,
+        capability_id: &str,
+        max_invocations: u32,
+        expires_at: u64,
+        now: u64,
+    ) -> Result<bool, HostedMarketStoreError> {
+        validate_identifier(capability_id, MAX_CAPABILITY_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("capability_id"))?;
+        if max_invocations == 0 || expires_at <= now {
+            return Err(HostedMarketStoreError::Invalid("capability_budget"));
+        }
+        let max_invocations = i64::from(max_invocations);
+        let expires_at = checked_i64(expires_at, "capability expires_at")?;
+        let now = checked_i64(now, "capability now")?;
+        let mut transaction = self.begin_tenant(tenant).await?;
+        sqlx::query(
+            "DELETE FROM chio_finding_market_capability_uses WHERE tenant_id = $1 AND expires_at <= $2",
+        )
+        .bind(tenant.as_str())
+        .bind(now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let row = sqlx::query(
+            "SELECT used_count, max_invocations, expires_at FROM chio_finding_market_capability_uses WHERE tenant_id = $1 AND capability_id = $2 FOR UPDATE",
+        )
+        .bind(tenant.as_str())
+        .bind(capability_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let admitted = if let Some(row) = row {
+            let used: i64 = row.try_get(0).map_err(unavailable)?;
+            let stored_max: i64 = row.try_get(1).map_err(unavailable)?;
+            let stored_expiry: i64 = row.try_get(2).map_err(unavailable)?;
+            if stored_max != max_invocations || stored_expiry != expires_at {
+                return Err(HostedMarketStoreError::Conflict);
+            }
+            if used >= max_invocations {
+                false
+            } else {
+                sqlx::query(
+                    "UPDATE chio_finding_market_capability_uses SET used_count = used_count + 1, updated_at = $3 WHERE tenant_id = $1 AND capability_id = $2",
+                )
+                .bind(tenant.as_str())
+                .bind(capability_id)
+                .bind(now)
+                .execute(&mut *transaction)
+                .await
+                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                true
+            }
+        } else {
+            sqlx::query(
+                "INSERT INTO chio_finding_market_capability_uses (tenant_id, capability_id, used_count, max_invocations, expires_at, updated_at) VALUES ($1, $2, 1, $3, $4, $5)",
+            )
+            .bind(tenant.as_str())
+            .bind(capability_id)
+            .bind(max_invocations)
+            .bind(expires_at)
+            .bind(now)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            true
+        };
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        Ok(admitted)
+    }
+
+    pub async fn append_security_event(
+        &self,
+        tenant: &HostedTenantId,
+        event_id: &str,
+        event_kind: &str,
+        artifact_json: &[u8],
+        now: u64,
+    ) -> Result<HostedSecurityEventOutcome, HostedMarketStoreError> {
+        validate_identifier(event_id, MAX_EVENT_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("event_id"))?;
+        validate_identifier(event_kind, MAX_EVENT_KIND_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("event_kind"))?;
+        validate_canonical_json(artifact_json, "security_event")?;
+        if artifact_json.len() > MAX_SECURITY_EVENT_BYTES {
+            return Err(HostedMarketStoreError::Invalid("security_event"));
+        }
+        let digest = sha256_hex(artifact_json);
+        let now = checked_i64(now, "security_event now")?;
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let existing = sqlx::query(
+            "SELECT event_kind, artifact_sha256, artifact_json FROM chio_finding_market_security_events WHERE tenant_id = $1 AND event_id = $2 FOR UPDATE",
+        )
+        .bind(tenant.as_str())
+        .bind(event_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        if let Some(row) = existing {
+            let same = row.try_get::<String, _>(0).map_err(unavailable)? == event_kind
+                && row.try_get::<String, _>(1).map_err(unavailable)? == digest
+                && row.try_get::<Vec<u8>, _>(2).map_err(unavailable)? == artifact_json;
+            if !same {
+                return Err(HostedMarketStoreError::Conflict);
+            }
+            transaction
+                .commit()
+                .await
+                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            return Ok(HostedSecurityEventOutcome::ExactReplay);
+        }
+        sqlx::query(
+            "INSERT INTO chio_finding_market_security_events (tenant_id, event_id, event_kind, artifact_sha256, artifact_json, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(tenant.as_str())
+        .bind(event_id)
+        .bind(event_kind)
+        .bind(digest)
+        .bind(artifact_json)
+        .bind(now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        Ok(HostedSecurityEventOutcome::Inserted)
+    }
+}
+
+fn principal_from_row(
+    tenant: &HostedTenantId,
+    row: &sqlx::postgres::PgRow,
+) -> Result<HostedPrincipal, HostedMarketStoreError> {
+    let principal_id: String = row.try_get(0).map_err(unavailable)?;
+    validate_identifier(&principal_id, MAX_PRINCIPAL_ID_BYTES)
+        .map_err(|()| HostedMarketStoreError::DigestMismatch)?;
+    let role = HostedPrincipalRole::parse(&row.try_get::<String, _>(1).map_err(unavailable)?)?;
+    let capability_public_key_hex: Option<String> = row.try_get(2).map_err(unavailable)?;
+    if let Some(key) = capability_public_key_hex.as_deref() {
+        let parsed = chio_core_types::PublicKey::from_hex(key)
+            .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+        if parsed.is_weak_ed25519() {
+            return Err(HostedMarketStoreError::DigestMismatch);
+        }
+    }
+    Ok(HostedPrincipal {
+        tenant_id: tenant.clone(),
+        principal_id,
+        role,
+        capability_public_key_hex,
+        enabled: row.try_get(3).map_err(unavailable)?,
+        created_at: stored_u64(row.try_get(4).map_err(unavailable)?)?,
+        updated_at: stored_u64(row.try_get(5).map_err(unavailable)?)?,
+    })
+}
+
+fn api_key_from_row(
+    tenant: &HostedTenantId,
+    row: &sqlx::postgres::PgRow,
+) -> Result<HostedApiKeyRecord, HostedMarketStoreError> {
+    let key_id: String = row.try_get(0).map_err(unavailable)?;
+    let principal_id: String = row.try_get(1).map_err(unavailable)?;
+    let verifier_sha256: String = row.try_get(2).map_err(unavailable)?;
+    validate_identifier(&key_id, MAX_KEY_ID_BYTES)
+        .map_err(|()| HostedMarketStoreError::DigestMismatch)?;
+    validate_identifier(&principal_id, MAX_PRINCIPAL_ID_BYTES)
+        .map_err(|()| HostedMarketStoreError::DigestMismatch)?;
+    validate_digest(&verifier_sha256, "durable api key verifier")
+        .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+    let allowed_actions: BTreeSet<String> = row
+        .try_get::<Vec<String>, _>(3)
+        .map_err(unavailable)?
+        .into_iter()
+        .collect();
+    validate_allowed_actions(&allowed_actions)
+        .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+    let rotated_from_key_id: Option<String> = row.try_get(7).map_err(unavailable)?;
+    if let Some(previous) = rotated_from_key_id.as_deref() {
+        validate_identifier(previous, MAX_KEY_ID_BYTES)
+            .map_err(|()| HostedMarketStoreError::DigestMismatch)?;
+    }
+    Ok(HostedApiKeyRecord {
+        tenant_id: tenant.clone(),
+        key_id,
+        principal_id,
+        verifier_sha256,
+        allowed_actions,
+        active_from: stored_u64(row.try_get(4).map_err(unavailable)?)?,
+        expires_at: stored_u64(row.try_get(5).map_err(unavailable)?)?,
+        revoked_at: row
+            .try_get::<Option<i64>, _>(6)
+            .map_err(unavailable)?
+            .map(stored_u64)
+            .transpose()?,
+        rotated_from_key_id,
+        created_at: stored_u64(row.try_get(8).map_err(unavailable)?)?,
+    })
+}
+
+fn validate_allowed_actions(
+    allowed_actions: &BTreeSet<String>,
+) -> Result<(), HostedMarketStoreError> {
+    if allowed_actions.is_empty() || allowed_actions.len() > MAX_ALLOWED_ACTIONS {
+        return Err(HostedMarketStoreError::Invalid("allowed_actions"));
+    }
+    for action in allowed_actions {
+        validate_identifier(action, MAX_EVENT_KIND_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("allowed_actions"))?;
+    }
+    Ok(())
+}

@@ -16,9 +16,16 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use sqlx::{PgPool, Postgres, Row as _, Transaction};
 
+mod auth;
+
+pub use auth::{
+    HostedApiKeyRecord, HostedPrincipal, HostedPrincipalRole, HostedSecurityEventOutcome,
+};
+
 const MIGRATION_SQL: &str = include_str!("../migrations/0001_hosted_market.sql");
 const TERMINAL_JOB_MIGRATION_SQL: &str = include_str!("../migrations/0002_terminal_jobs.sql");
 const LEASE_FENCING_MIGRATION_SQL: &str = include_str!("../migrations/0003_lease_fencing.sql");
+const HOSTED_AUTH_MIGRATION_SQL: &str = include_str!("../migrations/0004_hosted_auth.sql");
 const MAX_TENANT_ID_BYTES: usize = 128;
 const MAX_JOB_ID_BYTES: usize = 256;
 const MAX_JOB_KIND_BYTES: usize = 96;
@@ -260,6 +267,10 @@ impl PostgresFindingMarketStore {
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
         sqlx::raw_sql(LEASE_FENCING_MIGRATION_SQL)
+            .execute(&self.pool)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        sqlx::raw_sql(HOSTED_AUTH_MIGRATION_SQL)
             .execute(&self.pool)
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;

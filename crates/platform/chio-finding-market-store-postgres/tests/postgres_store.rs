@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -29,6 +30,11 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         GRANT USAGE ON SCHEMA public TO chio_market_runtime_test;
         GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_tenants TO chio_market_runtime_test;
         GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_jobs TO chio_market_runtime_test;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_principals TO chio_market_runtime_test;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_api_keys TO chio_market_runtime_test;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_dpop_nonces TO chio_market_runtime_test;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_capability_uses TO chio_market_runtime_test;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_security_events TO chio_market_runtime_test;
         "#,
     )
     .execute(&admin_pool)
@@ -42,6 +48,79 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     let tenant_b = HostedTenantId::new(format!("integration-b-{nonce}"))?;
     store.register_tenant(&tenant_a, 1_700_000_000).await?;
     store.register_tenant(&tenant_b, 1_700_000_000).await?;
+
+    store
+        .put_principal(
+            &tenant_a,
+            "buyer-a",
+            chio_finding_market_store_postgres::HostedPrincipalRole::Buyer,
+            None,
+            true,
+            1_700_000_000,
+        )
+        .await?;
+    store
+        .put_api_key(
+            &tenant_a,
+            "key-a",
+            "buyer-a",
+            &"c".repeat(64),
+            &["finding.purchase".to_owned()]
+                .into_iter()
+                .collect::<BTreeSet<_>>(),
+            1_700_000_000,
+            1_700_003_600,
+            None,
+            1_700_000_000,
+        )
+        .await?;
+    assert!(store
+        .get_active_api_key(&tenant_a, "key-a", 1_700_000_001)
+        .await?
+        .is_some());
+    assert!(store
+        .get_active_api_key(&tenant_b, "key-a", 1_700_000_001)
+        .await?
+        .is_none());
+    assert!(
+        store
+            .consume_dpop_nonce(
+                &tenant_a,
+                "capability-a",
+                &"d".repeat(64),
+                1_700_000_300,
+                1_700_000_001,
+                8,
+            )
+            .await?
+    );
+    assert!(
+        !store
+            .consume_dpop_nonce(
+                &tenant_a,
+                "capability-a",
+                &"d".repeat(64),
+                1_700_000_300,
+                1_700_000_001,
+                8,
+            )
+            .await?
+    );
+    assert!(
+        store
+            .consume_capability_use(&tenant_a, "capability-a", 2, 1_700_000_300, 1_700_000_001,)
+            .await?
+    );
+    assert!(
+        store
+            .consume_capability_use(&tenant_a, "capability-a", 2, 1_700_000_300, 1_700_000_002,)
+            .await?
+    );
+    assert!(
+        !store
+            .consume_capability_use(&tenant_a, "capability-a", 2, 1_700_000_300, 1_700_000_003,)
+            .await?
+    );
 
     let request = "a".repeat(64);
     let payload_a =

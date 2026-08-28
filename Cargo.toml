@@ -122,6 +122,7 @@ members = [
     "crates/platform/chio-control-plane",
     "crates/platform/chio-enterprise-export",
     "crates/platform/chio-finding-market-store-postgres",
+    "crates/platform/chio-finding-hosted-edge",
     "crates/platform/chio-finding-worker",
     "crates/platform/chio-manifest",
     "crates/platform/chio-risk-comptroller",
@@ -318,6 +319,7 @@ hex = "0.4"
 base64 = "0.22"
 base64ct = "=1.8.3"
 hmac = "0.12"
+subtle = "2"
 bs58 = "0.5"
 chacha20poly1305 = "0.10"
 ryu = "1"
@@ -394,6 +396,7 @@ chio-credentials = { path = "crates/trust/chio-credentials" }
 chio-credit = { path = "crates/economy/chio-credit" }
 chio-fincred = { path = "crates/economy/chio-fincred" }
 chio-finding = { path = "crates/economy/chio-finding" }
+chio-finding-hosted-edge = { path = "crates/platform/chio-finding-hosted-edge" }
 chio-finding-market-store-postgres = { path = "crates/platform/chio-finding-market-store-postgres" }
 chio-finding-worker = { path = "crates/platform/chio-finding-worker" }
 chio-finding-challenge = { path = "crates/trust/chio-finding-challenge" }

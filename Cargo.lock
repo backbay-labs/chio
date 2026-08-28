@@ -3627,6 +3627,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-finding-hosted-edge"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "chio-core",
+ "chio-core-types",
+ "chio-finding-market-store-postgres",
+ "chio-kernel",
+ "hex",
+ "hmac 0.12.1",
+ "serde",
+ "sha2 0.10.9",
+ "subtle",
+ "thiserror 1.0.69",
+ "tokio",
+ "url",
+ "zeroize",
+]
+
+[[package]]
 name = "chio-finding-market-store-postgres"
 version = "0.1.0"
 dependencies = [
