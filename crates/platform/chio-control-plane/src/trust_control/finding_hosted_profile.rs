@@ -7,14 +7,18 @@
 use std::collections::BTreeSet;
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Component, Path};
+use std::sync::Arc;
+use std::time::Duration;
 
-use chio_core::{PublicKey, SigningAlgorithm};
+use chio_core::{PublicKey, SigningAlgorithm, SigningBackend};
+use chio_finding_worker::{FirecrackerExecutor, FirecrackerIdentity, FirecrackerWorkerConfig};
+use chio_signing_remote::{HttpSigningBackend, RemoteSigningKey, VaultTransitSigningBackend};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 use super::FindingMarketConfig;
 
-pub const FINDING_HOSTED_PROFILE_SCHEMA: &str = "chio.finding.hosted-profile.v1";
+pub const FINDING_HOSTED_PROFILE_SCHEMA: &str = "chio.finding.hosted-operator-profile.v1";
 const MAX_I_JSON_INTEGER: u64 = (1_u64 << 53) - 1;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -31,6 +35,7 @@ pub struct FindingHostedProfile {
     pub kernel_public_key_hex: String,
     pub signers: Vec<FindingHostedSignerProfile>,
     pub payment: FindingHostedAcpProfile,
+    pub worker_public_key_hex: String,
     pub worker: FindingHostedWorkerProfile,
     pub tenants: Vec<FindingHostedTenantProfile>,
     pub release: FindingHostedReleaseProfile,
@@ -90,10 +95,11 @@ pub enum FindingHostedSigningRole {
     StatusFeedOperator,
     FeeScheduleOperator,
     Kernel,
+    Worker,
 }
 
 impl FindingHostedSigningRole {
-    const ALL: [Self; 18] = [
+    pub const ALL: [Self; 19] = [
         Self::Venue,
         Self::Listing,
         Self::GovernanceRoot,
@@ -112,6 +118,7 @@ impl FindingHostedSigningRole {
         Self::StatusFeedOperator,
         Self::FeeScheduleOperator,
         Self::Kernel,
+        Self::Worker,
     ];
 }
 
@@ -122,6 +129,7 @@ pub struct FindingHostedSignerProfile {
     pub key_handle: String,
     pub key_version: u32,
     pub public_key_hex: String,
+    pub timeout_millis: u64,
     pub transport: FindingHostedSignerTransport,
 }
 
@@ -163,16 +171,26 @@ pub struct FindingHostedWorkerProfile {
     pub rootfs_image: String,
     pub rootfs_sha256: String,
     pub jail_root: String,
-    pub uid: u32,
-    pub gid: u32,
+    pub identities: Vec<FindingHostedWorkerIdentity>,
     pub vcpu_count: u8,
     pub memory_mib: u32,
     pub max_instances: u32,
     pub execution_timeout_secs: u64,
     pub lease_duration_secs: u64,
     pub max_attempts: u32,
-    pub seccomp_level: u8,
+    pub max_frame_bytes: u32,
+    pub max_file_size_bytes: u64,
+    pub max_open_files: u32,
+    pub guest_vsock_port: u32,
+    pub require_default_seccomp: bool,
     pub network_enabled: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindingHostedWorkerIdentity {
+    pub uid: u32,
+    pub gid: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -196,6 +214,48 @@ pub struct FindingHostedReleaseProfile {
     pub canary_percent: u8,
     pub canary_observation_secs: u64,
     pub rollback_window_secs: u64,
+    pub max_error_rate_bps: u16,
+    pub max_p99_latency_millis: u64,
+    pub max_queue_age_secs: u64,
+}
+
+pub const FINDING_HOSTED_CANARY_OBSERVATION_SCHEMA: &str =
+    "chio.finding.hosted-canary-observation.v1";
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindingHostedCanaryObservation {
+    pub schema: String,
+    pub artifact_sha256: String,
+    pub configuration_revision: String,
+    pub observed_secs: u64,
+    pub ready_replicas: u32,
+    pub request_count: u64,
+    pub error_count: u64,
+    pub p99_latency_millis: u64,
+    pub oldest_queue_age_secs: u64,
+    pub signature_failures: u64,
+    pub payment_ambiguities: u64,
+    pub tenant_isolation_violations: u64,
+    pub durable_integrity_failures: u64,
+    pub worker_isolation_failures: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FindingHostedCanaryDecision {
+    Promote,
+    Rollback(FindingHostedRollbackReason),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FindingHostedRollbackReason {
+    Binding,
+    ObservationWindow,
+    Availability,
+    ErrorRate,
+    Latency,
+    QueueAge,
+    SecurityInvariant,
 }
 
 impl FindingHostedProfile {
@@ -218,6 +278,111 @@ impl FindingHostedProfile {
         self.validate_tenants()?;
         self.validate_release()?;
         Ok(())
+    }
+
+    /// Load and remotely preflight one custody signer from secret references.
+    pub fn load_signer(
+        &self,
+        role: FindingHostedSigningRole,
+    ) -> Result<Arc<dyn SigningBackend>, String> {
+        self.validate()?;
+        let signer = self
+            .signers
+            .iter()
+            .find(|candidate| candidate.role == role)
+            .ok_or_else(|| "hosted signer role is missing".to_owned())?;
+        let key = RemoteSigningKey::new(
+            signer.key_handle.clone(),
+            signer.key_version,
+            parse_key(&signer.public_key_hex, "remote signer public key")?,
+        )
+        .map_err(|_| "remote signer key configuration is invalid".to_owned())?;
+        let timeout = Duration::from_millis(signer.timeout_millis);
+        match &signer.transport {
+            FindingHostedSignerTransport::Http {
+                base_url,
+                bearer_token_env,
+            } => {
+                let backend = HttpSigningBackend::new(
+                    base_url,
+                    key,
+                    read_secret_environment(bearer_token_env)?,
+                )
+                .map_err(|_| "remote HTTP signer configuration is invalid".to_owned())?
+                .with_timeout(timeout);
+                backend
+                    .verify_key()
+                    .map_err(|_| "remote HTTP signer preflight failed".to_owned())?;
+                Ok(Arc::new(backend))
+            }
+            FindingHostedSignerTransport::VaultTransit {
+                base_url,
+                mount,
+                token_env,
+                namespace,
+            } => {
+                let mut backend = VaultTransitSigningBackend::new(
+                    base_url,
+                    mount,
+                    key,
+                    read_secret_environment(token_env)?,
+                )
+                .map_err(|_| "Vault Transit signer configuration is invalid".to_owned())?;
+                if let Some(namespace) = namespace {
+                    backend = backend
+                        .with_namespace(namespace)
+                        .map_err(|_| "Vault Transit namespace is invalid".to_owned())?;
+                }
+                backend = backend.with_timeout(timeout);
+                backend
+                    .verify_key()
+                    .map_err(|_| "Vault Transit signer preflight failed".to_owned())?;
+                Ok(Arc::new(backend))
+            }
+        }
+    }
+
+    /// Build the bounded Firecracker worker after validating the full profile.
+    pub fn load_worker_executor(&self) -> Result<FirecrackerExecutor, String> {
+        self.validate()?;
+        let signer = self.load_signer(FindingHostedSigningRole::Worker)?;
+        FirecrackerExecutor::new(
+            FirecrackerWorkerConfig {
+                firecracker_binary: self.worker.firecracker_binary.clone().into(),
+                jailer_binary: self.worker.jailer_binary.clone().into(),
+                kernel_image: self.worker.kernel_image.clone().into(),
+                kernel_sha256: self.worker.kernel_sha256.clone(),
+                rootfs_image: self.worker.rootfs_image.clone().into(),
+                rootfs_sha256: self.worker.rootfs_sha256.clone(),
+                jail_root: self.worker.jail_root.clone().into(),
+                identities: self
+                    .worker
+                    .identities
+                    .iter()
+                    .map(|identity| FirecrackerIdentity {
+                        uid: identity.uid,
+                        gid: identity.gid,
+                    })
+                    .collect(),
+                vcpu_count: self.worker.vcpu_count,
+                memory_mib: self.worker.memory_mib,
+                execution_timeout: Duration::from_secs(self.worker.execution_timeout_secs),
+                max_frame_bytes: self.worker.max_frame_bytes,
+                max_file_size_bytes: self.worker.max_file_size_bytes,
+                max_open_files: self.worker.max_open_files,
+                guest_vsock_port: self.worker.guest_vsock_port,
+            },
+            signer,
+        )
+        .map_err(|_| "hosted Firecracker worker configuration is invalid".to_owned())
+    }
+
+    /// Evaluate a canary observation with closed rollback reasons.
+    pub fn evaluate_canary(
+        &self,
+        observation: &FindingHostedCanaryObservation,
+    ) -> FindingHostedCanaryDecision {
+        self.release.evaluate_canary(observation)
     }
 
     fn validate_tls(&self) -> Result<(), String> {
@@ -276,6 +441,9 @@ impl FindingHostedProfile {
             if signer.key_version == 0 {
                 return Err("remote signing key version must be nonzero".to_owned());
             }
+            if !(100..=30_000).contains(&signer.timeout_millis) {
+                return Err("remote signing timeout is outside the hosted bound".to_owned());
+            }
             let key = parse_key(&signer.public_key_hex, "remote signer public key")?;
             if !public_keys.insert(key.to_hex()) {
                 return Err("hosted signing roles must use distinct public keys".to_owned());
@@ -329,6 +497,9 @@ impl FindingHostedProfile {
             }
             FindingHostedSigningRole::FeeScheduleOperator => return Ok(kernel_key.clone()),
             FindingHostedSigningRole::Kernel => return Ok(kernel_key.clone()),
+            FindingHostedSigningRole::Worker => {
+                return parse_key(&self.worker_public_key_hex, "worker public key")
+            }
         };
         pin.key().map_err(|error| error.to_string())
     }
@@ -369,15 +540,26 @@ impl FindingHostedProfile {
         }
         validate_digest(&self.worker.kernel_sha256, "worker kernel digest")?;
         validate_digest(&self.worker.rootfs_sha256, "worker rootfs digest")?;
-        if self.worker.uid == 0
-            || self.worker.gid == 0
+        let mut uids = BTreeSet::new();
+        let mut gids = BTreeSet::new();
+        if self.worker.identities.len() != self.worker.max_instances as usize
+            || self.worker.identities.iter().any(|identity| {
+                identity.uid == 0
+                    || identity.gid == 0
+                    || !uids.insert(identity.uid)
+                    || !gids.insert(identity.gid)
+            })
             || !(1..=32).contains(&self.worker.vcpu_count)
             || !(128..=131_072).contains(&self.worker.memory_mib)
             || !(1..=1_024).contains(&self.worker.max_instances)
             || !(1..=3_600).contains(&self.worker.execution_timeout_secs)
             || !(5..=3_600).contains(&self.worker.lease_duration_secs)
             || !(1..=20).contains(&self.worker.max_attempts)
-            || self.worker.seccomp_level != 2
+            || !(1_024..=4_194_304).contains(&self.worker.max_frame_bytes)
+            || !(1_048_576..=1_073_741_824).contains(&self.worker.max_file_size_bytes)
+            || !(32..=4_096).contains(&self.worker.max_open_files)
+            || !(1_024..=65_535).contains(&self.worker.guest_vsock_port)
+            || !self.worker.require_default_seccomp
             || self.worker.network_enabled
         {
             return Err("hosted worker isolation or resource bounds are invalid".to_owned());
@@ -423,11 +605,74 @@ impl FindingHostedProfile {
             || !(60..=86_400).contains(&self.release.canary_observation_secs)
             || self.release.rollback_window_secs < self.release.canary_observation_secs
             || self.release.rollback_window_secs > 604_800
+            || self.release.max_error_rate_bps > 1_000
+            || !(1..=120_000).contains(&self.release.max_p99_latency_millis)
+            || !(1..=86_400).contains(&self.release.max_queue_age_secs)
         {
             return Err("hosted release safety bounds are invalid".to_owned());
         }
         Ok(())
     }
+}
+
+impl FindingHostedReleaseProfile {
+    pub fn evaluate_canary(
+        &self,
+        observation: &FindingHostedCanaryObservation,
+    ) -> FindingHostedCanaryDecision {
+        use FindingHostedCanaryDecision::{Promote, Rollback};
+        use FindingHostedRollbackReason::{
+            Availability, Binding, ErrorRate, Latency, ObservationWindow, QueueAge,
+            SecurityInvariant,
+        };
+        if observation.schema != FINDING_HOSTED_CANARY_OBSERVATION_SCHEMA
+            || observation.artifact_sha256 != self.artifact_sha256
+            || observation.configuration_revision != self.configuration_revision
+        {
+            return Rollback(Binding);
+        }
+        if observation.observed_secs < self.canary_observation_secs {
+            return Rollback(ObservationWindow);
+        }
+        if observation.ready_replicas < self.minimum_ready_replicas
+            || observation.request_count == 0
+            || observation.error_count > observation.request_count
+        {
+            return Rollback(Availability);
+        }
+        if observation.error_count.saturating_mul(10_000)
+            > observation
+                .request_count
+                .saturating_mul(u64::from(self.max_error_rate_bps))
+        {
+            return Rollback(ErrorRate);
+        }
+        if observation.p99_latency_millis > self.max_p99_latency_millis {
+            return Rollback(Latency);
+        }
+        if observation.oldest_queue_age_secs > self.max_queue_age_secs {
+            return Rollback(QueueAge);
+        }
+        if observation.signature_failures != 0
+            || observation.payment_ambiguities != 0
+            || observation.tenant_isolation_violations != 0
+            || observation.durable_integrity_failures != 0
+            || observation.worker_isolation_failures != 0
+        {
+            return Rollback(SecurityInvariant);
+        }
+        Promote
+    }
+}
+
+fn read_secret_environment(name: &str) -> Result<String, String> {
+    validate_env_name(name, "remote signer credential environment variable")?;
+    let value =
+        std::env::var(name).map_err(|_| "remote signer credential is unavailable".to_owned())?;
+    if value.is_empty() || value.len() > 16 * 1024 || value.chars().any(char::is_control) {
+        return Err("remote signer credential is invalid".to_owned());
+    }
+    Ok(value)
 }
 
 fn validate_signer_transport(transport: &FindingHostedSignerTransport) -> Result<(), String> {
@@ -620,8 +865,50 @@ mod tests {
     #[test]
     fn signing_role_roster_is_closed() {
         let roles: BTreeSet<_> = FindingHostedSigningRole::ALL.into_iter().collect();
-        assert_eq!(roles.len(), 18);
+        assert_eq!(roles.len(), 19);
         assert!(roles.contains(&FindingHostedSigningRole::ChallengeEvaluator));
         assert!(roles.contains(&FindingHostedSigningRole::Kernel));
+        assert!(roles.contains(&FindingHostedSigningRole::Worker));
+    }
+
+    #[test]
+    fn canary_security_invariant_forces_rollback() {
+        let release = FindingHostedReleaseProfile {
+            environment: "production".to_owned(),
+            artifact_sha256: "a".repeat(64),
+            configuration_revision: "revision-1".to_owned(),
+            minimum_ready_replicas: 2,
+            canary_percent: 5,
+            canary_observation_secs: 300,
+            rollback_window_secs: 3_600,
+            max_error_rate_bps: 100,
+            max_p99_latency_millis: 2_000,
+            max_queue_age_secs: 60,
+        };
+        let mut observation = FindingHostedCanaryObservation {
+            schema: FINDING_HOSTED_CANARY_OBSERVATION_SCHEMA.to_owned(),
+            artifact_sha256: "a".repeat(64),
+            configuration_revision: "revision-1".to_owned(),
+            observed_secs: 300,
+            ready_replicas: 2,
+            request_count: 1_000,
+            error_count: 1,
+            p99_latency_millis: 500,
+            oldest_queue_age_secs: 5,
+            signature_failures: 0,
+            payment_ambiguities: 0,
+            tenant_isolation_violations: 0,
+            durable_integrity_failures: 0,
+            worker_isolation_failures: 0,
+        };
+        assert_eq!(
+            release.evaluate_canary(&observation),
+            FindingHostedCanaryDecision::Promote
+        );
+        observation.tenant_isolation_violations = 1;
+        assert_eq!(
+            release.evaluate_canary(&observation),
+            FindingHostedCanaryDecision::Rollback(FindingHostedRollbackReason::SecurityInvariant)
+        );
     }
 }

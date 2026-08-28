@@ -67,7 +67,7 @@ fn engine() -> Option<&'static Arc<Engine>> {
             let mut config = Config::new();
             config.consume_fuel(true);
             config.wasm_component_model(true);
-            config.wasm_component_model_async(true);
+            config.async_support(true);
             Engine::new(&config).ok().map(Arc::new)
         })
         .as_ref()

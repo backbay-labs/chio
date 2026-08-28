@@ -21,6 +21,7 @@ use url::Url;
 
 const HTTP_SIGN_REQUEST_SCHEMA: &str = "chio.signing.http-request.v1";
 const HTTP_SIGN_RESPONSE_SCHEMA: &str = "chio.signing.http-response.v1";
+const HTTP_KEY_RESPONSE_SCHEMA: &str = "chio.signing.http-key.v1";
 const MAX_SIGNING_MESSAGE_BYTES: usize = 1024 * 1024;
 const MAX_RESPONSE_BYTES: u64 = 64 * 1024;
 
@@ -144,6 +145,33 @@ impl HttpSigningBackend {
             self.key.key_handle()
         )
     }
+
+    /// Verify that the remote service still exposes the exact configured key.
+    pub fn verify_key(&self) -> Result<()> {
+        let endpoint = format!(
+            "{}/v1/signing-keys/{}",
+            self.base_url,
+            self.key.key_handle()
+        );
+        let response: HttpKeyResponse = read_json(
+            self.http
+                .get(&endpoint)
+                .set(
+                    "Authorization",
+                    &format!("Bearer {}", self.bearer_token.expose()),
+                )
+                .call(),
+        )?;
+        if response.schema != HTTP_KEY_RESPONSE_SCHEMA
+            || response.key_handle != self.key.key_handle()
+            || response.key_version != self.key.key_version()
+            || response.algorithm != SigningAlgorithm::Ed25519
+            || response.public_key != self.key.public_key.to_hex()
+        {
+            return Err(signing_error("remote signer key binding is invalid"));
+        }
+        Ok(())
+    }
 }
 
 impl SigningBackend for HttpSigningBackend {
@@ -218,6 +246,16 @@ struct HttpSignResponse {
     algorithm: SigningAlgorithm,
     message_sha256: String,
     signature: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HttpKeyResponse {
+    schema: String,
+    key_handle: String,
+    key_version: u32,
+    algorithm: SigningAlgorithm,
+    public_key: String,
 }
 
 /// HashiCorp Vault Transit Ed25519 signing backend.
@@ -559,6 +597,51 @@ mod tests {
         .test_unwrap();
 
         assert!(backend.sign_bytes(message).is_err());
+        server.join().test_unwrap();
+    }
+
+    #[test]
+    fn generic_http_key_preflight_requires_exact_pin() {
+        let keypair = Keypair::from_seed(&[36_u8; 32]);
+        let (base_url, request_rx, server) = spawn_json_server(serde_json::json!({
+            "schema": HTTP_KEY_RESPONSE_SCHEMA,
+            "keyHandle": "finding-status",
+            "keyVersion": 4,
+            "algorithm": "ed25519",
+            "publicKey": keypair.public_key().to_hex()
+        }));
+        let backend = HttpSigningBackend::new(
+            base_url,
+            RemoteSigningKey::new("finding-status", 4, keypair.public_key()).test_unwrap(),
+            "remote-secret",
+        )
+        .test_unwrap();
+
+        backend.verify_key().test_unwrap();
+        let request = request_rx.recv().test_unwrap();
+        assert!(request.starts_with("GET /v1/signing-keys/finding-status HTTP/1.1"));
+        assert!(request.contains("Authorization: Bearer remote-secret"));
+        server.join().test_unwrap();
+    }
+
+    #[test]
+    fn generic_http_key_preflight_rejects_wrong_version() {
+        let keypair = Keypair::from_seed(&[37_u8; 32]);
+        let (base_url, _request_rx, server) = spawn_json_server(serde_json::json!({
+            "schema": HTTP_KEY_RESPONSE_SCHEMA,
+            "keyHandle": "finding-status",
+            "keyVersion": 5,
+            "algorithm": "ed25519",
+            "publicKey": keypair.public_key().to_hex()
+        }));
+        let backend = HttpSigningBackend::new(
+            base_url,
+            RemoteSigningKey::new("finding-status", 4, keypair.public_key()).test_unwrap(),
+            "remote-secret",
+        )
+        .test_unwrap();
+
+        assert!(backend.verify_key().is_err());
         server.join().test_unwrap();
     }
 

@@ -7,8 +7,9 @@
 //! atomically persists the exact epoch, proof, and any new retracted leaf.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
-use chio_core::crypto::Keypair;
+use chio_core::crypto::{Ed25519Backend, Keypair, SigningBackend};
 use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
     build_status_inclusion_proof_input, build_status_non_inclusion_proof_input,
@@ -39,7 +40,7 @@ pub struct FindingStatusEpochPublisher {
     store: SqliteFindingStatusStore,
     operator: FindingStatusOperatorPin,
     service_bond: FindingStatusServiceBond,
-    operator_keypair: Keypair,
+    operator_signer: Arc<dyn SigningBackend>,
     max_epoch_age_secs: u64,
 }
 
@@ -59,6 +60,23 @@ impl FindingStatusEpochPublisher {
         operator_keypair: Keypair,
         max_epoch_age_secs: u64,
     ) -> Result<Self, String> {
+        Self::new_with_signing_backend(
+            store,
+            operator,
+            service_bond,
+            Arc::new(Ed25519Backend::new(operator_keypair)),
+            max_epoch_age_secs,
+        )
+    }
+
+    /// Construct with a custody-backed signer that matches the governance pin.
+    pub fn new_with_signing_backend(
+        store: SqliteFindingStatusStore,
+        operator: FindingStatusOperatorPin,
+        service_bond: FindingStatusServiceBond,
+        operator_signer: Arc<dyn SigningBackend>,
+        max_epoch_age_secs: u64,
+    ) -> Result<Self, String> {
         authorization(&operator)?
             .validate()
             .map_err(|error| error.to_string())?;
@@ -67,7 +85,7 @@ impl FindingStatusEpochPublisher {
             .map_err(|error| error.to_string())?;
         if max_epoch_age_secs == 0
             || max_epoch_age_secs > FINDING_STATUS_MAX_EPOCH_AGE_SECS
-            || operator_keypair.public_key()
+            || operator_signer.public_key()
                 != operator.authority.key().map_err(|e| e.to_string())?
         {
             return Err("finding status publisher configuration is not authorized".to_owned());
@@ -76,7 +94,7 @@ impl FindingStatusEpochPublisher {
             store,
             operator,
             service_bond,
-            operator_keypair,
+            operator_signer,
             max_epoch_age_secs,
         })
     }
@@ -143,7 +161,7 @@ impl FindingStatusEpochPublisher {
             key_domain_nonce: FINDING_STATUS_KEY_DOMAIN_NONCE,
             map_epoch,
             operator_id: self.operator.authority.authority_id.clone(),
-            operator_key: self.operator_keypair.public_key(),
+            operator_key: self.operator_signer.public_key(),
             operator_key_epoch: self.operator.authority.key_epoch,
             root_hash: hex::encode(map.root().root_hash),
             tree_depth: FINDING_STATUS_SPARSE_DEPTH as u16,
@@ -159,7 +177,7 @@ impl FindingStatusEpochPublisher {
             valid_until,
         };
         body.status_epoch_id = compute_status_epoch_id(&body).map_err(|error| error.to_string())?;
-        let signed = SignedExportEnvelope::sign(body, &self.operator_keypair)
+        let signed = SignedExportEnvelope::sign_with_backend(body, self.operator_signer.as_ref())
             .map_err(|error| error.to_string())?;
         signed.body.validate().map_err(|error| error.to_string())?;
         Ok(signed)

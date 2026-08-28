@@ -3,13 +3,102 @@ use std::io::{Read as _, Seek as _, SeekFrom};
 use std::path::Path;
 
 use chio_control_plane::trust_control::finding_hosted_profile::{
-    FindingHostedProfile, FindingHostedSignerTransport, FINDING_HOSTED_PROFILE_SCHEMA,
+    FindingHostedCanaryDecision, FindingHostedCanaryObservation, FindingHostedProfile,
+    FindingHostedRollbackReason, FindingHostedSignerTransport, FindingHostedSigningRole,
+    FINDING_HOSTED_PROFILE_SCHEMA,
 };
 use sha2::{Digest as _, Sha256};
 
 use super::*;
 
 const MAX_HOSTED_PROFILE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_CANARY_OBSERVATION_BYTES: u64 = 64 * 1024;
+
+pub(super) fn cmd_finding_operator_evaluate_canary(
+    profile_path: &Path,
+    observation_path: &Path,
+    json_output: bool,
+) -> Result<(), CliError> {
+    let profile: FindingHostedProfile = read_canonical_private_json(
+        profile_path,
+        MAX_HOSTED_PROFILE_BYTES,
+        "hosted profile",
+    )?;
+    profile.validate().map_err(CliError::cli_other_error)?;
+    let observation: FindingHostedCanaryObservation = read_canonical_private_json(
+        observation_path,
+        MAX_CANARY_OBSERVATION_BYTES,
+        "canary observation",
+    )?;
+    let decision = profile.evaluate_canary(&observation);
+    let (name, reason) = match decision {
+        FindingHostedCanaryDecision::Promote => ("promote", None),
+        FindingHostedCanaryDecision::Rollback(reason) => {
+            ("rollback", Some(rollback_reason_name(reason)))
+        }
+    };
+    if json_output {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "schema": "chio.finding.hosted-canary-decision.v1",
+                "deploymentId": profile.deployment_id,
+                "decision": name,
+                "reason": reason,
+            }))?
+        );
+    } else {
+        println!("canary_decision: {name}");
+        if let Some(reason) = reason {
+            println!("reason:          {reason}");
+        }
+    }
+    if matches!(decision, FindingHostedCanaryDecision::Rollback(_)) {
+        return Err(CliError::cli_other_error(
+            "hosted canary requires rollback".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn rollback_reason_name(reason: FindingHostedRollbackReason) -> &'static str {
+    match reason {
+        FindingHostedRollbackReason::Binding => "binding",
+        FindingHostedRollbackReason::ObservationWindow => "observation_window",
+        FindingHostedRollbackReason::Availability => "availability",
+        FindingHostedRollbackReason::ErrorRate => "error_rate",
+        FindingHostedRollbackReason::Latency => "latency",
+        FindingHostedRollbackReason::QueueAge => "queue_age",
+        FindingHostedRollbackReason::SecurityInvariant => "security_invariant",
+    }
+}
+
+fn read_canonical_private_json<T: serde::de::DeserializeOwned>(
+    path: &Path,
+    maximum: u64,
+    label: &str,
+) -> Result<T, CliError> {
+    let (mut file, metadata) = open_regular_nofollow(path)?;
+    require_private_file(path, &metadata)?;
+    if metadata.len() == 0 || metadata.len() > maximum {
+        return Err(CliError::cli_other_error(format!(
+            "{label} exceeds its byte bound"
+        )));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.read_to_end(&mut bytes)?;
+    let raw = std::str::from_utf8(&bytes)
+        .map_err(|_| CliError::cli_other_error(format!("{label} is not UTF-8")))?;
+    let canonical = chio_core::canonical::canonical_json_bytes_from_str(raw).map_err(|error| {
+        CliError::cli_other_error(format!("{label} is not strict canonical JSON: {error}"))
+    })?;
+    if canonical != bytes {
+        return Err(CliError::cli_other_error(format!(
+            "{label} bytes are not canonical JSON"
+        )));
+    }
+    serde_json::from_slice(&bytes).map_err(Into::into)
+}
 
 pub(super) fn cmd_finding_operator_validate_hosted(
     profile_path: &Path,
@@ -38,6 +127,12 @@ pub(super) fn cmd_finding_operator_validate_hosted(
     profile.validate().map_err(CliError::cli_other_error)?;
     validate_referenced_files(&profile)?;
     validate_secret_environment(&profile)?;
+    for role in FindingHostedSigningRole::ALL {
+        profile.load_signer(role).map_err(CliError::cli_other_error)?;
+    }
+    profile
+        .load_worker_executor()
+        .map_err(CliError::cli_other_error)?;
 
     let report = serde_json::json!({
         "schema": "chio.finding.hosted-profile-validation.v1",

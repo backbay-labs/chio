@@ -17,6 +17,8 @@ use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use sqlx::{PgPool, Postgres, Row as _, Transaction};
 
 const MIGRATION_SQL: &str = include_str!("../migrations/0001_hosted_market.sql");
+const TERMINAL_JOB_MIGRATION_SQL: &str = include_str!("../migrations/0002_terminal_jobs.sql");
+const LEASE_FENCING_MIGRATION_SQL: &str = include_str!("../migrations/0003_lease_fencing.sql");
 const MAX_TENANT_ID_BYTES: usize = 128;
 const MAX_JOB_ID_BYTES: usize = 256;
 const MAX_JOB_KIND_BYTES: usize = 96;
@@ -169,6 +171,7 @@ pub enum HostedJobState {
     Leased,
     Completed,
     Failed,
+    Exhausted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -184,11 +187,41 @@ pub struct HostedMarketJob {
     pub available_at: u64,
     pub lease_owner: Option<String>,
     pub lease_expires_at: Option<u64>,
+    pub lease_fence: u64,
     pub result_sha256: Option<String>,
     pub result_json: Option<Vec<u8>>,
     pub last_error_code: Option<String>,
     pub created_at: u64,
     pub updated_at: u64,
+}
+
+/// Fenced ownership proof returned by a successful job claim.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostedJobLease {
+    worker_id: String,
+    fence: u64,
+}
+
+impl HostedJobLease {
+    pub fn new(worker_id: impl Into<String>, fence: u64) -> Result<Self, HostedMarketStoreError> {
+        let worker_id = worker_id.into();
+        validate_identifier(&worker_id, MAX_LEASE_OWNER_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("worker_id"))?;
+        if fence == 0 {
+            return Err(HostedMarketStoreError::Invalid("lease_fence"));
+        }
+        Ok(Self { worker_id, fence })
+    }
+
+    #[must_use]
+    pub fn worker_id(&self) -> &str {
+        &self.worker_id
+    }
+
+    #[must_use]
+    pub fn fence(&self) -> u64 {
+        self.fence
+    }
 }
 
 impl PostgresFindingMarketStore {
@@ -219,6 +252,14 @@ impl PostgresFindingMarketStore {
 
     pub async fn migrate(&self) -> Result<(), HostedMarketStoreError> {
         sqlx::raw_sql(MIGRATION_SQL)
+            .execute(&self.pool)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        sqlx::raw_sql(TERMINAL_JOB_MIGRATION_SQL)
+            .execute(&self.pool)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        sqlx::raw_sql(LEASE_FENCING_MIGRATION_SQL)
             .execute(&self.pool)
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
@@ -417,15 +458,17 @@ impl PostgresFindingMarketStore {
             )
             UPDATE chio_finding_market_jobs AS jobs
             SET state = 'leased', lease_owner = $2, lease_expires_at = $4,
-                attempt_count = jobs.attempt_count + 1, updated_at = $3,
+                attempt_count = jobs.attempt_count + 1,
+                lease_fence = jobs.lease_fence + 1, updated_at = $3,
                 last_error_code = NULL
             FROM due
             WHERE jobs.tenant_id = due.tenant_id AND jobs.job_id = due.job_id
             RETURNING jobs.tenant_id, jobs.job_id, jobs.job_kind, jobs.request_sha256,
                       jobs.payload_sha256, jobs.payload_json, jobs.state,
                       jobs.attempt_count, jobs.available_at, jobs.lease_owner,
-                      jobs.lease_expires_at, jobs.result_sha256, jobs.result_json,
-                      jobs.last_error_code, jobs.created_at, jobs.updated_at
+                      jobs.lease_expires_at, jobs.lease_fence, jobs.result_sha256,
+                      jobs.result_json, jobs.last_error_code, jobs.created_at,
+                      jobs.updated_at
             "#,
         )
         .bind(tenant.as_str())
@@ -447,20 +490,19 @@ impl PostgresFindingMarketStore {
         &self,
         tenant: &HostedTenantId,
         job_id: &str,
-        worker_id: &str,
+        lease: &HostedJobLease,
         result_json: &[u8],
         now: u64,
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
         validate_identifier(job_id, MAX_JOB_ID_BYTES)
             .map_err(|_| HostedMarketStoreError::Invalid("job_id"))?;
-        validate_identifier(worker_id, MAX_LEASE_OWNER_BYTES)
-            .map_err(|_| HostedMarketStoreError::Invalid("worker_id"))?;
+        let lease_fence = checked_i64(lease.fence(), "lease_fence")?;
         validate_canonical_json(result_json, "result_json")?;
         let result_sha256 = sha256_hex(result_json);
         let now = checked_i64(now, "now")?;
         let mut transaction = self.begin_tenant(tenant).await?;
         let row = sqlx::query(
-            "SELECT state, lease_owner, lease_expires_at, result_sha256, result_json FROM chio_finding_market_jobs WHERE tenant_id = $1 AND job_id = $2 FOR UPDATE",
+            "SELECT state, lease_owner, lease_expires_at, lease_fence, result_sha256, result_json FROM chio_finding_market_jobs WHERE tenant_id = $1 AND job_id = $2 FOR UPDATE",
         )
         .bind(tenant.as_str())
         .bind(job_id)
@@ -470,8 +512,8 @@ impl PostgresFindingMarketStore {
         .ok_or(HostedMarketStoreError::NotFound)?;
         let state: String = row.try_get(0).map_err(unavailable)?;
         if state == "completed" {
-            let stored_sha: Option<String> = row.try_get(3).map_err(unavailable)?;
-            let stored_json: Option<Vec<u8>> = row.try_get(4).map_err(unavailable)?;
+            let stored_sha: Option<String> = row.try_get(4).map_err(unavailable)?;
+            let stored_json: Option<Vec<u8>> = row.try_get(5).map_err(unavailable)?;
             if stored_sha.as_deref() == Some(result_sha256.as_str())
                 && stored_json.as_deref() == Some(result_json)
             {
@@ -485,21 +527,24 @@ impl PostgresFindingMarketStore {
         }
         let lease_owner: Option<String> = row.try_get(1).map_err(unavailable)?;
         let lease_expires: Option<i64> = row.try_get(2).map_err(unavailable)?;
+        let stored_lease_fence: i64 = row.try_get(3).map_err(unavailable)?;
         if state != "leased"
-            || lease_owner.as_deref() != Some(worker_id)
+            || lease_owner.as_deref() != Some(lease.worker_id())
+            || stored_lease_fence != lease_fence
             || lease_expires.is_none_or(|expiry| expiry <= now)
         {
             return Err(HostedMarketStoreError::LeaseLost);
         }
         let updated = sqlx::query(
-            "UPDATE chio_finding_market_jobs SET state = 'completed', lease_owner = NULL, lease_expires_at = NULL, result_sha256 = $3, result_json = $4, updated_at = $5 WHERE tenant_id = $1 AND job_id = $2 AND state = 'leased' AND lease_owner = $6",
+            "UPDATE chio_finding_market_jobs SET state = 'completed', lease_owner = NULL, lease_expires_at = NULL, result_sha256 = $3, result_json = $4, updated_at = $5 WHERE tenant_id = $1 AND job_id = $2 AND state = 'leased' AND lease_owner = $6 AND lease_fence = $7",
         )
         .bind(tenant.as_str())
         .bind(job_id)
         .bind(result_sha256)
         .bind(result_json)
         .bind(now)
-        .bind(worker_id)
+        .bind(lease.worker_id())
+        .bind(lease_fence)
         .execute(&mut *transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?
@@ -518,7 +563,7 @@ impl PostgresFindingMarketStore {
         &self,
         tenant: &HostedTenantId,
         job_id: &str,
-        worker_id: &str,
+        lease: &HostedJobLease,
         error_code: &str,
         retry_at: u64,
         now: u64,
@@ -527,20 +572,59 @@ impl PostgresFindingMarketStore {
             .map_err(|_| HostedMarketStoreError::Invalid("error_code"))?;
         validate_identifier(job_id, MAX_JOB_ID_BYTES)
             .map_err(|_| HostedMarketStoreError::Invalid("job_id"))?;
-        validate_identifier(worker_id, MAX_LEASE_OWNER_BYTES)
-            .map_err(|_| HostedMarketStoreError::Invalid("worker_id"))?;
+        let lease_fence = checked_i64(lease.fence(), "lease_fence")?;
         let retry_at = checked_i64(retry_at, "retry_at")?;
         let now = checked_i64(now, "now")?;
         let mut transaction = self.begin_tenant(tenant).await?;
         let updated = sqlx::query(
-            "UPDATE chio_finding_market_jobs SET state = 'failed', lease_owner = NULL, lease_expires_at = NULL, last_error_code = $3, available_at = $4, updated_at = $5 WHERE tenant_id = $1 AND job_id = $2 AND state = 'leased' AND lease_owner = $6 AND lease_expires_at > $5",
+            "UPDATE chio_finding_market_jobs SET state = 'failed', lease_owner = NULL, lease_expires_at = NULL, last_error_code = $3, available_at = $4, updated_at = $5 WHERE tenant_id = $1 AND job_id = $2 AND state = 'leased' AND lease_owner = $6 AND lease_fence = $7 AND lease_expires_at > $5",
         )
         .bind(tenant.as_str())
         .bind(job_id)
         .bind(error_code)
         .bind(retry_at)
         .bind(now)
-        .bind(worker_id)
+        .bind(lease.worker_id())
+        .bind(lease_fence)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?
+        .rows_affected();
+        if updated != 1 {
+            return Err(HostedMarketStoreError::LeaseLost);
+        }
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        Ok(())
+    }
+
+    /// Permanently fail a leased job after its bounded attempt budget.
+    pub async fn exhaust_job(
+        &self,
+        tenant: &HostedTenantId,
+        job_id: &str,
+        lease: &HostedJobLease,
+        error_code: &str,
+        now: u64,
+    ) -> Result<(), HostedMarketStoreError> {
+        validate_identifier(error_code, MAX_ERROR_CODE_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("error_code"))?;
+        validate_identifier(job_id, MAX_JOB_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("job_id"))?;
+        let lease_fence = checked_i64(lease.fence(), "lease_fence")?;
+        let now = checked_i64(now, "now")?;
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let updated = sqlx::query(
+            "UPDATE chio_finding_market_jobs SET state = 'exhausted', lease_owner = NULL, lease_expires_at = NULL, last_error_code = $3, updated_at = $4 WHERE tenant_id = $1 AND job_id = $2 AND state = 'leased' AND lease_owner = $5 AND lease_fence = $6 AND lease_expires_at > $4",
+        )
+        .bind(tenant.as_str())
+        .bind(job_id)
+        .bind(error_code)
+        .bind(now)
+        .bind(lease.worker_id())
+        .bind(lease_fence)
         .execute(&mut *transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?
@@ -587,8 +671,8 @@ impl PostgresFindingMarketStore {
 const JOB_SELECT: &str = r#"
 SELECT tenant_id, job_id, job_kind, request_sha256, payload_sha256,
        payload_json, state, attempt_count, available_at, lease_owner,
-       lease_expires_at, result_sha256, result_json, last_error_code,
-       created_at, updated_at
+       lease_expires_at, lease_fence, result_sha256, result_json,
+       last_error_code, created_at, updated_at
 FROM chio_finding_market_jobs
 WHERE tenant_id = $1 AND job_id = $2
 "#;
@@ -613,8 +697,10 @@ fn job_from_row(
     let payload_sha256: String = row.try_get(4).map_err(unavailable)?;
     let payload_json: Vec<u8> = row.try_get(5).map_err(unavailable)?;
     verify_payload(&payload_sha256, &payload_json)?;
-    let result_sha256: Option<String> = row.try_get(11).map_err(unavailable)?;
-    let result_json: Option<Vec<u8>> = row.try_get(12).map_err(unavailable)?;
+    let attempt_count = stored_u64(row.try_get(7).map_err(unavailable)?)?;
+    let lease_fence = stored_u64(row.try_get(11).map_err(unavailable)?)?;
+    let result_sha256: Option<String> = row.try_get(12).map_err(unavailable)?;
+    let result_json: Option<Vec<u8>> = row.try_get(13).map_err(unavailable)?;
     match (result_sha256.as_deref(), result_json.as_deref()) {
         (Some(digest), Some(bytes)) => verify_payload(digest, bytes)?,
         (None, None) => {}
@@ -631,7 +717,7 @@ fn job_from_row(
         .map_err(unavailable)?
         .map(stored_u64)
         .transpose()?;
-    let last_error_code: Option<String> = row.try_get(13).map_err(unavailable)?;
+    let last_error_code: Option<String> = row.try_get(14).map_err(unavailable)?;
     if let Some(code) = last_error_code.as_deref() {
         validate_identifier(code, MAX_ERROR_CODE_BYTES)
             .map_err(|()| HostedMarketStoreError::DigestMismatch)?;
@@ -641,6 +727,10 @@ fn job_from_row(
         || matches!(state, HostedJobState::Completed) != result_json.is_some()
         || (matches!(state, HostedJobState::Pending | HostedJobState::Completed)
             && last_error_code.is_some())
+        || (matches!(state, HostedJobState::Failed | HostedJobState::Exhausted)
+            && last_error_code.is_none())
+        || (matches!(state, HostedJobState::Pending) && (attempt_count != 0 || lease_fence != 0))
+        || (!matches!(state, HostedJobState::Pending) && (attempt_count == 0 || lease_fence == 0))
     {
         return Err(HostedMarketStoreError::DigestMismatch);
     }
@@ -652,15 +742,16 @@ fn job_from_row(
         payload_sha256,
         payload_json,
         state,
-        attempt_count: stored_u64(row.try_get(7).map_err(unavailable)?)?,
+        attempt_count,
         available_at: stored_u64(row.try_get(8).map_err(unavailable)?)?,
         lease_owner,
         lease_expires_at,
+        lease_fence,
         result_sha256,
         result_json,
         last_error_code,
-        created_at: stored_u64(row.try_get(14).map_err(unavailable)?)?,
-        updated_at: stored_u64(row.try_get(15).map_err(unavailable)?)?,
+        created_at: stored_u64(row.try_get(15).map_err(unavailable)?)?,
+        updated_at: stored_u64(row.try_get(16).map_err(unavailable)?)?,
     })
 }
 
@@ -744,6 +835,7 @@ fn parse_state(value: &str) -> Result<HostedJobState, HostedMarketStoreError> {
         "leased" => Ok(HostedJobState::Leased),
         "completed" => Ok(HostedJobState::Completed),
         "failed" => Ok(HostedJobState::Failed),
+        "exhausted" => Ok(HostedJobState::Exhausted),
         _ => Err(HostedMarketStoreError::DigestMismatch),
     }
 }

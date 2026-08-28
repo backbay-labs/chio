@@ -22,7 +22,9 @@ use finding_operator::{cmd_finding_operator_init, cmd_finding_operator_serve, cm
 
 #[path = "finding/hosted.rs"]
 mod finding_hosted;
-use finding_hosted::cmd_finding_operator_validate_hosted;
+use finding_hosted::{
+    cmd_finding_operator_evaluate_canary, cmd_finding_operator_validate_hosted,
+};
 
 #[path = "finding/verified_fix.rs"]
 mod finding_verified_fix;
@@ -93,6 +95,10 @@ pub(crate) fn dispatch_finding(
             FindingOperatorCommands::ValidateHosted { profile } => {
                 cmd_finding_operator_validate_hosted(&profile, json_output)
             }
+            FindingOperatorCommands::EvaluateCanary {
+                profile,
+                observation,
+            } => cmd_finding_operator_evaluate_canary(&profile, &observation, json_output),
         },
         FindingCommands::Package { command } => match command {
             FindingPackageCommands::VerifiedFix {

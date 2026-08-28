@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "crates/platform/chio-finding-market-store-postgres/**"
+      - "crates/platform/chio-finding-worker/**"
+      - "crates/trust/chio-signing-remote/**"
       - ".github/workflows/cognition-market-hosted.yml"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -12,6 +14,8 @@ on:
     branches: [main]
     paths:
       - "crates/platform/chio-finding-market-store-postgres/**"
+      - "crates/platform/chio-finding-worker/**"
+      - "crates/trust/chio-signing-remote/**"
       - ".github/workflows/cognition-market-hosted.yml"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -51,6 +55,8 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
       - name: Lint hosted store
-        run: cargo clippy -p chio-finding-market-store-postgres --all-targets --features postgres-integration -- -D warnings
+        run: cargo clippy -p chio-finding-market-store-postgres -p chio-finding-worker -p chio-signing-remote --all-targets --features chio-finding-market-store-postgres/postgres-integration -- -D warnings
+      - name: Test remote custody and isolated worker
+        run: cargo test -p chio-signing-remote -p chio-finding-worker
       - name: Exercise PostgreSQL tenant isolation and leases
         run: cargo test -p chio-finding-market-store-postgres --features postgres-integration --test postgres_store -- --test-threads=1

@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use chio_core::canonical_json_bytes;
 use chio_core::capability::scope::{Constraint, FindingSettlementSelector, Operation};
-use chio_core::crypto::{sha256_hex, Keypair, PublicKey};
+use chio_core::crypto::{sha256_hex, Ed25519Backend, Keypair, PublicKey, SigningBackend};
 use chio_core::receipt::body::ChioReceipt;
 use chio_core::receipt::decision::Decision;
 use chio_core::receipt::metadata::{
@@ -220,8 +220,8 @@ pub struct FindingPurchaseCoordinator {
     admissions: SqliteFindingMarketStore,
     operations: SqliteAdmissionOperationStore,
     outcomes: SqliteToolOutcomeStore,
-    purchase_authority: Keypair,
-    failed_delivery_authority: Keypair,
+    purchase_authority: Arc<dyn SigningBackend>,
+    failed_delivery_authority: Arc<dyn SigningBackend>,
     authority_status: Arc<dyn FindingAuthorityStatusResolver>,
     authority_status_pin: FindingAuthorityPin,
     status_feed_operator: FindingStatusOperatorPin,
@@ -247,6 +247,46 @@ impl FindingPurchaseCoordinator {
         purchase_authority: Keypair,
         purchase_pin: &PublicKey,
         failed_delivery_authority: Keypair,
+        failed_delivery_pin: &PublicKey,
+        authority_status: Arc<dyn FindingAuthorityStatusResolver>,
+        authority_status_pin: &FindingAuthorityPin,
+        status_feed_operator: &FindingStatusOperatorPin,
+        status_feed_service_bond: &FindingStatusServiceBond,
+        status_max_epoch_age_secs: u64,
+        listing_pin: &FindingAuthorityPin,
+        venue_pin: &FindingAuthorityPin,
+        venue_id: &str,
+    ) -> Result<Self, PurchaseCoordinatorError> {
+        Self::new_with_signing_backends(
+            store,
+            admissions,
+            operations,
+            outcomes,
+            Arc::new(Ed25519Backend::new(purchase_authority)),
+            purchase_pin,
+            Arc::new(Ed25519Backend::new(failed_delivery_authority)),
+            failed_delivery_pin,
+            authority_status,
+            authority_status_pin,
+            status_feed_operator,
+            status_feed_service_bond,
+            status_max_epoch_age_secs,
+            listing_pin,
+            venue_pin,
+            venue_id,
+        )
+    }
+
+    /// Build with custody-backed purchase and failed-delivery signers.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_signing_backends(
+        store: SqliteFindingPurchaseStore,
+        admissions: SqliteFindingMarketStore,
+        operations: SqliteAdmissionOperationStore,
+        outcomes: SqliteToolOutcomeStore,
+        purchase_authority: Arc<dyn SigningBackend>,
+        purchase_pin: &PublicKey,
+        failed_delivery_authority: Arc<dyn SigningBackend>,
         failed_delivery_pin: &PublicKey,
         authority_status: Arc<dyn FindingAuthorityStatusResolver>,
         authority_status_pin: &FindingAuthorityPin,
@@ -1065,7 +1105,7 @@ impl FindingPurchaseCoordinator {
             ask_digest,
             reserved_amount: ask.body.quoted_price.clone(),
         };
-        SignedReservationReceipt::sign(receipt, &self.purchase_authority)
+        SignedReservationReceipt::sign_with_backend(receipt, self.purchase_authority.as_ref())
             .map_err(|_| PurchaseCoordinatorError::Signing)
     }
 
@@ -1503,8 +1543,11 @@ impl FindingPurchaseCoordinator {
             now,
             "purchase",
         )?;
-        let signed = SignedFindingPurchaseRecord::sign(record, &self.purchase_authority)
-            .map_err(|_| PurchaseCoordinatorError::Signing)?;
+        let signed = SignedFindingPurchaseRecord::sign_with_backend(
+            record,
+            self.purchase_authority.as_ref(),
+        )
+        .map_err(|_| PurchaseCoordinatorError::Signing)?;
         let record_json =
             canonical_json_bytes(&signed).map_err(|_| PurchaseCoordinatorError::Canonical)?;
         let record_sha256 = sha256_hex(&record_json);
@@ -1688,8 +1731,11 @@ impl FindingPurchaseCoordinator {
             now,
             "failed-delivery",
         )?;
-        let signed = SignedFindingFailedDelivery::sign(artifact, &self.failed_delivery_authority)
-            .map_err(|_| PurchaseCoordinatorError::Signing)?;
+        let signed = SignedFindingFailedDelivery::sign_with_backend(
+            artifact,
+            self.failed_delivery_authority.as_ref(),
+        )
+        .map_err(|_| PurchaseCoordinatorError::Signing)?;
         let record_json =
             canonical_json_bytes(&signed).map_err(|_| PurchaseCoordinatorError::Canonical)?;
         let record_sha256 = sha256_hex(&record_json);

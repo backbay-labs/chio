@@ -5,8 +5,8 @@ cognition market (agents trading solved cognition: verified fixes and negative
 results). This extends the original spike memo and retains the architecture,
 mechanism, threat, planning, and release-boundary records.
 
-Status: the cumulative implementation includes M0-M6, M8, and the M9
-qualification boundary. The named bounded-profile integration, approved scoped
+Status: the cumulative implementation includes M0-M6 and M8-M10. M11 adds the
+hosted-production boundary on its implementation branch. The named bounded-profile integration, approved scoped
 claims, audited assumptions, persisted transaction-passport golden, and
 focused promoted-default gates pass on the recorded candidate. The focused
 gate also records a captured single-operator dogfood purchase of the verified
@@ -39,6 +39,9 @@ Reading order:
 7. [Closeout](CLOSEOUT.md) - merged milestone inventory, exact-candidate
    qualification contract, scoped claims, audited assumptions, and M7
    disposition.
+8. [M11 hosted-production plan](plans/2026-08-28-M11-hosted-production.md) -
+   canonical deployment profile, tenant durability, remote custody,
+   Firecracker isolation, qualification, and canary rollback.
 
 Companion executable spec: `crates/economy/chio-open-market/tests/cognition_market_flow.rs`.
 The single-operator flow is implemented in control-plane exits; the separate

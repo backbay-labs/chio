@@ -1,0 +1,100 @@
+# M11 Hosted Production Execution
+
+Status: implementation branch. Promotion is blocked until every qualification
+command below passes on the exact release commit and the canary decision is
+`promote`.
+
+## Objective
+
+Move the qualified single-operator cognition market from a local pilot to a
+tenant-isolated hosted service without weakening its signed-artifact,
+settlement, challenge, status, or replay guarantees.
+
+## Production boundary
+
+M11 admits one canonical `chio.finding.hosted-operator-profile.v1` before any listener,
+database, payment rail, signer, or worker starts. The profile requires:
+
+- TLS 1.3 with client certificates and a public HTTPS endpoint;
+- one OIDC issuer and JWKS source, exact audiences and scopes, and bounded DPoP
+  replay state;
+- a non-superuser PostgreSQL runtime role with forced row-level security;
+- distinct remote-custody keys for all 19 market, kernel, and worker roles;
+- complete ACP authorize, capture, release, refund, and state paths;
+- digest-pinned Firecracker and jailer binaries and guest images;
+- a unique non-root UID/GID pair for every concurrent microVM;
+- tenant identity, queue, concurrency, and spend ceilings;
+- canary thresholds and an explicit rollback window.
+
+The profile contains environment-variable names, never secret values or local
+signing seeds. `chio finding operator validate-hosted --profile <path>` opens
+the profile and referenced files without following symlinks, verifies modes
+and image digests, resolves bounded secret references, preflights every remote
+key pin, and constructs the worker configuration.
+
+## Durable execution
+
+The hosted store sets `chio.tenant_id` transaction-locally for every scoped
+operation and relies on forced PostgreSQL row-level security as a second
+boundary. Job admission is linearized by a tenant advisory lock. Claims use
+`FOR UPDATE SKIP LOCKED`, carry expiring worker leases, and reject stale
+workers at completion. A bounded retry budget ends in the terminal
+`exhausted` state, which is never claimable again.
+
+Firecracker jobs use a unique jail and cgroup. The worker verifies source
+images while copying them into the jail, configures a read-only root drive,
+omits all network interfaces, retains Firecracker's default seccomp policy,
+sets PID, memory, CPU, file-size, and file-descriptor limits, and exchanges
+only bounded canonical JSON over virtio-vsock. Result identity and request
+digest bindings are rechecked before durable completion. The VM, jail, and
+cgroup are removed before the result is accepted.
+
+## Custody and settlement
+
+Challenge outcomes, enforcement artifacts, penalties, purchase reservations,
+purchase terminals, failed-delivery terminals, and status epochs accept a
+`SigningBackend`. Local-key constructors remain compatibility helpers for
+tests and non-hosted deployments. Hosted startup loads remote HTTP or Vault
+Transit signers. The remote service must return the exact handle, key version,
+algorithm, and public key at preflight, and every returned signature is
+verified locally over the exact canonical bytes.
+
+ACP transport rejects production cleartext, redirects, unbounded responses,
+and response binding changes. Every financial terminal path has an explicit
+remote operation and replay-stable identity.
+
+## Release decision
+
+The canary observation binds the artifact digest and configuration revision.
+It rolls back on a short observation window, missing replicas, excessive error
+rate, latency, or queue age, or any signature failure, payment ambiguity,
+tenant-isolation violation, durable-integrity failure, or worker-isolation
+failure. Operators evaluate it with:
+
+```bash
+chio finding operator evaluate-canary \
+  --profile /etc/chio/finding-hosted.json \
+  --observation /var/lib/chio/canary-observation.json
+```
+
+## Qualification
+
+Run from the repository root with the release toolchain:
+
+```bash
+scripts/qualify-cognition-market-hosted.sh
+```
+
+The hosted CI lane additionally runs the PostgreSQL integration test against a
+real PostgreSQL 16.6 service under a non-superuser, non-`BYPASSRLS` role. A
+green unit-only run is not a substitute for that lane. Full workspace build,
+test, Clippy, format, and release CI remain mandatory before promotion.
+
+## Explicit residual boundary
+
+M11 does not enable the conditional M7 cross-organization escrow design. The
+hosted profile's ACP rail remains the admitted single-operator settlement
+boundary. A Firecracker guest image is part of the trusted release artifact;
+the worker verifies its digest and isolation configuration, not its semantic
+correctness. Hosted activation remains blocked until the edge verifies every
+configured credential mode before a tenant identity reaches PostgreSQL.

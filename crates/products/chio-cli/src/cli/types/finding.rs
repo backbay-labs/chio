@@ -310,6 +310,16 @@ pub(crate) enum FindingOperatorCommands {
         #[arg(long)]
         profile: PathBuf,
     },
+
+    /// Evaluate a bounded hosted canary observation and fail on rollback.
+    EvaluateCanary {
+        /// Strict canonical hosted operator profile.
+        #[arg(long)]
+        profile: PathBuf,
+        /// Strict canonical canary observation.
+        #[arg(long)]
+        observation: PathBuf,
+    },
 }
 
 /// The mechanical evidence class a challenge presents, as an operator-facing

@@ -134,19 +134,28 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         .await?
         .is_empty());
     let recovered = store
-        .claim_due_jobs(&tenant_a, "worker-b", 1_700_000_021, 10, 1)
+        .claim_due_jobs(&tenant_a, "worker-a", 1_700_000_021, 10, 1)
         .await?;
     assert_eq!(recovered.len(), 1);
     assert_eq!(recovered[0].attempt_count, 2);
+    assert!(recovered[0].lease_fence > first_lease[0].lease_fence);
+    let stale_lease = chio_finding_market_store_postgres::HostedJobLease::new(
+        "worker-a",
+        first_lease[0].lease_fence,
+    )?;
+    let recovered_lease = chio_finding_market_store_postgres::HostedJobLease::new(
+        "worker-a",
+        recovered[0].lease_fence,
+    )?;
 
     let result = br#"{"status":"settled"}"#;
     assert!(store
-        .complete_job(&tenant_a, "job-1", "worker-a", result, 1_700_000_022,)
+        .complete_job(&tenant_a, "job-1", &stale_lease, result, 1_700_000_022,)
         .await
         .is_err());
     assert_eq!(
         store
-            .complete_job(&tenant_a, "job-1", "worker-b", result, 1_700_000_022,)
+            .complete_job(&tenant_a, "job-1", &recovered_lease, result, 1_700_000_022,)
             .await?,
         HostedJobWriteOutcome::Inserted
     );
@@ -159,6 +168,43 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         completed.result_sha256.as_deref(),
         Some(sha256_hex(result).as_str())
     );
+    store
+        .put_job(
+            &tenant_a,
+            "job-exhausted",
+            "finding.verify",
+            &"b".repeat(64),
+            br#"{"findingId":"terminal"}"#,
+            1_700_000_023,
+            1_700_000_023,
+        )
+        .await?;
+    let exhausted_lease = store
+        .claim_due_jobs(&tenant_a, "worker-c", 1_700_000_024, 10, 1)
+        .await?;
+    assert_eq!(exhausted_lease.len(), 1);
+    let exhausted_claim = chio_finding_market_store_postgres::HostedJobLease::new(
+        "worker-c",
+        exhausted_lease[0].lease_fence,
+    )?;
+    store
+        .exhaust_job(
+            &tenant_a,
+            "job-exhausted",
+            &exhausted_claim,
+            "attempt_budget_exhausted",
+            1_700_000_025,
+        )
+        .await?;
+    let exhausted = store
+        .get_job(&tenant_a, "job-exhausted")
+        .await?
+        .ok_or("exhausted job missing")?;
+    assert_eq!(exhausted.state, HostedJobState::Exhausted);
+    assert!(store
+        .claim_due_jobs(&tenant_a, "worker-d", 1_700_000_100, 10, 1)
+        .await?
+        .is_empty());
     store.set_tenant_enabled(&tenant_a, false).await?;
     assert!(matches!(
         store.get_job(&tenant_a, "job-1").await,
