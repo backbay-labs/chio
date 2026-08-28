@@ -26,6 +26,9 @@ database, payment rail, signer, or worker starts. The profile requires:
 - a non-superuser PostgreSQL runtime role with forced row-level security;
 - distinct remote-custody keys for all 19 market, kernel, and worker roles;
 - complete ACP authorize, capture, release, refund, and state paths;
+- a strict HTTPS impairment-publisher endpoint whose bearer credential is
+  resolved from an environment reference and whose egress namespace is derived
+  from the deployment identity;
 - digest-pinned Firecracker and jailer binaries and guest images;
 - a unique non-root UID/GID pair for every concurrent microVM;
 - explicit tenant authentication methods, principal roles, queue,
@@ -90,7 +93,12 @@ verified locally over the exact canonical bytes.
 
 ACP transport rejects production cleartext, redirects, unbounded responses,
 and response binding changes. Every financial terminal path has an explicit
-remote operation and replay-stable identity.
+remote operation and replay-stable identity. Enforcement dispatch uses the
+profile-pinned impairment publisher. Its request binds the exact canonical
+intent and prepared call, and its response binds the request digest. DNS is
+pinned during construction, redirects and proxies are disabled, non-public
+destinations are rejected, and reconciliation remains authoritative over any
+publisher claim.
 
 ## Release decision
 

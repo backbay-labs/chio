@@ -19,6 +19,7 @@ use chio_finding_hosted_edge::{
 };
 use chio_finding_market_store_postgres::HostedTenantId;
 use chio_finding_worker::{FirecrackerExecutor, FirecrackerIdentity, FirecrackerWorkerConfig};
+use chio_settle::{RemoteFindingImpairmentPublisher, RemoteFindingImpairmentPublisherConfig};
 use chio_signing_remote::{HttpSigningBackend, RemoteSigningKey, VaultTransitSigningBackend};
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -43,6 +44,7 @@ pub struct FindingHostedProfile {
     pub kernel_public_key_hex: String,
     pub signers: Vec<FindingHostedSignerProfile>,
     pub payment: FindingHostedAcpProfile,
+    pub impairment_publisher: FindingHostedImpairmentPublisherProfile,
     pub worker_public_key_hex: String,
     pub worker: FindingHostedWorkerProfile,
     pub tenants: Vec<FindingHostedTenantProfile>,
@@ -177,6 +179,14 @@ pub struct FindingHostedAcpProfile {
     pub release_path: String,
     pub refund_path: String,
     pub settlement_state_path: String,
+    pub timeout_millis: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindingHostedImpairmentPublisherProfile {
+    pub base_url: String,
+    pub bearer_token_env: String,
     pub timeout_millis: u64,
 }
 
@@ -325,6 +335,7 @@ impl FindingHostedProfile {
         self.market.validate().map_err(|error| error.to_string())?;
         self.validate_signers()?;
         self.validate_payment()?;
+        self.validate_impairment_publisher()?;
         self.validate_worker()?;
         self.validate_tenants()?;
         self.validate_release()?;
@@ -536,6 +547,21 @@ impl FindingHostedProfile {
         .map_err(|_| "hosted Firecracker worker configuration is invalid".to_owned())
     }
 
+    /// Build the strict HTTPS impairment publisher from a secret reference.
+    pub fn load_impairment_publisher(&self) -> Result<RemoteFindingImpairmentPublisher, String> {
+        self.validate()?;
+        let namespace = self.impairment_publisher_namespace()?;
+        let config = RemoteFindingImpairmentPublisherConfig::new(
+            self.impairment_publisher.base_url.clone(),
+            read_secret_environment(&self.impairment_publisher.bearer_token_env)?,
+            namespace,
+            Duration::from_millis(self.impairment_publisher.timeout_millis),
+        )
+        .map_err(|_| "remote impairment publisher configuration is invalid".to_owned())?;
+        RemoteFindingImpairmentPublisher::new(config)
+            .map_err(|_| "remote impairment publisher preflight failed".to_owned())
+    }
+
     /// Evaluate a canary observation with closed rollback reasons.
     pub fn evaluate_canary(
         &self,
@@ -728,6 +754,33 @@ impl FindingHostedProfile {
             return Err("ACP timeout is outside the hosted bound".to_owned());
         }
         Ok(())
+    }
+
+    fn validate_impairment_publisher(&self) -> Result<(), String> {
+        validate_https_url(
+            &self.impairment_publisher.base_url,
+            "impairment publisher base URL",
+            true,
+        )?;
+        validate_env_name(
+            &self.impairment_publisher.bearer_token_env,
+            "impairment publisher token environment variable",
+        )?;
+        if !(100..=30_000).contains(&self.impairment_publisher.timeout_millis) {
+            return Err("impairment publisher timeout is outside the hosted bound".to_owned());
+        }
+        self.impairment_publisher_namespace()?;
+        Ok(())
+    }
+
+    fn impairment_publisher_namespace(&self) -> Result<String, String> {
+        let namespace = format!("finding:{}", self.deployment_id);
+        if namespace.len() > 256 {
+            return Err(
+                "deployment id is too long for the impairment publisher namespace".to_owned(),
+            );
+        }
+        Ok(namespace)
     }
 
     fn validate_worker(&self) -> Result<(), String> {
@@ -1164,6 +1217,44 @@ mod tests {
             assert!(!encoded.contains("oidc"));
             assert!(encoded.contains("CHIO_API_KEY_PEPPER"));
         }
+    }
+
+    #[test]
+    fn impairment_publisher_profile_is_closed_and_secret_free() {
+        let profile: Result<FindingHostedImpairmentPublisherProfile, _> =
+            serde_json::from_value(serde_json::json!({
+                "baseUrl": "https://impairment.example/v1",
+                "bearerTokenEnv": "CHIO_IMPAIRMENT_PUBLISHER_TOKEN",
+                "timeoutMillis": 5_000
+            }));
+        let profile = match profile {
+            Ok(profile) => profile,
+            Err(error) => panic!("valid impairment publisher profile was rejected: {error}"),
+        };
+        let encoded = serde_json::to_string(&profile);
+        assert!(encoded.is_ok());
+        if let Ok(encoded) = encoded {
+            assert!(!encoded.contains("secret-value"));
+            assert!(encoded.contains("CHIO_IMPAIRMENT_PUBLISHER_TOKEN"));
+        }
+
+        let unknown: Result<FindingHostedImpairmentPublisherProfile, _> =
+            serde_json::from_value(serde_json::json!({
+                "baseUrl": "https://impairment.example/v1",
+                "bearerTokenEnv": "CHIO_IMPAIRMENT_PUBLISHER_TOKEN",
+                "timeoutMillis": 5_000,
+                "allowHttp": true
+            }));
+        assert!(unknown.is_err());
+    }
+
+    #[test]
+    fn impairment_publisher_boundary_rejects_unsafe_values() {
+        assert!(validate_https_url("https://impairment.example/v1", "publisher", true).is_ok());
+        assert!(validate_https_url("http://impairment.example", "publisher", true).is_err());
+        assert!(validate_https_url("https://127.0.0.1", "publisher", true).is_err());
+        assert!(validate_env_name("CHIO_IMPAIRMENT_PUBLISHER_TOKEN", "token").is_ok());
+        assert!(validate_env_name("publisher-token", "token").is_err());
     }
 
     #[test]

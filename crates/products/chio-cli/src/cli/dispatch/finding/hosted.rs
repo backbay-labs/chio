@@ -147,6 +147,9 @@ pub(super) fn cmd_finding_operator_validate_hosted(
         profile.load_signer(role).map_err(CliError::cli_other_error)?;
     }
     profile
+        .load_impairment_publisher()
+        .map_err(CliError::cli_other_error)?;
+    profile
         .load_worker_executor()
         .map_err(CliError::cli_other_error)?;
 
@@ -262,6 +265,7 @@ fn validate_referenced_files(profile: &FindingHostedProfile) -> Result<(), CliEr
 fn validate_secret_environment(profile: &FindingHostedProfile) -> Result<(), CliError> {
     require_secret_env(&profile.database.url_env)?;
     require_secret_env(&profile.payment.bearer_token_env)?;
+    require_secret_env(&profile.impairment_publisher.bearer_token_env)?;
     require_secret_env(&profile.identity.api_key_pepper_env)?;
     if let FindingHostedEdgeProfile::TrustedProxy {
         authentication_token_env,
