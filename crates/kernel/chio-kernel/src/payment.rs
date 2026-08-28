@@ -1,6 +1,9 @@
 use std::time::Duration;
 
-use chio_core::{capability::scope::MonetaryAmount, receipt::economics::SettlementStatus};
+use chio_core::{
+    canonical_json_bytes, capability::scope::MonetaryAmount, receipt::economics::SettlementStatus,
+    sha256,
+};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 mod sim;
@@ -825,16 +828,19 @@ pub struct X402PaymentAdapter {
     http: ureq::Agent,
 }
 
-/// Thin shared-payment-token payment bridge for ACP-style commerce approvals.
+/// Shared-payment-token payment bridge for ACP-style commerce approvals.
 ///
-/// This adapter performs one remote authorization call before execution and
-/// then lets the kernel reconcile the local hold as capture/release/refund
-/// bookkeeping after tool execution. This keeps ACP-specific logic adapter
-/// scoped while still exercising a real external authorization hop.
+/// Every monetary transition is confirmed by the external facilitator. Each
+/// response must echo the digest of the exact operation binding, and recovery
+/// queries use the same durable reference as the journaled request.
 #[derive(Debug, Clone)]
 pub struct AcpPaymentAdapter {
     base_url: String,
     authorize_path: String,
+    capture_path: String,
+    release_path: String,
+    refund_path: String,
+    settlement_state_path: String,
     bearer_token: Option<String>,
     http: ureq::Agent,
 }
@@ -875,6 +881,10 @@ impl AcpPaymentAdapter {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             authorize_path: "/authorize".to_string(),
+            capture_path: "/capture".to_string(),
+            release_path: "/release".to_string(),
+            refund_path: "/refund".to_string(),
+            settlement_state_path: "/settlement-state".to_string(),
             bearer_token: None,
             http: build_http_agent(Duration::from_secs(5)),
         }
@@ -883,6 +893,30 @@ impl AcpPaymentAdapter {
     #[must_use]
     pub fn with_authorize_path(mut self, path: impl Into<String>) -> Self {
         self.authorize_path = normalize_http_path(&path.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_capture_path(mut self, path: impl Into<String>) -> Self {
+        self.capture_path = normalize_http_path(&path.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_release_path(mut self, path: impl Into<String>) -> Self {
+        self.release_path = normalize_http_path(&path.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_refund_path(mut self, path: impl Into<String>) -> Self {
+        self.refund_path = normalize_http_path(&path.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_settlement_state_path(mut self, path: impl Into<String>) -> Self {
+        self.settlement_state_path = normalize_http_path(&path.into());
         self
     }
 
@@ -1014,26 +1048,23 @@ impl PaymentAdapter for AcpPaymentAdapter {
         &self,
         request: &PaymentAuthorizeRequest,
     ) -> Result<PaymentAuthorization, PaymentError> {
+        let request_digest = acp_request_digest(request)?;
+        let envelope = AcpAuthorizeRequest {
+            schema: ACP_AUTHORIZE_REQUEST_SCHEMA,
+            request_digest: &request_digest,
+            request,
+        };
         let response: AcpAuthorizeResponse = post_json(
             &self.http,
             &self.base_url,
             self.bearer_token.as_deref(),
             &self.authorize_path,
-            request,
+            &envelope,
         )?;
-        let state = if response.settled {
-            PaymentAuthorizationState::PrepaidFinal
-        } else {
-            PaymentAuthorizationState::Held
-        };
-        if !PaymentRailMode::ReversibleHold.accepts(state) {
-            return Err(PaymentError::RailError(
-                "ACP authorization did not create a reversible hold".to_owned(),
-            ));
-        }
+        response.validate(&request_digest, request)?;
         Ok(PaymentAuthorization {
             authorization_id: response.authorization_id,
-            state,
+            state: PaymentAuthorizationState::Held,
             metadata: merge_json_values(
                 Some(response.metadata),
                 Some(serde_json::json!({
@@ -1057,18 +1088,14 @@ impl PaymentAdapter for AcpPaymentAdapter {
         currency: &str,
         reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        Ok(PaymentResult {
-            transaction_id: authorization_id.to_string(),
-            settlement_status: RailSettlementStatus::Settled,
-            metadata: serde_json::json!({
-                "adapter": "acp",
-                "mode": "shared_payment_token_hold",
-                "action": "capture",
-                "amount_units": amount_units,
-                "currency": currency,
-                "reference": reference
-            }),
-        })
+        let binding = AcpTerminalOperationBinding {
+            authorization_id,
+            transaction_id: None,
+            amount_units: Some(amount_units),
+            currency: Some(currency),
+            reference,
+        };
+        self.execute_terminal_operation(AcpTerminalOperation::Capture, &self.capture_path, &binding)
     }
 
     fn release(
@@ -1076,16 +1103,14 @@ impl PaymentAdapter for AcpPaymentAdapter {
         authorization_id: &str,
         reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        Ok(PaymentResult {
-            transaction_id: authorization_id.to_string(),
-            settlement_status: RailSettlementStatus::Released,
-            metadata: serde_json::json!({
-                "adapter": "acp",
-                "mode": "shared_payment_token_hold",
-                "action": "release",
-                "reference": reference
-            }),
-        })
+        let binding = AcpTerminalOperationBinding {
+            authorization_id,
+            transaction_id: None,
+            amount_units: None,
+            currency: None,
+            reference,
+        };
+        self.execute_terminal_operation(AcpTerminalOperation::Release, &self.release_path, &binding)
     }
 
     fn refund(
@@ -1095,18 +1120,65 @@ impl PaymentAdapter for AcpPaymentAdapter {
         currency: &str,
         reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        Ok(PaymentResult {
-            transaction_id: transaction_id.to_string(),
-            settlement_status: RailSettlementStatus::Refunded,
-            metadata: serde_json::json!({
-                "adapter": "acp",
-                "mode": "shared_payment_token_hold",
-                "action": "refund",
-                "amount_units": amount_units,
-                "currency": currency,
-                "reference": reference
-            }),
-        })
+        let binding = AcpTerminalOperationBinding {
+            authorization_id: "",
+            transaction_id: Some(transaction_id),
+            amount_units: Some(amount_units),
+            currency: Some(currency),
+            reference,
+        };
+        self.execute_terminal_operation(AcpTerminalOperation::Refund, &self.refund_path, &binding)
+    }
+
+    fn settlement_state(
+        &self,
+        reference: &str,
+        authorization_id: Option<&str>,
+    ) -> Result<RailSettlementState, PaymentError> {
+        let binding = AcpSettlementStateBinding {
+            reference,
+            authorization_id,
+        };
+        let request_digest = acp_request_digest(&binding)?;
+        let response: AcpSettlementStateResponse = get_json(
+            &self.http,
+            &self.base_url,
+            self.bearer_token.as_deref(),
+            &self.settlement_state_path,
+            &[
+                ("schema", ACP_SETTLEMENT_STATE_REQUEST_SCHEMA),
+                ("requestDigest", request_digest.as_str()),
+                ("reference", reference),
+                ("authorizationId", authorization_id.unwrap_or_default()),
+            ],
+        )?;
+        response.into_state(&request_digest, &binding)
+    }
+}
+
+impl AcpPaymentAdapter {
+    fn execute_terminal_operation(
+        &self,
+        operation: AcpTerminalOperation,
+        path: &str,
+        binding: &AcpTerminalOperationBinding<'_>,
+    ) -> Result<PaymentResult, PaymentError> {
+        binding.validate(operation)?;
+        let request_digest = acp_request_digest(binding)?;
+        let request = AcpTerminalOperationRequest {
+            schema: ACP_TERMINAL_OPERATION_REQUEST_SCHEMA,
+            operation,
+            request_digest: &request_digest,
+            binding,
+        };
+        let response: AcpTerminalOperationResponse = post_json(
+            &self.http,
+            &self.base_url,
+            self.bearer_token.as_deref(),
+            path,
+            &request,
+        )?;
+        response.into_result(operation, &request_digest, binding)
     }
 }
 
@@ -1125,20 +1197,298 @@ struct X402AuthorizeResponse {
     metadata: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize)]
+const ACP_AUTHORIZE_REQUEST_SCHEMA: &str = "chio.payment.acp-authorize-request.v1";
+const ACP_AUTHORIZE_RESPONSE_SCHEMA: &str = "chio.payment.acp-authorize-response.v1";
+const ACP_TERMINAL_OPERATION_REQUEST_SCHEMA: &str =
+    "chio.payment.acp-terminal-operation-request.v1";
+const ACP_TERMINAL_OPERATION_RESPONSE_SCHEMA: &str =
+    "chio.payment.acp-terminal-operation-response.v1";
+const ACP_SETTLEMENT_STATE_REQUEST_SCHEMA: &str = "chio.payment.acp-settlement-state-request.v1";
+const ACP_SETTLEMENT_STATE_RESPONSE_SCHEMA: &str = "chio.payment.acp-settlement-state-response.v1";
+
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct AcpAuthorizeRequest<'a> {
+    schema: &'static str,
+    request_digest: &'a str,
+    request: &'a PaymentAuthorizeRequest,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct AcpAuthorizeResponse {
-    #[serde(
-        alias = "authorization_id",
-        alias = "token_id",
-        alias = "tokenId",
-        alias = "authorizationId"
-    )]
+    schema: String,
+    request_digest: String,
+    reference: String,
     authorization_id: String,
     #[serde(default)]
-    settled: bool,
+    metadata: serde_json::Value,
+}
+
+impl AcpAuthorizeResponse {
+    fn validate(
+        &self,
+        request_digest: &str,
+        request: &PaymentAuthorizeRequest,
+    ) -> Result<(), PaymentError> {
+        if self.schema != ACP_AUTHORIZE_RESPONSE_SCHEMA
+            || self.request_digest != request_digest
+            || self.reference != request.reference
+            || self.authorization_id.is_empty()
+        {
+            return Err(PaymentError::RailError(
+                "ACP authorization response binding is invalid".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum AcpTerminalOperation {
+    Capture,
+    Release,
+    Refund,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AcpTerminalOperationBinding<'a> {
+    authorization_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transaction_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    amount_units: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    currency: Option<&'a str>,
+    reference: &'a str,
+}
+
+impl AcpTerminalOperationBinding<'_> {
+    fn validate(&self, operation: AcpTerminalOperation) -> Result<(), PaymentError> {
+        let base_valid = !self.reference.is_empty()
+            && !self.reference.chars().any(char::is_control)
+            && self.reference.len() <= 512;
+        let shape_valid = match operation {
+            AcpTerminalOperation::Capture => {
+                !self.authorization_id.is_empty()
+                    && self.transaction_id.is_none()
+                    && self.amount_units.is_some_and(|amount| amount > 0)
+                    && self.currency.is_some_and(|currency| !currency.is_empty())
+            }
+            AcpTerminalOperation::Release => {
+                !self.authorization_id.is_empty()
+                    && self.transaction_id.is_none()
+                    && self.amount_units.is_none()
+                    && self.currency.is_none()
+            }
+            AcpTerminalOperation::Refund => {
+                self.authorization_id.is_empty()
+                    && self
+                        .transaction_id
+                        .is_some_and(|transaction| !transaction.is_empty())
+                    && self.amount_units.is_some_and(|amount| amount > 0)
+                    && self.currency.is_some_and(|currency| !currency.is_empty())
+            }
+        };
+        if !base_valid || !shape_valid {
+            return Err(PaymentError::RailError(
+                "ACP terminal operation request is invalid".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AcpTerminalOperationRequest<'a> {
+    schema: &'static str,
+    operation: AcpTerminalOperation,
+    request_digest: &'a str,
+    binding: &'a AcpTerminalOperationBinding<'a>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AcpTerminalOperationResponse {
+    schema: String,
+    operation: AcpTerminalOperation,
+    request_digest: String,
+    reference: String,
+    #[serde(default)]
+    authorization_id: Option<String>,
+    transaction_id: String,
+    settlement_status: RailSettlementStatus,
     #[serde(default)]
     metadata: serde_json::Value,
+}
+
+impl AcpTerminalOperationResponse {
+    fn into_result(
+        self,
+        operation: AcpTerminalOperation,
+        request_digest: &str,
+        binding: &AcpTerminalOperationBinding<'_>,
+    ) -> Result<PaymentResult, PaymentError> {
+        let expected_status = match operation {
+            AcpTerminalOperation::Capture => RailSettlementStatus::Settled,
+            AcpTerminalOperation::Release => RailSettlementStatus::Released,
+            AcpTerminalOperation::Refund => RailSettlementStatus::Refunded,
+        };
+        let authorization_matches = match operation {
+            AcpTerminalOperation::Refund => self.authorization_id.is_none(),
+            AcpTerminalOperation::Capture | AcpTerminalOperation::Release => {
+                self.authorization_id.as_deref() == Some(binding.authorization_id)
+            }
+        };
+        if self.schema != ACP_TERMINAL_OPERATION_RESPONSE_SCHEMA
+            || self.operation != operation
+            || self.request_digest != request_digest
+            || self.reference != binding.reference
+            || self.transaction_id.is_empty()
+            || self.settlement_status != expected_status
+            || !authorization_matches
+        {
+            return Err(PaymentError::RailError(
+                "ACP terminal operation response binding is invalid".to_owned(),
+            ));
+        }
+        Ok(PaymentResult {
+            transaction_id: self.transaction_id,
+            settlement_status: self.settlement_status,
+            metadata: merge_json_values(
+                Some(self.metadata),
+                Some(serde_json::json!({
+                    "adapter": "acp",
+                    "mode": "shared_payment_token_hold",
+                    "operation": operation,
+                    "requestDigest": request_digest
+                })),
+            )
+            .unwrap_or_else(|| serde_json::json!({})),
+        })
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AcpSettlementStateBinding<'a> {
+    reference: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    authorization_id: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum AcpSettlementStateKind {
+    NoAuthorization,
+    Held,
+    Settled,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AcpSettlementStateResponse {
+    schema: String,
+    request_digest: String,
+    reference: String,
+    state: AcpSettlementStateKind,
+    #[serde(default)]
+    authorization_id: Option<String>,
+    #[serde(default)]
+    transaction_id: Option<String>,
+    #[serde(default)]
+    settlement_status: Option<RailSettlementStatus>,
+    #[serde(default)]
+    metadata: serde_json::Value,
+}
+
+impl AcpSettlementStateResponse {
+    fn into_state(
+        self,
+        request_digest: &str,
+        binding: &AcpSettlementStateBinding<'_>,
+    ) -> Result<RailSettlementState, PaymentError> {
+        if self.schema != ACP_SETTLEMENT_STATE_RESPONSE_SCHEMA
+            || self.request_digest != request_digest
+            || self.reference != binding.reference
+            || binding
+                .authorization_id
+                .is_some_and(|expected| self.authorization_id.as_deref() != Some(expected))
+        {
+            return Err(PaymentError::RailError(
+                "ACP settlement-state response binding is invalid".to_owned(),
+            ));
+        }
+        match self.state {
+            AcpSettlementStateKind::NoAuthorization
+                if self.authorization_id.is_none()
+                    && self.transaction_id.is_none()
+                    && self.settlement_status.is_none() =>
+            {
+                Ok(RailSettlementState::NoAuthorization)
+            }
+            AcpSettlementStateKind::Held
+                if self.transaction_id.is_none() && self.settlement_status.is_none() =>
+            {
+                let authorization_id = self.authorization_id.ok_or_else(|| {
+                    PaymentError::RailError(
+                        "ACP held state omits the authorization identifier".to_owned(),
+                    )
+                })?;
+                Ok(RailSettlementState::Held { authorization_id })
+            }
+            AcpSettlementStateKind::Settled => {
+                let authorization_id = self.authorization_id.ok_or_else(|| {
+                    PaymentError::RailError(
+                        "ACP settled state omits the authorization identifier".to_owned(),
+                    )
+                })?;
+                let transaction_id = self.transaction_id.ok_or_else(|| {
+                    PaymentError::RailError(
+                        "ACP settled state omits the transaction identifier".to_owned(),
+                    )
+                })?;
+                let settlement_status = self.settlement_status.ok_or_else(|| {
+                    PaymentError::RailError(
+                        "ACP settled state omits the settlement status".to_owned(),
+                    )
+                })?;
+                if !matches!(
+                    settlement_status,
+                    RailSettlementStatus::Settled
+                        | RailSettlementStatus::Released
+                        | RailSettlementStatus::Refunded
+                ) {
+                    return Err(PaymentError::RailError(
+                        "ACP settled state is not terminal".to_owned(),
+                    ));
+                }
+                Ok(RailSettlementState::Settled {
+                    authorization_id,
+                    result: PaymentResult {
+                        transaction_id,
+                        settlement_status,
+                        metadata: self.metadata,
+                    },
+                })
+            }
+            _ => Err(PaymentError::RailError(
+                "ACP settlement-state response shape is invalid".to_owned(),
+            )),
+        }
+    }
+}
+
+fn acp_request_digest<T: Serialize>(value: &T) -> Result<String, PaymentError> {
+    let canonical = canonical_json_bytes(value).map_err(|error| {
+        PaymentError::RailError(format!(
+            "failed to canonicalize ACP request binding: {error}"
+        ))
+    })?;
+    Ok(sha256(&canonical).to_hex())
 }
 
 fn post_json<B: Serialize, T: DeserializeOwned>(
@@ -1156,6 +1506,38 @@ fn post_json<B: Serialize, T: DeserializeOwned>(
         request = request.set("Authorization", &format!("Bearer {token}"));
     }
     match request.send_json(payload) {
+        Ok(response) => {
+            let body = response.into_string().map_err(|error| {
+                PaymentError::RailError(format!(
+                    "failed to read payment rail response body: {error}"
+                ))
+            })?;
+            serde_json::from_str(&body).map_err(|error| {
+                PaymentError::RailError(format!(
+                    "failed to decode payment rail response body: {error}"
+                ))
+            })
+        }
+        Err(error) => Err(map_http_payment_error(error)),
+    }
+}
+
+fn get_json<T: DeserializeOwned>(
+    http: &ureq::Agent,
+    base_url: &str,
+    bearer_token: Option<&str>,
+    path: &str,
+    query: &[(&str, &str)],
+) -> Result<T, PaymentError> {
+    let url = format!("{base_url}{path}");
+    let mut request = http.get(&url);
+    for (name, value) in query {
+        request = request.query(name, value);
+    }
+    if let Some(token) = bearer_token {
+        request = request.set("Authorization", &format!("Bearer {token}"));
+    }
+    match request.call() {
         Ok(response) => {
             let body = response.into_string().map_err(|error| {
                 PaymentError::RailError(format!(
@@ -1653,11 +2035,41 @@ mod tests {
 
     #[test]
     fn acp_adapter_posts_authorize_request_with_commerce_context_and_returns_hold() {
+        let payment_request = PaymentAuthorizeRequest {
+            amount_units: 4200,
+            currency: "USD".to_string(),
+            payer: "agent-9".to_string(),
+            payee: "merchant.example".to_string(),
+            reference: "req-acp-1".to_string(),
+            governed: Some(GovernedPaymentContext {
+                intent_id: "intent-acp-1".to_string(),
+                intent_hash: "intent-hash-acp-1".to_string(),
+                purpose: "purchase governed commerce result".to_string(),
+                server_id: "commerce-srv".to_string(),
+                tool_name: "checkout".to_string(),
+                approval_token_id: Some("approval-acp-1".to_string()),
+            }),
+            commerce: Some(CommercePaymentContext {
+                seller: "merchant.example".to_string(),
+                settlement_destination_ref: "acct:merchant-primary".to_string(),
+                payee_binding_digest: "payee-binding-acp-1".to_string(),
+                pre_action_authority_digest: "approval-digest-acp-1".to_string(),
+                shared_payment_token_id: "spt_live_123".to_string(),
+                max_amount: Some(MonetaryAmount {
+                    units: 5000,
+                    currency: "USD".to_string(),
+                }),
+            }),
+        };
+        let request_digest = acp_request_digest(&payment_request)
+            .expect("ACP authorization request should canonicalize");
         let (url, request_rx, handle) = spawn_once_json_server(
             200,
             serde_json::json!({
+                "schema": ACP_AUTHORIZE_RESPONSE_SCHEMA,
+                "requestDigest": request_digest,
+                "reference": "req-acp-1",
                 "authorizationId": "acp_hold_123",
-                "settled": false,
                 "metadata": {
                     "provider": "stripe",
                     "seller": "merchant.example"
@@ -1670,37 +2082,14 @@ mod tests {
             .with_timeout(Duration::from_secs(2));
 
         let authorization = adapter
-            .authorize(&PaymentAuthorizeRequest {
-                amount_units: 4200,
-                currency: "USD".to_string(),
-                payer: "agent-9".to_string(),
-                payee: "merchant.example".to_string(),
-                reference: "req-acp-1".to_string(),
-                governed: Some(GovernedPaymentContext {
-                    intent_id: "intent-acp-1".to_string(),
-                    intent_hash: "intent-hash-acp-1".to_string(),
-                    purpose: "purchase governed commerce result".to_string(),
-                    server_id: "commerce-srv".to_string(),
-                    tool_name: "checkout".to_string(),
-                    approval_token_id: Some("approval-acp-1".to_string()),
-                }),
-                commerce: Some(CommercePaymentContext {
-                    seller: "merchant.example".to_string(),
-                    settlement_destination_ref: "acct:merchant-primary".to_string(),
-                    payee_binding_digest: "payee-binding-acp-1".to_string(),
-                    pre_action_authority_digest: "approval-digest-acp-1".to_string(),
-                    shared_payment_token_id: "spt_live_123".to_string(),
-                    max_amount: Some(MonetaryAmount {
-                        units: 5000,
-                        currency: "USD".to_string(),
-                    }),
-                }),
-            })
+            .authorize(&payment_request)
             .expect("authorization should succeed");
 
         let request = request_rx.recv().expect("request should be captured");
         assert!(request.starts_with("POST /commerce/authorize HTTP/1.1"));
         assert!(request.contains("Authorization: Bearer acp-secret"));
+        assert!(request.contains(ACP_AUTHORIZE_REQUEST_SCHEMA));
+        assert!(request.contains("\"request\":{"));
         assert!(request.contains("\"commerce\":{"));
         assert!(request.contains("\"seller\":\"merchant.example\""));
         assert!(request.contains("\"settlementDestinationRef\":\"acct:merchant-primary\""));
@@ -1717,6 +2106,178 @@ mod tests {
         assert_eq!(authorization.metadata["provider"], "stripe");
 
         handle.join().expect("server thread should exit cleanly");
+    }
+
+    #[test]
+    fn acp_adapter_externalizes_capture_release_and_refund() {
+        let capture_binding = AcpTerminalOperationBinding {
+            authorization_id: "auth-1",
+            transaction_id: None,
+            amount_units: Some(700),
+            currency: Some("USD"),
+            reference: "capture-1",
+        };
+        let capture_digest = acp_request_digest(&capture_binding)
+            .expect("capture request binding should canonicalize");
+        let (capture_url, capture_rx, capture_handle) = spawn_once_json_server(
+            200,
+            serde_json::json!({
+                "schema": ACP_TERMINAL_OPERATION_RESPONSE_SCHEMA,
+                "operation": "capture",
+                "requestDigest": capture_digest,
+                "reference": "capture-1",
+                "authorizationId": "auth-1",
+                "transactionId": "txn-1",
+                "settlementStatus": "settled",
+                "metadata": {"providerReference": "provider-capture-1"}
+            }),
+        );
+        let capture = AcpPaymentAdapter::new(capture_url)
+            .capture("auth-1", 700, "USD", "capture-1")
+            .expect("capture should be confirmed by the facilitator");
+        assert_eq!(capture.transaction_id, "txn-1");
+        assert_eq!(capture.settlement_status, RailSettlementStatus::Settled);
+        let capture_request = capture_rx
+            .recv()
+            .expect("capture request should be recorded");
+        assert!(capture_request.starts_with("POST /capture HTTP/1.1"));
+        assert!(capture_request.contains("\"operation\":\"capture\""));
+        capture_handle
+            .join()
+            .expect("capture server should exit cleanly");
+
+        let release_binding = AcpTerminalOperationBinding {
+            authorization_id: "auth-2",
+            transaction_id: None,
+            amount_units: None,
+            currency: None,
+            reference: "release-1",
+        };
+        let release_digest = acp_request_digest(&release_binding)
+            .expect("release request binding should canonicalize");
+        let (release_url, release_rx, release_handle) = spawn_once_json_server(
+            200,
+            serde_json::json!({
+                "schema": ACP_TERMINAL_OPERATION_RESPONSE_SCHEMA,
+                "operation": "release",
+                "requestDigest": release_digest,
+                "reference": "release-1",
+                "authorizationId": "auth-2",
+                "transactionId": "release-txn-1",
+                "settlementStatus": "released"
+            }),
+        );
+        let release = AcpPaymentAdapter::new(release_url)
+            .release("auth-2", "release-1")
+            .expect("release should be confirmed by the facilitator");
+        assert_eq!(release.settlement_status, RailSettlementStatus::Released);
+        assert!(release_rx
+            .recv()
+            .expect("release request should be recorded")
+            .starts_with("POST /release HTTP/1.1"));
+        release_handle
+            .join()
+            .expect("release server should exit cleanly");
+
+        let refund_binding = AcpTerminalOperationBinding {
+            authorization_id: "",
+            transaction_id: Some("txn-2"),
+            amount_units: Some(225),
+            currency: Some("USD"),
+            reference: "refund-1",
+        };
+        let refund_digest = acp_request_digest(&refund_binding)
+            .expect("refund request binding should canonicalize");
+        let (refund_url, refund_rx, refund_handle) = spawn_once_json_server(
+            200,
+            serde_json::json!({
+                "schema": ACP_TERMINAL_OPERATION_RESPONSE_SCHEMA,
+                "operation": "refund",
+                "requestDigest": refund_digest,
+                "reference": "refund-1",
+                "transactionId": "refund-txn-1",
+                "settlementStatus": "refunded"
+            }),
+        );
+        let refund = AcpPaymentAdapter::new(refund_url)
+            .refund("txn-2", 225, "USD", "refund-1")
+            .expect("refund should be confirmed by the facilitator");
+        assert_eq!(refund.settlement_status, RailSettlementStatus::Refunded);
+        assert!(refund_rx
+            .recv()
+            .expect("refund request should be recorded")
+            .starts_with("POST /refund HTTP/1.1"));
+        refund_handle
+            .join()
+            .expect("refund server should exit cleanly");
+    }
+
+    #[test]
+    fn acp_adapter_queries_bound_settlement_state() {
+        let binding = AcpSettlementStateBinding {
+            reference: "reconcile-1",
+            authorization_id: Some("auth-3"),
+        };
+        let request_digest =
+            acp_request_digest(&binding).expect("settlement-state request should canonicalize");
+        let (url, request_rx, handle) = spawn_once_json_server(
+            200,
+            serde_json::json!({
+                "schema": ACP_SETTLEMENT_STATE_RESPONSE_SCHEMA,
+                "requestDigest": request_digest,
+                "reference": "reconcile-1",
+                "state": "settled",
+                "authorizationId": "auth-3",
+                "transactionId": "txn-3",
+                "settlementStatus": "settled",
+                "metadata": {"providerReference": "provider-3"}
+            }),
+        );
+        let state = AcpPaymentAdapter::new(url)
+            .settlement_state("reconcile-1", Some("auth-3"))
+            .expect("settlement state should be verified");
+        assert!(matches!(
+            state,
+            RailSettlementState::Settled {
+                authorization_id,
+                result: PaymentResult { transaction_id, .. }
+            } if authorization_id == "auth-3" && transaction_id == "txn-3"
+        ));
+        let request = request_rx.recv().expect("state request should be captured");
+        assert!(request.starts_with("GET /settlement-state?"));
+        assert!(request.contains("reference=reconcile-1"));
+        assert!(request.contains("authorizationId=auth-3"));
+        handle.join().expect("state server should exit cleanly");
+    }
+
+    #[test]
+    fn acp_adapter_rejects_unbound_terminal_response() {
+        let binding = AcpTerminalOperationBinding {
+            authorization_id: "auth-4",
+            transaction_id: None,
+            amount_units: Some(10),
+            currency: Some("USD"),
+            reference: "capture-4",
+        };
+        let request_digest =
+            acp_request_digest(&binding).expect("capture request binding should canonicalize");
+        let (url, _request_rx, handle) = spawn_once_json_server(
+            200,
+            serde_json::json!({
+                "schema": ACP_TERMINAL_OPERATION_RESPONSE_SCHEMA,
+                "operation": "capture",
+                "requestDigest": request_digest,
+                "reference": "another-reference",
+                "authorizationId": "auth-4",
+                "transactionId": "txn-4",
+                "settlementStatus": "settled"
+            }),
+        );
+        let error = AcpPaymentAdapter::new(url)
+            .capture("auth-4", 10, "USD", "capture-4")
+            .expect_err("an unbound response must fail closed");
+        assert!(matches!(error, PaymentError::RailError(_)));
+        handle.join().expect("server should exit cleanly");
     }
 
     fn spawn_once_json_server(
