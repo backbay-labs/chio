@@ -80,6 +80,7 @@ members = [
     "crates/trust/chio-attest-buyer",
     "crates/trust/chio-attest-verify",
     "crates/trust/chio-custody-hw",
+    "crates/trust/chio-signing-remote",
     "crates/trust/chio-weights",
     "crates/trust/chio-tee",
     "crates/trust/chio-tee-frame",
@@ -378,6 +379,7 @@ chio-bedrock-converse-adapter = { path = "crates/protocol/chio-bedrock-converse-
 chio-binding-helpers = { path = "crates/sdk/chio-binding-helpers" }
 chio-bounded = { path = "crates/core/chio-bounded" }
 chio-supervisor = { path = "crates/core/chio-supervisor" }
+chio-signing-remote = { path = "crates/trust/chio-signing-remote" }
 chio-cohere-tools-adapter = { path = "crates/protocol/chio-cohere-tools-adapter" }
 chio-config = { path = "crates/platform/chio-config" }
 chio-conformance = { path = "crates/tooling/chio-conformance" }

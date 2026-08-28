@@ -154,6 +154,7 @@ SLICES: tuple[ReviewSlice, ...] = (
             "crates/trust/chio-finding-challenge/**",
             "crates/trust/chio-weights/**",
             "crates/trust/chio-custody-hw/**",
+            "crates/trust/chio-signing-remote/**",
             "crates/trust/chio-did/**",
             "crates/trust/chio-credentials/**",
             "crates/trust/chio-federation/**",

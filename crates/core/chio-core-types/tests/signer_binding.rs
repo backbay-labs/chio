@@ -16,7 +16,7 @@ use chio_core_types::receipt::{
     body::{ChioReceipt, ChioReceiptBody},
     decision::{Decision, ToolCallAction},
     kinds::{BoundaryClass, ReceiptKind, RedactionMode, ToolOrigin, TrustLevel},
-    lineage::{ChildRequestReceipt, ChildRequestReceiptBody},
+    lineage::{ChildRequestReceipt, ChildRequestReceiptBody, SignedExportEnvelope},
 };
 use chio_core_types::session::{SessionAnchor, SessionAnchorBody, SessionAnchorContext};
 use chio_core_types::{
@@ -347,4 +347,18 @@ fn manifest_sign_rejects_embedded_server_key_mismatch() {
     };
 
     assert!(ToolManifest::sign(body, &actual_signer).is_err());
+}
+
+#[test]
+fn export_envelope_backend_path_matches_keypair_signing() -> chio_core_types::Result<()> {
+    let keypair = Keypair::from_seed(&[88_u8; 32]);
+    let backend = Ed25519Backend::new(keypair.clone());
+    let body = serde_json::json!({"schema": "chio.test.export.v1", "value": 9});
+
+    let local = SignedExportEnvelope::sign(body.clone(), &keypair)?;
+    let external = SignedExportEnvelope::sign_with_backend(body, &backend)?;
+
+    assert_eq!(local, external);
+    assert!(external.verify_signature()?);
+    Ok(())
 }

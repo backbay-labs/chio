@@ -8,12 +8,14 @@ use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_finding::{
     compute_finding_id,
-    crypto::{Keypair, PublicKey},
+    crypto::{Ed25519Backend, Keypair, PublicKey},
     Finding, FindingDescriptor, FindingError, FindingEvidenceClass, FindingGuaranteeClass,
     FindingOutcomeClass, FINDING_SCHEMA_V1, MAX_FINDING_EVIDENCE_RECEIPTS,
     MAX_FINDING_IDENTIFIER_BYTES, MAX_FINDING_TEXT_BYTES,
 };
-use chio_finding::{sign_finding, verify_finding, verify_finding_signature};
+use chio_finding::{
+    sign_finding, sign_finding_with_backend, verify_finding, verify_finding_signature,
+};
 use serde_json::{json, Value};
 
 const I_JSON_MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
@@ -350,6 +352,24 @@ fn signed_finding_roundtrip_verifies() {
     assert!(verify_finding_signature(&signed).is_ok());
     assert!(signed.validate().is_ok());
     assert!(verify_finding(&signed).is_ok());
+}
+
+#[test]
+fn signing_backend_preserves_the_finding_wire_contract() {
+    let issuer = Keypair::from_seed(&[42_u8; 32]);
+    let finding = base_finding(&issuer);
+    let local = match sign_finding(finding.clone(), &issuer) {
+        Ok(local) => local,
+        Err(error) => panic!("local finding should sign: {error}"),
+    };
+    let backend = Ed25519Backend::new(issuer);
+    let external = match sign_finding_with_backend(finding, &backend) {
+        Ok(external) => external,
+        Err(error) => panic!("backend finding should sign over the same bytes: {error}"),
+    };
+
+    assert_eq!(external, local);
+    assert!(verify_finding(&external).is_ok());
 }
 
 #[test]

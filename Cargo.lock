@@ -4638,6 +4638,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-signing-remote"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chio-core",
+ "chio-test-support",
+ "serde",
+ "serde_json",
+ "ureq 2.12.1",
+ "url",
+]
+
+[[package]]
 name = "chio-spec-codegen"
 version = "0.1.0"
 dependencies = [
