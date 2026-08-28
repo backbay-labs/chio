@@ -1,5 +1,7 @@
 #![allow(clippy::result_large_err)]
 
+#[path = "trust_control/finding_hosted_profile.rs"]
+pub mod finding_hosted_profile;
 #[path = "trust_control/fiscal_handlers.rs"]
 mod fiscal_handlers;
 #[path = "trust_control/fiscal_runtime.rs"]

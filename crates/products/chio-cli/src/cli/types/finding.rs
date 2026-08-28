@@ -303,6 +303,13 @@ pub(crate) enum FindingOperatorCommands {
         #[arg(long)]
         profile: PathBuf,
     },
+
+    /// Validate a hosted profile, its referenced files, and secret references.
+    ValidateHosted {
+        /// Strict canonical hosted operator profile.
+        #[arg(long)]
+        profile: PathBuf,
+    },
 }
 
 /// The mechanical evidence class a challenge presents, as an operator-facing
