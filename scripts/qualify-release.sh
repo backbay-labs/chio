@@ -96,57 +96,148 @@ bash ./scripts/check-chio-schema-registry.sh
 bash ./scripts/check-comptroller-contract-no-drift.sh
 bash ./scripts/check-no-eip3009-broadcast.sh
 bash ./scripts/qualify-comptroller-operator-surfaces.sh
+release_peer_lock="crates/tooling/chio-conformance/peers.lock.toml"
 read_release_python_peer() {
-  python3 - <<'PY'
+  python3 - "${release_peer_lock}" <<'PY'
 import sys
 import tomllib
 
 expected_target = "x86_64-unknown-linux-gnu"
-with open("crates/tooling/chio-conformance/peers.lock.toml", "rb") as fh:
+lock_path = sys.argv[1]
+with open(lock_path, "rb") as fh:
     lock = tomllib.load(fh)
 
-selected = next(
-    (
-        peer
-        for peer in lock.get("peer", [])
-        if (
-            peer.get("language") == "python"
-            and peer.get("target") == expected_target
-            and peer.get("published", True)
-        )
-    ),
-    None,
-)
-if selected is None:
-    print(
-        "release qualification requires a published python peer for "
-        f"{expected_target} in crates/tooling/chio-conformance/peers.lock.toml",
-        file=sys.stderr,
+matching = [
+    peer
+    for peer in lock.get("peer", [])
+    if (
+        peer.get("language") == "python"
+        and peer.get("target") == expected_target
     )
-    raise SystemExit(1)
+]
+if len(matching) != 1:
+    raise SystemExit(
+        "release qualification requires exactly one python peer row for "
+        f"{expected_target} in {lock_path}; found {len(matching)}"
+    )
 
-print(f"{selected['target']}\t{selected['binary']}")
+selected = matching[0]
+if selected.get("published") is False:
+    print("source-pre-release\t\t")
+else:
+    print(f"published\t{selected['target']}\t{selected['binary']}")
+
 PY
 }
 
 run_external_consumer_smoke() {
-  local peer_target="$1"
-  local peer_binary="$2"
+  local peer_mode="$1"
+  local peer_target="$2"
+  local peer_binary="$3"
   local report_path="${conformance_root}/external-consumer-smoke-report.json"
+  local mode_path="${conformance_root}/external-consumer-smoke-mode.txt"
+  local scenario_root="tests/conformance/scenarios/mcp_core"
 
-  cargo run -p chio-cli --bin chio -- conformance fetch-peers \
-    --language python \
-    --out "${peer_root}"
+  case "${peer_mode}" in
+    published)
+      # Published rows prove the immutable download and digest boundary.
+      cargo run -p chio-cli --bin chio -- conformance fetch-peers \
+        --lockfile "${release_peer_lock}" \
+        --language python \
+        --out "${peer_root}"
 
-  cargo run -p chio-cli --bin chio -- conformance run \
-    --peer python \
-    --peer-binary "${peer_root}/python-${peer_target}/${peer_binary}" \
-    --report json \
-    --output "${report_path}"
+      cargo run -p chio-cli --bin chio -- conformance run \
+        --peer python \
+        --peer-binary "${peer_root}/python-${peer_target}/${peer_binary}" \
+        --report json \
+        --output "${report_path}"
+      ;;
+    source-pre-release)
+      # Pre-release locks prove their shape, then execute the real source peer.
+      cargo run -p chio-cli --bin chio -- conformance fetch-peers \
+        --lockfile "${release_peer_lock}" \
+        --language python \
+        --check \
+        --allow-unpublished-only
+
+      cargo run -p chio-cli --bin chio -- conformance run \
+        --peer python \
+        --report json \
+        --output "${report_path}"
+      ;;
+    *)
+      echo "unknown release python peer mode: ${peer_mode}" >&2
+      return 1
+      ;;
+  esac
+
+  python3 - "${report_path}" "${scenario_root}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+report_path = sys.argv[1]
+scenario_root = Path(sys.argv[2])
+with open(report_path, encoding="utf-8") as report_file:
+    report = json.load(report_file)
+
+expected_ids = []
+for scenario_path in sorted(scenario_root.rglob("*.json")):
+    with scenario_path.open(encoding="utf-8") as scenario_file:
+        scenario = json.load(scenario_file)
+    if scenario.get("expected") != "pass":
+        raise SystemExit(
+            f"external consumer smoke scenario is not required: {scenario_path}"
+        )
+    scenario_id = scenario.get("id")
+    if not isinstance(scenario_id, str) or not scenario_id:
+        raise SystemExit(
+            f"external consumer smoke scenario has no valid id: {scenario_path}"
+        )
+    expected_ids.append(scenario_id)
+if not expected_ids or len(expected_ids) != len(set(expected_ids)):
+    raise SystemExit(
+        "external consumer smoke descriptors are empty or have duplicate ids"
+    )
+
+results = report.get("results")
+scenario_count = report.get("scenarioCount")
+if not isinstance(results, list) or not results:
+    raise SystemExit("external consumer smoke produced no scenario results")
+reported_ids = [result.get("scenarioId") for result in results]
+if (
+    scenario_count != len(expected_ids)
+    or len(results) != len(expected_ids)
+    or sorted(reported_ids) != sorted(expected_ids)
+):
+    raise SystemExit(
+        "external consumer smoke scenario ids do not match required descriptors"
+    )
+
+unexpected = [
+    result.get("scenarioId", "<unknown>")
+    for result in results
+    if result.get("status") != "pass"
+]
+if unexpected:
+    raise SystemExit(
+        "external consumer smoke has unexpected failures: "
+        + ", ".join(unexpected)
+    )
+PY
+
+  printf '%s\n' "${peer_mode}" >"${mode_path}"
 }
 
-IFS=$'\t' read -r release_python_target release_python_binary < <(read_release_python_peer)
-run_external_consumer_smoke "${release_python_target}" "${release_python_binary}"
+release_python_selection="$(read_release_python_peer)"
+IFS=$'\t' read -r \
+  release_python_mode \
+  release_python_target \
+  release_python_binary <<<"${release_python_selection}"
+run_external_consumer_smoke \
+  "${release_python_mode}" \
+  "${release_python_target}" \
+  "${release_python_binary}"
 
 run_conformance_area() {
   local area="$1"
