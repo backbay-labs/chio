@@ -533,7 +533,8 @@ pub enum ChallengeCoordinatorError {
 /// epoch that fixed the round's inputs before it sampled, the seed the
 /// venue revealed afterwards, and the eligible listing snapshot the epoch
 /// committed the digest of.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingAuditRound {
     pub epoch: SignedFindingAuditEpoch,
     /// Governance-root-signed authorization for every epoch field other

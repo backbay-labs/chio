@@ -391,10 +391,12 @@ pub use finding_market_store::{
     FindingPutOutcome, FindingRecordInput, FindingSearchRow, SqliteFindingMarketStore,
 };
 pub use finding_operator_bundle_store::{
-    FindingOperatorBundleArtifactIndex, FindingOperatorBundleArtifactKind,
-    FindingOperatorBundleRecord, FindingOperatorBundleStoreError,
-    FindingOperatorBundleWriteOutcome, FindingOperatorIndexedBundleRecord,
-    FindingOperatorProofRecord, FindingOperatorPurchaseJobRecord,
+    FindingOperatorAuditRoundRecord, FindingOperatorBundleArtifactIndex,
+    FindingOperatorBundleArtifactKind, FindingOperatorBundleRecord,
+    FindingOperatorBundleStoreError, FindingOperatorBundleWriteOutcome,
+    FindingOperatorIndexedBundleRecord, FindingOperatorProofRecord,
+    FindingOperatorPurchaseJobRecord, FindingOperatorRetainedPolicyArtifactKind,
+    FindingOperatorRetainedPolicyRecord, FindingOperatorRetainedPolicyRole,
     FindingOperatorTerminalCapacityRecord, FindingOperatorTerminalRecord,
     FindingOperatorTerminalWriteOutcome, SqliteFindingOperatorBundleStore,
 };

@@ -1,13 +1,16 @@
 //! Digest-addressed filing artifacts retained by the single-operator runtime.
 
 use chio_finding::{
-    signed_envelope_sha256, verify_signed_admission, verify_signed_profile, SignedFindingAdmission,
-    SignedFindingMarketTerms,
+    audit_epoch_precommitment_sha256, signed_envelope_sha256, verify_signed_admission,
+    verify_signed_audit_epoch, verify_signed_audit_round_authorization, verify_signed_profile,
+    SignedFindingAdmission, SignedFindingMarketTerms,
 };
 use chio_open_market::fee_schedule::SignedOpenMarketFeeSchedule;
+use chio_open_market::finding_audit::select_audit_targets;
 use chio_store_sqlite::{
     FindingOperatorBundleArtifactIndex, FindingOperatorBundleArtifactKind,
-    FindingOperatorBundleStoreError, SqliteFindingOperatorBundleStore,
+    FindingOperatorBundleStoreError, FindingOperatorRetainedPolicyArtifactKind,
+    FindingOperatorRetainedPolicyRole, SqliteFindingOperatorBundleStore,
 };
 
 use super::finding_challenge_coordinator::{FindingAuditRound, FindingFilingResolver};
@@ -21,6 +24,7 @@ const ARTIFACT_INDEX_BACKFILL_BATCH: u64 = 16;
 /// phases fail closed instead of inventing historical policy.
 pub struct FindingOperatorFilingResolver {
     bundles: SqliteFindingOperatorBundleStore,
+    market: FindingMarketConfig,
 }
 
 struct IndexedOperatorBundle {
@@ -50,7 +54,7 @@ impl FindingOperatorFilingResolver {
                     .map_err(|error| error.to_string())?;
             }
         }
-        Ok(Self { bundles })
+        Ok(Self { bundles, market })
     }
 
     fn indexed_bundle(
@@ -76,6 +80,207 @@ impl FindingOperatorFilingResolver {
             bundle,
             authority_policy_json: record.authority_policy_json,
         }))
+    }
+
+    fn retained_policy(
+        &self,
+        artifact_kind: FindingOperatorRetainedPolicyArtifactKind,
+        envelope_sha256: &str,
+        policy_role: FindingOperatorRetainedPolicyRole,
+    ) -> Result<Option<FindingAuthorityPin>, String> {
+        let record = match self.bundles.get_retained_challenge_policy(
+            artifact_kind,
+            envelope_sha256,
+            policy_role,
+        ) {
+            Ok(record) => record,
+            Err(FindingOperatorBundleStoreError::NotFound) => return Ok(None),
+            Err(error) => return Err(error.to_string()),
+        };
+        let policy: FindingAuthorityPin = serde_json::from_slice(&record.policy_json)
+            .map_err(|_| "retained challenge authority policy is invalid".to_owned())?;
+        policy
+            .validate("retained challenge authority")
+            .map_err(|_| "retained challenge authority policy is invalid".to_owned())?;
+        Ok(Some(policy))
+    }
+
+    fn retain_policy(
+        &self,
+        artifact_kind: FindingOperatorRetainedPolicyArtifactKind,
+        envelope_sha256: &str,
+        policy_role: FindingOperatorRetainedPolicyRole,
+        policy: &FindingAuthorityPin,
+        expected: &FindingAuthorityPin,
+    ) -> Result<(), String> {
+        policy
+            .validate("retained challenge authority")
+            .map_err(|_| "retained challenge authority policy is invalid".to_owned())?;
+        if policy != expected {
+            return Err("retained challenge authority policy is not configured".to_owned());
+        }
+        let policy_json =
+            chio_core::canonical_json_bytes(policy).map_err(|error| error.to_string())?;
+        self.bundles
+            .put_retained_challenge_policy(
+                artifact_kind,
+                envelope_sha256,
+                policy_role,
+                &policy_json,
+            )
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn retain_governance_case_policy(
+        &self,
+        envelope_sha256: &str,
+        policy: &FindingAuthorityPin,
+    ) -> Result<(), String> {
+        self.retain_policy(
+            FindingOperatorRetainedPolicyArtifactKind::GovernanceCase,
+            envelope_sha256,
+            FindingOperatorRetainedPolicyRole::Governance,
+            policy,
+            &self.market.governance_root,
+        )
+    }
+
+    pub fn retain_governance_activation_policy(
+        &self,
+        envelope_sha256: &str,
+        policy: &FindingAuthorityPin,
+    ) -> Result<(), String> {
+        self.retain_policy(
+            FindingOperatorRetainedPolicyArtifactKind::TrustActivation,
+            envelope_sha256,
+            FindingOperatorRetainedPolicyRole::Governance,
+            policy,
+            &self.market.governance_root,
+        )
+    }
+
+    pub fn retain_audit_epoch_policies(
+        &self,
+        envelope_sha256: &str,
+        audit_policy: &FindingAuthorityPin,
+        randomness_policy: &FindingAuthorityPin,
+    ) -> Result<(), String> {
+        self.retain_policy(
+            FindingOperatorRetainedPolicyArtifactKind::AuditEpoch,
+            envelope_sha256,
+            FindingOperatorRetainedPolicyRole::AuditAuthority,
+            audit_policy,
+            &self.market.audit_authority,
+        )?;
+        self.retain_policy(
+            FindingOperatorRetainedPolicyArtifactKind::AuditEpoch,
+            envelope_sha256,
+            FindingOperatorRetainedPolicyRole::RandomnessWitness,
+            randomness_policy,
+            &self.market.audit_randomness_witness,
+        )
+    }
+
+    pub fn retain_audit_authorization_policy(
+        &self,
+        envelope_sha256: &str,
+        policy: &FindingAuthorityPin,
+    ) -> Result<(), String> {
+        self.retain_policy(
+            FindingOperatorRetainedPolicyArtifactKind::AuditAuthorization,
+            envelope_sha256,
+            FindingOperatorRetainedPolicyRole::Governance,
+            policy,
+            &self.market.governance_root,
+        )
+    }
+
+    /// Validate and retain one fully published audit round and every
+    /// historical authority policy needed to replay it after rotation.
+    pub fn retain_audit_round(&self, round: &FindingAuditRound) -> Result<String, String> {
+        let epoch_digest =
+            signed_envelope_sha256(&round.epoch).map_err(|error| error.to_string())?;
+        let authorization_digest =
+            signed_envelope_sha256(&round.authorization).map_err(|error| error.to_string())?;
+        if round.epoch.body.authorization_digest != authorization_digest {
+            return Err("audit round does not bind its authorization envelope".to_owned());
+        }
+        if round.authorization.body.epoch_precommitment_sha256
+            != audit_epoch_precommitment_sha256(&round.epoch.body)
+                .map_err(|error| error.to_string())?
+        {
+            return Err("audit round authorization does not bind its epoch".to_owned());
+        }
+        if round.authorization.body.authorized_at > round.epoch.body.committed_at
+            || round.authorization.body.expires_at <= round.epoch.body.committed_at
+        {
+            return Err("audit round authorization does not cover commitment time".to_owned());
+        }
+        for (label, policy, acted_at) in [
+            (
+                "audit authority",
+                &self.market.audit_authority,
+                round.epoch.body.committed_at,
+            ),
+            (
+                "audit randomness witness",
+                &self.market.audit_randomness_witness,
+                round.epoch.body.seed_witnessed_at,
+            ),
+            (
+                "audit governance",
+                &self.market.governance_root,
+                round.authorization.body.authorized_at,
+            ),
+        ] {
+            policy.validate(label).map_err(|error| error.to_string())?;
+            if !policy.covers(acted_at) {
+                return Err(format!("{label} policy does not cover the signed action"));
+            }
+        }
+        let audit_key = self
+            .market
+            .audit_authority
+            .key()
+            .map_err(|error| error.to_string())?;
+        let witness_key = self
+            .market
+            .audit_randomness_witness
+            .key()
+            .map_err(|error| error.to_string())?;
+        let governance_key = self
+            .market
+            .governance_root
+            .key()
+            .map_err(|error| error.to_string())?;
+        verify_signed_audit_epoch(&round.epoch, &audit_key, &witness_key)
+            .map_err(|_| "audit round epoch signature is invalid".to_owned())?;
+        verify_signed_audit_round_authorization(&round.authorization, &governance_key)
+            .map_err(|_| "audit round authorization signature is invalid".to_owned())?;
+        select_audit_targets(
+            &round.epoch.body,
+            &witness_key,
+            &round.revealed_seed,
+            &round.eligible,
+        )
+        .map_err(|_| "audit round selection inputs are invalid".to_owned())?;
+        let round_json =
+            chio_core::canonical_json_bytes(round).map_err(|error| error.to_string())?;
+
+        self.retain_audit_epoch_policies(
+            &epoch_digest,
+            &self.market.audit_authority,
+            &self.market.audit_randomness_witness,
+        )?;
+        self.retain_audit_authorization_policy(
+            &authorization_digest,
+            &self.market.governance_root,
+        )?;
+        self.bundles
+            .put_audit_round(&epoch_digest, &round_json)
+            .map_err(|error| error.to_string())?;
+        Ok(epoch_digest)
     }
 }
 
@@ -161,9 +366,21 @@ impl FindingFilingResolver for FindingOperatorFilingResolver {
 
     fn audit_round(
         &self,
-        _epoch_envelope_sha256: &str,
+        epoch_envelope_sha256: &str,
     ) -> Result<Option<FindingAuditRound>, String> {
-        Ok(None)
+        let record = match self.bundles.get_audit_round(epoch_envelope_sha256) {
+            Ok(record) => record,
+            Err(FindingOperatorBundleStoreError::NotFound) => return Ok(None),
+            Err(error) => return Err(error.to_string()),
+        };
+        let round: FindingAuditRound = serde_json::from_slice(&record.round_json)
+            .map_err(|_| "retained audit round is invalid".to_owned())?;
+        if signed_envelope_sha256(&round.epoch).map_err(|error| error.to_string())?
+            != epoch_envelope_sha256
+        {
+            return Err("retained audit round does not match its epoch digest".to_owned());
+        }
+        Ok(Some(round))
     }
 
     fn admission_for_backing(
@@ -261,67 +478,107 @@ impl FindingFilingResolver for FindingOperatorFilingResolver {
 
     fn governance_policy_for_case(
         &self,
-        _envelope_sha256: &str,
+        envelope_sha256: &str,
     ) -> Result<Option<FindingAuthorityPin>, String> {
-        Ok(None)
+        self.retained_policy(
+            FindingOperatorRetainedPolicyArtifactKind::GovernanceCase,
+            envelope_sha256,
+            FindingOperatorRetainedPolicyRole::Governance,
+        )
     }
 
     fn governance_policy_for_activation(
         &self,
-        _envelope_sha256: &str,
+        envelope_sha256: &str,
     ) -> Result<Option<FindingAuthorityPin>, String> {
-        Ok(None)
+        self.retained_policy(
+            FindingOperatorRetainedPolicyArtifactKind::TrustActivation,
+            envelope_sha256,
+            FindingOperatorRetainedPolicyRole::Governance,
+        )
     }
 
     fn penalty_policy_for_penalty(
         &self,
-        _envelope_sha256: &str,
+        envelope_sha256: &str,
     ) -> Result<Option<FindingAuthorityPin>, String> {
-        Ok(None)
+        self.retained_policy(
+            FindingOperatorRetainedPolicyArtifactKind::Penalty,
+            envelope_sha256,
+            FindingOperatorRetainedPolicyRole::PenaltyAuthority,
+        )
     }
 
     fn retain_penalty_policy(
         &self,
-        _envelope_sha256: &str,
-        _policy: &FindingAuthorityPin,
+        envelope_sha256: &str,
+        policy: &FindingAuthorityPin,
     ) -> Result<(), String> {
-        Err("operator penalty policy retention is not configured".to_owned())
+        self.retain_policy(
+            FindingOperatorRetainedPolicyArtifactKind::Penalty,
+            envelope_sha256,
+            FindingOperatorRetainedPolicyRole::PenaltyAuthority,
+            policy,
+            &self.market.market_penalty,
+        )
     }
 
     fn evaluator_policy_for_outcome(
         &self,
-        _envelope_sha256: &str,
+        envelope_sha256: &str,
     ) -> Result<Option<FindingAuthorityPin>, String> {
-        Ok(None)
+        self.retained_policy(
+            FindingOperatorRetainedPolicyArtifactKind::ChallengeOutcome,
+            envelope_sha256,
+            FindingOperatorRetainedPolicyRole::Evaluator,
+        )
     }
 
     fn retain_evaluator_policy(
         &self,
-        _envelope_sha256: &str,
-        _policy: &FindingAuthorityPin,
+        envelope_sha256: &str,
+        policy: &FindingAuthorityPin,
     ) -> Result<(), String> {
-        Err("operator evaluator policy retention is not configured".to_owned())
+        self.retain_policy(
+            FindingOperatorRetainedPolicyArtifactKind::ChallengeOutcome,
+            envelope_sha256,
+            FindingOperatorRetainedPolicyRole::Evaluator,
+            policy,
+            &self.market.challenge_evaluator,
+        )
     }
 
     fn audit_policy_for_epoch(
         &self,
-        _epoch_envelope_sha256: &str,
+        epoch_envelope_sha256: &str,
     ) -> Result<Option<FindingAuthorityPin>, String> {
-        Ok(None)
+        self.retained_policy(
+            FindingOperatorRetainedPolicyArtifactKind::AuditEpoch,
+            epoch_envelope_sha256,
+            FindingOperatorRetainedPolicyRole::AuditAuthority,
+        )
     }
 
     fn randomness_witness_policy_for_epoch(
         &self,
-        _epoch_envelope_sha256: &str,
+        epoch_envelope_sha256: &str,
     ) -> Result<Option<FindingAuthorityPin>, String> {
-        Ok(None)
+        self.retained_policy(
+            FindingOperatorRetainedPolicyArtifactKind::AuditEpoch,
+            epoch_envelope_sha256,
+            FindingOperatorRetainedPolicyRole::RandomnessWitness,
+        )
     }
 
     fn governance_policy_for_audit_authorization(
         &self,
-        _authorization_envelope_sha256: &str,
+        authorization_envelope_sha256: &str,
     ) -> Result<Option<FindingAuthorityPin>, String> {
-        Ok(None)
+        self.retained_policy(
+            FindingOperatorRetainedPolicyArtifactKind::AuditAuthorization,
+            authorization_envelope_sha256,
+            FindingOperatorRetainedPolicyRole::Governance,
+        )
     }
 
     fn market_terms(
