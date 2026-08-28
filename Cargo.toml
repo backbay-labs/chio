@@ -320,11 +320,14 @@ base64 = "0.22"
 base64ct = "=1.8.3"
 hmac = "0.12"
 subtle = "2"
+libc = "0.2"
 bs58 = "0.5"
 chacha20poly1305 = "0.10"
 ryu = "1"
 sha2 = "0.10"
 reqwest = { version = "0.13.2", default-features = false }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
+rustls-pemfile = "2"
 rusqlite = { version = "0.39", features = ["bundled"] }
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls", "postgres"] }
 rs_merkle = "1.5"

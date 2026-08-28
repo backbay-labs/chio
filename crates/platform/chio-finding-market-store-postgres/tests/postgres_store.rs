@@ -82,6 +82,58 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         .get_active_api_key(&tenant_b, "key-a", 1_700_000_001)
         .await?
         .is_none());
+    let actions = ["finding.purchase".to_owned()]
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        store
+            .put_api_key_with_security_event(
+                &tenant_a,
+                "key-b",
+                "buyer-a",
+                &"e".repeat(64),
+                &actions,
+                1_700_000_000,
+                1_700_003_600,
+                Some("key-a"),
+                "event-key-b-issued",
+                "hosted.api_key.issued",
+                br#"{"event":"issue"}"#,
+                1_700_000_000,
+            )
+            .await?,
+        HostedJobWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store
+            .revoke_api_key_with_security_event(
+                &tenant_a,
+                "key-b",
+                1_700_000_100,
+                "event-key-b-revoked",
+                "hosted.api_key.revoked",
+                br#"{"event":"revoke"}"#,
+            )
+            .await?,
+        HostedJobWriteOutcome::Inserted
+    );
+    assert!(store
+        .get_active_api_key(&tenant_a, "key-b", 1_700_000_101)
+        .await?
+        .is_none());
+    let mut event_transaction = runtime_pool.begin().await?;
+    sqlx::query("SELECT set_config('chio.tenant_id', $1, TRUE)")
+        .bind(tenant_a.as_str())
+        .execute(&mut *event_transaction)
+        .await?;
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM chio_finding_market_security_events WHERE tenant_id = $1 AND event_id IN ('event-key-b-issued', 'event-key-b-revoked')",
+    )
+    .bind(tenant_a.as_str())
+    .fetch_one(&mut *event_transaction)
+    .await?;
+    assert_eq!(event_count, 2);
+    event_transaction.rollback().await?;
     assert!(
         store
             .consume_dpop_nonce(

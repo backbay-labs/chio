@@ -202,87 +202,37 @@ impl PostgresFindingMarketStore {
         rotated_from_key_id: Option<&str>,
         now: u64,
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
-        validate_identifier(key_id, MAX_KEY_ID_BYTES)
-            .map_err(|_| HostedMarketStoreError::Invalid("key_id"))?;
-        validate_identifier(principal_id, MAX_PRINCIPAL_ID_BYTES)
-            .map_err(|_| HostedMarketStoreError::Invalid("principal_id"))?;
-        validate_digest(verifier_sha256, "api_key_verifier")?;
-        validate_allowed_actions(allowed_actions)?;
-        if let Some(previous) = rotated_from_key_id {
-            validate_identifier(previous, MAX_KEY_ID_BYTES)
-                .map_err(|_| HostedMarketStoreError::Invalid("rotated_from_key_id"))?;
-            if previous == key_id {
-                return Err(HostedMarketStoreError::Invalid("rotated_from_key_id"));
-            }
-        }
-        if expires_at <= active_from {
-            return Err(HostedMarketStoreError::Invalid("api_key_window"));
-        }
+        validate_api_key_issue(
+            key_id,
+            principal_id,
+            verifier_sha256,
+            allowed_actions,
+            active_from,
+            expires_at,
+            rotated_from_key_id,
+        )?;
         let active_from = checked_i64(active_from, "api_key active_from")?;
         let expires_at = checked_i64(expires_at, "api_key expires_at")?;
         let now = checked_i64(now, "api_key now")?;
         let mut transaction = self.begin_tenant(tenant).await?;
-        let principal_enabled = sqlx::query_scalar::<_, bool>(
-            "SELECT enabled FROM chio_finding_market_principals WHERE tenant_id = $1 AND principal_id = $2 FOR KEY SHARE",
+        let outcome = put_api_key_tx(
+            &mut transaction,
+            tenant,
+            key_id,
+            principal_id,
+            verifier_sha256,
+            allowed_actions,
+            active_from,
+            expires_at,
+            rotated_from_key_id,
+            now,
         )
-        .bind(tenant.as_str())
-        .bind(principal_id)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?
-        .ok_or(HostedMarketStoreError::NotFound)?;
-        if !principal_enabled {
-            return Err(HostedMarketStoreError::TenantDisabled);
-        }
-        let existing = sqlx::query(
-            "SELECT principal_id, verifier_sha256, allowed_actions, active_from, expires_at, rotated_from_key_id FROM chio_finding_market_api_keys WHERE tenant_id = $1 AND key_id = $2 FOR UPDATE",
-        )
-        .bind(tenant.as_str())
-        .bind(key_id)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        if let Some(row) = existing {
-            let same = row.try_get::<String, _>(0).map_err(unavailable)? == principal_id
-                && row.try_get::<String, _>(1).map_err(unavailable)? == verifier_sha256
-                && row.try_get::<Vec<String>, _>(2).map_err(unavailable)?
-                    == allowed_actions.iter().cloned().collect::<Vec<_>>()
-                && row.try_get::<i64, _>(3).map_err(unavailable)? == active_from
-                && row.try_get::<i64, _>(4).map_err(unavailable)? == expires_at
-                && row
-                    .try_get::<Option<String>, _>(5)
-                    .map_err(unavailable)?
-                    .as_deref()
-                    == rotated_from_key_id;
-            if !same {
-                return Err(HostedMarketStoreError::Conflict);
-            }
-            transaction
-                .commit()
-                .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
-            return Ok(HostedJobWriteOutcome::ExactReplay);
-        }
-        sqlx::query(
-            "INSERT INTO chio_finding_market_api_keys (tenant_id, key_id, principal_id, verifier_sha256, allowed_actions, active_from, expires_at, rotated_from_key_id, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-        )
-        .bind(tenant.as_str())
-        .bind(key_id)
-        .bind(principal_id)
-        .bind(verifier_sha256)
-        .bind(allowed_actions.iter().cloned().collect::<Vec<_>>())
-        .bind(active_from)
-        .bind(expires_at)
-        .bind(rotated_from_key_id)
-        .bind(now)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .await?;
         transaction
             .commit()
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        Ok(HostedJobWriteOutcome::Inserted)
+        Ok(outcome)
     }
 
     pub async fn get_active_api_key(
@@ -321,44 +271,12 @@ impl PostgresFindingMarketStore {
             .map_err(|_| HostedMarketStoreError::Invalid("key_id"))?;
         let revoked_at = checked_i64(revoked_at, "api_key revoked_at")?;
         let mut transaction = self.begin_tenant(tenant).await?;
-        let row = sqlx::query(
-            "SELECT active_from, revoked_at FROM chio_finding_market_api_keys WHERE tenant_id = $1 AND key_id = $2 FOR UPDATE",
-        )
-        .bind(tenant.as_str())
-        .bind(key_id)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?
-        .ok_or(HostedMarketStoreError::NotFound)?;
-        let active_from: i64 = row.try_get(0).map_err(unavailable)?;
-        let existing: Option<i64> = row.try_get(1).map_err(unavailable)?;
-        if revoked_at < active_from {
-            return Err(HostedMarketStoreError::Invalid("api_key revoked_at"));
-        }
-        if let Some(existing) = existing {
-            if existing != revoked_at {
-                return Err(HostedMarketStoreError::Conflict);
-            }
-            transaction
-                .commit()
-                .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
-            return Ok(HostedJobWriteOutcome::ExactReplay);
-        }
-        sqlx::query(
-            "UPDATE chio_finding_market_api_keys SET revoked_at = $3 WHERE tenant_id = $1 AND key_id = $2 AND revoked_at IS NULL",
-        )
-        .bind(tenant.as_str())
-        .bind(key_id)
-        .bind(revoked_at)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let outcome = revoke_api_key_tx(&mut transaction, tenant, key_id, revoked_at).await?;
         transaction
             .commit()
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        Ok(HostedJobWriteOutcome::Inserted)
+        Ok(outcome)
     }
 
     pub async fn consume_dpop_nonce(
@@ -505,56 +423,328 @@ impl PostgresFindingMarketStore {
         artifact_json: &[u8],
         now: u64,
     ) -> Result<HostedSecurityEventOutcome, HostedMarketStoreError> {
-        validate_identifier(event_id, MAX_EVENT_ID_BYTES)
-            .map_err(|_| HostedMarketStoreError::Invalid("event_id"))?;
-        validate_identifier(event_kind, MAX_EVENT_KIND_BYTES)
-            .map_err(|_| HostedMarketStoreError::Invalid("event_kind"))?;
-        validate_canonical_json(artifact_json, "security_event")?;
-        if artifact_json.len() > MAX_SECURITY_EVENT_BYTES {
-            return Err(HostedMarketStoreError::Invalid("security_event"));
-        }
+        validate_security_event(event_id, event_kind, artifact_json)?;
         let digest = sha256_hex(artifact_json);
         let now = checked_i64(now, "security_event now")?;
         let mut transaction = self.begin_tenant(tenant).await?;
-        let existing = sqlx::query(
-            "SELECT event_kind, artifact_sha256, artifact_json FROM chio_finding_market_security_events WHERE tenant_id = $1 AND event_id = $2 FOR UPDATE",
+        let outcome = append_security_event_tx(
+            &mut transaction,
+            tenant,
+            event_id,
+            event_kind,
+            artifact_json,
+            &digest,
+            now,
         )
-        .bind(tenant.as_str())
-        .bind(event_id)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        if let Some(row) = existing {
-            let same = row.try_get::<String, _>(0).map_err(unavailable)? == event_kind
-                && row.try_get::<String, _>(1).map_err(unavailable)? == digest
-                && row.try_get::<Vec<u8>, _>(2).map_err(unavailable)? == artifact_json;
-            if !same {
-                return Err(HostedMarketStoreError::Conflict);
-            }
-            transaction
-                .commit()
-                .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
-            return Ok(HostedSecurityEventOutcome::ExactReplay);
-        }
-        sqlx::query(
-            "INSERT INTO chio_finding_market_security_events (tenant_id, event_id, event_kind, artifact_sha256, artifact_json, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
-        )
-        .bind(tenant.as_str())
-        .bind(event_id)
-        .bind(event_kind)
-        .bind(digest)
-        .bind(artifact_json)
-        .bind(now)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .await?;
         transaction
             .commit()
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        Ok(HostedSecurityEventOutcome::Inserted)
+        Ok(outcome)
     }
+
+    /// Atomically install an API key and its signed lifecycle event.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn put_api_key_with_security_event(
+        &self,
+        tenant: &HostedTenantId,
+        key_id: &str,
+        principal_id: &str,
+        verifier_sha256: &str,
+        allowed_actions: &BTreeSet<String>,
+        active_from: u64,
+        expires_at: u64,
+        rotated_from_key_id: Option<&str>,
+        event_id: &str,
+        event_kind: &str,
+        artifact_json: &[u8],
+        now: u64,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        validate_api_key_issue(
+            key_id,
+            principal_id,
+            verifier_sha256,
+            allowed_actions,
+            active_from,
+            expires_at,
+            rotated_from_key_id,
+        )?;
+        validate_security_event(event_id, event_kind, artifact_json)?;
+        let active_from = checked_i64(active_from, "api_key active_from")?;
+        let expires_at = checked_i64(expires_at, "api_key expires_at")?;
+        let now = checked_i64(now, "api_key now")?;
+        let digest = sha256_hex(artifact_json);
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let key_outcome = put_api_key_tx(
+            &mut transaction,
+            tenant,
+            key_id,
+            principal_id,
+            verifier_sha256,
+            allowed_actions,
+            active_from,
+            expires_at,
+            rotated_from_key_id,
+            now,
+        )
+        .await?;
+        let event_outcome = append_security_event_tx(
+            &mut transaction,
+            tenant,
+            event_id,
+            event_kind,
+            artifact_json,
+            &digest,
+            now,
+        )
+        .await?;
+        if matches!(key_outcome, HostedJobWriteOutcome::ExactReplay)
+            != matches!(event_outcome, HostedSecurityEventOutcome::ExactReplay)
+        {
+            return Err(HostedMarketStoreError::Conflict);
+        }
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        Ok(key_outcome)
+    }
+
+    /// Atomically revoke an API key and append its signed lifecycle event.
+    pub async fn revoke_api_key_with_security_event(
+        &self,
+        tenant: &HostedTenantId,
+        key_id: &str,
+        revoked_at: u64,
+        event_id: &str,
+        event_kind: &str,
+        artifact_json: &[u8],
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        validate_identifier(key_id, MAX_KEY_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("key_id"))?;
+        validate_security_event(event_id, event_kind, artifact_json)?;
+        let revoked_at = checked_i64(revoked_at, "api_key revoked_at")?;
+        let digest = sha256_hex(artifact_json);
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let key_outcome = revoke_api_key_tx(&mut transaction, tenant, key_id, revoked_at).await?;
+        let event_outcome = append_security_event_tx(
+            &mut transaction,
+            tenant,
+            event_id,
+            event_kind,
+            artifact_json,
+            &digest,
+            revoked_at,
+        )
+        .await?;
+        if matches!(key_outcome, HostedJobWriteOutcome::ExactReplay)
+            != matches!(event_outcome, HostedSecurityEventOutcome::ExactReplay)
+        {
+            return Err(HostedMarketStoreError::Conflict);
+        }
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        Ok(key_outcome)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn put_api_key_tx(
+    transaction: &mut Transaction<'_, Postgres>,
+    tenant: &HostedTenantId,
+    key_id: &str,
+    principal_id: &str,
+    verifier_sha256: &str,
+    allowed_actions: &BTreeSet<String>,
+    active_from: i64,
+    expires_at: i64,
+    rotated_from_key_id: Option<&str>,
+    now: i64,
+) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+    let principal_enabled = sqlx::query_scalar::<_, bool>(
+        "SELECT enabled FROM chio_finding_market_principals WHERE tenant_id = $1 AND principal_id = $2 FOR KEY SHARE",
+    )
+    .bind(tenant.as_str())
+    .bind(principal_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(|_| HostedMarketStoreError::Unavailable)?
+    .ok_or(HostedMarketStoreError::NotFound)?;
+    if !principal_enabled {
+        return Err(HostedMarketStoreError::TenantDisabled);
+    }
+    let existing = sqlx::query(
+        "SELECT principal_id, verifier_sha256, allowed_actions, active_from, expires_at, rotated_from_key_id FROM chio_finding_market_api_keys WHERE tenant_id = $1 AND key_id = $2 FOR UPDATE",
+    )
+    .bind(tenant.as_str())
+    .bind(key_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(|_| HostedMarketStoreError::Unavailable)?;
+    if let Some(row) = existing {
+        let same = row.try_get::<String, _>(0).map_err(unavailable)? == principal_id
+            && row.try_get::<String, _>(1).map_err(unavailable)? == verifier_sha256
+            && row.try_get::<Vec<String>, _>(2).map_err(unavailable)?
+                == allowed_actions.iter().cloned().collect::<Vec<_>>()
+            && row.try_get::<i64, _>(3).map_err(unavailable)? == active_from
+            && row.try_get::<i64, _>(4).map_err(unavailable)? == expires_at
+            && row
+                .try_get::<Option<String>, _>(5)
+                .map_err(unavailable)?
+                .as_deref()
+                == rotated_from_key_id;
+        return if same {
+            Ok(HostedJobWriteOutcome::ExactReplay)
+        } else {
+            Err(HostedMarketStoreError::Conflict)
+        };
+    }
+    sqlx::query(
+        "INSERT INTO chio_finding_market_api_keys (tenant_id, key_id, principal_id, verifier_sha256, allowed_actions, active_from, expires_at, rotated_from_key_id, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+    )
+    .bind(tenant.as_str())
+    .bind(key_id)
+    .bind(principal_id)
+    .bind(verifier_sha256)
+    .bind(allowed_actions.iter().cloned().collect::<Vec<_>>())
+    .bind(active_from)
+    .bind(expires_at)
+    .bind(rotated_from_key_id)
+    .bind(now)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|_| HostedMarketStoreError::Unavailable)?;
+    Ok(HostedJobWriteOutcome::Inserted)
+}
+
+async fn revoke_api_key_tx(
+    transaction: &mut Transaction<'_, Postgres>,
+    tenant: &HostedTenantId,
+    key_id: &str,
+    revoked_at: i64,
+) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+    let row = sqlx::query(
+        "SELECT active_from, revoked_at FROM chio_finding_market_api_keys WHERE tenant_id = $1 AND key_id = $2 FOR UPDATE",
+    )
+    .bind(tenant.as_str())
+    .bind(key_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(|_| HostedMarketStoreError::Unavailable)?
+    .ok_or(HostedMarketStoreError::NotFound)?;
+    let active_from: i64 = row.try_get(0).map_err(unavailable)?;
+    let existing: Option<i64> = row.try_get(1).map_err(unavailable)?;
+    if revoked_at < active_from {
+        return Err(HostedMarketStoreError::Invalid("api_key revoked_at"));
+    }
+    if let Some(existing) = existing {
+        return if existing == revoked_at {
+            Ok(HostedJobWriteOutcome::ExactReplay)
+        } else {
+            Err(HostedMarketStoreError::Conflict)
+        };
+    }
+    sqlx::query(
+        "UPDATE chio_finding_market_api_keys SET revoked_at = $3 WHERE tenant_id = $1 AND key_id = $2 AND revoked_at IS NULL",
+    )
+    .bind(tenant.as_str())
+    .bind(key_id)
+    .bind(revoked_at)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|_| HostedMarketStoreError::Unavailable)?;
+    Ok(HostedJobWriteOutcome::Inserted)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn append_security_event_tx(
+    transaction: &mut Transaction<'_, Postgres>,
+    tenant: &HostedTenantId,
+    event_id: &str,
+    event_kind: &str,
+    artifact_json: &[u8],
+    artifact_sha256: &str,
+    now: i64,
+) -> Result<HostedSecurityEventOutcome, HostedMarketStoreError> {
+    let existing = sqlx::query(
+        "SELECT event_kind, artifact_sha256, artifact_json FROM chio_finding_market_security_events WHERE tenant_id = $1 AND event_id = $2 FOR UPDATE",
+    )
+    .bind(tenant.as_str())
+    .bind(event_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(|_| HostedMarketStoreError::Unavailable)?;
+    if let Some(row) = existing {
+        let same = row.try_get::<String, _>(0).map_err(unavailable)? == event_kind
+            && row.try_get::<String, _>(1).map_err(unavailable)? == artifact_sha256
+            && row.try_get::<Vec<u8>, _>(2).map_err(unavailable)? == artifact_json;
+        return if same {
+            Ok(HostedSecurityEventOutcome::ExactReplay)
+        } else {
+            Err(HostedMarketStoreError::Conflict)
+        };
+    }
+    sqlx::query(
+        "INSERT INTO chio_finding_market_security_events (tenant_id, event_id, event_kind, artifact_sha256, artifact_json, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(tenant.as_str())
+    .bind(event_id)
+    .bind(event_kind)
+    .bind(artifact_sha256)
+    .bind(artifact_json)
+    .bind(now)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|_| HostedMarketStoreError::Unavailable)?;
+    Ok(HostedSecurityEventOutcome::Inserted)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_api_key_issue(
+    key_id: &str,
+    principal_id: &str,
+    verifier_sha256: &str,
+    allowed_actions: &BTreeSet<String>,
+    active_from: u64,
+    expires_at: u64,
+    rotated_from_key_id: Option<&str>,
+) -> Result<(), HostedMarketStoreError> {
+    validate_identifier(key_id, MAX_KEY_ID_BYTES)
+        .map_err(|_| HostedMarketStoreError::Invalid("key_id"))?;
+    validate_identifier(principal_id, MAX_PRINCIPAL_ID_BYTES)
+        .map_err(|_| HostedMarketStoreError::Invalid("principal_id"))?;
+    validate_digest(verifier_sha256, "api_key_verifier")?;
+    validate_allowed_actions(allowed_actions)?;
+    if let Some(previous) = rotated_from_key_id {
+        validate_identifier(previous, MAX_KEY_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("rotated_from_key_id"))?;
+        if previous == key_id {
+            return Err(HostedMarketStoreError::Invalid("rotated_from_key_id"));
+        }
+    }
+    if expires_at <= active_from {
+        return Err(HostedMarketStoreError::Invalid("api_key_window"));
+    }
+    Ok(())
+}
+
+fn validate_security_event(
+    event_id: &str,
+    event_kind: &str,
+    artifact_json: &[u8],
+) -> Result<(), HostedMarketStoreError> {
+    validate_identifier(event_id, MAX_EVENT_ID_BYTES)
+        .map_err(|_| HostedMarketStoreError::Invalid("event_id"))?;
+    validate_identifier(event_kind, MAX_EVENT_KIND_BYTES)
+        .map_err(|_| HostedMarketStoreError::Invalid("event_kind"))?;
+    validate_canonical_json(artifact_json, "security_event")?;
+    if artifact_json.len() > MAX_SECURITY_EVENT_BYTES {
+        return Err(HostedMarketStoreError::Invalid("security_event"));
+    }
+    Ok(())
 }
 
 fn principal_from_row(

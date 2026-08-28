@@ -19,6 +19,8 @@ pub enum HostedEdgeError {
     AuthorizationFailed,
     #[error("hosted replay was rejected")]
     ReplayRejected,
+    #[error("hosted request rate limit was exceeded")]
+    RateLimited,
     #[error("hosted authentication capacity is unavailable")]
     CapacityUnavailable,
     #[error("hosted authentication dependency is unavailable")]
@@ -35,6 +37,7 @@ impl HostedEdgeError {
             Self::AuthenticationFailed => "authentication_failed",
             Self::AuthorizationFailed => "authorization_failed",
             Self::ReplayRejected => "replay_rejected",
+            Self::RateLimited => "rate_limited",
             Self::CapacityUnavailable => "authentication_capacity_unavailable",
             Self::DependencyUnavailable => "authentication_dependency_unavailable",
             Self::Configuration => "edge_configuration_invalid",
@@ -45,7 +48,7 @@ impl HostedEdgeError {
     pub const fn retryable(self) -> bool {
         matches!(
             self,
-            Self::CapacityUnavailable | Self::DependencyUnavailable
+            Self::RateLimited | Self::CapacityUnavailable | Self::DependencyUnavailable
         )
     }
 
@@ -58,6 +61,7 @@ impl HostedEdgeError {
                 Self::AuthenticationFailed => "Authentication failed.",
                 Self::AuthorizationFailed => "The credential does not authorize this action.",
                 Self::ReplayRejected => "The proof was already used.",
+                Self::RateLimited => "The request rate limit was exceeded.",
                 Self::CapacityUnavailable | Self::DependencyUnavailable => {
                     "Authentication is temporarily unavailable."
                 }
@@ -65,6 +69,18 @@ impl HostedEdgeError {
             },
             request_id: request_id.into(),
             retryable: self.retryable(),
+        }
+    }
+
+    #[must_use]
+    pub const fn http_status(self) -> u16 {
+        match self {
+            Self::InvalidRequest => 400,
+            Self::AuthenticationFailed => 401,
+            Self::AuthorizationFailed => 403,
+            Self::ReplayRejected | Self::RateLimited => 429,
+            Self::CapacityUnavailable | Self::DependencyUnavailable => 503,
+            Self::Configuration => 500,
         }
     }
 }

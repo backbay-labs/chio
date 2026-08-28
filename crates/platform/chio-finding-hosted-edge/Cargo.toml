@@ -10,21 +10,29 @@ publish = false
 
 [dependencies]
 async-trait = { workspace = true }
+arc-swap = { workspace = true }
 base64 = { workspace = true }
 chio-core-types = { workspace = true }
 chio-finding-market-store-postgres = { workspace = true }
 chio-kernel = { workspace = true }
 hmac = { workspace = true }
 hex = { workspace = true }
+libc = { workspace = true }
+rand_core = { workspace = true }
 serde = { workspace = true }
 sha2 = { workspace = true }
 subtle = { workspace = true }
 thiserror = { workspace = true }
 url = { workspace = true }
+x509-parser = { workspace = true }
 zeroize = { workspace = true }
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
 
 [dev-dependencies]
 chio-core = { workspace = true }
+rcgen = "0.13"
+tempfile = { workspace = true }
 tokio = { workspace = true }
 
 [lints]

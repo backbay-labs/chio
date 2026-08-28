@@ -3630,6 +3630,7 @@ dependencies = [
 name = "chio-finding-hosted-edge"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
  "async-trait",
  "base64 0.22.1",
  "chio-core",
@@ -3638,12 +3639,19 @@ dependencies = [
  "chio-kernel",
  "hex",
  "hmac 0.12.1",
+ "libc",
+ "rand_core 0.6.4",
+ "rcgen 0.13.2",
+ "rustls",
+ "rustls-pemfile",
  "serde",
  "sha2 0.10.9",
  "subtle",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "url",
+ "x509-parser 0.16.0",
  "zeroize",
 ]
 
