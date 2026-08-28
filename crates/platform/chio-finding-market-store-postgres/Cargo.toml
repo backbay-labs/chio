@@ -1,0 +1,30 @@
+[package]
+name = "chio-finding-market-store-postgres"
+description = "Tenant-isolated PostgreSQL durability for hosted Chio cognition markets"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+postgres-integration = []
+
+[dependencies]
+chio-core-types = { workspace = true }
+serde = { workspace = true }
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tokio = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[[test]]
+name = "postgres_store"
+required-features = ["postgres-integration"]
