@@ -30,6 +30,7 @@ KB_DIR ?= tools/knowledge-base
 	sdk-parity sdk-bindings-parity sdk-py sdk-go sdk-cpp sdk-drogon sdk-ts-deps \
 	vet deny supply-chain \
 	qualify-release qualify-trust qualify-portable-browser qualify-mobile-kernel \
+	qualify-cognition-market qualify-cognition-market-m11 schema-registry-check \
 	qualify-cross-protocol qualify-bounded \
 	coverage fuzz fuzz-budget kani kani-smoke loom mutants mutants-fuzz-cocoverage \
 	docker-demo-up docker-demo-down docker-demo-smoke \
@@ -64,7 +65,7 @@ help:
 	@echo ""
 	@echo "Tier 5 - heavy (slow):"
 	@echo "  qualify-release qualify-trust qualify-portable-browser qualify-mobile-kernel"
-	@echo "  qualify-cross-protocol qualify-bounded"
+	@echo "  qualify-cross-protocol qualify-bounded qualify-cognition-market qualify-cognition-market-m11"
 	@echo "  coverage fuzz fuzz-budget kani kani-smoke loom mutants mutants-fuzz-cocoverage"
 	@echo ""
 	@echo "Tier 6 - local infra:"
@@ -223,6 +224,15 @@ supply-chain: vet deny
 
 qualify-release:
 	./scripts/qualify-release.sh
+
+qualify-cognition-market:
+	./scripts/qualify-cognition-market.sh
+
+qualify-cognition-market-m11:
+	./scripts/qualify-cognition-market-hosted.sh
+
+schema-registry-check:
+	./scripts/check-chio-schema-registry.sh
 
 qualify-trust:
 	./scripts/qualify-trust-control.sh

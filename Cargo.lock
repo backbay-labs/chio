@@ -4497,6 +4497,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-release-evidence"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
 name = "chio-replay-corpus"
 version = "0.1.0"
 dependencies = [
