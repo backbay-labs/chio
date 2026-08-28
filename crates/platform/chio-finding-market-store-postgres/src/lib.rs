@@ -15,6 +15,7 @@ use chio_core_types::{canonical_json_bytes_from_str, sha256_hex};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use sqlx::{PgPool, Postgres, Row as _, Transaction};
+use zeroize::Zeroize as _;
 
 mod auth;
 
@@ -82,7 +83,6 @@ impl HostedTenantId {
 /// TLS-required PostgreSQL pool configuration. The DSN is redacted from
 /// `Debug`, because it may carry a password even when deployments normally
 /// resolve it from a secret manager.
-#[derive(Clone)]
 pub struct HostedPostgresConfig {
     database_url: String,
     ca_certificate_path: Option<PathBuf>,
@@ -141,6 +141,14 @@ impl HostedPostgresConfig {
         Ok(self)
     }
 
+    pub fn with_acquire_timeout(mut self, value: Duration) -> Result<Self, HostedMarketStoreError> {
+        if !(Duration::from_millis(100)..=Duration::from_secs(30)).contains(&value) {
+            return Err(HostedMarketStoreError::Configuration);
+        }
+        self.acquire_timeout = value;
+        Ok(self)
+    }
+
     pub fn with_max_jobs_per_tenant(mut self, value: i64) -> Result<Self, HostedMarketStoreError> {
         if !(1..=10_000_000).contains(&value) {
             return Err(HostedMarketStoreError::Configuration);
@@ -157,6 +165,12 @@ impl HostedPostgresConfig {
             options = options.ssl_root_cert(path);
         }
         Ok(options)
+    }
+}
+
+impl Drop for HostedPostgresConfig {
+    fn drop(&mut self) {
+        self.database_url.zeroize();
     }
 }
 
@@ -425,6 +439,19 @@ impl PostgresFindingMarketStore {
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
         row.map(|row| job_from_row(tenant, &row)).transpose()
+    }
+
+    /// Prove that the runtime role can enter one configured tenant boundary
+    /// before a worker advertises readiness or claims a lease.
+    pub async fn probe_tenant(
+        &self,
+        tenant: &HostedTenantId,
+    ) -> Result<(), HostedMarketStoreError> {
+        let transaction = self.begin_tenant(tenant).await?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)
     }
 
     pub async fn claim_due_jobs(
@@ -879,6 +906,20 @@ mod tests {
             .connect_options()
             .unwrap_or_else(|error| panic!("connect options: {error}"));
         assert!(matches!(options.get_ssl_mode(), PgSslMode::VerifyFull));
+    }
+
+    #[test]
+    fn postgres_pool_bounds_reject_operational_extremes() {
+        let config = || HostedPostgresConfig::new("postgres://market-user@db.example/chio");
+        assert!(config()
+            .and_then(|value| value.with_acquire_timeout(Duration::from_millis(100)))
+            .is_ok());
+        assert!(config()
+            .and_then(|value| value.with_acquire_timeout(Duration::from_millis(99)))
+            .is_err());
+        assert!(config()
+            .and_then(|value| value.with_acquire_timeout(Duration::from_secs(31)))
+            .is_err());
     }
 
     #[test]

@@ -10,12 +10,14 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use chio_core_types::{canonical_json_bytes, PublicKey, SigningAlgorithm, SigningBackend};
-use chio_finding_market_store_postgres::HostedMarketJob;
+use chio_core_types::{
+    canonical_json_bytes, sha256_hex, PublicKey, SigningAlgorithm, SigningBackend,
+};
+use chio_finding_market_store_postgres::{HostedMarketJob, HostedTenantId};
 use nix::unistd::{fchown, geteuid, Gid, Uid};
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
-use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+use tokio::io::{AsyncReadExt as _, AsyncSeekExt as _, AsyncWriteExt as _};
 use tokio::net::UnixStream;
 use tokio::process::{Child, Command};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -24,7 +26,9 @@ use uuid::Uuid;
 
 use crate::protocol::{
     sign_attested_result, verify_attested_result, FindingWorkerAttestedResult,
-    FindingWorkerExitClassification, FindingWorkerRequest, FindingWorkerResult,
+    FindingWorkerExitClassification, FindingWorkerInputDescriptor, FindingWorkerInputEnd,
+    FindingWorkerInputKind, FindingWorkerRequest, FindingWorkerResult,
+    FINDING_WORKER_INPUT_END_SCHEMA, FINDING_WORKER_INPUT_SCHEMA,
 };
 
 const MAX_IMAGE_BYTES: u64 = 32 * 1024 * 1024 * 1024;
@@ -32,6 +36,8 @@ const MAX_BINARY_BYTES: u64 = 1024 * 1024 * 1024;
 const VSOCK_GUEST_CID: u32 = 3;
 const VSOCK_PATH: &str = "/worker.vsock";
 const VM_CONFIG_PATH: &str = "/vm-config.json";
+const TRANSFER_CHUNK_BYTES: usize = 1024 * 1024;
+const TENANT_CAS_DOMAIN: &str = "chio.finding.worker-tenant-cas.v1";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FirecrackerIdentity {
@@ -51,6 +57,7 @@ pub struct FirecrackerWorkerConfig {
     pub kernel_sha256: String,
     pub rootfs_image: PathBuf,
     pub rootfs_sha256: String,
+    pub artifact_store_root: PathBuf,
     pub jail_root: PathBuf,
     pub identities: Vec<FirecrackerIdentity>,
     pub vcpu_count: u8,
@@ -71,6 +78,7 @@ impl FirecrackerWorkerConfig {
             &self.jailer_binary,
             &self.kernel_image,
             &self.rootfs_image,
+            &self.artifact_store_root,
             &self.jail_root,
         ] {
             validate_absolute_path(path)?;
@@ -117,6 +125,8 @@ pub enum WorkerExecutionError {
     HostPreflight,
     #[error("finding worker asset integrity failed")]
     AssetIntegrity,
+    #[error("finding worker artifact store failed")]
+    ArtifactStore,
     #[error("finding worker jail staging failed")]
     Staging,
     #[error("finding worker process failed")]
@@ -137,6 +147,7 @@ impl WorkerExecutionError {
             Self::Configuration => "worker_configuration",
             Self::HostPreflight => "worker_host_preflight",
             Self::AssetIntegrity => "worker_asset_integrity",
+            Self::ArtifactStore => "worker_artifact_store",
             Self::Staging => "worker_staging",
             Self::Process => "worker_process",
             Self::Timeout => "worker_timeout",
@@ -196,6 +207,24 @@ impl FirecrackerExecutor {
         self.inner.config.execution_timeout
     }
 
+    /// Verify host privilege, KVM availability, trusted parent ownership,
+    /// and every pinned executable and image before the service claims work.
+    pub fn preflight_host(&self) -> Result<(), WorkerExecutionError> {
+        self.preflight()
+    }
+
+    /// Verify that one tenant's opaque CAS namespace was provisioned with
+    /// the same ownership boundary as the host-wide artifact root.
+    pub fn preflight_tenant_artifact_store(
+        &self,
+        tenant: &HostedTenantId,
+    ) -> Result<(), WorkerExecutionError> {
+        require_trusted_directory(&tenant_cas_root(
+            &self.inner.config.artifact_store_root,
+            tenant.as_str(),
+        ))
+    }
+
     pub async fn execute(
         &self,
         job: &HostedMarketJob,
@@ -247,6 +276,7 @@ impl FirecrackerExecutor {
             &staged.vsock_path,
             self.inner.config.guest_vsock_port,
             &request,
+            &self.inner.config.artifact_store_root,
             self.inner.config.max_frame_bytes,
             remaining,
         )
@@ -299,6 +329,7 @@ impl FirecrackerExecutor {
             &self.inner.config.jailer_binary,
             &self.inner.config.kernel_image,
             &self.inner.config.rootfs_image,
+            &self.inner.config.artifact_store_root,
             &self.inner.config.jail_root,
         ] {
             require_trusted_parent_chain(path)?;
@@ -334,6 +365,7 @@ impl FirecrackerExecutor {
             MAX_IMAGE_BYTES,
         )?;
         require_trusted_directory(&self.inner.config.jail_root)?;
+        require_trusted_directory(&self.inner.config.artifact_store_root)?;
         let kvm = fs::metadata("/dev/kvm").map_err(|_| WorkerExecutionError::HostPreflight)?;
         if !kvm.file_type().is_char_device() {
             return Err(WorkerExecutionError::HostPreflight);
@@ -590,6 +622,7 @@ async fn exchange_with_guest(
     socket_path: &Path,
     port: u32,
     request: &FindingWorkerRequest,
+    artifact_store_root: &Path,
     max_frame_bytes: u32,
     execution_timeout: Duration,
 ) -> Result<FindingWorkerResult, WorkerExecutionError> {
@@ -614,6 +647,8 @@ async fn exchange_with_guest(
         .checked_sub(started.elapsed())
         .ok_or(WorkerExecutionError::Timeout)?;
     timeout(remaining, async {
+        let tenant_artifact_root = tenant_cas_root(artifact_store_root, &request.tenant_id);
+        require_trusted_directory(&tenant_artifact_root)?;
         stream
             .write_all(format!("CONNECT {port}\n").as_bytes())
             .await
@@ -625,6 +660,11 @@ async fn exchange_with_guest(
         let request_bytes =
             canonical_json_bytes(request).map_err(|_| WorkerExecutionError::Protocol)?;
         write_frame(&mut stream, &request_bytes, max_frame_bytes).await?;
+        let ready = read_line_bounded(&mut stream, 80).await?;
+        if ready != format!("READY {}\n", request.request_sha256) {
+            return Err(WorkerExecutionError::Protocol);
+        }
+        transfer_inputs(&mut stream, request, &tenant_artifact_root, max_frame_bytes).await?;
         let response = read_frame(&mut stream, max_frame_bytes).await?;
         let raw = std::str::from_utf8(&response).map_err(|_| WorkerExecutionError::Protocol)?;
         let canonical = chio_core_types::canonical_json_bytes_from_str(raw)
@@ -637,10 +677,312 @@ async fn exchange_with_guest(
         result
             .validate_for(request)
             .map_err(|_| WorkerExecutionError::Protocol)?;
+        receive_outputs(&mut stream, &result, &tenant_artifact_root, max_frame_bytes).await?;
+        let done = read_line_bounded(&mut stream, 80).await?;
+        if done != format!("DONE {}\n", request.request_sha256) {
+            return Err(WorkerExecutionError::Protocol);
+        }
         Ok(result)
     })
     .await
     .map_err(|_| WorkerExecutionError::Timeout)?
+}
+
+async fn transfer_inputs(
+    stream: &mut UnixStream,
+    request: &FindingWorkerRequest,
+    artifact_store_root: &Path,
+    max_frame_bytes: u32,
+) -> Result<(), WorkerExecutionError> {
+    let repository = FindingWorkerInputDescriptor {
+        schema: FINDING_WORKER_INPUT_SCHEMA.to_owned(),
+        kind: FindingWorkerInputKind::Repository,
+        name: "repository.archive".to_owned(),
+        sha256: request.job.repository.archive_sha256.clone(),
+        size_bytes: request.job.repository.archive_size_bytes,
+    };
+    transfer_input(stream, artifact_store_root, &repository, max_frame_bytes).await?;
+    let mut total_size = repository.size_bytes;
+    for artifact in &request.job.input_artifacts {
+        let descriptor = FindingWorkerInputDescriptor {
+            schema: FINDING_WORKER_INPUT_SCHEMA.to_owned(),
+            kind: FindingWorkerInputKind::Artifact,
+            name: artifact.name.clone(),
+            sha256: artifact.sha256.clone(),
+            size_bytes: artifact.size_bytes,
+        };
+        transfer_input(stream, artifact_store_root, &descriptor, max_frame_bytes).await?;
+        total_size = total_size
+            .checked_add(descriptor.size_bytes)
+            .ok_or(WorkerExecutionError::Protocol)?;
+    }
+    let input_count = u32::try_from(request.job.input_artifacts.len())
+        .ok()
+        .and_then(|count| count.checked_add(1))
+        .ok_or(WorkerExecutionError::Protocol)?;
+    let end = FindingWorkerInputEnd {
+        schema: FINDING_WORKER_INPUT_END_SCHEMA.to_owned(),
+        input_count,
+        total_size_bytes: total_size,
+    };
+    end.validate().map_err(|_| WorkerExecutionError::Protocol)?;
+    let bytes = canonical_json_bytes(&end).map_err(|_| WorkerExecutionError::Protocol)?;
+    write_frame(stream, &bytes, max_frame_bytes).await
+}
+
+async fn transfer_input(
+    stream: &mut UnixStream,
+    artifact_store_root: &Path,
+    descriptor: &FindingWorkerInputDescriptor,
+    max_frame_bytes: u32,
+) -> Result<(), WorkerExecutionError> {
+    descriptor
+        .validate()
+        .map_err(|_| WorkerExecutionError::Protocol)?;
+    let path = cas_path(artifact_store_root, &descriptor.sha256)?;
+    let file = open_cas_input(&path, descriptor.size_bytes)?;
+    let mut file = tokio::fs::File::from_std(file);
+    verify_async_cas_input(&mut file, &descriptor.sha256).await?;
+    let descriptor_bytes =
+        canonical_json_bytes(descriptor).map_err(|_| WorkerExecutionError::Protocol)?;
+    write_frame(stream, &descriptor_bytes, max_frame_bytes).await?;
+    let frame_limit = usize::try_from(max_frame_bytes)
+        .map_err(|_| WorkerExecutionError::Protocol)?
+        .min(TRANSFER_CHUNK_BYTES);
+    let mut remaining = descriptor.size_bytes;
+    let mut buffer = vec![0_u8; frame_limit];
+    let mut digest = Sha256::new();
+    while remaining != 0 {
+        let wanted = usize::try_from(remaining.min(frame_limit as u64))
+            .map_err(|_| WorkerExecutionError::Protocol)?;
+        let read = file
+            .read(&mut buffer[..wanted])
+            .await
+            .map_err(|_| WorkerExecutionError::ArtifactStore)?;
+        if read == 0 {
+            return Err(WorkerExecutionError::AssetIntegrity);
+        }
+        digest.update(&buffer[..read]);
+        write_frame(stream, &buffer[..read], max_frame_bytes).await?;
+        remaining = remaining
+            .checked_sub(u64::try_from(read).map_err(|_| WorkerExecutionError::Protocol)?)
+            .ok_or(WorkerExecutionError::Protocol)?;
+    }
+    if format!("{:x}", digest.finalize()) != descriptor.sha256 {
+        return Err(WorkerExecutionError::AssetIntegrity);
+    }
+    Ok(())
+}
+
+async fn receive_outputs(
+    stream: &mut UnixStream,
+    result: &FindingWorkerResult,
+    artifact_store_root: &Path,
+    max_frame_bytes: u32,
+) -> Result<(), WorkerExecutionError> {
+    for artifact in &result.output_artifacts {
+        receive_output(
+            stream,
+            artifact_store_root,
+            &artifact.sha256,
+            artifact.size_bytes,
+            max_frame_bytes,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+async fn receive_output(
+    stream: &mut UnixStream,
+    artifact_store_root: &Path,
+    expected_digest: &str,
+    expected_size: u64,
+    max_frame_bytes: u32,
+) -> Result<(), WorkerExecutionError> {
+    let target = cas_path(artifact_store_root, expected_digest)?;
+    let parent = target.parent().ok_or(WorkerExecutionError::ArtifactStore)?;
+    create_or_validate_artifact_directory(parent)?;
+    let temporary = parent.join(format!(".chio-{}.tmp", Uuid::new_v4().simple()));
+    let output = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(&temporary)
+        .map_err(|_| WorkerExecutionError::ArtifactStore)?;
+    let guard = TemporaryArtifact::new(temporary.clone());
+    let mut output = tokio::fs::File::from_std(output);
+    let mut digest = Sha256::new();
+    let mut remaining = expected_size;
+    while remaining != 0 {
+        let frame = read_frame(stream, max_frame_bytes).await?;
+        let frame_size = u64::try_from(frame.len()).map_err(|_| WorkerExecutionError::Protocol)?;
+        if frame_size > remaining {
+            return Err(WorkerExecutionError::Protocol);
+        }
+        digest.update(&frame);
+        output
+            .write_all(&frame)
+            .await
+            .map_err(|_| WorkerExecutionError::ArtifactStore)?;
+        remaining = remaining
+            .checked_sub(frame_size)
+            .ok_or(WorkerExecutionError::Protocol)?;
+    }
+    output
+        .sync_all()
+        .await
+        .map_err(|_| WorkerExecutionError::ArtifactStore)?;
+    drop(output);
+    if format!("{:x}", digest.finalize()) != expected_digest {
+        return Err(WorkerExecutionError::AssetIntegrity);
+    }
+    match fs::hard_link(&temporary, &target) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            open_verified_cas_input(&target, expected_digest, expected_size)?;
+        }
+        Err(_) => return Err(WorkerExecutionError::ArtifactStore),
+    }
+    guard.remove()?;
+    sync_directory(parent)
+}
+
+fn cas_path(root: &Path, digest: &str) -> Result<PathBuf, WorkerExecutionError> {
+    if !valid_digest(digest) {
+        return Err(WorkerExecutionError::Protocol);
+    }
+    Ok(root.join(&digest[..2]).join(digest))
+}
+
+fn tenant_cas_root(root: &Path, tenant_id: &str) -> PathBuf {
+    let digest = sha256_hex(format!("{TENANT_CAS_DOMAIN}\0{tenant_id}").as_bytes());
+    root.join(digest)
+}
+
+fn open_verified_cas_input(
+    path: &Path,
+    expected_digest: &str,
+    expected_size: u64,
+) -> Result<File, WorkerExecutionError> {
+    let parent = path.parent().ok_or(WorkerExecutionError::ArtifactStore)?;
+    require_trusted_directory(parent)?;
+    let mut file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+        .map_err(|_| WorkerExecutionError::ArtifactStore)?;
+    let metadata = file
+        .metadata()
+        .map_err(|_| WorkerExecutionError::ArtifactStore)?;
+    if !trusted_file_metadata(&metadata, false) || metadata.len() != expected_size {
+        return Err(WorkerExecutionError::AssetIntegrity);
+    }
+    let mut digest = Sha256::new();
+    let mut buffer = vec![0_u8; TRANSFER_CHUNK_BYTES];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|_| WorkerExecutionError::ArtifactStore)?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    if format!("{:x}", digest.finalize()) != expected_digest {
+        return Err(WorkerExecutionError::AssetIntegrity);
+    }
+    use std::io::Seek as _;
+    file.seek(std::io::SeekFrom::Start(0))
+        .map_err(|_| WorkerExecutionError::ArtifactStore)?;
+    Ok(file)
+}
+
+fn open_cas_input(path: &Path, expected_size: u64) -> Result<File, WorkerExecutionError> {
+    let parent = path.parent().ok_or(WorkerExecutionError::ArtifactStore)?;
+    require_trusted_directory(parent)?;
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+        .map_err(|_| WorkerExecutionError::ArtifactStore)?;
+    let metadata = file
+        .metadata()
+        .map_err(|_| WorkerExecutionError::ArtifactStore)?;
+    if !trusted_file_metadata(&metadata, false) || metadata.len() != expected_size {
+        return Err(WorkerExecutionError::AssetIntegrity);
+    }
+    Ok(file)
+}
+
+async fn verify_async_cas_input(
+    file: &mut tokio::fs::File,
+    expected_digest: &str,
+) -> Result<(), WorkerExecutionError> {
+    let mut digest = Sha256::new();
+    let mut buffer = vec![0_u8; TRANSFER_CHUNK_BYTES];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .await
+            .map_err(|_| WorkerExecutionError::ArtifactStore)?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    if format!("{:x}", digest.finalize()) != expected_digest {
+        return Err(WorkerExecutionError::AssetIntegrity);
+    }
+    file.seek(std::io::SeekFrom::Start(0))
+        .await
+        .map_err(|_| WorkerExecutionError::ArtifactStore)?;
+    Ok(())
+}
+
+fn create_or_validate_artifact_directory(path: &Path) -> Result<(), WorkerExecutionError> {
+    match fs::create_dir(path) {
+        Ok(()) => {
+            fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+                .map_err(|_| WorkerExecutionError::ArtifactStore)?;
+            require_trusted_directory(path)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            require_trusted_directory(path)
+        }
+        Err(_) => Err(WorkerExecutionError::ArtifactStore),
+    }
+}
+
+fn sync_directory(path: &Path) -> Result<(), WorkerExecutionError> {
+    File::open(path)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|_| WorkerExecutionError::ArtifactStore)
+}
+
+struct TemporaryArtifact {
+    path: PathBuf,
+}
+
+impl TemporaryArtifact {
+    fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+
+    fn remove(mut self) -> Result<(), WorkerExecutionError> {
+        fs::remove_file(&self.path).map_err(|_| WorkerExecutionError::ArtifactStore)?;
+        self.path.clear();
+        Ok(())
+    }
+}
+
+impl Drop for TemporaryArtifact {
+    fn drop(&mut self) {
+        if !self.path.as_os_str().is_empty() {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
 }
 
 async fn read_line_bounded(
@@ -999,6 +1341,7 @@ mod tests {
             kernel_sha256: "3".repeat(64),
             rootfs_image: root.join("rootfs"),
             rootfs_sha256: "4".repeat(64),
+            artifact_store_root: root.join("artifacts"),
             jail_root: root.join("jails"),
             identities: vec![FirecrackerIdentity {
                 uid: 1001,
@@ -1083,5 +1426,24 @@ mod tests {
         ] {
             assert!(!is_generated_job_path(Path::new(path)));
         }
+    }
+
+    #[test]
+    fn tenant_cas_namespaces_are_opaque_and_distinct() {
+        let root = Path::new("/srv/chio/artifacts");
+        let alpha = tenant_cas_root(root, "tenant/alpha");
+        let beta = tenant_cas_root(root, "tenant/alpha-2");
+        assert_ne!(alpha, beta);
+        assert_eq!(alpha.parent(), Some(root));
+        assert_eq!(
+            alpha
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(str::len),
+            Some(64)
+        );
+        assert!(!alpha.to_string_lossy().contains("tenant/alpha"));
+        assert!(cas_path(&alpha, &"a".repeat(64)).is_ok());
+        assert!(cas_path(&alpha, "../escape").is_err());
     }
 }

@@ -70,10 +70,27 @@ impl HostedFindingWorker {
         &self,
         tenant: &HostedTenantId,
     ) -> Result<HostedWorkerRun, HostedWorkerServiceError> {
-        let now = current_time()?;
         let limit = u32::try_from(self.executor.max_instances())
             .map_err(|_| HostedWorkerServiceError::Configuration)?
             .min(100);
+        self.run_once_with_limit(tenant, limit).await
+    }
+
+    /// Claim and process one batch while enforcing the tenant's configured
+    /// concurrency ceiling independently of the host-wide VM capacity.
+    pub async fn run_once_with_limit(
+        &self,
+        tenant: &HostedTenantId,
+        tenant_limit: u32,
+    ) -> Result<HostedWorkerRun, HostedWorkerServiceError> {
+        let now = current_time()?;
+        let host_limit = u32::try_from(self.executor.max_instances())
+            .map_err(|_| HostedWorkerServiceError::Configuration)?
+            .min(100);
+        if tenant_limit == 0 {
+            return Err(HostedWorkerServiceError::Configuration);
+        }
+        let limit = tenant_limit.min(host_limit);
         let jobs = self
             .store
             .claim_due_jobs(

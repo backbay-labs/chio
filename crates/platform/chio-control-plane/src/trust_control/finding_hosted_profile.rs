@@ -193,6 +193,7 @@ pub struct FindingHostedWorkerProfile {
     pub kernel_sha256: String,
     pub rootfs_image: String,
     pub rootfs_sha256: String,
+    pub artifact_store_root: String,
     pub jail_root: String,
     pub identities: Vec<FindingHostedWorkerIdentity>,
     pub vcpu_count: u8,
@@ -507,6 +508,7 @@ impl FindingHostedProfile {
                 kernel_sha256: self.worker.kernel_sha256.clone(),
                 rootfs_image: self.worker.rootfs_image.clone().into(),
                 rootfs_sha256: self.worker.rootfs_sha256.clone(),
+                artifact_store_root: self.worker.artifact_store_root.clone().into(),
                 jail_root: self.worker.jail_root.clone().into(),
                 identities: self
                     .worker
@@ -729,15 +731,42 @@ impl FindingHostedProfile {
     }
 
     fn validate_worker(&self) -> Result<(), String> {
-        for (path, label) in [
+        let worker_files = [
             (&self.worker.worker_binary, "finding worker binary"),
             (&self.worker.firecracker_binary, "Firecracker binary"),
             (&self.worker.jailer_binary, "Firecracker jailer"),
             (&self.worker.kernel_image, "worker kernel image"),
             (&self.worker.rootfs_image, "worker rootfs image"),
+        ];
+        let mut unique_files = BTreeSet::new();
+        for (path, label) in worker_files {
+            if !unique_files.insert(path.as_str()) {
+                return Err("hosted worker files must have distinct paths".to_owned());
+            }
+            validate_absolute_path(path, label)?;
+        }
+        for (path, label) in [
+            (
+                &self.worker.artifact_store_root,
+                "worker artifact store root",
+            ),
             (&self.worker.jail_root, "worker jail root"),
         ] {
             validate_absolute_path(path, label)?;
+        }
+        let artifact_root = Path::new(&self.worker.artifact_store_root);
+        let jail_root = Path::new(&self.worker.jail_root);
+        if artifact_root.starts_with(jail_root)
+            || jail_root.starts_with(artifact_root)
+            || unique_files.iter().any(|path| {
+                let path = Path::new(path);
+                path.starts_with(artifact_root)
+                    || artifact_root.starts_with(path)
+                    || path.starts_with(jail_root)
+                    || jail_root.starts_with(path)
+            })
+        {
+            return Err("hosted worker files, CAS, and jail roots must not overlap".to_owned());
         }
         validate_digest(
             &self.worker.worker_binary_sha256,
@@ -783,7 +812,9 @@ impl FindingHostedProfile {
         }
         let mut tenant_ids = BTreeSet::new();
         let mut capability_keys = BTreeSet::new();
+        let mut any_enabled_tenant = false;
         for tenant in &self.tenants {
+            any_enabled_tenant |= tenant.enabled;
             validate_identifier(&tenant.tenant_id, "tenant id")?;
             if !tenant_ids.insert(tenant.tenant_id.as_str())
                 || tenant.auth_methods.is_empty()
@@ -830,6 +861,9 @@ impl FindingHostedProfile {
             {
                 return Err("hosted tenant has no usable principal".to_owned());
             }
+        }
+        if !any_enabled_tenant {
+            return Err("hosted profile requires at least one enabled tenant".to_owned());
         }
         Ok(())
     }

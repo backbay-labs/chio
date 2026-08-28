@@ -11,6 +11,8 @@ pub const FINDING_WORKER_JOB_SCHEMA: &str = "chio.finding.worker-job.v1";
 pub const FINDING_WORKER_REQUEST_SCHEMA: &str = "chio.finding.worker-request.v1";
 pub const FINDING_WORKER_RESULT_SCHEMA: &str = "chio.finding.worker-result.v1";
 pub const FINDING_WORKER_ATTESTED_RESULT_SCHEMA: &str = "chio.finding.worker-attested-result.v1";
+pub const FINDING_WORKER_INPUT_SCHEMA: &str = "chio.finding.worker-input.v1";
+pub const FINDING_WORKER_INPUT_END_SCHEMA: &str = "chio.finding.worker-input-end.v1";
 
 const MAX_COMMAND_ARGUMENTS: usize = 64;
 const MAX_COMMAND_ARGUMENT_BYTES: usize = 4_096;
@@ -107,6 +109,59 @@ pub struct FindingWorkerArtifact {
     pub name: String,
     pub sha256: String,
     pub size_bytes: u64,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingWorkerInputKind {
+    Repository,
+    Artifact,
+}
+
+/// Header sent before one content-addressed input byte stream.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindingWorkerInputDescriptor {
+    pub schema: String,
+    pub kind: FindingWorkerInputKind,
+    pub name: String,
+    pub sha256: String,
+    pub size_bytes: u64,
+}
+
+impl FindingWorkerInputDescriptor {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.schema != FINDING_WORKER_INPUT_SCHEMA
+            || !valid_artifact_name(&self.name)
+            || !valid_digest(&self.sha256)
+            || self.size_bytes == 0
+        {
+            return Err("worker_input_descriptor_invalid");
+        }
+        Ok(())
+    }
+}
+
+/// Terminal input marker binding the complete ordered transfer.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindingWorkerInputEnd {
+    pub schema: String,
+    pub input_count: u32,
+    pub total_size_bytes: u64,
+}
+
+impl FindingWorkerInputEnd {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.schema != FINDING_WORKER_INPUT_END_SCHEMA
+            || self.input_count == 0
+            || self.input_count > u32::try_from(MAX_INPUT_ARTIFACTS + 1).unwrap_or(u32::MAX)
+            || self.total_size_bytes == 0
+        {
+            return Err("worker_input_end_invalid");
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -534,11 +589,13 @@ fn validate_artifacts(
         return Err("artifact_count_exceeded");
     }
     let mut names = BTreeSet::new();
+    let mut digests = BTreeSet::new();
     for artifact in artifacts {
         if !valid_artifact_name(&artifact.name)
             || !valid_digest(&artifact.sha256)
             || artifact.size_bytes == 0
             || !names.insert(artifact.name.as_str())
+            || !digests.insert(artifact.sha256.as_str())
         {
             return Err("artifact_invalid");
         }
@@ -591,6 +648,28 @@ mod tests {
             process_count: 32,
             open_files: 128,
         }
+    }
+
+    #[test]
+    fn input_transfer_headers_are_closed() {
+        let descriptor = FindingWorkerInputDescriptor {
+            schema: FINDING_WORKER_INPUT_SCHEMA.to_owned(),
+            kind: FindingWorkerInputKind::Repository,
+            name: "repository.archive".to_owned(),
+            sha256: "a".repeat(64),
+            size_bytes: 1,
+        };
+        assert!(descriptor.validate().is_ok());
+        let mut invalid = descriptor;
+        invalid.name = "../escape".to_owned();
+        assert!(invalid.validate().is_err());
+        assert!(FindingWorkerInputEnd {
+            schema: FINDING_WORKER_INPUT_END_SCHEMA.to_owned(),
+            input_count: 1,
+            total_size_bytes: 1,
+        }
+        .validate()
+        .is_ok());
     }
 
     fn job_spec() -> FindingWorkerJobSpec {

@@ -17,11 +17,12 @@ pub use executor::{
 pub use protocol::{
     sign_job_capability, verify_attested_result, verify_job_capability, FindingWorkerArtifact,
     FindingWorkerAttestedResult, FindingWorkerCapabilityBody, FindingWorkerDiagnostic,
-    FindingWorkerExitClassification, FindingWorkerJobPayload, FindingWorkerJobSpec,
-    FindingWorkerRepository, FindingWorkerRepositoryKind, FindingWorkerRequest,
-    FindingWorkerResourceLimits, FindingWorkerResourceUsage, FindingWorkerResult,
-    SignedFindingWorkerCapability, SignedFindingWorkerResult,
-    FINDING_WORKER_ATTESTED_RESULT_SCHEMA, FINDING_WORKER_CAPABILITY_SCHEMA,
+    FindingWorkerExitClassification, FindingWorkerInputDescriptor, FindingWorkerInputEnd,
+    FindingWorkerInputKind, FindingWorkerJobPayload, FindingWorkerJobSpec, FindingWorkerRepository,
+    FindingWorkerRepositoryKind, FindingWorkerRequest, FindingWorkerResourceLimits,
+    FindingWorkerResourceUsage, FindingWorkerResult, SignedFindingWorkerCapability,
+    SignedFindingWorkerResult, FINDING_WORKER_ATTESTED_RESULT_SCHEMA,
+    FINDING_WORKER_CAPABILITY_SCHEMA, FINDING_WORKER_INPUT_END_SCHEMA, FINDING_WORKER_INPUT_SCHEMA,
     FINDING_WORKER_JOB_SCHEMA, FINDING_WORKER_REQUEST_SCHEMA, FINDING_WORKER_RESULT_SCHEMA,
 };
 pub use service::{HostedFindingWorker, HostedWorkerRun, HostedWorkerServiceError};

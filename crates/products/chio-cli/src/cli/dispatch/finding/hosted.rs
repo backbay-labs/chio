@@ -246,7 +246,17 @@ fn validate_referenced_files(profile: &FindingHostedProfile) -> Result<(), CliEr
             "worker jail root must be a real directory".to_owned(),
         ));
     }
-    require_not_group_or_world_writable(Path::new(&profile.worker.jail_root), &jail)
+    require_not_group_or_world_writable(Path::new(&profile.worker.jail_root), &jail)?;
+    let artifact_store = std::fs::symlink_metadata(&profile.worker.artifact_store_root)?;
+    if !artifact_store.is_dir() || artifact_store.file_type().is_symlink() {
+        return Err(CliError::cli_other_error(
+            "worker artifact store root must be a real directory".to_owned(),
+        ));
+    }
+    require_not_group_or_world_writable(
+        Path::new(&profile.worker.artifact_store_root),
+        &artifact_store,
+    )
 }
 
 fn validate_secret_environment(profile: &FindingHostedProfile) -> Result<(), CliError> {

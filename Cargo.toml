@@ -144,6 +144,7 @@ members = [
     # Products
     "crates/products/chio-api-protect",
     "crates/products/chio-cli",
+    "crates/products/chio-finding-worker",
     "crates/products/chio-mercury",
     "crates/products/chio-mercury-core",
     "crates/products/chio-proof-room",

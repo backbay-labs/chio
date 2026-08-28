@@ -3668,6 +3668,7 @@ dependencies = [
  "sqlx",
  "thiserror 1.0.69",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]
@@ -3702,6 +3703,22 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "chio-finding-worker-daemon"
+version = "0.1.0"
+dependencies = [
+ "chio-control-plane",
+ "chio-core-types",
+ "chio-finding-market-store-postgres",
+ "chio-finding-worker",
+ "clap 4.6.0",
+ "libc",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]

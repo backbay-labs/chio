@@ -53,9 +53,30 @@ Firecracker jobs use a unique jail and cgroup. The worker verifies source
 images while copying them into the jail, configures a read-only root drive,
 omits all network interfaces, retains Firecracker's default seccomp policy,
 sets PID, memory, CPU, file-size, and file-descriptor limits, and exchanges
-only bounded canonical JSON over virtio-vsock. Result identity and request
-digest bindings are rechecked before durable completion. The VM, jail, and
-cgroup are removed before the result is accepted.
+bounded canonical control frames and bounded content frames over virtio-vsock.
+Repository and input bytes are loaded only from an opaque, tenant-derived
+namespace in the root-owned local CAS after their declared sizes and SHA-256
+digests are verified. Output bytes are streamed back into the same tenant
+namespace with create-new temporary files, verified before an atomic
+no-replace link, and synced before the signed result can complete.
+Result identity and request digest bindings are rechecked before durable
+completion. The VM, jail, and cgroup are removed before the result is accepted.
+
+The installed `chio-finding-worker` daemon is the only production queue
+consumer. It refuses relative or non-canonical profiles, verifies that the
+running executable is the exact profile-pinned worker binary, preflights the
+remote worker signer, every Firecracker asset, `/dev/kvm`, the non-superuser
+PostgreSQL role, and each enabled tenant before claiming a lease. Claims are
+bounded by both host capacity and each tenant's configured concurrency. A
+SIGINT or SIGTERM stops new scans after the current bounded batch finishes.
+Run one diagnostic pass with:
+
+```bash
+chio-finding-worker \
+  --profile /etc/chio/finding-hosted.json \
+  --worker-id worker:production-1 \
+  --once
+```
 
 ## Custody and settlement
 
