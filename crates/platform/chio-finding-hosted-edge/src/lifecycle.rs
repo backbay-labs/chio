@@ -38,7 +38,12 @@ pub struct HostedApiKeyLifecycleEvent {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
 pub enum HostedApiKeyLifecycleOperation {
     Issued {
         principal_id: String,

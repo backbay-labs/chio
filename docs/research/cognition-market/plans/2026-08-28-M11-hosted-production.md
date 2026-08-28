@@ -15,22 +15,30 @@ settlement, challenge, status, or replay guarantees.
 M11 admits one canonical `chio.finding.hosted-operator-profile.v1` before any listener,
 database, payment rail, signer, or worker starts. The profile requires:
 
-- TLS 1.3 with client certificates and a public HTTPS endpoint;
-- one OIDC issuer and JWKS source, exact audiences and scopes, and bounded DPoP
-  replay state;
+- a public HTTPS endpoint and exactly one edge mode: native TLS 1.3 with
+  last-known-good certificate reload, or an authenticated loopback trusted
+  proxy with a closed `Forwarded` contract;
+- pinned Chio capability authorities, exact deployment, tenant, role, action,
+  target, and body bindings, plus durable bounded DPoP replay state;
+- action-scoped 256-bit API keys whose HMAC verifiers are protected by an
+  environment-referenced deployment pepper, with signed issue and revocation
+  receipts;
 - a non-superuser PostgreSQL runtime role with forced row-level security;
 - distinct remote-custody keys for all 19 market, kernel, and worker roles;
 - complete ACP authorize, capture, release, refund, and state paths;
 - digest-pinned Firecracker and jailer binaries and guest images;
 - a unique non-root UID/GID pair for every concurrent microVM;
-- tenant identity, queue, concurrency, and spend ceilings;
+- explicit tenant authentication methods, principal roles, queue,
+  concurrency, and spend ceilings;
 - canary thresholds and an explicit rollback window.
 
+Authentication never falls through from one failed credential type to another.
 The profile contains environment-variable names, never secret values or local
 signing seeds. `chio finding operator validate-hosted --profile <path>` opens
 the profile and referenced files without following symlinks, verifies modes
-and image digests, resolves bounded secret references, preflights every remote
-key pin, and constructs the worker configuration.
+and image digests, resolves bounded secret references, validates native TLS or
+trusted-proxy material, preflights every remote key pin, and constructs the
+authentication and worker configurations.
 
 ## Durable execution
 

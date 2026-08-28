@@ -1,9 +1,11 @@
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::{Read as _, Seek as _, SeekFrom};
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_control_plane::trust_control::finding_hosted_profile::{
-    FindingHostedCanaryDecision, FindingHostedCanaryObservation, FindingHostedProfile,
+    FindingHostedCanaryDecision, FindingHostedCanaryObservation, FindingHostedEdgeProfile,
+    FindingHostedProfile,
     FindingHostedRollbackReason, FindingHostedSignerTransport, FindingHostedSigningRole,
     FINDING_HOSTED_PROFILE_SCHEMA,
 };
@@ -127,6 +129,20 @@ pub(super) fn cmd_finding_operator_validate_hosted(
     profile.validate().map_err(CliError::cli_other_error)?;
     validate_referenced_files(&profile)?;
     validate_secret_environment(&profile)?;
+    profile
+        .authenticator_config()
+        .map_err(CliError::cli_other_error)?;
+    profile
+        .load_api_key_pepper()
+        .map_err(CliError::cli_other_error)?;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| CliError::cli_other_error("system clock is before Unix epoch".to_owned()))?
+        .as_secs();
+    profile.load_tls(now).map_err(CliError::cli_other_error)?;
+    profile
+        .load_trusted_proxy()
+        .map_err(CliError::cli_other_error)?;
     for role in FindingHostedSigningRole::ALL {
         profile.load_signer(role).map_err(CliError::cli_other_error)?;
     }
@@ -158,15 +174,19 @@ pub(super) fn cmd_finding_operator_validate_hosted(
 }
 
 fn validate_referenced_files(profile: &FindingHostedProfile) -> Result<(), CliError> {
-    validate_file(
-        Path::new(&profile.tls.certificate_chain_path),
-        FileClass::ReadOnly,
-    )?;
-    validate_file(
-        Path::new(&profile.tls.private_key_path),
-        FileClass::Private,
-    )?;
-    validate_file(Path::new(&profile.tls.client_ca_path), FileClass::ReadOnly)?;
+    if let FindingHostedEdgeProfile::NativeTls {
+        certificate_chain_path,
+        private_key_path,
+        client_ca_path,
+        ..
+    } = &profile.edge
+    {
+        validate_file(Path::new(certificate_chain_path), FileClass::ReadOnly)?;
+        validate_file(Path::new(private_key_path), FileClass::Private)?;
+        if let Some(client_ca_path) = client_ca_path {
+            validate_file(Path::new(client_ca_path), FileClass::ReadOnly)?;
+        }
+    }
     validate_file(
         Path::new(&profile.database.ca_certificate_path),
         FileClass::ReadOnly,
@@ -232,6 +252,14 @@ fn validate_referenced_files(profile: &FindingHostedProfile) -> Result<(), CliEr
 fn validate_secret_environment(profile: &FindingHostedProfile) -> Result<(), CliError> {
     require_secret_env(&profile.database.url_env)?;
     require_secret_env(&profile.payment.bearer_token_env)?;
+    require_secret_env(&profile.identity.api_key_pepper_env)?;
+    if let FindingHostedEdgeProfile::TrustedProxy {
+        authentication_token_env,
+        ..
+    } = &profile.edge
+    {
+        require_secret_env(authentication_token_env)?;
+    }
     for signer in &profile.signers {
         let env_name = match &signer.transport {
             FindingHostedSignerTransport::Http {

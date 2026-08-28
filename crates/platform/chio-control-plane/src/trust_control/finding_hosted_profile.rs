@@ -10,11 +10,19 @@ use std::path::{Component, Path};
 use std::sync::Arc;
 use std::time::Duration;
 
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine as _;
 use chio_core::{PublicKey, SigningAlgorithm, SigningBackend};
+use chio_finding_hosted_edge::{
+    HostedAuthMethod, HostedAuthenticatorConfig, HostedTenantAuthPolicy, HostedTlsConfig,
+    HostedTlsState, HostedTrustedProxy, HostedTrustedProxyConfig, StaticApiKeyPepper,
+};
+use chio_finding_market_store_postgres::HostedTenantId;
 use chio_finding_worker::{FirecrackerExecutor, FirecrackerIdentity, FirecrackerWorkerConfig};
 use chio_signing_remote::{HttpSigningBackend, RemoteSigningKey, VaultTransitSigningBackend};
 use serde::{Deserialize, Serialize};
 use url::Url;
+use zeroize::Zeroize as _;
 
 use super::FindingMarketConfig;
 
@@ -28,7 +36,7 @@ pub struct FindingHostedProfile {
     pub deployment_id: String,
     pub listen: SocketAddr,
     pub public_endpoint: String,
-    pub tls: FindingHostedTlsProfile,
+    pub edge: FindingHostedEdgeProfile,
     pub database: FindingHostedDatabaseProfile,
     pub identity: FindingHostedIdentityProfile,
     pub market: FindingMarketConfig,
@@ -42,13 +50,26 @@ pub struct FindingHostedProfile {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct FindingHostedTlsProfile {
-    pub certificate_chain_path: String,
-    pub private_key_path: String,
-    pub client_ca_path: String,
-    pub minimum_protocol: String,
-    pub require_client_certificate: bool,
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum FindingHostedEdgeProfile {
+    NativeTls {
+        certificate_chain_path: String,
+        private_key_path: String,
+        client_ca_path: Option<String>,
+        require_client_certificate: bool,
+        minimum_protocol: String,
+        reload_interval_secs: u64,
+        minimum_remaining_validity_secs: u64,
+    },
+    TrustedProxy {
+        trusted_proxy_ips: Vec<IpAddr>,
+        authentication_token_env: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -64,14 +85,12 @@ pub struct FindingHostedDatabaseProfile {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingHostedIdentityProfile {
-    pub issuer: String,
-    pub jwks_uri: String,
-    pub audiences: Vec<String>,
-    pub required_scopes: Vec<String>,
-    pub require_dpop: bool,
+    pub capability_authorities: Vec<String>,
+    pub maximum_capability_ttl_secs: u64,
     pub dpop_proof_ttl_secs: u64,
     pub dpop_clock_skew_secs: u64,
     pub nonce_capacity: u64,
+    pub api_key_pepper_env: String,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -201,11 +220,38 @@ pub struct FindingHostedWorkerIdentity {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingHostedTenantProfile {
     pub tenant_id: String,
-    pub oidc_subject: String,
     pub enabled: bool,
+    pub auth_methods: BTreeSet<FindingHostedAuthMethod>,
+    pub principals: Vec<FindingHostedPrincipalProfile>,
     pub max_concurrent_jobs: u32,
     pub max_queued_jobs: u64,
     pub max_monthly_spend_units: u64,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingHostedAuthMethod {
+    CapabilityDpop,
+    ApiKey,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingHostedPrincipalRole {
+    Buyer,
+    Seller,
+    Evaluator,
+    Auditor,
+    Operator,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindingHostedPrincipalProfile {
+    pub principal_id: String,
+    pub role: FindingHostedPrincipalRole,
+    pub capability_public_key_hex: Option<String>,
+    pub enabled: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -272,7 +318,7 @@ impl FindingHostedProfile {
             return Err("hosted listener must use a concrete address and nonzero port".to_owned());
         }
         validate_https_url(&self.public_endpoint, "public endpoint", true)?;
-        self.validate_tls()?;
+        self.validate_edge()?;
         self.validate_database()?;
         self.validate_identity()?;
         self.market.validate().map_err(|error| error.to_string())?;
@@ -282,6 +328,105 @@ impl FindingHostedProfile {
         self.validate_tenants()?;
         self.validate_release()?;
         Ok(())
+    }
+
+    pub fn authenticator_config(&self) -> Result<HostedAuthenticatorConfig, String> {
+        self.validate()?;
+        let capability_authorities = self
+            .identity
+            .capability_authorities
+            .iter()
+            .map(|key| parse_key(key, "capability authority"))
+            .collect::<Result<Vec<_>, _>>()?;
+        let tenant_policies = self
+            .tenants
+            .iter()
+            .map(|tenant| {
+                Ok(HostedTenantAuthPolicy {
+                    tenant_id: HostedTenantId::new(tenant.tenant_id.clone())
+                        .map_err(|_| "hosted tenant id is invalid".to_owned())?,
+                    allowed_methods: tenant
+                        .auth_methods
+                        .iter()
+                        .map(|method| match method {
+                            FindingHostedAuthMethod::CapabilityDpop => {
+                                HostedAuthMethod::CapabilityDpop
+                            }
+                            FindingHostedAuthMethod::ApiKey => HostedAuthMethod::ApiKey,
+                        })
+                        .collect(),
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        Ok(HostedAuthenticatorConfig {
+            deployment_id: self.deployment_id.clone(),
+            public_endpoint: self.public_endpoint.clone(),
+            capability_authorities,
+            maximum_capability_ttl_secs: self.identity.maximum_capability_ttl_secs,
+            dpop_proof_ttl_secs: self.identity.dpop_proof_ttl_secs,
+            dpop_clock_skew_secs: self.identity.dpop_clock_skew_secs,
+            dpop_nonce_capacity_per_tenant: self.identity.nonce_capacity,
+            tenant_policies,
+        })
+    }
+
+    pub fn load_api_key_pepper(&self) -> Result<StaticApiKeyPepper, String> {
+        self.validate()?;
+        let mut encoded = read_secret_environment(&self.identity.api_key_pepper_env)?;
+        let decoded = URL_SAFE_NO_PAD
+            .decode(encoded.as_bytes())
+            .map_err(|_| "hosted API-key pepper is invalid".to_owned());
+        encoded.zeroize();
+        StaticApiKeyPepper::new(decoded?).map_err(|_| "hosted API-key pepper is invalid".to_owned())
+    }
+
+    pub fn load_tls(&self, now: u64) -> Result<Option<HostedTlsState>, String> {
+        self.validate()?;
+        let FindingHostedEdgeProfile::NativeTls {
+            certificate_chain_path,
+            private_key_path,
+            client_ca_path,
+            require_client_certificate,
+            minimum_remaining_validity_secs,
+            ..
+        } = &self.edge
+        else {
+            return Ok(None);
+        };
+        HostedTlsState::load(
+            HostedTlsConfig {
+                certificate_chain_path: certificate_chain_path.into(),
+                private_key_path: private_key_path.into(),
+                client_ca_path: client_ca_path.as_ref().map(Into::into),
+                require_client_certificate: *require_client_certificate,
+                minimum_remaining_validity_secs: *minimum_remaining_validity_secs,
+            },
+            now,
+        )
+        .map(Some)
+        .map_err(|_| "hosted TLS material is invalid".to_owned())
+    }
+
+    pub fn load_trusted_proxy(&self) -> Result<Option<HostedTrustedProxy>, String> {
+        self.validate()?;
+        let FindingHostedEdgeProfile::TrustedProxy {
+            trusted_proxy_ips,
+            authentication_token_env,
+        } = &self.edge
+        else {
+            return Ok(None);
+        };
+        let mut token = read_secret_environment(authentication_token_env)?;
+        let token_bytes = token.as_bytes().to_vec();
+        token.zeroize();
+        HostedTrustedProxy::new(HostedTrustedProxyConfig {
+            listen: self.listen,
+            trusted_peer_ips: trusted_proxy_ips.iter().copied().collect(),
+            public_endpoint: self.public_endpoint.clone(),
+            authentication_token: token_bytes,
+        })
+        .map(Some)
+        .map_err(|_| "hosted trusted-proxy configuration is invalid".to_owned())
     }
 
     /// Load and remotely preflight one custody signer from secret references.
@@ -397,16 +542,50 @@ impl FindingHostedProfile {
         self.release.evaluate_canary(observation)
     }
 
-    fn validate_tls(&self) -> Result<(), String> {
-        for (path, label) in [
-            (&self.tls.certificate_chain_path, "TLS certificate chain"),
-            (&self.tls.private_key_path, "TLS private key"),
-            (&self.tls.client_ca_path, "TLS client CA"),
-        ] {
-            validate_absolute_path(path, label)?;
-        }
-        if self.tls.minimum_protocol != "TLSv1.3" || !self.tls.require_client_certificate {
-            return Err("hosted TLS must require TLS 1.3 and client certificates".to_owned());
+    fn validate_edge(&self) -> Result<(), String> {
+        match &self.edge {
+            FindingHostedEdgeProfile::NativeTls {
+                certificate_chain_path,
+                private_key_path,
+                client_ca_path,
+                require_client_certificate,
+                minimum_protocol,
+                reload_interval_secs,
+                minimum_remaining_validity_secs,
+            } => {
+                validate_absolute_path(certificate_chain_path, "TLS certificate chain")?;
+                validate_absolute_path(private_key_path, "TLS private key")?;
+                if let Some(path) = client_ca_path {
+                    validate_absolute_path(path, "TLS client CA")?;
+                }
+                if minimum_protocol != "TLSv1.3"
+                    || *require_client_certificate != client_ca_path.is_some()
+                    || !(5..=86_400).contains(reload_interval_secs)
+                    || !(300..=2_592_000).contains(minimum_remaining_validity_secs)
+                {
+                    return Err("hosted native TLS bounds are invalid".to_owned());
+                }
+            }
+            FindingHostedEdgeProfile::TrustedProxy {
+                trusted_proxy_ips,
+                authentication_token_env,
+            } => {
+                validate_env_name(
+                    authentication_token_env,
+                    "trusted-proxy authentication environment variable",
+                )?;
+                if !self.listen.ip().is_loopback()
+                    || trusted_proxy_ips.is_empty()
+                    || trusted_proxy_ips.len() > 32
+                    || trusted_proxy_ips
+                        .iter()
+                        .any(|address| !address.is_loopback())
+                    || trusted_proxy_ips.iter().collect::<BTreeSet<_>>().len()
+                        != trusted_proxy_ips.len()
+                {
+                    return Err("hosted trusted-proxy boundary is invalid".to_owned());
+                }
+            }
         }
         Ok(())
     }
@@ -427,16 +606,25 @@ impl FindingHostedProfile {
     }
 
     fn validate_identity(&self) -> Result<(), String> {
-        validate_https_url(&self.identity.issuer, "OIDC issuer", false)?;
-        validate_https_url(&self.identity.jwks_uri, "OIDC JWKS URI", false)?;
-        validate_unique_text(&self.identity.audiences, "OIDC audience")?;
-        validate_unique_text(&self.identity.required_scopes, "OIDC required scope")?;
-        if !self.identity.require_dpop
+        validate_env_name(
+            &self.identity.api_key_pepper_env,
+            "API-key pepper environment variable",
+        )?;
+        if self.identity.capability_authorities.is_empty()
+            || self.identity.capability_authorities.len() > 128
+            || !(30..=3_600).contains(&self.identity.maximum_capability_ttl_secs)
             || !(5..=300).contains(&self.identity.dpop_proof_ttl_secs)
             || self.identity.dpop_clock_skew_secs > 60
             || !(1_000..=10_000_000).contains(&self.identity.nonce_capacity)
         {
-            return Err("hosted identity must require bounded DPoP replay protection".to_owned());
+            return Err("hosted identity bounds are invalid".to_owned());
+        }
+        let mut authorities = BTreeSet::new();
+        for authority in &self.identity.capability_authorities {
+            let key = parse_key(authority, "capability authority")?;
+            if !authorities.insert(key.to_hex()) {
+                return Err("capability authorities must be unique".to_owned());
+            }
         }
         Ok(())
     }
@@ -594,12 +782,14 @@ impl FindingHostedProfile {
             return Err("hosted profile requires a bounded tenant roster".to_owned());
         }
         let mut tenant_ids = BTreeSet::new();
-        let mut subjects = BTreeSet::new();
+        let mut capability_keys = BTreeSet::new();
         for tenant in &self.tenants {
             validate_identifier(&tenant.tenant_id, "tenant id")?;
-            validate_text(&tenant.oidc_subject, "tenant OIDC subject")?;
             if !tenant_ids.insert(tenant.tenant_id.as_str())
-                || !subjects.insert(tenant.oidc_subject.as_str())
+                || tenant.auth_methods.is_empty()
+                || tenant.auth_methods.len() > 2
+                || tenant.principals.is_empty()
+                || tenant.principals.len() > 10_000
                 || !(1..=1_024).contains(&tenant.max_concurrent_jobs)
                 || tenant.max_queued_jobs == 0
                 || tenant.max_queued_jobs > self.database.max_jobs_per_tenant
@@ -607,6 +797,38 @@ impl FindingHostedProfile {
                 || tenant.max_monthly_spend_units > MAX_I_JSON_INTEGER
             {
                 return Err("hosted tenant identity or quota is invalid".to_owned());
+            }
+            let mut principal_ids = BTreeSet::new();
+            let mut any_enabled = false;
+            for principal in &tenant.principals {
+                validate_identifier(&principal.principal_id, "principal id")?;
+                if !principal_ids.insert(principal.principal_id.as_str()) {
+                    return Err("hosted tenant principal ids must be unique".to_owned());
+                }
+                any_enabled |= principal.enabled;
+                if let Some(key) = principal.capability_public_key_hex.as_deref() {
+                    if !tenant
+                        .auth_methods
+                        .contains(&FindingHostedAuthMethod::CapabilityDpop)
+                    {
+                        return Err("API-key-only tenant contains a capability key".to_owned());
+                    }
+                    let key = parse_key(key, "principal capability key")?;
+                    if !capability_keys.insert(key.to_hex()) {
+                        return Err("principal capability keys must be globally unique".to_owned());
+                    }
+                }
+            }
+            if !any_enabled
+                || tenant
+                    .auth_methods
+                    .contains(&FindingHostedAuthMethod::CapabilityDpop)
+                    && !tenant
+                        .principals
+                        .iter()
+                        .any(|principal| principal.capability_public_key_hex.is_some())
+            {
+                return Err("hosted tenant has no usable principal".to_owned());
             }
         }
         Ok(())
@@ -685,11 +907,10 @@ impl FindingHostedReleaseProfile {
 }
 
 fn read_secret_environment(name: &str) -> Result<String, String> {
-    validate_env_name(name, "remote signer credential environment variable")?;
-    let value =
-        std::env::var(name).map_err(|_| "remote signer credential is unavailable".to_owned())?;
+    validate_env_name(name, "hosted secret environment variable")?;
+    let value = std::env::var(name).map_err(|_| "hosted secret is unavailable".to_owned())?;
     if value.is_empty() || value.len() > 16 * 1024 || value.chars().any(char::is_control) {
-        return Err("remote signer credential is invalid".to_owned());
+        return Err("hosted secret is invalid".to_owned());
     }
     Ok(value)
 }
@@ -739,6 +960,7 @@ fn validate_https_url(value: &str, label: &str, public: bool) -> Result<(), Stri
         || parsed.password().is_some()
         || parsed.query().is_some()
         || parsed.fragment().is_some()
+        || parsed.as_str().trim_end_matches('/') != value
     {
         return Err(format!(
             "{label} must be an HTTPS URL without credentials or selectors"
@@ -822,20 +1044,6 @@ fn validate_text(value: &str, label: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_unique_text(values: &[String], label: &str) -> Result<(), String> {
-    if values.is_empty() || values.len() > 128 {
-        return Err(format!("{label} list is invalid"));
-    }
-    let mut unique = BTreeSet::new();
-    for value in values {
-        validate_text(value, label)?;
-        if !unique.insert(value.as_str()) {
-            return Err(format!("{label} values must be unique"));
-        }
-    }
-    Ok(())
-}
-
 fn validate_absolute_path(value: &str, label: &str) -> Result<(), String> {
     validate_text(value, label)?;
     let path = Path::new(value);
@@ -888,6 +1096,40 @@ mod tests {
         assert!(roles.contains(&FindingHostedSigningRole::ChallengeEvaluator));
         assert!(roles.contains(&FindingHostedSigningRole::Kernel));
         assert!(roles.contains(&FindingHostedSigningRole::Worker));
+    }
+
+    #[test]
+    fn hosted_edge_and_auth_schemas_are_closed_and_secret_free() {
+        let edge: Result<FindingHostedEdgeProfile, _> = serde_json::from_value(serde_json::json!({
+            "kind": "trusted_proxy",
+            "trustedProxyIps": ["127.0.0.1"],
+            "authenticationTokenEnv": "CHIO_PROXY_AUTH_TOKEN"
+        }));
+        assert!(edge.is_ok());
+        let unknown: Result<FindingHostedEdgeProfile, _> =
+            serde_json::from_value(serde_json::json!({
+                "kind": "trusted_proxy",
+                "trustedProxyIps": ["127.0.0.1"],
+                "authenticationTokenEnv": "CHIO_PROXY_AUTH_TOKEN",
+                "trustAllForwardingHeaders": true
+            }));
+        assert!(unknown.is_err());
+
+        let identity = FindingHostedIdentityProfile {
+            capability_authorities: vec!["a".repeat(64)],
+            maximum_capability_ttl_secs: 300,
+            dpop_proof_ttl_secs: 60,
+            dpop_clock_skew_secs: 5,
+            nonce_capacity: 10_000,
+            api_key_pepper_env: "CHIO_API_KEY_PEPPER".to_owned(),
+        };
+        let encoded = serde_json::to_string(&identity);
+        assert!(encoded.is_ok());
+        if let Ok(encoded) = encoded {
+            assert!(!encoded.contains("secret"));
+            assert!(!encoded.contains("oidc"));
+            assert!(encoded.contains("CHIO_API_KEY_PEPPER"));
+        }
     }
 
     #[test]

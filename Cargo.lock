@@ -3149,6 +3149,8 @@ dependencies = [
  "chio-federation",
  "chio-finding",
  "chio-finding-challenge",
+ "chio-finding-hosted-edge",
+ "chio-finding-market-store-postgres",
  "chio-finding-verifier",
  "chio-finding-worker",
  "chio-fiscal",
@@ -3203,6 +3205,7 @@ dependencies = [
  "uuid",
  "windows-sys 0.60.2",
  "x509-cert",
+ "zeroize",
 ]
 
 [[package]]

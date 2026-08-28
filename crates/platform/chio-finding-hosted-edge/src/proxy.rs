@@ -1,7 +1,10 @@
 use std::collections::BTreeSet;
+use std::fmt;
 use std::net::{IpAddr, SocketAddr};
 
+use subtle::ConstantTimeEq as _;
 use url::Url;
+use zeroize::Zeroizing;
 
 use crate::HostedEdgeError;
 
@@ -22,26 +25,40 @@ pub struct HostedRequestContext {
     pub external_host: String,
 }
 
-#[derive(Clone, Debug)]
 pub struct HostedTrustedProxyConfig {
     pub listen: SocketAddr,
     pub trusted_peer_ips: BTreeSet<IpAddr>,
     pub public_endpoint: String,
+    pub authentication_token: Vec<u8>,
+}
+
+impl fmt::Debug for HostedTrustedProxyConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HostedTrustedProxyConfig")
+            .field("listen", &self.listen)
+            .field("trusted_peer_ips", &self.trusted_peer_ips)
+            .field("public_endpoint", &self.public_endpoint)
+            .field("authentication_token", &"[REDACTED]")
+            .finish()
+    }
 }
 
 pub struct HostedTrustedProxy {
     trusted_peer_ips: BTreeSet<IpAddr>,
     endpoint: Url,
+    authentication_token: Zeroizing<Vec<u8>>,
 }
 
 impl HostedTrustedProxy {
-    pub fn new(config: HostedTrustedProxyConfig) -> Result<Self, HostedEdgeError> {
+    pub fn new(mut config: HostedTrustedProxyConfig) -> Result<Self, HostedEdgeError> {
         let endpoint =
             Url::parse(&config.public_endpoint).map_err(|_| HostedEdgeError::Configuration)?;
         if !config.listen.ip().is_loopback()
             || config.listen.port() == 0
             || config.trusted_peer_ips.is_empty()
             || config.trusted_peer_ips.len() > 32
+            || !(32..=4_096).contains(&config.authentication_token.len())
             || config
                 .trusted_peer_ips
                 .iter()
@@ -58,6 +75,7 @@ impl HostedTrustedProxy {
         Ok(Self {
             trusted_peer_ips: config.trusted_peer_ips,
             endpoint,
+            authentication_token: Zeroizing::new(std::mem::take(&mut config.authentication_token)),
         })
     }
 
@@ -67,7 +85,21 @@ impl HostedTrustedProxy {
         &self,
         peer_ip: IpAddr,
         headers: &HostedForwardingHeaders,
+        presented_authentication: Option<&str>,
     ) -> Result<HostedRequestContext, HostedEdgeError> {
+        let presented_authentication = presented_authentication
+            .filter(|value| {
+                value.len() == self.authentication_token.len()
+                    && !value.chars().any(char::is_control)
+            })
+            .ok_or(HostedEdgeError::AuthenticationFailed)?;
+        if !bool::from(
+            self.authentication_token
+                .as_slice()
+                .ct_eq(presented_authentication.as_bytes()),
+        ) {
+            return Err(HostedEdgeError::AuthenticationFailed);
+        }
         if !self.trusted_peer_ips.contains(&peer_ip)
             || headers.forwarded.len() != 1
             || !headers.x_forwarded_for.is_empty()
@@ -181,6 +213,7 @@ mod tests {
                 .map_err(|_| HostedEdgeError::Configuration)?,
             trusted_peer_ips: [IpAddr::from([127, 0, 0, 1])].into_iter().collect(),
             public_endpoint: "https://market.example".to_owned(),
+            authentication_token: vec![b'p'; 32],
         })
     }
 
@@ -195,6 +228,7 @@ mod tests {
                     forwarded: vec!["for=192.0.2.44;proto=https;host=market.example".to_owned()],
                     ..HostedForwardingHeaders::default()
                 },
+                Some("pppppppppppppppppppppppppppppppp"),
             );
             assert!(context.is_ok());
             assert_eq!(
@@ -214,15 +248,36 @@ mod tests {
                 ..HostedForwardingHeaders::default()
             };
             assert!(proxy
-                .reconstruct(IpAddr::from([192, 0, 2, 1]), &valid)
+                .reconstruct(
+                    IpAddr::from([192, 0, 2, 1]),
+                    &valid,
+                    Some("pppppppppppppppppppppppppppppppp")
+                )
                 .is_err());
             let ambiguous = HostedForwardingHeaders {
                 x_forwarded_for: vec!["192.0.2.99".to_owned()],
                 ..valid
             };
             assert!(proxy
-                .reconstruct(IpAddr::from([127, 0, 0, 1]), &ambiguous)
+                .reconstruct(
+                    IpAddr::from([127, 0, 0, 1]),
+                    &ambiguous,
+                    Some("pppppppppppppppppppppppppppppppp")
+                )
                 .is_err());
+            assert_eq!(
+                proxy.reconstruct(
+                    IpAddr::from([127, 0, 0, 1]),
+                    &HostedForwardingHeaders {
+                        forwarded: vec![
+                            "for=192.0.2.44;proto=https;host=market.example".to_owned(),
+                        ],
+                        ..HostedForwardingHeaders::default()
+                    },
+                    Some("wrong-wrong-wrong-wrong-wrong-wr")
+                ),
+                Err(HostedEdgeError::AuthenticationFailed)
+            );
         }
     }
 }
