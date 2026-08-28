@@ -72,6 +72,11 @@ remote worker signer, every Firecracker asset, `/dev/kvm`, the non-superuser
 PostgreSQL role, and each enabled tenant before claiming a lease. Claims are
 bounded by both host capacity and each tenant's configured concurrency. A
 SIGINT or SIGTERM stops new scans after the current bounded batch finishes.
+The continuous daemon opens a fail-closed PostgreSQL circuit after three
+consecutive failed scans, emits a closed unready report, and allows one
+half-open trial after 30 seconds. A successful trial resets readiness. The
+one-shot diagnostic remains fail-fast so automation cannot mistake a skipped
+scan for a successful qualification.
 Run one diagnostic pass with:
 
 ```bash

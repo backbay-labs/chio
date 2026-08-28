@@ -7,6 +7,9 @@ use std::time::Duration;
 
 use chio_control_plane::trust_control::finding_hosted_profile::FindingHostedProfile;
 use chio_core_types::canonical_json_bytes;
+use chio_finding_hosted_edge::{
+    HostedCircuitBreaker, HostedCircuitBreakerConfig, HostedDependency, HostedReadiness,
+};
 use chio_finding_market_store_postgres::{
     HostedPostgresConfig, HostedTenantId, PostgresFindingMarketStore,
 };
@@ -16,6 +19,8 @@ use serde::Serialize;
 
 const MAX_PROFILE_BYTES: u64 = 4 * 1024 * 1024;
 const RETRY_BASE_SECS: u64 = 5;
+const DATABASE_FAILURE_THRESHOLD: u32 = 3;
+const DATABASE_BREAKER_OPEN_SECS: u64 = 30;
 
 #[derive(Debug, Parser)]
 #[command(name = "chio-finding-worker")]
@@ -70,6 +75,8 @@ struct TenantRuntime {
 struct WorkerTickReport {
     schema: &'static str,
     worker_id: String,
+    ready: bool,
+    dependency_error: Option<&'static str>,
     tenant_count: u32,
     claimed: u32,
     completed: u32,
@@ -122,24 +129,106 @@ async fn run(args: Args) -> Result<(), DaemonError> {
     .map_err(|_| DaemonError::Arguments)?;
 
     if args.once {
-        let report = run_tick(&worker, &tenants, &args.worker_id, 0).await?;
+        let mut report = run_tick(&worker, &tenants, &args.worker_id, 0).await?;
+        report.ready = true;
         return write_report(&report);
     }
 
+    let database_breaker = HostedCircuitBreaker::new(HostedCircuitBreakerConfig {
+        failure_threshold: DATABASE_FAILURE_THRESHOLD,
+        open_secs: DATABASE_BREAKER_OPEN_SECS,
+    })
+    .map_err(|_| DaemonError::Arguments)?;
+    let readiness = HostedReadiness::new([
+        HostedDependency::Database,
+        HostedDependency::Signer,
+        HostedDependency::Worker,
+    ])
+    .map_err(|_| DaemonError::Arguments)?;
+    readiness
+        .record(HostedDependency::Database, true)
+        .and_then(|()| readiness.record(HostedDependency::Signer, true))
+        .and_then(|()| readiness.record(HostedDependency::Worker, true))
+        .map_err(|_| DaemonError::Execution)?;
     let mut next_tenant = 0_usize;
     let mut shutdown = Box::pin(shutdown_signal());
     loop {
-        let report = run_tick(&worker, &tenants, &args.worker_id, next_tenant).await?;
-        write_report(&report)?;
-        next_tenant = (next_tenant + 1) % tenants.len();
-        tokio::select! {
-            result = &mut shutdown => {
-                result?;
+        let now = current_unix_secs()?;
+        if database_breaker
+            .admit(HostedDependency::Database, now)
+            .is_err()
+        {
+            readiness
+                .record(HostedDependency::Database, false)
+                .map_err(|_| DaemonError::Execution)?;
+            write_report(&dependency_failure_report(
+                &args.worker_id,
+                &tenants,
+                "database_circuit_open",
+            )?)?;
+            if wait_or_shutdown(
+                &mut shutdown,
+                Duration::from_secs(DATABASE_BREAKER_OPEN_SECS),
+            )
+            .await?
+            {
                 return Ok(());
             }
-            () = tokio::time::sleep(Duration::from_millis(args.poll_interval_millis)) => {}
+            continue;
+        }
+        match run_tick(&worker, &tenants, &args.worker_id, next_tenant).await {
+            Ok(mut report) => {
+                database_breaker
+                    .record_success(HostedDependency::Database)
+                    .map_err(|_| DaemonError::Execution)?;
+                readiness
+                    .record(HostedDependency::Database, true)
+                    .map_err(|_| DaemonError::Execution)?;
+                report.ready = readiness.snapshot().ready;
+                write_report(&report)?;
+                next_tenant = (next_tenant + 1) % tenants.len();
+            }
+            Err(DaemonError::Execution | DaemonError::Database) => {
+                database_breaker
+                    .record_failure(HostedDependency::Database, now)
+                    .map_err(|_| DaemonError::Execution)?;
+                readiness
+                    .record(HostedDependency::Database, false)
+                    .map_err(|_| DaemonError::Execution)?;
+                write_report(&dependency_failure_report(
+                    &args.worker_id,
+                    &tenants,
+                    "database_unavailable",
+                )?)?;
+            }
+            Err(error) => return Err(error),
+        }
+        if wait_or_shutdown(
+            &mut shutdown,
+            Duration::from_millis(args.poll_interval_millis),
+        )
+        .await?
+        {
+            return Ok(());
         }
     }
+}
+
+async fn wait_or_shutdown(
+    shutdown: &mut std::pin::Pin<Box<impl std::future::Future<Output = Result<(), DaemonError>>>>,
+    delay: Duration,
+) -> Result<bool, DaemonError> {
+    tokio::select! {
+        result = shutdown => result.map(|()| true),
+        () = tokio::time::sleep(delay) => Ok(false),
+    }
+}
+
+fn current_unix_secs() -> Result<u64, DaemonError> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .map_err(|_| DaemonError::Execution)
 }
 
 fn validate_arguments(args: &Args) -> Result<(), DaemonError> {
@@ -303,6 +392,21 @@ async fn run_tick(
     Ok(report)
 }
 
+fn dependency_failure_report(
+    worker_id: &str,
+    tenants: &[TenantRuntime],
+    error_code: &'static str,
+) -> Result<WorkerTickReport, DaemonError> {
+    Ok(WorkerTickReport {
+        schema: "chio.finding.worker-tick.v1",
+        worker_id: worker_id.to_owned(),
+        ready: false,
+        dependency_error: Some(error_code),
+        tenant_count: u32::try_from(tenants.len()).map_err(|_| DaemonError::Execution)?,
+        ..WorkerTickReport::default()
+    })
+}
+
 fn add_run(report: &mut WorkerTickReport, run: HostedWorkerRun) -> Result<(), DaemonError> {
     report.claimed = report
         .claimed
@@ -363,5 +467,21 @@ mod tests {
             ..valid
         };
         assert!(validate_arguments(&invalid_id).is_err());
+    }
+
+    #[test]
+    fn dependency_failure_report_is_closed_and_unready() {
+        let tenants = vec![TenantRuntime {
+            tenant_id: HostedTenantId::new("tenant-a").unwrap_or_else(|_| unreachable!()),
+            concurrency: 1,
+        }];
+        let report = dependency_failure_report("worker:blue-1", &tenants, "database_circuit_open");
+        assert!(report.is_ok());
+        if let Ok(report) = report {
+            assert!(!report.ready);
+            assert_eq!(report.dependency_error, Some("database_circuit_open"));
+            assert_eq!(report.tenant_count, 1);
+            assert_eq!(report.claimed, 0);
+        }
     }
 }

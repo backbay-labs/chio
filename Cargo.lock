@@ -3711,6 +3711,7 @@ version = "0.1.0"
 dependencies = [
  "chio-control-plane",
  "chio-core-types",
+ "chio-finding-hosted-edge",
  "chio-finding-market-store-postgres",
  "chio-finding-worker",
  "clap 4.6.0",
