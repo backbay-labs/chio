@@ -29,6 +29,18 @@ impl FindingChallengeCoordinator {
                 .get_outcome_envelope(outcome_envelope_sha256)
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))
         }
+
+        /// Read the exact signed filing envelope retained atomically with a
+        /// challenge. Legacy terminal rows may have no retained envelope.
+        pub fn challenge_submission(
+            &self,
+            challenge_id: &str,
+        ) -> Result<Option<chio_store_sqlite::FindingChallengeSubmissionEnvelopeRecord>, ChallengeCoordinatorError>
+        {
+            self.challenges
+                .get_challenge_submission(challenge_id)
+                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))
+        }
     
         /// Exact validated market configuration this coordinator enforces.
         #[must_use]

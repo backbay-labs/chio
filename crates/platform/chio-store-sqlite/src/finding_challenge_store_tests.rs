@@ -204,6 +204,7 @@ struct Challenge {
     finding_id: String,
     listing_id: String,
     envelope_sha256: String,
+    envelope_json: Vec<u8>,
     branch: FindingChallengeAuthorizationBranch,
     class: FindingChallengeEvidenceClass,
     challenger_hex: Option<String>,
@@ -212,11 +213,13 @@ struct Challenge {
 
 impl Challenge {
     fn buyer(tag: &str) -> Self {
+        let envelope_json = format!(r#"{{"tag":"{tag}"}}"#).into_bytes();
         Self {
             challenge_id: format!("challenge-{tag}"),
             finding_id: hex64('a'),
             listing_id: LISTING_ID.to_owned(),
-            envelope_sha256: digest(&format!("challenge-envelope-{tag}")),
+            envelope_sha256: sha256_hex(&envelope_json),
+            envelope_json,
             branch: FindingChallengeAuthorizationBranch::BuyerSubmission,
             class: FindingChallengeEvidenceClass::EvidenceInvalid,
             challenger_hex: Some(hex64('b')),
@@ -248,6 +251,7 @@ impl Challenge {
             finding_id: &self.finding_id,
             listing_id: &self.listing_id,
             challenge_envelope_sha256: &self.envelope_sha256,
+            challenge_envelope_json: &self.envelope_json,
             authorization_branch: self.branch,
             evidence_class: self.class,
             challenger_hex: self.challenger_hex.as_deref(),
@@ -869,6 +873,20 @@ fn submit_challenge_inserts_replays_and_rejects_conflicts() {
         },
         "every challenge column must round-trip, so a column-index swap fails here"
     );
+    assert_eq!(
+        fixture
+            .store
+            .get_challenge_submission(&challenge.challenge_id)
+            .expect("get retained challenge submission")
+            .expect("retained challenge submission present"),
+        FindingChallengeSubmissionEnvelopeRecord {
+            challenge_id: challenge.challenge_id.clone(),
+            challenge_envelope_sha256: challenge.envelope_sha256.clone(),
+            challenge_envelope_json: challenge.envelope_json.clone(),
+            recorded_at: NOW,
+        },
+        "the exact canonical signed filing must survive the submission commit"
+    );
 
     assert_eq!(
         submit(&fixture, &challenge),
@@ -912,6 +930,9 @@ fn submit_challenge_inserts_replays_and_rejects_conflicts() {
     duplicate_envelope
         .envelope_sha256
         .clone_from(&challenge.envelope_sha256);
+    duplicate_envelope
+        .envelope_json
+        .clone_from(&challenge.envelope_json);
     assert!(
         matches!(
             fixture.store.submit_challenge(&duplicate_envelope.input()),
@@ -957,6 +978,35 @@ fn submit_challenge_inserts_replays_and_rejects_conflicts() {
         .store
         .get_challenge("challenge-absent")
         .expect("absent challenge lookup")
+        .is_none());
+}
+
+#[test]
+fn challenge_submission_rejects_noncanonical_or_mismatched_bytes_atomically() {
+    let fixture = fixture();
+    let mut noncanonical = Challenge::buyer("noncanonical");
+    noncanonical.envelope_json = br#"{ "tag": "noncanonical" }"#.to_vec();
+    noncanonical.envelope_sha256 = sha256_hex(&noncanonical.envelope_json);
+    assert!(matches!(
+        fixture.store.submit_challenge(&noncanonical.input()),
+        Err(FindingChallengeStoreError::Invariant(_))
+    ));
+    assert!(fixture
+        .store
+        .get_challenge(&noncanonical.challenge_id)
+        .expect("read rejected noncanonical challenge")
+        .is_none());
+
+    let mut mismatched = Challenge::buyer("mismatched");
+    mismatched.envelope_sha256 = hex64('f');
+    assert!(matches!(
+        fixture.store.submit_challenge(&mismatched.input()),
+        Err(FindingChallengeStoreError::Invariant(_))
+    ));
+    assert!(fixture
+        .store
+        .get_challenge(&mismatched.challenge_id)
+        .expect("read rejected digest-mismatched challenge")
         .is_none());
 }
 
@@ -4448,6 +4498,38 @@ fn v12_schema_adds_authenticated_seller_impairment_reconciliations() {
             |row| row.get::<_, bool>(0),
         )
         .expect("inspect seller impairment reconciliation table"));
+    verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
+}
+
+#[test]
+fn v13_schema_adds_exact_challenge_submission_retention() {
+    let mut connection = Connection::open_in_memory().expect("open previous database");
+    connection
+        .execute_batch(FINDING_CHALLENGE_SCHEMA)
+        .expect("install current challenge schema");
+    connection
+        .execute_batch("DROP TABLE finding_challenge_submissions;")
+        .expect("rewind challenge-submission retention schema object");
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 13)
+        .expect("stamp previous schema");
+
+    initialize_finding_challenge_schema(&mut connection).expect("migrate revision thirteen");
+
+    let version: i32 = connection
+        .query_row(
+            "SELECT version FROM chio_store_schema_versions WHERE store_key = ?1",
+            [FINDING_CHALLENGE_SCHEMA_KEY],
+            |row| row.get(0),
+        )
+        .expect("read migrated version");
+    assert_eq!(version, FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION);
+    assert!(connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'finding_challenge_submissions')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .expect("inspect challenge-submission retention table"));
     verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
 }
 

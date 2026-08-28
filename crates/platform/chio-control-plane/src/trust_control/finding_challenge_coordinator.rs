@@ -1135,6 +1135,8 @@ impl FindingChallengeCoordinator {
         .map_err(|error| ChallengeCoordinatorError::ClassIncompatible(error.to_string()))?;
 
         let challenge_envelope_sha256 = self.envelope_digest(challenge)?;
+        let challenge_envelope_json =
+            canonical_json_bytes(challenge).map_err(|_| ChallengeCoordinatorError::Canonical)?;
         let (branch, challenger_hex) = match &body.authorization {
             FindingChallengeAuthorization::BuyerSubmission(submission) => (
                 FindingChallengeAuthorizationBranch::BuyerSubmission,
@@ -1255,6 +1257,7 @@ impl FindingChallengeCoordinator {
                 finding_id: &body.finding_id,
                 listing_id: &body.listing_id,
                 challenge_envelope_sha256: &challenge_envelope_sha256,
+                challenge_envelope_json: &challenge_envelope_json,
                 authorization_branch: branch,
                 evidence_class: evidence_class_of(body.evidence.kind()),
                 challenger_hex: challenger_hex.as_deref(),
