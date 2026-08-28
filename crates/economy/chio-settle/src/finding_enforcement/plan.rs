@@ -12,7 +12,7 @@ use chio_finding::{
     SignedFindingAuthorityStatus, SignedFindingChallengeEnforcement,
     FINDING_AUTHORITY_STATUS_SCHEMA_V1,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::verify::{
     FindingPenaltyAuthorityPolicy, ReconciledFindingEnforcement, VerifiedFindingEnforcement,
@@ -343,7 +343,8 @@ pub(super) fn require_anchor_publisher_lifecycle(
 
 /// One frozen payout leg: the enforcement's ordered destination and the
 /// token-denominated share the prepared call carries for it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FindingImpairmentDestination {
     /// Immutable rail-tagged destination taken from the enforcement.
     pub destination: String,
@@ -361,7 +362,8 @@ pub struct FindingImpairmentDestination {
 /// Publisher-chosen state (attempt keys, nonces, gas) is deliberately absent,
 /// so a retry that picks a different nonce still reconciles against the same
 /// intent.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FindingImpairmentIntent {
     /// Domain-keyed identity of the seller-impairment effect.
     pub intent_id: String,

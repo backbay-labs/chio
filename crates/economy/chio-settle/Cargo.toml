@@ -48,7 +48,7 @@ alloy-primitives = { version = "1.5.7", default-features = false, features = ["s
 alloy-sol-types = { version = "1.5.7", default-features = false, features = ["std"], optional = true }
 bs58 = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
-reqwest = { workspace = true, features = ["form", "json", "query", "rustls"], optional = true }
+reqwest = { workspace = true, features = ["blocking", "form", "json", "query", "rustls"], optional = true }
 secp256k1 = { version = "0.31", features = ["recovery", "global-context"], optional = true }
 serde = { workspace = true, features = ["derive"], optional = true }
 serde_json = { workspace = true, optional = true }

@@ -46,7 +46,12 @@ use plan::{require_anchor_publisher_lifecycle, require_anchor_publisher_role_sep
 pub use publish::{
     dispatch_finding_impairment, reobserve_finding_impairment,
     reobserve_finding_impairment_for_reconciliation, FindingImpairmentPublishError,
-    FindingImpairmentPublisher,
+    FindingImpairmentPublisher, FindingImpairmentPublisherConfigError,
+    FindingImpairmentPublisherOperation, FindingImpairmentPublisherRequest,
+    FindingImpairmentPublisherResponse, RemoteFindingImpairmentPublisher,
+    RemoteFindingImpairmentPublisherConfig, FINDING_IMPAIRMENT_DISPATCH_PATH,
+    FINDING_IMPAIRMENT_OBSERVE_PATH, FINDING_IMPAIRMENT_PUBLISHER_REQUEST_SCHEMA,
+    FINDING_IMPAIRMENT_PUBLISHER_RESPONSE_SCHEMA,
 };
 pub use reconcile::{
     reconcile_finding_impairment, ConfirmedFindingImpairmentReconciliation,

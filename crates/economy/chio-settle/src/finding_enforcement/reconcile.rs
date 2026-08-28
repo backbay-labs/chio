@@ -4,7 +4,7 @@ use alloy_primitives::U256;
 use alloy_sol_types::SolCall;
 use chio_core::{canonical_json_bytes, sha256_hex};
 use chio_web3_bindings::IChioBondVault;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::plan::FindingImpairmentIntent;
 use super::{decode_call_data, parse_chain_hash, parse_evm_address};
@@ -12,7 +12,8 @@ use crate::{EvmTransactionReceipt, SettlementFinalityStatus};
 
 /// One raw transaction the durable publisher stored for an intent, plus what
 /// it later observed for that transaction.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StoredImpairmentTransaction {
     /// Authenticated chain on which the publisher observed the transaction.
     pub chain_id: String,
@@ -34,7 +35,8 @@ pub struct StoredImpairmentTransaction {
 }
 
 /// Closed vault rejection vocabulary this choke point distinguishes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum FindingVaultRejection {
     /// The vault has already consumed this evidence hash. Alone this says
     /// nothing about which call consumed it.
@@ -81,7 +83,8 @@ pub enum FindingImpairmentQuarantine {
 }
 
 /// What the publisher came back with for one intent.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum FindingImpairmentAttempt {
     /// The publisher stored a transaction for this intent and observed it.
     Observed {
