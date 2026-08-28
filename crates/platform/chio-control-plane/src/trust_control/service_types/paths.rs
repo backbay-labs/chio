@@ -66,6 +66,8 @@ pub(crate) const FINDING_VERIFIED_FIX_SUBMISSION_PATH: &str =
 pub(crate) const FINDING_VOLUNTARY_RETRACTION_PATH: &str = "/v1/findings/operator/retractions";
 /// Authenticated canonical challenge-envelope submission.
 pub(crate) const FINDING_CHALLENGES_PATH: &str = "/v1/findings/{finding_id}/challenges";
+pub(crate) const FINDING_CHALLENGE_PATH: &str =
+    "/v1/findings/{finding_id}/challenges/{challenge_id}";
 pub(crate) const FINDING_STATUS_ROOT_PATH: &str = "/v1/findings/status/{feed}/root";
 pub(crate) const FINDING_STATUS_PROOF_PATH: &str = "/v1/findings/status/{feed}/proof/{finding_id}";
 pub(crate) const FINDING_STATUS_INTENTS_PATH: &str = "/v1/findings/status/{feed}/intents";

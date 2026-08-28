@@ -373,12 +373,14 @@ pub(crate) use self::budget_handlers::*;
 pub use self::capital_and_liability::*;
 pub(crate) use self::certification_handlers::*;
 pub(crate) use self::credit_and_loss::*;
-pub(crate) use self::finding_challenge_handlers::handle_submit_finding_challenge;
 pub(crate) use self::finding_challenge_handlers::FindingChallengeSubmissionExecutor;
+pub(crate) use self::finding_challenge_handlers::{
+    handle_get_finding_challenge, handle_submit_finding_challenge,
+};
 pub use self::finding_challenge_handlers::{
-    FindingChallengeSubmissionAuthorization, FindingChallengeSubmissionRequest,
-    FindingChallengeSubmissionResponse, FindingChallengeSubmissionRuntime,
-    FindingChallengeSubmissionWrite,
+    FindingChallengeStatusResponse, FindingChallengeSubmissionAuthorization,
+    FindingChallengeSubmissionRequest, FindingChallengeSubmissionResponse,
+    FindingChallengeSubmissionRuntime, FindingChallengeSubmissionWrite,
 };
 pub(crate) use self::finding_handlers::*;
 pub(crate) use self::finding_operator_seller_routes::{

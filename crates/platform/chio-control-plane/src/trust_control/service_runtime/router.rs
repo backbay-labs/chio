@@ -769,6 +769,10 @@ fn finding_market_routes() -> Router<TrustServiceState> {
             )),
         )
         .route(
+            FINDING_CHALLENGE_PATH,
+            get(handle_get_finding_challenge),
+        )
+        .route(
             FINDING_STATUS_ROOT_PATH,
             get(handle_get_finding_status_root),
         )
