@@ -5,9 +5,16 @@ on:
     branches: [main]
     paths:
       - "crates/platform/chio-finding-market-store-postgres/**"
+      - "crates/platform/chio-finding-hosted-edge/**"
       - "crates/platform/chio-finding-worker/**"
+      - "crates/platform/chio-control-plane/**"
+      - "crates/platform/chio-store-sqlite/**"
       - "crates/products/chio-finding-worker/**"
       - "crates/trust/chio-signing-remote/**"
+      - "crates/trust/chio-finding-challenge/**"
+      - "crates/economy/chio-finding/**"
+      - "crates/economy/chio-settle/**"
+      - "scripts/qualify-cognition-market-hosted.sh"
       - ".github/workflows/cognition-market-hosted.yml"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -15,9 +22,16 @@ on:
     branches: [main]
     paths:
       - "crates/platform/chio-finding-market-store-postgres/**"
+      - "crates/platform/chio-finding-hosted-edge/**"
       - "crates/platform/chio-finding-worker/**"
+      - "crates/platform/chio-control-plane/**"
+      - "crates/platform/chio-store-sqlite/**"
       - "crates/products/chio-finding-worker/**"
       - "crates/trust/chio-signing-remote/**"
+      - "crates/trust/chio-finding-challenge/**"
+      - "crates/economy/chio-finding/**"
+      - "crates/economy/chio-settle/**"
+      - "scripts/qualify-cognition-market-hosted.sh"
       - ".github/workflows/cognition-market-hosted.yml"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -54,11 +68,7 @@ jobs:
       - name: Install Rust toolchain
         run: rustup toolchain install --profile minimal --component rustfmt --component clippy
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
-      - name: Format
-        run: cargo fmt --all -- --check
-      - name: Lint hosted store
-        run: cargo clippy -p chio-finding-market-store-postgres -p chio-finding-worker -p chio-signing-remote --all-targets --features chio-finding-market-store-postgres/postgres-integration -- -D warnings
-      - name: Test remote custody and isolated worker
-        run: cargo test -p chio-signing-remote -p chio-finding-worker -p chio-finding-worker-daemon
-      - name: Exercise PostgreSQL tenant isolation and leases
-        run: cargo test -p chio-finding-market-store-postgres --features postgres-integration --test postgres_store -- --test-threads=1
+      - name: Install cargo-vet
+        run: cargo install cargo-vet --locked --version 0.10.2
+      - name: Qualify hosted cognition market
+        run: ./scripts/qualify-cognition-market-hosted.sh

@@ -24,6 +24,23 @@ jobs:
   qualify:
     name: Release qualification
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: chio
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d chio"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      CHIO_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/chio?sslmode=disable
+      CHIO_TEST_POSTGRES_RUNTIME_URL: postgres://chio_market_runtime_test:test-only-password@127.0.0.1:5432/chio?sslmode=disable
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -50,6 +67,9 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy
           rustup default stable
+
+      - name: Install cargo-vet
+        run: cargo install cargo-vet --locked --version 0.10.2
 
       - name: Install MSRV toolchain
         run: rustup toolchain install 1.93.0 --profile minimal
