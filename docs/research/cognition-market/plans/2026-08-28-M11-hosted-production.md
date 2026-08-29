@@ -139,15 +139,32 @@ chio finding operator evaluate-canary \
 
 ## Qualification
 
-Run from the repository root with the release toolchain:
+The ordinary hosted CI lane qualifies code, PostgreSQL 16.6, forced RLS,
+remote custody, settlement transports, and the worker boundary without making
+a production promotion claim:
+
+```bash
+scripts/qualify-cognition-market-hosted.sh --code-only
+```
+
+Production promotion runs the same script without `--code-only` on a dedicated
+root-owned KVM runner. The runner must provision the canonical private hosted
+profile, its secrets and assets, one isolated worker canary job, and a bounded
+canary observation through `CHIO_FINDING_HOSTED_PROFILE`,
+`CHIO_FINDING_CANARY_OBSERVATION`, and `CHIO_FINDING_WORKER_ID`. The profile
+must pin the exact release-mode worker built from the checked-out candidate.
+The gate requires that worker to claim and complete exactly one real
+Firecracker job with no retry or rejection, then requires `evaluate-canary` to
+return `promote`:
 
 ```bash
 scripts/qualify-cognition-market-hosted.sh
 ```
 
-The hosted CI lane additionally runs the PostgreSQL integration test against a
-real PostgreSQL 16.6 service under a non-superuser, non-`BYPASSRLS` role. A
-green unit-only run is not a substitute for that lane. Full workspace build,
+Both modes emit per-gate logs, checksums, and a signed exact-candidate manifest
+under `target/release-qualification/`. The promotion workflow additionally
+applies a keyless Sigstore signature to the KVM manifest. A green unit-only run
+or a `--code-only` report is not promotion evidence. Full workspace build,
 test, Clippy, format, and release CI remain mandatory before promotion.
 
 ## Explicit residual boundary

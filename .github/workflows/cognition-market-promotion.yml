@@ -1,0 +1,61 @@
+name: Cognition market production promotion
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cognition-market-production-promotion
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: Real KVM promotion qualification
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux, x64, kvm, cognition-market]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Require the exact default-branch candidate
+        run: |
+          test "$(git rev-parse --verify 'HEAD^{commit}')" = "${GITHUB_SHA}"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Qualify hosted cognition market on real KVM
+        run: ./scripts/qualify-cognition-market-hosted.sh
+      - name: Install cosign
+        uses: sigstore/cosign-installer@1aa8e0f2454b781fbf0fbf306a4c9533a0c57409
+        with:
+          cosign-release: v2.4.1
+      - name: Sign and verify exact-candidate KVM evidence
+        env:
+          EXPECTED_WORKFLOW_IDENTITY: ${{ github.server_url }}/${{ github.repository }}/.github/workflows/cognition-market-promotion.yml@${{ github.ref }}
+        run: |
+          manifest=target/release-qualification/cognition-market-kvm/artifact-manifest.signed.json
+          signature="${manifest}.sig"
+          certificate="${manifest}.pem"
+          test -s "${manifest}"
+          cosign sign-blob --yes \
+            --output-signature "${signature}" \
+            --output-certificate "${certificate}" \
+            "${manifest}"
+          test -s "${signature}"
+          test -s "${certificate}"
+          cosign verify-blob \
+            --certificate "${certificate}" \
+            --signature "${signature}" \
+            --certificate-identity "${EXPECTED_WORKFLOW_IDENTITY}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${manifest}"
+      - name: Upload promotion evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cognition-market-promotion-${{ github.sha }}
+          path: |
+            target/release-qualification/cognition-market-hosted
+            target/release-qualification/cognition-market-kvm
+          if-no-files-found: error
+          retention-days: 90

@@ -60,7 +60,7 @@ install -m 0644 target/formal/coverage.json "${formal_root}/coverage.json"
 # Bind the promoted cognition-market profile, live local routes, CLI surface,
 # passport, and durable pool to this exact release candidate.
 ./scripts/qualify-cognition-market.sh
-./scripts/qualify-cognition-market-hosted.sh
+./scripts/qualify-cognition-market-hosted.sh --code-only
 
 required_formal_lane_count="$(
   python3 - <<'PY'
