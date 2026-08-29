@@ -316,7 +316,7 @@ pub(crate) enum FindingOperatorCommands {
         /// Strict canonical hosted operator profile.
         #[arg(long)]
         profile: PathBuf,
-        /// Strict canonical canary observation.
+        /// Strict canonical audit-authority-signed canary observation.
         #[arg(long)]
         observation: PathBuf,
     },

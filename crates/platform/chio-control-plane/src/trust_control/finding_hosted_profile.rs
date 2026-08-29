@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
+use chio_core::receipt::lineage::SignedExportEnvelope;
 use chio_core::{PublicKey, SigningAlgorithm, SigningBackend};
 use chio_finding_hosted_edge::{
     HostedAuthMethod, HostedAuthenticatorConfig, HostedTenantAuthPolicy, HostedTlsConfig,
@@ -316,6 +317,9 @@ pub struct FindingHostedCanaryObservation {
     pub worker_isolation_failures: u64,
 }
 
+pub type SignedFindingHostedCanaryObservation =
+    SignedExportEnvelope<FindingHostedCanaryObservation>;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FindingHostedCanaryDecision {
     Promote,
@@ -601,6 +605,27 @@ impl FindingHostedProfile {
     ) -> FindingHostedCanaryDecision {
         self.release
             .evaluate_canary(observation, evaluated_at_unix_secs)
+    }
+
+    /// Verify one audit-authority-signed observation before evaluating it.
+    pub fn evaluate_signed_canary(
+        &self,
+        observation: &SignedFindingHostedCanaryObservation,
+        evaluated_at_unix_secs: u64,
+    ) -> FindingHostedCanaryDecision {
+        if self.validate().is_err() {
+            return FindingHostedCanaryDecision::Rollback(FindingHostedRollbackReason::Binding);
+        }
+        let pinned_signer = self.market.audit_authority.key().ok();
+        let Some(pinned_signer) = pinned_signer else {
+            return FindingHostedCanaryDecision::Rollback(FindingHostedRollbackReason::Binding);
+        };
+        evaluate_signed_canary_observation(
+            &self.release,
+            observation,
+            &pinned_signer,
+            evaluated_at_unix_secs,
+        )
     }
 
     fn validate_edge(&self) -> Result<(), String> {
@@ -1066,6 +1091,25 @@ impl FindingHostedReleaseProfile {
     }
 }
 
+fn evaluate_signed_canary_observation(
+    release: &FindingHostedReleaseProfile,
+    observation: &SignedFindingHostedCanaryObservation,
+    pinned_signer: &PublicKey,
+    evaluated_at_unix_secs: u64,
+) -> FindingHostedCanaryDecision {
+    if pinned_signer.algorithm() != SigningAlgorithm::Ed25519
+        || pinned_signer.is_weak_ed25519()
+        || observation.signer_key != *pinned_signer
+        || !matches!(
+            pinned_signer.verify_canonical_strict(&observation.body, &observation.signature),
+            Ok(true)
+        )
+    {
+        return FindingHostedCanaryDecision::Rollback(FindingHostedRollbackReason::Binding);
+    }
+    release.evaluate_canary(&observation.body, evaluated_at_unix_secs)
+}
+
 fn read_secret_environment(name: &str) -> Result<String, String> {
     validate_env_name(name, "hosted secret environment variable")?;
     let value = std::env::var(name).map_err(|_| "hosted secret is unavailable".to_owned())?;
@@ -1405,5 +1449,43 @@ mod tests {
             release.evaluate_canary(&observation, 1_700_000_301),
             FindingHostedCanaryDecision::Rollback(FindingHostedRollbackReason::ObservationWindow)
         );
+
+        observation.window_ended_at_unix_secs = 1_700_000_000;
+        let signer = chio_core::Keypair::generate();
+        let signed = SignedExportEnvelope::sign(observation.clone(), &signer);
+        assert!(signed.is_ok());
+        if let Ok(mut signed) = signed {
+            assert_eq!(
+                evaluate_signed_canary_observation(
+                    &release,
+                    &signed,
+                    &signer.public_key(),
+                    1_700_000_001,
+                ),
+                FindingHostedCanaryDecision::Promote
+            );
+            signed.body.request_count = 999;
+            assert_eq!(
+                evaluate_signed_canary_observation(
+                    &release,
+                    &signed,
+                    &signer.public_key(),
+                    1_700_000_001,
+                ),
+                FindingHostedCanaryDecision::Rollback(FindingHostedRollbackReason::Binding)
+            );
+            let wrong_signer = chio_core::Keypair::generate();
+            let wrong = SignedExportEnvelope::sign(observation, &wrong_signer)
+                .unwrap_or_else(|_| unreachable!());
+            assert_eq!(
+                evaluate_signed_canary_observation(
+                    &release,
+                    &wrong,
+                    &signer.public_key(),
+                    1_700_000_001,
+                ),
+                FindingHostedCanaryDecision::Rollback(FindingHostedRollbackReason::Binding)
+            );
+        }
     }
 }

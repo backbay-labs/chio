@@ -134,13 +134,15 @@ state never qualifies an impairment.
 
 ## Release decision
 
-The canary observation binds the artifact digest and configuration revision.
-Its v2 contract carries exact start and end timestamps, and evaluation rejects
-inconsistent, future-dated, or more than five-minute-old windows. It rolls back
-on a short observation window, missing replicas, excessive error rate, latency,
-or queue age, or any signature failure, payment ambiguity, tenant-isolation
-violation, durable-integrity failure, or worker-isolation failure. Operators
-evaluate it with:
+The canary observation is a canonical envelope signed by the profile-pinned
+audit authority and binds the artifact digest and configuration revision. Its
+v2 body carries exact start and end timestamps, and evaluation rejects an
+untrusted signer, an invalid signature, inconsistent or future-dated times, or
+a window more than five minutes old. It rolls back on a short observation
+window, missing replicas, excessive error rate, latency, or queue age, or any
+signature failure, payment ambiguity, tenant-isolation violation,
+durable-integrity failure, or worker-isolation failure. Operators evaluate it
+with:
 
 ```bash
 chio finding operator evaluate-canary \

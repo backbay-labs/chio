@@ -4,10 +4,9 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_control_plane::trust_control::finding_hosted_profile::{
-    FindingHostedCanaryDecision, FindingHostedCanaryObservation, FindingHostedEdgeProfile,
-    FindingHostedProfile,
+    FindingHostedCanaryDecision, FindingHostedEdgeProfile, FindingHostedProfile,
     FindingHostedRollbackReason, FindingHostedSignerTransport, FindingHostedSigningRole,
-    FINDING_HOSTED_PROFILE_SCHEMA,
+    SignedFindingHostedCanaryObservation, FINDING_HOSTED_PROFILE_SCHEMA,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -27,7 +26,7 @@ pub(super) fn cmd_finding_operator_evaluate_canary(
         "hosted profile",
     )?;
     profile.validate().map_err(CliError::cli_other_error)?;
-    let observation: FindingHostedCanaryObservation = read_canonical_private_json(
+    let observation: SignedFindingHostedCanaryObservation = read_canonical_private_json(
         observation_path,
         MAX_CANARY_OBSERVATION_BYTES,
         "canary observation",
@@ -36,7 +35,7 @@ pub(super) fn cmd_finding_operator_evaluate_canary(
         .duration_since(UNIX_EPOCH)
         .map_err(|_| CliError::cli_other_error("system clock is before Unix epoch".to_owned()))?
         .as_secs();
-    let decision = profile.evaluate_canary(&observation, evaluated_at_unix_secs);
+    let decision = profile.evaluate_signed_canary(&observation, evaluated_at_unix_secs);
     let (name, reason) = match decision {
         FindingHostedCanaryDecision::Promote => ("promote", None),
         FindingHostedCanaryDecision::Rollback(reason) => {
