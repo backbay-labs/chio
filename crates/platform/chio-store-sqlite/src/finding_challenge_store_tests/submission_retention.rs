@@ -175,6 +175,9 @@ fn v13_schema_adds_exact_challenge_submission_retention() {
         .execute_batch(FINDING_CHALLENGE_SCHEMA)
         .expect("install current challenge schema");
     connection
+        .pragma_update(None, "application_id", crate::CHIO_SQLITE_APPLICATION_ID)
+        .expect("stamp Chio application id");
+    connection
         .execute_batch("DROP TABLE finding_challenge_submissions;")
         .expect("rewind challenge-submission retention schema object");
     crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 13)
@@ -198,4 +201,166 @@ fn v13_schema_adds_exact_challenge_submission_retention() {
         )
         .expect("inspect challenge-submission retention table"));
     verify_finding_challenge_invariants(&connection).expect("verify canonical schema");
+}
+
+#[test]
+fn v13_schema_with_a_challenge_fails_closed_without_exact_submission_bytes() {
+    let mut connection = Connection::open_in_memory().expect("open previous database");
+    connection
+        .execute_batch(FINDING_CHALLENGE_SCHEMA)
+        .expect("install current challenge schema");
+    connection
+        .pragma_update(None, "application_id", crate::CHIO_SQLITE_APPLICATION_ID)
+        .expect("stamp Chio application id");
+    connection
+        .execute(
+            r#"
+            INSERT INTO challenges (
+                challenge_id, finding_id, listing_id,
+                challenge_envelope_sha256, authorization_branch,
+                evidence_class, challenger_hex, state, retry_count,
+                retry_deadline, outcome_envelope_sha256, submitted_at,
+                updated_at
+            ) VALUES (?1, ?2, ?3, ?4, 'buyer_submission',
+                      'evidence_invalid', ?5, 'submitted', 0,
+                      NULL, NULL, ?6, ?6)
+            "#,
+            params![
+                "challenge-legacy",
+                hex64('a'),
+                LISTING_ID,
+                hex64('c'),
+                hex64('b'),
+                i64::try_from(NOW).expect("test time fits sqlite"),
+            ],
+        )
+        .expect("insert legacy challenge");
+    connection
+        .execute_batch("DROP TABLE finding_challenge_submissions;")
+        .expect("rewind challenge-submission retention schema object");
+    crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 13)
+        .expect("stamp previous schema");
+
+    assert!(matches!(
+        initialize_finding_challenge_schema(&mut connection),
+        Err(FindingChallengeStoreError::Invariant(detail))
+            if detail == "challenge row has no exact retained signed submission"
+    ));
+
+    let version: i32 = connection
+        .query_row(
+            "SELECT version FROM chio_store_schema_versions WHERE store_key = ?1",
+            [FINDING_CHALLENGE_SCHEMA_KEY],
+            |row| row.get(0),
+        )
+        .expect("read retained legacy version");
+    assert_eq!(
+        version, 13,
+        "failed migration must not stamp revision fourteen"
+    );
+    assert!(!connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'finding_challenge_submissions')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .expect("inspect rolled-back schema"));
+}
+
+#[test]
+fn current_schema_rejects_a_challenge_missing_its_submission() {
+    let fixture = fixture();
+    let challenge = Challenge::buyer("missing-retention");
+    submit(&fixture, &challenge);
+    {
+        let connection = fixture
+            .store
+            .connection
+            .lock()
+            .expect("lock fixture database");
+        connection
+            .execute(
+                "DELETE FROM finding_challenge_submissions WHERE challenge_id = ?1",
+                [&challenge.challenge_id],
+            )
+            .expect("simulate retention corruption");
+        assert!(matches!(
+            verify_finding_challenge_invariants(&connection),
+            Err(FindingChallengeStoreError::Invariant(detail))
+                if detail == "challenge row has no exact retained signed submission"
+        ));
+    }
+}
+
+#[test]
+fn offline_repair_atomically_restores_v13_exact_submission_bytes() {
+    let temp = tempfile::tempdir().expect("create repair directory");
+    secure_temp_directory(temp.path());
+    let database = temp.path().join("challenge-repair.sqlite3");
+    let envelope = br#"{"challenge":"legacy"}"#;
+    let envelope_sha256 = sha256_hex(envelope);
+    {
+        let connection = Connection::open(&database).expect("open repair fixture");
+        connection
+            .execute_batch(FINDING_CHALLENGE_SCHEMA)
+            .expect("install current challenge schema");
+        connection
+            .pragma_update(None, "application_id", crate::CHIO_SQLITE_APPLICATION_ID)
+            .expect("stamp Chio application id");
+        connection
+            .execute(
+                r#"
+                INSERT INTO challenges (
+                    challenge_id, finding_id, listing_id,
+                    challenge_envelope_sha256, authorization_branch,
+                    evidence_class, challenger_hex, state, retry_count,
+                    retry_deadline, outcome_envelope_sha256, submitted_at,
+                    updated_at
+                ) VALUES (?1, ?2, ?3, ?4, 'buyer_submission',
+                          'evidence_invalid', ?5, 'submitted', 0,
+                          NULL, NULL, ?6, ?6)
+                "#,
+                params![
+                    "challenge-legacy",
+                    hex64('a'),
+                    LISTING_ID,
+                    envelope_sha256,
+                    hex64('b'),
+                    i64::try_from(NOW).expect("test time fits sqlite"),
+                ],
+            )
+            .expect("insert legacy challenge");
+        connection
+            .execute_batch("DROP TABLE finding_challenge_submissions;")
+            .expect("rewind challenge-submission retention schema object");
+        crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 13)
+            .expect("stamp previous schema");
+    }
+
+    let input = FindingChallengeSubmissionRepairInput {
+        challenge_id: "challenge-legacy",
+        challenge_envelope_sha256: &envelope_sha256,
+        challenge_envelope_json: envelope,
+    };
+    let report = SqliteFindingChallengeStore::repair_challenge_submissions(
+        &database,
+        std::slice::from_ref(&input),
+    )
+    .expect("repair missing exact filing");
+    assert_eq!(report.inserted, 1);
+    assert_eq!(report.exact_replays, 0);
+    assert_eq!(
+        report.schema_version,
+        FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION
+    );
+
+    let replay = SqliteFindingChallengeStore::repair_challenge_submissions(
+        &database,
+        std::slice::from_ref(&input),
+    )
+    .expect("replay exact repair");
+    assert_eq!(replay.inserted, 0);
+    assert_eq!(replay.exact_replays, 1);
+    let connection = Connection::open(&database).expect("reopen repaired database");
+    verify_finding_challenge_invariants(&connection).expect("verify repaired database");
 }

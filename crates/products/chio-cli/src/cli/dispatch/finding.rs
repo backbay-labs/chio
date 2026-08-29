@@ -19,6 +19,7 @@ use finding_challenge::cmd_finding_challenge;
 #[path = "finding/operator.rs"]
 mod finding_operator;
 use finding_operator::{cmd_finding_operator_init, cmd_finding_operator_serve, cmd_finding_operator_tick};
+use finding_operator::cmd_finding_operator_repair_challenge_retention;
 
 #[path = "finding/hosted.rs"]
 mod finding_hosted;
@@ -91,6 +92,13 @@ pub(crate) fn dispatch_finding(
             }
             FindingOperatorCommands::Tick { profile } => {
                 cmd_finding_operator_tick(&profile, json_output)
+            }
+            FindingOperatorCommands::RepairChallengeRetention { database, bundle } => {
+                cmd_finding_operator_repair_challenge_retention(
+                    &database,
+                    &bundle,
+                    json_output,
+                )
             }
             FindingOperatorCommands::ValidateHosted { profile } => {
                 cmd_finding_operator_validate_hosted(&profile, json_output)

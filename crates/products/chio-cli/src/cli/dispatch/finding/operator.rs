@@ -34,9 +34,10 @@ use chio_control_plane::trust_control::{
 };
 use chio_core::{canonical_json_bytes, sha256_hex, Keypair};
 use chio_store_sqlite::{
-    FindingDisputeLockDisposition, FindingOperatorBundleStoreError, SqliteAuthorityStore,
-    SqliteFindingOperatorBundleStore, SqliteFindingOperatorPaymentAdapter,
-    SqliteFindingPayloadStore, SqliteReceiptStore, TenantId, TenantKey,
+    FindingChallengeSubmissionRepairInput, FindingDisputeLockDisposition,
+    FindingOperatorBundleStoreError, SqliteAuthorityStore, SqliteFindingChallengeStore,
+    SqliteFindingOperatorBundleStore, SqliteFindingOperatorPaymentAdapter, SqliteFindingPayloadStore,
+    SqliteReceiptStore, TenantId, TenantKey,
 };
 use subtle::ConstantTimeEq;
 
@@ -64,6 +65,24 @@ const SELLER_RETRACTION_JOB_SCHEMA: &str = "chio.finding.seller-retraction-job.v
 const SELLER_PACKAGE_COMMAND_TIMEOUT: Duration = Duration::from_secs(330);
 const SELLER_ADMISSION_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
 const INIT_COMPLETE_FILE: &str = "operator-init-complete.json";
+const CHALLENGE_REPAIR_BUNDLE_SCHEMA: &str =
+    "chio.finding.challenge-submission-repair.v1";
+const CHALLENGE_REPAIR_BUNDLE_MAX_BYTES: usize = 64 * 1024 * 1024;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChallengeRetentionRepairBundle {
+    schema: String,
+    submissions: Vec<ChallengeRetentionRepairSubmission>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChallengeRetentionRepairSubmission {
+    challenge_id: String,
+    challenge_envelope_sha256: String,
+    challenge_envelope: serde_json::Value,
+}
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1118,6 +1137,80 @@ pub(super) fn cmd_finding_operator_tick(
             "failed_admission_jobs: {}",
             report["failedAdmissionJobCount"]
         );
+    }
+    Ok(())
+}
+
+pub(super) fn cmd_finding_operator_repair_challenge_retention(
+    database_path: &Path,
+    bundle_path: &Path,
+    json_output: bool,
+) -> Result<(), CliError> {
+    set_operator_umask();
+    let database_path = std::fs::canonicalize(database_path)
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    let metadata = std::fs::metadata(&database_path)
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    if !database_path.is_absolute() || !metadata.is_file() {
+        return Err(CliError::cli_other_error(
+            "challenge repair database must be an existing regular file".to_owned(),
+        ));
+    }
+    let bundle: ChallengeRetentionRepairBundle =
+        read_canonical_file(bundle_path, CHALLENGE_REPAIR_BUNDLE_MAX_BYTES)?;
+    if bundle.schema != CHALLENGE_REPAIR_BUNDLE_SCHEMA
+        || bundle.submissions.is_empty()
+        || bundle.submissions.len() > 10_000
+    {
+        return Err(CliError::cli_other_error(
+            "challenge retention repair bundle is invalid".to_owned(),
+        ));
+    }
+    let decoded = bundle
+        .submissions
+        .into_iter()
+        .map(|submission| {
+            canonical_json_bytes(&submission.challenge_envelope).map(|bytes| {
+                (
+                    submission.challenge_id,
+                    submission.challenge_envelope_sha256,
+                    bytes,
+                )
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let inputs = decoded
+        .iter()
+        .map(
+            |(challenge_id, challenge_envelope_sha256, challenge_envelope_json)| {
+                FindingChallengeSubmissionRepairInput {
+                    challenge_id,
+                    challenge_envelope_sha256,
+                    challenge_envelope_json,
+                }
+            },
+        )
+        .collect::<Vec<_>>();
+    let report = SqliteFindingChallengeStore::repair_challenge_submissions(
+        &database_path,
+        &inputs,
+    )
+    .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    let output = serde_json::json!({
+        "database": database_path,
+        "exactReplays": report.exact_replays,
+        "inserted": report.inserted,
+        "schema": "chio.finding.challenge-submission-repair-report.v1",
+        "schemaVersion": report.schema_version,
+    });
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("database:       {}", database_path.display());
+        println!("inserted:       {}", report.inserted);
+        println!("exact_replays:  {}", report.exact_replays);
+        println!("schema_version: {}", report.schema_version);
+        println!("operator_state: offline repair complete; restart explicitly");
     }
     Ok(())
 }

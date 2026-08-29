@@ -97,7 +97,7 @@ use crate::finding_purchase_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 mod submission_retention;
-pub use submission_retention::FindingChallengeSubmissionEnvelopeRecord;
+pub use submission_retention::*;
 use submission_retention::{
     store_challenge_submission_tx, validate_submission, verify_challenge_submissions,
 };

@@ -14,6 +14,22 @@ pub struct FindingChallengeSubmissionEnvelopeRecord {
     pub recorded_at: u64,
 }
 
+/// One exact signed filing supplied to the offline retention repair path.
+#[derive(Debug, Clone, Copy)]
+pub struct FindingChallengeSubmissionRepairInput<'a> {
+    pub challenge_id: &'a str,
+    pub challenge_envelope_sha256: &'a str,
+    pub challenge_envelope_json: &'a [u8],
+}
+
+/// Result of an atomic offline challenge-retention repair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FindingChallengeSubmissionRepairReport {
+    pub inserted: u64,
+    pub exact_replays: u64,
+    pub schema_version: i32,
+}
+
 impl SqliteFindingChallengeStore {
     /// Load the exact canonical signed filing retained for one challenge.
     pub fn get_challenge_submission(
@@ -53,6 +69,143 @@ impl SqliteFindingChallengeStore {
                 },
             )
             .transpose()
+    }
+
+    /// Restore missing exact challenge filings into an offline v13 or v14
+    /// database. The database must already contain the matching immutable
+    /// challenge rows. Every supplied preimage is canonical and digest-bound,
+    /// the whole repair commits atomically, and v13 is stamped v14 only after
+    /// all current invariants pass.
+    pub fn repair_challenge_submissions(
+        database_path: &std::path::Path,
+        inputs: &[FindingChallengeSubmissionRepairInput<'_>],
+    ) -> Result<FindingChallengeSubmissionRepairReport, FindingChallengeStoreError> {
+        if inputs.is_empty() || inputs.len() > 10_000 {
+            return Err(invariant(
+                "challenge submission repair bundle is empty or too large",
+            ));
+        }
+        let mut connection = Connection::open_with_flags(
+            database_path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
+                | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW,
+        )
+        .map_err(sqlite_error)?;
+        connection
+            .execute_batch(
+                "PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON; PRAGMA trusted_schema = OFF; PRAGMA synchronous = FULL;",
+            )
+            .map_err(sqlite_error)?;
+        let on_disk = crate::check_schema_version(
+            &connection,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+            FINDING_CHALLENGE_SCHEMA_ANCHORS,
+        )
+        .map_err(|error| invariant(error.to_string()))?;
+        if !matches!(on_disk, 13 | FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION) {
+            return Err(invariant(format!(
+                "challenge submission repair requires schema revision 13 or 14, found {on_disk}",
+            )));
+        }
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Exclusive)
+            .map_err(sqlite_error)?;
+        if on_disk == 13 {
+            replace_legacy_effect_root_binding_trigger(&transaction, on_disk)?;
+            transaction
+                .execute_batch(FINDING_CHALLENGE_SCHEMA)
+                .map_err(sqlite_error)?;
+        }
+        let mut inserted = 0_u64;
+        let mut exact_replays = 0_u64;
+        for input in inputs {
+            require_identifier(input.challenge_id, "challenge_id")?;
+            require_hex64(input.challenge_envelope_sha256, "challenge_envelope_sha256")?;
+            require_canonical_challenge_envelope(
+                input.challenge_envelope_json,
+                input.challenge_envelope_sha256,
+            )?;
+            let challenge: Option<(String, i64)> = transaction
+                .query_row(
+                    "SELECT challenge_envelope_sha256, submitted_at FROM challenges WHERE challenge_id = ?1",
+                    [input.challenge_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .map_err(sqlite_error)?;
+            let (expected_digest, submitted_at) =
+                challenge.ok_or(FindingChallengeStoreError::NotFound)?;
+            if expected_digest != input.challenge_envelope_sha256 {
+                return Err(FindingChallengeStoreError::Conflict(
+                    "repair filing digest does not match its challenge row".to_owned(),
+                ));
+            }
+            let changed = transaction
+                .execute(
+                    r#"
+                    INSERT OR IGNORE INTO finding_challenge_submissions (
+                        challenge_envelope_sha256, challenge_id,
+                        challenge_envelope_json, recorded_at
+                    ) VALUES (?1, ?2, ?3, ?4)
+                    "#,
+                    params![
+                        input.challenge_envelope_sha256,
+                        input.challenge_id,
+                        input.challenge_envelope_json,
+                        submitted_at,
+                    ],
+                )
+                .map_err(sqlite_error)?;
+            let retained: Option<(String, Vec<u8>)> = transaction
+                .query_row(
+                    "SELECT challenge_envelope_sha256, challenge_envelope_json FROM finding_challenge_submissions WHERE challenge_id = ?1",
+                    [input.challenge_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .map_err(sqlite_error)?;
+            if retained
+                .as_ref()
+                .map(|(digest, bytes)| (digest.as_str(), bytes.as_slice()))
+                != Some((
+                    input.challenge_envelope_sha256,
+                    input.challenge_envelope_json,
+                ))
+            {
+                return Err(FindingChallengeStoreError::Conflict(
+                    "repair filing conflicts with retained challenge bytes".to_owned(),
+                ));
+            }
+            if changed == 1 {
+                inserted = inserted
+                    .checked_add(1)
+                    .ok_or_else(|| invariant("challenge repair count overflow"))?;
+            } else {
+                exact_replays = exact_replays
+                    .checked_add(1)
+                    .ok_or_else(|| invariant("challenge repair count overflow"))?;
+            }
+        }
+        if on_disk == 13 {
+            crate::stamp_schema_version(
+                &transaction,
+                FINDING_CHALLENGE_SCHEMA_KEY,
+                FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+            )
+            .map_err(|error| invariant(error.to_string()))?;
+        }
+        verify_finding_challenge_invariants(&transaction)?;
+        transaction.commit().map_err(sqlite_error)?;
+        connection
+            .execute_batch("PRAGMA wal_checkpoint(FULL);")
+            .map_err(sqlite_error)?;
+        Ok(FindingChallengeSubmissionRepairReport {
+            inserted,
+            exact_replays,
+            schema_version: FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+        })
     }
 }
 
@@ -222,6 +375,30 @@ pub(super) fn verify_challenge_submissions(
     if mismatched_submission {
         return Err(invariant(
             "retained challenge envelope does not bind its challenge row",
+        ));
+    }
+    let missing_submission = connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM challenges AS challenge
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM finding_challenge_submissions AS submission
+                    WHERE submission.challenge_id = challenge.challenge_id
+                      AND submission.challenge_envelope_sha256 =
+                          challenge.challenge_envelope_sha256
+                )
+            )
+            "#,
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(sqlite_error)?;
+    if missing_submission {
+        return Err(invariant(
+            "challenge row has no exact retained signed submission",
         ));
     }
     Ok(())

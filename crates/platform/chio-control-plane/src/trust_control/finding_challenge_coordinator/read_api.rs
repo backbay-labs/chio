@@ -6,7 +6,7 @@ impl FindingChallengeCoordinator {
         pub fn mutation_fence(&self) -> StoreMutationFence {
             self.challenges.mutation_fence()
         }
-    
+
         /// Read one challenge through the same durable store used by lifecycle
         /// transitions. The HTTP layer applies caller authorization before
         /// exposing this record.
@@ -18,7 +18,7 @@ impl FindingChallengeCoordinator {
                 .get_challenge(challenge_id)
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))
         }
-    
+
         /// Read the exact signed outcome retained for an authenticated challenge.
         pub fn challenge_outcome(
             &self,
@@ -41,13 +41,13 @@ impl FindingChallengeCoordinator {
                 .get_challenge_submission(challenge_id)
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))
         }
-    
+
         /// Exact validated market configuration this coordinator enforces.
         #[must_use]
         pub const fn market_config(&self) -> &FindingMarketConfig {
             &self.market_config
         }
-    
+
         /// Resolver used by read paths to recheck current authority standing.
         pub(crate) fn authority_status_resolver(&self) -> Arc<dyn FindingAuthorityStatusResolver> {
             Arc::clone(&self.authority_status)
