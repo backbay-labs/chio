@@ -229,6 +229,8 @@ impl HttpsFindingBondObservationTransport {
         let host = endpoint
             .host_str()
             .ok_or(FindingBondObservationSourceConfigError::InvalidUrl)?;
+        // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: the stored contract is
+        // enforced for every pinned DNS answer and request below.
         let mut builder = reqwest::blocking::Client::builder()
             .https_only(true)
             .redirect(reqwest::redirect::Policy::none())
@@ -287,6 +289,8 @@ impl FindingBondObservationTransport for HttpsFindingBondObservationTransport {
             .bearer_auth(self.bearer_token.as_str())
             .header(reqwest::header::CONTENT_TYPE, "application/json")
             .body(body.to_vec())
+            // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: paired with the
+            // contract-enforced, pinned-DNS client construction above.
             .send()
             .map_err(|error| {
                 SettlementError::Rpc(format!(

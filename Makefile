@@ -7,7 +7,7 @@
 # Owner: see CODEOWNERS.
 #
 # REQUIRES on PATH (by tier):
-#   - cargo (Rust 1.93+, see rust-toolchain.toml) for build/test/ci targets.
+#   - cargo (Rust 1.94+, see rust-toolchain.toml) for build/test/ci targets.
 #   - protobuf-compiler for several workspace crates (CI installs via apt).
 #   - uv for python codegen; go for go codegen; npm (Node 20+) for ts codegen.
 #   - docker for kb-* and docker-demo targets.

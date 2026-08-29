@@ -19,6 +19,7 @@ use chio_finding_hosted_edge::{
     HostedTlsState, HostedTrustedProxy, HostedTrustedProxyConfig, StaticApiKeyPepper,
 };
 use chio_finding_market_store_postgres::HostedTenantId;
+#[cfg(target_os = "linux")]
 use chio_finding_worker::{FirecrackerExecutor, FirecrackerIdentity, FirecrackerWorkerConfig};
 use chio_settle::{RemoteFindingBondObservationSource, RemoteFindingBondObservationSourceConfig};
 use chio_settle::{RemoteFindingImpairmentPublisher, RemoteFindingImpairmentPublisherConfig};
@@ -529,6 +530,7 @@ impl FindingHostedProfile {
     }
 
     /// Build the bounded Firecracker worker after validating the full profile.
+    #[cfg(target_os = "linux")]
     pub fn load_worker_executor(&self) -> Result<FirecrackerExecutor, String> {
         self.validate()?;
         let signer = self.load_signer(FindingHostedSigningRole::Worker)?;

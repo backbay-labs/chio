@@ -131,6 +131,8 @@ jobs:
           fetch-depth: 0
       - name: Install Rust toolchain
         run: rustup toolchain install --profile minimal --component rustfmt --component clippy
+      - name: Install uv (Python codegen toolchain runner)
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
       - name: Install cargo-vet
         run: cargo install cargo-vet --locked --version 0.10.2

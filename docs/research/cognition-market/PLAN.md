@@ -17,7 +17,7 @@ existing holds/escrow, fraud handled by bonded challenges plus published-rate
 audits feeding the existing sanction/slash lane, retraction via a
 revocation-oracle status feed. See ARCHITECTURE sections 3-8.
 
-**Tech Stack:** Rust workspace (MSRV 1.93), existing Chio crates; no new
+**Tech Stack:** Rust workspace (MSRV 1.94), existing Chio crates; no new
 external dependencies anticipated before M7.
 
 ## Global Constraints

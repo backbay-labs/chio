@@ -318,7 +318,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - uses: ./.github/actions/setup-rust
         with:
-          toolchain: "1.93.0"
+          toolchain: "1.94.1"
 
       - name: MSRV workspace lane
         env:

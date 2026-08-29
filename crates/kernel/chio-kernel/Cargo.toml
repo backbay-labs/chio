@@ -3,7 +3,8 @@ name = "chio-kernel"
 description = "Chio runtime kernel: capability validation, guard evaluation, receipt signing"
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
+# Kani 0.67 uses Rust 1.93; this formal-proof dependency remains compatible.
+rust-version = "1.93"
 license.workspace = true
 repository.workspace = true
 readme = "README.md"

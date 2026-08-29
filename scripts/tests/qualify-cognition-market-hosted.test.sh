@@ -56,6 +56,7 @@ require_text "${kvm}" "--expected-candidate \"\${candidate_sha}\""
 
 require_text "${release}" './scripts/qualify-cognition-market-hosted.sh --code-only'
 require_text "${code_workflow}" './scripts/qualify-cognition-market-hosted.sh --code-only'
+require_text "${code_workflow}" 'astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39'
 require_text "${promotion_workflow}" 'runs-on: [self-hosted, linux, x64, kvm, cognition-market, ephemeral, attested]'
 require_text "${promotion_workflow}" 'name: cognition-market-production'
 require_text "${promotion_workflow}" 'ephemeral, attested'

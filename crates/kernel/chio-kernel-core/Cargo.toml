@@ -3,7 +3,8 @@ name = "chio-kernel-core"
 description = "Portable (no_std + alloc) Chio kernel core: pure verdict evaluation, capability verification, and receipt signing"
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
+# Kani 0.67 uses Rust 1.93; this formal-proof crate remains compatible.
+rust-version = "1.93"
 license.workspace = true
 repository.workspace = true
 publish = false

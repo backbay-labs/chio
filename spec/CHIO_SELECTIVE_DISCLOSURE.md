@@ -532,10 +532,9 @@ feature. Federation does not ship a parallel selective-disclosure
 proof path; BBS projection, signing, proof derivation, and verification
 are owned by `chio-selective-disclosure`.
 
-The implementation uses `affinidi-bbs = 0.1.0`, pinned because
-`affinidi-bbs = 0.1.1` requires Rust 1.94 while this workspace is pinned
-to Rust 1.93. It keeps the baseline chio build BLS12-381-free unless
-the `bbs` feature is selected.
+The implementation uses `affinidi-bbs = 0.1.0`, pinned until an upgrade has
+its compatibility and proof vectors reviewed. It keeps the baseline Chio
+build BLS12-381-free unless the `bbs` feature is selected.
 
 Dependencies: `chio-core-types` (receipt body, canonical JSON,
 signature primitives); `chio-workflow` (workflow receipt body, step
