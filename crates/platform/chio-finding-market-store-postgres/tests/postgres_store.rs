@@ -25,6 +25,16 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
                 CREATE ROLE chio_market_runtime_test LOGIN PASSWORD 'test-only-password'
                     NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
             END IF;
+            ALTER ROLE chio_market_runtime_test LOGIN PASSWORD 'test-only-password'
+                NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+            EXECUTE format(
+                'REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC',
+                current_database()
+            );
+            EXECUTE format(
+                'REVOKE CREATE, TEMPORARY ON DATABASE %I FROM chio_market_runtime_test',
+                current_database()
+            );
         END
         $role$;
         GRANT USAGE ON SCHEMA public TO chio_market_runtime_test;
@@ -44,12 +54,72 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     let runtime_pool = sqlx::PgPool::connect(&runtime_url).await?;
     let store =
         PostgresFindingMarketStore::from_pool_for_integration_tests(runtime_pool.clone(), 8);
+    store
+        .verify_runtime_boundary_for_integration_tests()
+        .await?;
+
+    sqlx::raw_sql(
+        "CREATE ROLE chio_market_runtime_parent NOLOGIN; GRANT chio_market_runtime_parent TO chio_market_runtime_test",
+    )
+    .execute(&admin_pool)
+    .await?;
+    assert!(matches!(
+        store.verify_runtime_boundary_for_integration_tests().await,
+        Err(HostedMarketStoreError::Configuration)
+    ));
+    sqlx::raw_sql(
+        "REVOKE chio_market_runtime_parent FROM chio_market_runtime_test; DROP ROLE chio_market_runtime_parent",
+    )
+    .execute(&admin_pool)
+    .await?;
+    store
+        .verify_runtime_boundary_for_integration_tests()
+        .await?;
+
+    sqlx::raw_sql(
+        "DROP POLICY IF EXISTS chio_finding_market_tenants_drift_probe ON chio_finding_market_tenants; CREATE POLICY chio_finding_market_tenants_drift_probe ON chio_finding_market_tenants USING (TRUE) WITH CHECK (TRUE)",
+    )
+    .execute(&admin_pool)
+    .await?;
+    assert!(matches!(
+        store.verify_runtime_boundary_for_integration_tests().await,
+        Err(HostedMarketStoreError::Configuration)
+    ));
+    sqlx::raw_sql(
+        "DROP POLICY chio_finding_market_tenants_drift_probe ON chio_finding_market_tenants",
+    )
+    .execute(&admin_pool)
+    .await?;
+    store
+        .verify_runtime_boundary_for_integration_tests()
+        .await?;
 
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let tenant_a = HostedTenantId::new(format!("integration-a-{nonce}"))?;
     let tenant_b = HostedTenantId::new(format!("integration-b-{nonce}"))?;
     store.register_tenant(&tenant_a, 1_700_000_000).await?;
     store.register_tenant(&tenant_b, 1_700_000_000).await?;
+
+    let unscoped_tenant_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM chio_finding_market_tenants")
+            .fetch_one(&runtime_pool)
+            .await?;
+    assert_eq!(
+        unscoped_tenant_count, 0,
+        "tenant registry must require tenant context"
+    );
+    let mut tenant_a_transaction = runtime_pool.begin().await?;
+    sqlx::query("SELECT set_config('chio.tenant_id', $1, TRUE)")
+        .bind(tenant_a.as_str())
+        .execute(&mut *tenant_a_transaction)
+        .await?;
+    let cross_tenant_update =
+        sqlx::query("UPDATE chio_finding_market_tenants SET enabled = FALSE WHERE tenant_id = $1")
+            .bind(tenant_b.as_str())
+            .execute(&mut *tenant_a_transaction)
+            .await?;
+    assert_eq!(cross_tenant_update.rows_affected(), 0);
+    tenant_a_transaction.rollback().await?;
 
     store
         .put_principal(

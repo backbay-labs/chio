@@ -31,6 +31,8 @@ const LEASE_FENCING_MIGRATION_SQL: &str = include_str!("../migrations/0003_lease
 const HOSTED_AUTH_MIGRATION_SQL: &str = include_str!("../migrations/0004_hosted_auth.sql");
 const MARKET_AGGREGATE_MIGRATION_SQL: &str =
     include_str!("../migrations/0005_market_aggregates.sql");
+const TENANT_REGISTRY_RLS_MIGRATION_SQL: &str =
+    include_str!("../migrations/0006_tenant_registry_rls.sql");
 const MAX_TENANT_ID_BYTES: usize = 128;
 const MAX_JOB_ID_BYTES: usize = 256;
 const MAX_JOB_KIND_BYTES: usize = 96;
@@ -39,6 +41,17 @@ const MAX_ERROR_CODE_BYTES: usize = 128;
 const MAX_JOB_JSON_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CLAIM_BATCH: u32 = 100;
 const DEFAULT_MAX_JOBS_PER_TENANT: i64 = 100_000;
+const TENANT_SCOPED_TABLES: [&str; 9] = [
+    "chio_finding_market_tenants",
+    "chio_finding_market_jobs",
+    "chio_finding_market_principals",
+    "chio_finding_market_api_keys",
+    "chio_finding_market_dpop_nonces",
+    "chio_finding_market_capability_uses",
+    "chio_finding_market_security_events",
+    "chio_finding_market_aggregate_events",
+    "chio_finding_market_aggregate_heads",
+];
 
 #[derive(Debug, thiserror::Error)]
 pub enum HostedMarketStoreError {
@@ -275,6 +288,14 @@ impl PostgresFindingMarketStore {
         }
     }
 
+    #[cfg(feature = "postgres-integration")]
+    #[doc(hidden)]
+    pub async fn verify_runtime_boundary_for_integration_tests(
+        &self,
+    ) -> Result<(), HostedMarketStoreError> {
+        verify_runtime_role(&self.pool).await
+    }
+
     pub async fn migrate(&self) -> Result<(), HostedMarketStoreError> {
         sqlx::raw_sql(MIGRATION_SQL)
             .execute(&self.pool)
@@ -296,6 +317,10 @@ impl PostgresFindingMarketStore {
             .execute(&self.pool)
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        sqlx::raw_sql(TENANT_REGISTRY_RLS_MIGRATION_SQL)
+            .execute(&self.pool)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
         Ok(())
     }
 
@@ -305,15 +330,20 @@ impl PostgresFindingMarketStore {
         now: u64,
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
         let now = checked_i64(now, "tenant time")?;
+        let mut transaction = self.begin_tenant_scope(tenant).await?;
         let inserted = sqlx::query(
             "INSERT INTO chio_finding_market_tenants (tenant_id, created_at) VALUES ($1, $2) ON CONFLICT (tenant_id) DO NOTHING",
         )
         .bind(tenant.as_str())
         .bind(now)
-        .execute(&self.pool)
+        .execute(&mut *transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?
         .rows_affected();
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
         Ok(if inserted == 1 {
             HostedJobWriteOutcome::Inserted
         } else {
@@ -328,17 +358,22 @@ impl PostgresFindingMarketStore {
         tenant: &HostedTenantId,
         enabled: bool,
     ) -> Result<(), HostedMarketStoreError> {
+        let mut transaction = self.begin_tenant_scope(tenant).await?;
         let updated =
             sqlx::query("UPDATE chio_finding_market_tenants SET enabled = $2 WHERE tenant_id = $1")
                 .bind(tenant.as_str())
                 .bind(enabled)
-                .execute(&self.pool)
+                .execute(&mut *transaction)
                 .await
                 .map_err(|_| HostedMarketStoreError::Unavailable)?
                 .rows_affected();
         if updated != 1 {
             return Err(HostedMarketStoreError::NotFound);
         }
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
         Ok(())
     }
 
@@ -689,16 +724,7 @@ impl PostgresFindingMarketStore {
         &self,
         tenant: &HostedTenantId,
     ) -> Result<Transaction<'_, Postgres>, HostedMarketStoreError> {
-        let mut transaction = self
-            .pool
-            .begin()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        sqlx::query("SELECT set_config('chio.tenant_id', $1, TRUE)")
-            .bind(tenant.as_str())
-            .execute(&mut *transaction)
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let mut transaction = self.begin_tenant_scope(tenant).await?;
         let enabled = sqlx::query_scalar::<_, bool>(
             "SELECT enabled FROM chio_finding_market_tenants WHERE tenant_id = $1",
         )
@@ -710,6 +736,23 @@ impl PostgresFindingMarketStore {
         if !enabled {
             return Err(HostedMarketStoreError::TenantDisabled);
         }
+        Ok(transaction)
+    }
+
+    async fn begin_tenant_scope(
+        &self,
+        tenant: &HostedTenantId,
+    ) -> Result<Transaction<'_, Postgres>, HostedMarketStoreError> {
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        sqlx::query("SELECT set_config('chio.tenant_id', $1, TRUE)")
+            .bind(tenant.as_str())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
         Ok(transaction)
     }
 }
@@ -802,16 +845,117 @@ fn job_from_row(
 }
 
 async fn verify_runtime_role(pool: &PgPool) -> Result<(), HostedMarketStoreError> {
-    let row =
-        sqlx::query("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
-            .fetch_optional(pool)
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?
-            .ok_or(HostedMarketStoreError::Configuration)?;
+    let row = sqlx::query(
+        "SELECT role_catalog.rolsuper, role_catalog.rolbypassrls, role_catalog.rolcreaterole, role_catalog.rolcreatedb, role_catalog.rolreplication, role_catalog.rolinherit, EXISTS (SELECT 1 FROM pg_auth_members WHERE member = role_catalog.oid) FROM pg_roles AS role_catalog WHERE role_catalog.rolname = current_user",
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| HostedMarketStoreError::Unavailable)?
+    .ok_or(HostedMarketStoreError::Configuration)?;
     let is_superuser: bool = row.try_get(0).map_err(unavailable)?;
     let bypasses_rls: bool = row.try_get(1).map_err(unavailable)?;
-    if is_superuser || bypasses_rls {
+    let can_create_role: bool = row.try_get(2).map_err(unavailable)?;
+    let can_create_database: bool = row.try_get(3).map_err(unavailable)?;
+    let can_replicate: bool = row.try_get(4).map_err(unavailable)?;
+    let inherits_roles: bool = row.try_get(5).map_err(unavailable)?;
+    let has_role_memberships: bool = row.try_get(6).map_err(unavailable)?;
+    if is_superuser
+        || bypasses_rls
+        || can_create_role
+        || can_create_database
+        || can_replicate
+        || inherits_roles
+        || has_role_memberships
+    {
         return Err(HostedMarketStoreError::Configuration);
+    }
+    verify_runtime_database_privileges(pool).await?;
+    verify_runtime_rls_surface(pool).await?;
+    Ok(())
+}
+
+async fn verify_runtime_database_privileges(pool: &PgPool) -> Result<(), HostedMarketStoreError> {
+    let row = sqlx::query(
+        "SELECT has_database_privilege(current_user, current_database(), 'CREATE'), has_database_privilege(current_user, current_database(), 'TEMPORARY'), has_schema_privilege(current_user, current_schema(), 'CREATE'), current_setting('row_security')",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|_| HostedMarketStoreError::Unavailable)?;
+    let can_create_database_objects: bool = row.try_get(0).map_err(unavailable)?;
+    let can_create_temporary_objects: bool = row.try_get(1).map_err(unavailable)?;
+    let can_create_schema_objects: bool = row.try_get(2).map_err(unavailable)?;
+    let row_security: String = row.try_get(3).map_err(unavailable)?;
+    if can_create_database_objects
+        || can_create_temporary_objects
+        || can_create_schema_objects
+        || row_security != "on"
+    {
+        return Err(HostedMarketStoreError::Configuration);
+    }
+    let schemas: Vec<String> = sqlx::query_scalar("SELECT current_schemas(FALSE)")
+        .fetch_one(pool)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+    if schemas.len() != 1 {
+        return Err(HostedMarketStoreError::Configuration);
+    }
+    Ok(())
+}
+
+async fn verify_runtime_rls_surface(pool: &PgPool) -> Result<(), HostedMarketStoreError> {
+    let table_names = TENANT_SCOPED_TABLES.to_vec();
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            table_catalog.relname,
+            table_catalog.relrowsecurity,
+            table_catalog.relforcerowsecurity,
+            pg_get_userbyid(table_catalog.relowner) = current_user AS owned_by_runtime,
+            COUNT(policy_catalog.oid) AS policy_count,
+            BOOL_AND(
+                policy_catalog.polname = table_catalog.relname || '_tenant_isolation'
+                AND POSITION('chio.tenant_id' IN pg_get_expr(policy_catalog.polqual, policy_catalog.polrelid)) > 0
+                AND POSITION('tenant_id' IN pg_get_expr(policy_catalog.polqual, policy_catalog.polrelid)) > 0
+                AND POSITION('chio.tenant_id' IN pg_get_expr(policy_catalog.polwithcheck, policy_catalog.polrelid)) > 0
+                AND POSITION('tenant_id' IN pg_get_expr(policy_catalog.polwithcheck, policy_catalog.polrelid)) > 0
+            ) AS policy_is_bound
+        FROM pg_class AS table_catalog
+        JOIN pg_namespace AS namespace_catalog
+          ON namespace_catalog.oid = table_catalog.relnamespace
+        LEFT JOIN pg_policy AS policy_catalog
+          ON policy_catalog.polrelid = table_catalog.oid
+        WHERE namespace_catalog.nspname = current_schema()
+          AND table_catalog.relkind = 'r'
+          AND table_catalog.relname = ANY($1)
+        GROUP BY table_catalog.oid, table_catalog.relname,
+                 table_catalog.relrowsecurity, table_catalog.relforcerowsecurity,
+                 table_catalog.relowner
+        ORDER BY table_catalog.relname
+        "#,
+    )
+    .bind(&table_names)
+    .fetch_all(pool)
+    .await
+    .map_err(|_| HostedMarketStoreError::Unavailable)?;
+    if rows.len() != TENANT_SCOPED_TABLES.len() {
+        return Err(HostedMarketStoreError::Configuration);
+    }
+    for row in rows {
+        let name: String = row.try_get(0).map_err(unavailable)?;
+        let enabled: bool = row.try_get(1).map_err(unavailable)?;
+        let forced: bool = row.try_get(2).map_err(unavailable)?;
+        let owned_by_runtime: bool = row.try_get(3).map_err(unavailable)?;
+        let policy_count: i64 = row.try_get(4).map_err(unavailable)?;
+        let policy_is_bound: bool = row.try_get(5).map_err(unavailable)?;
+        if !TENANT_SCOPED_TABLES.contains(&name.as_str())
+            || !enabled
+            || !forced
+            || owned_by_runtime
+            || policy_count != 1
+            || !policy_is_bound
+        {
+            return Err(HostedMarketStoreError::Configuration);
+        }
     }
     Ok(())
 }
