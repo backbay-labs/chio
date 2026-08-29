@@ -201,7 +201,7 @@ decision = json.loads(decision_log.read_text(encoding="utf-8"))
 if profile_result.get("valid") is not True:
     raise SystemExit("hosted profile did not pass strict validation")
 expected_worker = {
-    "schema": "chio.finding.worker-tick.v2",
+    "schema": "chio.finding.worker-tick.v1",
     "ready": True,
     "tenantCount": 1,
     "tenantsVisited": 1,

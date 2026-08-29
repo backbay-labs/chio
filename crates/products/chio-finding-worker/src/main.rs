@@ -475,7 +475,7 @@ async fn run_tick(
     tenant_failures: &mut BTreeMap<HostedTenantId, TenantFailureState>,
 ) -> Result<WorkerTickReport, DaemonError> {
     let mut report = WorkerTickReport {
-        schema: "chio.finding.worker-tick.v2",
+        schema: "chio.finding.worker-tick.v1",
         worker_id: spec.worker_id.to_owned(),
         tenant_count: u32::try_from(spec.tenants.len()).map_err(|_| DaemonError::Execution)?,
         ..WorkerTickReport::default()
@@ -555,7 +555,7 @@ fn dependency_failure_report(
     error_code: &'static str,
 ) -> Result<WorkerTickReport, DaemonError> {
     Ok(WorkerTickReport {
-        schema: "chio.finding.worker-tick.v2",
+        schema: "chio.finding.worker-tick.v1",
         worker_id: worker_id.to_owned(),
         ready: false,
         dependency_error: Some(error_code),

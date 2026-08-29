@@ -29,7 +29,7 @@ use zeroize::Zeroize as _;
 
 use super::FindingMarketConfig;
 
-pub const FINDING_HOSTED_PROFILE_SCHEMA: &str = "chio.finding.hosted-operator-profile.v2";
+pub const FINDING_HOSTED_PROFILE_SCHEMA: &str = "chio.finding.hosted-operator-profile.v1";
 const MAX_I_JSON_INTEGER: u64 = (1_u64 << 53) - 1;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -297,7 +297,7 @@ pub struct FindingHostedReleaseProfile {
 }
 
 pub const FINDING_HOSTED_CANARY_OBSERVATION_SCHEMA: &str =
-    "chio.finding.hosted-canary-observation.v2";
+    "chio.finding.hosted-canary-observation.v1";
 const FINDING_HOSTED_CANARY_MAX_AGE_SECS: u64 = 300;
 const FINDING_HOSTED_CANARY_CLOCK_SKEW_SECS: u64 = 60;
 
