@@ -93,6 +93,47 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     store
         .verify_runtime_boundary_for_integration_tests()
         .await?;
+    sqlx::raw_sql(
+        r#"
+        DROP POLICY chio_finding_market_tenants_tenant_isolation
+            ON chio_finding_market_tenants;
+        CREATE POLICY chio_finding_market_tenants_tenant_isolation
+            ON chio_finding_market_tenants
+            USING (
+                tenant_id = NULLIF(current_setting('chio.tenant_id', TRUE), '')
+                OR TRUE
+            )
+            WITH CHECK (
+                tenant_id = NULLIF(current_setting('chio.tenant_id', TRUE), '')
+                OR TRUE
+            );
+        "#,
+    )
+    .execute(&admin_pool)
+    .await?;
+    assert!(matches!(
+        store.verify_runtime_boundary_for_integration_tests().await,
+        Err(HostedMarketStoreError::Configuration)
+    ));
+    sqlx::raw_sql(
+        r#"
+        DROP POLICY chio_finding_market_tenants_tenant_isolation
+            ON chio_finding_market_tenants;
+        CREATE POLICY chio_finding_market_tenants_tenant_isolation
+            ON chio_finding_market_tenants
+            USING (
+                tenant_id = NULLIF(current_setting('chio.tenant_id', TRUE), '')
+            )
+            WITH CHECK (
+                tenant_id = NULLIF(current_setting('chio.tenant_id', TRUE), '')
+            );
+        "#,
+    )
+    .execute(&admin_pool)
+    .await?;
+    store
+        .verify_runtime_boundary_for_integration_tests()
+        .await?;
 
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let tenant_a = HostedTenantId::new(format!("integration-a-{nonce}"))?;
