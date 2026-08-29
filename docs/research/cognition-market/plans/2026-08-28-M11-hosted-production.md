@@ -54,6 +54,16 @@ boundary. Job admission is linearized by a tenant advisory lock. Claims use
 workers at completion. A bounded retry budget ends in the terminal
 `exhausted` state, which is never claimable again.
 
+Every cognition-market aggregate family also has an append-only PostgreSQL
+journal. Findings, listings, admissions, purchases and terminals, failed
+deliveries, challenges and outcomes, liabilities, appeals, penalties,
+enforcement, settlement, status epochs, and audit rounds share a closed kind
+vocabulary. Each tenant-scoped event advances an optimistic revision fence,
+binds its canonical payload and predecessor in a domain-separated digest, and
+updates the head in the same transaction. Event identifiers replay only for
+the exact immutable event. Reads verify canonical payloads, event digests, and
+the complete predecessor chain before returning history.
+
 Firecracker jobs use a unique jail and cgroup. The worker verifies source
 images while copying them into the jail, configures a read-only root drive,
 omits all network interfaces, retains Firecracker's default seccomp policy,

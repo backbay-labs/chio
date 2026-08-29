@@ -4,8 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core_types::sha256_hex;
 use chio_finding_market_store_postgres::{
-    HostedJobState, HostedJobWriteOutcome, HostedMarketStoreError, HostedTenantId,
-    PostgresFindingMarketStore,
+    HostedAggregateKind, HostedJobState, HostedJobWriteOutcome, HostedMarketStoreError,
+    HostedTenantId, PostgresFindingMarketStore,
 };
 use sqlx::Row as _;
 
@@ -35,6 +35,8 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_dpop_nonces TO chio_market_runtime_test;
         GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_capability_uses TO chio_market_runtime_test;
         GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_security_events TO chio_market_runtime_test;
+        GRANT SELECT, INSERT, UPDATE ON chio_finding_market_aggregate_events TO chio_market_runtime_test;
+        GRANT SELECT, INSERT, UPDATE ON chio_finding_market_aggregate_heads TO chio_market_runtime_test;
         "#,
     )
     .execute(&admin_pool)
@@ -104,6 +106,93 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             .await?,
         HostedJobWriteOutcome::Inserted
     );
+
+    let aggregate_payload = br#"{"challengeId":"challenge-a","state":"submitted"}"#;
+    assert_eq!(
+        store
+            .append_aggregate_event(
+                &tenant_a,
+                HostedAggregateKind::Challenge,
+                "challenge-a",
+                "challenge-a-submitted",
+                "challenge.submitted",
+                0,
+                None,
+                aggregate_payload,
+                1_700_000_001,
+            )
+            .await?,
+        HostedJobWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store
+            .append_aggregate_event(
+                &tenant_a,
+                HostedAggregateKind::Challenge,
+                "challenge-a",
+                "challenge-a-submitted",
+                "challenge.submitted",
+                0,
+                None,
+                aggregate_payload,
+                1_700_000_001,
+            )
+            .await?,
+        HostedJobWriteOutcome::ExactReplay
+    );
+    let head = store
+        .aggregate_head(&tenant_a, HostedAggregateKind::Challenge, "challenge-a")
+        .await?
+        .ok_or("aggregate head missing")?;
+    assert_eq!(head.revision, 1);
+    assert!(store
+        .aggregate_head(&tenant_b, HostedAggregateKind::Challenge, "challenge-a")
+        .await?
+        .is_none());
+    let advanced_payload = br#"{"challengeId":"challenge-a","state":"evaluating"}"#;
+    store
+        .append_aggregate_event(
+            &tenant_a,
+            HostedAggregateKind::Challenge,
+            "challenge-a",
+            "challenge-a-evaluating",
+            "challenge.evaluating",
+            head.revision,
+            Some(&head.event_sha256),
+            advanced_payload,
+            1_700_000_002,
+        )
+        .await?;
+    let history = store
+        .aggregate_history(&tenant_a, HostedAggregateKind::Challenge, "challenge-a", 10)
+        .await?;
+    assert_eq!(history.len(), 2);
+    assert_eq!(
+        history[1].previous_event_sha256.as_deref(),
+        Some(history[0].event_sha256.as_str())
+    );
+    assert!(matches!(
+        store
+            .append_aggregate_event(
+                &tenant_a,
+                HostedAggregateKind::Challenge,
+                "challenge-a",
+                "challenge-a-stale",
+                "challenge.stale",
+                head.revision,
+                Some(&head.event_sha256),
+                advanced_payload,
+                1_700_000_003,
+            )
+            .await,
+        Err(HostedMarketStoreError::Conflict)
+    ));
+
+    let unscoped_aggregate_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM chio_finding_market_aggregate_events")
+            .fetch_one(&runtime_pool)
+            .await?;
+    assert_eq!(unscoped_aggregate_count, 0);
     assert_eq!(
         store
             .revoke_api_key_with_security_event(
