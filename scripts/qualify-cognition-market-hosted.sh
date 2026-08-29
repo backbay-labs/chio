@@ -123,6 +123,7 @@ run_gate strict-clippy \
     -- -D warnings
 run_gate codegen make codegen-check
 run_gate release-evidence cargo test -p chio-release-evidence --all-targets
+run_gate dependency-policy cargo deny check
 run_gate supply-chain cargo vet check --locked
 
 kvm_evidence_sha256=""

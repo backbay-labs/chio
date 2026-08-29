@@ -154,8 +154,9 @@ chio finding operator evaluate-canary \
 ## Qualification
 
 The ordinary hosted CI lane qualifies code, PostgreSQL 16.6, forced RLS,
-remote custody, settlement transports, and the worker boundary without making
-a production promotion claim:
+remote custody, settlement transports, the worker boundary, RustSec and
+duplicate-dependency policy, and cargo-vet attestations without making a
+production promotion claim:
 
 ```bash
 scripts/qualify-cognition-market-hosted.sh --code-only
