@@ -389,6 +389,15 @@ impl FirecrackerExecutor {
             || limits.wall_time_millis > configured_wall_millis
             || limits.output_bytes > self.inner.config.max_file_size_bytes
             || limits.open_files > self.inner.config.max_open_files
+            || !input_files_within_limit(
+                self.inner.config.max_file_size_bytes,
+                request.job.repository.archive_size_bytes,
+                request
+                    .job
+                    .input_artifacts
+                    .iter()
+                    .map(|artifact| artifact.size_bytes),
+            )
         {
             return Err(WorkerExecutionError::Configuration);
         }
@@ -413,6 +422,14 @@ impl FirecrackerExecutor {
             _permit: permit,
         })
     }
+}
+
+fn input_files_within_limit(
+    maximum: u64,
+    repository_size: u64,
+    artifact_sizes: impl IntoIterator<Item = u64>,
+) -> bool {
+    repository_size <= maximum && artifact_sizes.into_iter().all(|size| size <= maximum)
 }
 
 struct IdentityLease {
@@ -1407,6 +1424,13 @@ mod tests {
                 assert!(value.get("vsock").is_some());
             }
         }
+    }
+
+    #[test]
+    fn every_worker_input_obeys_the_host_file_ceiling() {
+        assert!(input_files_within_limit(10, 10, [1, 10]));
+        assert!(!input_files_within_limit(10, 11, [1, 2]));
+        assert!(!input_files_within_limit(10, 1, [2, 11]));
     }
 
     #[test]
