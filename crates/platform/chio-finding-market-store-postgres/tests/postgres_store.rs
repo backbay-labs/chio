@@ -243,6 +243,12 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     );
     assert!(matches!(
         store
+            .aggregate_history(&tenant_a, HostedAggregateKind::Challenge, "challenge-a", 1)
+            .await,
+        Err(HostedMarketStoreError::Capacity)
+    ));
+    assert!(matches!(
+        store
             .append_aggregate_event(
                 &tenant_a,
                 HostedAggregateKind::Challenge,
@@ -413,6 +419,17 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             .payload_sha256,
         sha256_hex(payload_b)
     );
+    store
+        .put_job(
+            &tenant_a,
+            "job-concurrent",
+            "finding.verify",
+            &"c".repeat(64),
+            br#"{"findingId":"concurrency-bound"}"#,
+            1_700_000_000,
+            1_700_000_009,
+        )
+        .await?;
 
     let first_lease = store
         .claim_due_jobs(&tenant_a, "worker-a", 1_700_000_010, 10, 1)
@@ -458,6 +475,24 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         completed.result_sha256.as_deref(),
         Some(sha256_hex(result).as_str())
     );
+    let second_lease = store
+        .claim_due_jobs(&tenant_a, "worker-b", 1_700_000_023, 10, 1)
+        .await?;
+    assert_eq!(second_lease.len(), 1);
+    assert_eq!(second_lease[0].job_id, "job-concurrent");
+    let second_claim = chio_finding_market_store_postgres::HostedJobLease::new(
+        "worker-b",
+        second_lease[0].lease_fence,
+    )?;
+    store
+        .complete_job(
+            &tenant_a,
+            "job-concurrent",
+            &second_claim,
+            result,
+            1_700_000_024,
+        )
+        .await?;
     store
         .put_job(
             &tenant_a,
@@ -465,12 +500,12 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             "finding.verify",
             &"b".repeat(64),
             br#"{"findingId":"terminal"}"#,
-            1_700_000_023,
-            1_700_000_023,
+            1_700_000_025,
+            1_700_000_025,
         )
         .await?;
     let exhausted_lease = store
-        .claim_due_jobs(&tenant_a, "worker-c", 1_700_000_024, 10, 1)
+        .claim_due_jobs(&tenant_a, "worker-c", 1_700_000_026, 10, 1)
         .await?;
     assert_eq!(exhausted_lease.len(), 1);
     let exhausted_claim = chio_finding_market_store_postgres::HostedJobLease::new(
@@ -483,7 +518,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             "job-exhausted",
             &exhausted_claim,
             "attempt_budget_exhausted",
-            1_700_000_025,
+            1_700_000_027,
         )
         .await?;
     let exhausted = store

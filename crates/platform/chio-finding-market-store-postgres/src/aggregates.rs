@@ -160,6 +160,9 @@ impl PostgresFindingMarketStore {
         let revision = expected_revision
             .checked_add(1)
             .ok_or(HostedMarketStoreError::Invalid("aggregate revision"))?;
+        if revision > u64::from(MAX_AGGREGATE_HISTORY) {
+            return Err(HostedMarketStoreError::Capacity);
+        }
         let revision_i64 = checked_i64(revision, "aggregate revision")?;
         let committed_at_i64 = checked_i64(committed_at, "aggregate commit time")?;
         let payload_sha256 = sha256_hex(payload_json);
@@ -333,6 +336,32 @@ impl PostgresFindingMarketStore {
             return Err(HostedMarketStoreError::Invalid("aggregate history limit"));
         }
         let mut transaction = self.begin_tenant(tenant).await?;
+        let head = sqlx::query(
+            r#"SELECT revision, event_sha256
+               FROM chio_finding_market_aggregate_heads
+               WHERE tenant_id = $1 AND aggregate_kind = $2 AND aggregate_id = $3
+               FOR SHARE"#,
+        )
+        .bind(tenant.as_str())
+        .bind(aggregate_kind.label())
+        .bind(aggregate_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let Some(head) = head else {
+            transaction
+                .commit()
+                .await
+                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            return Ok(Vec::new());
+        };
+        let head_revision = stored_u64(head.try_get(0).map_err(unavailable)?)?;
+        let head_digest: String = head.try_get(1).map_err(unavailable)?;
+        validate_digest(&head_digest, "durable aggregate head")
+            .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+        if head_revision > u64::from(limit) {
+            return Err(HostedMarketStoreError::Capacity);
+        }
         let rows = sqlx::query(
             r#"SELECT tenant_id, aggregate_kind, aggregate_id, revision,
                       event_id, event_kind, previous_event_sha256, payload_sha256,
@@ -356,7 +385,7 @@ impl PostgresFindingMarketStore {
             .iter()
             .map(|row| aggregate_event_from_row(tenant, row))
             .collect::<Result<Vec<_>, _>>()?;
-        verify_aggregate_history(&events)?;
+        verify_aggregate_history(&events, head_revision, &head_digest)?;
         Ok(events)
     }
 }
@@ -522,7 +551,16 @@ fn aggregate_event_from_row(
     })
 }
 
-fn verify_aggregate_history(events: &[HostedAggregateEvent]) -> Result<(), HostedMarketStoreError> {
+fn verify_aggregate_history(
+    events: &[HostedAggregateEvent],
+    head_revision: u64,
+    head_digest: &str,
+) -> Result<(), HostedMarketStoreError> {
+    if u64::try_from(events.len()) != Ok(head_revision)
+        || events.last().map(|event| event.event_sha256.as_str()) != Some(head_digest)
+    {
+        return Err(HostedMarketStoreError::DigestMismatch);
+    }
     for (index, event) in events.iter().enumerate() {
         let revision = u64::try_from(index)
             .ok()
@@ -614,10 +652,28 @@ mod tests {
         };
         let first = event(1, None);
         let second = event(2, Some(first.event_sha256.clone()));
-        assert!(verify_aggregate_history(&[first.clone(), second]).is_ok());
+        assert!(verify_aggregate_history(
+            &[first.clone(), second.clone()],
+            2,
+            &second.event_sha256,
+        )
+        .is_ok());
         assert!(
-            verify_aggregate_history(&[first.clone(), event(3, Some(first.event_sha256))]).is_err()
+            verify_aggregate_history(std::slice::from_ref(&first), 2, &second.event_sha256)
+                .is_err()
         );
-        assert!(verify_aggregate_history(&[event(1, Some("f".repeat(64)))]).is_err());
+        assert!(verify_aggregate_history(
+            &[first.clone(), event(3, Some(first.event_sha256))],
+            2,
+            &second.event_sha256,
+        )
+        .is_err());
+        let malformed = event(1, Some("f".repeat(64)));
+        assert!(verify_aggregate_history(
+            std::slice::from_ref(&malformed),
+            1,
+            &malformed.event_sha256,
+        )
+        .is_err());
     }
 }

@@ -487,6 +487,8 @@ impl PostgresFindingMarketStore {
             .map_err(|_| HostedMarketStoreError::Unavailable)
     }
 
+    /// Claim a bounded batch without exceeding `limit` active leases for the
+    /// tenant across all worker replicas.
     pub async fn claim_due_jobs(
         &self,
         tenant: &HostedTenantId,
@@ -511,6 +513,32 @@ impl PostgresFindingMarketStore {
             "lease_expires_at",
         )?;
         let mut transaction = self.begin_tenant(tenant).await?;
+        // The scan limit is also the tenant-wide active lease ceiling. Take a
+        // tenant-keyed transaction lock before counting and claiming so two
+        // worker replicas cannot each admit a full batch concurrently.
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 2))")
+            .bind(tenant.as_str())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let active_leases: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM chio_finding_market_jobs WHERE tenant_id = $1 AND state = 'leased' AND lease_expires_at > $2",
+        )
+        .bind(tenant.as_str())
+        .bind(now_i64)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let available_slots = i64::from(limit)
+            .checked_sub(active_leases)
+            .ok_or(HostedMarketStoreError::DigestMismatch)?;
+        if available_slots <= 0 {
+            transaction
+                .commit()
+                .await
+                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            return Ok(Vec::new());
+        }
         let rows = sqlx::query(
             r#"
             WITH due AS (
@@ -546,7 +574,7 @@ impl PostgresFindingMarketStore {
         .bind(worker_id)
         .bind(now_i64)
         .bind(lease_expires)
-        .bind(i64::from(limit))
+        .bind(available_slots)
         .fetch_all(&mut *transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?;
