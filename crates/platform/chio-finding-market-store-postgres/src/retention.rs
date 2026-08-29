@@ -3,7 +3,7 @@ use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes, sha256_hex};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
-use sqlx::{PgPool, Postgres, Row as _, Transaction};
+use sqlx::{Connection as _, PgConnection, PgPool, Postgres, Row as _, Transaction};
 
 use super::{
     checked_i64, checked_nonnegative_i64, runtime_boundary, stored_u64, unavailable,
@@ -257,134 +257,154 @@ impl PostgresFindingMarketRetention {
         }
         let envelope = signed_bytes(checkpoint, "journal checkpoint")?;
         let checkpoint_sha256 = sha256_hex(&envelope);
-        let mut transaction = self.begin_snapshot(tenant).await?;
-        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 10))")
-            .bind(format!("journal-checkpoint:{}", tenant.as_str()))
-            .execute(&mut *transaction)
+        let checkpoint_lock = format!("journal-checkpoint:{}", tenant.as_str());
+        let mut connection = self.pool.acquire().await.map_err(unavailable)?;
+        // A session advisory lock survives transaction rollback. Closing this
+        // dedicated connection on cancellation prevents a locked session from
+        // returning to the pool.
+        connection.close_on_drop();
+        sqlx::query("SELECT pg_advisory_lock(hashtextextended($1, 10))")
+            .bind(&checkpoint_lock)
+            .execute(&mut *connection)
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        if let Some(retained) = sqlx::query_scalar::<_, Vec<u8>>(
-            "SELECT checkpoint_envelope_json FROM chio_finding_market_journal_checkpoints WHERE tenant_id = $1 AND checkpoint_sha256 = $2",
-        )
-        .bind(tenant.as_str())
-        .bind(&checkpoint_sha256)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?
-        {
-            if retained != envelope {
+        let result = async {
+            let mut transaction = Self::begin_snapshot_on(&mut connection, tenant).await?;
+            if let Some(retained) = sqlx::query_scalar::<_, Vec<u8>>(
+                "SELECT checkpoint_envelope_json FROM chio_finding_market_journal_checkpoints WHERE tenant_id = $1 AND checkpoint_sha256 = $2",
+            )
+            .bind(tenant.as_str())
+            .bind(&checkpoint_sha256)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?
+            {
+                if retained != envelope {
+                    return Err(HostedMarketStoreError::Conflict);
+                }
+                transaction
+                    .commit()
+                    .await
+                    .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                return Ok(HostedJobWriteOutcome::ExactReplay);
+            }
+            let previous = sqlx::query(
+                "SELECT checkpoint_sha256, created_at FROM chio_finding_market_journal_checkpoints WHERE tenant_id = $1 ORDER BY created_at DESC, checkpoint_sha256 DESC LIMIT 1",
+            )
+            .bind(tenant.as_str())
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            match previous {
+                Some(row) => {
+                    let previous_sha256: String = row.try_get(0).map_err(unavailable)?;
+                    let previous_created_at = stored_u64(row.try_get(1).map_err(unavailable)?)?;
+                    if checkpoint.body.previous_checkpoint_sha256.as_deref()
+                        != Some(previous_sha256.as_str())
+                        || checkpoint.body.created_at <= previous_created_at
+                    {
+                        return Err(HostedMarketStoreError::Conflict);
+                    }
+                }
+                None if checkpoint.body.previous_checkpoint_sha256.is_none() => {}
+                None => return Err(HostedMarketStoreError::Conflict),
+            }
+            let migration_version: i64 = sqlx::query_scalar(
+                "SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations WHERE success = TRUE",
+            )
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            if stored_u64(migration_version)? != checkpoint.body.migration_version {
+                return Err(HostedMarketStoreError::MigrationDrift);
+            }
+            let configuration_revision: String = sqlx::query_scalar(
+                "SELECT configuration_revision FROM chio_finding_market_tenants WHERE tenant_id = $1",
+            )
+            .bind(tenant.as_str())
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(unavailable)?;
+            if configuration_revision != checkpoint.body.configuration_revision {
                 return Err(HostedMarketStoreError::Conflict);
             }
+            let aggregates = load_aggregate_members(&mut transaction, tenant).await?;
+            let terminal_jobs = load_terminal_job_members(&mut transaction, tenant).await?;
+            let latest_member_time = aggregates
+                .iter()
+                .map(|member| member.updated_at)
+                .chain(terminal_jobs.iter().map(|member| member.updated_at))
+                .max()
+                .unwrap_or(0);
+            if checkpoint.body.created_at < latest_member_time {
+                return Err(HostedMarketStoreError::Conflict);
+            }
+            if canonical_digest(&aggregates, "journal aggregate heads")?
+                != checkpoint.body.aggregate_heads_sha256
+                || canonical_digest(&terminal_jobs, "journal terminal jobs")?
+                    != checkpoint.body.terminal_jobs_sha256
+            {
+                return Err(HostedMarketStoreError::Conflict);
+            }
+            let mut members = Vec::with_capacity(aggregates.len() + terminal_jobs.len());
+            for member in &aggregates {
+                members.push(CheckpointMemberInsert {
+                    member_kind: HostedRetentionResourceKind::Aggregate.label(),
+                    member_family: member.aggregate_kind.label(),
+                    member_id: &member.aggregate_id,
+                    member_revision: member.revision,
+                    member_sha256: member.event_sha256.clone(),
+                });
+            }
+            for member in &terminal_jobs {
+                members.push(CheckpointMemberInsert {
+                    member_kind: HostedRetentionResourceKind::Job.label(),
+                    member_family: &member.job_kind,
+                    member_id: &member.job_id,
+                    member_revision: 0,
+                    member_sha256: canonical_digest(member, "terminal job member")?,
+                });
+            }
+            let members_json = serde_json::to_string(&members)
+                .map_err(|_| HostedMarketStoreError::Invalid("checkpoint members"))?;
+            let outcome: i16 = sqlx::query_scalar(
+                r#"SELECT chio_finding_market_append_journal_checkpoint(
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb
+                )"#,
+            )
+            .bind(tenant.as_str())
+            .bind(&checkpoint_sha256)
+            .bind(&checkpoint.body.aggregate_heads_sha256)
+            .bind(&checkpoint.body.terminal_jobs_sha256)
+            .bind(checkpoint.body.previous_checkpoint_sha256.as_deref())
+            .bind(migration_version)
+            .bind(&checkpoint.body.configuration_revision)
+            .bind(checkpoint.signer_key.to_hex())
+            .bind(&envelope)
+            .bind(checked_i64(checkpoint.body.created_at, "checkpoint time")?)
+            .bind(members_json)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            let outcome = retention_write_outcome(outcome)?;
             transaction
                 .commit()
                 .await
                 .map_err(|_| HostedMarketStoreError::Unavailable)?;
-            return Ok(HostedJobWriteOutcome::ExactReplay);
+            Ok(outcome)
         }
-        let previous = sqlx::query(
-            "SELECT checkpoint_sha256, created_at FROM chio_finding_market_journal_checkpoints WHERE tenant_id = $1 ORDER BY created_at DESC, checkpoint_sha256 DESC LIMIT 1",
-        )
-        .bind(tenant.as_str())
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        match previous {
-            Some(row) => {
-                let previous_sha256: String = row.try_get(0).map_err(unavailable)?;
-                let previous_created_at = stored_u64(row.try_get(1).map_err(unavailable)?)?;
-                if checkpoint.body.previous_checkpoint_sha256.as_deref()
-                    != Some(previous_sha256.as_str())
-                    || checkpoint.body.created_at <= previous_created_at
-                {
-                    return Err(HostedMarketStoreError::Conflict);
-                }
-            }
-            None if checkpoint.body.previous_checkpoint_sha256.is_none() => {}
-            None => return Err(HostedMarketStoreError::Conflict),
+        .await;
+        let unlocked: Result<bool, HostedMarketStoreError> =
+            sqlx::query_scalar("SELECT pg_advisory_unlock(hashtextextended($1, 10))")
+                .bind(&checkpoint_lock)
+                .fetch_one(&mut *connection)
+                .await
+                .map_err(unavailable);
+        let closed = connection.close().await.map_err(unavailable);
+        match (unlocked, closed) {
+            (Ok(true), Ok(())) => result,
+            _ => Err(HostedMarketStoreError::Unavailable),
         }
-        let migration_version: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations WHERE success = TRUE",
-        )
-        .fetch_one(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        if stored_u64(migration_version)? != checkpoint.body.migration_version {
-            return Err(HostedMarketStoreError::MigrationDrift);
-        }
-        let configuration_revision: String = sqlx::query_scalar(
-            "SELECT configuration_revision FROM chio_finding_market_tenants WHERE tenant_id = $1",
-        )
-        .bind(tenant.as_str())
-        .fetch_one(&mut *transaction)
-        .await
-        .map_err(unavailable)?;
-        if configuration_revision != checkpoint.body.configuration_revision {
-            return Err(HostedMarketStoreError::Conflict);
-        }
-        let aggregates = load_aggregate_members(&mut transaction, tenant).await?;
-        let terminal_jobs = load_terminal_job_members(&mut transaction, tenant).await?;
-        let latest_member_time = aggregates
-            .iter()
-            .map(|member| member.updated_at)
-            .chain(terminal_jobs.iter().map(|member| member.updated_at))
-            .max()
-            .unwrap_or(0);
-        if checkpoint.body.created_at < latest_member_time {
-            return Err(HostedMarketStoreError::Conflict);
-        }
-        if canonical_digest(&aggregates, "journal aggregate heads")?
-            != checkpoint.body.aggregate_heads_sha256
-            || canonical_digest(&terminal_jobs, "journal terminal jobs")?
-                != checkpoint.body.terminal_jobs_sha256
-        {
-            return Err(HostedMarketStoreError::Conflict);
-        }
-        let mut members = Vec::with_capacity(aggregates.len() + terminal_jobs.len());
-        for member in &aggregates {
-            members.push(CheckpointMemberInsert {
-                member_kind: HostedRetentionResourceKind::Aggregate.label(),
-                member_family: member.aggregate_kind.label(),
-                member_id: &member.aggregate_id,
-                member_revision: member.revision,
-                member_sha256: member.event_sha256.clone(),
-            });
-        }
-        for member in &terminal_jobs {
-            members.push(CheckpointMemberInsert {
-                member_kind: HostedRetentionResourceKind::Job.label(),
-                member_family: &member.job_kind,
-                member_id: &member.job_id,
-                member_revision: 0,
-                member_sha256: canonical_digest(member, "terminal job member")?,
-            });
-        }
-        let members_json = serde_json::to_string(&members)
-            .map_err(|_| HostedMarketStoreError::Invalid("checkpoint members"))?;
-        let outcome: i16 = sqlx::query_scalar(
-            r#"SELECT chio_finding_market_append_journal_checkpoint(
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb
-            )"#,
-        )
-        .bind(tenant.as_str())
-        .bind(&checkpoint_sha256)
-        .bind(&checkpoint.body.aggregate_heads_sha256)
-        .bind(&checkpoint.body.terminal_jobs_sha256)
-        .bind(checkpoint.body.previous_checkpoint_sha256.as_deref())
-        .bind(migration_version)
-        .bind(&checkpoint.body.configuration_revision)
-        .bind(checkpoint.signer_key.to_hex())
-        .bind(&envelope)
-        .bind(checked_i64(checkpoint.body.created_at, "checkpoint time")?)
-        .bind(members_json)
-        .fetch_one(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        let outcome = retention_write_outcome(outcome)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        Ok(outcome)
     }
 
     pub async fn journal_commitment(
@@ -857,6 +877,34 @@ impl PostgresFindingMarketRetention {
         tenant: &HostedTenantId,
     ) -> Result<Transaction<'_, Postgres>, HostedMarketStoreError> {
         let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            .execute(&mut *transaction)
+            .await
+            .map_err(unavailable)?;
+        sqlx::query("SELECT set_config('chio.tenant_id', $1, TRUE)")
+            .bind(tenant.as_str())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unavailable)?;
+        let enabled: Option<bool> = sqlx::query_scalar(
+            "SELECT enabled FROM chio_finding_market_tenants WHERE tenant_id = $1",
+        )
+        .bind(tenant.as_str())
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        match enabled {
+            Some(true) => Ok(transaction),
+            Some(false) => Err(HostedMarketStoreError::TenantDisabled),
+            None => Err(HostedMarketStoreError::NotFound),
+        }
+    }
+
+    async fn begin_snapshot_on<'connection>(
+        connection: &'connection mut PgConnection,
+        tenant: &HostedTenantId,
+    ) -> Result<Transaction<'connection, Postgres>, HostedMarketStoreError> {
+        let mut transaction = connection.begin().await.map_err(unavailable)?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
             .execute(&mut *transaction)
             .await

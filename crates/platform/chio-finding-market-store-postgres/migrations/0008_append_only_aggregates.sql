@@ -95,6 +95,16 @@ BEGIN
             0
         )
     );
+    IF EXISTS (
+        SELECT 1
+        FROM public.chio_finding_market_gc_receipts
+        WHERE tenant_id = requested_tenant_id
+          AND resource_kind = 'aggregate'
+          AND resource_family = requested_aggregate_kind
+          AND resource_id = requested_aggregate_id
+    ) THEN
+        RETURN 2;
+    END IF;
 
     SELECT * INTO existing_event
     FROM public.chio_finding_market_aggregate_events

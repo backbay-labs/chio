@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::PaymentRailMode;
+use super::{payment_identifier_is_valid, PaymentRailMode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -491,7 +491,7 @@ impl PaymentReleaseAuthorityBinding {
 }
 
 fn validate_payment_text(field: &str, value: &str) -> Result<(), PaymentJournalError> {
-    if value.is_empty() || value.len() > 512 || value.chars().any(char::is_control) {
+    if !payment_identifier_is_valid(value) {
         return Err(PaymentJournalError(format!(
             "{field} must contain 1 to 512 non-control bytes"
         )));

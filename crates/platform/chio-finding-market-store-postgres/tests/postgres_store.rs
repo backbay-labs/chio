@@ -1144,7 +1144,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     let archive_event = HostedMarketDomainEvent::from_artifact(
         archive_finding_id.clone(),
         "archive-finding-a-published",
-        &HostedMarketDomainArtifact::Finding(archive_finding),
+        &HostedMarketDomainArtifact::Finding(archive_finding.clone()),
     )?;
     store
         .append_domain_event(&tenant_a, &archive_event, 0, None, authority_now)
@@ -1253,7 +1253,19 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             .await,
         Err(HostedMarketStoreError::RetentionHeld)
     ));
-    let release = SignedExportEnvelope::sign(
+    let release_a = SignedExportEnvelope::sign(
+        HostedLegalHoldBody {
+            schema: HOSTED_LEGAL_HOLD_SCHEMA.to_owned(),
+            tenant_id: tenant_a.as_str().to_owned(),
+            hold_id: "legal-hold-a".to_owned(),
+            target: target.clone(),
+            action: HostedLegalHoldAction::Released,
+            previous_hold_event_sha256: Some(hold_sha256.clone()),
+            created_at: authority_now + 5,
+        },
+        &retention_signer,
+    )?;
+    let release_b = SignedExportEnvelope::sign(
         HostedLegalHoldBody {
             schema: HOSTED_LEGAL_HOLD_SCHEMA.to_owned(),
             tenant_id: tenant_a.as_str().to_owned(),
@@ -1261,26 +1273,171 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             target: target.clone(),
             action: HostedLegalHoldAction::Released,
             previous_hold_event_sha256: Some(hold_sha256),
-            created_at: authority_now + 5,
+            created_at: authority_now + 6,
         },
         &retention_signer,
     )?;
-    retention
-        .append_legal_hold(&tenant_a, &retention_signer.public_key(), &release)
-        .await?;
-    let gc_receipt = SignedExportEnvelope::sign(
+    let retention_public_key = retention_signer.public_key();
+    let (release_a_result, release_b_result) = tokio::join!(
+        retention.append_legal_hold(&tenant_a, &retention_public_key, &release_a),
+        retention.append_legal_hold(&tenant_a, &retention_public_key, &release_b),
+    );
+    assert!(matches!(
+        (release_a_result, release_b_result),
+        (
+            Ok(HostedJobWriteOutcome::Inserted),
+            Err(HostedMarketStoreError::Conflict)
+        ) | (
+            Err(HostedMarketStoreError::Conflict),
+            Ok(HostedJobWriteOutcome::Inserted)
+        )
+    ));
+
+    let advanced_archive_event = HostedMarketDomainEvent::from_artifact(
+        archive_finding_id.clone(),
+        "archive-finding-a-republished",
+        &HostedMarketDomainArtifact::Finding(archive_finding),
+    )?;
+    let archive_projection_sha256 = replicator.target_projection_sha256(&tenant_a).await?;
+    let archive_outbox_sequence = store.authority_state(&tenant_a).await?.last_outbox_sequence;
+    append_replication_check(
+        &replicator,
+        &tenant_a,
+        &source_signer,
+        ReplicationCheckSpec {
+            authority_epoch: 3,
+            through_sequence: archive_outbox_sequence,
+            projection_sha256: &archive_projection_sha256,
+            source_authority: HostedMarketAuthority::Postgres,
+            checked_at: authority_now + 7,
+        },
+    )
+    .await?;
+    assert_eq!(
+        store
+            .append_domain_event(
+                &tenant_a,
+                &advanced_archive_event,
+                archive_head.revision,
+                Some(&archive_head.event_sha256),
+                authority_now + 7,
+            )
+            .await?,
+        HostedJobWriteOutcome::Inserted
+    );
+    let stale_gc_receipt = SignedExportEnvelope::sign(
         HostedGcReceiptBody {
             schema: HOSTED_GC_RECEIPT_SCHEMA.to_owned(),
             tenant_id: tenant_a.as_str().to_owned(),
             archive_sha256: archive_sha256.clone(),
             target: target.clone(),
-            completed_at: authority_now + 6,
+            completed_at: authority_now + 8,
+        },
+        &retention_signer,
+    )?;
+    assert!(matches!(
+        retention
+            .garbage_collect(&tenant_a, &retention_public_key, &stale_gc_receipt)
+            .await,
+        Err(HostedMarketStoreError::Conflict)
+    ));
+    let advanced_archive_head = store
+        .aggregate_head(&tenant_a, HostedAggregateKind::Finding, &archive_finding_id)
+        .await?
+        .ok_or("advanced archive aggregate head missing")?;
+    assert_eq!(advanced_archive_head.revision, archive_head.revision + 1);
+
+    let advanced_commitment = retention.journal_commitment(&tenant_a).await?;
+    let advanced_checkpoint = SignedExportEnvelope::sign(
+        HostedJournalCheckpointBody {
+            schema: HOSTED_JOURNAL_CHECKPOINT_SCHEMA.to_owned(),
+            tenant_id: tenant_a.as_str().to_owned(),
+            aggregate_heads_sha256: advanced_commitment.aggregate_heads_sha256,
+            terminal_jobs_sha256: advanced_commitment.terminal_jobs_sha256,
+            previous_checkpoint_sha256: advanced_commitment.previous_checkpoint_sha256,
+            migration_version: advanced_commitment.migration_version,
+            configuration_revision: "integration-revision-1".to_owned(),
+            created_at: authority_now + 9,
+        },
+        &retention_signer,
+    )?;
+    retention
+        .append_journal_checkpoint(&tenant_a, &retention_public_key, &advanced_checkpoint)
+        .await?;
+    let advanced_checkpoint_sha256 = sha256_hex(&canonical_json_bytes(&advanced_checkpoint)?);
+    let advanced_target = HostedRetentionTarget {
+        resource_kind: HostedRetentionResourceKind::Aggregate,
+        resource_family: "finding".to_owned(),
+        resource_id: archive_finding_id.clone(),
+        resource_revision: advanced_archive_head.revision,
+        resource_sha256: advanced_archive_head.event_sha256.clone(),
+    };
+    let advanced_manifest_body = HostedArchiveManifestBody {
+        schema: HOSTED_ARCHIVE_MANIFEST_SCHEMA.to_owned(),
+        tenant_id: tenant_a.as_str().to_owned(),
+        target: advanced_target.clone(),
+        covered_checkpoint_sha256: advanced_checkpoint_sha256,
+        object_uri: "s3://chio-test/archive-finding-a-v2-a.json".to_owned(),
+        object_sha256: "b".repeat(64),
+        object_size: 256,
+        configuration_revision: "integration-revision-1".to_owned(),
+        previous_archive_sha256: Some(archive_sha256),
+        created_at: authority_now + 10,
+    };
+    let advanced_manifest_a =
+        SignedExportEnvelope::sign(advanced_manifest_body.clone(), &retention_signer)?;
+    let advanced_manifest_b = SignedExportEnvelope::sign(
+        HostedArchiveManifestBody {
+            object_uri: "s3://chio-test/archive-finding-a-v2-b.json".to_owned(),
+            object_sha256: "c".repeat(64),
+            created_at: authority_now + 11,
+            ..advanced_manifest_body
+        },
+        &retention_signer,
+    )?;
+    let (manifest_a_result, manifest_b_result) = tokio::join!(
+        retention.append_archive_manifest(&tenant_a, &retention_public_key, &advanced_manifest_a,),
+        retention.append_archive_manifest(&tenant_a, &retention_public_key, &advanced_manifest_b,),
+    );
+    let manifest_a_inserted = matches!(&manifest_a_result, Ok(HostedJobWriteOutcome::Inserted));
+    let manifest_b_inserted = matches!(&manifest_b_result, Ok(HostedJobWriteOutcome::Inserted));
+    assert!(
+        (manifest_a_inserted && matches!(manifest_b_result, Err(HostedMarketStoreError::Conflict)))
+            || (manifest_b_inserted
+                && matches!(manifest_a_result, Err(HostedMarketStoreError::Conflict)))
+    );
+    let retained_advanced_manifest = if manifest_a_inserted {
+        &advanced_manifest_a
+    } else {
+        &advanced_manifest_b
+    };
+    let advanced_archive_sha256 = sha256_hex(&canonical_json_bytes(retained_advanced_manifest)?);
+    let advanced_restore = SignedExportEnvelope::sign(
+        HostedRestoreVerificationBody {
+            schema: HOSTED_RESTORE_VERIFICATION_SCHEMA.to_owned(),
+            tenant_id: tenant_a.as_str().to_owned(),
+            archive_sha256: advanced_archive_sha256.clone(),
+            restored_resource_sha256: advanced_target.resource_sha256.clone(),
+            verified_at: authority_now + 12,
+        },
+        &retention_signer,
+    )?;
+    retention
+        .append_restore_verification(&tenant_a, &retention_public_key, &advanced_restore)
+        .await?;
+    let gc_receipt = SignedExportEnvelope::sign(
+        HostedGcReceiptBody {
+            schema: HOSTED_GC_RECEIPT_SCHEMA.to_owned(),
+            tenant_id: tenant_a.as_str().to_owned(),
+            archive_sha256: advanced_archive_sha256,
+            target: advanced_target.clone(),
+            completed_at: authority_now + 13,
         },
         &retention_signer,
     )?;
     assert_eq!(
         retention
-            .garbage_collect(&tenant_a, &retention_signer.public_key(), &gc_receipt,)
+            .garbage_collect(&tenant_a, &retention_public_key, &gc_receipt)
             .await?,
         HostedJobWriteOutcome::Inserted
     );
@@ -1288,6 +1445,51 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         .aggregate_head(&tenant_a, HostedAggregateKind::Finding, &archive_finding_id,)
         .await?
         .is_none());
+    let post_gc_projection_sha256 = replicator.target_projection_sha256(&tenant_a).await?;
+    let post_gc_outbox_sequence = store.authority_state(&tenant_a).await?.last_outbox_sequence;
+    append_replication_check(
+        &replicator,
+        &tenant_a,
+        &source_signer,
+        ReplicationCheckSpec {
+            authority_epoch: 3,
+            through_sequence: post_gc_outbox_sequence,
+            projection_sha256: &post_gc_projection_sha256,
+            source_authority: HostedMarketAuthority::Postgres,
+            checked_at: authority_now + 14,
+        },
+    )
+    .await?;
+    let resurrected_finding: Finding = serde_json::from_slice(&archive_payload)?;
+    let resurrected_event = HostedMarketDomainEvent::from_artifact(
+        archive_finding_id.clone(),
+        "archive-finding-a-after-gc",
+        &HostedMarketDomainArtifact::Finding(resurrected_finding),
+    )?;
+    assert!(matches!(
+        store
+            .append_domain_event(&tenant_a, &resurrected_event, 0, None, authority_now + 14,)
+            .await,
+        Err(HostedMarketStoreError::Conflict)
+    ));
+    let post_gc_hold = SignedExportEnvelope::sign(
+        HostedLegalHoldBody {
+            schema: HOSTED_LEGAL_HOLD_SCHEMA.to_owned(),
+            tenant_id: tenant_a.as_str().to_owned(),
+            hold_id: "legal-hold-after-gc".to_owned(),
+            target: advanced_target,
+            action: HostedLegalHoldAction::Placed,
+            previous_hold_event_sha256: None,
+            created_at: authority_now + 15,
+        },
+        &retention_signer,
+    )?;
+    assert!(matches!(
+        retention
+            .append_legal_hold(&tenant_a, &retention_public_key, &post_gc_hold)
+            .await,
+        Err(HostedMarketStoreError::Conflict)
+    ));
 
     let unscoped_aggregate_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM chio_finding_market_aggregate_events")
@@ -1621,29 +1823,134 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         .await?
         .is_empty());
     let terminal_commitment = retention.journal_commitment(&tenant_a).await?;
-    let terminal_checkpoint = SignedExportEnvelope::sign(
+    let terminal_checkpoint_body = HostedJournalCheckpointBody {
+        schema: HOSTED_JOURNAL_CHECKPOINT_SCHEMA.to_owned(),
+        tenant_id: tenant_a.as_str().to_owned(),
+        aggregate_heads_sha256: terminal_commitment.aggregate_heads_sha256,
+        terminal_jobs_sha256: terminal_commitment.terminal_jobs_sha256,
+        previous_checkpoint_sha256: terminal_commitment.previous_checkpoint_sha256,
+        migration_version: terminal_commitment.migration_version,
+        configuration_revision: "integration-revision-1".to_owned(),
+        created_at: authority_now + 20,
+    };
+    let terminal_checkpoint_a =
+        SignedExportEnvelope::sign(terminal_checkpoint_body.clone(), &retention_signer)?;
+    let terminal_checkpoint_b = SignedExportEnvelope::sign(
         HostedJournalCheckpointBody {
-            schema: HOSTED_JOURNAL_CHECKPOINT_SCHEMA.to_owned(),
+            created_at: authority_now + 21,
+            ..terminal_checkpoint_body
+        },
+        &retention_signer,
+    )?;
+    let (checkpoint_a_result, checkpoint_b_result) = tokio::join!(
+        retention.append_journal_checkpoint(
+            &tenant_a,
+            &retention_public_key,
+            &terminal_checkpoint_a,
+        ),
+        retention.append_journal_checkpoint(
+            &tenant_a,
+            &retention_public_key,
+            &terminal_checkpoint_b,
+        ),
+    );
+    let checkpoint_a_inserted = matches!(&checkpoint_a_result, Ok(HostedJobWriteOutcome::Inserted));
+    let checkpoint_b_inserted = matches!(&checkpoint_b_result, Ok(HostedJobWriteOutcome::Inserted));
+    assert!(
+        (checkpoint_a_inserted
+            && matches!(&checkpoint_b_result, Err(HostedMarketStoreError::Conflict)))
+            || (checkpoint_b_inserted
+                && matches!(&checkpoint_a_result, Err(HostedMarketStoreError::Conflict)))
+    );
+    let terminal_checkpoint = if checkpoint_a_inserted {
+        &terminal_checkpoint_a
+    } else {
+        &terminal_checkpoint_b
+    };
+    let terminal_checkpoint_sha256 = sha256_hex(&canonical_json_bytes(terminal_checkpoint)?);
+    let terminal_job_sha256: String = sqlx::query_scalar(
+        r#"SELECT member_sha256
+           FROM chio_finding_market_journal_checkpoint_members
+           WHERE tenant_id = $1 AND checkpoint_sha256 = $2
+             AND member_kind = 'job' AND member_family = $3
+             AND member_id = $4 AND member_revision = 0"#,
+    )
+    .bind(tenant_a.as_str())
+    .bind(&terminal_checkpoint_sha256)
+    .bind("finding.purchase")
+    .bind("job-1")
+    .fetch_one(&admin_pool)
+    .await?;
+    let terminal_job_target = HostedRetentionTarget {
+        resource_kind: HostedRetentionResourceKind::Job,
+        resource_family: "finding.purchase".to_owned(),
+        resource_id: "job-1".to_owned(),
+        resource_revision: 0,
+        resource_sha256: terminal_job_sha256,
+    };
+    let terminal_job_manifest = SignedExportEnvelope::sign(
+        HostedArchiveManifestBody {
+            schema: HOSTED_ARCHIVE_MANIFEST_SCHEMA.to_owned(),
             tenant_id: tenant_a.as_str().to_owned(),
-            aggregate_heads_sha256: terminal_commitment.aggregate_heads_sha256,
-            terminal_jobs_sha256: terminal_commitment.terminal_jobs_sha256,
-            previous_checkpoint_sha256: terminal_commitment.previous_checkpoint_sha256,
-            migration_version: terminal_commitment.migration_version,
+            target: terminal_job_target.clone(),
+            covered_checkpoint_sha256: terminal_checkpoint_sha256,
+            object_uri: "s3://chio-test/job-1.json".to_owned(),
+            object_sha256: "d".repeat(64),
+            object_size: 128,
             configuration_revision: "integration-revision-1".to_owned(),
-            created_at: authority_now + 7,
+            previous_archive_sha256: None,
+            created_at: authority_now + 22,
+        },
+        &retention_signer,
+    )?;
+    retention
+        .append_archive_manifest(&tenant_a, &retention_public_key, &terminal_job_manifest)
+        .await?;
+    let terminal_job_archive_sha256 = sha256_hex(&canonical_json_bytes(&terminal_job_manifest)?);
+    let terminal_job_restore = SignedExportEnvelope::sign(
+        HostedRestoreVerificationBody {
+            schema: HOSTED_RESTORE_VERIFICATION_SCHEMA.to_owned(),
+            tenant_id: tenant_a.as_str().to_owned(),
+            archive_sha256: terminal_job_archive_sha256.clone(),
+            restored_resource_sha256: terminal_job_target.resource_sha256.clone(),
+            verified_at: authority_now + 23,
+        },
+        &retention_signer,
+    )?;
+    retention
+        .append_restore_verification(&tenant_a, &retention_public_key, &terminal_job_restore)
+        .await?;
+    let terminal_job_gc = SignedExportEnvelope::sign(
+        HostedGcReceiptBody {
+            schema: HOSTED_GC_RECEIPT_SCHEMA.to_owned(),
+            tenant_id: tenant_a.as_str().to_owned(),
+            archive_sha256: terminal_job_archive_sha256,
+            target: terminal_job_target,
+            completed_at: authority_now + 24,
         },
         &retention_signer,
     )?;
     assert_eq!(
         retention
-            .append_journal_checkpoint(
-                &tenant_a,
-                &retention_signer.public_key(),
-                &terminal_checkpoint,
-            )
+            .garbage_collect(&tenant_a, &retention_public_key, &terminal_job_gc)
             .await?,
         HostedJobWriteOutcome::Inserted
     );
+    assert!(store.get_job(&tenant_a, "job-1").await?.is_none());
+    assert!(matches!(
+        store
+            .put_job(
+                &tenant_a,
+                "job-1",
+                "finding.purchase",
+                &request,
+                payload_a,
+                authority_now + 25,
+                authority_now + 25,
+            )
+            .await,
+        Err(HostedMarketStoreError::Conflict)
+    ));
     store.set_tenant_enabled(&tenant_a, false).await?;
     assert!(matches!(
         store.get_job(&tenant_a, "job-1").await,

@@ -116,6 +116,7 @@ const LEGACY_MIGRATIONS: &[(i64, &str, &str)] = &[
 const MAX_TENANT_ID_BYTES: usize = 128;
 const MAX_JOB_ID_BYTES: usize = 256;
 const MAX_JOB_KIND_BYTES: usize = 96;
+const GC_JOB_TOMBSTONE_CONSTRAINT: &str = "chio_finding_market_jobs_gc_tombstone_v1";
 const MAX_LEASE_OWNER_BYTES: usize = 256;
 const MAX_ERROR_CODE_BYTES: usize = 128;
 const MAX_JOB_JSON_BYTES: usize = 4 * 1024 * 1024;
@@ -664,7 +665,7 @@ impl PostgresFindingMarketStore {
         .bind(now)
         .execute(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(map_job_insert_error)?;
         transaction
             .commit()
             .await
@@ -813,6 +814,17 @@ impl PostgresFindingMarketStore {
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
         Ok(transaction)
+    }
+}
+
+fn map_job_insert_error(error: sqlx::Error) -> HostedMarketStoreError {
+    match &error {
+        sqlx::Error::Database(database_error)
+            if database_error.constraint() == Some(GC_JOB_TOMBSTONE_CONSTRAINT) =>
+        {
+            HostedMarketStoreError::Conflict
+        }
+        _ => HostedMarketStoreError::Unavailable,
     }
 }
 

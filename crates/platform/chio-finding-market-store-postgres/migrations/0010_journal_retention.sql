@@ -54,6 +54,16 @@ CREATE TABLE chio_finding_market_journal_checkpoints (
     )
 );
 
+CREATE UNIQUE INDEX chio_finding_market_journal_checkpoints_genesis_v1
+ON chio_finding_market_journal_checkpoints (tenant_id)
+WHERE previous_checkpoint_sha256 IS NULL;
+
+CREATE UNIQUE INDEX chio_finding_market_journal_checkpoints_successor_v1
+ON chio_finding_market_journal_checkpoints (
+    tenant_id, previous_checkpoint_sha256
+)
+WHERE previous_checkpoint_sha256 IS NOT NULL;
+
 CREATE TABLE chio_finding_market_journal_checkpoint_members (
     tenant_id TEXT NOT NULL,
     checkpoint_sha256 CHAR(64) NOT NULL,
@@ -127,6 +137,19 @@ CREATE TABLE chio_finding_market_archive_manifests (
     )
 );
 
+CREATE UNIQUE INDEX chio_finding_market_archive_manifests_genesis_v1
+ON chio_finding_market_archive_manifests (
+    tenant_id, resource_kind, resource_family, resource_id
+)
+WHERE previous_archive_sha256 IS NULL;
+
+CREATE UNIQUE INDEX chio_finding_market_archive_manifests_successor_v1
+ON chio_finding_market_archive_manifests (
+    tenant_id, resource_kind, resource_family, resource_id,
+    previous_archive_sha256
+)
+WHERE previous_archive_sha256 IS NOT NULL;
+
 CREATE TABLE chio_finding_market_legal_hold_events (
     tenant_id TEXT NOT NULL REFERENCES chio_finding_market_tenants(tenant_id),
     hold_event_sha256 CHAR(64) NOT NULL,
@@ -164,6 +187,16 @@ CREATE TABLE chio_finding_market_legal_hold_events (
         octet_length(hold_envelope_json) BETWEEN 1 AND 4194304
     )
 );
+
+CREATE UNIQUE INDEX chio_finding_market_legal_hold_events_genesis_v1
+ON chio_finding_market_legal_hold_events (tenant_id, hold_id)
+WHERE previous_hold_event_sha256 IS NULL;
+
+CREATE UNIQUE INDEX chio_finding_market_legal_hold_events_successor_v1
+ON chio_finding_market_legal_hold_events (
+    tenant_id, hold_id, previous_hold_event_sha256
+)
+WHERE previous_hold_event_sha256 IS NOT NULL;
 
 CREATE TABLE chio_finding_market_restore_verifications (
     tenant_id TEXT NOT NULL REFERENCES chio_finding_market_tenants(tenant_id),
@@ -235,6 +268,43 @@ CREATE TABLE chio_finding_market_gc_receipts (
     )
 );
 
+CREATE FUNCTION chio_finding_market_reject_gc_job_resurrection()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+BEGIN
+    IF NEW.tenant_id IS NULL
+        OR NEW.tenant_id <> NULLIF(current_setting('chio.tenant_id', TRUE), '')
+    THEN
+        RAISE EXCEPTION 'tenant context does not match job insertion'
+            USING ERRCODE = '42501';
+    END IF;
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id, 0));
+    IF EXISTS (
+        SELECT 1
+        FROM public.chio_finding_market_gc_receipts
+        WHERE tenant_id = NEW.tenant_id
+          AND resource_kind = 'job'
+          AND resource_family = NEW.job_kind
+          AND resource_id = NEW.job_id
+    ) THEN
+        RAISE EXCEPTION 'garbage-collected job identity cannot be reused'
+            USING ERRCODE = '23514',
+                  CONSTRAINT = 'chio_finding_market_jobs_gc_tombstone_v1';
+    END IF;
+    RETURN NEW;
+END
+$function$;
+
+CREATE TRIGGER chio_finding_market_jobs_gc_tombstone
+BEFORE INSERT ON chio_finding_market_jobs
+FOR EACH ROW EXECUTE FUNCTION chio_finding_market_reject_gc_job_resurrection();
+
+REVOKE ALL ON FUNCTION chio_finding_market_reject_gc_job_resurrection()
+FROM PUBLIC;
+
 DO $rls$
 DECLARE
     table_name TEXT;
@@ -283,6 +353,8 @@ SET search_path = pg_catalog, public
 AS $function$
 DECLARE
     archive_row public.chio_finding_market_archive_manifests%ROWTYPE;
+    current_aggregate_revision BIGINT;
+    current_aggregate_sha256 TEXT;
     removed_count BIGINT;
 BEGIN
     IF requested_tenant_id IS NULL
@@ -290,6 +362,30 @@ BEGIN
     THEN
         RAISE EXCEPTION 'tenant context does not match retention request'
             USING ERRCODE = '42501';
+    END IF;
+    IF requested_resource_kind = 'aggregate' THEN
+        PERFORM pg_advisory_xact_lock(
+            hashtextextended(
+                'chio.finding.hosted.aggregate-lock.v1:'
+                    || requested_tenant_id || ':' || requested_resource_family
+                    || ':' || requested_resource_id,
+                0
+            )
+        );
+    ELSIF requested_resource_kind = 'job' THEN
+        PERFORM pg_advisory_xact_lock(
+            hashtextextended(requested_tenant_id, 0)
+        );
+        PERFORM pg_advisory_xact_lock(
+            hashtextextended(
+                'chio.finding.hosted.retention-job-lock.v1:'
+                    || requested_tenant_id || ':' || requested_resource_family
+                    || ':' || requested_resource_id,
+                0
+            )
+        );
+    ELSE
+        RETURN 2;
     END IF;
     SELECT * INTO archive_row
     FROM public.chio_finding_market_archive_manifests
@@ -370,6 +466,19 @@ BEGIN
           AND state IN ('completed', 'exhausted');
         GET DIAGNOSTICS removed_count = ROW_COUNT;
     ELSIF requested_resource_kind = 'aggregate' THEN
+        SELECT revision, event_sha256
+        INTO current_aggregate_revision, current_aggregate_sha256
+        FROM public.chio_finding_market_aggregate_heads
+        WHERE tenant_id = requested_tenant_id
+          AND aggregate_kind = requested_resource_family
+          AND aggregate_id = requested_resource_id
+        FOR UPDATE;
+        IF NOT FOUND
+            OR current_aggregate_revision <> requested_resource_revision
+            OR current_aggregate_sha256 IS DISTINCT FROM requested_resource_sha256
+        THEN
+            RETURN 2;
+        END IF;
         DELETE FROM public.chio_finding_market_aggregate_checkpoints
         WHERE tenant_id = requested_tenant_id
           AND aggregate_kind = requested_resource_family
@@ -428,6 +537,7 @@ AS $function$
 DECLARE
     retained_envelope BYTEA;
     inserted_members BIGINT;
+    previous_checkpoint public.chio_finding_market_journal_checkpoints%ROWTYPE;
 BEGIN
     IF requested_tenant_id IS NULL
         OR requested_tenant_id <> NULLIF(current_setting('chio.tenant_id', TRUE), '')
@@ -436,6 +546,9 @@ BEGIN
         RAISE EXCEPTION 'invalid journal checkpoint request'
             USING ERRCODE = '42501';
     END IF;
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended('journal-checkpoint:' || requested_tenant_id, 10)
+    );
     SELECT checkpoint_envelope_json INTO retained_envelope
     FROM public.chio_finding_market_journal_checkpoints
     WHERE tenant_id = requested_tenant_id
@@ -444,6 +557,20 @@ BEGIN
         IF retained_envelope = requested_checkpoint_envelope_json THEN
             RETURN 1;
         END IF;
+        RETURN 2;
+    END IF;
+    SELECT * INTO previous_checkpoint
+    FROM public.chio_finding_market_journal_checkpoints
+    WHERE tenant_id = requested_tenant_id
+    ORDER BY created_at DESC, checkpoint_sha256 DESC
+    LIMIT 1;
+    IF FOUND THEN
+        IF requested_previous_checkpoint_sha256 IS DISTINCT FROM previous_checkpoint.checkpoint_sha256
+            OR requested_created_at <= previous_checkpoint.created_at
+        THEN
+            RETURN 2;
+        END IF;
+    ELSIF requested_previous_checkpoint_sha256 IS NOT NULL THEN
         RETURN 2;
     END IF;
     INSERT INTO public.chio_finding_market_journal_checkpoints (
@@ -504,6 +631,7 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $function$
 DECLARE
+    previous_archive public.chio_finding_market_archive_manifests%ROWTYPE;
     retained_envelope BYTEA;
 BEGIN
     IF requested_tenant_id IS NULL
@@ -511,6 +639,27 @@ BEGIN
     THEN
         RAISE EXCEPTION 'invalid archive manifest request'
             USING ERRCODE = '42501';
+    END IF;
+    IF requested_resource_kind = 'aggregate' THEN
+        PERFORM pg_advisory_xact_lock(
+            hashtextextended(
+                'chio.finding.hosted.aggregate-lock.v1:'
+                    || requested_tenant_id || ':' || requested_resource_family
+                    || ':' || requested_resource_id,
+                0
+            )
+        );
+    ELSIF requested_resource_kind = 'job' THEN
+        PERFORM pg_advisory_xact_lock(
+            hashtextextended(
+                'chio.finding.hosted.retention-job-lock.v1:'
+                    || requested_tenant_id || ':' || requested_resource_family
+                    || ':' || requested_resource_id,
+                0
+            )
+        );
+    ELSE
+        RETURN 2;
     END IF;
     SELECT archive_envelope_json INTO retained_envelope
     FROM public.chio_finding_market_archive_manifests
@@ -520,6 +669,23 @@ BEGIN
         IF retained_envelope = requested_archive_envelope_json THEN
             RETURN 1;
         END IF;
+        RETURN 2;
+    END IF;
+    SELECT * INTO previous_archive
+    FROM public.chio_finding_market_archive_manifests
+    WHERE tenant_id = requested_tenant_id
+      AND resource_kind = requested_resource_kind
+      AND resource_family = requested_resource_family
+      AND resource_id = requested_resource_id
+    ORDER BY created_at DESC, archive_sha256 DESC
+    LIMIT 1;
+    IF FOUND THEN
+        IF requested_previous_archive_sha256 IS DISTINCT FROM previous_archive.archive_sha256
+            OR requested_created_at <= previous_archive.created_at
+        THEN
+            RETURN 2;
+        END IF;
+    ELSIF requested_previous_archive_sha256 IS NOT NULL THEN
         RETURN 2;
     END IF;
     INSERT INTO public.chio_finding_market_archive_manifests (
@@ -560,6 +726,7 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $function$
 DECLARE
+    previous_hold public.chio_finding_market_legal_hold_events%ROWTYPE;
     retained_envelope BYTEA;
 BEGIN
     IF requested_tenant_id IS NULL
@@ -567,6 +734,27 @@ BEGIN
     THEN
         RAISE EXCEPTION 'invalid legal hold request'
             USING ERRCODE = '42501';
+    END IF;
+    IF requested_resource_kind = 'aggregate' THEN
+        PERFORM pg_advisory_xact_lock(
+            hashtextextended(
+                'chio.finding.hosted.aggregate-lock.v1:'
+                    || requested_tenant_id || ':' || requested_resource_family
+                    || ':' || requested_resource_id,
+                0
+            )
+        );
+    ELSIF requested_resource_kind = 'job' THEN
+        PERFORM pg_advisory_xact_lock(
+            hashtextextended(
+                'chio.finding.hosted.retention-job-lock.v1:'
+                    || requested_tenant_id || ':' || requested_resource_family
+                    || ':' || requested_resource_id,
+                0
+            )
+        );
+    ELSE
+        RETURN 2;
     END IF;
     SELECT hold_envelope_json INTO retained_envelope
     FROM public.chio_finding_market_legal_hold_events
@@ -576,6 +764,37 @@ BEGIN
         IF retained_envelope = requested_hold_envelope_json THEN
             RETURN 1;
         END IF;
+        RETURN 2;
+    END IF;
+    IF EXISTS (
+        SELECT 1
+        FROM public.chio_finding_market_gc_receipts
+        WHERE tenant_id = requested_tenant_id
+          AND resource_kind = requested_resource_kind
+          AND resource_family = requested_resource_family
+          AND resource_id = requested_resource_id
+    ) THEN
+        RETURN 2;
+    END IF;
+    SELECT * INTO previous_hold
+    FROM public.chio_finding_market_legal_hold_events
+    WHERE tenant_id = requested_tenant_id
+      AND hold_id = requested_hold_id
+    ORDER BY created_at DESC, hold_event_sha256 DESC
+    LIMIT 1;
+    IF FOUND THEN
+        IF requested_previous_hold_event_sha256 IS DISTINCT FROM previous_hold.hold_event_sha256
+            OR requested_resource_kind <> previous_hold.resource_kind
+            OR requested_resource_family <> previous_hold.resource_family
+            OR requested_resource_id <> previous_hold.resource_id
+            OR requested_action = previous_hold.action
+            OR requested_created_at <= previous_hold.created_at
+        THEN
+            RETURN 2;
+        END IF;
+    ELSIF requested_action <> 'placed'
+        OR requested_previous_hold_event_sha256 IS NOT NULL
+    THEN
         RETURN 2;
     END IF;
     INSERT INTO public.chio_finding_market_legal_hold_events (
