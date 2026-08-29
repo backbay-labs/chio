@@ -83,6 +83,20 @@ triggers = [
 seeds    = "fuzz/corpus/federation_trust_establishment"
 notes    = "Kernel trust-establishment envelopes, peer pins, freshness, and fail-closed resolution."
 
+[targets.finding_worker_protocol]
+crate    = "chio-finding-worker"
+path     = "fuzz/fuzz_targets/finding_worker_protocol.rs"
+triggers = [
+    "crates/platform/chio-finding-worker/**",
+    "crates/platform/chio-finding-market-store-postgres/**",
+    "crates/products/chio-finding-worker/**",
+    "spec/schemas/economy/finding-worker-*.schema.json",
+    "fuzz/fuzz_targets/finding_worker_protocol.rs",
+    "fuzz/corpus/finding_worker_protocol/**",
+]
+seeds    = "fuzz/corpus/finding_worker_protocol"
+notes    = "Hosted worker capability, job, request, transfer, result, and attestation protocol validation."
+
 [targets.underwriting_policy_input]
 crate    = "chio-underwriting"
 path     = "fuzz/fuzz_targets/underwriting_policy_input.rs"

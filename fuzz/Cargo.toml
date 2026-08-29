@@ -38,6 +38,7 @@ chio-core-types = { path = "../crates/core/chio-core-types" }
 chio-data-guards = { path = "../crates/guards/chio-data-guards" }
 chio-eval-receipt = { path = "../crates/sdk/chio-eval-receipt" }
 chio-federation = { path = "../crates/trust/chio-federation" }
+chio-finding-worker = { path = "../crates/platform/chio-finding-worker" }
 chio-guards = { path = "../crates/guards/chio-guards" }
 chio-kernel = { path = "../crates/kernel/chio-kernel" }
 chio-manifest = { path = "../crates/platform/chio-manifest" }
@@ -206,6 +207,13 @@ bench = false
 [[bin]]
 name = "federation_trust_establishment"
 path = "fuzz_targets/federation_trust_establishment.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "finding_worker_protocol"
+path = "fuzz_targets/finding_worker_protocol.rs"
 test = false
 doc = false
 bench = false

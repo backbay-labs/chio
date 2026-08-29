@@ -30,6 +30,7 @@ const CORPUS_SMOKE_TARGETS: &[&str] = &[
     "did_resolve",
     "eval_receipt_bundle",
     "federation_trust_establishment",
+    "finding_worker_protocol",
     "jwt_vc_verify",
     "mcp_envelope_decode",
     "oid4vp_presentation",
@@ -315,6 +316,12 @@ fn federation_trust_establishment_smoke() {
         "federation_trust_establishment",
         federation_trust_establishment,
     );
+}
+
+#[test]
+fn finding_worker_protocol_smoke() {
+    use chio_fuzz::entries::finding_worker_protocol;
+    assert_seed_floor("finding_worker_protocol", finding_worker_protocol);
 }
 
 #[test]

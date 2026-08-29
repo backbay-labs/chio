@@ -139,6 +139,7 @@ jobs:
           - fuzz_sql_parser
           - fuzz_merkle_checkpoint
           - federation_trust_establishment
+          - finding_worker_protocol
           - underwriting_policy_input
           - revocation_oracle_merkle
           - fuzz_tool_action

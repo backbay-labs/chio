@@ -36,6 +36,7 @@ TARGETS=(
     capability_receipt
     manifest_roundtrip
     federation_trust_establishment
+    finding_worker_protocol
     underwriting_policy_input
     fuzz_policy_parse_compile
     policy_analyze

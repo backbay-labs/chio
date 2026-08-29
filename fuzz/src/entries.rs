@@ -5,6 +5,11 @@ use chio_federation::trust_establishment::{
     FederationPeer, HandshakeChallenge, KernelTrustExchange, KernelTrustExchangeConfig,
     PeerHandshakeEnvelope,
 };
+use chio_finding_worker::{
+    FindingWorkerAttestedResult, FindingWorkerCapabilityBody, FindingWorkerInputDescriptor,
+    FindingWorkerInputEnd, FindingWorkerJobSpec, FindingWorkerRequest, FindingWorkerResult,
+    SignedFindingWorkerCapability, SignedFindingWorkerResult,
+};
 use chio_underwriting::{
     build_underwriting_decision_artifact, compute_marketplace_credit_limit,
     evaluate_underwriting_policy_input, price_premium, LookbackWindow,
@@ -17,6 +22,49 @@ use chio_underwriting::{
 pub fn eval_receipt_bundle(data: &[u8]) {
     if let Ok(bundle_json) = core::str::from_utf8(data) {
         let _ = chio_eval_receipt::verify_bundle(bundle_json);
+    }
+}
+
+/// Exercise every untrusted canonical-JSON shape accepted at the isolated
+/// worker boundary. Parsing success is never sufficient: each shape that has
+/// an independent invariant validator is driven through it before any
+/// reserialization path.
+pub fn finding_worker_protocol(data: &[u8]) {
+    if let Ok(capability) = serde_json::from_slice::<FindingWorkerCapabilityBody>(data) {
+        let _ = capability.validate();
+        let _ = serde_json::to_vec(&capability);
+    }
+    if let Ok(capability) = serde_json::from_slice::<SignedFindingWorkerCapability>(data) {
+        let _ = capability.body.validate();
+        let _ = capability.verify_signature();
+        let _ = serde_json::to_vec(&capability);
+    }
+    if let Ok(job) = serde_json::from_slice::<FindingWorkerJobSpec>(data) {
+        let _ = job.validate();
+        let _ = job.sha256();
+        let _ = serde_json::to_vec(&job);
+    }
+    if let Ok(request) = serde_json::from_slice::<FindingWorkerRequest>(data) {
+        let _ = request.validate();
+        let _ = serde_json::to_vec(&request);
+    }
+    if let Ok(descriptor) = serde_json::from_slice::<FindingWorkerInputDescriptor>(data) {
+        let _ = descriptor.validate();
+        let _ = serde_json::to_vec(&descriptor);
+    }
+    if let Ok(end) = serde_json::from_slice::<FindingWorkerInputEnd>(data) {
+        let _ = end.validate();
+        let _ = serde_json::to_vec(&end);
+    }
+    if let Ok(result) = serde_json::from_slice::<FindingWorkerResult>(data) {
+        let _ = serde_json::to_vec(&result);
+    }
+    if let Ok(result) = serde_json::from_slice::<FindingWorkerAttestedResult>(data) {
+        let _ = serde_json::to_vec(&result);
+    }
+    if let Ok(envelope) = serde_json::from_slice::<SignedFindingWorkerResult>(data) {
+        let _ = envelope.verify_signature();
+        let _ = serde_json::to_vec(&envelope);
     }
 }
 

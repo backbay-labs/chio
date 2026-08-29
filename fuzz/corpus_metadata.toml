@@ -28,6 +28,24 @@
 schema_version = 1
 
 [[seed]]
+target    = "finding_worker_protocol"
+path      = "fuzz/corpus/finding_worker_protocol/malformed_request.json"
+sha256    = "4d1c0ce7e59816da40a14d70bb4c005ba148f8e9a32b9bab2c605e7b63ed958d"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "finding_worker_protocol"
+path      = "fuzz/corpus/finding_worker_protocol/traversal_descriptor.json"
+sha256    = "660bab897ea96a9f56a61c995b9b2416d297e7428032049d862f019f62319a76"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "finding_worker_protocol"
+path      = "fuzz/corpus/finding_worker_protocol/valid_job.json"
+sha256    = "36598259b0bd7b624c0c90ec1d94aacb44640caf19e71625a1807aea88208b76"
+source    = "hand_curated_coverage"
+
+[[seed]]
 target    = "a2a_envelope_decode"
 path      = "fuzz/corpus/a2a_envelope_decode/empty.bin"
 sha256    = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
