@@ -2,7 +2,7 @@ use sqlx::{PgPool, Row as _};
 
 use crate::HostedMarketStoreError;
 
-const TENANT_SCOPED_TABLES: [&str; 9] = [
+const TENANT_SCOPED_TABLES: [&str; 10] = [
     "chio_finding_market_tenants",
     "chio_finding_market_jobs",
     "chio_finding_market_principals",
@@ -12,6 +12,7 @@ const TENANT_SCOPED_TABLES: [&str; 9] = [
     "chio_finding_market_security_events",
     "chio_finding_market_aggregate_events",
     "chio_finding_market_aggregate_heads",
+    "chio_finding_market_spend_reservations",
 ];
 const TENANT_POLICY_EXPRESSION: &str =
     "(tenant_id = NULLIF(current_setting('chio.tenant_id'::text, true), ''::text))";

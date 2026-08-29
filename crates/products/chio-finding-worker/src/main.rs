@@ -11,7 +11,7 @@ use chio_finding_hosted_edge::{
     HostedCircuitBreaker, HostedCircuitBreakerConfig, HostedDependency, HostedReadiness,
 };
 use chio_finding_market_store_postgres::{
-    HostedPostgresConfig, HostedTenantId, PostgresFindingMarketStore,
+    HostedPostgresConfig, HostedTenantId, HostedTenantLimits, PostgresFindingMarketStore,
 };
 use chio_finding_worker::{HostedFindingWorker, HostedWorkerRun, HostedWorkerServiceError};
 use clap::Parser;
@@ -67,7 +67,7 @@ enum DaemonError {
 #[derive(Clone)]
 struct TenantRuntime {
     tenant_id: HostedTenantId,
-    concurrency: u32,
+    limits: HostedTenantLimits,
 }
 
 #[derive(Default, Serialize)]
@@ -114,7 +114,7 @@ async fn run(args: Args) -> Result<(), DaemonError> {
             .preflight_tenant_artifact_store(&tenant.tenant_id)
             .map_err(|_| DaemonError::Tenant)?;
         store
-            .probe_tenant(&tenant.tenant_id)
+            .verify_tenant_limits(&tenant.tenant_id, &tenant.limits)
             .await
             .map_err(|_| DaemonError::Tenant)?;
     }
@@ -358,7 +358,13 @@ fn enabled_tenants(profile: &FindingHostedProfile) -> Result<Vec<TenantRuntime>,
             Ok(TenantRuntime {
                 tenant_id: HostedTenantId::new(tenant.tenant_id.clone())
                     .map_err(|_| DaemonError::Tenant)?,
-                concurrency: tenant.max_concurrent_jobs,
+                limits: HostedTenantLimits::new(
+                    tenant.max_concurrent_jobs,
+                    tenant.max_queued_jobs,
+                    tenant.max_monthly_spend_units,
+                    profile.release.configuration_revision.clone(),
+                )
+                .map_err(|_| DaemonError::Tenant)?,
             })
         })
         .collect::<Result<Vec<_>, DaemonError>>()?;
@@ -384,7 +390,7 @@ async fn run_tick(
         let index = (first + offset) % tenants.len();
         let tenant = &tenants[index];
         let run = worker
-            .run_once_with_limit(&tenant.tenant_id, tenant.concurrency)
+            .run_once_with_limit(&tenant.tenant_id, tenant.limits.max_concurrent_jobs())
             .await
             .map_err(map_worker_error)?;
         add_run(&mut report, run)?;
@@ -496,7 +502,8 @@ mod tests {
     fn dependency_failure_report_is_closed_and_unready() {
         let tenants = vec![TenantRuntime {
             tenant_id: HostedTenantId::new("tenant-a").unwrap_or_else(|_| unreachable!()),
-            concurrency: 1,
+            limits: HostedTenantLimits::new(1, 10, 100, "revision-1")
+                .unwrap_or_else(|_| unreachable!()),
         }];
         let report = dependency_failure_report("worker:blue-1", &tenants, "database_circuit_open");
         assert!(report.is_ok());

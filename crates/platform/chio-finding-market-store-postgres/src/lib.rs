@@ -34,6 +34,7 @@ const MARKET_AGGREGATE_MIGRATION_SQL: &str =
     include_str!("../migrations/0005_market_aggregates.sql");
 const TENANT_REGISTRY_RLS_MIGRATION_SQL: &str =
     include_str!("../migrations/0006_tenant_registry_rls.sql");
+const TENANT_LIMITS_MIGRATION_SQL: &str = include_str!("../migrations/0007_tenant_limits.sql");
 const MAX_TENANT_ID_BYTES: usize = 128;
 const MAX_JOB_ID_BYTES: usize = 256;
 const MAX_JOB_KIND_BYTES: usize = 96;
@@ -42,6 +43,9 @@ const MAX_ERROR_CODE_BYTES: usize = 128;
 const MAX_JOB_JSON_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CLAIM_BATCH: u32 = 100;
 const DEFAULT_MAX_JOBS_PER_TENANT: i64 = 100_000;
+const MAX_TENANT_JOBS: u64 = 10_000_000;
+const MAX_I_JSON_INTEGER: u64 = (1_u64 << 53) - 1;
+const MAX_SUPPORTED_UNIX_SECS: u64 = 253_402_300_799;
 
 #[derive(Debug, thiserror::Error)]
 pub enum HostedMarketStoreError {
@@ -84,6 +88,59 @@ impl HostedTenantId {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+/// Durable tenant limits bound to one hosted configuration revision.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostedTenantLimits {
+    max_concurrent_jobs: u32,
+    max_queued_jobs: u64,
+    max_monthly_spend_units: u64,
+    configuration_revision: String,
+}
+
+impl HostedTenantLimits {
+    pub fn new(
+        max_concurrent_jobs: u32,
+        max_queued_jobs: u64,
+        max_monthly_spend_units: u64,
+        configuration_revision: impl Into<String>,
+    ) -> Result<Self, HostedMarketStoreError> {
+        let configuration_revision = configuration_revision.into();
+        if !(1..=1_024).contains(&max_concurrent_jobs)
+            || !(1..=MAX_TENANT_JOBS).contains(&max_queued_jobs)
+            || !(1..=MAX_I_JSON_INTEGER).contains(&max_monthly_spend_units)
+            || validate_identifier(&configuration_revision, 256).is_err()
+        {
+            return Err(HostedMarketStoreError::Invalid("tenant_limits"));
+        }
+        Ok(Self {
+            max_concurrent_jobs,
+            max_queued_jobs,
+            max_monthly_spend_units,
+            configuration_revision,
+        })
+    }
+
+    #[must_use]
+    pub const fn max_concurrent_jobs(&self) -> u32 {
+        self.max_concurrent_jobs
+    }
+
+    #[must_use]
+    pub const fn max_queued_jobs(&self) -> u64 {
+        self.max_queued_jobs
+    }
+
+    #[must_use]
+    pub const fn max_monthly_spend_units(&self) -> u64 {
+        self.max_monthly_spend_units
+    }
+
+    #[must_use]
+    pub fn configuration_revision(&self) -> &str {
+        &self.configuration_revision
     }
 }
 
@@ -191,6 +248,24 @@ pub struct PostgresFindingMarketStore {
 pub enum HostedJobWriteOutcome {
     Inserted,
     ExactReplay,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostedSpendState {
+    Reserved,
+    Committed,
+    Released,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostedSpendReservation {
+    pub tenant_id: HostedTenantId,
+    pub reservation_id: String,
+    pub billing_period: String,
+    pub units: u64,
+    pub state: HostedSpendState,
+    pub created_at: u64,
+    pub updated_at: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -311,34 +386,291 @@ impl PostgresFindingMarketStore {
             .execute(&self.pool)
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        sqlx::raw_sql(TENANT_LIMITS_MIGRATION_SQL)
+            .execute(&self.pool)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
         Ok(())
     }
 
     pub async fn register_tenant(
         &self,
         tenant: &HostedTenantId,
+        limits: &HostedTenantLimits,
         now: u64,
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
         let now = checked_i64(now, "tenant time")?;
+        let max_queued_jobs = checked_i64(limits.max_queued_jobs, "tenant max queued jobs")?;
+        let max_monthly_spend_units = checked_i64(
+            limits.max_monthly_spend_units,
+            "tenant max monthly spend units",
+        )?;
         let mut transaction = self.begin_tenant_scope(tenant).await?;
-        let inserted = sqlx::query(
-            "INSERT INTO chio_finding_market_tenants (tenant_id, created_at) VALUES ($1, $2) ON CONFLICT (tenant_id) DO NOTHING",
+        let existing = sqlx::query(
+            "SELECT max_concurrent_jobs, max_queued_jobs, max_monthly_spend_units, configuration_revision FROM chio_finding_market_tenants WHERE tenant_id = $1 FOR UPDATE",
         )
         .bind(tenant.as_str())
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        if let Some(row) = existing {
+            let matches = row.try_get::<i32, _>(0).map_err(unavailable)?
+                == i32::try_from(limits.max_concurrent_jobs)
+                    .map_err(|_| HostedMarketStoreError::Invalid("tenant_limits"))?
+                && row.try_get::<i64, _>(1).map_err(unavailable)? == max_queued_jobs
+                && row.try_get::<i64, _>(2).map_err(unavailable)? == max_monthly_spend_units
+                && row.try_get::<String, _>(3).map_err(unavailable)?.as_str()
+                    == limits.configuration_revision.as_str();
+            if !matches {
+                return Err(HostedMarketStoreError::Conflict);
+            }
+            transaction
+                .commit()
+                .await
+                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            return Ok(HostedJobWriteOutcome::ExactReplay);
+        }
+        sqlx::query(
+            "INSERT INTO chio_finding_market_tenants (tenant_id, enabled, created_at, max_concurrent_jobs, max_queued_jobs, max_monthly_spend_units, configuration_revision) VALUES ($1, TRUE, $2, $3, $4, $5, $6)",
+        )
+        .bind(tenant.as_str())
+        .bind(now)
+        .bind(i32::try_from(limits.max_concurrent_jobs).map_err(|_| {
+            HostedMarketStoreError::Invalid("tenant max concurrent jobs")
+        })?)
+        .bind(max_queued_jobs)
+        .bind(max_monthly_spend_units)
+        .bind(&limits.configuration_revision)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        Ok(HostedJobWriteOutcome::Inserted)
+    }
+
+    /// Verify that durable tenant admission uses the exact deployed profile.
+    pub async fn verify_tenant_limits(
+        &self,
+        tenant: &HostedTenantId,
+        expected: &HostedTenantLimits,
+    ) -> Result<(), HostedMarketStoreError> {
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let row = sqlx::query(
+            "SELECT max_concurrent_jobs, max_queued_jobs, max_monthly_spend_units, configuration_revision FROM chio_finding_market_tenants WHERE tenant_id = $1",
+        )
+        .bind(tenant.as_str())
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let stored = tenant_limits_from_row(&row)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        if stored != *expected {
+            return Err(HostedMarketStoreError::Configuration);
+        }
+        Ok(())
+    }
+
+    /// Reserve tenant spend inside a closed UTC calendar-month bucket.
+    /// Reservation identity is immutable and exact retries never spend twice.
+    pub async fn reserve_monthly_spend(
+        &self,
+        tenant: &HostedTenantId,
+        reservation_id: &str,
+        units: u64,
+        now: u64,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        validate_identifier(reservation_id, MAX_JOB_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("spend_reservation_id"))?;
+        if !(1..=MAX_I_JSON_INTEGER).contains(&units) {
+            return Err(HostedMarketStoreError::Invalid("spend_units"));
+        }
+        let units = checked_i64(units, "spend units")?;
+        let now = checked_timestamp(now, "spend time")?;
+        let mut transaction = self.begin_tenant(tenant).await?;
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 3))")
+            .bind(tenant.as_str())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        if let Some(row) = sqlx::query(
+            "SELECT units, state FROM chio_finding_market_spend_reservations WHERE tenant_id = $1 AND reservation_id = $2 FOR UPDATE",
+        )
+        .bind(tenant.as_str())
+        .bind(reservation_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?
+        {
+            let same_units = row.try_get::<i64, _>(0).map_err(unavailable)? == units;
+            let state = parse_spend_state(&row.try_get::<String, _>(1).map_err(unavailable)?)?;
+            if !same_units || state != HostedSpendState::Reserved {
+                return Err(HostedMarketStoreError::Conflict);
+            }
+            transaction
+                .commit()
+                .await
+                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            return Ok(HostedJobWriteOutcome::ExactReplay);
+        }
+        let billing_period: String = sqlx::query_scalar(
+            "SELECT to_char(to_timestamp($1::double precision) AT TIME ZONE 'UTC', 'YYYY-MM')",
+        )
+        .bind(now)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        validate_billing_period(&billing_period)
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let maximum: i64 = sqlx::query_scalar(
+            "SELECT max_monthly_spend_units FROM chio_finding_market_tenants WHERE tenant_id = $1 FOR SHARE",
+        )
+        .bind(tenant.as_str())
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let consumed: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(SUM(units), 0)::BIGINT FROM chio_finding_market_spend_reservations WHERE tenant_id = $1 AND billing_period = $2 AND state IN ('reserved', 'committed')",
+        )
+        .bind(tenant.as_str())
+        .bind(&billing_period)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        if consumed
+            .checked_add(units)
+            .is_none_or(|total| total > maximum)
+        {
+            return Err(HostedMarketStoreError::Capacity);
+        }
+        sqlx::query(
+            "INSERT INTO chio_finding_market_spend_reservations (tenant_id, reservation_id, billing_period, units, state, created_at, updated_at) VALUES ($1, $2, $3, $4, 'reserved', $5, $5)",
+        )
+        .bind(tenant.as_str())
+        .bind(reservation_id)
+        .bind(&billing_period)
+        .bind(units)
+        .bind(now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        Ok(HostedJobWriteOutcome::Inserted)
+    }
+
+    pub async fn commit_monthly_spend(
+        &self,
+        tenant: &HostedTenantId,
+        reservation_id: &str,
+        now: u64,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        self.finish_monthly_spend(tenant, reservation_id, HostedSpendState::Committed, now)
+            .await
+    }
+
+    /// Release an uncommitted reservation. Committed gross spend is immutable.
+    pub async fn release_monthly_spend(
+        &self,
+        tenant: &HostedTenantId,
+        reservation_id: &str,
+        now: u64,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        self.finish_monthly_spend(tenant, reservation_id, HostedSpendState::Released, now)
+            .await
+    }
+
+    async fn finish_monthly_spend(
+        &self,
+        tenant: &HostedTenantId,
+        reservation_id: &str,
+        desired: HostedSpendState,
+        now: u64,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        validate_identifier(reservation_id, MAX_JOB_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("spend_reservation_id"))?;
+        if !matches!(
+            desired,
+            HostedSpendState::Committed | HostedSpendState::Released
+        ) {
+            return Err(HostedMarketStoreError::Invalid("spend_state"));
+        }
+        let now = checked_timestamp(now, "spend time")?;
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let row = sqlx::query(
+            "SELECT state, created_at FROM chio_finding_market_spend_reservations WHERE tenant_id = $1 AND reservation_id = $2 FOR UPDATE",
+        )
+        .bind(tenant.as_str())
+        .bind(reservation_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?
+        .ok_or(HostedMarketStoreError::NotFound)?;
+        let stored = parse_spend_state(&row.try_get::<String, _>(0).map_err(unavailable)?)?;
+        let created_at: i64 = row.try_get(1).map_err(unavailable)?;
+        if now < created_at {
+            return Err(HostedMarketStoreError::Invalid("spend time"));
+        }
+        if stored == desired {
+            transaction
+                .commit()
+                .await
+                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            return Ok(HostedJobWriteOutcome::ExactReplay);
+        }
+        if stored != HostedSpendState::Reserved {
+            return Err(HostedMarketStoreError::Conflict);
+        }
+        let updated = sqlx::query(
+            "UPDATE chio_finding_market_spend_reservations SET state = $3, updated_at = $4 WHERE tenant_id = $1 AND reservation_id = $2 AND state = 'reserved'",
+        )
+        .bind(tenant.as_str())
+        .bind(reservation_id)
+        .bind(spend_state_name(desired))
         .bind(now)
         .execute(&mut *transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?
         .rows_affected();
+        if updated != 1 {
+            return Err(HostedMarketStoreError::Conflict);
+        }
         transaction
             .commit()
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        Ok(if inserted == 1 {
-            HostedJobWriteOutcome::Inserted
-        } else {
-            HostedJobWriteOutcome::ExactReplay
-        })
+        Ok(HostedJobWriteOutcome::Inserted)
+    }
+
+    pub async fn monthly_spend_reservation(
+        &self,
+        tenant: &HostedTenantId,
+        reservation_id: &str,
+    ) -> Result<Option<HostedSpendReservation>, HostedMarketStoreError> {
+        validate_identifier(reservation_id, MAX_JOB_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("spend_reservation_id"))?;
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let row = sqlx::query(
+            "SELECT reservation_id, billing_period, units, state, created_at, updated_at FROM chio_finding_market_spend_reservations WHERE tenant_id = $1 AND reservation_id = $2",
+        )
+        .bind(tenant.as_str())
+        .bind(reservation_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        row.map(|row| spend_reservation_from_row(tenant, &row))
+            .transpose()
     }
 
     /// Changes tenant admission without deleting durable state. Disabling a
@@ -422,14 +754,23 @@ impl PostgresFindingMarketStore {
             return Ok(HostedJobWriteOutcome::ExactReplay);
         }
 
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM chio_finding_market_jobs WHERE tenant_id = $1",
+        let quota: i64 = sqlx::query_scalar(
+            "SELECT max_queued_jobs FROM chio_finding_market_tenants WHERE tenant_id = $1 FOR SHARE",
         )
         .bind(tenant.as_str())
         .fetch_one(&mut *transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        if count >= self.max_jobs_per_tenant {
+        let counts = sqlx::query(
+            "SELECT COUNT(*), COUNT(*) FILTER (WHERE state IN ('pending', 'leased', 'failed')) FROM chio_finding_market_jobs WHERE tenant_id = $1",
+        )
+        .bind(tenant.as_str())
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let retained_count: i64 = counts.try_get(0).map_err(unavailable)?;
+        let queued_count: i64 = counts.try_get(1).map_err(unavailable)?;
+        if retained_count >= self.max_jobs_per_tenant || queued_count >= quota {
             return Err(HostedMarketStoreError::Capacity);
         }
         sqlx::query(
@@ -521,6 +862,16 @@ impl PostgresFindingMarketStore {
             .execute(&mut *transaction)
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let configured_limit: i32 = sqlx::query_scalar(
+            "SELECT max_concurrent_jobs FROM chio_finding_market_tenants WHERE tenant_id = $1 FOR SHARE",
+        )
+        .bind(tenant.as_str())
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        if i64::from(limit) > i64::from(configured_limit) {
+            return Err(HostedMarketStoreError::Invalid("tenant_concurrency"));
+        }
         let active_leases: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM chio_finding_market_jobs WHERE tenant_id = $1 AND state = 'leased' AND lease_expires_at > $2",
         )
@@ -862,6 +1213,47 @@ fn job_from_row(
     })
 }
 
+fn tenant_limits_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<HostedTenantLimits, HostedMarketStoreError> {
+    let max_concurrent_jobs = u32::try_from(row.try_get::<i32, _>(0).map_err(unavailable)?)
+        .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+    let max_queued_jobs = stored_u64(row.try_get(1).map_err(unavailable)?)?;
+    let max_monthly_spend_units = stored_u64(row.try_get(2).map_err(unavailable)?)?;
+    let configuration_revision: String = row.try_get(3).map_err(unavailable)?;
+    HostedTenantLimits::new(
+        max_concurrent_jobs,
+        max_queued_jobs,
+        max_monthly_spend_units,
+        configuration_revision,
+    )
+    .map_err(|_| HostedMarketStoreError::DigestMismatch)
+}
+
+fn spend_reservation_from_row(
+    tenant: &HostedTenantId,
+    row: &sqlx::postgres::PgRow,
+) -> Result<HostedSpendReservation, HostedMarketStoreError> {
+    let reservation_id: String = row.try_get(0).map_err(unavailable)?;
+    let billing_period: String = row.try_get(1).map_err(unavailable)?;
+    validate_identifier(&reservation_id, MAX_JOB_ID_BYTES)
+        .map_err(|()| HostedMarketStoreError::DigestMismatch)?;
+    validate_billing_period(&billing_period).map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+    let units = stored_u64(row.try_get(2).map_err(unavailable)?)?;
+    if units == 0 || units > MAX_I_JSON_INTEGER {
+        return Err(HostedMarketStoreError::DigestMismatch);
+    }
+    Ok(HostedSpendReservation {
+        tenant_id: tenant.clone(),
+        reservation_id,
+        billing_period,
+        units,
+        state: parse_spend_state(&row.try_get::<String, _>(3).map_err(unavailable)?)?,
+        created_at: stored_u64(row.try_get(4).map_err(unavailable)?)?,
+        updated_at: stored_u64(row.try_get(5).map_err(unavailable)?)?,
+    })
+}
+
 fn validate_identifier(value: &str, maximum: usize) -> Result<(), ()> {
     if value.is_empty()
         || value.len() > maximum
@@ -872,6 +1264,44 @@ fn validate_identifier(value: &str, maximum: usize) -> Result<(), ()> {
         return Err(());
     }
     Ok(())
+}
+
+fn validate_billing_period(value: &str) -> Result<(), HostedMarketStoreError> {
+    let bytes = value.as_bytes();
+    if bytes.len() != 7
+        || bytes[4] != b'-'
+        || !bytes[..4].iter().all(u8::is_ascii_digit)
+        || !bytes[5..].iter().all(u8::is_ascii_digit)
+    {
+        return Err(HostedMarketStoreError::Invalid("billing_period"));
+    }
+    let year = value[..4]
+        .parse::<u16>()
+        .map_err(|_| HostedMarketStoreError::Invalid("billing_period"))?;
+    let month = value[5..]
+        .parse::<u8>()
+        .map_err(|_| HostedMarketStoreError::Invalid("billing_period"))?;
+    if year < 1970 || !(1..=12).contains(&month) {
+        return Err(HostedMarketStoreError::Invalid("billing_period"));
+    }
+    Ok(())
+}
+
+const fn spend_state_name(state: HostedSpendState) -> &'static str {
+    match state {
+        HostedSpendState::Reserved => "reserved",
+        HostedSpendState::Committed => "committed",
+        HostedSpendState::Released => "released",
+    }
+}
+
+fn parse_spend_state(value: &str) -> Result<HostedSpendState, HostedMarketStoreError> {
+    match value {
+        "reserved" => Ok(HostedSpendState::Reserved),
+        "committed" => Ok(HostedSpendState::Committed),
+        "released" => Ok(HostedSpendState::Released),
+        _ => Err(HostedMarketStoreError::DigestMismatch),
+    }
 }
 
 fn validate_digest(value: &str, field: &'static str) -> Result<(), HostedMarketStoreError> {
@@ -917,6 +1347,13 @@ fn checked_i64(value: u64, field: &'static str) -> Result<i64, HostedMarketStore
     i64::try_from(value).map_err(|_| HostedMarketStoreError::Invalid(field))
 }
 
+fn checked_timestamp(value: u64, field: &'static str) -> Result<i64, HostedMarketStoreError> {
+    if value > MAX_SUPPORTED_UNIX_SECS {
+        return Err(HostedMarketStoreError::Invalid(field));
+    }
+    checked_i64(value, field)
+}
+
 fn stored_u64(value: i64) -> Result<u64, HostedMarketStoreError> {
     u64::try_from(value).map_err(|_| HostedMarketStoreError::DigestMismatch)
 }
@@ -946,6 +1383,18 @@ mod tests {
         assert!(HostedTenantId::new("").is_err());
         assert!(HostedTenantId::new("tenant with spaces").is_err());
         assert!(HostedTenantId::new("x".repeat(MAX_TENANT_ID_BYTES + 1)).is_err());
+    }
+
+    #[test]
+    fn tenant_limits_are_closed_and_bounded() {
+        assert!(HostedTenantLimits::new(1, 1, 1, "revision-1").is_ok());
+        assert!(HostedTenantLimits::new(0, 1, 1, "revision-1").is_err());
+        assert!(HostedTenantLimits::new(1, 0, 1, "revision-1").is_err());
+        assert!(HostedTenantLimits::new(1, 1, 0, "revision-1").is_err());
+        assert!(HostedTenantLimits::new(1, 1, 1, "revision with spaces").is_err());
+        assert!(validate_billing_period("2026-08").is_ok());
+        assert!(validate_billing_period("2026-13").is_err());
+        assert!(validate_billing_period("1969-12").is_err());
     }
 
     #[test]

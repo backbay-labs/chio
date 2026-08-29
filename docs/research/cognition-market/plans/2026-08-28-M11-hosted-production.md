@@ -49,10 +49,19 @@ authentication and worker configurations.
 
 The hosted store sets `chio.tenant_id` transaction-locally for every scoped
 operation and relies on forced PostgreSQL row-level security as a second
-boundary. Job admission is linearized by a tenant advisory lock. Claims use
-`FOR UPDATE SKIP LOCKED`, carry expiring worker leases, and reject stale
-workers at completion. A bounded retry budget ends in the terminal
-`exhausted` state, which is never claimable again.
+boundary. The RLS-protected tenant registry binds concurrency, queue, and
+monthly spend ceilings to the exact deployed configuration revision. Worker
+startup refuses any profile-to-registry drift. Job admission is linearized by
+a tenant advisory lock and counts only nonterminal queued work against the
+tenant ceiling while preserving a separate total-retention ceiling. Claims use
+`FOR UPDATE SKIP LOCKED`, enforce the durable tenant concurrency ceiling, carry
+expiring worker leases, and reject stale workers at completion. Monthly spend
+reservations are tenant-serialized and assigned to the UTC calendar month
+derived from trusted admission time, so callers cannot select a weaker bucket.
+They are exact-replay stable and terminally committed or released; committed
+gross spend cannot be released. A bounded
+retry budget ends in the terminal `exhausted` state, which is never claimable
+again.
 
 Every cognition-market aggregate family also has an append-only PostgreSQL
 journal. Findings, listings, admissions, purchases and terminals, failed

@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chio_core_types::sha256_hex;
 use chio_finding_market_store_postgres::{
     HostedAggregateKind, HostedJobState, HostedJobWriteOutcome, HostedMarketStoreError,
-    HostedTenantId, PostgresFindingMarketStore,
+    HostedTenantId, HostedTenantLimits, PostgresFindingMarketStore,
 };
 use sqlx::Row as _;
 
@@ -47,6 +47,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_security_events TO chio_market_runtime_test;
         GRANT SELECT, INSERT, UPDATE ON chio_finding_market_aggregate_events TO chio_market_runtime_test;
         GRANT SELECT, INSERT, UPDATE ON chio_finding_market_aggregate_heads TO chio_market_runtime_test;
+        GRANT SELECT, INSERT, UPDATE ON chio_finding_market_spend_reservations TO chio_market_runtime_test;
         "#,
     )
     .execute(&admin_pool)
@@ -138,8 +139,104 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let tenant_a = HostedTenantId::new(format!("integration-a-{nonce}"))?;
     let tenant_b = HostedTenantId::new(format!("integration-b-{nonce}"))?;
-    store.register_tenant(&tenant_a, 1_700_000_000).await?;
-    store.register_tenant(&tenant_b, 1_700_000_000).await?;
+    let tenant_limits = HostedTenantLimits::new(1, 8, 10_000, "integration-revision-1")?;
+    store
+        .register_tenant(&tenant_a, &tenant_limits, 1_700_000_000)
+        .await?;
+    store
+        .register_tenant(&tenant_b, &tenant_limits, 1_700_000_000)
+        .await?;
+    store
+        .verify_tenant_limits(&tenant_a, &tenant_limits)
+        .await?;
+    assert!(matches!(
+        store
+            .register_tenant(
+                &tenant_a,
+                &HostedTenantLimits::new(2, 8, 10_000, "integration-revision-1")?,
+                1_700_000_000,
+            )
+            .await,
+        Err(HostedMarketStoreError::Conflict)
+    ));
+    assert_eq!(
+        store
+            .reserve_monthly_spend(&tenant_a, "purchase-spend-1", 6_000, 1_700_000_001,)
+            .await?,
+        HostedJobWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store
+            .reserve_monthly_spend(&tenant_a, "purchase-spend-1", 6_000, 1_700_000_002,)
+            .await?,
+        HostedJobWriteOutcome::ExactReplay
+    );
+    assert!(matches!(
+        store
+            .reserve_monthly_spend(&tenant_a, "purchase-spend-2", 4_001, 1_700_000_002,)
+            .await,
+        Err(HostedMarketStoreError::Capacity)
+    ));
+    assert_eq!(
+        store
+            .commit_monthly_spend(&tenant_a, "purchase-spend-1", 1_700_000_003)
+            .await?,
+        HostedJobWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store
+            .commit_monthly_spend(&tenant_a, "purchase-spend-1", 1_700_000_004)
+            .await?,
+        HostedJobWriteOutcome::ExactReplay
+    );
+    assert!(matches!(
+        store
+            .reserve_monthly_spend(&tenant_a, "purchase-spend-1", 6_000, 1_700_000_005,)
+            .await,
+        Err(HostedMarketStoreError::Conflict)
+    ));
+    assert!(matches!(
+        store
+            .release_monthly_spend(&tenant_a, "purchase-spend-1", 1_700_000_005)
+            .await,
+        Err(HostedMarketStoreError::Conflict)
+    ));
+    let committed_spend = store
+        .monthly_spend_reservation(&tenant_a, "purchase-spend-1")
+        .await?
+        .ok_or("monthly spend reservation missing")?;
+    assert_eq!(
+        committed_spend.state,
+        chio_finding_market_store_postgres::HostedSpendState::Committed
+    );
+    assert_eq!(committed_spend.billing_period, "2023-11");
+    assert!(store
+        .monthly_spend_reservation(&tenant_b, "purchase-spend-1")
+        .await?
+        .is_none());
+    store
+        .reserve_monthly_spend(&tenant_a, "purchase-spend-release", 4_000, 1_700_000_006)
+        .await?;
+    assert!(matches!(
+        store
+            .release_monthly_spend(&tenant_a, "purchase-spend-release", 1_700_000_005,)
+            .await,
+        Err(HostedMarketStoreError::Invalid("spend time"))
+    ));
+    store
+        .release_monthly_spend(&tenant_a, "purchase-spend-release", 1_700_000_007)
+        .await?;
+    assert_eq!(
+        store
+            .reserve_monthly_spend(
+                &tenant_a,
+                "purchase-spend-after-release",
+                4_000,
+                1_700_000_008,
+            )
+            .await?,
+        HostedJobWriteOutcome::Inserted
+    );
 
     let unscoped_tenant_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM chio_finding_market_tenants")
@@ -385,6 +482,53 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         br#"{"findingId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#;
     let payload_b =
         br#"{"findingId":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}"#;
+    let queue_tenant = HostedTenantId::new(format!("integration-queue-{nonce}"))?;
+    let queue_limits = HostedTenantLimits::new(1, 1, 10_000, "integration-revision-1")?;
+    store
+        .register_tenant(&queue_tenant, &queue_limits, 1_700_000_000)
+        .await?;
+    assert_eq!(
+        store
+            .put_job(
+                &queue_tenant,
+                "queue-job-1",
+                "finding.verify",
+                &request,
+                payload_a,
+                1_700_000_000,
+                1_700_000_000,
+            )
+            .await?,
+        HostedJobWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store
+            .put_job(
+                &queue_tenant,
+                "queue-job-1",
+                "finding.verify",
+                &request,
+                payload_a,
+                1_700_000_000,
+                1_700_000_001,
+            )
+            .await?,
+        HostedJobWriteOutcome::ExactReplay
+    );
+    assert!(matches!(
+        store
+            .put_job(
+                &queue_tenant,
+                "queue-job-2",
+                "finding.verify",
+                &request,
+                payload_b,
+                1_700_000_000,
+                1_700_000_001,
+            )
+            .await,
+        Err(HostedMarketStoreError::Capacity)
+    ));
     assert_eq!(
         store
             .put_job(
@@ -477,6 +621,12 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         .await?;
     assert_eq!(first_lease.len(), 1);
     assert_eq!(first_lease[0].state, HostedJobState::Leased);
+    assert!(matches!(
+        store
+            .claim_due_jobs(&tenant_a, "worker-b", 1_700_000_010, 10, 2)
+            .await,
+        Err(HostedMarketStoreError::Invalid("tenant_concurrency"))
+    ));
     assert!(store
         .claim_due_jobs(&tenant_a, "worker-b", 1_700_000_015, 10, 1)
         .await?
