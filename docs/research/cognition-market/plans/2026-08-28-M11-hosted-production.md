@@ -13,7 +13,7 @@ settlement, challenge, status, or replay guarantees.
 
 ## Production boundary
 
-M11 admits one canonical `chio.finding.hosted-operator-profile.v1` before any listener,
+M11 admits one canonical `chio.finding.hosted-operator-profile.v2` before any listener,
 database, payment rail, signer, or worker starts. The profile requires:
 
 - a public HTTPS endpoint and exactly one edge mode: native TLS 1.3 with

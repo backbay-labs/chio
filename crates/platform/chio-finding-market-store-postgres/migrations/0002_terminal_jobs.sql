@@ -1,21 +1,20 @@
-DO $migration$
-DECLARE
-    item RECORD;
-BEGIN
-    FOR item IN
-        SELECT conname
-        FROM pg_constraint
-        WHERE conrelid = 'chio_finding_market_jobs'::regclass
-          AND contype = 'c'
-          AND pg_get_constraintdef(oid) LIKE '%state%'
-    LOOP
-        EXECUTE format(
-            'ALTER TABLE chio_finding_market_jobs DROP CONSTRAINT %I',
-            item.conname
-        );
-    END LOOP;
-
-    ALTER TABLE chio_finding_market_jobs
+ALTER TABLE chio_finding_market_jobs
+        DROP CONSTRAINT IF EXISTS chio_finding_market_jobs_state_v1,
+        DROP CONSTRAINT IF EXISTS chio_finding_market_jobs_lease_v1,
+        DROP CONSTRAINT IF EXISTS chio_finding_market_jobs_result_v1,
+        DROP CONSTRAINT IF EXISTS chio_finding_market_jobs_error_v1,
+        -- Exact PostgreSQL-generated names retained by pre-ledger pilot
+        -- databases created from migration 0001 before constraints were named.
+        DROP CONSTRAINT IF EXISTS chio_finding_market_jobs_state_check,
+        DROP CONSTRAINT IF EXISTS chio_finding_market_jobs_check,
+        DROP CONSTRAINT IF EXISTS chio_finding_market_jobs_check1,
+        DROP CONSTRAINT IF EXISTS chio_finding_market_jobs_check2,
+        -- Exact v2 names make adoption idempotent for databases previously
+        -- initialized by the raw-SQL runner.
+        DROP CONSTRAINT IF EXISTS chio_finding_market_jobs_state_v2,
+        DROP CONSTRAINT IF EXISTS chio_finding_market_jobs_lease_v2,
+        DROP CONSTRAINT IF EXISTS chio_finding_market_jobs_result_v2,
+        DROP CONSTRAINT IF EXISTS chio_finding_market_jobs_error_v2,
         ADD CONSTRAINT chio_finding_market_jobs_state_v2
             CHECK (state IN ('pending', 'leased', 'completed', 'failed', 'exhausted')),
         ADD CONSTRAINT chio_finding_market_jobs_lease_v2
@@ -36,5 +35,3 @@ BEGIN
                 OR
                 (state IN ('failed', 'exhausted') AND last_error_code IS NOT NULL)
             );
-END
-$migration$;

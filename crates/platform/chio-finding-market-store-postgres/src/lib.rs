@@ -14,11 +14,13 @@ use std::time::Duration;
 use chio_core_types::{canonical_json_bytes_from_str, sha256_hex};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
-use sqlx::{PgPool, Postgres, Row as _, Transaction};
+use sqlx::{Connection as _, PgPool, Postgres, Row as _, Transaction};
 use zeroize::Zeroize as _;
 
 mod aggregates;
 mod auth;
+mod checkpoints;
+mod job_leases;
 mod runtime_boundary;
 mod spend;
 mod tenant;
@@ -27,18 +29,61 @@ pub use aggregates::{HostedAggregateEvent, HostedAggregateHead, HostedAggregateK
 pub use auth::{
     HostedApiKeyRecord, HostedPrincipal, HostedPrincipalRole, HostedSecurityEventOutcome,
 };
+pub use checkpoints::{
+    HostedAggregateCheckpointBody, HostedAggregateCheckpointRecord,
+    SignedHostedAggregateCheckpoint, HOSTED_AGGREGATE_CHECKPOINT_SCHEMA,
+};
 pub use spend::{HostedSpendReservation, HostedSpendState};
 pub use tenant::HostedTenantLimits;
 
-const MIGRATION_SQL: &str = include_str!("../migrations/0001_hosted_market.sql");
-const TERMINAL_JOB_MIGRATION_SQL: &str = include_str!("../migrations/0002_terminal_jobs.sql");
-const LEASE_FENCING_MIGRATION_SQL: &str = include_str!("../migrations/0003_lease_fencing.sql");
-const HOSTED_AUTH_MIGRATION_SQL: &str = include_str!("../migrations/0004_hosted_auth.sql");
-const MARKET_AGGREGATE_MIGRATION_SQL: &str =
-    include_str!("../migrations/0005_market_aggregates.sql");
-const TENANT_REGISTRY_RLS_MIGRATION_SQL: &str =
-    include_str!("../migrations/0006_tenant_registry_rls.sql");
-const TENANT_LIMITS_MIGRATION_SQL: &str = include_str!("../migrations/0007_tenant_limits.sql");
+const MIGRATION_LOCK_NAME: &str = "chio.finding.market.migrations.v1";
+const MIGRATIONS: &[(i64, &str, &str)] = &[
+    (
+        1,
+        "hosted_market",
+        include_str!("../migrations/0001_hosted_market.sql"),
+    ),
+    (
+        2,
+        "terminal_jobs",
+        include_str!("../migrations/0002_terminal_jobs.sql"),
+    ),
+    (
+        3,
+        "lease_fencing",
+        include_str!("../migrations/0003_lease_fencing.sql"),
+    ),
+    (
+        4,
+        "hosted_auth",
+        include_str!("../migrations/0004_hosted_auth.sql"),
+    ),
+    (
+        5,
+        "market_aggregates",
+        include_str!("../migrations/0005_market_aggregates.sql"),
+    ),
+    (
+        6,
+        "tenant_registry_rls",
+        include_str!("../migrations/0006_tenant_registry_rls.sql"),
+    ),
+    (
+        7,
+        "tenant_limits",
+        include_str!("../migrations/0007_tenant_limits.sql"),
+    ),
+    (
+        8,
+        "append_only_aggregates",
+        include_str!("../migrations/0008_append_only_aggregates.sql"),
+    ),
+    (
+        9,
+        "aggregate_checkpoints",
+        include_str!("../migrations/0009_aggregate_checkpoints.sql"),
+    ),
+];
 const MAX_TENANT_ID_BYTES: usize = 128;
 const MAX_JOB_ID_BYTES: usize = 256;
 const MAX_JOB_KIND_BYTES: usize = 96;
@@ -71,8 +116,104 @@ pub enum HostedMarketStoreError {
     LeaseLost,
     #[error("hosted market durable state failed its digest check")]
     DigestMismatch,
+    #[error("hosted market PostgreSQL migration ledger drifted")]
+    MigrationDrift,
     #[error("hosted market PostgreSQL operation is unavailable")]
     Unavailable,
+}
+
+async fn run_migrations(
+    connection: &mut sqlx::pool::PoolConnection<Postgres>,
+) -> Result<(), HostedMarketStoreError> {
+    sqlx::raw_sql(
+        r#"
+        CREATE TABLE IF NOT EXISTS chio_finding_market_schema_migrations (
+            version BIGINT PRIMARY KEY CHECK (version > 0),
+            name TEXT NOT NULL UNIQUE CHECK (length(name) BETWEEN 1 AND 128),
+            checksum_sha256 CHAR(64) NOT NULL CHECK (
+                checksum_sha256 !~ '[^0-9a-f]'
+            ),
+            applied_at BIGINT NOT NULL CHECK (applied_at > 0)
+        )
+        "#,
+    )
+    .execute(&mut **connection)
+    .await
+    .map_err(|_| HostedMarketStoreError::Unavailable)?;
+
+    let applied = sqlx::query(
+        "SELECT version, name, checksum_sha256 FROM chio_finding_market_schema_migrations ORDER BY version",
+    )
+    .fetch_all(&mut **connection)
+    .await
+    .map_err(|_| HostedMarketStoreError::Unavailable)?;
+    if applied.len() > MIGRATIONS.len() {
+        return Err(HostedMarketStoreError::MigrationDrift);
+    }
+    for (index, row) in applied.iter().enumerate() {
+        let (expected_version, expected_name, expected_sql) = MIGRATIONS
+            .get(index)
+            .ok_or(HostedMarketStoreError::MigrationDrift)?;
+        let version: i64 = row.try_get(0).map_err(unavailable)?;
+        let name: String = row.try_get(1).map_err(unavailable)?;
+        let checksum: String = row.try_get(2).map_err(unavailable)?;
+        if version != *expected_version
+            || name != *expected_name
+            || checksum != sha256_hex(expected_sql.as_bytes())
+        {
+            return Err(HostedMarketStoreError::MigrationDrift);
+        }
+    }
+
+    for (version, name, sql) in MIGRATIONS.iter().skip(applied.len()) {
+        let checksum = sha256_hex(sql.as_bytes());
+        let mut transaction = connection
+            .begin()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        sqlx::raw_sql(sql)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        sqlx::query(
+            "INSERT INTO chio_finding_market_schema_migrations (version, name, checksum_sha256, applied_at) VALUES ($1, $2, $3, floor(extract(epoch from clock_timestamp()))::bigint)",
+        )
+        .bind(version)
+        .bind(name)
+        .bind(checksum)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+    }
+    Ok(())
+}
+
+async fn verify_schema_current(pool: &PgPool) -> Result<(), HostedMarketStoreError> {
+    let rows = sqlx::query(
+        "SELECT version, name, checksum_sha256 FROM chio_finding_market_schema_migrations ORDER BY version",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|_| HostedMarketStoreError::MigrationDrift)?;
+    if rows.len() != MIGRATIONS.len() {
+        return Err(HostedMarketStoreError::MigrationDrift);
+    }
+    for (row, (expected_version, expected_name, expected_sql)) in rows.iter().zip(MIGRATIONS) {
+        let version: i64 = row.try_get(0).map_err(unavailable)?;
+        let name: String = row.try_get(1).map_err(unavailable)?;
+        let checksum: String = row.try_get(2).map_err(unavailable)?;
+        if version != *expected_version
+            || name != *expected_name
+            || checksum != sha256_hex(expected_sql.as_bytes())
+        {
+            return Err(HostedMarketStoreError::MigrationDrift);
+        }
+    }
+    Ok(())
 }
 
 /// A validated opaque tenant identity. It is always bound separately from
@@ -195,6 +336,11 @@ pub struct PostgresFindingMarketStore {
     max_jobs_per_tenant: i64,
 }
 
+/// Schema-only connection holder for the separately credentialed migrator.
+pub struct PostgresFindingMarketMigrator {
+    pool: PgPool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostedJobWriteOutcome {
     Inserted,
@@ -238,6 +384,12 @@ pub struct HostedJobLease {
     fence: u64,
 }
 
+/// Authoritative expiry returned by PostgreSQL after a fenced renewal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostedLeaseRenewal {
+    pub expires_at: u64,
+}
+
 impl HostedJobLease {
     pub fn new(worker_id: impl Into<String>, fence: u64) -> Result<Self, HostedMarketStoreError> {
         let worker_id = worker_id.into();
@@ -270,6 +422,7 @@ impl PostgresFindingMarketStore {
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
         runtime_boundary::verify_runtime_role(&pool).await?;
+        verify_schema_current(&pool).await?;
         Ok(Self {
             pool,
             max_jobs_per_tenant: config.max_jobs_per_tenant,
@@ -293,39 +446,53 @@ impl PostgresFindingMarketStore {
     ) -> Result<(), HostedMarketStoreError> {
         runtime_boundary::verify_runtime_role(&self.pool).await
     }
+}
 
-    pub async fn migrate(&self) -> Result<(), HostedMarketStoreError> {
-        sqlx::raw_sql(MIGRATION_SQL)
-            .execute(&self.pool)
+impl PostgresFindingMarketMigrator {
+    pub async fn connect(config: &HostedPostgresConfig) -> Result<Self, HostedMarketStoreError> {
+        let pool = PgPoolOptions::new()
+            .min_connections(1)
+            .max_connections(1)
+            .acquire_timeout(config.acquire_timeout)
+            .connect_with(config.connect_options()?)
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        sqlx::raw_sql(TERMINAL_JOB_MIGRATION_SQL)
-            .execute(&self.pool)
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        sqlx::raw_sql(LEASE_FENCING_MIGRATION_SQL)
-            .execute(&self.pool)
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        sqlx::raw_sql(HOSTED_AUTH_MIGRATION_SQL)
-            .execute(&self.pool)
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        sqlx::raw_sql(MARKET_AGGREGATE_MIGRATION_SQL)
-            .execute(&self.pool)
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        sqlx::raw_sql(TENANT_REGISTRY_RLS_MIGRATION_SQL)
-            .execute(&self.pool)
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        sqlx::raw_sql(TENANT_LIMITS_MIGRATION_SQL)
-            .execute(&self.pool)
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        Ok(())
+        runtime_boundary::verify_migrator_role(&pool).await?;
+        Ok(Self { pool })
     }
 
+    #[cfg(feature = "postgres-integration")]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn from_pool_for_integration_tests(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn migrate(&self) -> Result<(), HostedMarketStoreError> {
+        let mut connection = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        sqlx::query("SELECT pg_advisory_lock(hashtextextended($1, 0))")
+            .bind(MIGRATION_LOCK_NAME)
+            .execute(&mut *connection)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let migrated = run_migrations(&mut connection).await;
+        let unlocked = sqlx::query("SELECT pg_advisory_unlock(hashtextextended($1, 0))")
+            .bind(MIGRATION_LOCK_NAME)
+            .execute(&mut *connection)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable);
+        match (migrated, unlocked) {
+            (Ok(()), Ok(_)) => Ok(()),
+            (Err(error), _) | (Ok(()), Err(error)) => Err(error),
+        }
+    }
+}
+
+impl PostgresFindingMarketStore {
     #[allow(clippy::too_many_arguments)]
     pub async fn put_job(
         &self,
@@ -455,284 +622,56 @@ impl PostgresFindingMarketStore {
             .map_err(|_| HostedMarketStoreError::Unavailable)
     }
 
-    /// Claim a bounded batch without exceeding `limit` active leases for the
-    /// tenant across all worker replicas.
-    pub async fn claim_due_jobs(
-        &self,
-        tenant: &HostedTenantId,
-        worker_id: &str,
-        now: u64,
-        lease_duration_secs: u64,
-        limit: u32,
-    ) -> Result<Vec<HostedMarketJob>, HostedMarketStoreError> {
-        validate_identifier(worker_id, MAX_LEASE_OWNER_BYTES)
-            .map_err(|_| HostedMarketStoreError::Invalid("worker_id"))?;
-        if lease_duration_secs == 0
-            || lease_duration_secs > 3_600
-            || limit == 0
-            || limit > MAX_CLAIM_BATCH
-        {
-            return Err(HostedMarketStoreError::Invalid("lease"));
-        }
-        let now_i64 = checked_i64(now, "now")?;
-        let lease_expires = checked_i64(
-            now.checked_add(lease_duration_secs)
-                .ok_or(HostedMarketStoreError::Invalid("lease"))?,
-            "lease_expires_at",
-        )?;
-        let mut transaction = self.begin_tenant(tenant).await?;
-        // The scan limit is also the tenant-wide active lease ceiling. Take a
-        // tenant-keyed transaction lock before counting and claiming so two
-        // worker replicas cannot each admit a full batch concurrently.
-        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 2))")
-            .bind(tenant.as_str())
-            .execute(&mut *transaction)
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        let configured_limit: i32 = sqlx::query_scalar(
-            "SELECT max_concurrent_jobs FROM chio_finding_market_tenants WHERE tenant_id = $1 FOR SHARE",
-        )
-        .bind(tenant.as_str())
-        .fetch_one(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        if i64::from(limit) > i64::from(configured_limit) {
-            return Err(HostedMarketStoreError::Invalid("tenant_concurrency"));
-        }
-        let active_leases: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM chio_finding_market_jobs WHERE tenant_id = $1 AND state = 'leased' AND lease_expires_at > $2",
-        )
-        .bind(tenant.as_str())
-        .bind(now_i64)
-        .fetch_one(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        let available_slots = i64::from(limit)
-            .checked_sub(active_leases)
-            .ok_or(HostedMarketStoreError::DigestMismatch)?;
-        if available_slots <= 0 {
-            transaction
-                .commit()
-                .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
-            return Ok(Vec::new());
-        }
-        let rows = sqlx::query(
-            r#"
-            WITH due AS (
-                SELECT tenant_id, job_id
-                FROM chio_finding_market_jobs
-                WHERE tenant_id = $1
-                  AND available_at <= $3
-                  AND (
-                      state = 'pending'
-                      OR state = 'failed'
-                      OR (state = 'leased' AND lease_expires_at <= $3)
-                  )
-                ORDER BY available_at, created_at, job_id
-                FOR UPDATE SKIP LOCKED
-                LIMIT $5
-            )
-            UPDATE chio_finding_market_jobs AS jobs
-            SET state = 'leased', lease_owner = $2, lease_expires_at = $4,
-                attempt_count = jobs.attempt_count + 1,
-                lease_fence = jobs.lease_fence + 1, updated_at = $3,
-                last_error_code = NULL
-            FROM due
-            WHERE jobs.tenant_id = due.tenant_id AND jobs.job_id = due.job_id
-            RETURNING jobs.tenant_id, jobs.job_id, jobs.job_kind, jobs.request_sha256,
-                      jobs.payload_sha256, jobs.payload_json, jobs.state,
-                      jobs.attempt_count, jobs.available_at, jobs.lease_owner,
-                      jobs.lease_expires_at, jobs.lease_fence, jobs.result_sha256,
-                      jobs.result_json, jobs.last_error_code, jobs.created_at,
-                      jobs.updated_at
-            "#,
-        )
-        .bind(tenant.as_str())
-        .bind(worker_id)
-        .bind(now_i64)
-        .bind(lease_expires)
-        .bind(available_slots)
-        .fetch_all(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        rows.iter().map(|row| job_from_row(tenant, row)).collect()
-    }
-
-    pub async fn complete_job(
-        &self,
-        tenant: &HostedTenantId,
-        job_id: &str,
-        lease: &HostedJobLease,
-        result_json: &[u8],
-        now: u64,
-    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
-        validate_identifier(job_id, MAX_JOB_ID_BYTES)
-            .map_err(|_| HostedMarketStoreError::Invalid("job_id"))?;
-        let lease_fence = checked_i64(lease.fence(), "lease_fence")?;
-        validate_canonical_json(result_json, "result_json")?;
-        let result_sha256 = sha256_hex(result_json);
-        let now = checked_i64(now, "now")?;
-        let mut transaction = self.begin_tenant(tenant).await?;
-        let row = sqlx::query(
-            "SELECT state, lease_owner, lease_expires_at, lease_fence, result_sha256, result_json FROM chio_finding_market_jobs WHERE tenant_id = $1 AND job_id = $2 FOR UPDATE",
-        )
-        .bind(tenant.as_str())
-        .bind(job_id)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?
-        .ok_or(HostedMarketStoreError::NotFound)?;
-        let state: String = row.try_get(0).map_err(unavailable)?;
-        if state == "completed" {
-            let stored_sha: Option<String> = row.try_get(4).map_err(unavailable)?;
-            let stored_json: Option<Vec<u8>> = row.try_get(5).map_err(unavailable)?;
-            if stored_sha.as_deref() == Some(result_sha256.as_str())
-                && stored_json.as_deref() == Some(result_json)
-            {
-                transaction
-                    .commit()
-                    .await
-                    .map_err(|_| HostedMarketStoreError::Unavailable)?;
-                return Ok(HostedJobWriteOutcome::ExactReplay);
-            }
-            return Err(HostedMarketStoreError::Conflict);
-        }
-        let lease_owner: Option<String> = row.try_get(1).map_err(unavailable)?;
-        let lease_expires: Option<i64> = row.try_get(2).map_err(unavailable)?;
-        let stored_lease_fence: i64 = row.try_get(3).map_err(unavailable)?;
-        if state != "leased"
-            || lease_owner.as_deref() != Some(lease.worker_id())
-            || stored_lease_fence != lease_fence
-            || lease_expires.is_none_or(|expiry| expiry <= now)
-        {
-            return Err(HostedMarketStoreError::LeaseLost);
-        }
-        let updated = sqlx::query(
-            "UPDATE chio_finding_market_jobs SET state = 'completed', lease_owner = NULL, lease_expires_at = NULL, result_sha256 = $3, result_json = $4, updated_at = $5 WHERE tenant_id = $1 AND job_id = $2 AND state = 'leased' AND lease_owner = $6 AND lease_fence = $7",
-        )
-        .bind(tenant.as_str())
-        .bind(job_id)
-        .bind(result_sha256)
-        .bind(result_json)
-        .bind(now)
-        .bind(lease.worker_id())
-        .bind(lease_fence)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?
-        .rows_affected();
-        if updated != 1 {
-            return Err(HostedMarketStoreError::LeaseLost);
-        }
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        Ok(HostedJobWriteOutcome::Inserted)
-    }
-
-    pub async fn fail_job(
-        &self,
-        tenant: &HostedTenantId,
-        job_id: &str,
-        lease: &HostedJobLease,
-        error_code: &str,
-        retry_at: u64,
-        now: u64,
-    ) -> Result<(), HostedMarketStoreError> {
-        validate_identifier(error_code, MAX_ERROR_CODE_BYTES)
-            .map_err(|_| HostedMarketStoreError::Invalid("error_code"))?;
-        validate_identifier(job_id, MAX_JOB_ID_BYTES)
-            .map_err(|_| HostedMarketStoreError::Invalid("job_id"))?;
-        let lease_fence = checked_i64(lease.fence(), "lease_fence")?;
-        let retry_at = checked_i64(retry_at, "retry_at")?;
-        let now = checked_i64(now, "now")?;
-        let mut transaction = self.begin_tenant(tenant).await?;
-        let updated = sqlx::query(
-            "UPDATE chio_finding_market_jobs SET state = 'failed', lease_owner = NULL, lease_expires_at = NULL, last_error_code = $3, available_at = $4, updated_at = $5 WHERE tenant_id = $1 AND job_id = $2 AND state = 'leased' AND lease_owner = $6 AND lease_fence = $7 AND lease_expires_at > $5",
-        )
-        .bind(tenant.as_str())
-        .bind(job_id)
-        .bind(error_code)
-        .bind(retry_at)
-        .bind(now)
-        .bind(lease.worker_id())
-        .bind(lease_fence)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?
-        .rows_affected();
-        if updated != 1 {
-            return Err(HostedMarketStoreError::LeaseLost);
-        }
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        Ok(())
-    }
-
-    /// Permanently fail a leased job after its bounded attempt budget.
-    pub async fn exhaust_job(
-        &self,
-        tenant: &HostedTenantId,
-        job_id: &str,
-        lease: &HostedJobLease,
-        error_code: &str,
-        now: u64,
-    ) -> Result<(), HostedMarketStoreError> {
-        validate_identifier(error_code, MAX_ERROR_CODE_BYTES)
-            .map_err(|_| HostedMarketStoreError::Invalid("error_code"))?;
-        validate_identifier(job_id, MAX_JOB_ID_BYTES)
-            .map_err(|_| HostedMarketStoreError::Invalid("job_id"))?;
-        let lease_fence = checked_i64(lease.fence(), "lease_fence")?;
-        let now = checked_i64(now, "now")?;
-        let mut transaction = self.begin_tenant(tenant).await?;
-        let updated = sqlx::query(
-            "UPDATE chio_finding_market_jobs SET state = 'exhausted', lease_owner = NULL, lease_expires_at = NULL, last_error_code = $3, updated_at = $4 WHERE tenant_id = $1 AND job_id = $2 AND state = 'leased' AND lease_owner = $5 AND lease_fence = $6 AND lease_expires_at > $4",
-        )
-        .bind(tenant.as_str())
-        .bind(job_id)
-        .bind(error_code)
-        .bind(now)
-        .bind(lease.worker_id())
-        .bind(lease_fence)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?
-        .rows_affected();
-        if updated != 1 {
-            return Err(HostedMarketStoreError::LeaseLost);
-        }
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        Ok(())
-    }
-
     pub(crate) async fn begin_tenant(
         &self,
         tenant: &HostedTenantId,
     ) -> Result<Transaction<'_, Postgres>, HostedMarketStoreError> {
         let mut transaction = self.begin_tenant_scope(tenant).await?;
+        self.require_enabled_tenant(&mut transaction, tenant)
+            .await?;
+        Ok(transaction)
+    }
+
+    pub(crate) async fn begin_tenant_snapshot(
+        &self,
+        tenant: &HostedTenantId,
+    ) -> Result<Transaction<'_, Postgres>, HostedMarketStoreError> {
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        sqlx::query("SELECT set_config('chio.tenant_id', $1, TRUE)")
+            .bind(tenant.as_str())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        self.require_enabled_tenant(&mut transaction, tenant)
+            .await?;
+        Ok(transaction)
+    }
+
+    async fn require_enabled_tenant(
+        &self,
+        transaction: &mut Transaction<'_, Postgres>,
+        tenant: &HostedTenantId,
+    ) -> Result<(), HostedMarketStoreError> {
         let enabled = sqlx::query_scalar::<_, bool>(
             "SELECT enabled FROM chio_finding_market_tenants WHERE tenant_id = $1",
         )
         .bind(tenant.as_str())
-        .fetch_optional(&mut *transaction)
+        .fetch_optional(&mut **transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?
         .ok_or(HostedMarketStoreError::NotFound)?;
         if !enabled {
             return Err(HostedMarketStoreError::TenantDisabled);
         }
-        Ok(transaction)
+        Ok(())
     }
 
     async fn begin_tenant_scope(

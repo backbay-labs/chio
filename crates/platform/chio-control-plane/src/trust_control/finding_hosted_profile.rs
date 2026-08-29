@@ -29,7 +29,7 @@ use zeroize::Zeroize as _;
 
 use super::FindingMarketConfig;
 
-pub const FINDING_HOSTED_PROFILE_SCHEMA: &str = "chio.finding.hosted-operator-profile.v1";
+pub const FINDING_HOSTED_PROFILE_SCHEMA: &str = "chio.finding.hosted-operator-profile.v2";
 const MAX_I_JSON_INTEGER: u64 = (1_u64 << 53) - 1;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -222,7 +222,11 @@ pub struct FindingHostedWorkerProfile {
     pub max_instances: u32,
     pub execution_timeout_secs: u64,
     pub lease_duration_secs: u64,
+    pub lease_heartbeat_secs: u64,
     pub max_attempts: u32,
+    pub max_tenants_per_tick: u32,
+    pub max_jobs_per_tick: u32,
+    pub shutdown_grace_secs: u64,
     pub max_frame_bytes: u32,
     pub max_file_size_bytes: u64,
     pub max_open_files: u32,
@@ -922,7 +926,12 @@ impl FindingHostedProfile {
             || !(1..=1_024).contains(&self.worker.max_instances)
             || !(1..=3_600).contains(&self.worker.execution_timeout_secs)
             || !(5..=3_600).contains(&self.worker.lease_duration_secs)
+            || self.worker.lease_heartbeat_secs == 0
+            || self.worker.lease_heartbeat_secs >= self.worker.lease_duration_secs
             || !(1..=20).contains(&self.worker.max_attempts)
+            || !(1..=1_024).contains(&self.worker.max_tenants_per_tick)
+            || !(1..=10_000).contains(&self.worker.max_jobs_per_tick)
+            || !(1..=3_600).contains(&self.worker.shutdown_grace_secs)
             || !(1_024..=4_194_304).contains(&self.worker.max_frame_bytes)
             || !(1_048_576..=1_073_741_824).contains(&self.worker.max_file_size_bytes)
             || !(32..=4_096).contains(&self.worker.max_open_files)

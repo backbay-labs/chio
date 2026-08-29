@@ -13,7 +13,6 @@ const MAX_EVENT_ID_BYTES: usize = 256;
 const MAX_EVENT_KIND_BYTES: usize = 96;
 const MAX_AGGREGATE_HISTORY: u32 = 10_000;
 const EVENT_DIGEST_DOMAIN: &str = "chio.finding.hosted.aggregate-event.v1";
-const AGGREGATE_LOCK_DOMAIN: &str = "chio.finding.hosted.aggregate-lock.v1";
 
 /// Closed set of durable cognition-market aggregate families.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -37,7 +36,7 @@ pub enum HostedAggregateKind {
 }
 
 impl HostedAggregateKind {
-    const fn label(self) -> &'static str {
+    pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::Finding => "finding",
             Self::Listing => "listing",
@@ -57,7 +56,7 @@ impl HostedAggregateKind {
         }
     }
 
-    fn parse(value: &str) -> Result<Self, HostedMarketStoreError> {
+    pub(crate) fn parse(value: &str) -> Result<Self, HostedMarketStoreError> {
         match value {
             "finding" => Ok(Self::Finding),
             "listing" => Ok(Self::Listing),
@@ -163,7 +162,6 @@ impl PostgresFindingMarketStore {
         if revision > u64::from(MAX_AGGREGATE_HISTORY) {
             return Err(HostedMarketStoreError::Capacity);
         }
-        let revision_i64 = checked_i64(revision, "aggregate revision")?;
         let committed_at_i64 = checked_i64(committed_at, "aggregate commit time")?;
         let payload_sha256 = sha256_hex(payload_json);
         let event_sha256 = aggregate_event_digest(
@@ -177,121 +175,40 @@ impl PostgresFindingMarketStore {
             &payload_sha256,
             committed_at,
         )?;
-        let lock_key = aggregate_lock_key(tenant, aggregate_kind, aggregate_id)?;
         let mut transaction = self.begin_tenant(tenant).await?;
-        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
-            .bind(lock_key)
-            .execute(&mut *transaction)
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-
-        if let Some(row) = sqlx::query(
-            r#"SELECT aggregate_kind, aggregate_id, revision, event_kind,
-                      previous_event_sha256, payload_sha256, payload_json,
-                      event_sha256, committed_at
-               FROM chio_finding_market_aggregate_events
-               WHERE tenant_id = $1 AND event_id = $2 FOR UPDATE"#,
-        )
-        .bind(tenant.as_str())
-        .bind(event_id)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?
-        {
-            let replay = event_replay_matches(
-                &row,
-                aggregate_kind,
-                aggregate_id,
-                revision,
-                event_kind,
-                expected_event_sha256,
-                &payload_sha256,
-                payload_json,
-                &event_sha256,
-                committed_at,
-            )?;
-            if !replay {
-                return Err(HostedMarketStoreError::Conflict);
-            }
-            transaction
-                .commit()
-                .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
-            return Ok(HostedJobWriteOutcome::ExactReplay);
-        }
-
-        let head = sqlx::query(
-            r#"SELECT revision, event_sha256
-               FROM chio_finding_market_aggregate_heads
-               WHERE tenant_id = $1 AND aggregate_kind = $2 AND aggregate_id = $3
-               FOR UPDATE"#,
+        let outcome: i16 = sqlx::query_scalar(
+            r#"SELECT chio_finding_market_append_aggregate_event(
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+            )"#,
         )
         .bind(tenant.as_str())
         .bind(aggregate_kind.label())
         .bind(aggregate_id)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        match head {
-            None if expected_revision == 0 => {}
-            Some(row) => {
-                let stored_revision = stored_u64(row.try_get(0).map_err(unavailable)?)?;
-                let stored_digest: String = row.try_get(1).map_err(unavailable)?;
-                validate_digest(&stored_digest, "durable aggregate head")
-                    .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
-                if stored_revision != expected_revision
-                    || Some(stored_digest.as_str()) != expected_event_sha256
-                {
-                    return Err(HostedMarketStoreError::Conflict);
-                }
-            }
-            None => return Err(HostedMarketStoreError::Conflict),
-        }
-
-        sqlx::query(
-            r#"INSERT INTO chio_finding_market_aggregate_events
-               (tenant_id, aggregate_kind, aggregate_id, revision, event_id,
-                event_kind, previous_event_sha256, payload_sha256, payload_json,
-                event_sha256, committed_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)"#,
+        .bind(
+            i64::try_from(expected_revision)
+                .map_err(|_| HostedMarketStoreError::Invalid("expected aggregate revision"))?,
         )
-        .bind(tenant.as_str())
-        .bind(aggregate_kind.label())
-        .bind(aggregate_id)
-        .bind(revision_i64)
+        .bind(expected_event_sha256)
         .bind(event_id)
         .bind(event_kind)
-        .bind(expected_event_sha256)
         .bind(&payload_sha256)
         .bind(payload_json)
         .bind(&event_sha256)
         .bind(committed_at_i64)
-        .execute(&mut *transaction)
+        .fetch_one(&mut *transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        sqlx::query(
-            r#"INSERT INTO chio_finding_market_aggregate_heads
-               (tenant_id, aggregate_kind, aggregate_id, revision, event_sha256, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6)
-               ON CONFLICT (tenant_id, aggregate_kind, aggregate_id)
-               DO UPDATE SET revision = EXCLUDED.revision,
-                             event_sha256 = EXCLUDED.event_sha256,
-                             updated_at = EXCLUDED.updated_at"#,
-        )
-        .bind(tenant.as_str())
-        .bind(aggregate_kind.label())
-        .bind(aggregate_id)
-        .bind(revision_i64)
-        .bind(&event_sha256)
-        .bind(committed_at_i64)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let outcome = match outcome {
+            0 => HostedJobWriteOutcome::Inserted,
+            1 => HostedJobWriteOutcome::ExactReplay,
+            2 => return Err(HostedMarketStoreError::Conflict),
+            _ => return Err(HostedMarketStoreError::Unavailable),
+        };
         transaction
             .commit()
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        Ok(HostedJobWriteOutcome::Inserted)
+        Ok(outcome)
     }
 
     pub async fn aggregate_head(
@@ -335,12 +252,11 @@ impl PostgresFindingMarketStore {
         if limit == 0 || limit > MAX_AGGREGATE_HISTORY {
             return Err(HostedMarketStoreError::Invalid("aggregate history limit"));
         }
-        let mut transaction = self.begin_tenant(tenant).await?;
+        let mut transaction = self.begin_tenant_snapshot(tenant).await?;
         let head = sqlx::query(
             r#"SELECT revision, event_sha256
                FROM chio_finding_market_aggregate_heads
-               WHERE tenant_id = $1 AND aggregate_kind = $2 AND aggregate_id = $3
-               FOR SHARE"#,
+               WHERE tenant_id = $1 AND aggregate_kind = $2 AND aggregate_id = $3"#,
         )
         .bind(tenant.as_str())
         .bind(aggregate_kind.label())
@@ -390,21 +306,6 @@ impl PostgresFindingMarketStore {
     }
 }
 
-fn aggregate_lock_key(
-    tenant: &HostedTenantId,
-    aggregate_kind: HostedAggregateKind,
-    aggregate_id: &str,
-) -> Result<String, HostedMarketStoreError> {
-    canonical_json_bytes(&(
-        AGGREGATE_LOCK_DOMAIN,
-        tenant.as_str(),
-        aggregate_kind.label(),
-        aggregate_id,
-    ))
-    .map(|bytes| sha256_hex(&bytes))
-    .map_err(|_| HostedMarketStoreError::Invalid("aggregate lock key"))
-}
-
 #[allow(clippy::too_many_arguments)]
 fn aggregate_event_digest(
     tenant: &HostedTenantId,
@@ -434,38 +335,6 @@ fn aggregate_event_digest(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn event_replay_matches(
-    row: &sqlx::postgres::PgRow,
-    aggregate_kind: HostedAggregateKind,
-    aggregate_id: &str,
-    revision: u64,
-    event_kind: &str,
-    previous_event_sha256: Option<&str>,
-    payload_sha256: &str,
-    payload_json: &[u8],
-    event_sha256: &str,
-    committed_at: u64,
-) -> Result<bool, HostedMarketStoreError> {
-    let stored_payload: Vec<u8> = row.try_get(6).map_err(unavailable)?;
-    let stored_payload_sha: String = row.try_get(5).map_err(unavailable)?;
-    verify_payload(&stored_payload_sha, &stored_payload)?;
-    Ok(
-        row.try_get::<String, _>(0).map_err(unavailable)? == aggregate_kind.label()
-            && row.try_get::<String, _>(1).map_err(unavailable)? == aggregate_id
-            && stored_u64(row.try_get(2).map_err(unavailable)?)? == revision
-            && row.try_get::<String, _>(3).map_err(unavailable)? == event_kind
-            && row
-                .try_get::<Option<String>, _>(4)
-                .map_err(unavailable)?
-                .as_deref()
-                == previous_event_sha256
-            && stored_payload_sha == payload_sha256
-            && stored_payload == payload_json
-            && row.try_get::<String, _>(7).map_err(unavailable)? == event_sha256
-            && stored_u64(row.try_get(8).map_err(unavailable)?)? == committed_at,
-    )
-}
-
 fn aggregate_head_from_row(
     tenant: &HostedTenantId,
     row: &sqlx::postgres::PgRow,
@@ -620,18 +489,6 @@ mod tests {
         };
         assert_ne!(digest(1, None).ok(), digest(2, None).ok());
         assert_ne!(digest(2, Some(&"b".repeat(64))).ok(), digest(2, None).ok());
-    }
-
-    #[test]
-    fn aggregate_lock_key_is_text_safe_and_unambiguous() {
-        let tenant = HostedTenantId::new("tenant:a").unwrap_or_else(|error| panic!("{error}"));
-        let first = aggregate_lock_key(&tenant, HostedAggregateKind::Challenge, "a:b")
-            .unwrap_or_else(|error| panic!("{error}"));
-        let second = aggregate_lock_key(&tenant, HostedAggregateKind::Challenge, "a/b")
-            .unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(first.len(), 64);
-        assert!(first.bytes().all(|byte| byte.is_ascii_hexdigit()));
-        assert_ne!(first, second);
     }
 
     #[test]

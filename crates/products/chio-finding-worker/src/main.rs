@@ -16,6 +16,7 @@ use chio_finding_market_store_postgres::{
 use chio_finding_worker::{HostedFindingWorker, HostedWorkerRun, HostedWorkerServiceError};
 use clap::Parser;
 use serde::Serialize;
+use tokio_util::sync::CancellationToken;
 
 const MAX_PROFILE_BYTES: u64 = 4 * 1024 * 1024;
 const RETRY_BASE_SECS: u64 = 5;
@@ -78,11 +79,15 @@ struct WorkerTickReport {
     ready: bool,
     dependency_error: Option<&'static str>,
     tenant_count: u32,
+    tenants_visited: u32,
     claimed: u32,
     completed: u32,
     guest_rejected: u32,
     retried: u32,
     exhausted: u32,
+    cancelled: u32,
+    claimed_job_ids: Vec<String>,
+    completed_job_ids: Vec<String>,
 }
 
 #[tokio::main]
@@ -123,13 +128,23 @@ async fn run(args: Args) -> Result<(), DaemonError> {
         executor,
         args.worker_id.clone(),
         profile.worker.lease_duration_secs,
+        profile.worker.lease_heartbeat_secs,
         profile.worker.max_attempts,
         RETRY_BASE_SECS,
     )
     .map_err(|_| DaemonError::Arguments)?;
 
     if args.once {
-        let mut report = run_tick(&worker, &tenants, &args.worker_id, 0).await?;
+        let mut report = run_tick(
+            &worker,
+            &tenants,
+            &args.worker_id,
+            0,
+            profile.worker.max_tenants_per_tick,
+            profile.worker.max_jobs_per_tick,
+            &CancellationToken::new(),
+        )
+        .await?;
         report.ready = true;
         return write_report(&report);
     }
@@ -172,11 +187,52 @@ async fn run(args: Args) -> Result<(), DaemonError> {
             )
             .await?
             {
+                write_report(&dependency_failure_report(
+                    &args.worker_id,
+                    &tenants,
+                    "shutdown",
+                )?)?;
                 return Ok(());
             }
             continue;
         }
-        match run_tick(&worker, &tenants, &args.worker_id, next_tenant).await {
+        let cancellation = CancellationToken::new();
+        let tick = run_tick(
+            &worker,
+            &tenants,
+            &args.worker_id,
+            next_tenant,
+            profile.worker.max_tenants_per_tick,
+            profile.worker.max_jobs_per_tick,
+            &cancellation,
+        );
+        tokio::pin!(tick);
+        let tick_result = tokio::select! {
+            result = &mut tick => result,
+            signal = &mut shutdown => {
+                signal?;
+                cancellation.cancel();
+                let timed = tokio::time::timeout(
+                    Duration::from_secs(profile.worker.shutdown_grace_secs),
+                    &mut tick,
+                )
+                .await;
+                let Ok(result) = timed else {
+                    write_report(&dependency_failure_report(
+                        &args.worker_id,
+                        &tenants,
+                        "shutdown_timeout",
+                    )?)?;
+                    return Err(DaemonError::Shutdown);
+                };
+                let mut report = result?;
+                report.ready = false;
+                report.dependency_error = Some("shutdown");
+                write_report(&report)?;
+                return Ok(());
+            }
+        };
+        match tick_result {
             Ok(mut report) => {
                 database_breaker
                     .record_success(HostedDependency::Database)
@@ -186,7 +242,9 @@ async fn run(args: Args) -> Result<(), DaemonError> {
                     .map_err(|_| DaemonError::Execution)?;
                 report.ready = readiness.snapshot().ready;
                 write_report(&report)?;
-                next_tenant = (next_tenant + 1) % tenants.len();
+                let visited =
+                    usize::try_from(report.tenants_visited).map_err(|_| DaemonError::Execution)?;
+                next_tenant = (next_tenant + visited.max(1)) % tenants.len();
             }
             Err(DaemonError::Database) => {
                 database_breaker
@@ -209,6 +267,11 @@ async fn run(args: Args) -> Result<(), DaemonError> {
         )
         .await?
         {
+            write_report(&dependency_failure_report(
+                &args.worker_id,
+                &tenants,
+                "shutdown",
+            )?)?;
             return Ok(());
         }
     }
@@ -379,21 +442,39 @@ async fn run_tick(
     tenants: &[TenantRuntime],
     worker_id: &str,
     first: usize,
+    max_tenants: u32,
+    max_jobs: u32,
+    cancellation: &CancellationToken,
 ) -> Result<WorkerTickReport, DaemonError> {
     let mut report = WorkerTickReport {
-        schema: "chio.finding.worker-tick.v1",
+        schema: "chio.finding.worker-tick.v2",
         worker_id: worker_id.to_owned(),
         tenant_count: u32::try_from(tenants.len()).map_err(|_| DaemonError::Execution)?,
         ..WorkerTickReport::default()
     };
-    for offset in 0..tenants.len() {
+    let tenant_budget = usize::try_from(max_tenants)
+        .map_err(|_| DaemonError::Execution)?
+        .min(tenants.len());
+    let mut remaining_jobs = max_jobs;
+    for offset in 0..tenant_budget {
+        if cancellation.is_cancelled() || remaining_jobs == 0 {
+            break;
+        }
         let index = (first + offset) % tenants.len();
         let tenant = &tenants[index];
+        let claim_limit = tenant.limits.max_concurrent_jobs().min(remaining_jobs);
         let run = worker
-            .run_once_with_limit(&tenant.tenant_id, tenant.limits.max_concurrent_jobs())
+            .run_once_with_limit_cancellable(&tenant.tenant_id, claim_limit, cancellation)
             .await
             .map_err(map_worker_error)?;
+        remaining_jobs = remaining_jobs
+            .checked_sub(run.claimed)
+            .ok_or(DaemonError::Execution)?;
         add_run(&mut report, run)?;
+        report.tenants_visited = report
+            .tenants_visited
+            .checked_add(1)
+            .ok_or(DaemonError::Execution)?;
     }
     Ok(report)
 }
@@ -413,7 +494,7 @@ fn dependency_failure_report(
     error_code: &'static str,
 ) -> Result<WorkerTickReport, DaemonError> {
     Ok(WorkerTickReport {
-        schema: "chio.finding.worker-tick.v1",
+        schema: "chio.finding.worker-tick.v2",
         worker_id: worker_id.to_owned(),
         ready: false,
         dependency_error: Some(error_code),
@@ -423,6 +504,8 @@ fn dependency_failure_report(
 }
 
 fn add_run(report: &mut WorkerTickReport, run: HostedWorkerRun) -> Result<(), DaemonError> {
+    report.claimed_job_ids.extend(run.claimed_job_ids);
+    report.completed_job_ids.extend(run.completed_job_ids);
     report.claimed = report
         .claimed
         .checked_add(run.claimed)
@@ -442,6 +525,10 @@ fn add_run(report: &mut WorkerTickReport, run: HostedWorkerRun) -> Result<(), Da
     report.exhausted = report
         .exhausted
         .checked_add(run.exhausted)
+        .ok_or(DaemonError::Execution)?;
+    report.cancelled = report
+        .cancelled
+        .checked_add(run.cancelled)
         .ok_or(DaemonError::Execution)?;
     Ok(())
 }

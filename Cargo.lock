@@ -3677,6 +3677,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-finding-market-migrator"
+version = "0.1.0"
+dependencies = [
+ "chio-finding-market-store-postgres",
+ "clap 4.6.0",
+ "tokio",
+]
+
+[[package]]
 name = "chio-finding-market-store-postgres"
 version = "0.1.0"
 dependencies = [
@@ -3720,6 +3729,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-util",
  "uuid",
 ]
 
@@ -3738,6 +3748,7 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

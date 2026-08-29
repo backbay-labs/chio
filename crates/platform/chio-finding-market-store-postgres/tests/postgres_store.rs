@@ -2,21 +2,52 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chio_core_types::crypto::Keypair;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::sha256_hex;
 use chio_finding_market_store_postgres::{
-    HostedAggregateKind, HostedJobState, HostedJobWriteOutcome, HostedMarketStoreError,
-    HostedTenantId, HostedTenantLimits, PostgresFindingMarketStore,
+    HostedAggregateCheckpointBody, HostedAggregateKind, HostedJobState, HostedJobWriteOutcome,
+    HostedMarketStoreError, HostedTenantId, HostedTenantLimits, PostgresFindingMarketMigrator,
+    PostgresFindingMarketStore, HOSTED_AGGREGATE_CHECKPOINT_SCHEMA,
 };
 use sqlx::Row as _;
 
 #[tokio::test]
 async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dyn Error>> {
     let database_url = std::env::var("CHIO_TEST_POSTGRES_URL")?;
+    let migrator_url = std::env::var("CHIO_TEST_POSTGRES_MIGRATOR_URL")?;
     let runtime_url = std::env::var("CHIO_TEST_POSTGRES_RUNTIME_URL")?;
     let admin_pool = sqlx::PgPool::connect(&database_url).await?;
-    let migrator =
-        PostgresFindingMarketStore::from_pool_for_integration_tests(admin_pool.clone(), 8);
+    sqlx::raw_sql(
+        r#"
+        DO $role$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chio_market_migrator_test') THEN
+                CREATE ROLE chio_market_migrator_test LOGIN PASSWORD 'test-only-password'
+                    NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+            END IF;
+            ALTER ROLE chio_market_migrator_test LOGIN PASSWORD 'test-only-password'
+                NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+            EXECUTE format(
+                'REVOKE CREATE, TEMPORARY ON DATABASE %I FROM chio_market_migrator_test',
+                current_database()
+            );
+        END
+        $role$;
+        GRANT USAGE, CREATE ON SCHEMA public TO chio_market_migrator_test;
+        "#,
+    )
+    .execute(&admin_pool)
+    .await?;
+    let migrator_pool = sqlx::PgPool::connect(&migrator_url).await?;
+    let migrator = PostgresFindingMarketMigrator::from_pool_for_integration_tests(migrator_pool);
     migrator.migrate().await?;
+    migrator.migrate().await?;
+    let migration_ledger_tamper =
+        sqlx::query("DELETE FROM chio_finding_market_schema_migrations WHERE version = 1")
+            .execute(&admin_pool)
+            .await;
+    assert!(migration_ledger_tamper.is_err());
     sqlx::raw_sql(
         r#"
         DO $role$
@@ -38,16 +69,29 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         END
         $role$;
         GRANT USAGE ON SCHEMA public TO chio_market_runtime_test;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_tenants TO chio_market_runtime_test;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_jobs TO chio_market_runtime_test;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_principals TO chio_market_runtime_test;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_api_keys TO chio_market_runtime_test;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_dpop_nonces TO chio_market_runtime_test;
+        GRANT SELECT ON chio_finding_market_schema_migrations TO chio_market_runtime_test;
+        REVOKE ALL ON chio_finding_market_tenants, chio_finding_market_jobs,
+            chio_finding_market_principals, chio_finding_market_api_keys,
+            chio_finding_market_dpop_nonces, chio_finding_market_capability_uses,
+            chio_finding_market_security_events, chio_finding_market_aggregate_events,
+            chio_finding_market_aggregate_heads,
+            chio_finding_market_aggregate_checkpoints,
+            chio_finding_market_spend_reservations
+            FROM chio_market_runtime_test;
+        GRANT SELECT, INSERT, UPDATE ON chio_finding_market_tenants TO chio_market_runtime_test;
+        GRANT SELECT, INSERT, UPDATE ON chio_finding_market_jobs TO chio_market_runtime_test;
+        GRANT SELECT, INSERT ON chio_finding_market_principals TO chio_market_runtime_test;
+        GRANT SELECT, INSERT, UPDATE ON chio_finding_market_api_keys TO chio_market_runtime_test;
+        GRANT SELECT, INSERT, DELETE ON chio_finding_market_dpop_nonces TO chio_market_runtime_test;
         GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_capability_uses TO chio_market_runtime_test;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_security_events TO chio_market_runtime_test;
-        GRANT SELECT, INSERT, UPDATE ON chio_finding_market_aggregate_events TO chio_market_runtime_test;
-        GRANT SELECT, INSERT, UPDATE ON chio_finding_market_aggregate_heads TO chio_market_runtime_test;
+        GRANT SELECT, INSERT ON chio_finding_market_security_events TO chio_market_runtime_test;
+        GRANT SELECT ON chio_finding_market_aggregate_events TO chio_market_runtime_test;
+        GRANT SELECT ON chio_finding_market_aggregate_heads TO chio_market_runtime_test;
+        GRANT SELECT, INSERT ON chio_finding_market_aggregate_checkpoints TO chio_market_runtime_test;
         GRANT SELECT, INSERT, UPDATE ON chio_finding_market_spend_reservations TO chio_market_runtime_test;
+        GRANT EXECUTE ON FUNCTION chio_finding_market_append_aggregate_event(
+            TEXT, TEXT, TEXT, BIGINT, TEXT, TEXT, TEXT, TEXT, BYTEA, TEXT, BIGINT
+        ) TO chio_market_runtime_test;
         "#,
     )
     .execute(&admin_pool)
@@ -55,6 +99,24 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     let runtime_pool = sqlx::PgPool::connect(&runtime_url).await?;
     let store =
         PostgresFindingMarketStore::from_pool_for_integration_tests(runtime_pool.clone(), 8);
+    store
+        .verify_runtime_boundary_for_integration_tests()
+        .await?;
+
+    sqlx::raw_sql(
+        "GRANT UPDATE ON chio_finding_market_aggregate_events TO chio_market_runtime_test",
+    )
+    .execute(&admin_pool)
+    .await?;
+    assert!(matches!(
+        store.verify_runtime_boundary_for_integration_tests().await,
+        Err(HostedMarketStoreError::Configuration)
+    ));
+    sqlx::raw_sql(
+        "REVOKE UPDATE ON chio_finding_market_aggregate_events FROM chio_market_runtime_test",
+    )
+    .execute(&admin_pool)
+    .await?;
     store
         .verify_runtime_boundary_for_integration_tests()
         .await?;
@@ -402,6 +464,70 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         Err(HostedMarketStoreError::Conflict)
     ));
 
+    let aggregate_tamper = sqlx::query(
+        "UPDATE chio_finding_market_aggregate_events SET event_sha256 = $1 WHERE tenant_id = $2 AND event_id = $3",
+    )
+    .bind("f".repeat(64))
+    .bind(tenant_a.as_str())
+    .bind("challenge-a-submitted")
+    .execute(&admin_pool)
+    .await;
+    assert!(aggregate_tamper.is_err());
+
+    let checkpoint_signer = Keypair::from_seed(&[91_u8; 32]);
+    let checkpoint = SignedExportEnvelope::sign(
+        HostedAggregateCheckpointBody {
+            schema: HOSTED_AGGREGATE_CHECKPOINT_SCHEMA.to_owned(),
+            tenant_id: tenant_a.as_str().to_owned(),
+            aggregate_kind: HostedAggregateKind::Challenge,
+            aggregate_id: "challenge-a".to_owned(),
+            revision: 2,
+            event_sha256: history[1].event_sha256.clone(),
+            previous_checkpoint_sha256: None,
+            created_at: 1_700_000_004,
+        },
+        &checkpoint_signer,
+    )?;
+    assert_eq!(
+        store
+            .append_aggregate_checkpoint(&tenant_a, &checkpoint_signer.public_key(), &checkpoint,)
+            .await?,
+        HostedJobWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store
+            .append_aggregate_checkpoint(&tenant_a, &checkpoint_signer.public_key(), &checkpoint,)
+            .await?,
+        HostedJobWriteOutcome::ExactReplay
+    );
+    let retained_checkpoint = store
+        .latest_aggregate_checkpoint(
+            &tenant_a,
+            HostedAggregateKind::Challenge,
+            "challenge-a",
+            &checkpoint_signer.public_key(),
+        )
+        .await?
+        .ok_or("aggregate checkpoint missing")?;
+    assert_eq!(retained_checkpoint.checkpoint, checkpoint);
+    assert!(store
+        .latest_aggregate_checkpoint(
+            &tenant_b,
+            HostedAggregateKind::Challenge,
+            "challenge-a",
+            &checkpoint_signer.public_key(),
+        )
+        .await?
+        .is_none());
+    let checkpoint_tamper = sqlx::query(
+        "DELETE FROM chio_finding_market_aggregate_checkpoints WHERE tenant_id = $1 AND checkpoint_sha256 = $2",
+    )
+    .bind(tenant_a.as_str())
+    .bind(&retained_checkpoint.checkpoint_sha256)
+    .execute(&admin_pool)
+    .await;
+    assert!(checkpoint_tamper.is_err());
+
     let unscoped_aggregate_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM chio_finding_market_aggregate_events")
             .fetch_one(&runtime_pool)
@@ -437,6 +563,14 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     .await?;
     assert_eq!(event_count, 2);
     event_transaction.rollback().await?;
+    let security_event_tamper = sqlx::query(
+        "DELETE FROM chio_finding_market_security_events WHERE tenant_id = $1 AND event_id = $2",
+    )
+    .bind(tenant_a.as_str())
+    .bind("event-key-b-issued")
+    .execute(&admin_pool)
+    .await;
+    assert!(security_event_tamper.is_err());
     assert!(
         store
             .consume_dpop_nonce(
@@ -616,24 +750,39 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         )
         .await?;
 
-    let first_lease = store
-        .claim_due_jobs(&tenant_a, "worker-a", 1_700_000_010, 10, 1)
-        .await?;
+    let first_lease = store.claim_due_jobs(&tenant_a, "worker-a", 10, 1).await?;
     assert_eq!(first_lease.len(), 1);
     assert_eq!(first_lease[0].state, HostedJobState::Leased);
     assert!(matches!(
-        store
-            .claim_due_jobs(&tenant_a, "worker-b", 1_700_000_010, 10, 2)
-            .await,
+        store.claim_due_jobs(&tenant_a, "worker-b", 10, 2).await,
         Err(HostedMarketStoreError::Invalid("tenant_concurrency"))
     ));
     assert!(store
-        .claim_due_jobs(&tenant_a, "worker-b", 1_700_000_015, 10, 1)
+        .claim_due_jobs(&tenant_a, "worker-b", 10, 1)
         .await?
         .is_empty());
-    let recovered = store
-        .claim_due_jobs(&tenant_a, "worker-a", 1_700_000_021, 10, 1)
+    let first_claim = chio_finding_market_store_postgres::HostedJobLease::new(
+        "worker-a",
+        first_lease[0].lease_fence,
+    )?;
+    let renewed = store
+        .renew_job_lease(&tenant_a, "job-1", &first_claim, 20)
         .await?;
+    assert!(
+        renewed.expires_at
+            > first_lease[0]
+                .lease_expires_at
+                .ok_or("lease expiry missing")?,
+        "renewal must return a later database-authored expiry"
+    );
+    sqlx::query(
+        "UPDATE chio_finding_market_jobs SET lease_expires_at = floor(extract(epoch from clock_timestamp()))::bigint - 1 WHERE tenant_id = $1 AND job_id = $2",
+    )
+    .bind(tenant_a.as_str())
+    .bind("job-1")
+    .execute(&admin_pool)
+    .await?;
+    let recovered = store.claim_due_jobs(&tenant_a, "worker-a", 10, 1).await?;
     assert_eq!(recovered.len(), 1);
     assert_eq!(recovered[0].attempt_count, 2);
     assert!(recovered[0].lease_fence > first_lease[0].lease_fence);
@@ -648,12 +797,12 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
 
     let result = br#"{"status":"settled"}"#;
     assert!(store
-        .complete_job(&tenant_a, "job-1", &stale_lease, result, 1_700_000_022,)
+        .complete_job(&tenant_a, "job-1", &stale_lease, result)
         .await
         .is_err());
     assert_eq!(
         store
-            .complete_job(&tenant_a, "job-1", &recovered_lease, result, 1_700_000_022,)
+            .complete_job(&tenant_a, "job-1", &recovered_lease, result)
             .await?,
         HostedJobWriteOutcome::Inserted
     );
@@ -666,9 +815,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         completed.result_sha256.as_deref(),
         Some(sha256_hex(result).as_str())
     );
-    let second_lease = store
-        .claim_due_jobs(&tenant_a, "worker-b", 1_700_000_023, 10, 1)
-        .await?;
+    let second_lease = store.claim_due_jobs(&tenant_a, "worker-b", 10, 1).await?;
     assert_eq!(second_lease.len(), 1);
     assert_eq!(second_lease[0].job_id, "job-concurrent");
     let second_claim = chio_finding_market_store_postgres::HostedJobLease::new(
@@ -676,13 +823,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         second_lease[0].lease_fence,
     )?;
     store
-        .complete_job(
-            &tenant_a,
-            "job-concurrent",
-            &second_claim,
-            result,
-            1_700_000_024,
-        )
+        .complete_job(&tenant_a, "job-concurrent", &second_claim, result)
         .await?;
     store
         .put_job(
@@ -695,9 +836,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             1_700_000_025,
         )
         .await?;
-    let exhausted_lease = store
-        .claim_due_jobs(&tenant_a, "worker-c", 1_700_000_026, 10, 1)
-        .await?;
+    let exhausted_lease = store.claim_due_jobs(&tenant_a, "worker-c", 10, 1).await?;
     assert_eq!(exhausted_lease.len(), 1);
     let exhausted_claim = chio_finding_market_store_postgres::HostedJobLease::new(
         "worker-c",
@@ -709,7 +848,6 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             "job-exhausted",
             &exhausted_claim,
             "attempt_budget_exhausted",
-            1_700_000_027,
         )
         .await?;
     let exhausted = store
@@ -718,7 +856,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         .ok_or("exhausted job missing")?;
     assert_eq!(exhausted.state, HostedJobState::Exhausted);
     assert!(store
-        .claim_due_jobs(&tenant_a, "worker-d", 1_700_000_100, 10, 1)
+        .claim_due_jobs(&tenant_a, "worker-d", 10, 1)
         .await?
         .is_empty());
     store.set_tenant_enabled(&tenant_a, false).await?;

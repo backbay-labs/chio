@@ -10,6 +10,7 @@ on:
       - "crates/platform/chio-control-plane/**"
       - "crates/platform/chio-store-sqlite/**"
       - "crates/products/chio-finding-worker/**"
+      - "crates/products/chio-finding-market-migrator/**"
       - "crates/trust/chio-signing-remote/**"
       - "crates/trust/chio-finding-challenge/**"
       - "crates/economy/chio-finding/**"
@@ -28,6 +29,7 @@ on:
       - "crates/platform/chio-control-plane/**"
       - "crates/platform/chio-store-sqlite/**"
       - "crates/products/chio-finding-worker/**"
+      - "crates/products/chio-finding-market-migrator/**"
       - "crates/trust/chio-signing-remote/**"
       - "crates/trust/chio-finding-challenge/**"
       - "crates/economy/chio-finding/**"
@@ -62,6 +64,7 @@ jobs:
           --health-retries 12
     env:
       CHIO_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/chio?sslmode=disable
+      CHIO_TEST_POSTGRES_MIGRATOR_URL: postgres://chio_market_migrator_test:test-only-password@127.0.0.1:5432/chio?sslmode=disable
       CHIO_TEST_POSTGRES_RUNTIME_URL: postgres://chio_market_runtime_test:test-only-password@127.0.0.1:5432/chio?sslmode=disable
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"

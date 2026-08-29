@@ -88,6 +88,7 @@ run_gate fuzz-lock \
 run_gate signing-remote cargo test -p chio-signing-remote --all-targets
 run_gate isolated-worker cargo test -p chio-finding-worker --all-targets
 run_gate worker-daemon cargo test -p chio-finding-worker-daemon --all-targets
+run_gate database-migrator cargo test -p chio-finding-market-migrator --all-targets
 run_gate postgres-store cargo test -p chio-finding-market-store-postgres --all-targets
 run_gate postgres-16-rls \
   cargo test -p chio-finding-market-store-postgres \
@@ -111,6 +112,7 @@ run_gate strict-clippy \
     -p chio-signing-remote \
     -p chio-finding-worker \
     -p chio-finding-worker-daemon \
+    -p chio-finding-market-migrator \
     -p chio-finding-market-store-postgres \
     -p chio-finding-hosted-edge \
     -p chio-settle \

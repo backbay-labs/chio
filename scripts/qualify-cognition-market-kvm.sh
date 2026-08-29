@@ -22,6 +22,7 @@ fi
 : "${CHIO_FINDING_HOSTED_PROFILE:?set CHIO_FINDING_HOSTED_PROFILE to the canonical private hosted profile}"
 : "${CHIO_FINDING_CANARY_OBSERVATION:?set CHIO_FINDING_CANARY_OBSERVATION to the canonical private canary observation}"
 : "${CHIO_FINDING_WORKER_ID:?set CHIO_FINDING_WORKER_ID to a unique worker identity}"
+: "${CHIO_FINDING_CANARY_JOB_ID:?set CHIO_FINDING_CANARY_JOB_ID to the exact queued canary job}"
 
 candidate_sha="$(git rev-parse --verify 'HEAD^{commit}')"
 if [[ -n "${GITHUB_SHA:-}" && "${GITHUB_SHA}" != "${candidate_sha}" ]]; then
@@ -66,8 +67,10 @@ checksums_path="${output_root}/SHA256SUMS"
 secret_root="$(mktemp -d "${TMPDIR:-/tmp}/chio-kvm-qualification.XXXXXX")"
 chmod 0700 "${secret_root}"
 signing_seed="${secret_root}/qualification.seed"
+profile_snapshot="${secret_root}/hosted-profile.json"
+observation_snapshot="${secret_root}/canary-observation.json"
 cleanup_secrets() {
-  rm -f "${signing_seed}"
+  rm -f "${signing_seed}" "${profile_snapshot}" "${observation_snapshot}"
   rmdir "${secret_root}" || true
 }
 trap cleanup_secrets EXIT
@@ -82,26 +85,58 @@ with os.fdopen(descriptor, "w", encoding="ascii") as seed_file:
     seed_file.write(secrets.token_hex(32) + "\n")
 PY
 
+python3 - \
+  "${CHIO_FINDING_HOSTED_PROFILE}" \
+  "${profile_snapshot}" \
+  "${CHIO_FINDING_CANARY_OBSERVATION}" \
+  "${observation_snapshot}" <<'PY'
+import os
+import stat
+import sys
+
+for source, destination in zip(sys.argv[1::2], sys.argv[2::2]):
+    descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 4 * 1024 * 1024:
+            raise SystemExit(f"qualification input is not a bounded regular file: {source}")
+        payload = b""
+        while len(payload) <= 4 * 1024 * 1024:
+            chunk = os.read(descriptor, 64 * 1024)
+            if not chunk:
+                break
+            payload += chunk
+        if len(payload) != metadata.st_size:
+            raise SystemExit(f"qualification input changed while copied: {source}")
+    finally:
+        os.close(descriptor)
+    output = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(output, "wb") as stream:
+        stream.write(payload)
+        stream.flush()
+        os.fsync(stream.fileno())
+PY
+
 rm -rf "${output_root}"
 mkdir -p "${output_root}"
 
 "${chio_bin}" --json finding operator validate-hosted \
-  --profile "${CHIO_FINDING_HOSTED_PROFILE}" >"${profile_log}"
+  --profile "${profile_snapshot}" >"${profile_log}"
 "${worker_bin}" \
-  --profile "${CHIO_FINDING_HOSTED_PROFILE}" \
+  --profile "${profile_snapshot}" \
   --worker-id "${CHIO_FINDING_WORKER_ID}" \
   --once >"${worker_log}"
 "${chio_bin}" --json finding operator evaluate-canary \
-  --profile "${CHIO_FINDING_HOSTED_PROFILE}" \
-  --observation "${CHIO_FINDING_CANARY_OBSERVATION}" >"${decision_log}"
+  --profile "${profile_snapshot}" \
+  --observation "${observation_snapshot}" >"${decision_log}"
 
 python3 - \
   "${candidate_sha}" \
   "${profile_log}" \
   "${worker_log}" \
   "${decision_log}" \
-  "${CHIO_FINDING_HOSTED_PROFILE}" \
-  "${CHIO_FINDING_CANARY_OBSERVATION}" \
+  "${profile_snapshot}" \
+  "${observation_snapshot}" \
   "${worker_bin}" \
   "${report_path}" <<'PY'
 from __future__ import annotations
@@ -135,13 +170,16 @@ decision = json.loads(decision_log.read_text(encoding="utf-8"))
 if profile_result.get("valid") is not True:
     raise SystemExit("hosted profile did not pass strict validation")
 expected_worker = {
-    "schema": "chio.finding.worker-tick.v1",
+    "schema": "chio.finding.worker-tick.v2",
     "ready": True,
+    "tenantCount": 1,
+    "tenantsVisited": 1,
     "claimed": 1,
     "completed": 1,
     "guestRejected": 0,
     "retried": 0,
     "exhausted": 0,
+    "cancelled": 0,
 }
 for field, expected in expected_worker.items():
     if worker_result.get(field) != expected:
@@ -151,6 +189,11 @@ for field, expected in expected_worker.items():
         )
 if worker_result.get("dependencyError") is not None:
     raise SystemExit("KVM worker canary reported a dependency error")
+expected_job_id = os.environ["CHIO_FINDING_CANARY_JOB_ID"]
+if worker_result.get("claimedJobIds") != [expected_job_id]:
+    raise SystemExit("KVM worker canary claimed an unexpected job identity")
+if worker_result.get("completedJobIds") != [expected_job_id]:
+    raise SystemExit("KVM worker canary completed an unexpected job identity")
 if decision.get("decision") != "promote" or decision.get("reason") is not None:
     raise SystemExit("hosted canary decision is not promote")
 

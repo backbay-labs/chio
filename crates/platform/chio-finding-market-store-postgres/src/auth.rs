@@ -96,8 +96,13 @@ impl PostgresFindingMarketStore {
         }
         let now = checked_i64(now, "principal now")?;
         let mut transaction = self.begin_tenant(tenant).await?;
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 4))")
+            .bind(auth_lock_key("principal", tenant.as_str(), principal_id))
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
         let existing = sqlx::query(
-            "SELECT role, capability_public_key_hex, enabled FROM chio_finding_market_principals WHERE tenant_id = $1 AND principal_id = $2 FOR UPDATE",
+            "SELECT role, capability_public_key_hex, enabled FROM chio_finding_market_principals WHERE tenant_id = $1 AND principal_id = $2",
         )
         .bind(tenant.as_str())
         .bind(principal_id)
@@ -565,7 +570,7 @@ async fn put_api_key_tx(
     now: i64,
 ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
     let principal_enabled = sqlx::query_scalar::<_, bool>(
-        "SELECT enabled FROM chio_finding_market_principals WHERE tenant_id = $1 AND principal_id = $2 FOR KEY SHARE",
+        "SELECT enabled FROM chio_finding_market_principals WHERE tenant_id = $1 AND principal_id = $2",
     )
     .bind(tenant.as_str())
     .bind(principal_id)
@@ -669,8 +674,13 @@ async fn append_security_event_tx(
     artifact_sha256: &str,
     now: i64,
 ) -> Result<HostedSecurityEventOutcome, HostedMarketStoreError> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 5))")
+        .bind(auth_lock_key("security-event", tenant.as_str(), event_id))
+        .execute(&mut **transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
     let existing = sqlx::query(
-        "SELECT event_kind, artifact_sha256, artifact_json FROM chio_finding_market_security_events WHERE tenant_id = $1 AND event_id = $2 FOR UPDATE",
+        "SELECT event_kind, artifact_sha256, artifact_json FROM chio_finding_market_security_events WHERE tenant_id = $1 AND event_id = $2",
     )
     .bind(tenant.as_str())
     .bind(event_id)
@@ -700,6 +710,14 @@ async fn append_security_event_tx(
     .await
     .map_err(|_| HostedMarketStoreError::Unavailable)?;
     Ok(HostedSecurityEventOutcome::Inserted)
+}
+
+fn auth_lock_key(domain: &str, tenant_id: &str, identifier: &str) -> String {
+    format!(
+        "chio.finding.hosted.auth-lock.v1:{domain}:{}:{tenant_id}:{}:{identifier}",
+        tenant_id.len(),
+        identifier.len()
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

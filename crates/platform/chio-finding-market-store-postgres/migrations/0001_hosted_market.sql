@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS chio_finding_market_jobs (
     request_sha256 CHAR(64) NOT NULL,
     payload_sha256 CHAR(64) NOT NULL,
     payload_json BYTEA NOT NULL,
-    state TEXT NOT NULL CHECK (state IN ('pending', 'leased', 'completed', 'failed')),
+    state TEXT NOT NULL CONSTRAINT chio_finding_market_jobs_state_v1
+        CHECK (state IN ('pending', 'leased', 'completed', 'failed')),
     attempt_count BIGINT NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
     available_at BIGINT NOT NULL CHECK (available_at > 0),
     lease_owner TEXT,
@@ -22,17 +23,17 @@ CREATE TABLE IF NOT EXISTS chio_finding_market_jobs (
     created_at BIGINT NOT NULL CHECK (created_at > 0),
     updated_at BIGINT NOT NULL CHECK (updated_at > 0),
     PRIMARY KEY (tenant_id, job_id),
-    CHECK (
+    CONSTRAINT chio_finding_market_jobs_lease_v1 CHECK (
         (state = 'leased' AND lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)
         OR
         (state <> 'leased' AND lease_owner IS NULL AND lease_expires_at IS NULL)
     ),
-    CHECK (
+    CONSTRAINT chio_finding_market_jobs_result_v1 CHECK (
         (state = 'completed' AND result_sha256 IS NOT NULL AND result_json IS NOT NULL)
         OR
         (state <> 'completed' AND result_sha256 IS NULL AND result_json IS NULL)
     ),
-    CHECK (
+    CONSTRAINT chio_finding_market_jobs_error_v1 CHECK (
         (state IN ('pending', 'completed') AND last_error_code IS NULL)
         OR state IN ('leased', 'failed')
     )
