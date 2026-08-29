@@ -20,6 +20,7 @@ use crate::revocation_store::{
 };
 use crate::{SqliteBudgetStore, SqliteRevocationStore};
 
+mod finding_market_snapshot_versions;
 mod global_commit_chain;
 mod lease_history;
 mod path_identity;

@@ -4,6 +4,15 @@ use rusqlite::types::ValueRef;
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 use serde::Serialize;
 
+use super::finding_market_snapshot_versions::{
+    finding_market_snapshot_digest_v10, finding_market_snapshot_digest_v11,
+    finding_market_snapshot_digest_v12, finding_market_snapshot_digest_v13,
+    finding_market_snapshot_digest_v2, finding_market_snapshot_digest_v3,
+    finding_market_snapshot_digest_v4, finding_market_snapshot_digest_v5,
+    finding_market_snapshot_digest_v6, finding_market_snapshot_digest_v7,
+    finding_market_snapshot_digest_v8, finding_market_snapshot_digest_v9,
+    FindingMarketSnapshotShape,
+};
 use super::{read_u64, sqlite_u64, SqliteServingOwnerError};
 
 pub(crate) const GLOBAL_GENESIS_DIGEST: &str =
@@ -1366,125 +1375,12 @@ fn finding_status_snapshot_digest(
 fn finding_market_snapshot_digest(
     connection: &Connection,
 ) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(
-        connection, true, true, true, true, true, true, true, true, true, true, true, true,
-    )
+    finding_market_snapshot_digest_version(connection, FindingMarketSnapshotShape::CURRENT)
 }
 
-fn finding_market_snapshot_digest_v13(
+pub(super) fn finding_market_snapshot_digest_version(
     connection: &Connection,
-) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(
-        connection, true, true, true, true, true, true, true, true, true, true, true, false,
-    )
-}
-
-fn finding_market_snapshot_digest_v12(
-    connection: &Connection,
-) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(
-        connection, true, true, true, true, true, true, true, true, true, true, false, false,
-    )
-}
-
-fn finding_market_snapshot_digest_v11(
-    connection: &Connection,
-) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(
-        connection, true, true, true, true, true, true, true, true, true, false, false, false,
-    )
-}
-
-fn finding_market_snapshot_digest_v10(
-    connection: &Connection,
-) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(
-        connection, true, true, true, true, true, true, true, true, false, false, false, false,
-    )
-}
-
-fn finding_market_snapshot_digest_v9(
-    connection: &Connection,
-) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(
-        connection, true, true, true, true, true, true, true, false, false, false, false, false,
-    )
-}
-
-fn finding_market_snapshot_digest_v8(
-    connection: &Connection,
-) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(
-        connection, true, true, true, true, true, true, false, false, false, false, false, false,
-    )
-}
-
-fn finding_market_snapshot_digest_v7(
-    connection: &Connection,
-) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(
-        connection, true, true, true, true, true, false, false, false, false, false, false, false,
-    )
-}
-
-fn finding_market_snapshot_digest_v6(
-    connection: &Connection,
-) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(
-        connection, true, true, true, true, false, false, false, false, false, false, false, false,
-    )
-}
-
-fn finding_market_snapshot_digest_v5(
-    connection: &Connection,
-) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(
-        connection, true, true, true, false, false, false, false, false, false, false, false, false,
-    )
-}
-
-fn finding_market_snapshot_digest_v4(
-    connection: &Connection,
-) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(
-        connection, true, true, false, false, false, false, false, false, false, false, false,
-        false,
-    )
-}
-
-fn finding_market_snapshot_digest_v3(
-    connection: &Connection,
-) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(
-        connection, true, false, false, false, false, false, false, false, false, false, false,
-        false,
-    )
-}
-
-fn finding_market_snapshot_digest_v2(
-    connection: &Connection,
-) -> Result<String, SqliteServingOwnerError> {
-    finding_market_snapshot_digest_version(
-        connection, false, false, false, false, false, false, false, false, false, false, false,
-        false,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn finding_market_snapshot_digest_version(
-    connection: &Connection,
-    include_lock_reservations: bool,
-    include_liability_seller: bool,
-    include_inflight_purchases: bool,
-    include_root_bindings: bool,
-    include_outcomes: bool,
-    include_capture_intents: bool,
-    include_failed_deliveries: bool,
-    include_finalizing_authorizations: bool,
-    include_finalizing_authorization_refreshes: bool,
-    include_terminal_reservations: bool,
-    include_seller_impairment_reconciliations: bool,
-    include_challenge_submissions: bool,
+    shape: FindingMarketSnapshotShape,
 ) -> Result<String, SqliteServingOwnerError> {
     let mut challenge_tables = vec![
         "challenges",
@@ -1495,32 +1391,38 @@ fn finding_market_snapshot_digest_version(
         "effect_intents",
         "listing_sales_blocks",
     ];
-    if include_root_bindings {
+    if shape.include_root_bindings {
         challenge_tables.push("effect_root_bindings");
     }
-    if include_outcomes {
+    if shape.include_outcomes {
         challenge_tables.push("finding_challenge_outcomes");
     }
-    if include_finalizing_authorizations {
+    if shape.include_finalizing_authorizations {
         challenge_tables.push("finding_finalizing_authorizations");
     }
-    if include_finalizing_authorization_refreshes {
+    if shape.include_finalizing_authorization_refreshes {
         challenge_tables.push("finding_finalizing_authorization_refreshes");
     }
-    if include_seller_impairment_reconciliations {
+    if shape.include_seller_impairment_reconciliations {
         challenge_tables.push("finding_seller_impairment_reconciliations");
     }
-    if include_challenge_submissions {
+    if shape.include_challenge_submissions {
         challenge_tables.push("finding_challenge_submissions");
     }
-    let mut snapshots = Vec::with_capacity(if include_lock_reservations { 19 } else { 18 });
+    let mut snapshots = Vec::with_capacity(if shape.include_lock_reservations {
+        19
+    } else {
+        18
+    });
     for table in challenge_tables {
-        snapshots.push(if table == "liability_heads" && !include_liability_seller {
-            table_snapshot_without_column(connection, table, "seller_hex")?
-        } else {
-            table_snapshot(connection, table, None)?
-        });
-        if include_lock_reservations && table == "challenges" {
+        snapshots.push(
+            if table == "liability_heads" && !shape.include_liability_seller {
+                table_snapshot_without_column(connection, table, "seller_hex")?
+            } else {
+                table_snapshot(connection, table, None)?
+            },
+        );
+        if shape.include_lock_reservations && table == "challenges" {
             snapshots.push(table_snapshot(
                 connection,
                 "dispute_lock_reservations",
@@ -1529,14 +1431,14 @@ fn finding_market_snapshot_digest_version(
         }
     }
     snapshots.push(table_snapshot(connection, "purchase_records", None)?);
-    if include_capture_intents {
+    if shape.include_capture_intents {
         snapshots.push(table_snapshot(
             connection,
             "purchase_capture_intents",
             None,
         )?);
     }
-    if include_failed_deliveries {
+    if shape.include_failed_deliveries {
         snapshots.push(table_snapshot(connection, "failed_delivery_records", None)?);
     }
     for table in [
@@ -1548,9 +1450,9 @@ fn finding_market_snapshot_digest_version(
         snapshots.push(table_snapshot_where(
             connection,
             table,
-            if include_terminal_reservations {
+            if shape.include_terminal_reservations {
                 "1 = 1"
-            } else if include_failed_deliveries {
+            } else if shape.include_failed_deliveries {
                 r#"
                 reservation_id IN (
                     SELECT reservation_id FROM purchase_records
@@ -1561,7 +1463,7 @@ fn finding_market_snapshot_digest_version(
                     WHERE state IN ('open', 'slot_reserved')
                 )
                 "#
-            } else if include_inflight_purchases {
+            } else if shape.include_inflight_purchases {
                 r#"
                 reservation_id IN (
                     SELECT reservation_id FROM purchase_records
@@ -1578,13 +1480,13 @@ fn finding_market_snapshot_digest_version(
     snapshots.push(table_snapshot_where(
         connection,
         "payout_destinations",
-        if include_finalizing_authorizations {
+        if shape.include_finalizing_authorizations {
             // The current public admission API can create a buyer slot
             // before any purchase binding exists. Every such actionable row
             // affects collision and capacity decisions and must therefore be
             // committed even while it is unattached.
             "1 = 1"
-        } else if include_failed_deliveries {
+        } else if shape.include_failed_deliveries {
             r#"
             slot_index = 0 OR EXISTS (
                 SELECT 1
@@ -1603,7 +1505,7 @@ fn finding_market_snapshot_digest_version(
                   AND bindings.destination = payout_destinations.destination
             )
             "#
-        } else if include_inflight_purchases {
+        } else if shape.include_inflight_purchases {
             r#"
             slot_index = 0 OR EXISTS (
                 SELECT 1
@@ -1636,21 +1538,21 @@ fn finding_market_snapshot_digest_version(
         },
     )?);
     digest(&AuthoritySnapshot {
-        format: if include_terminal_reservations {
+        format: if shape.include_terminal_reservations {
             "chio.sqlite-finding-market-snapshot.v12"
-        } else if include_failed_deliveries {
+        } else if shape.include_failed_deliveries {
             "chio.sqlite-finding-market-snapshot.v9"
-        } else if include_capture_intents {
+        } else if shape.include_capture_intents {
             "chio.sqlite-finding-market-snapshot.v8"
-        } else if include_outcomes {
+        } else if shape.include_outcomes {
             "chio.sqlite-finding-market-snapshot.v7"
-        } else if include_root_bindings {
+        } else if shape.include_root_bindings {
             "chio.sqlite-finding-market-snapshot.v6"
-        } else if include_inflight_purchases {
+        } else if shape.include_inflight_purchases {
             "chio.sqlite-finding-market-snapshot.v5"
-        } else if include_liability_seller {
+        } else if shape.include_liability_seller {
             "chio.sqlite-finding-market-snapshot.v4"
-        } else if include_lock_reservations {
+        } else if shape.include_lock_reservations {
             "chio.sqlite-finding-market-snapshot.v3"
         } else {
             "chio.sqlite-finding-market-snapshot.v2"
