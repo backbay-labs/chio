@@ -44,7 +44,7 @@ pub mod bindings {
         imports: { default: async | trappable },
         exports: { default: async },
         with: {
-            "chio:guard/policy-context/bundle-handle": super::BundleHandle,
+            "chio:guard/policy-context.bundle-handle": super::BundleHandle,
         },
     });
 }
@@ -223,12 +223,12 @@ fn resource_table_error_string(err: ResourceTableError) -> String {
 
 // Shared Engine constructor
 
-/// Create a shared wasmtime [`Engine`] with fuel and asynchronous execution.
+/// Create a shared wasmtime [`Engine`] with fuel and async component support.
 pub fn create_shared_engine() -> Result<Arc<Engine>, WasmGuardError> {
     let mut config = wasmtime::Config::new();
     config.consume_fuel(true);
     config.wasm_component_model(true);
-    config.async_support(true);
+    config.wasm_component_model_async(true);
     let engine = Engine::new(&config).map_err(|e| WasmGuardError::Compilation(e.to_string()))?;
     Ok(Arc::new(engine))
 }
