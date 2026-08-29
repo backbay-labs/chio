@@ -14,30 +14,59 @@ use std::time::Duration;
 use chio_core_types::{canonical_json_bytes_from_str, sha256_hex};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
-use sqlx::{Connection as _, PgPool, Postgres, Row as _, Transaction};
+use sqlx::{PgPool, Postgres, Row as _, Transaction};
 use zeroize::Zeroize as _;
 
 mod aggregates;
 mod auth;
 mod checkpoints;
+mod domain;
 mod job_leases;
+mod replication;
+mod retention;
 mod runtime_boundary;
 mod spend;
 mod tenant;
 
 pub use aggregates::{HostedAggregateEvent, HostedAggregateHead, HostedAggregateKind};
 pub use auth::{
-    HostedApiKeyRecord, HostedPrincipal, HostedPrincipalRole, HostedSecurityEventOutcome,
+    HostedApiKeyRecord, HostedPrincipal, HostedPrincipalLifecycleBody,
+    HostedPrincipalLifecycleOperation, HostedPrincipalRole, HostedSecurityEventOutcome,
+    SignedHostedPrincipalLifecycleEvent, HOSTED_PRINCIPAL_LIFECYCLE_SCHEMA,
 };
 pub use checkpoints::{
     HostedAggregateCheckpointBody, HostedAggregateCheckpointRecord,
     SignedHostedAggregateCheckpoint, HOSTED_AGGREGATE_CHECKPOINT_SCHEMA,
 };
+pub use domain::{
+    HostedMarketDomainArtifact, HostedMarketDomainEvent, HostedMarketDomainEventKind,
+    HostedMarketDomainProjection,
+};
+pub use replication::{
+    HostedAuthorityMode, HostedAuthorityState, HostedAuthorityTransitionBody,
+    HostedAuthorityTransitionOperation, HostedMarketAuthority, HostedPrincipalReplicationEventBody,
+    HostedPrincipalRollbackOutboxRecord, HostedReplicationCheckBody, HostedReplicationEventBody,
+    HostedRollbackOutboxEntry, HostedRollbackOutboxRecord, PostgresFindingMarketReplicator,
+    SignedHostedAuthorityTransition, SignedHostedPrincipalReplicationEvent,
+    SignedHostedReplicationCheck, SignedHostedReplicationEvent, HOSTED_AUTHORITY_TRANSITION_SCHEMA,
+    HOSTED_PRINCIPAL_REPLICATION_EVENT_SCHEMA, HOSTED_REPLICATION_CHECK_SCHEMA,
+    HOSTED_REPLICATION_EVENT_SCHEMA,
+};
+pub use retention::{
+    HostedArchiveManifestBody, HostedGcReceiptBody, HostedJournalCheckpointBody,
+    HostedJournalCommitment, HostedLegalHoldAction, HostedLegalHoldBody, HostedQuotaAlertBody,
+    HostedRestoreVerificationBody, HostedRetentionResourceKind, HostedRetentionTarget,
+    PostgresFindingMarketRetention, SignedHostedArchiveManifest, SignedHostedGcReceipt,
+    SignedHostedJournalCheckpoint, SignedHostedLegalHold, SignedHostedQuotaAlert,
+    SignedHostedRestoreVerification, HOSTED_ARCHIVE_MANIFEST_SCHEMA, HOSTED_GC_RECEIPT_SCHEMA,
+    HOSTED_JOURNAL_CHECKPOINT_SCHEMA, HOSTED_LEGAL_HOLD_SCHEMA, HOSTED_QUOTA_ALERT_SCHEMA,
+    HOSTED_RESTORE_VERIFICATION_SCHEMA,
+};
 pub use spend::{HostedSpendReservation, HostedSpendState};
 pub use tenant::HostedTenantLimits;
 
 const MIGRATION_LOCK_NAME: &str = "chio.finding.market.migrations.v1";
-const MIGRATIONS: &[(i64, &str, &str)] = &[
+const LEGACY_MIGRATIONS: &[(i64, &str, &str)] = &[
     (
         1,
         "hosted_market",
@@ -116,102 +145,124 @@ pub enum HostedMarketStoreError {
     LeaseLost,
     #[error("hosted market durable state failed its digest check")]
     DigestMismatch,
+    #[error("hosted market retention target is protected by an active hold")]
+    RetentionHeld,
     #[error("hosted market PostgreSQL migration ledger drifted")]
     MigrationDrift,
     #[error("hosted market PostgreSQL operation is unavailable")]
     Unavailable,
 }
 
-async fn run_migrations(
+async fn verify_schema_current(pool: &PgPool) -> Result<(), HostedMarketStoreError> {
+    let rows =
+        sqlx::query("SELECT version, checksum, success FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(pool)
+            .await
+            .map_err(|_| HostedMarketStoreError::MigrationDrift)?;
+    let expected = chio_finding_market_migrations::MIGRATOR
+        .iter()
+        .filter(|migration| !migration.migration_type.is_down_migration())
+        .collect::<Vec<_>>();
+    if rows.len() != expected.len() {
+        return Err(HostedMarketStoreError::MigrationDrift);
+    }
+    for (row, expected) in rows.iter().zip(expected) {
+        let version: i64 = row.try_get(0).map_err(unavailable)?;
+        let checksum: Vec<u8> = row.try_get(1).map_err(unavailable)?;
+        let success: bool = row.try_get(2).map_err(unavailable)?;
+        if version != expected.version || checksum != expected.checksum.as_ref() || !success {
+            return Err(HostedMarketStoreError::MigrationDrift);
+        }
+    }
+    Ok(())
+}
+
+async fn bridge_legacy_migration_ledger(
     connection: &mut sqlx::pool::PoolConnection<Postgres>,
 ) -> Result<(), HostedMarketStoreError> {
+    let sqlx_table: Option<String> =
+        sqlx::query_scalar("SELECT to_regclass('public._sqlx_migrations')::text")
+            .fetch_one(&mut **connection)
+            .await
+            .map_err(unavailable)?;
+    if sqlx_table.is_some() {
+        let applied: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+            .fetch_one(&mut **connection)
+            .await
+            .map_err(unavailable)?;
+        if applied > 0 {
+            return Ok(());
+        }
+    }
+
     sqlx::raw_sql(
-        r#"
-        CREATE TABLE IF NOT EXISTS chio_finding_market_schema_migrations (
+        r#"CREATE TABLE IF NOT EXISTS chio_finding_market_schema_migrations (
             version BIGINT PRIMARY KEY CHECK (version > 0),
             name TEXT NOT NULL UNIQUE CHECK (length(name) BETWEEN 1 AND 128),
             checksum_sha256 CHAR(64) NOT NULL CHECK (
                 checksum_sha256 !~ '[^0-9a-f]'
             ),
             applied_at BIGINT NOT NULL CHECK (applied_at > 0)
-        )
-        "#,
+        )"#,
     )
     .execute(&mut **connection)
     .await
-    .map_err(|_| HostedMarketStoreError::Unavailable)?;
-
-    let applied = sqlx::query(
+    .map_err(unavailable)?;
+    let rows = sqlx::query(
         "SELECT version, name, checksum_sha256 FROM chio_finding_market_schema_migrations ORDER BY version",
     )
     .fetch_all(&mut **connection)
     .await
-    .map_err(|_| HostedMarketStoreError::Unavailable)?;
-    if applied.len() > MIGRATIONS.len() {
+    .map_err(unavailable)?;
+    if rows.len() > LEGACY_MIGRATIONS.len() {
         return Err(HostedMarketStoreError::MigrationDrift);
     }
-    for (index, row) in applied.iter().enumerate() {
-        let (expected_version, expected_name, expected_sql) = MIGRATIONS
+    for (index, row) in rows.iter().enumerate() {
+        let (version, name, sql) = LEGACY_MIGRATIONS
             .get(index)
             .ok_or(HostedMarketStoreError::MigrationDrift)?;
-        let version: i64 = row.try_get(0).map_err(unavailable)?;
-        let name: String = row.try_get(1).map_err(unavailable)?;
-        let checksum: String = row.try_get(2).map_err(unavailable)?;
-        if version != *expected_version
-            || name != *expected_name
-            || checksum != sha256_hex(expected_sql.as_bytes())
+        if row.try_get::<i64, _>(0).map_err(unavailable)? != *version
+            || row.try_get::<String, _>(1).map_err(unavailable)? != *name
+            || row.try_get::<String, _>(2).map_err(unavailable)? != sha256_hex(sql.as_bytes())
         {
             return Err(HostedMarketStoreError::MigrationDrift);
         }
     }
+    if rows.is_empty() {
+        return Ok(());
+    }
 
-    for (version, name, sql) in MIGRATIONS.iter().skip(applied.len()) {
-        let checksum = sha256_hex(sql.as_bytes());
-        let mut transaction = connection
-            .begin()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        sqlx::raw_sql(sql)
-            .execute(&mut *transaction)
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+    sqlx::raw_sql(
+        r#"CREATE TABLE IF NOT EXISTS _sqlx_migrations (
+            version BIGINT PRIMARY KEY,
+            description TEXT NOT NULL,
+            installed_on TIMESTAMPTZ NOT NULL DEFAULT now(),
+            success BOOLEAN NOT NULL,
+            checksum BYTEA NOT NULL,
+            execution_time BIGINT NOT NULL
+        )"#,
+    )
+    .execute(&mut **connection)
+    .await
+    .map_err(unavailable)?;
+    let embedded = chio_finding_market_migrations::MIGRATOR
+        .iter()
+        .filter(|migration| !migration.migration_type.is_down_migration())
+        .collect::<Vec<_>>();
+    for (legacy, migration) in rows.iter().zip(embedded) {
+        let version: i64 = legacy.try_get(0).map_err(unavailable)?;
+        if migration.version != version {
+            return Err(HostedMarketStoreError::MigrationDrift);
+        }
         sqlx::query(
-            "INSERT INTO chio_finding_market_schema_migrations (version, name, checksum_sha256, applied_at) VALUES ($1, $2, $3, floor(extract(epoch from clock_timestamp()))::bigint)",
+            "INSERT INTO _sqlx_migrations (version, description, success, checksum, execution_time) VALUES ($1, $2, TRUE, $3, 0)",
         )
         .bind(version)
-        .bind(name)
-        .bind(checksum)
-        .execute(&mut *transaction)
+        .bind(migration.description.as_ref())
+        .bind(migration.checksum.as_ref())
+        .execute(&mut **connection)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-    }
-    Ok(())
-}
-
-async fn verify_schema_current(pool: &PgPool) -> Result<(), HostedMarketStoreError> {
-    let rows = sqlx::query(
-        "SELECT version, name, checksum_sha256 FROM chio_finding_market_schema_migrations ORDER BY version",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|_| HostedMarketStoreError::MigrationDrift)?;
-    if rows.len() != MIGRATIONS.len() {
-        return Err(HostedMarketStoreError::MigrationDrift);
-    }
-    for (row, (expected_version, expected_name, expected_sql)) in rows.iter().zip(MIGRATIONS) {
-        let version: i64 = row.try_get(0).map_err(unavailable)?;
-        let name: String = row.try_get(1).map_err(unavailable)?;
-        let checksum: String = row.try_get(2).map_err(unavailable)?;
-        if version != *expected_version
-            || name != *expected_name
-            || checksum != sha256_hex(expected_sql.as_bytes())
-        {
-            return Err(HostedMarketStoreError::MigrationDrift);
-        }
+        .map_err(unavailable)?;
     }
     Ok(())
 }
@@ -347,7 +398,8 @@ pub enum HostedJobWriteOutcome {
     ExactReplay,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum HostedJobState {
     Pending,
     Leased,
@@ -429,6 +481,24 @@ impl PostgresFindingMarketStore {
         })
     }
 
+    pub async fn connect_worker(
+        config: &HostedPostgresConfig,
+    ) -> Result<Self, HostedMarketStoreError> {
+        let pool = PgPoolOptions::new()
+            .min_connections(1)
+            .max_connections(config.max_connections)
+            .acquire_timeout(config.acquire_timeout)
+            .connect_with(config.connect_options()?)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        runtime_boundary::verify_worker_role(&pool).await?;
+        verify_schema_current(&pool).await?;
+        Ok(Self {
+            pool,
+            max_jobs_per_tenant: config.max_jobs_per_tenant,
+        })
+    }
+
     #[cfg(feature = "postgres-integration")]
     #[doc(hidden)]
     #[must_use]
@@ -445,6 +515,14 @@ impl PostgresFindingMarketStore {
         &self,
     ) -> Result<(), HostedMarketStoreError> {
         runtime_boundary::verify_runtime_role(&self.pool).await
+    }
+
+    #[cfg(feature = "postgres-integration")]
+    #[doc(hidden)]
+    pub async fn verify_worker_boundary_for_integration_tests(
+        &self,
+    ) -> Result<(), HostedMarketStoreError> {
+        runtime_boundary::verify_worker_role(&self.pool).await
     }
 }
 
@@ -479,7 +557,13 @@ impl PostgresFindingMarketMigrator {
             .execute(&mut *connection)
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        let migrated = run_migrations(&mut connection).await;
+        let migrated = match bridge_legacy_migration_ledger(&mut connection).await {
+            Ok(()) => chio_finding_market_migrations::MIGRATOR
+                .run_direct(&mut *connection)
+                .await
+                .map_err(|_| HostedMarketStoreError::MigrationDrift),
+            Err(error) => Err(error),
+        };
         let unlocked = sqlx::query("SELECT pg_advisory_unlock(hashtextextended($1, 0))")
             .bind(MIGRATION_LOCK_NAME)
             .execute(&mut *connection)
@@ -607,6 +691,46 @@ impl PostgresFindingMarketStore {
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
         row.map(|row| job_from_row(tenant, &row)).transpose()
+    }
+
+    /// Count work that can still execute for one tenant. Qualification uses
+    /// this before provisioning so an unrelated retained job cannot satisfy
+    /// an exact canary.
+    pub async fn nonterminal_job_count(
+        &self,
+        tenant: &HostedTenantId,
+    ) -> Result<u64, HostedMarketStoreError> {
+        let mut transaction = self.begin_tenant_snapshot(tenant).await?;
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM chio_finding_market_jobs WHERE tenant_id = $1 AND state IN ('pending', 'leased', 'failed')",
+        )
+        .bind(tenant.as_str())
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        stored_u64(count)
+    }
+
+    /// Count every retained job for one tenant. Exact-job qualification uses
+    /// this to reject stale terminal rows as well as runnable work.
+    pub async fn job_count(&self, tenant: &HostedTenantId) -> Result<u64, HostedMarketStoreError> {
+        let mut transaction = self.begin_tenant_snapshot(tenant).await?;
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM chio_finding_market_jobs WHERE tenant_id = $1",
+        )
+        .bind(tenant.as_str())
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        stored_u64(count)
     }
 
     /// Prove that the runtime role can enter one configured tenant boundary
@@ -831,6 +955,10 @@ fn checked_i64(value: u64, field: &'static str) -> Result<i64, HostedMarketStore
     if value == 0 {
         return Err(HostedMarketStoreError::Invalid(field));
     }
+    i64::try_from(value).map_err(|_| HostedMarketStoreError::Invalid(field))
+}
+
+fn checked_nonnegative_i64(value: u64, field: &'static str) -> Result<i64, HostedMarketStoreError> {
     i64::try_from(value).map_err(|_| HostedMarketStoreError::Invalid(field))
 }
 

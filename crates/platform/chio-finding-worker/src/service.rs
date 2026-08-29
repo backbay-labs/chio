@@ -5,6 +5,7 @@ use chio_finding_market_store_postgres::{
     PostgresFindingMarketStore,
 };
 use futures_util::{stream, StreamExt as _, TryStreamExt as _};
+use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
 use crate::executor::FirecrackerExecutor;
@@ -19,6 +20,19 @@ pub struct HostedWorkerRun {
     pub cancelled: u32,
     pub claimed_job_ids: Vec<String>,
     pub completed_job_ids: Vec<String>,
+    pub jobs: Vec<HostedWorkerJobEvidence>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HostedWorkerJobEvidence {
+    pub tenant_id: String,
+    pub job_id: String,
+    pub request_sha256: String,
+    pub lease_fence: u64,
+    pub state: chio_finding_market_store_postgres::HostedJobState,
+    pub result_sha256: Option<String>,
+    pub completed_at: Option<u64>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -113,6 +127,7 @@ impl HostedFindingWorker {
                 cancelled: 0,
                 claimed_job_ids: Vec::new(),
                 completed_job_ids: Vec::new(),
+                jobs: Vec::new(),
             });
         }
         let host_limit = u32::try_from(self.executor.max_instances())
@@ -144,17 +159,31 @@ impl HostedFindingWorker {
             cancelled: 0,
             claimed_job_ids,
             completed_job_ids: Vec::new(),
+            jobs: Vec::new(),
         };
         for outcome in outcomes {
             match outcome {
-                JobOutcome::Completed(job_id) => {
+                JobOutcome::Completed(evidence) => {
                     run.completed += 1;
-                    run.completed_job_ids.push(job_id);
+                    run.completed_job_ids.push(evidence.job_id.clone());
+                    run.jobs.push(evidence);
                 }
-                JobOutcome::GuestRejected => run.guest_rejected += 1,
-                JobOutcome::Retried => run.retried += 1,
-                JobOutcome::Exhausted => run.exhausted += 1,
-                JobOutcome::Cancelled => run.cancelled += 1,
+                JobOutcome::GuestRejected(evidence) => {
+                    run.guest_rejected += 1;
+                    run.jobs.push(evidence);
+                }
+                JobOutcome::Retried(evidence) => {
+                    run.retried += 1;
+                    run.jobs.push(evidence);
+                }
+                JobOutcome::Exhausted(evidence) => {
+                    run.exhausted += 1;
+                    run.jobs.push(evidence);
+                }
+                JobOutcome::Cancelled(evidence) => {
+                    run.cancelled += 1;
+                    run.jobs.push(evidence);
+                }
             }
         }
         Ok(run)
@@ -166,7 +195,6 @@ impl HostedFindingWorker {
         cancellation: CancellationToken,
     ) -> Result<JobOutcome, HostedWorkerServiceError> {
         let lease = HostedJobLease::new(&self.worker_id, job.lease_fence).map_err(map_store)?;
-        let job_id = job.job_id.clone();
         if job.attempt_count > self.max_attempts {
             self.store
                 .exhaust_job(
@@ -177,7 +205,7 @@ impl HostedFindingWorker {
                 )
                 .await
                 .map_err(map_store)?;
-            return Ok(JobOutcome::Exhausted);
+            return self.job_outcome(&job, JobOutcome::Exhausted).await;
         }
         let heartbeat_duration = Duration::from_secs(self.lease_heartbeat_secs);
         let mut heartbeat = tokio::time::interval_at(
@@ -185,12 +213,39 @@ impl HostedFindingWorker {
             heartbeat_duration,
         );
         heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        let execution = self.executor.execute(&job, job.updated_at);
-        tokio::pin!(execution);
+        let mut execution = Box::pin(self.executor.execute(&job, job.updated_at));
         let execution_result = loop {
             tokio::select! {
-                result = &mut execution => break result,
-                () = cancellation.cancelled() => return Ok(JobOutcome::Cancelled),
+                result = execution.as_mut() => break result,
+                () = cancellation.cancelled() => {
+                    drop(execution);
+                    let lease_relinquished = match self.store
+                        .fail_job(
+                            &job.tenant_id,
+                            &job.job_id,
+                            &lease,
+                            "worker_shutdown",
+                            1,
+                        )
+                        .await
+                    {
+                        Ok(_) => true,
+                        Err(HostedMarketStoreError::LeaseLost) => false,
+                        Err(error) => return Err(map_store(error)),
+                    };
+                    if lease_relinquished {
+                        return self.job_outcome(&job, JobOutcome::Cancelled).await;
+                    }
+                    return Ok(JobOutcome::Cancelled(HostedWorkerJobEvidence {
+                        tenant_id: job.tenant_id.as_str().to_owned(),
+                        job_id: job.job_id,
+                        request_sha256: job.request_sha256,
+                        lease_fence: job.lease_fence,
+                        state: chio_finding_market_store_postgres::HostedJobState::Leased,
+                        result_sha256: None,
+                        completed_at: None,
+                    }));
+                },
                 _ = heartbeat.tick() => {
                     self.store
                         .renew_job_lease(
@@ -210,22 +265,24 @@ impl HostedFindingWorker {
                     .complete_job(&job.tenant_id, &job.job_id, &lease, &result.envelope_json)
                     .await
                     .map_err(map_store)?;
-                Ok(
+                self.job_outcome(
+                    &job,
                     if result.guest_classification
                         == crate::protocol::FindingWorkerExitClassification::Succeeded
                     {
-                        JobOutcome::Completed(job_id)
+                        JobOutcome::Completed
                     } else {
                         JobOutcome::GuestRejected
                     },
                 )
+                .await
             }
             Err(error) if job.attempt_count >= self.max_attempts => {
                 self.store
                     .exhaust_job(&job.tenant_id, &job.job_id, &lease, error.code())
                     .await
                     .map_err(map_store)?;
-                Ok(JobOutcome::Exhausted)
+                self.job_outcome(&job, JobOutcome::Exhausted).await
             }
             Err(error) => {
                 let exponent = u32::try_from(job.attempt_count.saturating_sub(1))
@@ -240,18 +297,48 @@ impl HostedFindingWorker {
                     .fail_job(&job.tenant_id, &job.job_id, &lease, error.code(), delay)
                     .await
                     .map_err(map_store)?;
-                Ok(JobOutcome::Retried)
+                self.job_outcome(&job, JobOutcome::Retried).await
             }
         }
+    }
+
+    async fn job_outcome(
+        &self,
+        claimed: &HostedMarketJob,
+        kind: fn(HostedWorkerJobEvidence) -> JobOutcome,
+    ) -> Result<JobOutcome, HostedWorkerServiceError> {
+        let retained = self
+            .store
+            .get_job(&claimed.tenant_id, &claimed.job_id)
+            .await
+            .map_err(map_store)?
+            .ok_or(HostedWorkerServiceError::Store)?;
+        if retained.request_sha256 != claimed.request_sha256
+            || retained.lease_fence != claimed.lease_fence
+        {
+            return Err(HostedWorkerServiceError::Store);
+        }
+        let completed_at = (retained.state
+            == chio_finding_market_store_postgres::HostedJobState::Completed)
+            .then_some(retained.updated_at);
+        Ok(kind(HostedWorkerJobEvidence {
+            tenant_id: retained.tenant_id.as_str().to_owned(),
+            job_id: retained.job_id,
+            request_sha256: retained.request_sha256,
+            lease_fence: retained.lease_fence,
+            state: retained.state,
+            result_sha256: retained.result_sha256,
+            completed_at,
+        }))
     }
 }
 
 enum JobOutcome {
-    Completed(String),
-    GuestRejected,
-    Retried,
-    Exhausted,
-    Cancelled,
+    Completed(HostedWorkerJobEvidence),
+    GuestRejected(HostedWorkerJobEvidence),
+    Retried(HostedWorkerJobEvidence),
+    Exhausted(HostedWorkerJobEvidence),
+    Cancelled(HostedWorkerJobEvidence),
 }
 
 fn valid_identifier(value: &str) -> bool {

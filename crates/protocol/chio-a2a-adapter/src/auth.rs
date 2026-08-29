@@ -560,8 +560,7 @@ fn parse_pem_certificates(
     pem: &str,
     field_name: &str,
 ) -> Result<Vec<ureq::rustls::pki_types::CertificateDer<'static>>, AdapterError> {
-    let mut reader = pem.as_bytes();
-    let certificates = rustls_pemfile::certs(&mut reader)
+    let certificates = ureq::rustls::pki_types::CertificateDer::pem_slice_iter(pem.as_bytes())
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| {
             AdapterError::AuthNegotiation(format!("failed to parse {field_name}: {error}"))
@@ -578,15 +577,9 @@ fn parse_pem_private_key(
     pem: &str,
     field_name: &str,
 ) -> Result<ureq::rustls::pki_types::PrivateKeyDer<'static>, AdapterError> {
-    let mut reader = pem.as_bytes();
-    let private_key = rustls_pemfile::private_key(&mut reader)
+    let private_key = ureq::rustls::pki_types::PrivateKeyDer::from_pem_slice(pem.as_bytes())
         .map_err(|error| {
             AdapterError::AuthNegotiation(format!("failed to parse {field_name}: {error}"))
-        })?
-        .ok_or_else(|| {
-            AdapterError::AuthNegotiation(format!(
-                "{field_name} did not contain a supported PEM private key"
-            ))
         })?;
     Ok(private_key)
 }

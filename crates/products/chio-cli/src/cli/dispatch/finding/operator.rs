@@ -1,7 +1,7 @@
 use super::*;
 
 use std::collections::BTreeMap;
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -32,18 +32,24 @@ use chio_control_plane::trust_control::{
     FindingStatusServiceBond, TrustServiceConfig, VenueLedgerRailObserver,
     FINDING_STATUS_OPERATOR_ROLE,
 };
-use chio_core::{canonical_json_bytes, sha256_hex, Keypair};
+use chio_core::{canonical_json_bytes, sha256_hex, Keypair, PublicKey};
+use chio_core::receipt::lineage::SignedExportEnvelope;
+use chio_finding::{
+    verify_signed_challenge, FindingChallengeAuthorization, SignedFindingChallenge,
+};
 use chio_store_sqlite::{
     FindingChallengeSubmissionRepairInput, FindingDisputeLockDisposition,
     FindingOperatorBundleStoreError, SqliteAuthorityStore, SqliteFindingChallengeStore,
     SqliteFindingOperatorBundleStore, SqliteFindingOperatorPaymentAdapter, SqliteFindingPayloadStore,
     SqliteReceiptStore, TenantId, TenantKey,
 };
+use chio_store_sqlite::finding_challenge_store::FindingChallengeRepairDatabaseBinding;
 use subtle::ConstantTimeEq;
+use zeroize::Zeroize as _;
 
 use super::finding_verified_fix::{
     read_canonical_file, reconcile_admission_jobs, run_bounded_output_command_capture,
-    write_private_atomic,
+    write_private_atomic, write_private_new,
 };
 
 const PROFILE_FILE: &str = "operator-profile.json";
@@ -65,23 +71,37 @@ const SELLER_RETRACTION_JOB_SCHEMA: &str = "chio.finding.seller-retraction-job.v
 const SELLER_PACKAGE_COMMAND_TIMEOUT: Duration = Duration::from_secs(330);
 const SELLER_ADMISSION_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
 const INIT_COMPLETE_FILE: &str = "operator-init-complete.json";
-const CHALLENGE_REPAIR_BUNDLE_SCHEMA: &str =
-    "chio.finding.challenge-submission-repair.v1";
+const CHALLENGE_REPAIR_BUNDLE_SCHEMA: &str = "chio.finding.legacy-challenge-repair.v1";
 const CHALLENGE_REPAIR_BUNDLE_MAX_BYTES: usize = 64 * 1024 * 1024;
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ChallengeRetentionRepairBundle {
     schema: String,
+    database: FindingChallengeRepairDatabaseBinding,
     submissions: Vec<ChallengeRetentionRepairSubmission>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ChallengeRetentionRepairSubmission {
     challenge_id: String,
     challenge_envelope_sha256: String,
+    challenge_row_sha256: String,
     challenge_envelope: serde_json::Value,
+    audit_authority: Option<PublicKey>,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChallengeRetentionRepairReceipt {
+    schema: String,
+    database_before: FindingChallengeRepairDatabaseBinding,
+    database_after: FindingChallengeRepairDatabaseBinding,
+    bundle_sha256: String,
+    inserted: u64,
+    exact_replays: u64,
+    completed_at: u64,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -1144,9 +1164,23 @@ pub(super) fn cmd_finding_operator_tick(
 pub(super) fn cmd_finding_operator_repair_challenge_retention(
     database_path: &Path,
     bundle_path: &Path,
+    receipt_path: &Path,
+    receipt_signing_seed_env: &str,
     json_output: bool,
 ) -> Result<(), CliError> {
     set_operator_umask();
+    if !database_path.is_absolute() {
+        return Err(CliError::cli_other_error(
+            "challenge repair database path must be absolute".to_owned(),
+        ));
+    }
+    let link_metadata = std::fs::symlink_metadata(database_path)
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    if link_metadata.file_type().is_symlink() || !link_metadata.is_file() {
+        return Err(CliError::cli_other_error(
+            "challenge repair database must be a non-symlink regular file".to_owned(),
+        ));
+    }
     let database_path = std::fs::canonicalize(database_path)
         .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     let metadata = std::fs::metadata(&database_path)
@@ -1156,8 +1190,37 @@ pub(super) fn cmd_finding_operator_repair_challenge_retention(
             "challenge repair database must be an existing regular file".to_owned(),
         ));
     }
+    if !bundle_path.is_absolute()
+        || !receipt_path.is_absolute()
+        || !receipt_signing_seed_env
+            .bytes()
+            .next()
+            .is_some_and(|byte| byte.is_ascii_uppercase())
+        || !receipt_signing_seed_env
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+    {
+        return Err(CliError::cli_other_error(
+            "challenge repair receipt path or signing environment is invalid".to_owned(),
+        ));
+    }
+    let receipt_parent = receipt_path.parent().ok_or_else(|| {
+        CliError::cli_other_error("challenge repair receipt has no parent".to_owned())
+    })?;
+    if !receipt_parent.is_dir() {
+        return Err(CliError::cli_other_error(
+            "challenge repair receipt parent must be an existing directory".to_owned(),
+        ));
+    }
+    let mut seed = std::env::var(receipt_signing_seed_env)
+        .map_err(|_| CliError::cli_other_error("repair signing seed is unavailable".to_owned()))?;
+    let signing_key = Keypair::from_seed_hex(&seed)
+        .map_err(|_| CliError::cli_other_error("repair signing seed is invalid".to_owned()));
+    seed.zeroize();
+    let signing_key = signing_key?;
     let bundle: ChallengeRetentionRepairBundle =
         read_canonical_file(bundle_path, CHALLENGE_REPAIR_BUNDLE_MAX_BYTES)?;
+    let bundle_sha256 = sha256_hex(&canonical_json_bytes(&bundle)?);
     if bundle.schema != CHALLENGE_REPAIR_BUNDLE_SCHEMA
         || bundle.submissions.is_empty()
         || bundle.submissions.len() > 10_000
@@ -1166,50 +1229,257 @@ pub(super) fn cmd_finding_operator_repair_challenge_retention(
             "challenge retention repair bundle is invalid".to_owned(),
         ));
     }
+    let receipt_name = receipt_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            CliError::cli_other_error(
+                "challenge repair receipt must have a portable file name".to_owned(),
+            )
+        })?;
+    let pending_receipt_path = receipt_parent.join(format!(".{receipt_name}.pending"));
+    if let Some(receipt) = recover_challenge_repair_receipt(
+        receipt_path,
+        &pending_receipt_path,
+        &database_path,
+        &bundle_sha256,
+        &signing_key,
+    )? {
+        return print_challenge_repair_receipt(
+            &database_path,
+            receipt_path,
+            &receipt,
+            json_output,
+        );
+    }
+    let before = SqliteFindingChallengeStore::inspect_challenge_repair_database(&database_path)
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    if before != bundle.database
+        || u64::try_from(bundle.submissions.len()).ok() != Some(before.challenge_count)
+    {
+        return Err(CliError::cli_other_error(
+            "challenge repair bundle does not bind the complete database challenge set"
+                .to_owned(),
+        ));
+    }
+    let mut unique_challenges = std::collections::BTreeSet::new();
     let decoded = bundle
         .submissions
         .into_iter()
         .map(|submission| {
-            canonical_json_bytes(&submission.challenge_envelope).map(|bytes| {
-                (
-                    submission.challenge_id,
-                    submission.challenge_envelope_sha256,
-                    bytes,
-                )
-            })
+            if !unique_challenges.insert(submission.challenge_id.clone()) {
+                return Err(CliError::cli_other_error(
+                    "challenge repair bundle contains a duplicate challenge".to_owned(),
+                ));
+            }
+            let signed: SignedFindingChallenge =
+                serde_json::from_value(submission.challenge_envelope.clone())
+                    .map_err(|_| CliError::cli_other_error("signed challenge rejected".to_owned()))?;
+            if signed.body.challenge_id != submission.challenge_id {
+                return Err(CliError::cli_other_error(
+                    "signed challenge does not bind the repair challenge id".to_owned(),
+                ));
+            }
+            let audit_authority = match &signed.body.authorization {
+                FindingChallengeAuthorization::BuyerSubmission(_) => {
+                    if submission.audit_authority.is_some() {
+                        return Err(CliError::cli_other_error(
+                            "buyer-submission repair must not include an audit authority"
+                                .to_owned(),
+                        ));
+                    }
+                    &signed.signer_key
+                }
+                FindingChallengeAuthorization::VenueAudit(_) => submission
+                    .audit_authority
+                    .as_ref()
+                    .ok_or_else(|| {
+                        CliError::cli_other_error(
+                            "venue-audit repair requires its pinned audit authority".to_owned(),
+                        )
+                    })?,
+            };
+            verify_signed_challenge(&signed, audit_authority)
+                .map_err(|_| CliError::cli_other_error("signed challenge rejected".to_owned()))?;
+            let bytes = canonical_json_bytes(&submission.challenge_envelope)?;
+            Ok::<_, CliError>((
+                submission.challenge_id,
+                submission.challenge_envelope_sha256,
+                bytes,
+                submission.challenge_row_sha256,
+            ))
         })
         .collect::<Result<Vec<_>, _>>()?;
     let inputs = decoded
         .iter()
         .map(
-            |(challenge_id, challenge_envelope_sha256, challenge_envelope_json)| {
+            |(
+                challenge_id,
+                challenge_envelope_sha256,
+                challenge_envelope_json,
+                challenge_row_sha256,
+            )| {
                 FindingChallengeSubmissionRepairInput {
                     challenge_id,
                     challenge_envelope_sha256,
                     challenge_envelope_json,
+                    challenge_row_sha256,
                 }
             },
         )
         .collect::<Vec<_>>();
-    let report = SqliteFindingChallengeStore::repair_challenge_submissions(
+    let completed_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?
+        .as_secs();
+    let mut staged_receipt = None;
+    let report = SqliteFindingChallengeStore::repair_challenge_submissions_with_staging(
         &database_path,
         &inputs,
+        |staged_before, staged_after, staged_report| {
+            if staged_before != &before {
+                return Err("challenge repair database changed before staging".to_owned());
+            }
+            let receipt = SignedExportEnvelope::sign(
+                ChallengeRetentionRepairReceipt {
+                    schema: "chio.finding.legacy-challenge-repair-receipt.v1".to_owned(),
+                    database_before: staged_before.clone(),
+                    database_after: staged_after.clone(),
+                    bundle_sha256: bundle_sha256.clone(),
+                    inserted: staged_report.inserted,
+                    exact_replays: staged_report.exact_replays,
+                    completed_at,
+                },
+                &signing_key,
+            )
+            .map_err(|error| error.to_string())?;
+            let bytes = canonical_json_bytes(&receipt).map_err(|error| error.to_string())?;
+            write_private_new(&pending_receipt_path, &bytes).map_err(|error| error.to_string())?;
+            staged_receipt = Some((receipt, bytes));
+            Ok(())
+        },
     )
     .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    let (receipt, receipt_bytes) = staged_receipt.ok_or_else(|| {
+        CliError::cli_other_error("challenge repair receipt was not staged".to_owned())
+    })?;
+    if receipt.body.inserted != report.inserted
+        || receipt.body.exact_replays != report.exact_replays
+    {
+        return Err(CliError::cli_other_error(
+            "challenge repair report changed after receipt staging".to_owned(),
+        ));
+    }
+    publish_staged_challenge_repair_receipt(&pending_receipt_path, receipt_path)?;
+    let retained = read_canonical_file::<SignedExportEnvelope<ChallengeRetentionRepairReceipt>>(
+        receipt_path,
+        CHALLENGE_REPAIR_BUNDLE_MAX_BYTES,
+    )?;
+    if canonical_json_bytes(&retained)? != receipt_bytes {
+        return Err(CliError::cli_other_error(
+            "published challenge repair receipt failed exact replay".to_owned(),
+        ));
+    }
+    print_challenge_repair_receipt(&database_path, receipt_path, &receipt, json_output)
+}
+
+fn recover_challenge_repair_receipt(
+    receipt_path: &Path,
+    pending_path: &Path,
+    database_path: &Path,
+    bundle_sha256: &str,
+    signing_key: &Keypair,
+) -> Result<Option<SignedExportEnvelope<ChallengeRetentionRepairReceipt>>, CliError> {
+    let candidate_path = if receipt_path.exists() {
+        receipt_path
+    } else if pending_path.exists() {
+        pending_path
+    } else {
+        return Ok(None);
+    };
+    let metadata = fs::symlink_metadata(candidate_path)?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(CliError::cli_other_error(
+            "challenge repair receipt recovery path is not a regular file".to_owned(),
+        ));
+    }
+    let receipt: SignedExportEnvelope<ChallengeRetentionRepairReceipt> =
+        read_canonical_file(candidate_path, CHALLENGE_REPAIR_BUNDLE_MAX_BYTES)?;
+    if receipt.body.schema != "chio.finding.legacy-challenge-repair-receipt.v1"
+        || receipt.body.bundle_sha256 != bundle_sha256
+        || receipt.signer_key != signing_key.public_key()
+        || !matches!(receipt.verify_signature(), Ok(true))
+    {
+        return Err(CliError::cli_other_error(
+            "challenge repair receipt recovery artifact is invalid".to_owned(),
+        ));
+    }
+    let current = SqliteFindingChallengeStore::inspect_challenge_repair_database(database_path)
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    if current == receipt.body.database_after {
+        if candidate_path == pending_path {
+            publish_staged_challenge_repair_receipt(pending_path, receipt_path)?;
+        }
+        return Ok(Some(receipt));
+    }
+    if candidate_path == pending_path
+        && current == receipt.body.database_before
+        && receipt.body.database_before != receipt.body.database_after
+    {
+        fs::remove_file(pending_path)?;
+        sync_parent_directory(pending_path)?;
+        return Ok(None);
+    }
+    Err(CliError::cli_other_error(
+        "challenge repair receipt does not bind the current database state".to_owned(),
+    ))
+}
+
+fn publish_staged_challenge_repair_receipt(
+    pending_path: &Path,
+    receipt_path: &Path,
+) -> Result<(), CliError> {
+    fs::hard_link(pending_path, receipt_path)?;
+    fs::remove_file(pending_path)?;
+    sync_parent_directory(receipt_path)
+}
+
+fn sync_parent_directory(path: &Path) -> Result<(), CliError> {
+    let parent = path.parent().ok_or_else(|| {
+        CliError::cli_other_error("challenge repair receipt has no parent".to_owned())
+    })?;
+    OpenOptions::new().read(true).open(parent)?.sync_all()?;
+    Ok(())
+}
+
+fn print_challenge_repair_receipt(
+    database_path: &Path,
+    receipt_path: &Path,
+    receipt: &SignedExportEnvelope<ChallengeRetentionRepairReceipt>,
+    json_output: bool,
+) -> Result<(), CliError> {
+    let receipt_bytes = canonical_json_bytes(receipt)?;
     let output = serde_json::json!({
         "database": database_path,
-        "exactReplays": report.exact_replays,
-        "inserted": report.inserted,
+        "exactReplays": receipt.body.exact_replays,
+        "inserted": receipt.body.inserted,
         "schema": "chio.finding.challenge-submission-repair-report.v1",
-        "schemaVersion": report.schema_version,
+        "schemaVersion": receipt.body.database_after.schema_version,
+        "receipt": receipt_path,
+        "receiptSha256": sha256_hex(&receipt_bytes),
     });
     if json_output {
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
         println!("database:       {}", database_path.display());
-        println!("inserted:       {}", report.inserted);
-        println!("exact_replays:  {}", report.exact_replays);
-        println!("schema_version: {}", report.schema_version);
+        println!("inserted:       {}", receipt.body.inserted);
+        println!("exact_replays:  {}", receipt.body.exact_replays);
+        println!(
+            "schema_version: {}",
+            receipt.body.database_after.schema_version
+        );
+        println!("receipt:        {}", receipt_path.display());
+        println!("receipt_sha256: {}", sha256_hex(&receipt_bytes));
         println!("operator_state: offline repair complete; restart explicitly");
     }
     Ok(())

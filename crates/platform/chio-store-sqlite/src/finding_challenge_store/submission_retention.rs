@@ -5,6 +5,8 @@ use super::*;
 /// Bound on one exact signed challenge envelope.
 const MAX_CHALLENGE_ENVELOPE_BYTES: usize = 1_048_576;
 
+type ChallengeRepairSqlRow = (String, String, String, String, String, Option<String>, i64);
+
 /// Exact signed filing bytes retained with the challenge row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindingChallengeSubmissionEnvelopeRecord {
@@ -20,6 +22,35 @@ pub struct FindingChallengeSubmissionRepairInput<'a> {
     pub challenge_id: &'a str,
     pub challenge_envelope_sha256: &'a str,
     pub challenge_envelope_json: &'a [u8],
+    pub challenge_row_sha256: &'a str,
+}
+
+/// Stable identity and immutable challenge-set commitment for an offline
+/// repair database.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindingChallengeRepairDatabaseBinding {
+    pub device: u64,
+    pub inode: u64,
+    pub link_count: u64,
+    pub schema_version: i32,
+    pub challenge_count: u64,
+    pub challenge_set_sha256: String,
+    pub retained_submission_count: u64,
+    pub retained_submission_set_sha256: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChallengeRepairRow<'a> {
+    challenge_id: &'a str,
+    finding_id: &'a str,
+    listing_id: &'a str,
+    challenge_envelope_sha256: &'a str,
+    authorization_branch: &'a str,
+    evidence_class: &'a str,
+    challenger_hex: Option<&'a str>,
+    submitted_at: u64,
 }
 
 /// Result of an atomic offline challenge-retention repair.
@@ -31,6 +62,59 @@ pub struct FindingChallengeSubmissionRepairReport {
 }
 
 impl SqliteFindingChallengeStore {
+    /// Inspect the exact file and immutable challenge identities that a repair
+    /// bundle must bind before any mutation is attempted.
+    pub fn inspect_challenge_repair_database(
+        database_path: &std::path::Path,
+    ) -> Result<FindingChallengeRepairDatabaseBinding, FindingChallengeStoreError> {
+        let connection = open_repair_connection(database_path, false)?;
+        let schema_version = crate::check_schema_version(
+            &connection,
+            FINDING_CHALLENGE_SCHEMA_KEY,
+            FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+            FINDING_CHALLENGE_SCHEMA_ANCHORS,
+        )
+        .map_err(|error| invariant(error.to_string()))?;
+        if !matches!(
+            schema_version,
+            13 | FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION
+        ) {
+            return Err(invariant(format!(
+                "challenge submission repair requires schema revision 13 or 14, found {schema_version}",
+            )));
+        }
+        repair_database_binding(&connection, schema_version)
+    }
+
+    /// Return the immutable row commitment that one repair entry must carry.
+    pub fn inspect_challenge_repair_row(
+        database_path: &std::path::Path,
+        challenge_id: &str,
+    ) -> Result<String, FindingChallengeStoreError> {
+        require_identifier(challenge_id, "challenge_id")?;
+        let connection = open_repair_connection(database_path, false)?;
+        let row: Option<ChallengeRepairSqlRow> = connection
+            .query_row(
+                "SELECT finding_id, listing_id, challenge_envelope_sha256, authorization_branch, evidence_class, challenger_hex, submitted_at FROM challenges WHERE challenge_id = ?1",
+                [challenge_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?)),
+            )
+            .optional()
+            .map_err(sqlite_error)?;
+        let (finding_id, listing_id, digest, authorization, evidence, challenger, submitted_at) =
+            row.ok_or(FindingChallengeStoreError::NotFound)?;
+        challenge_repair_row_sha256(&ChallengeRepairRow {
+            challenge_id,
+            finding_id: &finding_id,
+            listing_id: &listing_id,
+            challenge_envelope_sha256: &digest,
+            authorization_branch: &authorization,
+            evidence_class: &evidence,
+            challenger_hex: challenger.as_deref(),
+            submitted_at: stored_u64(submitted_at, "submitted_at")?,
+        })
+    }
+
     /// Load the exact canonical signed filing retained for one challenge.
     pub fn get_challenge_submission(
         &self,
@@ -80,23 +164,32 @@ impl SqliteFindingChallengeStore {
         database_path: &std::path::Path,
         inputs: &[FindingChallengeSubmissionRepairInput<'_>],
     ) -> Result<FindingChallengeSubmissionRepairReport, FindingChallengeStoreError> {
+        Self::repair_challenge_submissions_with_staging(database_path, inputs, |_, _, _| Ok(()))
+    }
+
+    /// Repair and invoke a durable staging hook after all database invariants
+    /// pass but before the exclusive transaction commits. Callers use this to
+    /// persist a recoverable signed receipt without admitting a repaired
+    /// database whose receipt was never durably staged.
+    pub fn repair_challenge_submissions_with_staging<F>(
+        database_path: &std::path::Path,
+        inputs: &[FindingChallengeSubmissionRepairInput<'_>],
+        stage: F,
+    ) -> Result<FindingChallengeSubmissionRepairReport, FindingChallengeStoreError>
+    where
+        F: FnOnce(
+            &FindingChallengeRepairDatabaseBinding,
+            &FindingChallengeRepairDatabaseBinding,
+            &FindingChallengeSubmissionRepairReport,
+        ) -> Result<(), String>,
+    {
         if inputs.is_empty() || inputs.len() > 10_000 {
             return Err(invariant(
                 "challenge submission repair bundle is empty or too large",
             ));
         }
-        let mut connection = Connection::open_with_flags(
-            database_path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
-                | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX
-                | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW,
-        )
-        .map_err(sqlite_error)?;
-        connection
-            .execute_batch(
-                "PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON; PRAGMA trusted_schema = OFF; PRAGMA synchronous = FULL;",
-            )
-            .map_err(sqlite_error)?;
+        let before = Self::inspect_challenge_repair_database(database_path)?;
+        let mut connection = open_repair_connection(database_path, true)?;
         let on_disk = crate::check_schema_version(
             &connection,
             FINDING_CHALLENGE_SCHEMA_KEY,
@@ -127,19 +220,43 @@ impl SqliteFindingChallengeStore {
                 input.challenge_envelope_json,
                 input.challenge_envelope_sha256,
             )?;
-            let challenge: Option<(String, i64)> = transaction
+            require_hex64(input.challenge_row_sha256, "challenge_row_sha256")?;
+            let challenge: Option<ChallengeRepairSqlRow> = transaction
                 .query_row(
-                    "SELECT challenge_envelope_sha256, submitted_at FROM challenges WHERE challenge_id = ?1",
+                    "SELECT finding_id, listing_id, challenge_envelope_sha256, authorization_branch, evidence_class, challenger_hex, submitted_at FROM challenges WHERE challenge_id = ?1",
                     [input.challenge_id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?)),
                 )
                 .optional()
                 .map_err(sqlite_error)?;
-            let (expected_digest, submitted_at) =
-                challenge.ok_or(FindingChallengeStoreError::NotFound)?;
+            let (
+                finding_id,
+                listing_id,
+                expected_digest,
+                authorization_branch,
+                evidence_class,
+                challenger_hex,
+                submitted_at,
+            ) = challenge.ok_or(FindingChallengeStoreError::NotFound)?;
             if expected_digest != input.challenge_envelope_sha256 {
                 return Err(FindingChallengeStoreError::Conflict(
                     "repair filing digest does not match its challenge row".to_owned(),
+                ));
+            }
+            let submitted_at_u64 = stored_u64(submitted_at, "submitted_at")?;
+            let row_sha256 = challenge_repair_row_sha256(&ChallengeRepairRow {
+                challenge_id: input.challenge_id,
+                finding_id: &finding_id,
+                listing_id: &listing_id,
+                challenge_envelope_sha256: &expected_digest,
+                authorization_branch: &authorization_branch,
+                evidence_class: &evidence_class,
+                challenger_hex: challenger_hex.as_deref(),
+                submitted_at: submitted_at_u64,
+            })?;
+            if row_sha256 != input.challenge_row_sha256 {
+                return Err(FindingChallengeStoreError::Conflict(
+                    "repair filing does not bind the immutable challenge row".to_owned(),
                 ));
             }
             let changed = transaction
@@ -197,16 +314,193 @@ impl SqliteFindingChallengeStore {
             .map_err(|error| invariant(error.to_string()))?;
         }
         verify_finding_challenge_invariants(&transaction)?;
+        let report = FindingChallengeSubmissionRepairReport {
+            inserted,
+            exact_replays,
+            schema_version: FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+        };
+        let staged_after =
+            repair_database_binding(&transaction, FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION)?;
+        if staged_after.device != before.device
+            || staged_after.inode != before.inode
+            || staged_after.link_count != before.link_count
+            || staged_after.challenge_count != before.challenge_count
+            || staged_after.challenge_set_sha256 != before.challenge_set_sha256
+        {
+            return Err(invariant(
+                "challenge repair database identity changed during repair",
+            ));
+        }
+        stage(&before, &staged_after, &report).map_err(invariant)?;
         transaction.commit().map_err(sqlite_error)?;
         connection
             .execute_batch("PRAGMA wal_checkpoint(FULL);")
             .map_err(sqlite_error)?;
-        Ok(FindingChallengeSubmissionRepairReport {
-            inserted,
-            exact_replays,
-            schema_version: FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
-        })
+        let after = Self::inspect_challenge_repair_database(database_path)?;
+        if after.device != before.device
+            || after.inode != before.inode
+            || after.link_count != before.link_count
+            || after.challenge_count != before.challenge_count
+            || after.challenge_set_sha256 != before.challenge_set_sha256
+            || after != staged_after
+        {
+            return Err(invariant(
+                "challenge repair database identity changed during repair",
+            ));
+        }
+        Ok(report)
     }
+}
+
+fn repair_database_binding(
+    connection: &Connection,
+    schema_version: i32,
+) -> Result<FindingChallengeRepairDatabaseBinding, FindingChallengeStoreError> {
+    let identity =
+        chio_sqlite_file_identity::main_database_file_identity(connection).map_err(invariant)?;
+    if identity.link_count != 1 {
+        return Err(invariant(
+            "challenge repair database must have exactly one filesystem link",
+        ));
+    }
+    let rows = load_challenge_repair_rows(connection)?;
+    let challenge_count =
+        u64::try_from(rows.len()).map_err(|_| invariant("challenge count overflow"))?;
+    let challenge_set_sha256 = canonical_json_bytes(&rows)
+        .map(|bytes| sha256_hex(&bytes))
+        .map_err(|_| invariant("challenge repair row set is not canonical"))?;
+    let submissions = if schema_version >= FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION {
+        load_challenge_repair_submissions(connection)?
+    } else {
+        Vec::new()
+    };
+    let retained_submission_count =
+        u64::try_from(submissions.len()).map_err(|_| invariant("submission count overflow"))?;
+    let retained_submission_set_sha256 = canonical_json_bytes(&submissions)
+        .map(|bytes| sha256_hex(&bytes))
+        .map_err(|_| invariant("challenge submission set is not canonical"))?;
+    Ok(FindingChallengeRepairDatabaseBinding {
+        device: identity.device,
+        inode: identity.inode,
+        link_count: identity.link_count,
+        schema_version,
+        challenge_count,
+        challenge_set_sha256,
+        retained_submission_count,
+        retained_submission_set_sha256,
+    })
+}
+
+fn load_challenge_repair_submissions(
+    connection: &Connection,
+) -> Result<Vec<serde_json::Value>, FindingChallengeStoreError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT challenge_id, challenge_envelope_sha256, hex(challenge_envelope_json), recorded_at FROM finding_challenge_submissions ORDER BY challenge_id",
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        })
+        .map_err(sqlite_error)?;
+    rows.map(|row| {
+        let (challenge_id, envelope_sha256, envelope_hex, recorded_at) =
+            row.map_err(sqlite_error)?;
+        Ok(serde_json::json!({
+            "challengeId": challenge_id,
+            "challengeEnvelopeSha256": envelope_sha256,
+            "challengeEnvelopeHex": envelope_hex.to_ascii_lowercase(),
+            "recordedAt": stored_u64(recorded_at, "recorded_at")?,
+        }))
+    })
+    .collect()
+}
+
+fn open_repair_connection(
+    database_path: &std::path::Path,
+    writable: bool,
+) -> Result<Connection, FindingChallengeStoreError> {
+    let access = if writable {
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
+    } else {
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+    };
+    let connection = Connection::open_with_flags(
+        database_path,
+        access
+            | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX
+            | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW,
+    )
+    .map_err(sqlite_error)?;
+    connection
+        .execute_batch(
+            "PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON; PRAGMA trusted_schema = OFF; PRAGMA synchronous = FULL;",
+        )
+        .map_err(sqlite_error)?;
+    Ok(connection)
+}
+
+fn load_challenge_repair_rows(
+    connection: &Connection,
+) -> Result<Vec<serde_json::Value>, FindingChallengeStoreError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT challenge_id, finding_id, listing_id, challenge_envelope_sha256, authorization_branch, evidence_class, challenger_hex, submitted_at FROM challenges ORDER BY challenge_id",
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, i64>(7)?,
+            ))
+        })
+        .map_err(sqlite_error)?;
+    rows.map(|row| {
+        let (
+            challenge_id,
+            finding_id,
+            listing_id,
+            digest,
+            authorization,
+            evidence,
+            challenger,
+            submitted_at,
+        ) = row.map_err(sqlite_error)?;
+        let submitted_at = stored_u64(submitted_at, "submitted_at")?;
+        serde_json::to_value(ChallengeRepairRow {
+            challenge_id: &challenge_id,
+            finding_id: &finding_id,
+            listing_id: &listing_id,
+            challenge_envelope_sha256: &digest,
+            authorization_branch: &authorization,
+            evidence_class: &evidence,
+            challenger_hex: challenger.as_deref(),
+            submitted_at,
+        })
+        .map_err(|_| invariant("challenge repair row is not serializable"))
+    })
+    .collect()
+}
+
+fn challenge_repair_row_sha256(
+    row: &ChallengeRepairRow<'_>,
+) -> Result<String, FindingChallengeStoreError> {
+    canonical_json_bytes(row)
+        .map(|bytes| sha256_hex(&bytes))
+        .map_err(|_| invariant("challenge repair row is not canonical"))
 }
 
 pub(super) fn store_challenge_submission_tx(

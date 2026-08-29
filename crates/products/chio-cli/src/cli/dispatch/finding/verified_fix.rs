@@ -1344,14 +1344,35 @@ fn same_activation(stored: &serde_json::Value, replay: &serde_json::Value) -> bo
 }
 
 fn read_file_bounded(path: &Path, max_bytes: usize) -> Result<Vec<u8>, CliError> {
-    let metadata = fs::metadata(path)?;
-    if metadata.len() > u64::try_from(max_bytes).unwrap_or(u64::MAX) {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
+    }
+    let file = options.open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > u64::try_from(max_bytes).unwrap_or(u64::MAX) {
+        return Err(CliError::cli_other_error(format!(
+            "{} is not a bounded regular file",
+            path.display()
+        )));
+    }
+    let mut bytes = Vec::with_capacity(
+        usize::try_from(metadata.len())
+            .unwrap_or(max_bytes)
+            .min(max_bytes),
+    );
+    file.take(u64::try_from(max_bytes.saturating_add(1)).unwrap_or(u64::MAX))
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > max_bytes {
         return Err(CliError::cli_other_error(format!(
             "{} exceeds its size bound",
             path.display()
         )));
     }
-    fs::read(path).map_err(CliError::from)
+    Ok(bytes)
 }
 
 fn read_stdin_bounded(max_bytes: usize) -> Result<Vec<u8>, CliError> {
@@ -1383,7 +1404,7 @@ fn decode_canonical_b64(
     Ok(bytes)
 }
 
-fn write_private_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
+pub(super) fn write_private_new(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
     let parent = path.parent().ok_or_else(|| {
         CliError::cli_other_error("output path has no parent directory".to_owned())
     })?;

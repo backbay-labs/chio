@@ -312,6 +312,12 @@ pub(crate) enum FindingOperatorCommands {
         /// Strict canonical repair bundle containing exact signed envelopes.
         #[arg(long)]
         bundle: PathBuf,
+        /// New private file receiving the canonical signed repair receipt.
+        #[arg(long)]
+        receipt: PathBuf,
+        /// Environment variable containing the repair authority's hex seed.
+        #[arg(long)]
+        receipt_signing_seed_env: String,
     },
 
     /// Validate a hosted profile, its referenced files, and secret references.

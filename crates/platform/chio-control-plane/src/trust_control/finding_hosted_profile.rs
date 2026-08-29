@@ -226,6 +226,7 @@ pub struct FindingHostedWorkerProfile {
     pub max_attempts: u32,
     pub max_tenants_per_tick: u32,
     pub max_jobs_per_tick: u32,
+    pub tenant_failure_threshold: u32,
     pub shutdown_grace_secs: u64,
     pub max_frame_bytes: u32,
     pub max_file_size_bytes: u64,
@@ -931,6 +932,7 @@ impl FindingHostedProfile {
             || !(1..=20).contains(&self.worker.max_attempts)
             || !(1..=1_024).contains(&self.worker.max_tenants_per_tick)
             || !(1..=10_000).contains(&self.worker.max_jobs_per_tick)
+            || !(1..=100).contains(&self.worker.tenant_failure_threshold)
             || !(1..=3_600).contains(&self.worker.shutdown_grace_secs)
             || !(1_024..=4_194_304).contains(&self.worker.max_frame_bytes)
             || !(1_048_576..=1_073_741_824).contains(&self.worker.max_file_size_bytes)

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::{Read as _, Write as _};
 use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
@@ -13,8 +14,11 @@ use chio_finding_hosted_edge::{
 use chio_finding_market_store_postgres::{
     HostedPostgresConfig, HostedTenantId, HostedTenantLimits, PostgresFindingMarketStore,
 };
-use chio_finding_worker::{HostedFindingWorker, HostedWorkerRun, HostedWorkerServiceError};
+use chio_finding_worker::{
+    HostedFindingWorker, HostedWorkerJobEvidence, HostedWorkerRun, HostedWorkerServiceError,
+};
 use clap::Parser;
+use nix::libc;
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
@@ -22,6 +26,7 @@ const MAX_PROFILE_BYTES: u64 = 4 * 1024 * 1024;
 const RETRY_BASE_SECS: u64 = 5;
 const DATABASE_FAILURE_THRESHOLD: u32 = 3;
 const DATABASE_BREAKER_OPEN_SECS: u64 = 30;
+const TENANT_BREAKER_OPEN_SECS: u64 = 30;
 
 #[derive(Debug, Parser)]
 #[command(name = "chio-finding-worker")]
@@ -71,6 +76,12 @@ struct TenantRuntime {
     limits: HostedTenantLimits,
 }
 
+#[derive(Clone, Copy, Default)]
+struct TenantFailureState {
+    consecutive_failures: u32,
+    open_until: u64,
+}
+
 #[derive(Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WorkerTickReport {
@@ -88,6 +99,18 @@ struct WorkerTickReport {
     cancelled: u32,
     claimed_job_ids: Vec<String>,
     completed_job_ids: Vec<String>,
+    jobs: Vec<HostedWorkerJobEvidence>,
+}
+
+struct WorkerTickSpec<'a> {
+    worker: &'a HostedFindingWorker,
+    tenants: &'a [TenantRuntime],
+    worker_id: &'a str,
+    first: usize,
+    max_tenants: u32,
+    max_jobs: u32,
+    tenant_failure_threshold: u32,
+    cancellation: &'a CancellationToken,
 }
 
 #[tokio::main]
@@ -135,14 +158,19 @@ async fn run(args: Args) -> Result<(), DaemonError> {
     .map_err(|_| DaemonError::Arguments)?;
 
     if args.once {
+        let cancellation = CancellationToken::new();
         let mut report = run_tick(
-            &worker,
-            &tenants,
-            &args.worker_id,
-            0,
-            profile.worker.max_tenants_per_tick,
-            profile.worker.max_jobs_per_tick,
-            &CancellationToken::new(),
+            WorkerTickSpec {
+                worker: &worker,
+                tenants: &tenants,
+                worker_id: &args.worker_id,
+                first: 0,
+                max_tenants: profile.worker.max_tenants_per_tick,
+                max_jobs: profile.worker.max_jobs_per_tick,
+                tenant_failure_threshold: profile.worker.tenant_failure_threshold,
+                cancellation: &cancellation,
+            },
+            &mut BTreeMap::new(),
         )
         .await?;
         report.ready = true;
@@ -166,6 +194,7 @@ async fn run(args: Args) -> Result<(), DaemonError> {
         .and_then(|()| readiness.record(HostedDependency::Worker, true))
         .map_err(|_| DaemonError::Execution)?;
     let mut next_tenant = 0_usize;
+    let mut tenant_failures = BTreeMap::new();
     let mut shutdown = Box::pin(shutdown_signal());
     loop {
         let now = current_unix_secs()?;
@@ -198,13 +227,17 @@ async fn run(args: Args) -> Result<(), DaemonError> {
         }
         let cancellation = CancellationToken::new();
         let tick = run_tick(
-            &worker,
-            &tenants,
-            &args.worker_id,
-            next_tenant,
-            profile.worker.max_tenants_per_tick,
-            profile.worker.max_jobs_per_tick,
-            &cancellation,
+            WorkerTickSpec {
+                worker: &worker,
+                tenants: &tenants,
+                worker_id: &args.worker_id,
+                first: next_tenant,
+                max_tenants: profile.worker.max_tenants_per_tick,
+                max_jobs: profile.worker.max_jobs_per_tick,
+                tenant_failure_threshold: profile.worker.tenant_failure_threshold,
+                cancellation: &cancellation,
+            },
+            &mut tenant_failures,
         );
         tokio::pin!(tick);
         let tick_result = tokio::select! {
@@ -331,7 +364,7 @@ fn open_private_regular(path: &Path) -> Result<(File, Metadata), DaemonError> {
     if before.file_type().is_symlink()
         || !before.is_file()
         || before.mode() & 0o077 != 0
-        || before.uid() != unsafe { libc::geteuid() }
+        || before.uid() != nix::unistd::geteuid().as_raw()
     {
         return Err(DaemonError::Profile);
     }
@@ -407,7 +440,7 @@ async fn connect_store(
             ))
         })
         .map_err(|_| DaemonError::Database)?;
-    PostgresFindingMarketStore::connect(&config)
+    PostgresFindingMarketStore::connect_worker(&config)
         .await
         .map_err(|_| DaemonError::Database)
 }
@@ -438,35 +471,46 @@ fn enabled_tenants(profile: &FindingHostedProfile) -> Result<Vec<TenantRuntime>,
 }
 
 async fn run_tick(
-    worker: &HostedFindingWorker,
-    tenants: &[TenantRuntime],
-    worker_id: &str,
-    first: usize,
-    max_tenants: u32,
-    max_jobs: u32,
-    cancellation: &CancellationToken,
+    spec: WorkerTickSpec<'_>,
+    tenant_failures: &mut BTreeMap<HostedTenantId, TenantFailureState>,
 ) -> Result<WorkerTickReport, DaemonError> {
     let mut report = WorkerTickReport {
         schema: "chio.finding.worker-tick.v2",
-        worker_id: worker_id.to_owned(),
-        tenant_count: u32::try_from(tenants.len()).map_err(|_| DaemonError::Execution)?,
+        worker_id: spec.worker_id.to_owned(),
+        tenant_count: u32::try_from(spec.tenants.len()).map_err(|_| DaemonError::Execution)?,
         ..WorkerTickReport::default()
     };
-    let tenant_budget = usize::try_from(max_tenants)
+    let tenant_budget = usize::try_from(spec.max_tenants)
         .map_err(|_| DaemonError::Execution)?
-        .min(tenants.len());
-    let mut remaining_jobs = max_jobs;
+        .min(spec.tenants.len());
+    let mut remaining_jobs = spec.max_jobs;
+    let now = current_unix_secs()?;
     for offset in 0..tenant_budget {
-        if cancellation.is_cancelled() || remaining_jobs == 0 {
+        if spec.cancellation.is_cancelled() || remaining_jobs == 0 {
             break;
         }
-        let index = (first + offset) % tenants.len();
-        let tenant = &tenants[index];
+        let index = (spec.first + offset) % spec.tenants.len();
+        let tenant = &spec.tenants[index];
+        let failure = tenant_failures.entry(tenant.tenant_id.clone()).or_default();
+        if !admit_tenant(failure, now) {
+            report.tenants_visited = report
+                .tenants_visited
+                .checked_add(1)
+                .ok_or(DaemonError::Execution)?;
+            continue;
+        }
         let claim_limit = tenant.limits.max_concurrent_jobs().min(remaining_jobs);
-        let run = worker
-            .run_once_with_limit_cancellable(&tenant.tenant_id, claim_limit, cancellation)
+        let run = spec
+            .worker
+            .run_once_with_limit_cancellable(&tenant.tenant_id, claim_limit, spec.cancellation)
             .await
             .map_err(map_worker_error)?;
+        let tenant_failed = run.guest_rejected > 0 || run.exhausted > 0;
+        if tenant_failed {
+            record_tenant_failure(failure, spec.tenant_failure_threshold, now);
+        } else if run.claimed > 0 {
+            *failure = TenantFailureState::default();
+        }
         remaining_jobs = remaining_jobs
             .checked_sub(run.claimed)
             .ok_or(DaemonError::Execution)?;
@@ -477,6 +521,23 @@ async fn run_tick(
             .ok_or(DaemonError::Execution)?;
     }
     Ok(report)
+}
+
+fn admit_tenant(state: &mut TenantFailureState, now: u64) -> bool {
+    if state.open_until > now {
+        return false;
+    }
+    if state.open_until != 0 {
+        *state = TenantFailureState::default();
+    }
+    true
+}
+
+fn record_tenant_failure(state: &mut TenantFailureState, threshold: u32, now: u64) {
+    state.consecutive_failures = state.consecutive_failures.saturating_add(1);
+    if state.consecutive_failures >= threshold {
+        state.open_until = now.saturating_add(TENANT_BREAKER_OPEN_SECS);
+    }
 }
 
 fn map_worker_error(error: HostedWorkerServiceError) -> DaemonError {
@@ -506,6 +567,7 @@ fn dependency_failure_report(
 fn add_run(report: &mut WorkerTickReport, run: HostedWorkerRun) -> Result<(), DaemonError> {
     report.claimed_job_ids.extend(run.claimed_job_ids);
     report.completed_job_ids.extend(run.completed_job_ids);
+    report.jobs.extend(run.jobs);
     report.claimed = report
         .claimed
         .checked_add(run.claimed)
@@ -600,5 +662,17 @@ mod tests {
             assert_eq!(report.tenant_count, 1);
             assert_eq!(report.claimed, 0);
         }
+    }
+
+    #[test]
+    fn tenant_breaker_opens_at_threshold_and_recovers_after_window() {
+        let mut state = TenantFailureState::default();
+        assert!(admit_tenant(&mut state, 100));
+        record_tenant_failure(&mut state, 2, 100);
+        assert!(admit_tenant(&mut state, 101));
+        record_tenant_failure(&mut state, 2, 101);
+        assert!(!admit_tenant(&mut state, 129));
+        assert!(admit_tenant(&mut state, 131));
+        assert_eq!(state.consecutive_failures, 0);
     }
 }

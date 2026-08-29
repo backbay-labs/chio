@@ -32,6 +32,12 @@ if [[ -n "$(git status --porcelain=v1 --untracked-files=all)" ]]; then
   echo "hosted cognition-market qualification requires a clean exact candidate" >&2
   exit 1
 fi
+base_ref="${CHIO_QUALIFICATION_BASE_REF:-origin/main}"
+if ! git rev-parse --verify "${base_ref}^{commit}" >/dev/null 2>&1; then
+  echo "hosted cognition-market qualification cannot resolve ${base_ref}" >&2
+  exit 1
+fi
+merge_base="$(git merge-base HEAD "${base_ref}")"
 
 output_root="target/release-qualification/cognition-market-hosted"
 log_root="${output_root}/logs"
@@ -81,6 +87,7 @@ run_gate() {
 }
 
 run_gate format cargo fmt --all -- --check
+run_gate patch-integrity git diff --check "${merge_base}...HEAD"
 run_gate rust-hygiene python3 scripts/check-rust-file-hygiene.py
 run_gate workspace-layering bash scripts/check-workspace-layering.sh
 run_gate fuzz-lock \
@@ -89,6 +96,7 @@ run_gate signing-remote cargo test -p chio-signing-remote --all-targets
 run_gate isolated-worker cargo test -p chio-finding-worker --all-targets
 run_gate worker-daemon cargo test -p chio-finding-worker-daemon --all-targets
 run_gate database-migrator cargo test -p chio-finding-market-migrator --all-targets
+run_gate exact-job-canary cargo test -p chio-finding-market-canary --all-targets
 run_gate postgres-store cargo test -p chio-finding-market-store-postgres --all-targets
 run_gate postgres-16-rls \
   cargo test -p chio-finding-market-store-postgres \
@@ -113,6 +121,7 @@ run_gate strict-clippy \
     -p chio-finding-worker \
     -p chio-finding-worker-daemon \
     -p chio-finding-market-migrator \
+    -p chio-finding-market-canary \
     -p chio-finding-market-store-postgres \
     -p chio-finding-hosted-edge \
     -p chio-settle \

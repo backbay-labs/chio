@@ -1,0 +1,17 @@
+[package]
+name = "chio-finding-market-migrations"
+description = "Embedded SQLx migration ledger for the hosted cognition market"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+sqlx = { package = "sqlx-core", version = "0.8.6", default-features = false, features = ["migrate"] }
+sqlx-macros = { version = "0.8.6", default-features = false, features = ["migrate"] }
+sqlx-postgres = { version = "0.8.6", default-features = false, features = ["migrate"] }
+
+[lints]
+workspace = true

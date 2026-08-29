@@ -25,4 +25,6 @@ pub use protocol::{
     FINDING_WORKER_CAPABILITY_SCHEMA, FINDING_WORKER_INPUT_END_SCHEMA, FINDING_WORKER_INPUT_SCHEMA,
     FINDING_WORKER_JOB_SCHEMA, FINDING_WORKER_REQUEST_SCHEMA, FINDING_WORKER_RESULT_SCHEMA,
 };
-pub use service::{HostedFindingWorker, HostedWorkerRun, HostedWorkerServiceError};
+pub use service::{
+    HostedFindingWorker, HostedWorkerJobEvidence, HostedWorkerRun, HostedWorkerServiceError,
+};

@@ -21,8 +21,18 @@ fi
 
 : "${CHIO_FINDING_HOSTED_PROFILE:?set CHIO_FINDING_HOSTED_PROFILE to the canonical private hosted profile}"
 : "${CHIO_FINDING_CANARY_OBSERVATION:?set CHIO_FINDING_CANARY_OBSERVATION to the canonical private canary observation}"
+: "${CHIO_FINDING_CANARY_JOB:?set CHIO_FINDING_CANARY_JOB to the canonical private exact-job request}"
 : "${CHIO_FINDING_WORKER_ID:?set CHIO_FINDING_WORKER_ID to a unique worker identity}"
 : "${CHIO_FINDING_CANARY_JOB_ID:?set CHIO_FINDING_CANARY_JOB_ID to the exact queued canary job}"
+: "${CHIO_KVM_RUNNER_IMAGE_SHA256:?set CHIO_KVM_RUNNER_IMAGE_SHA256 to the measured runner image digest}"
+: "${CHIO_KVM_RUNNER_ATTESTATION_SHA256:?set CHIO_KVM_RUNNER_ATTESTATION_SHA256 to the runner attestation digest}"
+
+for digest_value in "${CHIO_KVM_RUNNER_IMAGE_SHA256}" "${CHIO_KVM_RUNNER_ATTESTATION_SHA256}"; do
+  if [[ ! "${digest_value}" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "cognition-market KVM runner identity digest is invalid" >&2
+    exit 1
+  fi
+done
 
 candidate_sha="$(git rev-parse --verify 'HEAD^{commit}')"
 if [[ -n "${GITHUB_SHA:-}" && "${GITHUB_SHA}" != "${candidate_sha}" ]]; then
@@ -36,14 +46,18 @@ fi
 
 cargo build --locked --release \
   -p chio-cli --bin chio \
+  -p chio-finding-market-canary --bin chio-finding-market-canary \
   -p chio-finding-worker-daemon --bin chio-finding-worker
 chio_bin="$(realpath -e target/release/chio)"
+canary_bin="$(realpath -e target/release/chio-finding-market-canary)"
 worker_bin="$(realpath -e target/release/chio-finding-worker)"
 
 python3 - \
   "${CHIO_FINDING_HOSTED_PROFILE}" \
   "${CHIO_FINDING_CANARY_OBSERVATION}" \
+  "${CHIO_FINDING_CANARY_JOB}" \
   "${worker_bin}" \
+  "${canary_bin}" \
   "${chio_bin}" <<'PY'
 import os
 import stat
@@ -60,6 +74,8 @@ PY
 output_root="target/release-qualification/cognition-market-kvm"
 profile_log="${output_root}/hosted-profile.json"
 worker_log="${output_root}/worker-canary.json"
+provision_log="${output_root}/canary-provision.json"
+terminal_log="${output_root}/canary-terminal.json"
 decision_log="${output_root}/canary-decision.json"
 report_path="${output_root}/qualification.json"
 manifest_path="${output_root}/artifact-manifest.signed.json"
@@ -69,8 +85,9 @@ chmod 0700 "${secret_root}"
 signing_seed="${secret_root}/qualification.seed"
 profile_snapshot="${secret_root}/hosted-profile.json"
 observation_snapshot="${secret_root}/canary-observation.json"
+job_snapshot="${secret_root}/canary-job.json"
 cleanup_secrets() {
-  rm -f "${signing_seed}" "${profile_snapshot}" "${observation_snapshot}"
+  rm -f "${signing_seed}" "${profile_snapshot}" "${observation_snapshot}" "${job_snapshot}"
   rmdir "${secret_root}" || true
 }
 trap cleanup_secrets EXIT
@@ -89,7 +106,9 @@ python3 - \
   "${CHIO_FINDING_HOSTED_PROFILE}" \
   "${profile_snapshot}" \
   "${CHIO_FINDING_CANARY_OBSERVATION}" \
-  "${observation_snapshot}" <<'PY'
+  "${observation_snapshot}" \
+  "${CHIO_FINDING_CANARY_JOB}" \
+  "${job_snapshot}" <<'PY'
 import os
 import stat
 import sys
@@ -122,10 +141,16 @@ mkdir -p "${output_root}"
 
 "${chio_bin}" --json finding operator validate-hosted \
   --profile "${profile_snapshot}" >"${profile_log}"
+CHIO_FINDING_CANDIDATE_SHA="${candidate_sha}" \
+  "${canary_bin}" --profile "${profile_snapshot}" --job "${job_snapshot}" \
+  provision >"${provision_log}"
 "${worker_bin}" \
   --profile "${profile_snapshot}" \
   --worker-id "${CHIO_FINDING_WORKER_ID}" \
   --once >"${worker_log}"
+CHIO_FINDING_CANDIDATE_SHA="${candidate_sha}" \
+  "${canary_bin}" --profile "${profile_snapshot}" --job "${job_snapshot}" \
+  verify >"${terminal_log}"
 "${chio_bin}" --json finding operator evaluate-canary \
   --profile "${profile_snapshot}" \
   --observation "${observation_snapshot}" >"${decision_log}"
@@ -134,6 +159,8 @@ python3 - \
   "${candidate_sha}" \
   "${profile_log}" \
   "${worker_log}" \
+  "${provision_log}" \
+  "${terminal_log}" \
   "${decision_log}" \
   "${profile_snapshot}" \
   "${observation_snapshot}" \
@@ -153,6 +180,8 @@ from pathlib import Path
     candidate_sha,
     profile_log_raw,
     worker_log_raw,
+    provision_log_raw,
+    terminal_log_raw,
     decision_log_raw,
     profile_path_raw,
     observation_path_raw,
@@ -165,6 +194,8 @@ worker_log = Path(worker_log_raw)
 decision_log = Path(decision_log_raw)
 profile_result = json.loads(profile_log.read_text(encoding="utf-8"))
 worker_result = json.loads(worker_log.read_text(encoding="utf-8"))
+provision_result = json.loads(Path(provision_log_raw).read_text(encoding="utf-8"))
+terminal_result = json.loads(Path(terminal_log_raw).read_text(encoding="utf-8"))
 decision = json.loads(decision_log.read_text(encoding="utf-8"))
 
 if profile_result.get("valid") is not True:
@@ -194,6 +225,39 @@ if worker_result.get("claimedJobIds") != [expected_job_id]:
     raise SystemExit("KVM worker canary claimed an unexpected job identity")
 if worker_result.get("completedJobIds") != [expected_job_id]:
     raise SystemExit("KVM worker canary completed an unexpected job identity")
+jobs = worker_result.get("jobs")
+if not isinstance(jobs, list) or len(jobs) != 1:
+    raise SystemExit("KVM worker canary did not report exactly one job evidence record")
+worker_job = jobs[0]
+if (
+    worker_job.get("tenantId") != terminal_result.get("tenantId")
+    or worker_job.get("jobId") != expected_job_id
+    or worker_job.get("requestSha256") != terminal_result.get("requestSha256")
+    or worker_job.get("leaseFence") != terminal_result.get("leaseFence")
+    or worker_job.get("state") != "completed"
+    or worker_job.get("resultSha256") != terminal_result.get("resultSha256")
+    or worker_job.get("completedAt") != terminal_result.get("completedAt")
+):
+    raise SystemExit("KVM worker job evidence does not match the terminal database row")
+for exact_result, operation, state in [
+    (provision_result, "provision", "pending"),
+    (terminal_result, "verify", "completed"),
+]:
+    if (
+        exact_result.get("schema") != "chio.finding.kvm-canary-report.v1"
+        or exact_result.get("operation") != operation
+        or exact_result.get("candidateSha") != candidate_sha
+        or exact_result.get("jobId") != expected_job_id
+        or exact_result.get("terminalState") != state
+    ):
+        raise SystemExit(f"exact canary {operation} report does not bind the candidate job")
+if terminal_result.get("leaseFence") != 1:
+    raise SystemExit("exact canary was not completed under its first lease fence")
+for field in ["requestSha256", "payloadSha256"]:
+    if provision_result.get(field) != terminal_result.get(field):
+        raise SystemExit(f"exact canary changed {field} across execution")
+if terminal_result.get("resultSha256") != terminal_result.get("resultEnvelopeSha256"):
+    raise SystemExit("terminal row does not retain the verified attested-result envelope")
 if decision.get("decision") != "promote" or decision.get("reason") is not None:
     raise SystemExit("hosted canary decision is not promote")
 
@@ -220,12 +284,16 @@ report = {
     "profileSha256": digest(profile_path_raw),
     "observationSha256": digest(observation_path_raw),
     "workerBinarySha256": digest(worker_path_raw),
+    "runnerImageSha256": os.environ["CHIO_KVM_RUNNER_IMAGE_SHA256"],
+    "runnerAttestationSha256": os.environ["CHIO_KVM_RUNNER_ATTESTATION_SHA256"],
     "kvmDevice": {
         "major": os.major(kvm.st_rdev),
         "minor": os.minor(kvm.st_rdev),
     },
     "profileValidationSha256": digest(profile_log_raw),
     "workerCanarySha256": digest(worker_log_raw),
+    "canaryProvisionSha256": digest(provision_log_raw),
+    "canaryTerminalSha256": digest(terminal_log_raw),
     "canaryDecisionSha256": digest(decision_log_raw),
 }
 Path(report_path_raw).write_text(

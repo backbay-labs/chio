@@ -4,7 +4,15 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - ".github/workflows/cognition-market-promotion.yml"
+      - "Makefile"
+      - "audits/**"
+      - "config/cognition-market-components.json"
+      - "crates/core/chio-core-types/**"
+      - "crates/core/chio-core/**"
+      - "crates/economy/chio-credit/**"
       - "crates/platform/chio-finding-market-store-postgres/**"
+      - "crates/platform/chio-finding-market-migrations/**"
       - "crates/platform/chio-finding-hosted-edge/**"
       - "crates/platform/chio-finding-worker/**"
       - "crates/platform/chio-control-plane/**"
@@ -15,6 +23,25 @@ on:
       - "crates/trust/chio-finding-challenge/**"
       - "crates/economy/chio-finding/**"
       - "crates/economy/chio-settle/**"
+      - "crates/economy/chio-market/**"
+      - "crates/economy/chio-open-market/**"
+      - "crates/kernel/chio-kernel-core/**"
+      - "crates/kernel/chio-kernel/**"
+      - "crates/kernel/chio-runtime-core/**"
+      - "crates/platform/chio-http-core/**"
+      - "crates/protocol/chio-http-serve/**"
+      - "crates/products/chio-cli/**"
+      - "crates/products/chio-finding-market-canary/**"
+      - "crates/products/chio-finding-hosted/**"
+      - "crates/trust/chio-finding-verifier/**"
+      - "deny.toml"
+      - "docs/research/cognition-market/**"
+      - "formal/**"
+      - "fuzz/**"
+      - "rust-toolchain.toml"
+      - "scripts/**"
+      - "spec/schemas/**"
+      - "supply-chain/**"
       - "scripts/qualify-cognition-market-hosted.sh"
       - "scripts/qualify-cognition-market-kvm.sh"
       - ".github/workflows/cognition-market-hosted.yml"
@@ -23,7 +50,15 @@ on:
   push:
     branches: [main]
     paths:
+      - ".github/workflows/cognition-market-promotion.yml"
+      - "Makefile"
+      - "audits/**"
+      - "config/cognition-market-components.json"
+      - "crates/core/chio-core-types/**"
+      - "crates/core/chio-core/**"
+      - "crates/economy/chio-credit/**"
       - "crates/platform/chio-finding-market-store-postgres/**"
+      - "crates/platform/chio-finding-market-migrations/**"
       - "crates/platform/chio-finding-hosted-edge/**"
       - "crates/platform/chio-finding-worker/**"
       - "crates/platform/chio-control-plane/**"
@@ -34,6 +69,25 @@ on:
       - "crates/trust/chio-finding-challenge/**"
       - "crates/economy/chio-finding/**"
       - "crates/economy/chio-settle/**"
+      - "crates/economy/chio-market/**"
+      - "crates/economy/chio-open-market/**"
+      - "crates/kernel/chio-kernel-core/**"
+      - "crates/kernel/chio-kernel/**"
+      - "crates/kernel/chio-runtime-core/**"
+      - "crates/platform/chio-http-core/**"
+      - "crates/protocol/chio-http-serve/**"
+      - "crates/products/chio-cli/**"
+      - "crates/products/chio-finding-market-canary/**"
+      - "crates/products/chio-finding-hosted/**"
+      - "crates/trust/chio-finding-verifier/**"
+      - "deny.toml"
+      - "docs/research/cognition-market/**"
+      - "formal/**"
+      - "fuzz/**"
+      - "rust-toolchain.toml"
+      - "scripts/**"
+      - "spec/schemas/**"
+      - "supply-chain/**"
       - "scripts/qualify-cognition-market-hosted.sh"
       - "scripts/qualify-cognition-market-kvm.sh"
       - ".github/workflows/cognition-market-hosted.yml"
@@ -66,10 +120,15 @@ jobs:
       CHIO_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/chio?sslmode=disable
       CHIO_TEST_POSTGRES_MIGRATOR_URL: postgres://chio_market_migrator_test:test-only-password@127.0.0.1:5432/chio?sslmode=disable
       CHIO_TEST_POSTGRES_RUNTIME_URL: postgres://chio_market_runtime_test:test-only-password@127.0.0.1:5432/chio?sslmode=disable
+      CHIO_TEST_POSTGRES_RETENTION_URL: postgres://chio_market_retention_test:test-only-password@127.0.0.1:5432/chio?sslmode=disable
+      CHIO_TEST_POSTGRES_WORKER_URL: postgres://chio_market_worker_test:test-only-password@127.0.0.1:5432/chio?sslmode=disable
+      CHIO_TEST_POSTGRES_REPLICATOR_URL: postgres://chio_market_replicator_test:test-only-password@127.0.0.1:5432/chio?sslmode=disable
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
       - name: Install Rust toolchain
         run: rustup toolchain install --profile minimal --component rustfmt --component clippy
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32

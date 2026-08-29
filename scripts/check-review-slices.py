@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import json
 import subprocess
 import sys
 from collections import defaultdict
@@ -15,6 +16,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BROAD_DIFF_FILE_COUNT = 200
 BROAD_DIFF_MIN_SLICES = 5
+COGNITION_COMPONENTS = REPO_ROOT / "config/cognition-market-components.json"
+COGNITION_WORKFLOW = REPO_ROOT / ".github/workflows/cognition-market-hosted.yml"
 
 
 @dataclass(frozen=True)
@@ -285,12 +288,44 @@ def classify(path: str) -> ReviewSlice | None:
     return None
 
 
+def check_cognition_market_workflow_paths() -> list[str]:
+    """Keep the hosted workflow trigger set equal to reviewed ownership."""
+    try:
+        manifest = json.loads(COGNITION_COMPONENTS.read_text(encoding="utf-8"))
+        workflow = COGNITION_WORKFLOW.read_text(encoding="utf-8")
+    except (OSError, json.JSONDecodeError) as error:
+        return [f"cannot read cognition-market component ownership: {error}"]
+    if manifest.get("schema") != "chio.cognition-market.components.v1":
+        return ["cognition-market component ownership has an unsupported schema"]
+    paths = manifest.get("workflowPaths")
+    if (
+        not isinstance(paths, list)
+        or not paths
+        or paths != sorted(set(paths))
+        or any(not isinstance(path, str) or not path for path in paths)
+    ):
+        return ["cognition-market workflow paths must be nonempty, unique, and sorted"]
+    errors = []
+    for path in paths:
+        quoted = f'      - "{path}"'
+        if workflow.count(quoted) != 2:
+            errors.append(
+                f"hosted workflow must contain {path!r} exactly once for pull and push"
+            )
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Check changed files are partitioned into reviewable slices."
     )
     parser.add_argument("--base-ref", default="origin/main")
     args = parser.parse_args()
+    workflow_errors = check_cognition_market_workflow_paths()
+    if workflow_errors:
+        for error in workflow_errors:
+            print(f"review-slice error: {error}", file=sys.stderr)
+        return 1
 
     files = changed_files(args.base_ref)
     by_slice: dict[str, list[str]] = defaultdict(list)

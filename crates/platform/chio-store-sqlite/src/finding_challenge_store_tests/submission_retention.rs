@@ -337,10 +337,39 @@ fn offline_repair_atomically_restores_v13_exact_submission_bytes() {
             .expect("stamp previous schema");
     }
 
+    let before = SqliteFindingChallengeStore::inspect_challenge_repair_database(&database)
+        .expect("inspect legacy repair database");
+    assert_eq!(before.schema_version, 13);
+    assert_eq!(before.challenge_count, 1);
+    assert_eq!(before.link_count, 1);
+    let row_sha256 =
+        SqliteFindingChallengeStore::inspect_challenge_repair_row(&database, "challenge-legacy")
+            .expect("inspect legacy challenge row");
+    let wrong = FindingChallengeSubmissionRepairInput {
+        challenge_id: "challenge-legacy",
+        challenge_envelope_sha256: &envelope_sha256,
+        challenge_envelope_json: envelope,
+        challenge_row_sha256: &hex64('f'),
+    };
+    assert!(matches!(
+        SqliteFindingChallengeStore::repair_challenge_submissions(
+            &database,
+            std::slice::from_ref(&wrong),
+        ),
+        Err(FindingChallengeStoreError::Conflict(detail))
+            if detail == "repair filing does not bind the immutable challenge row"
+    ));
+    assert_eq!(
+        SqliteFindingChallengeStore::inspect_challenge_repair_database(&database)
+            .expect("inspect rolled-back repair database")
+            .schema_version,
+        13
+    );
     let input = FindingChallengeSubmissionRepairInput {
         challenge_id: "challenge-legacy",
         challenge_envelope_sha256: &envelope_sha256,
         challenge_envelope_json: envelope,
+        challenge_row_sha256: &row_sha256,
     };
     let report = SqliteFindingChallengeStore::repair_challenge_submissions(
         &database,
@@ -361,6 +390,15 @@ fn offline_repair_atomically_restores_v13_exact_submission_bytes() {
     .expect("replay exact repair");
     assert_eq!(replay.inserted, 0);
     assert_eq!(replay.exact_replays, 1);
+    let after = SqliteFindingChallengeStore::inspect_challenge_repair_database(&database)
+        .expect("inspect repaired database");
+    assert_eq!(after.device, before.device);
+    assert_eq!(after.inode, before.inode);
+    assert_eq!(after.challenge_set_sha256, before.challenge_set_sha256);
+    assert_eq!(
+        after.schema_version,
+        FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION
+    );
     let connection = Connection::open(&database).expect("reopen repaired database");
     verify_finding_challenge_invariants(&connection).expect("verify repaired database");
 }

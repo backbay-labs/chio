@@ -18,7 +18,6 @@ chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
 chio-egress-contract = { workspace = true }
 chio-kernel = { workspace = true }
 chio-manifest = { workspace = true }
-rustls-pemfile = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

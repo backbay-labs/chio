@@ -3,9 +3,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row as _;
 
 use super::{
-    checked_i64, stored_u64, unavailable, validate_canonical_json, validate_digest,
-    validate_identifier, verify_payload, HostedJobWriteOutcome, HostedMarketStoreError,
-    HostedTenantId, PostgresFindingMarketStore,
+    stored_u64, unavailable, validate_digest, validate_identifier, verify_payload,
+    HostedMarketStoreError, HostedTenantId, PostgresFindingMarketStore,
 };
 
 const MAX_AGGREGATE_ID_BYTES: usize = 256;
@@ -19,13 +18,21 @@ const EVENT_DIGEST_DOMAIN: &str = "chio.finding.hosted.aggregate-event.v1";
 #[serde(rename_all = "snake_case")]
 pub enum HostedAggregateKind {
     Finding,
+    Recipe,
+    Profile,
+    Collateral,
     Listing,
     Admission,
+    Participation,
     Purchase,
+    Reveal,
+    Delivery,
     PurchaseTerminal,
     FailedDelivery,
     Challenge,
     ChallengeOutcome,
+    VerifiedFix,
+    Retraction,
     Liability,
     Appeal,
     Penalty,
@@ -39,13 +46,21 @@ impl HostedAggregateKind {
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::Finding => "finding",
+            Self::Recipe => "recipe",
+            Self::Profile => "profile",
+            Self::Collateral => "collateral",
             Self::Listing => "listing",
             Self::Admission => "admission",
+            Self::Participation => "participation",
             Self::Purchase => "purchase",
+            Self::Reveal => "reveal",
+            Self::Delivery => "delivery",
             Self::PurchaseTerminal => "purchase_terminal",
             Self::FailedDelivery => "failed_delivery",
             Self::Challenge => "challenge",
             Self::ChallengeOutcome => "challenge_outcome",
+            Self::VerifiedFix => "verified_fix",
+            Self::Retraction => "retraction",
             Self::Liability => "liability",
             Self::Appeal => "appeal",
             Self::Penalty => "penalty",
@@ -59,13 +74,21 @@ impl HostedAggregateKind {
     pub(crate) fn parse(value: &str) -> Result<Self, HostedMarketStoreError> {
         match value {
             "finding" => Ok(Self::Finding),
+            "recipe" => Ok(Self::Recipe),
+            "profile" => Ok(Self::Profile),
+            "collateral" => Ok(Self::Collateral),
             "listing" => Ok(Self::Listing),
             "admission" => Ok(Self::Admission),
+            "participation" => Ok(Self::Participation),
             "purchase" => Ok(Self::Purchase),
+            "reveal" => Ok(Self::Reveal),
+            "delivery" => Ok(Self::Delivery),
             "purchase_terminal" => Ok(Self::PurchaseTerminal),
             "failed_delivery" => Ok(Self::FailedDelivery),
             "challenge" => Ok(Self::Challenge),
             "challenge_outcome" => Ok(Self::ChallengeOutcome),
+            "verified_fix" => Ok(Self::VerifiedFix),
+            "retraction" => Ok(Self::Retraction),
             "liability" => Ok(Self::Liability),
             "appeal" => Ok(Self::Appeal),
             "penalty" => Ok(Self::Penalty),
@@ -119,98 +142,6 @@ struct AggregateEventDigest<'a> {
 }
 
 impl PostgresFindingMarketStore {
-    /// Append exactly one canonical event under an optimistic head fence.
-    ///
-    /// `expected_revision` and `expected_event_sha256` must describe the
-    /// current head. A new aggregate uses revision zero and no digest. Event
-    /// identifiers are tenant-global idempotency keys and replay only when all
-    /// immutable event bytes and bindings match exactly.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn append_aggregate_event(
-        &self,
-        tenant: &HostedTenantId,
-        aggregate_kind: HostedAggregateKind,
-        aggregate_id: &str,
-        event_id: &str,
-        event_kind: &str,
-        expected_revision: u64,
-        expected_event_sha256: Option<&str>,
-        payload_json: &[u8],
-        committed_at: u64,
-    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
-        validate_identifier(aggregate_id, MAX_AGGREGATE_ID_BYTES)
-            .map_err(|()| HostedMarketStoreError::Invalid("aggregate_id"))?;
-        validate_identifier(event_id, MAX_EVENT_ID_BYTES)
-            .map_err(|()| HostedMarketStoreError::Invalid("event_id"))?;
-        validate_identifier(event_kind, MAX_EVENT_KIND_BYTES)
-            .map_err(|()| HostedMarketStoreError::Invalid("event_kind"))?;
-        validate_canonical_json(payload_json, "aggregate payload")?;
-        if expected_revision == 0 {
-            if expected_event_sha256.is_some() {
-                return Err(HostedMarketStoreError::Invalid("expected aggregate head"));
-            }
-        } else {
-            validate_digest(
-                expected_event_sha256
-                    .ok_or(HostedMarketStoreError::Invalid("expected aggregate head"))?,
-                "expected aggregate head",
-            )?;
-        }
-        let revision = expected_revision
-            .checked_add(1)
-            .ok_or(HostedMarketStoreError::Invalid("aggregate revision"))?;
-        if revision > u64::from(MAX_AGGREGATE_HISTORY) {
-            return Err(HostedMarketStoreError::Capacity);
-        }
-        let committed_at_i64 = checked_i64(committed_at, "aggregate commit time")?;
-        let payload_sha256 = sha256_hex(payload_json);
-        let event_sha256 = aggregate_event_digest(
-            tenant,
-            aggregate_kind,
-            aggregate_id,
-            revision,
-            event_id,
-            event_kind,
-            expected_event_sha256,
-            &payload_sha256,
-            committed_at,
-        )?;
-        let mut transaction = self.begin_tenant(tenant).await?;
-        let outcome: i16 = sqlx::query_scalar(
-            r#"SELECT chio_finding_market_append_aggregate_event(
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
-            )"#,
-        )
-        .bind(tenant.as_str())
-        .bind(aggregate_kind.label())
-        .bind(aggregate_id)
-        .bind(
-            i64::try_from(expected_revision)
-                .map_err(|_| HostedMarketStoreError::Invalid("expected aggregate revision"))?,
-        )
-        .bind(expected_event_sha256)
-        .bind(event_id)
-        .bind(event_kind)
-        .bind(&payload_sha256)
-        .bind(payload_json)
-        .bind(&event_sha256)
-        .bind(committed_at_i64)
-        .fetch_one(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        let outcome = match outcome {
-            0 => HostedJobWriteOutcome::Inserted,
-            1 => HostedJobWriteOutcome::ExactReplay,
-            2 => return Err(HostedMarketStoreError::Conflict),
-            _ => return Err(HostedMarketStoreError::Unavailable),
-        };
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        Ok(outcome)
-    }
-
     pub async fn aggregate_head(
         &self,
         tenant: &HostedTenantId,
@@ -307,7 +238,7 @@ impl PostgresFindingMarketStore {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn aggregate_event_digest(
+pub(crate) fn aggregate_event_digest(
     tenant: &HostedTenantId,
     aggregate_kind: HostedAggregateKind,
     aggregate_id: &str,

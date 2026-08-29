@@ -91,6 +91,17 @@ impl PostgresFindingMarketStore {
             if !matches {
                 return Err(HostedMarketStoreError::Conflict);
             }
+            let authority_matches: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM chio_finding_market_authority_state WHERE tenant_id = $1 AND configuration_revision = $2)",
+            )
+            .bind(tenant.as_str())
+            .bind(&limits.configuration_revision)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(unavailable)?;
+            if !authority_matches {
+                return Err(HostedMarketStoreError::Conflict);
+            }
             transaction
                 .commit()
                 .await

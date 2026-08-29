@@ -4,6 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use arc_swap::ArcSwap;
+use rustls::pki_types::{pem::PemObject as _, CertificateDer, PrivateKeyDer};
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig};
 use sha2::{Digest as _, Sha256};
@@ -133,15 +134,14 @@ fn load_material(config: &HostedTlsConfig, now: u64) -> Result<LoadedTlsMaterial
         .as_deref()
         .map(|path| read_regular(path, false))
         .transpose()?;
-    let certificates = rustls_pemfile::certs(&mut certificate_bytes.as_slice())
+    let certificates = CertificateDer::pem_slice_iter(&certificate_bytes)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|_| HostedEdgeError::Configuration)?;
     if certificates.is_empty() || certificates.len() > 32 {
         return Err(HostedEdgeError::Configuration);
     }
-    let private_key = rustls_pemfile::private_key(&mut private_key_bytes.as_slice())
-        .map_err(|_| HostedEdgeError::Configuration)?
-        .ok_or(HostedEdgeError::Configuration)?;
+    let private_key = PrivateKeyDer::from_pem_slice(&private_key_bytes)
+        .map_err(|_| HostedEdgeError::Configuration)?;
     let (_, leaf) = X509Certificate::from_der(certificates[0].as_ref())
         .map_err(|_| HostedEdgeError::Configuration)?;
     let certificate_not_before = u64::try_from(leaf.validity().not_before.timestamp())
@@ -160,8 +160,7 @@ fn load_material(config: &HostedTlsConfig, now: u64) -> Result<LoadedTlsMaterial
         .map_err(|_| HostedEdgeError::Configuration)?;
     let mut server_config = if let Some(client_ca_bytes) = client_ca_bytes.as_deref() {
         let mut roots = RootCertStore::empty();
-        let mut client_ca_reader = client_ca_bytes;
-        let client_certificates = rustls_pemfile::certs(&mut client_ca_reader)
+        let client_certificates = CertificateDer::pem_slice_iter(client_ca_bytes)
             .collect::<Result<Vec<_>, _>>()
             .map_err(|_| HostedEdgeError::Configuration)?;
         if client_certificates.is_empty() || client_certificates.len() > 64 {

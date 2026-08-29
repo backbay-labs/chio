@@ -1,5 +1,9 @@
 use std::collections::BTreeSet;
 
+use chio_core_types::canonical_json_bytes;
+use chio_core_types::crypto::PublicKey;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
+
 use super::*;
 
 const MAX_PRINCIPAL_ID_BYTES: usize = 256;
@@ -11,7 +15,10 @@ const MAX_ALLOWED_ACTIONS: usize = 64;
 const MAX_SECURITY_EVENT_BYTES: usize = 1024 * 1024;
 const MAX_AUTH_CAPACITY: u64 = 10_000_000;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub const HOSTED_PRINCIPAL_LIFECYCLE_SCHEMA: &str = "chio.finding.hosted-principal-lifecycle.v1";
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum HostedPrincipalRole {
     Buyer,
     Seller,
@@ -21,7 +28,7 @@ pub enum HostedPrincipalRole {
 }
 
 impl HostedPrincipalRole {
-    const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Buyer => "buyer",
             Self::Seller => "seller",
@@ -31,7 +38,7 @@ impl HostedPrincipalRole {
         }
     }
 
-    fn parse(value: &str) -> Result<Self, HostedMarketStoreError> {
+    pub(crate) fn parse(value: &str) -> Result<Self, HostedMarketStoreError> {
         match value {
             "buyer" => Ok(Self::Buyer),
             "seller" => Ok(Self::Seller),
@@ -42,6 +49,55 @@ impl HostedPrincipalRole {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HostedPrincipalLifecycleOperation {
+    Provision,
+    Disable,
+    RoleChange,
+    KeyRotation,
+    EmergencyRevoke,
+}
+
+impl HostedPrincipalLifecycleOperation {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Provision => "provision",
+            Self::Disable => "disable",
+            Self::RoleChange => "role_change",
+            Self::KeyRotation => "key_rotation",
+            Self::EmergencyRevoke => "emergency_revoke",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Result<Self, HostedMarketStoreError> {
+        match value {
+            "provision" => Ok(Self::Provision),
+            "disable" => Ok(Self::Disable),
+            "role_change" => Ok(Self::RoleChange),
+            "key_rotation" => Ok(Self::KeyRotation),
+            "emergency_revoke" => Ok(Self::EmergencyRevoke),
+            _ => Err(HostedMarketStoreError::DigestMismatch),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HostedPrincipalLifecycleBody {
+    pub schema: String,
+    pub tenant_id: String,
+    pub principal_id: String,
+    pub operation: HostedPrincipalLifecycleOperation,
+    pub role: HostedPrincipalRole,
+    pub capability_public_key_hex: Option<String>,
+    pub overlap_expires_at: Option<u64>,
+    pub previous_event_sha256: Option<String>,
+    pub created_at: u64,
+}
+
+pub type SignedHostedPrincipalLifecycleEvent = SignedExportEnvelope<HostedPrincipalLifecycleBody>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostedPrincipal {
@@ -75,73 +131,50 @@ pub enum HostedSecurityEventOutcome {
 }
 
 impl PostgresFindingMarketStore {
-    #[allow(clippy::too_many_arguments)]
-    pub async fn put_principal(
+    pub async fn apply_principal_lifecycle(
         &self,
         tenant: &HostedTenantId,
-        principal_id: &str,
-        role: HostedPrincipalRole,
-        capability_public_key_hex: Option<&str>,
-        enabled: bool,
-        now: u64,
+        expected_signer: &PublicKey,
+        event: &SignedHostedPrincipalLifecycleEvent,
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
-        validate_identifier(principal_id, MAX_PRINCIPAL_ID_BYTES)
-            .map_err(|_| HostedMarketStoreError::Invalid("principal_id"))?;
-        if let Some(key) = capability_public_key_hex {
-            let parsed = chio_core_types::PublicKey::from_hex(key)
-                .map_err(|_| HostedMarketStoreError::Invalid("capability_public_key"))?;
-            if parsed.is_weak_ed25519() {
-                return Err(HostedMarketStoreError::Invalid("capability_public_key"));
-            }
-        }
-        let now = checked_i64(now, "principal now")?;
+        let body = &event.body;
+        let envelope = validate_principal_lifecycle_event(tenant, expected_signer, event)?;
+        let event_sha256 = sha256_hex(&envelope);
         let mut transaction = self.begin_tenant(tenant).await?;
-        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 4))")
-            .bind(auth_lock_key("principal", tenant.as_str(), principal_id))
-            .execute(&mut *transaction)
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        let existing = sqlx::query(
-            "SELECT role, capability_public_key_hex, enabled FROM chio_finding_market_principals WHERE tenant_id = $1 AND principal_id = $2",
+        let outcome: i16 = sqlx::query_scalar(
+            r#"SELECT chio_finding_market_apply_principal_event(
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+            )"#,
         )
         .bind(tenant.as_str())
-        .bind(principal_id)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        if let Some(row) = existing {
-            let stored_role: String = row.try_get(0).map_err(unavailable)?;
-            let stored_key: Option<String> = row.try_get(1).map_err(unavailable)?;
-            let stored_enabled: bool = row.try_get(2).map_err(unavailable)?;
-            if stored_role != role.as_str()
-                || stored_key.as_deref() != capability_public_key_hex
-                || stored_enabled != enabled
-            {
-                return Err(HostedMarketStoreError::Conflict);
-            }
-            transaction
-                .commit()
-                .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
-            return Ok(HostedJobWriteOutcome::ExactReplay);
-        }
-        sqlx::query(
-            "INSERT INTO chio_finding_market_principals (tenant_id, principal_id, role, capability_public_key_hex, enabled, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $6)",
+        .bind(event_sha256)
+        .bind(&body.principal_id)
+        .bind(body.operation.as_str())
+        .bind(body.role.as_str())
+        .bind(body.capability_public_key_hex.as_deref())
+        .bind(
+            body.overlap_expires_at
+                .map(|value| checked_i64(value, "principal key overlap"))
+                .transpose()?,
         )
-        .bind(tenant.as_str())
-        .bind(principal_id)
-        .bind(role.as_str())
-        .bind(capability_public_key_hex)
-        .bind(enabled)
-        .bind(now)
-        .execute(&mut *transaction)
+        .bind(body.previous_event_sha256.as_deref())
+        .bind(event.signer_key.to_hex())
+        .bind(envelope)
+        .bind(checked_i64(body.created_at, "principal lifecycle time")?)
+        .fetch_one(&mut *transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let outcome = match outcome {
+            0 => HostedJobWriteOutcome::Inserted,
+            1 => HostedJobWriteOutcome::ExactReplay,
+            2 => return Err(HostedMarketStoreError::Conflict),
+            _ => return Err(HostedMarketStoreError::Unavailable),
+        };
         transaction
             .commit()
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        Ok(HostedJobWriteOutcome::Inserted)
+        Ok(outcome)
     }
 
     pub async fn get_principal(
@@ -171,6 +204,7 @@ impl PostgresFindingMarketStore {
         &self,
         tenant: &HostedTenantId,
         public_key_hex: &str,
+        now: u64,
     ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError> {
         let parsed = chio_core_types::PublicKey::from_hex(public_key_hex)
             .map_err(|_| HostedMarketStoreError::Invalid("capability_public_key"))?;
@@ -178,12 +212,27 @@ impl PostgresFindingMarketStore {
             return Err(HostedMarketStoreError::Invalid("capability_public_key"));
         }
         let normalized = parsed.to_hex();
+        let now = checked_i64(now, "principal lookup time")?;
         let mut transaction = self.begin_tenant(tenant).await?;
         let row = sqlx::query(
-            "SELECT principal_id, role, capability_public_key_hex, enabled, created_at, updated_at FROM chio_finding_market_principals WHERE tenant_id = $1 AND capability_public_key_hex = $2",
+            r#"SELECT principal_id, role, capability_public_key_hex, enabled,
+                      created_at, updated_at
+               FROM chio_finding_market_principals AS principal
+               WHERE tenant_id = $1 AND (
+                   capability_public_key_hex = $2
+                   OR EXISTS (
+                       SELECT 1
+                       FROM chio_finding_market_principal_key_overlaps AS overlap
+                       WHERE overlap.tenant_id = principal.tenant_id
+                         AND overlap.principal_id = principal.principal_id
+                         AND overlap.capability_public_key_hex = $2
+                         AND overlap.valid_through >= $3
+                   )
+               )"#,
         )
         .bind(tenant.as_str())
         .bind(normalized)
+        .bind(now)
         .fetch_optional(&mut *transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?;
@@ -554,6 +603,68 @@ impl PostgresFindingMarketStore {
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
         Ok(key_outcome)
     }
+}
+
+pub(crate) fn validate_principal_lifecycle_event(
+    tenant: &HostedTenantId,
+    expected_signer: &PublicKey,
+    event: &SignedHostedPrincipalLifecycleEvent,
+) -> Result<Vec<u8>, HostedMarketStoreError> {
+    let body = &event.body;
+    if body.schema != HOSTED_PRINCIPAL_LIFECYCLE_SCHEMA
+        || body.tenant_id != tenant.as_str()
+        || event.signer_key != *expected_signer
+        || expected_signer.is_weak_ed25519()
+        || !matches!(event.verify_signature(), Ok(true))
+        || body.created_at == 0
+    {
+        return Err(HostedMarketStoreError::Invalid("principal lifecycle"));
+    }
+    validate_identifier(&body.principal_id, MAX_PRINCIPAL_ID_BYTES)
+        .map_err(|_| HostedMarketStoreError::Invalid("principal_id"))?;
+    if let Some(key) = body.capability_public_key_hex.as_deref() {
+        let parsed = chio_core_types::PublicKey::from_hex(key)
+            .map_err(|_| HostedMarketStoreError::Invalid("capability_public_key"))?;
+        if parsed.is_weak_ed25519() || parsed.to_hex() != key {
+            return Err(HostedMarketStoreError::Invalid("capability_public_key"));
+        }
+    }
+    if let Some(previous) = body.previous_event_sha256.as_deref() {
+        validate_digest(previous, "principal lifecycle predecessor")?;
+    }
+    match body.operation {
+        HostedPrincipalLifecycleOperation::Provision
+            if body.previous_event_sha256.is_some() || body.overlap_expires_at.is_some() =>
+        {
+            return Err(HostedMarketStoreError::Invalid("principal lifecycle"));
+        }
+        HostedPrincipalLifecycleOperation::KeyRotation => {
+            let overlap = body
+                .overlap_expires_at
+                .ok_or(HostedMarketStoreError::Invalid("principal key overlap"))?;
+            if body.previous_event_sha256.is_none()
+                || body.capability_public_key_hex.is_none()
+                || overlap <= body.created_at
+                || overlap > body.created_at.saturating_add(86_400)
+            {
+                return Err(HostedMarketStoreError::Invalid("principal key overlap"));
+            }
+        }
+        HostedPrincipalLifecycleOperation::Disable
+        | HostedPrincipalLifecycleOperation::RoleChange
+        | HostedPrincipalLifecycleOperation::EmergencyRevoke
+            if body.previous_event_sha256.is_none() || body.overlap_expires_at.is_some() =>
+        {
+            return Err(HostedMarketStoreError::Invalid("principal lifecycle"));
+        }
+        _ => {}
+    }
+    let envelope = canonical_json_bytes(event)
+        .map_err(|_| HostedMarketStoreError::Invalid("principal lifecycle"))?;
+    if envelope.is_empty() || envelope.len() > MAX_SECURITY_EVENT_BYTES {
+        return Err(HostedMarketStoreError::Invalid("principal lifecycle"));
+    }
+    Ok(envelope)
 }
 
 #[allow(clippy::too_many_arguments)]

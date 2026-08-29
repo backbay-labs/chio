@@ -93,10 +93,17 @@ pub(crate) fn dispatch_finding(
             FindingOperatorCommands::Tick { profile } => {
                 cmd_finding_operator_tick(&profile, json_output)
             }
-            FindingOperatorCommands::RepairChallengeRetention { database, bundle } => {
+            FindingOperatorCommands::RepairChallengeRetention {
+                database,
+                bundle,
+                receipt,
+                receipt_signing_seed_env,
+            } => {
                 cmd_finding_operator_repair_challenge_retention(
                     &database,
                     &bundle,
+                    &receipt,
+                    &receipt_signing_seed_env,
                     json_output,
                 )
             }

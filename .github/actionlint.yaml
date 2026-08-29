@@ -2,3 +2,5 @@ self-hosted-runner:
   labels:
     - kvm
     - cognition-market
+    - ephemeral
+    - attested

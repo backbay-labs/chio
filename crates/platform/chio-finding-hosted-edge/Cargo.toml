@@ -27,7 +27,6 @@ url = { workspace = true }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
 rustls = { workspace = true }
-rustls-pemfile = { workspace = true }
 
 [dev-dependencies]
 chio-core = { workspace = true }

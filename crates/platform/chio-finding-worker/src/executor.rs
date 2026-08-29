@@ -250,7 +250,7 @@ impl FirecrackerExecutor {
             .execution_timeout
             .checked_sub(started.elapsed())
             .ok_or(WorkerExecutionError::Timeout)?;
-        let staged = tokio::task::spawn_blocking(move || {
+        let mut staged = tokio::task::spawn_blocking(move || {
             stage_jail(
                 &config,
                 &jail_id,
@@ -260,12 +260,7 @@ impl FirecrackerExecutor {
         })
         .await
         .map_err(|_| WorkerExecutionError::Staging)??;
-        let jail = JailGuard::new(
-            staged.job_dir.clone(),
-            staged.job_parent.clone(),
-            staged.cgroup_dir.clone(),
-            staged.cgroup_parent.clone(),
-        );
+        let jail = staged.cleanup.take().ok_or(WorkerExecutionError::Staging)?;
         let mut child = staged.plan.spawn()?;
         let remaining = self
             .inner
@@ -465,10 +460,7 @@ impl JailerCommandPlan {
 }
 
 struct StagedJail {
-    job_dir: PathBuf,
-    job_parent: PathBuf,
-    cgroup_dir: PathBuf,
-    cgroup_parent: PathBuf,
+    cleanup: Option<JailGuard>,
     vsock_path: PathBuf,
     plan: JailerCommandPlan,
 }
@@ -524,11 +516,14 @@ fn stage_jail(
     let args = jailer_args(config, jail_id, identity)?;
     staging.disarm();
     let cgroup_parent = Path::new("/sys/fs/cgroup").join(executable_name);
+    let cgroup_dir = cgroup_parent.join(jail_id);
     Ok(StagedJail {
-        job_dir,
-        job_parent: executable_dir,
-        cgroup_dir: cgroup_parent.join(jail_id),
-        cgroup_parent,
+        cleanup: Some(JailGuard::new(
+            job_dir,
+            executable_dir,
+            cgroup_dir,
+            cgroup_parent,
+        )),
         vsock_path,
         plan: JailerCommandPlan {
             program: config.jailer_binary.clone(),

@@ -209,6 +209,7 @@ pub trait HostedAuthRepository: Send + Sync {
         &self,
         tenant: &HostedTenantId,
         public_key_hex: &str,
+        now: u64,
     ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError>;
 
     async fn principal(
@@ -250,8 +251,9 @@ impl HostedAuthRepository for PostgresFindingMarketStore {
         &self,
         tenant: &HostedTenantId,
         public_key_hex: &str,
+        now: u64,
     ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError> {
-        self.get_principal_by_capability_key(tenant, public_key_hex)
+        self.get_principal_by_capability_key(tenant, public_key_hex, now)
             .await
     }
 
@@ -494,7 +496,11 @@ impl HostedAuthenticator {
             .ok_or(HostedEdgeError::AuthorizationFailed)?;
         let principal = self
             .repository
-            .principal_by_capability_key(&request.tenant_id, &capability.subject.to_hex())
+            .principal_by_capability_key(
+                &request.tenant_id,
+                &capability.subject.to_hex(),
+                request.now_unix_secs,
+            )
             .await
             .map_err(map_store)?
             .filter(|principal| principal.enabled)
@@ -720,6 +726,7 @@ mod tests {
             &self,
             _tenant: &HostedTenantId,
             _public_key_hex: &str,
+            _now: u64,
         ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError> {
             Ok(Some(self.principal.clone()))
         }
