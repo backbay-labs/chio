@@ -174,9 +174,11 @@ scripts/qualify-cognition-market-hosted.sh
 
 Both modes emit per-gate logs, checksums, and a signed exact-candidate manifest
 under `target/release-qualification/`. The promotion workflow additionally
-applies a keyless Sigstore signature to the KVM manifest. A green unit-only run
-or a `--code-only` report is not promotion evidence. Full workspace build,
-test, Clippy, format, and release CI remain mandatory before promotion.
+applies and verifies keyless Sigstore signatures over both the KVM sub-manifest
+and the final hosted manifest that binds every gate plus the KVM manifest
+digest. A green unit-only run or a `--code-only` report is not promotion
+evidence. Full workspace build, test, Clippy, format, and release CI remain
+mandatory before promotion.
 Each qualification script immediately re-verifies the emitted envelope against
 the checked-out commit and tree, `Cargo.lock`, canonical manifest bytes, every
 artifact digest and byte count, and the exact checksum file before reporting

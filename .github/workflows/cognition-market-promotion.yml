@@ -29,26 +29,34 @@ jobs:
         uses: sigstore/cosign-installer@1aa8e0f2454b781fbf0fbf306a4c9533a0c57409
         with:
           cosign-release: v2.4.1
-      - name: Sign and verify exact-candidate KVM evidence
+      - name: Sign and verify exact-candidate promotion evidence
         env:
           EXPECTED_WORKFLOW_IDENTITY: ${{ github.server_url }}/${{ github.repository }}/.github/workflows/cognition-market-promotion.yml@${{ github.ref }}
         run: |
-          manifest=target/release-qualification/cognition-market-kvm/artifact-manifest.signed.json
-          signature="${manifest}.sig"
-          certificate="${manifest}.pem"
-          test -s "${manifest}"
-          cosign sign-blob --yes \
-            --output-signature "${signature}" \
-            --output-certificate "${certificate}" \
-            "${manifest}"
-          test -s "${signature}"
-          test -s "${certificate}"
-          cosign verify-blob \
-            --certificate "${certificate}" \
-            --signature "${signature}" \
-            --certificate-identity "${EXPECTED_WORKFLOW_IDENTITY}" \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-            "${manifest}"
+          signature_root=target/release-qualification/cognition-market-promotion-sigstore
+          mkdir -p "${signature_root}"
+          for evidence in hosted kvm; do
+            if test "${evidence}" = hosted; then
+              manifest=target/release-qualification/cognition-market-hosted/artifact-manifest.signed.json
+            else
+              manifest=target/release-qualification/cognition-market-kvm/artifact-manifest.signed.json
+            fi
+            signature="${signature_root}/${evidence}.sig"
+            certificate="${signature_root}/${evidence}.pem"
+            test -s "${manifest}"
+            cosign sign-blob --yes \
+              --output-signature "${signature}" \
+              --output-certificate "${certificate}" \
+              "${manifest}"
+            test -s "${signature}"
+            test -s "${certificate}"
+            cosign verify-blob \
+              --certificate "${certificate}" \
+              --signature "${signature}" \
+              --certificate-identity "${EXPECTED_WORKFLOW_IDENTITY}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${manifest}"
+          done
       - name: Upload promotion evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -57,5 +65,6 @@ jobs:
           path: |
             target/release-qualification/cognition-market-hosted
             target/release-qualification/cognition-market-kvm
+            target/release-qualification/cognition-market-promotion-sigstore
           if-no-files-found: error
           retention-days: 90
