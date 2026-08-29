@@ -1,9 +1,11 @@
 # Cognition Market Program Plan
 
 > **For agentic workers:** This is the program-level implementation record.
-> M0-M6 and M8-M11 were executed through the bite-sized plans under
-> [plans/](plans/). M7 remains conditional on verified bilateral demand and
-> ADR-C (rule in section 6).
+> M0-M6 and M8-M10 were executed through the bite-sized plans under
+> [plans/](plans/). M11 has an implemented and qualified hosted security,
+> durability, custody, worker, and release boundary on its implementation
+> branch, but does not activate a public multi-tenant service. M7 remains
+> conditional on verified bilateral demand and ADR-C (rule in section 6).
 
 **Goal:** Ship the agent-to-agent cognition market on Chio - coding-agent
 verified fixes first, R&D negative results second - as an extension of
@@ -108,7 +110,7 @@ production surface half-wired.
 | M8 | Pool purchasing and SDK | swarm purchasing convention; elicitation ceiling in SDKs; pheromone hint convention | M4 | implemented and merged in PR #1051; plan and recorded results [plans/2026-07-31-M8-pool-purchasing-sdk.md](plans/2026-07-31-M8-pool-purchasing-sdk.md) |
 | M9 | Qualification and claims | bounded-matrix entries; CLAIM_REGISTRY rows; RC guarantee entries; proof passport and release promotion | M5, M6 | implemented, cumulatively qualified, and merged in PR #1053; plan [plans/2026-07-31-M9-qualification-claims.md](plans/2026-07-31-M9-qualification-claims.md) |
 | M10 | Single-operator pilot | close operational integrity gaps and run the evidence-backed pilot | M9 | implemented; plan [plans/2026-08-24-M10-single-operator-pilot.md](plans/2026-08-24-M10-single-operator-pilot.md) and report [M10-PILOT-REPORT.md](M10-PILOT-REPORT.md) |
-| M11 | Hosted production | tenant-isolated PostgreSQL jobs, remote custody, complete ACP transport, Firecracker workers, and canary rollback | M10 | implementation branch; plan [plans/2026-08-28-M11-hosted-production.md](plans/2026-08-28-M11-hosted-production.md) |
+| M11 | Hosted production boundary | tenant-isolated PostgreSQL jobs, remote custody, complete ACP transport, Firecracker workers, and signed canary rollback | M10 | boundary implemented on branch; public listener and full PostgreSQL domain activation remain unbuilt; plan [plans/2026-08-28-M11-hosted-production.md](plans/2026-08-28-M11-hosted-production.md) |
 
 ## 2. Per-milestone definition
 

@@ -1,8 +1,9 @@
 # M11 Hosted Production Execution
 
-Status: implementation branch. Promotion is blocked until every qualification
-command below passes on the exact release commit and the canary decision is
-`promote`.
+Status: hosted boundary implementation branch. Public multi-tenant activation
+is not part of this branch. Promotion of the boundary is blocked until every
+qualification command below passes on the exact release commit and the canary
+decision is `promote`.
 
 ## Objective
 
@@ -194,5 +195,21 @@ M11 does not enable the conditional M7 cross-organization escrow design. The
 hosted profile's ACP rail remains the admitted single-operator settlement
 boundary. A Firecracker guest image is part of the trusted release artifact;
 the worker verifies its digest and isolation configuration, not its semantic
-correctness. Hosted activation remains blocked until the edge verifies every
-configured credential mode before a tenant identity reaches PostgreSQL.
+correctness.
+
+This branch does not ship a hosted network listener. The existing `chio finding
+operator serve` command remains the bounded single-operator SQLite pilot. The
+PostgreSQL crate provides tenant-scoped authentication, quotas, jobs, leases,
+spend reservations, and an integrity-checked aggregate journal, but those
+generic journal records are not replacements for the M0-M6 domain repositories
+until each domain command and projection is ported and qualified. No public
+request is therefore routed into these hosted primitives, and no customer
+traffic may be admitted from this branch.
+
+Hosted activation requires a separately reviewed change that authenticates
+every configured credential mode at the edge, passes only the resulting tenant
+identity into transaction-scoped PostgreSQL operations, ports every market
+command and projection without weakening its signed-artifact or settlement
+invariants, and drives a real seller-to-buyer canary through that exact network
+surface. The component and KVM qualification claims above must not be read as
+evidence that this later activation work has shipped.

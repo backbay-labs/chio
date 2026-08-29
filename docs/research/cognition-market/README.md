@@ -6,8 +6,11 @@ results). This extends the original spike memo and retains the architecture,
 mechanism, threat, planning, and release-boundary records.
 
 Status: the cumulative implementation includes M0-M6 and M8-M10. M11 adds the
-hosted-production boundary on its implementation branch. The named bounded-profile integration, approved scoped
-claims, audited assumptions, persisted transaction-passport golden, and
+hosted-production security, durability, custody, worker, and release boundary
+on its implementation branch. It does not activate a public multi-tenant
+listener or replace the pilot's SQLite domain repositories. The named
+bounded-profile integration, approved scoped claims, audited assumptions,
+persisted transaction-passport golden, and
 focused promoted-default gates pass on the recorded candidate. The focused
 gate also records a captured single-operator dogfood purchase of the verified
 same-second revocation-cursor fix found during closeout. Release
