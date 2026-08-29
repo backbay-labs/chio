@@ -248,7 +248,7 @@ fn verify_receipt_payload(
 ) -> Result<(), BundleError> {
     match verify_chio_receipt_payload(scenario_id, payload) {
         Ok(()) => Ok(()),
-        Err(err)
+        Err(_err)
             if mode == VerificationMode::Fixture
                 && is_allowed_local_fixture_receipt(scenario_id, payload) =>
         {
