@@ -10,7 +10,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core_types::{canonical_json_bytes, receipt::lineage::SignedExportEnvelope, Keypair};
+use chio_core_types::{
+    canonical_json_bytes, canonical_json_bytes_from_str, receipt::lineage::SignedExportEnvelope,
+    Keypair, SigningAlgorithm,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
@@ -19,6 +22,9 @@ const QUALIFICATION_SCOPE: &str =
     "self-signed internal release qualification; not external assurance or underwriting evidence";
 const MAX_ARTIFACTS: usize = 100_000;
 const HASH_BUFFER_BYTES: usize = 1024 * 1024;
+const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_CHECKSUM_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_CLOCK_SKEW_SECS: u64 = 300;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -46,10 +52,11 @@ struct ReleaseQualificationManifest {
 struct Args {
     repo_root: PathBuf,
     artifact_root: PathBuf,
-    signing_seed: PathBuf,
+    signing_seed: Option<PathBuf>,
     output: PathBuf,
     checksums: PathBuf,
     expected_candidate: Option<String>,
+    verify: bool,
 }
 
 fn main() -> ExitCode {
@@ -64,7 +71,11 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     let args = parse_args(env::args_os().collect())?;
-    qualify(args)
+    if args.verify {
+        verify(args)
+    } else {
+        qualify(args)
+    }
 }
 
 fn qualify(args: Args) -> Result<(), String> {
@@ -73,7 +84,11 @@ fn qualify(args: Args) -> Result<(), String> {
     if !artifact_root.starts_with(&repo_root) {
         return Err("artifact root must be inside the repository".to_owned());
     }
-    let signing_seed = fs::canonicalize(&args.signing_seed)
+    let signing_seed_path = args
+        .signing_seed
+        .as_ref()
+        .ok_or_else(|| "missing --signing-seed".to_owned())?;
+    let signing_seed = fs::canonicalize(signing_seed_path)
         .map_err(|error| format!("resolve signing seed: {error}"))?;
     if signing_seed.starts_with(&artifact_root) {
         return Err("signing seed must be outside the release artifact root".to_owned());
@@ -119,6 +134,7 @@ fn qualify(args: Args) -> Result<(), String> {
         fs::read_to_string(&signing_seed).map_err(|error| format!("read signing seed: {error}"))?;
     let signer = Keypair::from_seed_hex(seed_text.trim())
         .map_err(|_| "release qualification signing seed is invalid".to_owned())?;
+    let github_actions = env::var("GITHUB_ACTIONS").is_ok_and(|value| value == "true");
     let manifest = ReleaseQualificationManifest {
         schema: MANIFEST_SCHEMA.to_owned(),
         candidate_git_commit: candidate.clone(),
@@ -128,13 +144,21 @@ fn qualify(args: Args) -> Result<(), String> {
             .duration_since(UNIX_EPOCH)
             .map_err(|_| "system clock predates the Unix epoch".to_owned())?
             .as_secs(),
-        source: if env::var("GITHUB_ACTIONS").is_ok_and(|value| value == "true") {
+        source: if github_actions {
             "github-actions".to_owned()
         } else {
             "local".to_owned()
         },
-        workflow_run_id: env::var("GITHUB_RUN_ID").ok(),
-        workflow_run_attempt: env::var("GITHUB_RUN_ATTEMPT").ok(),
+        workflow_run_id: github_actions
+            .then(|| env::var("GITHUB_RUN_ID"))
+            .transpose()
+            .map_err(|_| "GitHub Actions release evidence requires GITHUB_RUN_ID".to_owned())?,
+        workflow_run_attempt: github_actions
+            .then(|| env::var("GITHUB_RUN_ATTEMPT"))
+            .transpose()
+            .map_err(|_| {
+                "GitHub Actions release evidence requires GITHUB_RUN_ATTEMPT".to_owned()
+            })?,
         qualification_scope: QUALIFICATION_SCOPE.to_owned(),
         artifacts,
     };
@@ -161,6 +185,185 @@ fn qualify(args: Args) -> Result<(), String> {
     let checksum_bytes = checksum_bytes(&signed.body.artifacts);
     write_new_or_replace(&checksums, &checksum_bytes)?;
     Ok(())
+}
+
+fn verify(args: Args) -> Result<(), String> {
+    if args.signing_seed.is_some() {
+        return Err("--signing-seed is not accepted with --verify".to_owned());
+    }
+    let repo_root = canonical_directory(&args.repo_root, "repository root")?;
+    let artifact_root = canonical_directory(&args.artifact_root, "artifact root")?;
+    if !artifact_root.starts_with(&repo_root) {
+        return Err("artifact root must be inside the repository".to_owned());
+    }
+    let output = absolute_under(&repo_root, &args.output, "manifest input")?;
+    let checksums = absolute_under(&repo_root, &args.checksums, "checksum input")?;
+    if !output.starts_with(&artifact_root) || !checksums.starts_with(&artifact_root) {
+        return Err("manifest and checksum inputs must be inside the artifact root".to_owned());
+    }
+    if output == checksums {
+        return Err("manifest and checksum inputs must be distinct".to_owned());
+    }
+
+    let status = git_output(
+        &repo_root,
+        &["status", "--porcelain=v1", "--untracked-files=all"],
+    )?;
+    if !status.is_empty() {
+        return Err(
+            "source tree is dirty; release evidence requires an exact clean commit".to_owned(),
+        );
+    }
+    let candidate = git_output(&repo_root, &["rev-parse", "--verify", "HEAD^{commit}"])?;
+    require_git_object_id(&candidate, "candidate commit")?;
+    if args
+        .expected_candidate
+        .as_deref()
+        .is_some_and(|expected| expected != candidate)
+    {
+        return Err("expected candidate does not match the checked-out commit".to_owned());
+    }
+    let tree = git_output(&repo_root, &["rev-parse", "--verify", "HEAD^{tree}"])?;
+    require_git_object_id(&tree, "candidate tree")?;
+
+    let manifest_bytes = read_bounded_regular_file(&output, MAX_MANIFEST_BYTES, "manifest")?;
+    let manifest_text = std::str::from_utf8(&manifest_bytes)
+        .map_err(|_| "release qualification manifest is not UTF-8".to_owned())?;
+    let canonical = canonical_json_bytes_from_str(manifest_text)
+        .map_err(|_| "release qualification manifest is not strict JSON".to_owned())?;
+    if canonical != manifest_bytes {
+        return Err("release qualification manifest is not canonical JSON".to_owned());
+    }
+    let signed: SignedExportEnvelope<ReleaseQualificationManifest> =
+        serde_json::from_slice(&manifest_bytes)
+            .map_err(|_| "release qualification manifest schema is invalid".to_owned())?;
+    validate_signed_manifest(&signed, &candidate, &tree, &repo_root)?;
+
+    let mut artifacts = collect_artifacts(&artifact_root, &output, &checksums)?;
+    artifacts.sort_by(|left, right| left.path.cmp(&right.path));
+    if artifacts != signed.body.artifacts {
+        return Err("release artifacts do not match the signed manifest".to_owned());
+    }
+    let checksum_file = read_bounded_regular_file(
+        &checksums,
+        MAX_CHECKSUM_BYTES,
+        "release qualification checksums",
+    )?;
+    if checksum_file != checksum_bytes(&signed.body.artifacts) {
+        return Err("release qualification checksums do not match the signed manifest".to_owned());
+    }
+
+    let mut artifacts_after = collect_artifacts(&artifact_root, &output, &checksums)?;
+    artifacts_after.sort_by(|left, right| left.path.cmp(&right.path));
+    let commit_after = git_output(&repo_root, &["rev-parse", "--verify", "HEAD^{commit}"])?;
+    let status_after = git_output(
+        &repo_root,
+        &["status", "--porcelain=v1", "--untracked-files=all"],
+    )?;
+    if commit_after != candidate || !status_after.is_empty() {
+        return Err("source candidate changed during qualification verification".to_owned());
+    }
+    if artifacts_after != artifacts {
+        return Err("release artifacts changed during qualification verification".to_owned());
+    }
+    Ok(())
+}
+
+fn validate_signed_manifest(
+    signed: &SignedExportEnvelope<ReleaseQualificationManifest>,
+    candidate: &str,
+    tree: &str,
+    repo_root: &Path,
+) -> Result<(), String> {
+    let manifest = &signed.body;
+    if signed.signer_key.algorithm() != SigningAlgorithm::Ed25519
+        || signed.signer_key.is_weak_ed25519()
+        || !signed
+            .verify_signature()
+            .map_err(|_| "release qualification signature verification failed".to_owned())?
+    {
+        return Err("release qualification signature is invalid".to_owned());
+    }
+    if manifest.schema != MANIFEST_SCHEMA
+        || manifest.qualification_scope != QUALIFICATION_SCOPE
+        || manifest.candidate_git_commit != candidate
+        || manifest.candidate_git_tree != tree
+        || manifest.cargo_lock_sha256 != hash_file(&repo_root.join("Cargo.lock"))?.0
+    {
+        return Err("release qualification candidate binding is invalid".to_owned());
+    }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| "system clock predates the Unix epoch".to_owned())?
+        .as_secs();
+    if manifest.generated_at_unix_secs == 0
+        || manifest.generated_at_unix_secs > now.saturating_add(MAX_CLOCK_SKEW_SECS)
+    {
+        return Err("release qualification generation time is invalid".to_owned());
+    }
+    validate_source_metadata(manifest)?;
+    validate_manifest_artifacts(&manifest.artifacts)
+}
+
+fn validate_source_metadata(manifest: &ReleaseQualificationManifest) -> Result<(), String> {
+    let valid_optional_number = |value: &Option<String>| {
+        value.as_ref().is_none_or(|value| {
+            !value.is_empty()
+                && value.len() <= 32
+                && value.bytes().all(|byte| byte.is_ascii_digit())
+        })
+    };
+    if !matches!(manifest.source.as_str(), "local" | "github-actions")
+        || !valid_optional_number(&manifest.workflow_run_id)
+        || !valid_optional_number(&manifest.workflow_run_attempt)
+        || (manifest.workflow_run_id.is_some() != manifest.workflow_run_attempt.is_some())
+        || (manifest.source == "github-actions" && manifest.workflow_run_id.is_none())
+    {
+        return Err("release qualification source metadata is invalid".to_owned());
+    }
+    Ok(())
+}
+
+fn validate_manifest_artifacts(artifacts: &[QualificationArtifact]) -> Result<(), String> {
+    if artifacts.is_empty() || artifacts.len() > MAX_ARTIFACTS {
+        return Err("release qualification artifact count is invalid".to_owned());
+    }
+    let mut previous = None;
+    for artifact in artifacts {
+        let path = Path::new(&artifact.path);
+        let path_is_portable = !artifact.path.is_empty()
+            && !artifact.path.contains('\\')
+            && !artifact.path.chars().any(char::is_control)
+            && !path.is_absolute()
+            && path
+                .components()
+                .all(|component| matches!(component, std::path::Component::Normal(_)));
+        let digest_is_canonical = artifact.sha256.len() == 64
+            && artifact
+                .sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+        if !path_is_portable || !digest_is_canonical {
+            return Err("release qualification artifact metadata is invalid".to_owned());
+        }
+        if previous.is_some_and(|value: &str| value >= artifact.path.as_str()) {
+            return Err("release qualification artifact paths are not strictly sorted".to_owned());
+        }
+        previous = Some(artifact.path.as_str());
+    }
+    Ok(())
+}
+
+fn read_bounded_regular_file(path: &Path, maximum: u64, label: &str) -> Result<Vec<u8>, String> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|error| format!("inspect {label} {}: {error}", path.display()))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(format!("{label} is not a regular file"));
+    }
+    if metadata.len() == 0 || metadata.len() > maximum {
+        return Err(format!("{label} exceeds its byte bound"));
+    }
+    fs::read(path).map_err(|error| format!("read {label} {}: {error}", path.display()))
 }
 
 fn collect_artifacts(
@@ -300,6 +503,7 @@ fn parse_args(raw: Vec<OsString>) -> Result<Args, String> {
     let mut output = None;
     let mut checksums = None;
     let mut expected_candidate = None;
+    let mut verify = false;
     while let Some(flag) = values.next() {
         match flag.to_string_lossy().as_ref() {
             "--repo-root" => repo_root = Some(next_path(&mut values, "--repo-root")?),
@@ -310,16 +514,18 @@ fn parse_args(raw: Vec<OsString>) -> Result<Args, String> {
             "--expected-candidate" => {
                 expected_candidate = Some(next_string(&mut values, "--expected-candidate")?)
             }
+            "--verify" => verify = true,
             other => return Err(format!("unknown argument: {other}")),
         }
     }
     Ok(Args {
         repo_root: repo_root.ok_or("missing --repo-root")?,
         artifact_root: artifact_root.ok_or("missing --artifact-root")?,
-        signing_seed: signing_seed.ok_or("missing --signing-seed")?,
+        signing_seed,
         output: output.ok_or("missing --output")?,
         checksums: checksums.ok_or("missing --checksums")?,
         expected_candidate,
+        verify,
     })
 }
 
@@ -387,7 +593,7 @@ fn require_git_object_id(value: &str, label: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        checksum_bytes, collect_artifacts, qualify, write_new_or_replace, Args,
+        checksum_bytes, collect_artifacts, qualify, verify, write_new_or_replace, Args,
         ReleaseQualificationManifest,
     };
     use chio_core_types::receipt::lineage::SignedExportEnvelope;
@@ -532,14 +738,15 @@ mod tests {
 
         qualify(Args {
             repo_root: root.to_path_buf(),
-            artifact_root,
-            signing_seed: seed,
+            artifact_root: artifact_root.clone(),
+            signing_seed: Some(seed),
             output: manifest_path.clone(),
             checksums: checksum_path.clone(),
             expected_candidate: Some(candidate.clone()),
+            verify: false,
         })?;
 
-        let bytes = fs::read(manifest_path).map_err(|error| error.to_string())?;
+        let bytes = fs::read(&manifest_path).map_err(|error| error.to_string())?;
         let signed: SignedExportEnvelope<ReleaseQualificationManifest> =
             serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
         assert_eq!(signed.body.candidate_git_commit, candidate);
@@ -549,9 +756,33 @@ mod tests {
             .verify_signature()
             .map_err(|error| error.to_string())?);
         assert_eq!(
-            fs::read_to_string(checksum_path).map_err(|error| error.to_string())?,
+            fs::read_to_string(&checksum_path).map_err(|error| error.to_string())?,
             format!("{}  gate.log\n", signed.body.artifacts[0].sha256)
         );
+
+        verify(Args {
+            repo_root: root.to_path_buf(),
+            artifact_root: artifact_root.clone(),
+            signing_seed: None,
+            output: manifest_path.clone(),
+            checksums: checksum_path.clone(),
+            expected_candidate: Some(candidate),
+            verify: true,
+        })?;
+        fs::write(artifact_root.join("gate.log"), b"tampered\n")
+            .map_err(|error| error.to_string())?;
+        let error = verify(Args {
+            repo_root: root.to_path_buf(),
+            artifact_root,
+            signing_seed: None,
+            output: manifest_path,
+            checksums: checksum_path,
+            expected_candidate: None,
+            verify: true,
+        })
+        .err()
+        .ok_or_else(|| "tampered release artifact was accepted".to_owned())?;
+        assert!(error.contains("do not match the signed manifest"));
         Ok(())
     }
 

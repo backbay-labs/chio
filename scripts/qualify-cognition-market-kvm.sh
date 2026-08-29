@@ -198,6 +198,14 @@ cargo run -p chio-release-evidence \
   --output "${manifest_path}" \
   --checksums "${checksums_path}" \
   --expected-candidate "${candidate_sha}"
+cargo run -p chio-release-evidence \
+  --bin chio-release-qualification-manifest -- \
+  --verify \
+  --repo-root . \
+  --artifact-root "${output_root}" \
+  --output "${manifest_path}" \
+  --checksums "${checksums_path}" \
+  --expected-candidate "${candidate_sha}"
 
 printf 'cognition-market real KVM canary passed for %s; evidence: %s\n' \
   "${candidate_sha}" \

@@ -305,3 +305,10 @@ cargo run -p chio-release-evidence --bin chio-release-qualification-manifest -- 
   --output "${manifest_path}" \
   --checksums "${checksum_path}" \
   --expected-candidate "${candidate_sha}"
+cargo run -p chio-release-evidence --bin chio-release-qualification-manifest -- \
+  --verify \
+  --repo-root . \
+  --artifact-root "${output_root}" \
+  --output "${manifest_path}" \
+  --checksums "${checksum_path}" \
+  --expected-candidate "${candidate_sha}"

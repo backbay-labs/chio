@@ -166,6 +166,12 @@ under `target/release-qualification/`. The promotion workflow additionally
 applies a keyless Sigstore signature to the KVM manifest. A green unit-only run
 or a `--code-only` report is not promotion evidence. Full workspace build,
 test, Clippy, format, and release CI remain mandatory before promotion.
+Each qualification script immediately re-verifies the emitted envelope against
+the checked-out commit and tree, `Cargo.lock`, canonical manifest bytes, every
+artifact digest and byte count, and the exact checksum file before reporting
+success. The embedded signature provides internal integrity; only the
+promotion workflow's separately verified Sigstore identity supplies external
+provenance.
 
 ## Explicit residual boundary
 

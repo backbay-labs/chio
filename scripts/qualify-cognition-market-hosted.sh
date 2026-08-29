@@ -206,6 +206,14 @@ cargo run -p chio-release-evidence \
   --output "${manifest_path}" \
   --checksums "${checksums_path}" \
   --expected-candidate "${candidate_sha}"
+cargo run -p chio-release-evidence \
+  --bin chio-release-qualification-manifest -- \
+  --verify \
+  --repo-root . \
+  --artifact-root "${output_root}" \
+  --output "${manifest_path}" \
+  --checksums "${checksums_path}" \
+  --expected-candidate "${candidate_sha}"
 
 printf 'hosted cognition-market %s qualification passed for %s; evidence: %s\n' \
   "${qualification_mode}" \
