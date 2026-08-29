@@ -306,6 +306,18 @@
       "schemaFile": "spec/schemas/chio-finding/v1/bond-backing.schema.json"
     },
     {
+      "schema": "chio.finding.bond-observation-request.v1",
+      "artifactKind": "finding_bond_observation_request",
+      "introducedBy": "cognition-market-m11",
+      "schemaFile": "spec/schemas/chio-finding/v1/bond-observation-request.schema.json"
+    },
+    {
+      "schema": "chio.finding.bond-observation-response.v1",
+      "artifactKind": "finding_bond_observation_response",
+      "introducedBy": "cognition-market-m11",
+      "schemaFile": "spec/schemas/chio-finding/v1/bond-observation-response.schema.json"
+    },
+    {
       "schema": "chio.finding.challenge-enforcement.v1",
       "artifactKind": "finding_challenge_enforcement",
       "introducedBy": "finding-market-v1",

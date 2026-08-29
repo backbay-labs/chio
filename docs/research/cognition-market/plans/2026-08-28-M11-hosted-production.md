@@ -26,6 +26,8 @@ database, payment rail, signer, or worker starts. The profile requires:
 - a non-superuser PostgreSQL runtime role with forced row-level security;
 - distinct remote-custody keys for all 19 market, kernel, and worker roles;
 - complete ACP authorize, capture, release, refund, and state paths;
+- a strict HTTPS live bond-observation endpoint with separate dispatch and
+  reconciliation reads;
 - a strict HTTPS impairment-publisher endpoint whose bearer credential is
   resolved from an environment reference and whose egress namespace is derived
   from the deployment identity;
@@ -104,6 +106,12 @@ intent and prepared call, and its response binds the request digest. DNS is
 pinned during construction, redirects and proxies are disabled, non-public
 destinations are rejected, and reconciliation remains authoritative over any
 publisher claim.
+
+The live bond observer receives only the verified enforcement and snapshot
+identity needed to re-read chain finality and operator qualification. Fresh
+dispatch and reconciliation use separate operations. Responses bind the exact
+canonical request digest, and malformed, stale, unavailable, or ambiguous
+state never qualifies an impairment.
 
 ## Release decision
 

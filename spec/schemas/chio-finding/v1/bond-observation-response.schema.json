@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-finding/bond-observation-response/v1",
+  "title": "Chio Finding Bond Observation Response V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "requestSha256", "observation"],
+  "properties": {
+    "schema": { "const": "chio.finding.bond-observation-response.v1" },
+    "requestSha256": { "$ref": "#/$defs/digest" },
+    "observation": { "$ref": "#/$defs/observation" }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "chainHash": {
+      "type": "string",
+      "pattern": "^(0x)?[0-9a-f]{64}$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "nonzeroIJsonU64": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "observedFinality": {
+      "oneOf": [
+        { "const": "finalized" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["confirmations"],
+          "properties": {
+            "confirmations": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["depth"],
+              "properties": {
+                "depth": { "$ref": "#/$defs/nonzeroIJsonU64" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blockHash",
+        "observedFinality",
+        "identityRegistryRecord",
+        "operatorKeyHash",
+        "operatorKeyEpoch",
+        "operatorActive"
+      ],
+      "properties": {
+        "blockHash": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/chainHash" }
+          ]
+        },
+        "observedFinality": { "$ref": "#/$defs/observedFinality" },
+        "identityRegistryRecord": { "$ref": "#/$defs/text" },
+        "operatorKeyHash": { "$ref": "#/$defs/chainHash" },
+        "operatorKeyEpoch": { "$ref": "#/$defs/nonzeroIJsonU64" },
+        "operatorActive": { "type": "boolean" }
+      }
+    }
+  }
+}

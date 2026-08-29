@@ -1081,7 +1081,8 @@ pub enum FindingOperatorQualification {
 }
 
 /// Chain and identity state re-read after the snapshot was verified.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingBondObservationRecheck {
     /// Block hash currently canonical at the snapshot's block number, or
     /// `None` when the chain no longer carries a block at that height.

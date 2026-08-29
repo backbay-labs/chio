@@ -19,6 +19,7 @@ use chio_finding_hosted_edge::{
 };
 use chio_finding_market_store_postgres::HostedTenantId;
 use chio_finding_worker::{FirecrackerExecutor, FirecrackerIdentity, FirecrackerWorkerConfig};
+use chio_settle::{RemoteFindingBondObservationSource, RemoteFindingBondObservationSourceConfig};
 use chio_settle::{RemoteFindingImpairmentPublisher, RemoteFindingImpairmentPublisherConfig};
 use chio_signing_remote::{HttpSigningBackend, RemoteSigningKey, VaultTransitSigningBackend};
 use serde::{Deserialize, Serialize};
@@ -44,6 +45,7 @@ pub struct FindingHostedProfile {
     pub kernel_public_key_hex: String,
     pub signers: Vec<FindingHostedSignerProfile>,
     pub payment: FindingHostedAcpProfile,
+    pub bond_observer: FindingHostedBondObserverProfile,
     pub impairment_publisher: FindingHostedImpairmentPublisherProfile,
     pub worker_public_key_hex: String,
     pub worker: FindingHostedWorkerProfile,
@@ -185,6 +187,14 @@ pub struct FindingHostedAcpProfile {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingHostedImpairmentPublisherProfile {
+    pub base_url: String,
+    pub bearer_token_env: String,
+    pub timeout_millis: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindingHostedBondObserverProfile {
     pub base_url: String,
     pub bearer_token_env: String,
     pub timeout_millis: u64,
@@ -335,6 +345,7 @@ impl FindingHostedProfile {
         self.market.validate().map_err(|error| error.to_string())?;
         self.validate_signers()?;
         self.validate_payment()?;
+        self.validate_bond_observer()?;
         self.validate_impairment_publisher()?;
         self.validate_worker()?;
         self.validate_tenants()?;
@@ -562,6 +573,21 @@ impl FindingHostedProfile {
             .map_err(|_| "remote impairment publisher preflight failed".to_owned())
     }
 
+    /// Build the strict HTTPS live bond observer from a secret reference.
+    pub fn load_bond_observer(&self) -> Result<RemoteFindingBondObservationSource, String> {
+        self.validate()?;
+        let namespace = self.bond_observer_namespace()?;
+        let config = RemoteFindingBondObservationSourceConfig::new(
+            self.bond_observer.base_url.clone(),
+            read_secret_environment(&self.bond_observer.bearer_token_env)?,
+            namespace,
+            Duration::from_millis(self.bond_observer.timeout_millis),
+        )
+        .map_err(|_| "remote bond observer configuration is invalid".to_owned())?;
+        RemoteFindingBondObservationSource::new(config)
+            .map_err(|_| "remote bond observer preflight failed".to_owned())
+    }
+
     /// Evaluate a canary observation with closed rollback reasons.
     pub fn evaluate_canary(
         &self,
@@ -773,12 +799,33 @@ impl FindingHostedProfile {
         Ok(())
     }
 
+    fn validate_bond_observer(&self) -> Result<(), String> {
+        validate_https_url(&self.bond_observer.base_url, "bond observer base URL", true)?;
+        validate_env_name(
+            &self.bond_observer.bearer_token_env,
+            "bond observer token environment variable",
+        )?;
+        if !(100..=30_000).contains(&self.bond_observer.timeout_millis) {
+            return Err("bond observer timeout is outside the hosted bound".to_owned());
+        }
+        self.bond_observer_namespace()?;
+        Ok(())
+    }
+
     fn impairment_publisher_namespace(&self) -> Result<String, String> {
         let namespace = format!("finding:{}", self.deployment_id);
         if namespace.len() > 256 {
             return Err(
                 "deployment id is too long for the impairment publisher namespace".to_owned(),
             );
+        }
+        Ok(namespace)
+    }
+
+    fn bond_observer_namespace(&self) -> Result<String, String> {
+        let namespace = format!("finding-observer:{}", self.deployment_id);
+        if namespace.len() > 256 {
+            return Err("deployment id is too long for the bond observer namespace".to_owned());
         }
         Ok(namespace)
     }
@@ -1255,6 +1302,30 @@ mod tests {
         assert!(validate_https_url("https://127.0.0.1", "publisher", true).is_err());
         assert!(validate_env_name("CHIO_IMPAIRMENT_PUBLISHER_TOKEN", "token").is_ok());
         assert!(validate_env_name("publisher-token", "token").is_err());
+    }
+
+    #[test]
+    fn bond_observer_profile_is_closed_and_secret_free() {
+        let profile: Result<FindingHostedBondObserverProfile, _> =
+            serde_json::from_value(serde_json::json!({
+                "baseUrl": "https://observer.example/v1",
+                "bearerTokenEnv": "CHIO_BOND_OBSERVER_TOKEN",
+                "timeoutMillis": 5_000
+            }));
+        assert!(profile.is_ok());
+        if let Ok(profile) = profile {
+            let encoded = serde_json::to_string(&profile).unwrap_or_default();
+            assert!(!encoded.contains("secret-value"));
+            assert!(encoded.contains("CHIO_BOND_OBSERVER_TOKEN"));
+        }
+        let unknown: Result<FindingHostedBondObserverProfile, _> =
+            serde_json::from_value(serde_json::json!({
+                "baseUrl": "https://observer.example/v1",
+                "bearerTokenEnv": "CHIO_BOND_OBSERVER_TOKEN",
+                "timeoutMillis": 5_000,
+                "trustResponseWithoutDigest": true
+            }));
+        assert!(unknown.is_err());
     }
 
     #[test]
