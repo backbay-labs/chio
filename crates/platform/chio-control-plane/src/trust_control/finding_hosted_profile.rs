@@ -291,7 +291,9 @@ pub struct FindingHostedReleaseProfile {
 }
 
 pub const FINDING_HOSTED_CANARY_OBSERVATION_SCHEMA: &str =
-    "chio.finding.hosted-canary-observation.v1";
+    "chio.finding.hosted-canary-observation.v2";
+const FINDING_HOSTED_CANARY_MAX_AGE_SECS: u64 = 300;
+const FINDING_HOSTED_CANARY_CLOCK_SKEW_SECS: u64 = 60;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -299,6 +301,8 @@ pub struct FindingHostedCanaryObservation {
     pub schema: String,
     pub artifact_sha256: String,
     pub configuration_revision: String,
+    pub window_started_at_unix_secs: u64,
+    pub window_ended_at_unix_secs: u64,
     pub observed_secs: u64,
     pub ready_replicas: u32,
     pub request_count: u64,
@@ -322,6 +326,7 @@ pub enum FindingHostedCanaryDecision {
 pub enum FindingHostedRollbackReason {
     Binding,
     ObservationWindow,
+    Freshness,
     Availability,
     ErrorRate,
     Latency,
@@ -592,8 +597,10 @@ impl FindingHostedProfile {
     pub fn evaluate_canary(
         &self,
         observation: &FindingHostedCanaryObservation,
+        evaluated_at_unix_secs: u64,
     ) -> FindingHostedCanaryDecision {
-        self.release.evaluate_canary(observation)
+        self.release
+            .evaluate_canary(observation, evaluated_at_unix_secs)
     }
 
     fn validate_edge(&self) -> Result<(), String> {
@@ -994,10 +1001,11 @@ impl FindingHostedReleaseProfile {
     pub fn evaluate_canary(
         &self,
         observation: &FindingHostedCanaryObservation,
+        evaluated_at_unix_secs: u64,
     ) -> FindingHostedCanaryDecision {
         use FindingHostedCanaryDecision::{Promote, Rollback};
         use FindingHostedRollbackReason::{
-            Availability, Binding, ErrorRate, Latency, ObservationWindow, QueueAge,
+            Availability, Binding, ErrorRate, Freshness, Latency, ObservationWindow, QueueAge,
             SecurityInvariant,
         };
         if observation.schema != FINDING_HOSTED_CANARY_OBSERVATION_SCHEMA
@@ -1005,6 +1013,24 @@ impl FindingHostedReleaseProfile {
             || observation.configuration_revision != self.configuration_revision
         {
             return Rollback(Binding);
+        }
+        if observation.window_started_at_unix_secs == 0
+            || observation.window_ended_at_unix_secs == 0
+            || observation
+                .window_started_at_unix_secs
+                .checked_add(observation.observed_secs)
+                != Some(observation.window_ended_at_unix_secs)
+            || observation.observed_secs > self.rollback_window_secs
+        {
+            return Rollback(ObservationWindow);
+        }
+        if evaluated_at_unix_secs == 0
+            || observation.window_ended_at_unix_secs
+                > evaluated_at_unix_secs.saturating_add(FINDING_HOSTED_CANARY_CLOCK_SKEW_SECS)
+            || evaluated_at_unix_secs.saturating_sub(observation.window_ended_at_unix_secs)
+                > FINDING_HOSTED_CANARY_MAX_AGE_SECS
+        {
+            return Rollback(Freshness);
         }
         if observation.observed_secs < self.canary_observation_secs {
             return Rollback(ObservationWindow);
@@ -1346,6 +1372,8 @@ mod tests {
             schema: FINDING_HOSTED_CANARY_OBSERVATION_SCHEMA.to_owned(),
             artifact_sha256: "a".repeat(64),
             configuration_revision: "revision-1".to_owned(),
+            window_started_at_unix_secs: 1_699_999_700,
+            window_ended_at_unix_secs: 1_700_000_000,
             observed_secs: 300,
             ready_replicas: 2,
             request_count: 1_000,
@@ -1359,13 +1387,23 @@ mod tests {
             worker_isolation_failures: 0,
         };
         assert_eq!(
-            release.evaluate_canary(&observation),
+            release.evaluate_canary(&observation, 1_700_000_001),
             FindingHostedCanaryDecision::Promote
         );
         observation.tenant_isolation_violations = 1;
         assert_eq!(
-            release.evaluate_canary(&observation),
+            release.evaluate_canary(&observation, 1_700_000_001),
             FindingHostedCanaryDecision::Rollback(FindingHostedRollbackReason::SecurityInvariant)
+        );
+        observation.tenant_isolation_violations = 0;
+        assert_eq!(
+            release.evaluate_canary(&observation, 1_700_000_301),
+            FindingHostedCanaryDecision::Rollback(FindingHostedRollbackReason::Freshness)
+        );
+        observation.window_ended_at_unix_secs = 1_700_000_302;
+        assert_eq!(
+            release.evaluate_canary(&observation, 1_700_000_301),
+            FindingHostedCanaryDecision::Rollback(FindingHostedRollbackReason::ObservationWindow)
         );
     }
 }

@@ -126,10 +126,12 @@ state never qualifies an impairment.
 ## Release decision
 
 The canary observation binds the artifact digest and configuration revision.
-It rolls back on a short observation window, missing replicas, excessive error
-rate, latency, or queue age, or any signature failure, payment ambiguity,
-tenant-isolation violation, durable-integrity failure, or worker-isolation
-failure. Operators evaluate it with:
+Its v2 contract carries exact start and end timestamps, and evaluation rejects
+inconsistent, future-dated, or more than five-minute-old windows. It rolls back
+on a short observation window, missing replicas, excessive error rate, latency,
+or queue age, or any signature failure, payment ambiguity, tenant-isolation
+violation, durable-integrity failure, or worker-isolation failure. Operators
+evaluate it with:
 
 ```bash
 chio finding operator evaluate-canary \

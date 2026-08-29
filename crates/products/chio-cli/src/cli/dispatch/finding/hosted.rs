@@ -32,7 +32,11 @@ pub(super) fn cmd_finding_operator_evaluate_canary(
         MAX_CANARY_OBSERVATION_BYTES,
         "canary observation",
     )?;
-    let decision = profile.evaluate_canary(&observation);
+    let evaluated_at_unix_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| CliError::cli_other_error("system clock is before Unix epoch".to_owned()))?
+        .as_secs();
+    let decision = profile.evaluate_canary(&observation, evaluated_at_unix_secs);
     let (name, reason) = match decision {
         FindingHostedCanaryDecision::Promote => ("promote", None),
         FindingHostedCanaryDecision::Rollback(reason) => {
@@ -67,6 +71,7 @@ fn rollback_reason_name(reason: FindingHostedRollbackReason) -> &'static str {
     match reason {
         FindingHostedRollbackReason::Binding => "binding",
         FindingHostedRollbackReason::ObservationWindow => "observation_window",
+        FindingHostedRollbackReason::Freshness => "freshness",
         FindingHostedRollbackReason::Availability => "availability",
         FindingHostedRollbackReason::ErrorRate => "error_rate",
         FindingHostedRollbackReason::Latency => "latency",
