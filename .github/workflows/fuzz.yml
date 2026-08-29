@@ -199,6 +199,7 @@ jobs:
           RUSTFLAGS: "-Z sanitizer=address"
         run: |
           set -euo pipefail
+          cargo metadata --locked --manifest-path fuzz/Cargo.toml --format-version 1 --no-deps >/dev/null
           cd fuzz
           cargo +nightly fuzz build --sanitizer address ${{ matrix.target }}
 

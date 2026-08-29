@@ -83,6 +83,8 @@ run_gate() {
 run_gate format cargo fmt --all -- --check
 run_gate rust-hygiene python3 scripts/check-rust-file-hygiene.py
 run_gate workspace-layering bash scripts/check-workspace-layering.sh
+run_gate fuzz-lock \
+  cargo metadata --locked --manifest-path fuzz/Cargo.toml --format-version 1 --no-deps
 run_gate signing-remote cargo test -p chio-signing-remote --all-targets
 run_gate isolated-worker cargo test -p chio-finding-worker --all-targets
 run_gate worker-daemon cargo test -p chio-finding-worker-daemon --all-targets

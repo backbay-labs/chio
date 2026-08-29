@@ -14,6 +14,7 @@ set -euo pipefail
 # the workspace's target/ tree, namespaced by host triple; OSS-Fuzz builders
 # run on x86_64-unknown-linux-gnu.
 cd "$SRC/chio/fuzz"
+cargo metadata --locked --format-version 1 --no-deps >/dev/null
 
 TARGETS=(
     attest_verify
