@@ -260,7 +260,12 @@ impl FirecrackerExecutor {
         })
         .await
         .map_err(|_| WorkerExecutionError::Staging)??;
-        let jail = JailGuard::new(staged.job_dir.clone(), staged.cgroup_dir.clone());
+        let jail = JailGuard::new(
+            staged.job_dir.clone(),
+            staged.job_parent.clone(),
+            staged.cgroup_dir.clone(),
+            staged.cgroup_parent.clone(),
+        );
         let mut child = staged.plan.spawn()?;
         let remaining = self
             .inner
@@ -444,7 +449,9 @@ impl JailerCommandPlan {
 
 struct StagedJail {
     job_dir: PathBuf,
+    job_parent: PathBuf,
     cgroup_dir: PathBuf,
+    cgroup_parent: PathBuf,
     vsock_path: PathBuf,
     plan: JailerCommandPlan,
 }
@@ -472,7 +479,7 @@ fn stage_jail(
     fs::create_dir(&job_dir).map_err(|_| WorkerExecutionError::Staging)?;
     fs::set_permissions(&job_dir, fs::Permissions::from_mode(0o700))
         .map_err(|_| WorkerExecutionError::Staging)?;
-    let mut staging = StagingGuard::new(job_dir.clone());
+    let mut staging = StagingGuard::new(job_dir.clone(), executable_dir.clone());
     let root = job_dir.join("root");
     fs::create_dir(&root).map_err(|_| WorkerExecutionError::Staging)?;
 
@@ -499,11 +506,12 @@ fn stage_jail(
     let vsock_path = root.join("worker.vsock");
     let args = jailer_args(config, jail_id, identity)?;
     staging.disarm();
+    let cgroup_parent = Path::new("/sys/fs/cgroup").join(executable_name);
     Ok(StagedJail {
         job_dir,
-        cgroup_dir: Path::new("/sys/fs/cgroup")
-            .join(executable_name)
-            .join(jail_id),
+        job_parent: executable_dir,
+        cgroup_dir: cgroup_parent.join(jail_id),
+        cgroup_parent,
         vsock_path,
         plan: JailerCommandPlan {
             program: config.jailer_binary.clone(),
@@ -1220,13 +1228,15 @@ fn unix_time() -> Result<u64, WorkerExecutionError> {
 
 struct StagingGuard {
     job_dir: PathBuf,
+    job_parent: PathBuf,
     armed: bool,
 }
 
 impl StagingGuard {
-    fn new(job_dir: PathBuf) -> Self {
+    fn new(job_dir: PathBuf, job_parent: PathBuf) -> Self {
         Self {
             job_dir,
+            job_parent,
             armed: true,
         }
     }
@@ -1239,7 +1249,7 @@ impl StagingGuard {
 impl Drop for StagingGuard {
     fn drop(&mut self) {
         if self.armed {
-            let _ = cleanup_jail(&self.job_dir);
+            let _ = cleanup_jail(&self.job_dir, &self.job_parent);
         }
     }
 }
@@ -1264,22 +1274,31 @@ fn valid_digest(value: &str) -> bool {
 
 struct JailGuard {
     job_dir: PathBuf,
+    job_parent: PathBuf,
     cgroup_dir: PathBuf,
+    cgroup_parent: PathBuf,
     armed: bool,
 }
 
 impl JailGuard {
-    fn new(job_dir: PathBuf, cgroup_dir: PathBuf) -> Self {
+    fn new(
+        job_dir: PathBuf,
+        job_parent: PathBuf,
+        cgroup_dir: PathBuf,
+        cgroup_parent: PathBuf,
+    ) -> Self {
         Self {
             job_dir,
+            job_parent,
             cgroup_dir,
+            cgroup_parent,
             armed: true,
         }
     }
 
     fn cleanup(mut self) -> Result<(), WorkerExecutionError> {
-        cleanup_cgroup(&self.cgroup_dir)?;
-        cleanup_jail(&self.job_dir)?;
+        cleanup_cgroup(&self.cgroup_dir, &self.cgroup_parent)?;
+        cleanup_jail(&self.job_dir, &self.job_parent)?;
         self.armed = false;
         Ok(())
     }
@@ -1288,14 +1307,14 @@ impl JailGuard {
 impl Drop for JailGuard {
     fn drop(&mut self) {
         if self.armed {
-            let _ = cleanup_cgroup(&self.cgroup_dir);
-            let _ = cleanup_jail(&self.job_dir);
+            let _ = cleanup_cgroup(&self.cgroup_dir, &self.cgroup_parent);
+            let _ = cleanup_jail(&self.job_dir, &self.job_parent);
         }
     }
 }
 
-fn cleanup_cgroup(path: &Path) -> Result<(), WorkerExecutionError> {
-    if !is_generated_job_path(path) {
+fn cleanup_cgroup(path: &Path, expected_parent: &Path) -> Result<(), WorkerExecutionError> {
+    if !is_generated_job_path(path, expected_parent) {
         return Err(WorkerExecutionError::Staging);
     }
     match fs::remove_dir(path) {
@@ -1305,8 +1324,8 @@ fn cleanup_cgroup(path: &Path) -> Result<(), WorkerExecutionError> {
     }
 }
 
-fn cleanup_jail(path: &Path) -> Result<(), WorkerExecutionError> {
-    if !is_generated_job_path(path) {
+fn cleanup_jail(path: &Path, expected_parent: &Path) -> Result<(), WorkerExecutionError> {
+    if !is_generated_job_path(path, expected_parent) {
         return Err(WorkerExecutionError::Staging);
     }
     match fs::remove_dir_all(path) {
@@ -1316,13 +1335,16 @@ fn cleanup_jail(path: &Path) -> Result<(), WorkerExecutionError> {
     }
 }
 
-fn is_generated_job_path(path: &Path) -> bool {
-    path.file_name().is_some_and(|name| {
-        let name = name.to_string_lossy();
-        name.starts_with("chio-")
-            && name.len() == 37
-            && name[5..].bytes().all(|byte| byte.is_ascii_hexdigit())
-    })
+fn is_generated_job_path(path: &Path, expected_parent: &Path) -> bool {
+    path.is_absolute()
+        && expected_parent.is_absolute()
+        && path.parent() == Some(expected_parent)
+        && path.file_name().is_some_and(|name| {
+            let name = name.to_string_lossy();
+            name.starts_with("chio-")
+                && name.len() == 37
+                && name[5..].bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
 }
 
 #[cfg(test)]
@@ -1414,18 +1436,25 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_path_guard_accepts_only_generated_leaf_names() {
-        assert!(is_generated_job_path(Path::new(
-            "/srv/jailer/firecracker/chio-00000000000000000000000000000000"
-        )));
+    fn cleanup_path_guard_binds_generated_names_to_exact_parent() {
+        let expected_parent = Path::new("/srv/jailer/firecracker");
+        assert!(is_generated_job_path(
+            Path::new("/srv/jailer/firecracker/chio-00000000000000000000000000000000"),
+            expected_parent,
+        ));
         for path in [
             "/srv/jailer/firecracker",
             "/srv/jailer/firecracker/chio-../escape",
             "/srv/jailer/firecracker/chio-0000000000000000000000000000000g",
             "/srv/jailer/firecracker/not-chio-00000000000000000000000000000000",
+            "/srv/other/chio-00000000000000000000000000000000",
         ] {
-            assert!(!is_generated_job_path(Path::new(path)));
+            assert!(!is_generated_job_path(Path::new(path), expected_parent));
         }
+        assert!(!is_generated_job_path(
+            Path::new("chio-00000000000000000000000000000000"),
+            Path::new("."),
+        ));
     }
 
     #[test]

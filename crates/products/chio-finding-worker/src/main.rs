@@ -13,7 +13,7 @@ use chio_finding_hosted_edge::{
 use chio_finding_market_store_postgres::{
     HostedPostgresConfig, HostedTenantId, PostgresFindingMarketStore,
 };
-use chio_finding_worker::{HostedFindingWorker, HostedWorkerRun};
+use chio_finding_worker::{HostedFindingWorker, HostedWorkerRun, HostedWorkerServiceError};
 use clap::Parser;
 use serde::Serialize;
 
@@ -188,7 +188,7 @@ async fn run(args: Args) -> Result<(), DaemonError> {
                 write_report(&report)?;
                 next_tenant = (next_tenant + 1) % tenants.len();
             }
-            Err(DaemonError::Execution | DaemonError::Database) => {
+            Err(DaemonError::Database) => {
                 database_breaker
                     .record_failure(HostedDependency::Database, now)
                     .map_err(|_| DaemonError::Execution)?;
@@ -386,10 +386,19 @@ async fn run_tick(
         let run = worker
             .run_once_with_limit(&tenant.tenant_id, tenant.concurrency)
             .await
-            .map_err(|_| DaemonError::Execution)?;
+            .map_err(map_worker_error)?;
         add_run(&mut report, run)?;
     }
     Ok(report)
+}
+
+fn map_worker_error(error: HostedWorkerServiceError) -> DaemonError {
+    match error {
+        HostedWorkerServiceError::Store => DaemonError::Database,
+        HostedWorkerServiceError::Configuration | HostedWorkerServiceError::Clock => {
+            DaemonError::Execution
+        }
+    }
 }
 
 fn dependency_failure_report(
@@ -467,6 +476,20 @@ mod tests {
             ..valid
         };
         assert!(validate_arguments(&invalid_id).is_err());
+    }
+
+    #[test]
+    fn only_store_failures_trip_the_database_boundary() {
+        assert!(matches!(
+            map_worker_error(HostedWorkerServiceError::Store),
+            DaemonError::Database
+        ));
+        for error in [
+            HostedWorkerServiceError::Configuration,
+            HostedWorkerServiceError::Clock,
+        ] {
+            assert!(matches!(map_worker_error(error), DaemonError::Execution));
+        }
     }
 
     #[test]
