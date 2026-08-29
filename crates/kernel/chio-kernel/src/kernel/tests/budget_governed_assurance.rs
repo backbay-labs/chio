@@ -1238,17 +1238,7 @@ fn governed_x402_authorization_failure_denies_before_tool_execution() {
 
 #[test]
 fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
-    let (url, request_rx, handle) = spawn_payment_test_server(
-        200,
-        serde_json::json!({
-            "authorizationId": "acp_hold_governed",
-            "settled": false,
-            "metadata": {
-                "provider": "stripe",
-                "seller": "merchant.example"
-            }
-        }),
-    );
+    let (url, request_rx, handle) = spawn_bound_acp_test_server();
 
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut kernel = make_kernel(make_monetary_config());
@@ -1323,14 +1313,17 @@ fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
         "tool should run after ACP authorization succeeds"
     );
 
-    let request = request_rx.recv().expect("request should be captured");
-    assert!(request.starts_with("POST /commerce/authorize HTTP/1.1"));
-    assert!(request.contains("Authorization: Bearer acp-token"));
-    assert!(request.contains("\"commerce\":{"));
-    assert!(request.contains("\"payee\":\"merchant.example\""));
-    assert!(request.contains("\"seller\":\"merchant.example\""));
-    assert!(request.contains("\"sharedPaymentTokenId\":\"spt_live_governed\""));
-    assert!(request.contains("\"settlementDestinationRef\":\"acct:merchant-primary\""));
+    let authorize_request = request_rx.recv().expect("request should be captured");
+    assert!(authorize_request.starts_with("POST /commerce/authorize HTTP/1.1"));
+    assert!(authorize_request.contains("Authorization: Bearer acp-token"));
+    assert!(authorize_request.contains("chio.payment.acp-authorize-request.v1"));
+    assert!(authorize_request.contains("\"commerce\":{"));
+    assert!(authorize_request.contains("\"payee\":\"merchant.example\""));
+    assert!(authorize_request.contains("\"seller\":\"merchant.example\""));
+    assert!(authorize_request.contains("\"sharedPaymentTokenId\":\"spt_live_governed\""));
+    assert!(
+        authorize_request.contains("\"settlementDestinationRef\":\"acct:merchant-primary\"")
+    );
     let expected_payee_binding_digest =
         chio_credit::obligation::derive_obligation_payee_binding_digest(
             "merchant.example",
@@ -1340,12 +1333,24 @@ fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
     let expected_approval_digest = approval_token
         .artifact_digest()
         .expect("approval token should hash");
-    assert!(request.contains(&format!(
+    assert!(authorize_request.contains(&format!(
         "\"payeeBindingDigest\":\"{expected_payee_binding_digest}\""
     )));
-    assert!(request.contains(&format!(
+    assert!(authorize_request.contains(&format!(
         "\"preActionAuthorityDigest\":\"{expected_approval_digest}\""
     )));
+
+    let capture_request = request_rx
+        .recv()
+        .expect("capture request should be captured");
+    assert!(capture_request.starts_with("POST /capture HTTP/1.1"));
+    assert!(capture_request.contains("Authorization: Bearer acp-token"));
+    assert!(capture_request.contains("chio.payment.acp-terminal-operation-request.v1"));
+    assert!(capture_request.contains("\"operation\":\"capture\""));
+    assert!(capture_request.contains("\"authorizationId\":\"acp_hold_governed\""));
+    assert!(capture_request.contains("\"amountUnits\":100"));
+    assert!(capture_request.contains("\"currency\":\"USD\""));
+    assert!(capture_request.contains("\"reference\":\"req-governed-acp\""));
 
     let metadata = response
         .receipt
@@ -1355,7 +1360,7 @@ fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
     let financial = metadata
         .get("financial")
         .expect("allow receipt should carry financial metadata");
-    assert_eq!(financial["payment_reference"], "acp_hold_governed");
+    assert_eq!(financial["payment_reference"], "acp_capture_governed");
     assert_eq!(financial["settlement_status"], "settled");
     assert_eq!(
         financial["cost_breakdown"]["payment"]["authorization_id"],
