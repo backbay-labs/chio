@@ -80,11 +80,18 @@ LANGUAGE sql
 SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $function$
+    WITH enabled_tenant AS MATERIALIZED (
+        SELECT 1
+        FROM public.chio_finding_market_tenants
+        WHERE tenant_id = requested_tenant_id AND enabled
+        FOR SHARE
+    )
     UPDATE public.chio_finding_market_jobs
     SET lease_expires_at = floor(extract(epoch from clock_timestamp()))::bigint
             + requested_lease_duration_secs,
         updated_at = floor(extract(epoch from clock_timestamp()))::bigint
     WHERE requested_tenant_id = NULLIF(current_setting('chio.tenant_id', TRUE), '')
+      AND EXISTS (SELECT 1 FROM enabled_tenant)
       AND requested_lease_duration_secs BETWEEN 1 AND 3600
       AND tenant_id = requested_tenant_id AND job_id = requested_job_id
       AND state = 'leased' AND lease_owner = requested_worker_id
@@ -115,6 +122,13 @@ BEGIN
         OR octet_length(requested_result_json) NOT BETWEEN 1 AND 4194304
         OR requested_result_sha256 <> encode(sha256(requested_result_json), 'hex')
     THEN
+        RETURN 4;
+    END IF;
+    PERFORM 1
+    FROM public.chio_finding_market_tenants
+    WHERE tenant_id = requested_tenant_id AND enabled
+    FOR SHARE;
+    IF NOT FOUND THEN
         RETURN 4;
     END IF;
     SELECT * INTO retained
@@ -167,7 +181,12 @@ LANGUAGE sql
 SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $function$
-    WITH changed AS (
+    WITH enabled_tenant AS MATERIALIZED (
+        SELECT 1
+        FROM public.chio_finding_market_tenants
+        WHERE tenant_id = requested_tenant_id AND enabled
+        FOR SHARE
+    ), changed AS (
         UPDATE public.chio_finding_market_jobs
         SET state = 'failed', lease_owner = NULL, lease_expires_at = NULL,
             last_error_code = requested_error_code,
@@ -175,6 +194,7 @@ AS $function$
                 + requested_retry_delay_secs,
             updated_at = floor(extract(epoch from clock_timestamp()))::bigint
         WHERE requested_tenant_id = NULLIF(current_setting('chio.tenant_id', TRUE), '')
+          AND EXISTS (SELECT 1 FROM enabled_tenant)
           AND requested_retry_delay_secs BETWEEN 1 AND 3600
           AND requested_error_code ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
           AND tenant_id = requested_tenant_id AND job_id = requested_job_id
@@ -195,7 +215,12 @@ LANGUAGE sql
 SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $function$
-    WITH changed AS (
+    WITH enabled_tenant AS MATERIALIZED (
+        SELECT 1
+        FROM public.chio_finding_market_tenants
+        WHERE tenant_id = requested_tenant_id AND enabled
+        FOR SHARE
+    ), changed AS (
         UPDATE public.chio_finding_market_jobs
         SET state = 'pending', lease_owner = NULL, lease_expires_at = NULL,
             attempt_count = attempt_count - 1,
@@ -203,6 +228,7 @@ AS $function$
             last_error_code = NULL,
             updated_at = floor(extract(epoch from clock_timestamp()))::bigint
         WHERE requested_tenant_id = NULLIF(current_setting('chio.tenant_id', TRUE), '')
+          AND EXISTS (SELECT 1 FROM enabled_tenant)
           AND tenant_id = requested_tenant_id AND job_id = requested_job_id
           AND state = 'leased' AND lease_owner = requested_worker_id
           AND lease_fence = requested_lease_fence AND attempt_count > 0
@@ -221,12 +247,18 @@ LANGUAGE sql
 SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $function$
-    WITH changed AS (
+    WITH enabled_tenant AS MATERIALIZED (
+        SELECT 1
+        FROM public.chio_finding_market_tenants
+        WHERE tenant_id = requested_tenant_id AND enabled
+        FOR SHARE
+    ), changed AS (
         UPDATE public.chio_finding_market_jobs
         SET state = 'exhausted', lease_owner = NULL, lease_expires_at = NULL,
             last_error_code = requested_error_code,
             updated_at = floor(extract(epoch from clock_timestamp()))::bigint
         WHERE requested_tenant_id = NULLIF(current_setting('chio.tenant_id', TRUE), '')
+          AND EXISTS (SELECT 1 FROM enabled_tenant)
           AND requested_error_code ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
           AND tenant_id = requested_tenant_id AND job_id = requested_job_id
           AND state = 'leased' AND lease_owner = requested_worker_id

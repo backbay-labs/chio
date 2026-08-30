@@ -111,8 +111,11 @@ impl HostedTrustedProxy {
         let value = &headers.forwarded[0];
         if value.is_empty()
             || value.len() > MAX_FORWARDED_BYTES
+            || !value.is_ascii()
             || value.contains(',')
-            || value.chars().any(char::is_control)
+            || value
+                .chars()
+                .any(|character| character.is_control() && character != '\t')
         {
             return Err(HostedEdgeError::InvalidRequest);
         }
@@ -122,19 +125,11 @@ impl HostedTrustedProxy {
         let mut seen_for = false;
         let mut seen_proto = false;
         let mut seen_host = false;
-        for component in value.split(';') {
-            let (name, raw_value) = component
-                .trim()
-                .split_once('=')
-                .ok_or(HostedEdgeError::InvalidRequest)?;
-            let raw_value = raw_value.trim();
-            if raw_value.contains('"') {
-                return Err(HostedEdgeError::InvalidRequest);
-            }
-            match name.trim().to_ascii_lowercase().as_str() {
+        for (name, raw_value) in parse_forwarded_parameters(value)? {
+            match name.to_ascii_lowercase().as_str() {
                 "for" if !seen_for => {
                     seen_for = true;
-                    forwarded_for = parse_forwarded_ip(raw_value);
+                    forwarded_for = parse_forwarded_ip(&raw_value);
                 }
                 "proto" if !seen_proto => {
                     seen_proto = true;
@@ -161,6 +156,120 @@ impl HostedTrustedProxy {
             external_host: host,
         })
     }
+}
+
+fn parse_forwarded_parameters(value: &str) -> Result<Vec<(&str, String)>, HostedEdgeError> {
+    let bytes = value.as_bytes();
+    let mut cursor = 0;
+    let mut parameters = Vec::with_capacity(3);
+    while cursor < bytes.len() {
+        skip_optional_whitespace(bytes, &mut cursor);
+        if cursor == bytes.len() {
+            return Err(HostedEdgeError::InvalidRequest);
+        }
+        let name_start = cursor;
+        while bytes
+            .get(cursor)
+            .is_some_and(|byte| is_forwarded_token_byte(*byte))
+        {
+            cursor += 1;
+        }
+        if cursor == name_start {
+            return Err(HostedEdgeError::InvalidRequest);
+        }
+        let name = &value[name_start..cursor];
+        skip_optional_whitespace(bytes, &mut cursor);
+        if bytes.get(cursor) != Some(&b'=') {
+            return Err(HostedEdgeError::InvalidRequest);
+        }
+        cursor += 1;
+        skip_optional_whitespace(bytes, &mut cursor);
+        let parsed_value = parse_forwarded_value(value, &mut cursor)?;
+        skip_optional_whitespace(bytes, &mut cursor);
+        parameters.push((name, parsed_value));
+        if parameters.len() > 3 {
+            return Err(HostedEdgeError::InvalidRequest);
+        }
+        if cursor == bytes.len() {
+            break;
+        }
+        if bytes.get(cursor) != Some(&b';') {
+            return Err(HostedEdgeError::InvalidRequest);
+        }
+        cursor += 1;
+    }
+    Ok(parameters)
+}
+
+fn parse_forwarded_value(value: &str, cursor: &mut usize) -> Result<String, HostedEdgeError> {
+    let bytes = value.as_bytes();
+    if bytes.get(*cursor) != Some(&b'"') {
+        let start = *cursor;
+        while bytes.get(*cursor).is_some_and(|byte| {
+            byte.is_ascii_graphic() && !matches!(*byte, b'"' | b'\\' | b';' | b',')
+        }) {
+            *cursor += 1;
+        }
+        if *cursor == start {
+            return Err(HostedEdgeError::InvalidRequest);
+        }
+        return Ok(value[start..*cursor].to_owned());
+    }
+
+    *cursor += 1;
+    let mut decoded = Vec::new();
+    loop {
+        let byte = *bytes.get(*cursor).ok_or(HostedEdgeError::InvalidRequest)?;
+        *cursor += 1;
+        match byte {
+            b'"' => break,
+            b'\\' => {
+                let escaped = *bytes.get(*cursor).ok_or(HostedEdgeError::InvalidRequest)?;
+                if escaped != b'\t' && !(b' '..=b'~').contains(&escaped) {
+                    return Err(HostedEdgeError::InvalidRequest);
+                }
+                decoded.push(escaped);
+                *cursor += 1;
+            }
+            b'\t' | b' ' | b'!' => decoded.push(byte),
+            b'#'..=b'[' | b']'..=b'~' => decoded.push(byte),
+            _ => return Err(HostedEdgeError::InvalidRequest),
+        }
+    }
+    if decoded.is_empty() {
+        return Err(HostedEdgeError::InvalidRequest);
+    }
+    String::from_utf8(decoded).map_err(|_| HostedEdgeError::InvalidRequest)
+}
+
+fn skip_optional_whitespace(bytes: &[u8], cursor: &mut usize) {
+    while bytes
+        .get(*cursor)
+        .is_some_and(|byte| matches!(*byte, b' ' | b'\t'))
+    {
+        *cursor += 1;
+    }
+}
+
+fn is_forwarded_token_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric()
+        || matches!(
+            byte,
+            b'!' | b'#'
+                | b'$'
+                | b'%'
+                | b'&'
+                | b'\''
+                | b'*'
+                | b'+'
+                | b'-'
+                | b'.'
+                | b'^'
+                | b'_'
+                | b'`'
+                | b'|'
+                | b'~'
+        )
 }
 
 fn parse_forwarded_ip(value: &str) -> Option<IpAddr> {
@@ -207,14 +316,71 @@ mod tests {
     use super::*;
 
     fn proxy() -> Result<HostedTrustedProxy, HostedEdgeError> {
+        proxy_for_endpoint("https://market.example")
+    }
+
+    fn proxy_for_endpoint(public_endpoint: &str) -> Result<HostedTrustedProxy, HostedEdgeError> {
         HostedTrustedProxy::new(HostedTrustedProxyConfig {
             listen: "127.0.0.1:9443"
                 .parse()
                 .map_err(|_| HostedEdgeError::Configuration)?,
             trusted_peer_ips: [IpAddr::from([127, 0, 0, 1])].into_iter().collect(),
-            public_endpoint: "https://market.example".to_owned(),
+            public_endpoint: public_endpoint.to_owned(),
             authentication_token: vec![b'p'; 32],
         })
+    }
+
+    #[test]
+    fn trusted_proxy_accepts_quoted_ipv6_and_nondefault_port() {
+        let proxy = proxy_for_endpoint("https://market.example:8443");
+        assert!(proxy.is_ok());
+        if let Ok(proxy) = proxy {
+            let context = proxy.reconstruct(
+                IpAddr::from([127, 0, 0, 1]),
+                &HostedForwardingHeaders {
+                    forwarded: vec![
+                        r#"for="[2001:db8::1]";proto="ht\tps";host="market.example:8443""#
+                            .to_owned(),
+                    ],
+                    ..HostedForwardingHeaders::default()
+                },
+                Some("pppppppppppppppppppppppppppppppp"),
+            );
+            assert_eq!(
+                context,
+                Ok(HostedRequestContext {
+                    client_ip: IpAddr::V6(std::net::Ipv6Addr::new(
+                        0x2001, 0x0db8, 0, 0, 0, 0, 0, 1,
+                    )),
+                    external_scheme: "https".to_owned(),
+                    external_host: "market.example:8443".to_owned(),
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_quoted_forwarded_values_fail_closed() {
+        let proxy = proxy();
+        assert!(proxy.is_ok());
+        if let Ok(proxy) = proxy {
+            for forwarded in [
+                r#"for="[2001:db8::1];proto=https;host=market.example"#,
+                r#"for="[2001:db8::1]"junk;proto=https;host=market.example"#,
+                r#"for="[2001:db8::1]\"#,
+            ] {
+                assert!(proxy
+                    .reconstruct(
+                        IpAddr::from([127, 0, 0, 1]),
+                        &HostedForwardingHeaders {
+                            forwarded: vec![forwarded.to_owned()],
+                            ..HostedForwardingHeaders::default()
+                        },
+                        Some("pppppppppppppppppppppppppppppppp"),
+                    )
+                    .is_err());
+            }
+        }
     }
 
     #[test]

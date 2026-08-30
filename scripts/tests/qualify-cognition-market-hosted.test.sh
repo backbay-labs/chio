@@ -49,22 +49,24 @@ require_text "${kvm}" 'os.O_RDONLY | os.O_NOFOLLOW'
 require_text "${kvm}" 'runtime_database_url_env="${worker_secret_envs[0]}"'
 require_text "${kvm}" 'worker_database_url_env="${worker_secret_envs[1]}"'
 require_text "${kvm}" 'worker_signer_token_env="${worker_secret_envs[2]}"'
+require_text "${kvm}" 'canary_environment=('
+require_text "${kvm}" '"CHIO_FINDING_CANDIDATE_SHA=${candidate_sha}"'
+require_text "${kvm}" '"${runtime_database_url_env}=${runtime_database_url}"'
 require_text "${kvm}" 'worker_environment=('
 require_text "${kvm}" '"${worker_database_url_env}=${worker_database_url}"'
 require_text "${kvm}" '"${worker_signer_token_env}=${worker_signer_token}"'
-if [[ "$(grep -Fc 'env --unset="${worker_database_url_env}"' "${kvm}")" -ne 2 ]]; then
-  echo "KVM canary invocations must not inherit the worker database secret" >&2
+if [[ "$(grep -Fc 'env -i "${canary_environment[@]}"' "${kvm}")" -ne 2 ]]; then
+  echo "KVM canary invocations must use an allowlisted environment" >&2
   exit 1
 fi
 if [[ "$(grep -Fc 'env -i "${worker_environment[@]}"' "${kvm}")" -ne 1 ]]; then
   echo "KVM worker invocation must use an allowlisted environment" >&2
   exit 1
 fi
-if [[ "$(grep -Fc 'unshare --mount --pid --fork --mount-proc --kill-child=KILL --' "${kvm}")" -ne 2 ]]; then
+if [[ "$(grep -Fc '"${unshare_bin}" --mount --pid --fork --mount-proc --kill-child=KILL --' "${kvm}")" -ne 3 ]]; then
   echo "KVM role subprocesses must run in isolated PID and proc namespaces" >&2
   exit 1
 fi
-require_text "${kvm}" '"${unshare_bin}" --mount --pid --fork --mount-proc --kill-child=KILL --'
 require_text "${kvm}" 'worker_result.get("completedJobIds") != [expected_job_id]'
 require_text "${kvm}" 'worker_result.get("jobs")'
 require_text "${kvm}" 'worker_job.get("resultSha256") != terminal_result.get("resultSha256")'

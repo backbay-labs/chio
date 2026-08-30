@@ -20,6 +20,123 @@ pub(super) async fn assert_worker_job_boundary(
     Ok(())
 }
 
+pub(super) async fn assert_disabled_tenant_blocks_worker_transitions(
+    store: &PostgresFindingMarketStore,
+    worker_pool: &sqlx::PgPool,
+    nonce: u128,
+) -> Result<(), Box<dyn Error>> {
+    let tenant = HostedTenantId::new(format!("integration-disabled-worker-{nonce}"))?;
+    store
+        .register_tenant(
+            &tenant,
+            &HostedTenantLimits::new(1, 1, 1_000, "disabled-worker-revision-1")?,
+            1_700_000_000,
+        )
+        .await?;
+    store
+        .put_job(
+            &tenant,
+            "disabled-worker-job",
+            "finding.verify",
+            &"a".repeat(64),
+            br#"{"findingId":"disabled-worker"}"#,
+            1_700_000_000,
+            1_700_000_000,
+        )
+        .await?;
+    let claimed = store
+        .claim_due_jobs(&tenant, "disabled-worker", 60, 1)
+        .await?;
+    assert_eq!(claimed.len(), 1);
+    let lease_fence = i64::try_from(claimed[0].lease_fence)?;
+    store.set_tenant_enabled(&tenant, false).await?;
+
+    let mut transaction = worker_pool.begin().await?;
+    sqlx::query("SELECT set_config('chio.tenant_id', $1, TRUE)")
+        .bind(tenant.as_str())
+        .execute(&mut *transaction)
+        .await?;
+    let claimed_after_disable: Vec<(String,)> =
+        sqlx::query_as("SELECT job_id FROM chio_finding_market_claim_jobs($1, $2, $3, $4)")
+            .bind(tenant.as_str())
+            .bind("disabled-worker")
+            .bind(60_i64)
+            .bind(1_i64)
+            .fetch_all(&mut *transaction)
+            .await?;
+    assert!(claimed_after_disable.is_empty());
+    let renewed: Option<i64> =
+        sqlx::query_scalar("SELECT chio_finding_market_renew_job_lease($1, $2, $3, $4, $5)")
+            .bind(tenant.as_str())
+            .bind("disabled-worker-job")
+            .bind("disabled-worker")
+            .bind(lease_fence)
+            .bind(60_i64)
+            .fetch_one(&mut *transaction)
+            .await?;
+    assert!(renewed.is_none());
+    let result = br#"{"status":"disabled"}"#;
+    let completed: i16 =
+        sqlx::query_scalar("SELECT chio_finding_market_complete_job($1, $2, $3, $4, $5, $6)")
+            .bind(tenant.as_str())
+            .bind("disabled-worker-job")
+            .bind("disabled-worker")
+            .bind(lease_fence)
+            .bind(sha256_hex(result))
+            .bind(result.as_slice())
+            .fetch_one(&mut *transaction)
+            .await?;
+    assert_eq!(completed, 4);
+    let failed: bool =
+        sqlx::query_scalar("SELECT chio_finding_market_fail_job($1, $2, $3, $4, $5, $6)")
+            .bind(tenant.as_str())
+            .bind("disabled-worker-job")
+            .bind("disabled-worker")
+            .bind(lease_fence)
+            .bind("disabled")
+            .bind(1_i64)
+            .fetch_one(&mut *transaction)
+            .await?;
+    assert!(!failed);
+    let relinquished: bool =
+        sqlx::query_scalar("SELECT chio_finding_market_relinquish_job_lease($1, $2, $3, $4)")
+            .bind(tenant.as_str())
+            .bind("disabled-worker-job")
+            .bind("disabled-worker")
+            .bind(lease_fence)
+            .fetch_one(&mut *transaction)
+            .await?;
+    assert!(!relinquished);
+    let exhausted: bool =
+        sqlx::query_scalar("SELECT chio_finding_market_exhaust_job($1, $2, $3, $4, $5)")
+            .bind(tenant.as_str())
+            .bind("disabled-worker-job")
+            .bind("disabled-worker")
+            .bind(lease_fence)
+            .bind("disabled")
+            .fetch_one(&mut *transaction)
+            .await?;
+    assert!(!exhausted);
+    let retained: (String, Option<String>, i64, i64) = sqlx::query_as(
+        "SELECT state, lease_owner, lease_fence, attempt_count FROM chio_finding_market_jobs WHERE tenant_id = $1 AND job_id = $2",
+    )
+    .bind(tenant.as_str())
+    .bind("disabled-worker-job")
+    .fetch_one(&mut *transaction)
+    .await?;
+    assert_eq!(
+        retained,
+        (
+            "leased".to_owned(),
+            Some("disabled-worker".to_owned()),
+            lease_fence,
+            1
+        )
+    );
+    transaction.rollback().await?;
+    Ok(())
+}
+
 pub(super) async fn assert_tenant_disablement_serializes(
     store: &PostgresFindingMarketStore,
     runtime_pool: &sqlx::PgPool,

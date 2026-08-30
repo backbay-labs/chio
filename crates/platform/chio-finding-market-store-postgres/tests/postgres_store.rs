@@ -32,7 +32,8 @@ use sqlx::Row as _;
 mod support;
 
 use support::{
-    append_replication_check, apply_authority_transition, assert_forged_job_digest_rejected,
+    append_replication_check, apply_authority_transition,
+    assert_disabled_tenant_blocks_worker_transitions, assert_forged_job_digest_rejected,
     assert_multi_replica_leases_and_shutdown_refunds, assert_tenant_disablement_serializes,
     assert_worker_job_boundary, migrate_legacy_fixture, signed_domain_payload,
     signed_principal_replication_event, ReplicationCheckSpec,
@@ -454,6 +455,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         .await?;
     assert_worker_job_boundary(&worker_pool, &tenant_a).await?;
     assert_tenant_disablement_serializes(&store, &runtime_pool, &tenant_a).await?;
+    assert_disabled_tenant_blocks_worker_transitions(&store, &worker_pool, nonce).await?;
     store
         .verify_tenant_limits(&tenant_a, &tenant_limits)
         .await?;

@@ -9,7 +9,7 @@ use rustls::pki_types::{pem::PemObject as _, CertificateDer, PrivateKeyDer, Serv
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig};
 use sha2::{Digest as _, Sha256};
-use url::Url;
+use url::{Host, Url};
 use x509_parser::prelude::{FromDer as _, X509Certificate};
 use zeroize::Zeroizing;
 
@@ -282,13 +282,13 @@ fn public_endpoint_server_name(value: &str) -> Result<ServerName<'static>, Hoste
     {
         return Err(HostedEdgeError::Configuration);
     }
-    ServerName::try_from(
-        endpoint
-            .host_str()
-            .ok_or(HostedEdgeError::Configuration)?
-            .to_owned(),
-    )
-    .map_err(|_| HostedEdgeError::Configuration)
+    match endpoint.host().ok_or(HostedEdgeError::Configuration)? {
+        Host::Domain(domain) => {
+            ServerName::try_from(domain.to_owned()).map_err(|_| HostedEdgeError::Configuration)
+        }
+        Host::Ipv4(address) => Ok(ServerName::from(address)),
+        Host::Ipv6(address) => Ok(ServerName::from(address)),
+    }
 }
 
 fn read_regular(path: &Path, private: bool) -> Result<Vec<u8>, HostedEdgeError> {
@@ -371,10 +371,19 @@ mod tests {
 
     #[cfg(unix)]
     fn write_material(directory: &Path) -> Result<HostedTlsConfig, Box<dyn std::error::Error>> {
+        write_material_for_endpoint(directory, "market.example", "https://market.example")
+    }
+
+    #[cfg(unix)]
+    fn write_material_for_endpoint(
+        directory: &Path,
+        subject_alt_name: &str,
+        public_endpoint: &str,
+    ) -> Result<HostedTlsConfig, Box<dyn std::error::Error>> {
         use std::os::unix::fs::PermissionsExt as _;
 
         let CertifiedKey { cert, key_pair } =
-            generate_simple_self_signed(["market.example".to_owned()])?;
+            generate_simple_self_signed([subject_alt_name.to_owned()])?;
         let certificate_path = directory.join("certificate.pem");
         let private_key_path = directory.join("private-key.pem");
         std::fs::write(&certificate_path, cert.pem())?;
@@ -382,7 +391,7 @@ mod tests {
         std::fs::set_permissions(&certificate_path, std::fs::Permissions::from_mode(0o644))?;
         std::fs::set_permissions(&private_key_path, std::fs::Permissions::from_mode(0o600))?;
         Ok(HostedTlsConfig {
-            public_endpoint: "https://market.example".to_owned(),
+            public_endpoint: public_endpoint.to_owned(),
             certificate_chain_path: certificate_path,
             private_key_path,
             client_ca_path: None,
@@ -474,6 +483,19 @@ mod tests {
         let mut config = write_material(directory.path())?;
         config.public_endpoint = "https://other.example".to_owned();
         assert!(HostedTlsState::load(config, now()?).is_err());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_ipv6_endpoint_uses_an_ip_server_name() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let config = write_material_for_endpoint(
+            directory.path(),
+            "2606:4700:4700::1111",
+            "https://[2606:4700:4700::1111]",
+        )?;
+        assert!(HostedTlsState::load(config, now()?).is_ok());
         Ok(())
     }
 

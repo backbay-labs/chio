@@ -195,20 +195,26 @@ if [[ "${worker_signer_token_env}" == "${runtime_database_url_env}" ||
 fi
 worker_database_url="${!worker_database_url_env:-}"
 worker_signer_token="${!worker_signer_token_env:-}"
-if [[ -z "${worker_database_url}" || -z "${worker_signer_token}" ]]; then
-  echo "cognition-market KVM qualification worker credentials are unavailable" >&2
+runtime_database_url="${!runtime_database_url_env:-}"
+if [[ -z "${runtime_database_url}" ||
+      -z "${worker_database_url}" ||
+      -z "${worker_signer_token}" ]]; then
+  echo "cognition-market KVM qualification role credentials are unavailable" >&2
   exit 1
 fi
+canary_environment=(
+  "CHIO_FINDING_CANDIDATE_SHA=${candidate_sha}"
+  "${runtime_database_url_env}=${runtime_database_url}"
+)
 worker_environment=(
   "${worker_database_url_env}=${worker_database_url}"
   "${worker_signer_token_env}=${worker_signer_token}"
 )
 
-# Each role sees a private PID and proc namespace, so a root subprocess cannot
-# inspect the launcher's environment to recover the opposite database secret.
-CHIO_FINDING_CANDIDATE_SHA="${candidate_sha}" \
-  env --unset="${worker_database_url_env}" \
-  unshare --mount --pid --fork --mount-proc --kill-child=KILL -- \
+# Each role starts from an allowlisted environment and sees a private PID and
+# proc namespace, so it cannot inspect the root launcher or another role.
+env -i "${canary_environment[@]}" \
+  "${unshare_bin}" --mount --pid --fork --mount-proc --kill-child=KILL -- \
   "${canary_bin}" --profile "${profile_snapshot}" --job "${job_snapshot}" \
   provision >"${provision_log}"
 env -i "${worker_environment[@]}" \
@@ -217,9 +223,8 @@ env -i "${worker_environment[@]}" \
   --profile "${profile_snapshot}" \
   --worker-id "${CHIO_FINDING_WORKER_ID}" \
   --once >"${worker_log}"
-CHIO_FINDING_CANDIDATE_SHA="${candidate_sha}" \
-  env --unset="${worker_database_url_env}" \
-  unshare --mount --pid --fork --mount-proc --kill-child=KILL -- \
+env -i "${canary_environment[@]}" \
+  "${unshare_bin}" --mount --pid --fork --mount-proc --kill-child=KILL -- \
   "${canary_bin}" --profile "${profile_snapshot}" --job "${job_snapshot}" \
   verify >"${terminal_log}"
 "${chio_bin}" --json finding operator evaluate-canary \
