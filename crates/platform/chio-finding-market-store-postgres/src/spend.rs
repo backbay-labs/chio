@@ -1,9 +1,9 @@
 use sqlx::Row as _;
 
 use super::{
-    checked_i64, checked_timestamp, stored_u64, unavailable, validate_identifier,
-    HostedJobWriteOutcome, HostedMarketStoreError, HostedTenantId, PostgresFindingMarketStore,
-    MAX_I_JSON_INTEGER, MAX_JOB_ID_BYTES,
+    checked_i64, stored_u64, unavailable, validate_identifier, HostedJobWriteOutcome,
+    HostedMarketStoreError, HostedTenantId, PostgresFindingMarketStore, MAX_I_JSON_INTEGER,
+    MAX_JOB_ID_BYTES,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,7 +32,6 @@ impl PostgresFindingMarketStore {
         tenant: &HostedTenantId,
         reservation_id: &str,
         units: u64,
-        now: u64,
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
         validate_identifier(reservation_id, MAX_JOB_ID_BYTES)
             .map_err(|_| HostedMarketStoreError::Invalid("spend_reservation_id"))?;
@@ -40,7 +39,6 @@ impl PostgresFindingMarketStore {
             return Err(HostedMarketStoreError::Invalid("spend_units"));
         }
         let units = checked_i64(units, "spend units")?;
-        let now = checked_timestamp(now, "spend time")?;
         let mut transaction = self.begin_tenant(tenant).await?;
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 3))")
             .bind(tenant.as_str())
@@ -67,10 +65,9 @@ impl PostgresFindingMarketStore {
                 .map_err(|_| HostedMarketStoreError::Unavailable)?;
             return Ok(HostedJobWriteOutcome::ExactReplay);
         }
-        let billing_period: String = sqlx::query_scalar(
-            "SELECT to_char(to_timestamp($1::double precision) AT TIME ZONE 'UTC', 'YYYY-MM')",
+        let (billing_period, now): (String, i64) = sqlx::query_as(
+            "SELECT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM'), FLOOR(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP))::BIGINT",
         )
-        .bind(now)
         .fetch_one(&mut *transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?;
@@ -119,9 +116,8 @@ impl PostgresFindingMarketStore {
         &self,
         tenant: &HostedTenantId,
         reservation_id: &str,
-        now: u64,
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
-        self.finish_monthly_spend(tenant, reservation_id, HostedSpendState::Committed, now)
+        self.finish_monthly_spend(tenant, reservation_id, HostedSpendState::Committed)
             .await
     }
 
@@ -130,9 +126,8 @@ impl PostgresFindingMarketStore {
         &self,
         tenant: &HostedTenantId,
         reservation_id: &str,
-        now: u64,
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
-        self.finish_monthly_spend(tenant, reservation_id, HostedSpendState::Released, now)
+        self.finish_monthly_spend(tenant, reservation_id, HostedSpendState::Released)
             .await
     }
 
@@ -141,7 +136,6 @@ impl PostgresFindingMarketStore {
         tenant: &HostedTenantId,
         reservation_id: &str,
         desired: HostedSpendState,
-        now: u64,
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
         validate_identifier(reservation_id, MAX_JOB_ID_BYTES)
             .map_err(|_| HostedMarketStoreError::Invalid("spend_reservation_id"))?;
@@ -151,8 +145,12 @@ impl PostgresFindingMarketStore {
         ) {
             return Err(HostedMarketStoreError::Invalid("spend_state"));
         }
-        let now = checked_timestamp(now, "spend time")?;
         let mut transaction = self.begin_tenant(tenant).await?;
+        let now: i64 =
+            sqlx::query_scalar("SELECT FLOOR(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP))::BIGINT")
+                .fetch_one(&mut *transaction)
+                .await
+                .map_err(|_| HostedMarketStoreError::Unavailable)?;
         let row = sqlx::query(
             "SELECT state, created_at FROM chio_finding_market_spend_reservations WHERE tenant_id = $1 AND reservation_id = $2 FOR UPDATE",
         )

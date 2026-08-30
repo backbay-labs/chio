@@ -3,7 +3,6 @@ use chio_core_types::{canonical_json_bytes_from_str, sha256_hex};
 use crate::HostedMarketStoreError;
 
 const MAX_JOB_JSON_BYTES: usize = 4 * 1024 * 1024;
-const MAX_SUPPORTED_UNIX_SECS: u64 = 253_402_300_799;
 
 pub(crate) fn validate_identifier(value: &str, maximum: usize) -> Result<(), ()> {
     if value.is_empty()
@@ -68,16 +67,6 @@ pub(crate) fn checked_nonnegative_i64(
     field: &'static str,
 ) -> Result<i64, HostedMarketStoreError> {
     i64::try_from(value).map_err(|_| HostedMarketStoreError::Invalid(field))
-}
-
-pub(crate) fn checked_timestamp(
-    value: u64,
-    field: &'static str,
-) -> Result<i64, HostedMarketStoreError> {
-    if value > MAX_SUPPORTED_UNIX_SECS {
-        return Err(HostedMarketStoreError::Invalid(field));
-    }
-    checked_i64(value, field)
 }
 
 pub(crate) fn stored_u64(value: i64) -> Result<u64, HostedMarketStoreError> {

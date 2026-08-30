@@ -30,8 +30,8 @@ mod tenant;
 mod validation;
 
 pub(crate) use validation::{
-    checked_i64, checked_nonnegative_i64, checked_timestamp, stored_u64, unavailable,
-    validate_canonical_json, validate_digest, validate_identifier, verify_payload,
+    checked_i64, checked_nonnegative_i64, stored_u64, unavailable, validate_canonical_json,
+    validate_digest, validate_identifier, verify_payload,
 };
 
 pub use aggregates::{HostedAggregateEvent, HostedAggregateHead, HostedAggregateKind};

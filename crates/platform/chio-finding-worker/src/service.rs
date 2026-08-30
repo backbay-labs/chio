@@ -215,38 +215,16 @@ impl HostedFindingWorker {
             heartbeat_duration,
         );
         heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        let mut execution = Box::pin(self.executor.execute(&job, job.updated_at));
+        let mut execution = Box::pin(self.executor.execute_cancellable(
+            &job,
+            job.updated_at,
+            &cancellation,
+        ));
         let execution_result = loop {
             tokio::select! {
                 result = execution.as_mut() => break result,
                 () = cancellation.cancelled() => {
-                    drop(execution);
-                    let lease_relinquished = match self.store
-                        .fail_job(
-                            &job.tenant_id,
-                            &job.job_id,
-                            &lease,
-                            "worker_shutdown",
-                            1,
-                        )
-                        .await
-                    {
-                        Ok(_) => true,
-                        Err(HostedMarketStoreError::LeaseLost) => false,
-                        Err(error) => return Err(map_store(error)),
-                    };
-                    if lease_relinquished {
-                        return self.job_outcome(&job, JobOutcome::Cancelled).await;
-                    }
-                    return Ok(JobOutcome::Cancelled(HostedWorkerJobEvidence {
-                        tenant_id: job.tenant_id.as_str().to_owned(),
-                        job_id: job.job_id,
-                        request_sha256: job.request_sha256,
-                        lease_fence: job.lease_fence,
-                        state: chio_finding_market_store_postgres::HostedJobState::Leased,
-                        result_sha256: None,
-                        completed_at: None,
-                    }));
+                    break execution.as_mut().await;
                 },
                 _ = heartbeat.tick() => {
                     self.store
@@ -261,6 +239,7 @@ impl HostedFindingWorker {
                 }
             }
         };
+        drop(execution);
         match execution_result {
             Ok(result) => {
                 self.store
@@ -278,6 +257,29 @@ impl HostedFindingWorker {
                     },
                 )
                 .await
+            }
+            Err(crate::executor::WorkerExecutionError::Cancelled) => {
+                let lease_relinquished = match self
+                    .store
+                    .fail_job(&job.tenant_id, &job.job_id, &lease, "worker_shutdown", 1)
+                    .await
+                {
+                    Ok(_) => true,
+                    Err(HostedMarketStoreError::LeaseLost) => false,
+                    Err(error) => return Err(map_store(error)),
+                };
+                if lease_relinquished {
+                    return self.job_outcome(&job, JobOutcome::Cancelled).await;
+                }
+                Ok(JobOutcome::Cancelled(HostedWorkerJobEvidence {
+                    tenant_id: job.tenant_id.as_str().to_owned(),
+                    job_id: job.job_id,
+                    request_sha256: job.request_sha256,
+                    lease_fence: job.lease_fence,
+                    state: chio_finding_market_store_postgres::HostedJobState::Leased,
+                    result_sha256: None,
+                    completed_at: None,
+                }))
             }
             Err(error) if job.attempt_count >= self.max_attempts => {
                 self.store

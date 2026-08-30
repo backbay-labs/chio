@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/cognition-market-promotion.yml"
+      - ".github/workflows/release-qualification.yml"
       - "Makefile"
       - "audits/**"
       - "config/cognition-market-components.json"
@@ -53,6 +54,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/cognition-market-promotion.yml"
+      - ".github/workflows/release-qualification.yml"
       - "Makefile"
       - "audits/**"
       - "config/cognition-market-components.json"

@@ -222,3 +222,76 @@ pub(super) async fn install_legacy_migration_fixture(
     }
     Ok(())
 }
+
+pub(super) async fn migrate_legacy_fixture(
+    admin_pool: &sqlx::PgPool,
+    migrator_url: &str,
+) -> Result<(), Box<dyn Error>> {
+    let migrator_pool = sqlx::postgres::PgPoolOptions::new()
+        .min_connections(1)
+        .max_connections(1)
+        .connect(migrator_url)
+        .await?;
+    install_legacy_migration_fixture(&migrator_pool).await?;
+    sqlx::query(
+        r#"INSERT INTO chio_finding_market_tenants (
+               tenant_id, enabled, created_at, max_concurrent_jobs,
+               max_queued_jobs, max_monthly_spend_units, configuration_revision
+           ) VALUES ($1, TRUE, 1700000000, 1, 10, 1000, 'legacy-probe')"#,
+    )
+    .bind("legacy-principal-probe")
+    .execute(admin_pool)
+    .await?;
+    sqlx::query(
+        r#"INSERT INTO chio_finding_market_principals (
+               tenant_id, principal_id, role, capability_public_key_hex,
+               enabled, created_at, updated_at
+           ) VALUES ($1, 'legacy-buyer', 'buyer', $2, TRUE, 1700000000, 1700000000)"#,
+    )
+    .bind("legacy-principal-probe")
+    .bind("9".repeat(64))
+    .execute(admin_pool)
+    .await?;
+    let migrator = PostgresFindingMarketMigrator::from_pool_for_integration_tests(migrator_pool);
+    assert!(migrator.migrate().await.is_err());
+    let migration_eleven_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations WHERE version = 11")
+            .fetch_one(admin_pool)
+            .await?;
+    assert_eq!(migration_eleven_count, 0);
+    let retained_legacy_principal_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM chio_finding_market_principals WHERE tenant_id = $1",
+    )
+    .bind("legacy-principal-probe")
+    .fetch_one(admin_pool)
+    .await?;
+    assert_eq!(retained_legacy_principal_count, 1);
+    sqlx::query("DELETE FROM chio_finding_market_principals WHERE tenant_id = $1")
+        .bind("legacy-principal-probe")
+        .execute(admin_pool)
+        .await?;
+    sqlx::query("DELETE FROM chio_finding_market_tenants WHERE tenant_id = $1")
+        .bind("legacy-principal-probe")
+        .execute(admin_pool)
+        .await?;
+    migrator.migrate().await?;
+    migrator.migrate().await?;
+    let migration_checksum: Vec<u8> =
+        sqlx::query_scalar("SELECT checksum FROM _sqlx_migrations WHERE version = 1")
+            .fetch_one(admin_pool)
+            .await?;
+    sqlx::query("UPDATE _sqlx_migrations SET checksum = $1 WHERE version = 1")
+        .bind(vec![0_u8; migration_checksum.len()])
+        .execute(admin_pool)
+        .await?;
+    assert!(matches!(
+        migrator.migrate().await,
+        Err(HostedMarketStoreError::MigrationDrift)
+    ));
+    sqlx::query("UPDATE _sqlx_migrations SET checksum = $1 WHERE version = 1")
+        .bind(migration_checksum)
+        .execute(admin_pool)
+        .await?;
+    migrator.migrate().await?;
+    Ok(())
+}

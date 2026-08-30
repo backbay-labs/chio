@@ -642,6 +642,7 @@ AS $function$
 DECLARE
     append_outcome SMALLINT;
     requested_revision BIGINT;
+    retained_event public.chio_finding_market_aggregate_events%ROWTYPE;
     retained_projection public.chio_finding_market_domain_projections%ROWTYPE;
     authority_row public.chio_finding_market_authority_state%ROWTYPE;
 BEGIN
@@ -655,7 +656,42 @@ BEGIN
         OR authority_row.authority <> 'postgres'
         OR authority_row.mutations_enabled <> TRUE
         OR authority_row.mode NOT IN ('rollback_window', 'authoritative', 'retired')
-        OR requested_committed_at > floor(extract(epoch from clock_timestamp()))::bigint + 30
+    THEN
+        RETURN 2;
+    END IF;
+    requested_revision := expected_revision + 1;
+    SELECT * INTO retained_event
+    FROM public.chio_finding_market_aggregate_events
+    WHERE tenant_id = requested_tenant_id
+      AND event_id = requested_event_id;
+    IF FOUND THEN
+        SELECT * INTO retained_projection
+        FROM public.chio_finding_market_domain_projections
+        WHERE tenant_id = requested_tenant_id
+          AND aggregate_kind = requested_aggregate_kind
+          AND aggregate_id = requested_aggregate_id;
+        IF retained_event.aggregate_kind = requested_aggregate_kind
+            AND retained_event.aggregate_id = requested_aggregate_id
+            AND retained_event.revision = requested_revision
+            AND retained_event.event_kind = requested_event_kind
+            AND retained_event.previous_event_sha256 IS NOT DISTINCT FROM expected_event_sha256
+            AND retained_event.payload_sha256 = requested_payload_sha256
+            AND retained_event.payload_json = requested_payload_json
+            AND retained_event.event_sha256 = requested_event_sha256
+            AND retained_event.committed_at = requested_committed_at
+            AND FOUND
+            AND retained_projection.revision = requested_revision
+            AND retained_projection.event_sha256 = requested_event_sha256
+            AND retained_projection.event_kind = requested_event_kind
+            AND retained_projection.artifact_schema = requested_artifact_schema
+            AND retained_projection.payload_sha256 = requested_payload_sha256
+            AND retained_projection.payload_json = requested_payload_json
+        THEN
+            RETURN 1;
+        END IF;
+        RETURN 2;
+    END IF;
+    IF requested_committed_at > floor(extract(epoch from clock_timestamp()))::bigint + 30
         OR requested_committed_at < floor(extract(epoch from clock_timestamp()))::bigint - 30
         OR NOT EXISTS (
             SELECT 1
@@ -700,7 +736,6 @@ BEGIN
     IF append_outcome = 2 THEN
         RETURN 2;
     END IF;
-    requested_revision := expected_revision + 1;
     IF append_outcome = 1 THEN
         SELECT * INTO retained_projection
         FROM public.chio_finding_market_domain_projections

@@ -32,7 +32,7 @@ use sqlx::Row as _;
 mod support;
 
 use support::{
-    append_replication_check, apply_authority_transition, install_legacy_migration_fixture,
+    append_replication_check, apply_authority_transition, migrate_legacy_fixture,
     signed_domain_payload, signed_principal_replication_event, ReplicationCheckSpec,
 };
 
@@ -87,72 +87,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     )
     .execute(&admin_pool)
     .await?;
-    let migrator_pool = sqlx::postgres::PgPoolOptions::new()
-        .min_connections(1)
-        .max_connections(1)
-        .connect(&migrator_url)
-        .await?;
-    install_legacy_migration_fixture(&migrator_pool).await?;
-    sqlx::query(
-        r#"INSERT INTO chio_finding_market_tenants (
-               tenant_id, enabled, created_at, max_concurrent_jobs,
-               max_queued_jobs, max_monthly_spend_units, configuration_revision
-           ) VALUES ($1, TRUE, 1700000000, 1, 10, 1000, 'legacy-probe')"#,
-    )
-    .bind("legacy-principal-probe")
-    .execute(&admin_pool)
-    .await?;
-    sqlx::query(
-        r#"INSERT INTO chio_finding_market_principals (
-               tenant_id, principal_id, role, capability_public_key_hex,
-               enabled, created_at, updated_at
-           ) VALUES ($1, 'legacy-buyer', 'buyer', $2, TRUE, 1700000000, 1700000000)"#,
-    )
-    .bind("legacy-principal-probe")
-    .bind("9".repeat(64))
-    .execute(&admin_pool)
-    .await?;
-    let migrator = PostgresFindingMarketMigrator::from_pool_for_integration_tests(migrator_pool);
-    assert!(migrator.migrate().await.is_err());
-    let migration_eleven_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations WHERE version = 11")
-            .fetch_one(&admin_pool)
-            .await?;
-    assert_eq!(migration_eleven_count, 0);
-    let retained_legacy_principal_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM chio_finding_market_principals WHERE tenant_id = $1",
-    )
-    .bind("legacy-principal-probe")
-    .fetch_one(&admin_pool)
-    .await?;
-    assert_eq!(retained_legacy_principal_count, 1);
-    sqlx::query("DELETE FROM chio_finding_market_principals WHERE tenant_id = $1")
-        .bind("legacy-principal-probe")
-        .execute(&admin_pool)
-        .await?;
-    sqlx::query("DELETE FROM chio_finding_market_tenants WHERE tenant_id = $1")
-        .bind("legacy-principal-probe")
-        .execute(&admin_pool)
-        .await?;
-    migrator.migrate().await?;
-    migrator.migrate().await?;
-    let migration_checksum: Vec<u8> =
-        sqlx::query_scalar("SELECT checksum FROM _sqlx_migrations WHERE version = 1")
-            .fetch_one(&admin_pool)
-            .await?;
-    sqlx::query("UPDATE _sqlx_migrations SET checksum = $1 WHERE version = 1")
-        .bind(vec![0_u8; migration_checksum.len()])
-        .execute(&admin_pool)
-        .await?;
-    assert!(matches!(
-        migrator.migrate().await,
-        Err(HostedMarketStoreError::MigrationDrift)
-    ));
-    sqlx::query("UPDATE _sqlx_migrations SET checksum = $1 WHERE version = 1")
-        .bind(migration_checksum)
-        .execute(&admin_pool)
-        .await?;
-    migrator.migrate().await?;
+    migrate_legacy_fixture(&admin_pool, &migrator_url).await?;
     sqlx::raw_sql(
         r#"
         DO $role$
@@ -507,43 +442,43 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     ));
     assert_eq!(
         store
-            .reserve_monthly_spend(&tenant_a, "purchase-spend-1", 6_000, 1_700_000_001,)
+            .reserve_monthly_spend(&tenant_a, "purchase-spend-1", 6_000)
             .await?,
         HostedJobWriteOutcome::Inserted
     );
     assert_eq!(
         store
-            .reserve_monthly_spend(&tenant_a, "purchase-spend-1", 6_000, 1_700_000_002,)
+            .reserve_monthly_spend(&tenant_a, "purchase-spend-1", 6_000)
             .await?,
         HostedJobWriteOutcome::ExactReplay
     );
     assert!(matches!(
         store
-            .reserve_monthly_spend(&tenant_a, "purchase-spend-2", 4_001, 1_700_000_002,)
+            .reserve_monthly_spend(&tenant_a, "purchase-spend-2", 4_001)
             .await,
         Err(HostedMarketStoreError::Capacity)
     ));
     assert_eq!(
         store
-            .commit_monthly_spend(&tenant_a, "purchase-spend-1", 1_700_000_003)
+            .commit_monthly_spend(&tenant_a, "purchase-spend-1")
             .await?,
         HostedJobWriteOutcome::Inserted
     );
     assert_eq!(
         store
-            .commit_monthly_spend(&tenant_a, "purchase-spend-1", 1_700_000_004)
+            .commit_monthly_spend(&tenant_a, "purchase-spend-1")
             .await?,
         HostedJobWriteOutcome::ExactReplay
     );
     assert!(matches!(
         store
-            .reserve_monthly_spend(&tenant_a, "purchase-spend-1", 6_000, 1_700_000_005,)
+            .reserve_monthly_spend(&tenant_a, "purchase-spend-1", 6_000)
             .await,
         Err(HostedMarketStoreError::Conflict)
     ));
     assert!(matches!(
         store
-            .release_monthly_spend(&tenant_a, "purchase-spend-1", 1_700_000_005)
+            .release_monthly_spend(&tenant_a, "purchase-spend-1")
             .await,
         Err(HostedMarketStoreError::Conflict)
     ));
@@ -555,31 +490,44 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         committed_spend.state,
         chio_finding_market_store_postgres::HostedSpendState::Committed
     );
-    assert_eq!(committed_spend.billing_period, "2023-11");
+    let period_from_database_timestamp: String = sqlx::query_scalar(
+        "SELECT to_char(to_timestamp($1::double precision) AT TIME ZONE 'UTC', 'YYYY-MM')",
+    )
+    .bind(i64::try_from(committed_spend.created_at)?)
+    .fetch_one(&admin_pool)
+    .await?;
+    assert_eq!(
+        committed_spend.billing_period,
+        period_from_database_timestamp
+    );
+    let database_now: i64 =
+        sqlx::query_scalar("SELECT FLOOR(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP))::BIGINT")
+            .fetch_one(&admin_pool)
+            .await?;
+    assert!(committed_spend.created_at <= u64::try_from(database_now)?);
+    assert!(committed_spend.updated_at >= committed_spend.created_at);
     assert!(store
         .monthly_spend_reservation(&tenant_b, "purchase-spend-1")
         .await?
         .is_none());
     store
-        .reserve_monthly_spend(&tenant_a, "purchase-spend-release", 4_000, 1_700_000_006)
-        .await?;
-    assert!(matches!(
-        store
-            .release_monthly_spend(&tenant_a, "purchase-spend-release", 1_700_000_005,)
-            .await,
-        Err(HostedMarketStoreError::Invalid("spend time"))
-    ));
-    store
-        .release_monthly_spend(&tenant_a, "purchase-spend-release", 1_700_000_007)
+        .reserve_monthly_spend(&tenant_a, "purchase-spend-release", 4_000)
         .await?;
     assert_eq!(
         store
-            .reserve_monthly_spend(
-                &tenant_a,
-                "purchase-spend-after-release",
-                4_000,
-                1_700_000_008,
-            )
+            .release_monthly_spend(&tenant_a, "purchase-spend-release")
+            .await?,
+        HostedJobWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store
+            .release_monthly_spend(&tenant_a, "purchase-spend-release")
+            .await?,
+        HostedJobWriteOutcome::ExactReplay
+    );
+    assert_eq!(
+        store
+            .reserve_monthly_spend(&tenant_a, "purchase-spend-after-release", 4_000,)
             .await?,
         HostedJobWriteOutcome::Inserted
     );
@@ -934,15 +882,31 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         "challenge-a-evaluating",
         &market_artifact,
     )?;
-    store
-        .append_domain_event(
-            &tenant_a,
-            &advanced_event,
-            head.revision,
-            Some(&head.event_sha256),
-            authority_now,
-        )
-        .await?;
+    assert_eq!(
+        store
+            .append_domain_event(
+                &tenant_a,
+                &advanced_event,
+                head.revision,
+                Some(&head.event_sha256),
+                authority_now,
+            )
+            .await?,
+        HostedJobWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store
+            .append_domain_event(
+                &tenant_a,
+                &advanced_event,
+                head.revision,
+                Some(&head.event_sha256),
+                authority_now,
+            )
+            .await?,
+        HostedJobWriteOutcome::ExactReplay,
+        "an exact response-loss retry must bypass the newly stale replication gate"
+    );
     let advanced_projection_revision: i64 = sqlx::query_scalar(
         "SELECT revision FROM chio_finding_market_domain_projections WHERE tenant_id = $1 AND aggregate_kind = 'finding' AND aggregate_id = $2",
     )

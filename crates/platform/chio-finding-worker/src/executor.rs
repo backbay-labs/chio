@@ -22,13 +22,15 @@ use tokio::net::UnixStream;
 use tokio::process::{Child, Command};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::{sleep, timeout};
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::protocol::{
     sign_attested_result, verify_attested_result, FindingWorkerAttestedResult,
     FindingWorkerExitClassification, FindingWorkerInputDescriptor, FindingWorkerInputEnd,
-    FindingWorkerInputKind, FindingWorkerRequest, FindingWorkerResult,
-    FINDING_WORKER_INPUT_END_SCHEMA, FINDING_WORKER_INPUT_SCHEMA,
+    FindingWorkerInputKind, FindingWorkerRequest, FindingWorkerResourceLimits,
+    FindingWorkerResourceUsage, FindingWorkerResult, FINDING_WORKER_INPUT_END_SCHEMA,
+    FINDING_WORKER_INPUT_SCHEMA,
 };
 
 const MAX_IMAGE_BYTES: u64 = 32 * 1024 * 1024 * 1024;
@@ -38,6 +40,9 @@ const VSOCK_PATH: &str = "/worker.vsock";
 const VM_CONFIG_PATH: &str = "/vm-config.json";
 const TRANSFER_CHUNK_BYTES: usize = 1024 * 1024;
 const TENANT_CAS_DOMAIN: &str = "chio.finding.worker-tenant-cas.v1";
+const CGROUP_CPU_PERIOD_MICROS: u64 = 100_000;
+const CGROUP_MIN_CPU_QUOTA_MICROS: u64 = 1_000;
+const MIB_BYTES: u64 = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FirecrackerIdentity {
@@ -139,6 +144,8 @@ pub enum WorkerExecutionError {
     GuestRejected,
     #[error("finding worker capacity is unavailable")]
     Capacity,
+    #[error("finding worker execution was cancelled")]
+    Cancelled,
 }
 
 impl WorkerExecutionError {
@@ -154,7 +161,66 @@ impl WorkerExecutionError {
             Self::Protocol => "worker_protocol",
             Self::GuestRejected => "worker_guest_rejected",
             Self::Capacity => "worker_capacity",
+            Self::Cancelled => "worker_cancelled",
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct EnforcedJobLimits {
+    wall_time: Duration,
+    cpu_quota_micros: u64,
+    memory_bytes: u64,
+    memory_mib: u32,
+    output_bytes: u64,
+    process_count: u32,
+    open_files: u32,
+}
+
+impl EnforcedJobLimits {
+    fn new(
+        config: &FirecrackerWorkerConfig,
+        limits: &FindingWorkerResourceLimits,
+    ) -> Result<Self, WorkerExecutionError> {
+        let configured_memory = u64::from(config.memory_mib)
+            .checked_mul(MIB_BYTES)
+            .ok_or(WorkerExecutionError::Configuration)?;
+        let configured_wall_millis = u64::try_from(config.execution_timeout.as_millis())
+            .map_err(|_| WorkerExecutionError::Configuration)?;
+        if limits.memory_bytes > configured_memory
+            || limits.wall_time_millis > configured_wall_millis
+            || limits.output_bytes > config.max_file_size_bytes
+            || limits.open_files > config.max_open_files
+        {
+            return Err(WorkerExecutionError::Configuration);
+        }
+        let memory_mib = limits
+            .memory_bytes
+            .checked_add(MIB_BYTES - 1)
+            .and_then(|bytes| bytes.checked_div(MIB_BYTES))
+            .and_then(|mib| u32::try_from(mib).ok())
+            .ok_or(WorkerExecutionError::Configuration)?;
+        let requested_quota = limits
+            .cpu_time_millis
+            .checked_mul(CGROUP_CPU_PERIOD_MICROS)
+            .and_then(|scaled| scaled.checked_add(limits.wall_time_millis - 1))
+            .and_then(|scaled| scaled.checked_div(limits.wall_time_millis))
+            .ok_or(WorkerExecutionError::Configuration)?;
+        if requested_quota < CGROUP_MIN_CPU_QUOTA_MICROS {
+            return Err(WorkerExecutionError::Configuration);
+        }
+        let configured_quota = u64::from(config.vcpu_count)
+            .checked_mul(CGROUP_CPU_PERIOD_MICROS)
+            .ok_or(WorkerExecutionError::Configuration)?;
+        Ok(Self {
+            wall_time: Duration::from_millis(limits.wall_time_millis),
+            cpu_quota_micros: requested_quota.min(configured_quota),
+            memory_bytes: limits.memory_bytes,
+            memory_mib,
+            output_bytes: limits.output_bytes,
+            process_count: limits.process_count,
+            open_files: limits.open_files,
+        })
     }
 }
 
@@ -210,7 +276,7 @@ impl FirecrackerExecutor {
     /// Verify host privilege, KVM availability, trusted parent ownership,
     /// and every pinned executable and image before the service claims work.
     pub fn preflight_host(&self) -> Result<(), WorkerExecutionError> {
-        self.preflight()
+        self.preflight(&CancellationToken::new(), None)
     }
 
     /// Verify that one tenant's opaque CAS namespace was provisioned with
@@ -230,9 +296,20 @@ impl FirecrackerExecutor {
         job: &HostedMarketJob,
         now: u64,
     ) -> Result<FirecrackerExecutionResult, WorkerExecutionError> {
+        self.execute_cancellable(job, now, &CancellationToken::new())
+            .await
+    }
+
+    pub async fn execute_cancellable(
+        &self,
+        job: &HostedMarketJob,
+        now: u64,
+        cancellation: &CancellationToken,
+    ) -> Result<FirecrackerExecutionResult, WorkerExecutionError> {
+        if cancellation.is_cancelled() {
+            return Err(WorkerExecutionError::Cancelled);
+        }
         let started = Instant::now();
-        self.preflight()?;
-        let identity = self.acquire_identity().await?;
         let deadline = now
             .checked_add(self.inner.config.execution_timeout.as_secs())
             .ok_or(WorkerExecutionError::Configuration)?;
@@ -243,52 +320,88 @@ impl FirecrackerExecutor {
             now,
         )
         .map_err(|_| WorkerExecutionError::Protocol)?;
-        self.admit_job_limits(&request)?;
+        let request_bytes =
+            canonical_json_bytes(&request).map_err(|_| WorkerExecutionError::Protocol)?;
+        validate_frame_payload(&request_bytes, self.inner.config.max_frame_bytes)?;
+        let enforced_limits = self.admit_job_limits(&request)?;
+        let preflight_budget = self
+            .inner
+            .config
+            .execution_timeout
+            .min(enforced_limits.wall_time)
+            .checked_sub(started.elapsed())
+            .ok_or(WorkerExecutionError::Timeout)?;
+        let preflight_executor = self.clone();
+        let preflight_cancellation = cancellation.clone();
+        tokio::task::spawn_blocking(move || {
+            preflight_executor.preflight(
+                &preflight_cancellation,
+                Some(Instant::now() + preflight_budget),
+            )
+        })
+        .await
+        .map_err(|_| WorkerExecutionError::HostPreflight)??;
+        let identity = self.acquire_identity(cancellation).await?;
         let jail_id = format!("chio-{}", Uuid::new_v4().simple());
         let config = self.inner.config.clone();
         let staging_budget = config
             .execution_timeout
+            .min(enforced_limits.wall_time)
             .checked_sub(started.elapsed())
             .ok_or(WorkerExecutionError::Timeout)?;
+        let staging_cancellation = cancellation.clone();
         let mut staged = tokio::task::spawn_blocking(move || {
             stage_jail(
                 &config,
                 &jail_id,
                 identity.id,
+                enforced_limits,
                 Instant::now() + staging_budget,
+                &staging_cancellation,
             )
         })
         .await
         .map_err(|_| WorkerExecutionError::Staging)??;
         let jail = staged.cleanup.take().ok_or(WorkerExecutionError::Staging)?;
+        if cancellation.is_cancelled() {
+            let cleanup = jail.cleanup();
+            drop(identity);
+            cleanup?;
+            return Err(WorkerExecutionError::Cancelled);
+        }
         let mut child = staged.plan.spawn()?;
-        let remaining = self
-            .inner
-            .config
-            .execution_timeout
-            .min(Duration::from_millis(
-                request.job.resource_limits.wall_time_millis,
-            ))
+        let remaining = enforced_limits
+            .wall_time
             .checked_sub(started.elapsed())
             .ok_or(WorkerExecutionError::Timeout)?;
-        let result = exchange_with_guest(
-            &mut child,
-            &staged.vsock_path,
-            self.inner.config.guest_vsock_port,
-            &request,
-            &self.inner.config.artifact_store_root,
-            self.inner.config.max_frame_bytes,
-            remaining,
-        )
-        .await;
+        let result = tokio::select! {
+            result = exchange_with_guest(
+                &mut child,
+                &staged.vsock_path,
+                self.inner.config.guest_vsock_port,
+                &request,
+                &self.inner.config.artifact_store_root,
+                self.inner.config.max_frame_bytes,
+                remaining,
+            ) => result,
+            () = cancellation.cancelled() => Err(WorkerExecutionError::Cancelled),
+        };
+        let execution_elapsed = started.elapsed();
         terminate_child(&mut child).await;
+        let host_usage = result
+            .as_ref()
+            .ok()
+            .map(|guest| jail.observe_usage(execution_elapsed, guest))
+            .transpose();
         let cleanup = jail.cleanup();
         drop(identity);
-        let guest = match (result, cleanup) {
-            (Ok(result), Ok(())) => Ok(result),
-            (Err(error), _) => Err(error),
-            (Ok(_), Err(error)) => Err(error),
+        let (mut guest, observed) = match (result, host_usage, cleanup) {
+            (Ok(result), Ok(Some(observed)), Ok(())) => Ok((result, observed)),
+            (Err(error), _, _) => Err(error),
+            (Ok(_), Err(error), _) | (Ok(_), _, Err(error)) => Err(error),
+            (Ok(_), Ok(None), Ok(())) => Err(WorkerExecutionError::Protocol),
         }?;
+        reconcile_host_usage(&mut guest, observed, &request)?;
         let completed_at = unix_time()?;
         let guest_classification = guest.classification;
         let body = FindingWorkerAttestedResult::from_guest(
@@ -318,7 +431,12 @@ impl FirecrackerExecutor {
         })
     }
 
-    fn preflight(&self) -> Result<(), WorkerExecutionError> {
+    fn preflight(
+        &self,
+        cancellation: &CancellationToken,
+        deadline: Option<Instant>,
+    ) -> Result<(), WorkerExecutionError> {
+        check_execution_control(cancellation, deadline)?;
         self.inner.config.validate()?;
         if !geteuid().is_root() {
             return Err(WorkerExecutionError::HostPreflight);
@@ -339,30 +457,40 @@ impl FirecrackerExecutor {
             true,
             &self.inner.config.worker_binary_sha256,
             MAX_BINARY_BYTES,
+            cancellation,
+            deadline,
         )?;
         require_trusted_file_digest(
             &self.inner.config.firecracker_binary,
             true,
             &self.inner.config.firecracker_sha256,
             MAX_BINARY_BYTES,
+            cancellation,
+            deadline,
         )?;
         require_trusted_file_digest(
             &self.inner.config.jailer_binary,
             true,
             &self.inner.config.jailer_sha256,
             MAX_BINARY_BYTES,
+            cancellation,
+            deadline,
         )?;
         require_trusted_file_digest(
             &self.inner.config.kernel_image,
             false,
             &self.inner.config.kernel_sha256,
             MAX_IMAGE_BYTES,
+            cancellation,
+            deadline,
         )?;
         require_trusted_file_digest(
             &self.inner.config.rootfs_image,
             false,
             &self.inner.config.rootfs_sha256,
             MAX_IMAGE_BYTES,
+            cancellation,
+            deadline,
         )?;
         require_trusted_directory(&self.inner.config.jail_root)?;
         require_trusted_directory(&self.inner.config.artifact_store_root)?;
@@ -373,37 +501,34 @@ impl FirecrackerExecutor {
         Ok(())
     }
 
-    fn admit_job_limits(&self, request: &FindingWorkerRequest) -> Result<(), WorkerExecutionError> {
+    fn admit_job_limits(
+        &self,
+        request: &FindingWorkerRequest,
+    ) -> Result<EnforcedJobLimits, WorkerExecutionError> {
         let limits = &request.job.resource_limits;
-        let configured_memory = u64::from(self.inner.config.memory_mib)
-            .checked_mul(1024 * 1024)
-            .ok_or(WorkerExecutionError::Configuration)?;
-        let configured_wall_millis = u64::try_from(self.inner.config.execution_timeout.as_millis())
-            .map_err(|_| WorkerExecutionError::Configuration)?;
-        if limits.memory_bytes > configured_memory
-            || limits.wall_time_millis > configured_wall_millis
-            || limits.output_bytes > self.inner.config.max_file_size_bytes
-            || limits.open_files > self.inner.config.max_open_files
-            || !input_files_within_limit(
-                self.inner.config.max_file_size_bytes,
-                request.job.repository.archive_size_bytes,
-                request
-                    .job
-                    .input_artifacts
-                    .iter()
-                    .map(|artifact| artifact.size_bytes),
-            )
-        {
+        if !input_files_within_limit(
+            self.inner.config.max_file_size_bytes,
+            request.job.repository.archive_size_bytes,
+            request
+                .job
+                .input_artifacts
+                .iter()
+                .map(|artifact| artifact.size_bytes),
+        ) {
             return Err(WorkerExecutionError::Configuration);
         }
-        Ok(())
+        EnforcedJobLimits::new(&self.inner.config, limits)
     }
 
-    async fn acquire_identity(&self) -> Result<IdentityLease, WorkerExecutionError> {
-        let permit = Arc::clone(&self.inner.capacity)
-            .acquire_owned()
-            .await
-            .map_err(|_| WorkerExecutionError::Capacity)?;
+    async fn acquire_identity(
+        &self,
+        cancellation: &CancellationToken,
+    ) -> Result<IdentityLease, WorkerExecutionError> {
+        let acquisition = Arc::clone(&self.inner.capacity).acquire_owned();
+        let permit = tokio::select! {
+            permit = acquisition => permit.map_err(|_| WorkerExecutionError::Capacity)?,
+            () = cancellation.cancelled() => return Err(WorkerExecutionError::Cancelled),
+        };
         let id = self
             .inner
             .identities
@@ -465,12 +590,62 @@ struct StagedJail {
     plan: JailerCommandPlan,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct HostResourceUsage {
+    wall_time_millis: u64,
+    cpu_time_millis: u64,
+    peak_memory_bytes: u64,
+    output_bytes: u64,
+    process_peak: u32,
+}
+
+fn reconcile_host_usage(
+    guest: &mut FindingWorkerResult,
+    observed: HostResourceUsage,
+    request: &FindingWorkerRequest,
+) -> Result<(), WorkerExecutionError> {
+    reconcile_resource_usage(
+        &mut guest.resource_usage,
+        observed,
+        &request.job.resource_limits,
+    )?;
+    guest
+        .validate_for(request)
+        .map_err(|_| WorkerExecutionError::Protocol)
+}
+
+fn reconcile_resource_usage(
+    usage: &mut FindingWorkerResourceUsage,
+    observed: HostResourceUsage,
+    limits: &FindingWorkerResourceLimits,
+) -> Result<(), WorkerExecutionError> {
+    if observed.wall_time_millis > limits.wall_time_millis
+        || observed.cpu_time_millis > limits.cpu_time_millis
+        || observed.peak_memory_bytes > limits.memory_bytes
+        || observed.output_bytes > limits.output_bytes
+        || observed.process_peak > limits.process_count
+    {
+        return Err(WorkerExecutionError::Protocol);
+    }
+    usage.wall_time_millis = usage.wall_time_millis.max(observed.wall_time_millis);
+    usage.cpu_time_millis = usage.cpu_time_millis.max(observed.cpu_time_millis);
+    usage.peak_memory_bytes = usage.peak_memory_bytes.max(observed.peak_memory_bytes);
+    usage.output_bytes = observed.output_bytes;
+    usage.process_peak = usage.process_peak.max(observed.process_peak);
+    Ok(())
+}
+
 fn stage_jail(
     config: &FirecrackerWorkerConfig,
     jail_id: &str,
     identity: FirecrackerIdentity,
+    limits: EnforcedJobLimits,
     deadline: Instant,
+    cancellation: &CancellationToken,
 ) -> Result<StagedJail, WorkerExecutionError> {
+    if cancellation.is_cancelled() {
+        return Err(WorkerExecutionError::Cancelled);
+    }
     if jail_id.len() > 64
         || !jail_id
             .bytes()
@@ -499,6 +674,7 @@ fn stage_jail(
         &config.kernel_sha256,
         identity,
         deadline,
+        cancellation,
     )?;
     let rootfs_path = root.join("rootfs.ext4");
     copy_verified(
@@ -507,13 +683,17 @@ fn stage_jail(
         &config.rootfs_sha256,
         identity,
         deadline,
+        cancellation,
     )?;
-    let vm_config = canonical_json_bytes(&GuestMachineConfig::new(config))
+    if cancellation.is_cancelled() {
+        return Err(WorkerExecutionError::Cancelled);
+    }
+    let vm_config = canonical_json_bytes(&GuestMachineConfig::new(config, limits))
         .map_err(|_| WorkerExecutionError::Staging)?;
     write_owned_file(&root.join("vm-config.json"), &vm_config, identity)?;
 
     let vsock_path = root.join("worker.vsock");
-    let args = jailer_args(config, jail_id, identity)?;
+    let args = jailer_args(config, jail_id, identity, limits)?;
     staging.disarm();
     let cgroup_parent = Path::new("/sys/fs/cgroup").join(executable_name);
     let cgroup_dir = cgroup_parent.join(jail_id);
@@ -536,12 +716,8 @@ fn jailer_args(
     config: &FirecrackerWorkerConfig,
     jail_id: &str,
     identity: FirecrackerIdentity,
+    limits: EnforcedJobLimits,
 ) -> Result<Vec<OsString>, WorkerExecutionError> {
-    let memory_bytes = u64::from(config.memory_mib)
-        .checked_mul(1024 * 1024)
-        .ok_or(WorkerExecutionError::Configuration)?;
-    let cpu_quota = u64::from(config.vcpu_count) * 100_000;
-    let pids = u64::from(config.vcpu_count) + 8;
     Ok(vec![
         "--id".into(),
         jail_id.into(),
@@ -557,15 +733,19 @@ fn jailer_args(
         "--cgroup-version".into(),
         "2".into(),
         "--cgroup".into(),
-        format!("memory.max={memory_bytes}").into(),
+        format!("memory.max={}", limits.memory_bytes).into(),
         "--cgroup".into(),
-        format!("pids.max={pids}").into(),
+        format!("pids.max={}", limits.process_count).into(),
         "--cgroup".into(),
-        format!("cpu.max={cpu_quota} 100000").into(),
+        format!(
+            "cpu.max={} {CGROUP_CPU_PERIOD_MICROS}",
+            limits.cpu_quota_micros
+        )
+        .into(),
         "--resource-limit".into(),
-        format!("fsize={}", config.max_file_size_bytes).into(),
+        format!("fsize={}", limits.output_bytes).into(),
         "--resource-limit".into(),
-        format!("no-file={}", config.max_open_files).into(),
+        format!("no-file={}", limits.open_files).into(),
         "--".into(),
         "--no-api".into(),
         "--config-file".into(),
@@ -583,7 +763,7 @@ struct GuestMachineConfig {
 }
 
 impl GuestMachineConfig {
-    fn new(config: &FirecrackerWorkerConfig) -> Self {
+    fn new(config: &FirecrackerWorkerConfig, limits: EnforcedJobLimits) -> Self {
         Self {
             boot_source: BootSource {
                 kernel_image_path: "/kernel",
@@ -597,7 +777,7 @@ impl GuestMachineConfig {
             }],
             machine_config: MachineConfig {
                 vcpu_count: config.vcpu_count,
-                mem_size_mib: config.memory_mib,
+                mem_size_mib: limits.memory_mib,
                 smt: false,
                 track_dirty_pages: false,
             },
@@ -1028,10 +1208,7 @@ async fn write_frame(
     bytes: &[u8],
     maximum: u32,
 ) -> Result<(), WorkerExecutionError> {
-    let length = u32::try_from(bytes.len()).map_err(|_| WorkerExecutionError::Protocol)?;
-    if length == 0 || length > maximum {
-        return Err(WorkerExecutionError::Protocol);
-    }
+    let length = validate_frame_payload(bytes, maximum)?;
     stream
         .write_u32(length)
         .await
@@ -1040,6 +1217,14 @@ async fn write_frame(
         .write_all(bytes)
         .await
         .map_err(|_| WorkerExecutionError::Protocol)
+}
+
+fn validate_frame_payload(bytes: &[u8], maximum: u32) -> Result<u32, WorkerExecutionError> {
+    let length = u32::try_from(bytes.len()).map_err(|_| WorkerExecutionError::Protocol)?;
+    if length == 0 || length > maximum {
+        return Err(WorkerExecutionError::Protocol);
+    }
+    Ok(length)
 }
 
 async fn read_frame(
@@ -1083,6 +1268,7 @@ fn copy_verified(
     expected_sha256: &str,
     identity: FirecrackerIdentity,
     deadline: Instant,
+    cancellation: &CancellationToken,
 ) -> Result<(), WorkerExecutionError> {
     let mut input = OpenOptions::new()
         .read(true)
@@ -1108,6 +1294,9 @@ fn copy_verified(
     let mut digest = Sha256::new();
     let mut buffer = vec![0_u8; 1024 * 1024];
     loop {
+        if cancellation.is_cancelled() {
+            return Err(WorkerExecutionError::Cancelled);
+        }
         if Instant::now() >= deadline {
             return Err(WorkerExecutionError::Timeout);
         }
@@ -1124,6 +1313,9 @@ fn copy_verified(
     }
     if format!("{:x}", digest.finalize()) != expected_sha256 {
         return Err(WorkerExecutionError::AssetIntegrity);
+    }
+    if cancellation.is_cancelled() {
+        return Err(WorkerExecutionError::Cancelled);
     }
     output
         .sync_all()
@@ -1164,6 +1356,8 @@ fn require_trusted_file_digest(
     executable: bool,
     expected_sha256: &str,
     maximum_bytes: u64,
+    cancellation: &CancellationToken,
+    deadline: Option<Instant>,
 ) -> Result<(), WorkerExecutionError> {
     let mut file = OpenOptions::new()
         .read(true)
@@ -1182,6 +1376,7 @@ fn require_trusted_file_digest(
     let mut digest = Sha256::new();
     let mut buffer = vec![0_u8; 1024 * 1024];
     loop {
+        check_execution_control(cancellation, deadline)?;
         let read = file
             .read(&mut buffer)
             .map_err(|_| WorkerExecutionError::HostPreflight)?;
@@ -1192,6 +1387,19 @@ fn require_trusted_file_digest(
     }
     if format!("{:x}", digest.finalize()) != expected_sha256 {
         return Err(WorkerExecutionError::AssetIntegrity);
+    }
+    Ok(())
+}
+
+fn check_execution_control(
+    cancellation: &CancellationToken,
+    deadline: Option<Instant>,
+) -> Result<(), WorkerExecutionError> {
+    if cancellation.is_cancelled() {
+        return Err(WorkerExecutionError::Cancelled);
+    }
+    if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+        return Err(WorkerExecutionError::Timeout);
     }
     Ok(())
 }
@@ -1314,6 +1522,63 @@ impl JailGuard {
         self.armed = false;
         Ok(())
     }
+
+    fn observe_usage(
+        &self,
+        elapsed: Duration,
+        guest: &FindingWorkerResult,
+    ) -> Result<HostResourceUsage, WorkerExecutionError> {
+        let cpu_stat = fs::read_to_string(self.cgroup_dir.join("cpu.stat"))
+            .map_err(|_| WorkerExecutionError::Protocol)?;
+        let cpu_micros = cpu_stat
+            .lines()
+            .find_map(|line| {
+                let mut fields = line.split_ascii_whitespace();
+                (fields.next() == Some("usage_usec"))
+                    .then(|| fields.next()?.parse::<u64>().ok())
+                    .flatten()
+            })
+            .ok_or(WorkerExecutionError::Protocol)?;
+        let memory_peak = read_cgroup_counter(&self.cgroup_dir.join("memory.peak"))?;
+        let process_peak = read_cgroup_counter(&self.cgroup_dir.join("pids.peak"))
+            .and_then(|value| u32::try_from(value).map_err(|_| WorkerExecutionError::Protocol))?;
+        let output_bytes = guest
+            .output_artifacts
+            .iter()
+            .try_fold(0_u64, |total, artifact| {
+                total.checked_add(artifact.size_bytes)
+            })
+            .ok_or(WorkerExecutionError::Protocol)?;
+        let elapsed_micros =
+            u64::try_from(elapsed.as_micros()).map_err(|_| WorkerExecutionError::Protocol)?;
+        let wall_time_millis = elapsed_micros
+            .checked_add(999)
+            .and_then(|micros| micros.checked_div(1_000))
+            .ok_or(WorkerExecutionError::Protocol)?;
+        let cpu_time_millis = cpu_micros
+            .checked_add(999)
+            .and_then(|micros| micros.checked_div(1_000))
+            .ok_or(WorkerExecutionError::Protocol)?;
+        let observed = HostResourceUsage {
+            wall_time_millis,
+            cpu_time_millis,
+            peak_memory_bytes: memory_peak,
+            output_bytes,
+            process_peak,
+        };
+        Ok(observed)
+    }
+}
+
+fn read_cgroup_counter(path: &Path) -> Result<u64, WorkerExecutionError> {
+    let value = fs::read_to_string(path).map_err(|_| WorkerExecutionError::Protocol)?;
+    if value.len() > 64 {
+        return Err(WorkerExecutionError::Protocol);
+    }
+    value
+        .trim_end()
+        .parse::<u64>()
+        .map_err(|_| WorkerExecutionError::Protocol)
 }
 
 impl Drop for JailGuard {
@@ -1392,6 +1657,18 @@ mod tests {
         }
     }
 
+    fn job_limits() -> FindingWorkerResourceLimits {
+        FindingWorkerResourceLimits {
+            wall_time_millis: 10_000,
+            cpu_time_millis: 5_000,
+            memory_bytes: 256 * MIB_BYTES,
+            workspace_bytes: 64 * MIB_BYTES,
+            output_bytes: 8 * MIB_BYTES,
+            process_count: 32,
+            open_files: 64,
+        }
+    }
+
     #[test]
     fn config_requires_distinct_nonroot_identities() {
         let temporary = tempfile::tempdir().ok();
@@ -1412,11 +1689,16 @@ mod tests {
         assert!(temporary.is_some());
         if let Some(temporary) = temporary {
             let config = config(temporary.path());
-            let value = serde_json::to_value(GuestMachineConfig::new(&config));
-            assert!(value.is_ok());
-            if let Ok(value) = value {
-                assert!(value.get("network-interfaces").is_none());
-                assert!(value.get("vsock").is_some());
+            let limits = EnforcedJobLimits::new(&config, &job_limits());
+            assert!(limits.is_ok());
+            if let Ok(limits) = limits {
+                let value = serde_json::to_value(GuestMachineConfig::new(&config, limits));
+                assert!(value.is_ok());
+                if let Ok(value) = value {
+                    assert!(value.get("network-interfaces").is_none());
+                    assert!(value.get("vsock").is_some());
+                    assert_eq!(value["machine-config"]["mem_size_mib"], 256);
+                }
             }
         }
     }
@@ -1429,16 +1711,33 @@ mod tests {
     }
 
     #[test]
+    fn request_frame_is_rejected_before_execution_when_it_exceeds_the_protocol_limit() {
+        assert_eq!(
+            validate_frame_payload(&[1_u8; 1_024], 1_024).ok(),
+            Some(1_024)
+        );
+        assert!(matches!(
+            validate_frame_payload(&[1_u8; 1_025], 1_024),
+            Err(WorkerExecutionError::Protocol)
+        ));
+    }
+
+    #[test]
     fn jailer_plan_enforces_namespaces_cgroups_and_default_seccomp() {
         let temporary = tempfile::tempdir().ok();
         assert!(temporary.is_some());
         if let Some(temporary) = temporary {
             let config = config(temporary.path());
-            let args = jailer_args(
-                &config,
-                "chio-00000000000000000000000000000000",
-                config.identities[0],
-            );
+            let limits = EnforcedJobLimits::new(&config, &job_limits());
+            assert!(limits.is_ok());
+            let args = limits.and_then(|limits| {
+                jailer_args(
+                    &config,
+                    "chio-00000000000000000000000000000000",
+                    config.identities[0],
+                    limits,
+                )
+            });
             assert!(args.is_ok());
             if let Ok(args) = args {
                 let text = args
@@ -1450,8 +1749,75 @@ mod tests {
                 assert!(text.contains(&std::borrow::Cow::Borrowed("--no-api")));
                 assert!(!text.iter().any(|arg| arg.as_ref() == "--no-seccomp"));
                 assert!(!text.iter().any(|arg| arg.as_ref() == "--netns"));
+                assert!(text
+                    .iter()
+                    .any(|arg| arg.as_ref() == "memory.max=268435456"));
+                assert!(text.iter().any(|arg| arg.as_ref() == "pids.max=32"));
+                assert!(text
+                    .iter()
+                    .any(|arg| arg.as_ref() == "cpu.max=50000 100000"));
+                assert!(text.iter().any(|arg| arg.as_ref() == "fsize=8388608"));
+                assert!(text.iter().any(|arg| arg.as_ref() == "no-file=64"));
             }
         }
+    }
+
+    #[test]
+    fn cancelled_staging_stops_before_touching_the_jail() {
+        let temporary = tempfile::tempdir().ok();
+        assert!(temporary.is_some());
+        if let Some(temporary) = temporary {
+            let config = config(temporary.path());
+            let limits = EnforcedJobLimits::new(&config, &job_limits());
+            assert!(limits.is_ok());
+            let cancellation = CancellationToken::new();
+            cancellation.cancel();
+            if let Ok(limits) = limits {
+                let result = stage_jail(
+                    &config,
+                    "chio-00000000000000000000000000000000",
+                    config.identities[0],
+                    limits,
+                    Instant::now() + Duration::from_secs(1),
+                    &cancellation,
+                );
+                assert!(matches!(result, Err(WorkerExecutionError::Cancelled)));
+                assert!(!config.jail_root.exists());
+            }
+        }
+    }
+
+    #[test]
+    fn signed_usage_cannot_underreport_host_counters() {
+        let limits = job_limits();
+        let mut usage = FindingWorkerResourceUsage {
+            wall_time_millis: 1,
+            cpu_time_millis: 1,
+            peak_memory_bytes: 1,
+            workspace_bytes: 1,
+            output_bytes: 1,
+            process_peak: 1,
+            open_files_peak: 1,
+        };
+        let observed = HostResourceUsage {
+            wall_time_millis: 2_000,
+            cpu_time_millis: 1_000,
+            peak_memory_bytes: 128 * MIB_BYTES,
+            output_bytes: 4_096,
+            process_peak: 4,
+        };
+        assert!(reconcile_resource_usage(&mut usage, observed, &limits).is_ok());
+        assert_eq!(usage.wall_time_millis, observed.wall_time_millis);
+        assert_eq!(usage.cpu_time_millis, observed.cpu_time_millis);
+        assert_eq!(usage.peak_memory_bytes, observed.peak_memory_bytes);
+        assert_eq!(usage.output_bytes, observed.output_bytes);
+        assert_eq!(usage.process_peak, observed.process_peak);
+
+        let over_limit = HostResourceUsage {
+            peak_memory_bytes: limits.memory_bytes + 1,
+            ..observed
+        };
+        assert!(reconcile_resource_usage(&mut usage, over_limit, &limits).is_err());
     }
 
     #[test]

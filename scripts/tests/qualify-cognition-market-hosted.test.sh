@@ -5,6 +5,7 @@ repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 hosted="${repo_root}/scripts/qualify-cognition-market-hosted.sh"
 kvm="${repo_root}/scripts/qualify-cognition-market-kvm.sh"
 release="${repo_root}/scripts/qualify-release.sh"
+components="${repo_root}/config/cognition-market-components.json"
 code_workflow="${repo_root}/.github/workflows/cognition-market-hosted.yml"
 promotion_workflow="${repo_root}/.github/workflows/cognition-market-promotion.yml"
 
@@ -58,12 +59,17 @@ require_text "${release}" './scripts/qualify-cognition-market-hosted.sh --code-o
 require_text "${code_workflow}" './scripts/qualify-cognition-market-hosted.sh --code-only'
 require_text "${code_workflow}" 'astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39'
 require_text "${code_workflow}" 'cargo install cargo-deny --locked --version 0.19.4'
+require_text "${components}" '.github/workflows/release-qualification.yml'
 if [[ "$(grep -Fc 'crates/core/chio-bounded/**' "${code_workflow}")" -ne 2 ]]; then
   echo "hosted workflow must qualify its Kani proof dependency on pull requests and main" >&2
   exit 1
 fi
 if [[ "$(grep -Fc 'crates/tooling/chio-release-evidence/**' "${code_workflow}")" -ne 2 ]]; then
   echo "hosted workflow must qualify release-evidence changes on pull requests and main" >&2
+  exit 1
+fi
+if [[ "$(grep -Fc '.github/workflows/release-qualification.yml' "${code_workflow}")" -ne 2 ]]; then
+  echo "hosted workflow must qualify release workflow changes on pull requests and main" >&2
   exit 1
 fi
 require_text "${promotion_workflow}" 'runs-on: [self-hosted, linux, x64, kvm, cognition-market, ephemeral, attested]'

@@ -25,6 +25,7 @@ const MAX_IDENTIFIER_BYTES: usize = 256;
 const MAX_KEY_ID_BYTES: usize = 128;
 const MAX_ACTION_BYTES: usize = 96;
 const MAX_ACTIONS: usize = 64;
+const API_KEY_SECRET_BYTES: usize = 32;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -74,7 +75,7 @@ pub fn verify_signed_hosted_api_key_lifecycle_event(
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct HostedApiKeyIssueRequest {
     pub tenant_id: HostedTenantId,
     pub key_id: String,
@@ -84,15 +85,47 @@ pub struct HostedApiKeyIssueRequest {
     pub expires_at: u64,
     pub rotated_from_key_id: Option<String>,
     pub issued_at: u64,
+    /// Caller-held secret. The caller must retain this value until it receives
+    /// a successful response so an exact retry can recover from response loss.
+    pub secret: HostedApiKeySecret,
 }
 
 pub struct HostedApiKeySecret(String);
 
 impl HostedApiKeySecret {
+    /// Generate a secret for a caller-held issuance request.
+    #[must_use]
+    pub fn generate() -> Self {
+        let mut random = Zeroizing::new([0_u8; API_KEY_SECRET_BYTES]);
+        OsRng.fill_bytes(random.as_mut());
+        Self(URL_SAFE_NO_PAD.encode(random.as_ref()))
+    }
+
+    /// Parse a canonical caller-held secret for an exact issuance retry.
+    pub fn parse(encoded: String) -> Result<Self, HostedEdgeError> {
+        let secret = Self(encoded);
+        secret.decoded()?;
+        Ok(secret)
+    }
+
     /// Expose the one-time secret to the authorized provisioning response.
     #[must_use]
     pub fn expose(&self) -> &str {
         &self.0
+    }
+
+    fn decoded(&self) -> Result<Zeroizing<Vec<u8>>, HostedEdgeError> {
+        let decoded = Zeroizing::new(
+            URL_SAFE_NO_PAD
+                .decode(self.0.as_bytes())
+                .map_err(|_| HostedEdgeError::InvalidRequest)?,
+        );
+        if decoded.len() != API_KEY_SECRET_BYTES
+            || URL_SAFE_NO_PAD.encode(decoded.as_slice()) != self.0
+        {
+            return Err(HostedEdgeError::InvalidRequest);
+        }
+        Ok(decoded)
     }
 }
 
@@ -226,12 +259,12 @@ impl HostedApiKeyManager {
         request: HostedApiKeyIssueRequest,
     ) -> Result<HostedIssuedApiKey, HostedEdgeError> {
         validate_issue(&request)?;
-        let mut random = Zeroizing::new([0_u8; 32]);
-        OsRng.fill_bytes(random.as_mut());
-        let secret = HostedApiKeySecret(URL_SAFE_NO_PAD.encode(random.as_ref()));
-        let verifier =
-            self.pepper
-                .hmac_verifier(&request.tenant_id, &request.key_id, random.as_ref())?;
+        let secret_bytes = request.secret.decoded()?;
+        let verifier = self.pepper.hmac_verifier(
+            &request.tenant_id,
+            &request.key_id,
+            secret_bytes.as_slice(),
+        )?;
         let receipt = self.sign_event(HostedApiKeyLifecycleEvent {
             schema: HOSTED_API_KEY_LIFECYCLE_SCHEMA.to_owned(),
             event_id: String::new(),
@@ -265,10 +298,16 @@ impl HostedApiKeyManager {
             )
             .await
             .map_err(map_store)?;
-        if outcome != HostedJobWriteOutcome::Inserted {
-            return Err(HostedEdgeError::InvalidRequest);
+        if !matches!(
+            outcome,
+            HostedJobWriteOutcome::Inserted | HostedJobWriteOutcome::ExactReplay
+        ) {
+            return Err(HostedEdgeError::DependencyUnavailable);
         }
-        Ok(HostedIssuedApiKey { secret, receipt })
+        Ok(HostedIssuedApiKey {
+            secret: request.secret,
+            receipt,
+        })
     }
 
     pub async fn revoke(
@@ -337,8 +376,7 @@ fn validate_event(event: &HostedApiKeyLifecycleEvent) -> Result<(), HostedEdgeEr
     {
         return Err(HostedEdgeError::InvalidRequest);
     }
-    let tenant_id = HostedTenantId::new(event.tenant_id.clone())
-        .map_err(|_| HostedEdgeError::InvalidRequest)?;
+    HostedTenantId::new(event.tenant_id.clone()).map_err(|_| HostedEdgeError::InvalidRequest)?;
     if let HostedApiKeyLifecycleOperation::Issued {
         principal_id,
         allowed_actions,
@@ -347,39 +385,56 @@ fn validate_event(event: &HostedApiKeyLifecycleEvent) -> Result<(), HostedEdgeEr
         rotated_from_key_id,
     } = &event.operation
     {
-        validate_issue(&HostedApiKeyIssueRequest {
-            tenant_id,
-            key_id: event.key_id.clone(),
-            principal_id: principal_id.clone(),
-            allowed_actions: allowed_actions.clone(),
-            active_from: *active_from,
-            expires_at: *expires_at,
-            rotated_from_key_id: rotated_from_key_id.clone(),
-            issued_at: event.occurred_at,
-        })?;
+        validate_issue_fields(
+            &event.key_id,
+            principal_id,
+            allowed_actions,
+            *active_from,
+            *expires_at,
+            rotated_from_key_id.as_deref(),
+            event.occurred_at,
+        )?;
     }
     Ok(())
 }
 
 fn validate_issue(request: &HostedApiKeyIssueRequest) -> Result<(), HostedEdgeError> {
-    if !valid_bounded_identifier(&request.key_id, MAX_KEY_ID_BYTES)
-        || !valid_identifier(&request.principal_id)
-        || request.allowed_actions.is_empty()
-        || request.allowed_actions.len() > MAX_ACTIONS
-        || request
-            .allowed_actions
+    validate_issue_fields(
+        &request.key_id,
+        &request.principal_id,
+        &request.allowed_actions,
+        request.active_from,
+        request.expires_at,
+        request.rotated_from_key_id.as_deref(),
+        request.issued_at,
+    )?;
+    request.secret.decoded().map(|_| ())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_issue_fields(
+    key_id: &str,
+    principal_id: &str,
+    allowed_actions: &BTreeSet<String>,
+    active_from: u64,
+    expires_at: u64,
+    rotated_from_key_id: Option<&str>,
+    issued_at: u64,
+) -> Result<(), HostedEdgeError> {
+    if !valid_bounded_identifier(key_id, MAX_KEY_ID_BYTES)
+        || !valid_identifier(principal_id)
+        || allowed_actions.is_empty()
+        || allowed_actions.len() > MAX_ACTIONS
+        || allowed_actions
             .iter()
             .any(|action| !valid_bounded_identifier(action, MAX_ACTION_BYTES))
-        || request.active_from == 0
-        || request.expires_at <= request.active_from
-        || request.issued_at == 0
-        || request.issued_at > request.active_from
-        || request
-            .rotated_from_key_id
-            .as_deref()
-            .is_some_and(|previous| {
-                !valid_bounded_identifier(previous, MAX_KEY_ID_BYTES) || previous == request.key_id
-            })
+        || active_from == 0
+        || expires_at <= active_from
+        || issued_at == 0
+        || issued_at > active_from
+        || rotated_from_key_id.is_some_and(|previous| {
+            !valid_bounded_identifier(previous, MAX_KEY_ID_BYTES) || previous == key_id
+        })
     {
         return Err(HostedEdgeError::InvalidRequest);
     }
@@ -415,6 +470,7 @@ mod tests {
     #[derive(Default)]
     struct MockRepository {
         artifacts: Mutex<Vec<Vec<u8>>>,
+        issued: Mutex<Option<(String, Vec<u8>)>>,
     }
 
     #[async_trait]
@@ -424,7 +480,7 @@ mod tests {
             _tenant: &HostedTenantId,
             _key_id: &str,
             _principal_id: &str,
-            _verifier_sha256: &str,
+            verifier_sha256: &str,
             _allowed_actions: &BTreeSet<String>,
             _active_from: u64,
             _expires_at: u64,
@@ -433,6 +489,19 @@ mod tests {
             artifact_json: &[u8],
             _now: u64,
         ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+            let candidate = (verifier_sha256.to_owned(), artifact_json.to_vec());
+            let mut issued = self
+                .issued
+                .lock()
+                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            if let Some(existing) = issued.as_ref() {
+                return if existing == &candidate {
+                    Ok(HostedJobWriteOutcome::ExactReplay)
+                } else {
+                    Err(HostedMarketStoreError::Conflict)
+                };
+            }
+            *issued = Some(candidate);
             self.artifacts
                 .lock()
                 .map_err(|_| HostedMarketStoreError::Unavailable)?
@@ -474,6 +543,7 @@ mod tests {
                 expires_at: 1_000,
                 rotated_from_key_id: Some("key-1".to_owned()),
                 issued_at: 100,
+                secret: HostedApiKeySecret::generate(),
             })
             .await?;
         assert_eq!(issued.secret.expose().len(), 43);
@@ -488,6 +558,44 @@ mod tests {
         assert_eq!(
             repository.artifacts.lock().map_err(|_| "poisoned")?.len(),
             2
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn caller_held_secret_makes_response_loss_retry_exact(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let tenant = HostedTenantId::new("tenant-a")?;
+        let repository = Arc::new(MockRepository::default());
+        let pepper = Arc::new(crate::StaticApiKeyPepper::new(vec![9; 32])?);
+        let signer = Arc::new(Ed25519Backend::generate());
+        let manager = HostedApiKeyManager::new(repository.clone(), pepper, signer)?;
+        let caller_secret = HostedApiKeySecret::generate().expose().to_owned();
+        let request = |secret| HostedApiKeyIssueRequest {
+            tenant_id: tenant.clone(),
+            key_id: "key-retry".to_owned(),
+            principal_id: "buyer-a".to_owned(),
+            allowed_actions: ["finding.purchase".to_owned()].into_iter().collect(),
+            active_from: 101,
+            expires_at: 1_000,
+            rotated_from_key_id: None,
+            issued_at: 100,
+            secret,
+        };
+
+        let first = manager
+            .issue(request(HostedApiKeySecret::parse(caller_secret.clone())?))
+            .await?;
+        let retry = manager
+            .issue(request(HostedApiKeySecret::parse(caller_secret.clone())?))
+            .await?;
+
+        assert_eq!(first.secret.expose(), caller_secret);
+        assert_eq!(retry.secret.expose(), caller_secret);
+        assert_eq!(first.receipt, retry.receipt);
+        assert_eq!(
+            repository.artifacts.lock().map_err(|_| "poisoned")?.len(),
+            1
         );
         Ok(())
     }
