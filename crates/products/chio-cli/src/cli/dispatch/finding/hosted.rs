@@ -271,7 +271,8 @@ fn validate_referenced_files(profile: &FindingHostedProfile) -> Result<(), CliEr
 }
 
 fn validate_secret_environment(profile: &FindingHostedProfile) -> Result<(), CliError> {
-    require_secret_env(&profile.database.url_env)?;
+    require_secret_env(&profile.database.runtime_url_env)?;
+    require_secret_env(&profile.database.worker_url_env)?;
     require_secret_env(&profile.payment.bearer_token_env)?;
     require_secret_env(&profile.bond_observer.bearer_token_env)?;
     require_secret_env(&profile.impairment_publisher.bearer_token_env)?;

@@ -421,7 +421,7 @@ async fn connect_store(
     profile: &FindingHostedProfile,
 ) -> Result<PostgresFindingMarketStore, DaemonError> {
     let database_url =
-        std::env::var(&profile.database.url_env).map_err(|_| DaemonError::Database)?;
+        std::env::var(&profile.database.worker_url_env).map_err(|_| DaemonError::Database)?;
     if database_url.is_empty()
         || database_url.len() > 16 * 1024
         || database_url.chars().any(char::is_control)

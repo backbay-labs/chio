@@ -36,6 +36,13 @@ pub(super) async fn assert_multi_replica_leases_and_shutdown_refunds(
         "replica-b",
         relinquished_job.lease_fence,
     )?;
+    sqlx::query(
+        "UPDATE chio_finding_market_jobs SET lease_expires_at = floor(extract(epoch from clock_timestamp()))::bigint - 1 WHERE tenant_id = $1 AND job_id = $2",
+    )
+    .bind(tenant.as_str())
+    .bind(&relinquished_job.job_id)
+    .execute(admin_pool)
+    .await?;
     store
         .relinquish_job_lease(tenant, &relinquished_job.job_id, &relinquished_lease)
         .await?;

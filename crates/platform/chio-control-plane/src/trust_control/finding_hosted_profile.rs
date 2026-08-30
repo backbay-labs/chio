@@ -81,11 +81,36 @@ pub enum FindingHostedEdgeProfile {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingHostedDatabaseProfile {
-    pub url_env: String,
+    pub runtime_url_env: String,
+    pub worker_url_env: String,
     pub ca_certificate_path: String,
     pub max_connections: u32,
     pub acquire_timeout_millis: u64,
     pub max_jobs_per_tenant: u64,
+}
+
+impl FindingHostedDatabaseProfile {
+    fn validate(&self) -> Result<(), String> {
+        validate_env_name(
+            &self.runtime_url_env,
+            "database runtime URL environment variable",
+        )?;
+        validate_env_name(
+            &self.worker_url_env,
+            "database worker URL environment variable",
+        )?;
+        if self.runtime_url_env == self.worker_url_env {
+            return Err("hosted database roles require distinct URL bindings".to_owned());
+        }
+        validate_absolute_path(&self.ca_certificate_path, "database CA certificate")?;
+        if !(1..=256).contains(&self.max_connections)
+            || !(100..=30_000).contains(&self.acquire_timeout_millis)
+            || !(1..=10_000_000).contains(&self.max_jobs_per_tenant)
+        {
+            return Err("hosted database bounds are invalid".to_owned());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -685,18 +710,7 @@ impl FindingHostedProfile {
     }
 
     fn validate_database(&self) -> Result<(), String> {
-        validate_env_name(&self.database.url_env, "database URL environment variable")?;
-        validate_absolute_path(
-            &self.database.ca_certificate_path,
-            "database CA certificate",
-        )?;
-        if !(1..=256).contains(&self.database.max_connections)
-            || !(100..=30_000).contains(&self.database.acquire_timeout_millis)
-            || !(1..=10_000_000).contains(&self.database.max_jobs_per_tenant)
-        {
-            return Err("hosted database bounds are invalid".to_owned());
-        }
-        Ok(())
+        self.database.validate()
     }
 
     fn validate_identity(&self) -> Result<(), String> {
@@ -1303,6 +1317,21 @@ mod tests {
         assert!(validate_env_name("chio_token", "env").is_err());
         assert!(validate_absolute_path("/srv/chio/kernel", "path").is_ok());
         assert!(validate_absolute_path("/srv/chio/../kernel", "path").is_err());
+    }
+
+    #[test]
+    fn database_runtime_and_worker_roles_require_distinct_secrets() {
+        let mut database = FindingHostedDatabaseProfile {
+            runtime_url_env: "CHIO_MARKET_RUNTIME_DATABASE_URL".to_owned(),
+            worker_url_env: "CHIO_MARKET_WORKER_DATABASE_URL".to_owned(),
+            ca_certificate_path: "/etc/chio/postgres-ca.pem".to_owned(),
+            max_connections: 8,
+            acquire_timeout_millis: 1_000,
+            max_jobs_per_tenant: 10_000,
+        };
+        assert!(database.validate().is_ok());
+        database.worker_url_env = database.runtime_url_env.clone();
+        assert!(database.validate().is_err());
     }
 
     #[test]

@@ -364,8 +364,8 @@ fn worker_signer(profile: &FindingHostedProfile) -> Result<PublicKey, &'static s
 async fn connect_store(
     profile: &FindingHostedProfile,
 ) -> Result<PostgresFindingMarketStore, &'static str> {
-    let url =
-        std::env::var(&profile.database.url_env).map_err(|_| "canary_database_secret_missing")?;
+    let url = std::env::var(&profile.database.runtime_url_env)
+        .map_err(|_| "canary_database_secret_missing")?;
     let jobs = i64::try_from(profile.database.max_jobs_per_tenant)
         .map_err(|_| "canary_profile_invalid")?;
     let config = HostedPostgresConfig::new(url)

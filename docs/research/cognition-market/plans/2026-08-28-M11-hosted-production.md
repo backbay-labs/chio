@@ -24,7 +24,8 @@ database, payment rail, signer, or worker starts. The profile requires:
 - action-scoped 256-bit API keys whose HMAC verifiers are protected by an
   environment-referenced deployment pepper, with signed issue and revocation
   receipts;
-- a non-superuser PostgreSQL runtime role with forced row-level security;
+- distinct non-superuser PostgreSQL runtime and worker roles, each bound to a
+  separate secret reference, with forced row-level security;
 - distinct remote-custody keys for all 19 market, kernel, and worker roles;
 - complete ACP authorize, capture, release, refund, and state paths;
 - a strict HTTPS live bond-observation endpoint with separate dispatch and

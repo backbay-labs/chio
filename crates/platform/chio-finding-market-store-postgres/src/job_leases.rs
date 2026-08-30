@@ -258,7 +258,8 @@ impl PostgresFindingMarketStore {
         Ok(())
     }
 
-    /// Return a live lease to the pending queue during cooperative shutdown.
+    /// Return a matching, unreclaimed lease to the pending queue during
+    /// cooperative shutdown.
     ///
     /// A claim reserves one execution attempt. Shutdown occurs outside the
     /// job's control, so this fenced transition gives that attempt back while
@@ -273,6 +274,10 @@ impl PostgresFindingMarketStore {
             .map_err(|_| HostedMarketStoreError::Invalid("job_id"))?;
         let lease_fence = checked_i64(lease.fence(), "lease_fence")?;
         let mut transaction = self.begin_tenant(tenant).await?;
+        // Expiry alone does not transfer ownership. A successful reclaim
+        // changes both owner and fence, so the exact fence remains the
+        // authoritative exclusion boundary while delayed cleanup refunds the
+        // interrupted attempt.
         let updated = sqlx::query(
             r#"
             UPDATE chio_finding_market_jobs
@@ -283,7 +288,6 @@ impl PostgresFindingMarketStore {
                 updated_at = floor(extract(epoch from clock_timestamp()))::bigint
             WHERE tenant_id = $1 AND job_id = $2
               AND state = 'leased' AND lease_owner = $3 AND lease_fence = $4
-              AND lease_expires_at > floor(extract(epoch from clock_timestamp()))::bigint
               AND attempt_count > 0
             "#,
         )

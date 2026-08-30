@@ -6,7 +6,7 @@ use chio_finding_market_store_postgres::{
     HostedJobLease, HostedMarketJob, HostedMarketStoreError, HostedTenantId,
     PostgresFindingMarketStore,
 };
-use futures_util::{stream, StreamExt as _, TryStreamExt as _};
+use futures_util::{stream, Stream, StreamExt as _};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
@@ -149,11 +149,11 @@ impl HostedFindingWorker {
         let claimed =
             u32::try_from(jobs.len()).map_err(|_| HostedWorkerServiceError::Configuration)?;
         let claimed_job_ids = jobs.iter().map(|job| job.job_id.clone()).collect();
-        let outcomes = stream::iter(jobs)
-            .map(|job| self.process_job(job, cancellation.clone()))
-            .buffer_unordered(self.executor.max_instances())
-            .try_collect::<Vec<_>>()
-            .await?;
+        let batch_cancellation = cancellation.child_token();
+        let executions = stream::iter(jobs)
+            .map(|job| self.process_job(job, batch_cancellation.clone()))
+            .buffer_unordered(self.executor.max_instances());
+        let outcomes = cancel_on_error_and_drain(executions, &batch_cancellation).await?;
         let mut run = HostedWorkerRun {
             claimed,
             completed: 0,
@@ -376,6 +376,33 @@ where
     execution.await
 }
 
+async fn cancel_on_error_and_drain<T, E, S>(
+    executions: S,
+    cancellation: &CancellationToken,
+) -> Result<Vec<T>, E>
+where
+    S: Stream<Item = Result<T, E>>,
+{
+    futures_util::pin_mut!(executions);
+    let mut outcomes = Vec::new();
+    let mut first_error = None;
+    while let Some(result) = executions.next().await {
+        match result {
+            Ok(outcome) => outcomes.push(outcome),
+            Err(error) => {
+                cancellation.cancel();
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
+    }
+    match first_error {
+        Some(error) => Err(error),
+        None => Ok(outcomes),
+    }
+}
+
 enum JobOutcome {
     Completed(HostedWorkerJobEvidence),
     GuestRejected(HostedWorkerJobEvidence),
@@ -446,6 +473,33 @@ mod tests {
 
         let result = cancel_and_await_execution(&cancellation, execution.as_mut()).await;
         assert_eq!(result, 7);
+        assert!(cleaned.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn batch_error_cancels_and_drains_every_execution() {
+        let cancellation = CancellationToken::new();
+        let execution_cancellation = cancellation.clone();
+        let cleaned = Arc::new(AtomicBool::new(false));
+        let cleaned_by_execution = Arc::clone(&cleaned);
+        let executions = stream::iter(0_u8..2)
+            .map(move |index| {
+                let execution_cancellation = execution_cancellation.clone();
+                let cleaned = Arc::clone(&cleaned_by_execution);
+                async move {
+                    if index == 0 {
+                        return Err("primary failure");
+                    }
+                    execution_cancellation.cancelled().await;
+                    tokio::task::yield_now().await;
+                    cleaned.store(true, Ordering::SeqCst);
+                    Ok(index)
+                }
+            })
+            .buffer_unordered(2);
+
+        let result = cancel_on_error_and_drain(executions, &cancellation).await;
+        assert_eq!(result, Err("primary failure"));
         assert!(cleaned.load(Ordering::SeqCst));
     }
 }
