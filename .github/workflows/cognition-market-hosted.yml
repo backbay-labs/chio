@@ -140,6 +140,8 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
       - name: Install cargo-vet
         run: cargo install cargo-vet --locked --version 0.10.2
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked --version 0.19.4
       - name: Qualify hosted cognition market
         run: ./scripts/qualify-cognition-market-hosted.sh --code-only
       - name: Upload hosted qualification evidence

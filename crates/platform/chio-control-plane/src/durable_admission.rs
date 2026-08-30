@@ -995,6 +995,8 @@ fn database_paths_alias(left: &Path, right: &Path) -> Result<bool, CliError> {
             return Ok(true);
         }
     }
+    #[cfg(not(unix))]
+    let _ = (&left_metadata, &right_metadata);
     Ok(resolve_database_path(left)? == resolve_database_path(right)?)
 }
 

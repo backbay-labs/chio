@@ -156,6 +156,7 @@ pub(super) fn cmd_finding_operator_validate_hosted(
     profile
         .load_impairment_publisher()
         .map_err(CliError::cli_other_error)?;
+    #[cfg(target_os = "linux")]
     profile
         .load_worker_executor()
         .map_err(CliError::cli_other_error)?;

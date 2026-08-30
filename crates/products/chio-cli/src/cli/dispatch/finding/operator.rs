@@ -1871,6 +1871,8 @@ fn set_secret_permissions(path: &Path) -> Result<(), CliError> {
         use std::os::unix::fs::PermissionsExt as _;
         fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
     }
+    #[cfg(not(unix))]
+    let _ = path;
     Ok(())
 }
 
