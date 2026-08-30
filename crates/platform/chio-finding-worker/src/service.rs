@@ -261,7 +261,7 @@ impl HostedFindingWorker {
             Err(crate::executor::WorkerExecutionError::Cancelled) => {
                 let lease_relinquished = match self
                     .store
-                    .fail_job(&job.tenant_id, &job.job_id, &lease, "worker_shutdown", 1)
+                    .relinquish_job_lease(&job.tenant_id, &job.job_id, &lease)
                     .await
                 {
                     Ok(_) => true,

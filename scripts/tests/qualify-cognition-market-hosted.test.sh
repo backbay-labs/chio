@@ -72,6 +72,14 @@ if [[ "$(grep -Fc '.github/workflows/release-qualification.yml' "${code_workflow
   echo "hosted workflow must qualify release workflow changes on pull requests and main" >&2
   exit 1
 fi
+if [[ "$(grep -Fc 'crates/protocol/chio-egress-contract/**' "${code_workflow}")" -ne 2 ]]; then
+  echo "hosted workflow must qualify egress-contract changes on pull requests and main" >&2
+  exit 1
+fi
+if [[ "$(grep -Fc 'crates/protocol/chio-egress-contract/**' "${components}")" -ne 1 ]]; then
+  echo "hosted component ownership must include the egress contract exactly once" >&2
+  exit 1
+fi
 require_text "${promotion_workflow}" 'runs-on: [self-hosted, linux, x64, kvm, cognition-market, ephemeral, attested]'
 require_text "${promotion_workflow}" 'name: cognition-market-production'
 require_text "${promotion_workflow}" 'ephemeral, attested'

@@ -32,6 +32,7 @@
     "crates/products/chio-finding-market-canary/**",
     "crates/products/chio-finding-market-migrator/**",
     "crates/products/chio-finding-worker/**",
+    "crates/protocol/chio-egress-contract/**",
     "crates/protocol/chio-http-serve/**",
     "crates/tooling/chio-release-evidence/**",
     "crates/trust/chio-finding-challenge/**",

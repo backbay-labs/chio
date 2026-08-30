@@ -13,7 +13,9 @@ use chio_finding_market_store_postgres::{
     HostedJobState, HostedPostgresConfig, HostedTenantId, PostgresFindingMarketStore,
 };
 use chio_finding_worker::{
-    FindingWorkerExitClassification, FindingWorkerJobPayload, SignedFindingWorkerResult,
+    FindingWorkerExitClassification, FindingWorkerGuestOpenFilesBoundary,
+    FindingWorkerGuestProcessBoundary, FindingWorkerJobPayload, SignedFindingWorkerResult,
+    FINDING_WORKER_GUEST_ENFORCEMENT_SCHEMA,
 };
 use clap::{Parser, Subcommand};
 use nix::libc;
@@ -288,6 +290,8 @@ async fn verify(
         serde_json::from_slice(result_json).map_err(|_| "canary_result_invalid")?;
     let signer = worker_signer(profile)?;
     let body = &envelope.body;
+    let limits = &job.payload.job.resource_limits;
+    let enforcement = &body.result.guest_enforcement;
     if envelope.signer_key != signer
         || !envelope
             .verify_signature()
@@ -305,6 +309,16 @@ async fn verify(
         || body.result.tenant_id != job.tenant_id
         || body.result.job_id != job.job_id
         || body.result.request_sha256 != job.request_sha256
+        || enforcement.schema != FINDING_WORKER_GUEST_ENFORCEMENT_SCHEMA
+        || enforcement.process_boundary != FindingWorkerGuestProcessBoundary::CgroupV2
+        || enforcement.process_limit != limits.process_count
+        || !enforcement.process_limit_probe_passed
+        || enforcement.process_limit_hits != 0
+        || enforcement.open_files_boundary != FindingWorkerGuestOpenFilesBoundary::RlimitNofile
+        || enforcement.open_files_soft_limit != limits.open_files
+        || enforcement.open_files_hard_limit != limits.open_files
+        || !enforcement.open_files_limit_probe_passed
+        || enforcement.open_files_limit_hits != 0
     {
         return Err("canary_result_invalid");
     }

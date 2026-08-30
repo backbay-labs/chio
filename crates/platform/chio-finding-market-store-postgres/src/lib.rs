@@ -895,7 +895,7 @@ fn job_from_row(
             && last_error_code.is_some())
         || (matches!(state, HostedJobState::Failed | HostedJobState::Exhausted)
             && last_error_code.is_none())
-        || (matches!(state, HostedJobState::Pending) && (attempt_count != 0 || lease_fence != 0))
+        || lease_fence < attempt_count
         || (!matches!(state, HostedJobState::Pending) && (attempt_count == 0 || lease_fence == 0))
     {
         return Err(HostedMarketStoreError::DigestMismatch);

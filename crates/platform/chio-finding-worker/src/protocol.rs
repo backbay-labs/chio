@@ -11,6 +11,8 @@ pub const FINDING_WORKER_JOB_SCHEMA: &str = "chio.finding.worker-job.v1";
 pub const FINDING_WORKER_REQUEST_SCHEMA: &str = "chio.finding.worker-request.v1";
 pub const FINDING_WORKER_RESULT_SCHEMA: &str = "chio.finding.worker-result.v1";
 pub const FINDING_WORKER_ATTESTED_RESULT_SCHEMA: &str = "chio.finding.worker-attested-result.v1";
+pub const FINDING_WORKER_GUEST_ENFORCEMENT_SCHEMA: &str =
+    "chio.finding.worker-guest-enforcement.v1";
 pub const FINDING_WORKER_INPUT_SCHEMA: &str = "chio.finding.worker-input.v1";
 pub const FINDING_WORKER_INPUT_END_SCHEMA: &str = "chio.finding.worker-input-end.v1";
 
@@ -394,6 +396,69 @@ pub struct FindingWorkerDiagnostic {
     pub message: String,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingWorkerGuestProcessBoundary {
+    CgroupV2,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingWorkerGuestOpenFilesBoundary {
+    RlimitNofile,
+}
+
+/// Kernel-authored enforcement evidence from the trusted guest supervisor.
+///
+/// The untrusted workload runs below that supervisor and cannot access the
+/// virtio-vsock endpoint used to emit this frame. The host binds these exact
+/// values to the authorized request before signing the result.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindingWorkerGuestEnforcement {
+    pub schema: String,
+    pub process_boundary: FindingWorkerGuestProcessBoundary,
+    pub process_limit: u32,
+    pub process_limit_probe_passed: bool,
+    pub process_limit_hits: u32,
+    pub open_files_boundary: FindingWorkerGuestOpenFilesBoundary,
+    pub open_files_soft_limit: u32,
+    pub open_files_hard_limit: u32,
+    pub open_files_limit_probe_passed: bool,
+    pub open_files_limit_hits: u32,
+}
+
+impl FindingWorkerGuestEnforcement {
+    fn validate_for(
+        &self,
+        limits: &FindingWorkerResourceLimits,
+        classification: FindingWorkerExitClassification,
+        usage: &FindingWorkerResourceUsage,
+    ) -> Result<(), &'static str> {
+        if self.schema != FINDING_WORKER_GUEST_ENFORCEMENT_SCHEMA
+            || self.process_boundary != FindingWorkerGuestProcessBoundary::CgroupV2
+            || self.process_limit != limits.process_count
+            || !self.process_limit_probe_passed
+            || self.open_files_boundary != FindingWorkerGuestOpenFilesBoundary::RlimitNofile
+            || self.open_files_soft_limit != limits.open_files
+            || self.open_files_hard_limit != limits.open_files
+            || !self.open_files_limit_probe_passed
+        {
+            return Err("guest_enforcement_binding_invalid");
+        }
+        let process_limit_hit = self.process_limit_hits != 0;
+        let open_files_limit_hit = self.open_files_limit_hits != 0;
+        if (process_limit_hit && usage.process_peak != limits.process_count)
+            || (open_files_limit_hit && usage.open_files_peak != limits.open_files)
+            || ((process_limit_hit || open_files_limit_hit)
+                && classification != FindingWorkerExitClassification::ResourceExhausted)
+        {
+            return Err("guest_enforcement_accounting_invalid");
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingWorkerResult {
@@ -405,6 +470,7 @@ pub struct FindingWorkerResult {
     pub finding_artifact_sha256: Option<String>,
     pub output_artifacts: Vec<FindingWorkerArtifact>,
     pub diagnostics: Vec<FindingWorkerDiagnostic>,
+    pub guest_enforcement: FindingWorkerGuestEnforcement,
     pub resource_usage: FindingWorkerResourceUsage,
 }
 
@@ -450,6 +516,16 @@ impl FindingWorkerResult {
         }
         self.resource_usage
             .validate_for(&request.job.resource_limits)?;
+        self.guest_enforcement.validate_for(
+            &request.job.resource_limits,
+            self.classification,
+            &self.resource_usage,
+        )?;
+        if self.classification != FindingWorkerExitClassification::PolicyDenied
+            && (self.resource_usage.process_peak == 0 || self.resource_usage.open_files_peak == 0)
+        {
+            return Err("result_resource_accounting_invalid");
+        }
         let output_artifact_bytes = self
             .output_artifacts
             .iter()
@@ -751,6 +827,18 @@ mod tests {
                 size_bytes: 512,
             }],
             diagnostics: vec![],
+            guest_enforcement: FindingWorkerGuestEnforcement {
+                schema: FINDING_WORKER_GUEST_ENFORCEMENT_SCHEMA.to_owned(),
+                process_boundary: FindingWorkerGuestProcessBoundary::CgroupV2,
+                process_limit: request.job.resource_limits.process_count,
+                process_limit_probe_passed: true,
+                process_limit_hits: 0,
+                open_files_boundary: FindingWorkerGuestOpenFilesBoundary::RlimitNofile,
+                open_files_soft_limit: request.job.resource_limits.open_files,
+                open_files_hard_limit: request.job.resource_limits.open_files,
+                open_files_limit_probe_passed: true,
+                open_files_limit_hits: 0,
+            },
             resource_usage: FindingWorkerResourceUsage {
                 wall_time_millis: 1_000,
                 cpu_time_millis: 500,
@@ -788,6 +876,27 @@ mod tests {
             result.classification = FindingWorkerExitClassification::CommandFailed;
             result.finding_artifact_sha256 = None;
             assert_eq!(result.validate_for(&request), Err("result_shape_invalid"));
+        }
+    }
+
+    #[test]
+    fn result_requires_exact_in_guest_kernel_limits() {
+        let prepared = request();
+        assert!(prepared.is_some());
+        if let Some((request, _)) = prepared {
+            let mut result = successful_result(&request);
+            result.guest_enforcement.process_limit -= 1;
+            assert_eq!(
+                result.validate_for(&request),
+                Err("guest_enforcement_binding_invalid")
+            );
+
+            let mut result = successful_result(&request);
+            result.guest_enforcement.process_limit_hits = 1;
+            assert_eq!(
+                result.validate_for(&request),
+                Err("guest_enforcement_accounting_invalid")
+            );
         }
     }
 

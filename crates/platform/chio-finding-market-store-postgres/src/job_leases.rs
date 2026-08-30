@@ -3,8 +3,9 @@ use sqlx::Row as _;
 use super::*;
 
 impl PostgresFindingMarketStore {
-    /// Claim a bounded batch without exceeding `limit` active leases for the
-    /// tenant across all worker replicas.
+    /// Claim a bounded batch without exceeding the tenant's configured active
+    /// lease ceiling across all worker replicas. `limit` bounds only this
+    /// caller's batch.
     pub async fn claim_due_jobs(
         &self,
         tenant: &HostedTenantId,
@@ -35,9 +36,6 @@ impl PostgresFindingMarketStore {
         .fetch_one(&mut *transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        if i64::from(limit) > i64::from(configured_limit) {
-            return Err(HostedMarketStoreError::Invalid("tenant_concurrency"));
-        }
         let active_leases: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM chio_finding_market_jobs WHERE tenant_id = $1 AND state = 'leased' AND lease_expires_at > floor(extract(epoch from clock_timestamp()))::bigint",
         )
@@ -45,7 +43,7 @@ impl PostgresFindingMarketStore {
         .fetch_one(&mut *transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        let available_slots = i64::from(limit)
+        let available_slots = i64::from(configured_limit)
             .checked_sub(active_leases)
             .ok_or(HostedMarketStoreError::DigestMismatch)?;
         if available_slots <= 0 {
@@ -93,7 +91,7 @@ impl PostgresFindingMarketStore {
         .bind(tenant.as_str())
         .bind(worker_id)
         .bind(lease_duration)
-        .bind(available_slots)
+        .bind(available_slots.min(i64::from(limit)))
         .fetch_all(&mut *transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?;
@@ -244,6 +242,53 @@ impl PostgresFindingMarketStore {
         .bind(job_id)
         .bind(error_code)
         .bind(retry_delay)
+        .bind(lease.worker_id())
+        .bind(lease_fence)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| HostedMarketStoreError::Unavailable)?
+        .rows_affected();
+        if updated != 1 {
+            return Err(HostedMarketStoreError::LeaseLost);
+        }
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        Ok(())
+    }
+
+    /// Return a live lease to the pending queue during cooperative shutdown.
+    ///
+    /// A claim reserves one execution attempt. Shutdown occurs outside the
+    /// job's control, so this fenced transition gives that attempt back while
+    /// preserving the monotonically increasing lease fence.
+    pub async fn relinquish_job_lease(
+        &self,
+        tenant: &HostedTenantId,
+        job_id: &str,
+        lease: &HostedJobLease,
+    ) -> Result<(), HostedMarketStoreError> {
+        validate_identifier(job_id, MAX_JOB_ID_BYTES)
+            .map_err(|_| HostedMarketStoreError::Invalid("job_id"))?;
+        let lease_fence = checked_i64(lease.fence(), "lease_fence")?;
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let updated = sqlx::query(
+            r#"
+            UPDATE chio_finding_market_jobs
+            SET state = 'pending', lease_owner = NULL, lease_expires_at = NULL,
+                attempt_count = attempt_count - 1,
+                available_at = floor(extract(epoch from clock_timestamp()))::bigint,
+                last_error_code = NULL,
+                updated_at = floor(extract(epoch from clock_timestamp()))::bigint
+            WHERE tenant_id = $1 AND job_id = $2
+              AND state = 'leased' AND lease_owner = $3 AND lease_fence = $4
+              AND lease_expires_at > floor(extract(epoch from clock_timestamp()))::bigint
+              AND attempt_count > 0
+            "#,
+        )
+        .bind(tenant.as_str())
+        .bind(job_id)
         .bind(lease.worker_id())
         .bind(lease_fence)
         .execute(&mut *transaction)

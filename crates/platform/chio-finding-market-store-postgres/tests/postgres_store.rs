@@ -32,7 +32,8 @@ use sqlx::Row as _;
 mod support;
 
 use support::{
-    append_replication_check, apply_authority_transition, migrate_legacy_fixture,
+    append_replication_check, apply_authority_transition,
+    assert_multi_replica_leases_and_shutdown_refunds, migrate_legacy_fixture,
     signed_domain_payload, signed_principal_replication_event, ReplicationCheckSpec,
 };
 
@@ -420,12 +421,20 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let tenant_a = HostedTenantId::new(format!("integration-a-{nonce}"))?;
     let tenant_b = HostedTenantId::new(format!("integration-b-{nonce}"))?;
+    let concurrency_tenant = HostedTenantId::new(format!("integration-concurrency-{nonce}"))?;
     let tenant_limits = HostedTenantLimits::new(1, 8, 10_000, "integration-revision-1")?;
     store
         .register_tenant(&tenant_a, &tenant_limits, 1_700_000_000)
         .await?;
     store
         .register_tenant(&tenant_b, &tenant_limits, 1_700_000_000)
+        .await?;
+    store
+        .register_tenant(
+            &concurrency_tenant,
+            &HostedTenantLimits::new(3, 8, 10_000, "integration-concurrency-revision-1")?,
+            1_700_000_000,
+        )
         .await?;
     store
         .verify_tenant_limits(&tenant_a, &tenant_limits)
@@ -985,6 +994,17 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             )
             .await?,
         HostedJobWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store
+            .apply_principal_lifecycle(
+                &tenant_a,
+                &operator_signer.public_key(),
+                &post_cutover_rotation,
+            )
+            .await?,
+        HostedJobWriteOutcome::ExactReplay,
+        "an exact principal response-loss retry must bypass the newly stale replication gate"
     );
     let rollback_batch = replicator
         .pending_rollback_batch(&tenant_a, 3, 0, 10)
@@ -1707,14 +1727,17 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     let first_lease = store.claim_due_jobs(&tenant_a, "worker-a", 10, 1).await?;
     assert_eq!(first_lease.len(), 1);
     assert_eq!(first_lease[0].state, HostedJobState::Leased);
-    assert!(matches!(
-        store.claim_due_jobs(&tenant_a, "worker-b", 10, 2).await,
-        Err(HostedMarketStoreError::Invalid("tenant_concurrency"))
-    ));
+    assert!(store
+        .claim_due_jobs(&tenant_a, "worker-b", 10, 2)
+        .await?
+        .is_empty());
     assert!(store
         .claim_due_jobs(&tenant_a, "worker-b", 10, 1)
         .await?
         .is_empty());
+
+    assert_multi_replica_leases_and_shutdown_refunds(&store, &admin_pool, &concurrency_tenant)
+        .await?;
     let first_claim = chio_finding_market_store_postgres::HostedJobLease::new(
         "worker-a",
         first_lease[0].lease_fence,

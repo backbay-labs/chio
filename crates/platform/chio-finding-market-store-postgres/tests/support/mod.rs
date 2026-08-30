@@ -1,5 +1,107 @@
 use super::*;
 
+pub(super) async fn assert_multi_replica_leases_and_shutdown_refunds(
+    store: &PostgresFindingMarketStore,
+    admin_pool: &sqlx::PgPool,
+    tenant: &HostedTenantId,
+) -> Result<(), Box<dyn Error>> {
+    for index in 1..=3 {
+        store
+            .put_job(
+                tenant,
+                &format!("concurrency-job-{index}"),
+                "finding.verify",
+                &format!("{index:x}").repeat(64),
+                format!(r#"{{"findingId":"concurrency-{index}"}}"#).as_bytes(),
+                1_700_000_000,
+                1_700_000_000,
+            )
+            .await?;
+    }
+    let replica_a = store.claim_due_jobs(tenant, "replica-a", 10, 1).await?;
+    assert_eq!(replica_a.len(), 1);
+    let replica_b = store.claim_due_jobs(tenant, "replica-b", 10, 2).await?;
+    assert_eq!(
+        replica_b.len(),
+        2,
+        "a replica batch must consume all tenant-global slots still available"
+    );
+    assert!(store
+        .claim_due_jobs(tenant, "replica-c", 10, 2)
+        .await?
+        .is_empty());
+
+    let relinquished_job = &replica_b[0];
+    let relinquished_lease = chio_finding_market_store_postgres::HostedJobLease::new(
+        "replica-b",
+        relinquished_job.lease_fence,
+    )?;
+    store
+        .relinquish_job_lease(tenant, &relinquished_job.job_id, &relinquished_lease)
+        .await?;
+    let relinquished = store
+        .get_job(tenant, &relinquished_job.job_id)
+        .await?
+        .ok_or("relinquished job missing")?;
+    assert_eq!(relinquished.state, HostedJobState::Pending);
+    assert_eq!(relinquished.attempt_count, 0);
+    assert!(matches!(
+        store
+            .relinquish_job_lease(tenant, &relinquished_job.job_id, &relinquished_lease)
+            .await,
+        Err(HostedMarketStoreError::LeaseLost)
+    ));
+
+    let reclaimed = store.claim_due_jobs(tenant, "replica-c", 10, 2).await?;
+    assert_eq!(reclaimed.len(), 1);
+    assert_eq!(reclaimed[0].job_id, relinquished_job.job_id);
+    assert_eq!(reclaimed[0].attempt_count, 1);
+    assert!(reclaimed[0].lease_fence > relinquished_job.lease_fence);
+    let reclaimed_lease = chio_finding_market_store_postgres::HostedJobLease::new(
+        "replica-c",
+        reclaimed[0].lease_fence,
+    )?;
+    store
+        .fail_job(
+            tenant,
+            &reclaimed[0].job_id,
+            &reclaimed_lease,
+            "transient_failure",
+            1,
+        )
+        .await?;
+    sqlx::query(
+        "UPDATE chio_finding_market_jobs SET available_at = 1 WHERE tenant_id = $1 AND job_id = $2",
+    )
+    .bind(tenant.as_str())
+    .bind(&reclaimed[0].job_id)
+    .execute(admin_pool)
+    .await?;
+
+    let claimed_after_failure = store.claim_due_jobs(tenant, "replica-d", 10, 1).await?;
+    assert_eq!(claimed_after_failure.len(), 1);
+    assert_eq!(claimed_after_failure[0].attempt_count, 2);
+    let claimed_after_failure_lease = chio_finding_market_store_postgres::HostedJobLease::new(
+        "replica-d",
+        claimed_after_failure[0].lease_fence,
+    )?;
+    store
+        .relinquish_job_lease(
+            tenant,
+            &claimed_after_failure[0].job_id,
+            &claimed_after_failure_lease,
+        )
+        .await?;
+    let relinquished_after_failure = store
+        .get_job(tenant, &claimed_after_failure[0].job_id)
+        .await?
+        .ok_or("relinquished retry job missing")?;
+    assert_eq!(relinquished_after_failure.state, HostedJobState::Pending);
+    assert_eq!(relinquished_after_failure.attempt_count, 1);
+    assert!(relinquished_after_failure.lease_fence > relinquished_job.lease_fence);
+    Ok(())
+}
+
 pub(super) fn signed_domain_payload(
     event_kind: HostedMarketDomainEventKind,
     signer: &Keypair,

@@ -437,14 +437,41 @@ DECLARE
     authority_row public.chio_finding_market_authority_state%ROWTYPE;
     principal_event public.chio_finding_market_principal_events%ROWTYPE;
     lifecycle_outcome SMALLINT;
+    authority_found BOOLEAN;
 BEGIN
+    IF requested_tenant_id IS NULL
+        OR requested_tenant_id <> NULLIF(current_setting('chio.tenant_id', TRUE), '')
+    THEN
+        RAISE EXCEPTION 'tenant context does not match principal event'
+            USING ERRCODE = '42501';
+    END IF;
     SELECT * INTO authority_row
     FROM public.chio_finding_market_authority_state
     WHERE tenant_id = requested_tenant_id
     FOR UPDATE;
+    authority_found := FOUND;
+    SELECT * INTO principal_event
+    FROM public.chio_finding_market_principal_events
+    WHERE tenant_id = requested_tenant_id
+      AND event_sha256 = requested_event_sha256;
+    IF FOUND THEN
+        IF principal_event.principal_id = requested_principal_id
+            AND principal_event.operation = requested_operation
+            AND principal_event.role = requested_role
+            AND principal_event.capability_public_key_hex IS NOT DISTINCT FROM requested_capability_public_key_hex
+            AND principal_event.overlap_expires_at IS NOT DISTINCT FROM requested_overlap_expires_at
+            AND principal_event.previous_event_sha256 IS NOT DISTINCT FROM requested_previous_event_sha256
+            AND principal_event.signer_key_hex = requested_signer_key_hex
+            AND principal_event.event_envelope_json = requested_event_envelope_json
+            AND principal_event.created_at = requested_created_at
+        THEN
+            RETURN 1;
+        END IF;
+        RETURN 2;
+    END IF;
     IF requested_tenant_id IS NULL
         OR requested_tenant_id <> NULLIF(current_setting('chio.tenant_id', TRUE), '')
-        OR NOT FOUND
+        OR NOT authority_found
         OR authority_row.authority <> 'postgres'
         OR authority_row.mutations_enabled <> TRUE
         OR authority_row.mode NOT IN ('rollback_window', 'authoritative', 'retired')

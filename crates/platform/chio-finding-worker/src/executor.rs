@@ -42,6 +42,9 @@ const TRANSFER_CHUNK_BYTES: usize = 1024 * 1024;
 const TENANT_CAS_DOMAIN: &str = "chio.finding.worker-tenant-cas.v1";
 const CGROUP_CPU_PERIOD_MICROS: u64 = 100_000;
 const CGROUP_MIN_CPU_QUOTA_MICROS: u64 = 1_000;
+const VMM_BASE_PROCESS_LIMIT: u32 = 64;
+const VMM_PROCESSES_PER_VCPU: u32 = 4;
+const VMM_OPEN_FILES_LIMIT: u32 = 4_096;
 const MIB_BYTES: u64 = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -173,8 +176,7 @@ struct EnforcedJobLimits {
     memory_bytes: u64,
     memory_mib: u32,
     output_bytes: u64,
-    process_count: u32,
-    open_files: u32,
+    vmm_process_count: u32,
 }
 
 impl EnforcedJobLimits {
@@ -206,20 +208,22 @@ impl EnforcedJobLimits {
             .and_then(|scaled| scaled.checked_add(limits.wall_time_millis - 1))
             .and_then(|scaled| scaled.checked_div(limits.wall_time_millis))
             .ok_or(WorkerExecutionError::Configuration)?;
-        if requested_quota < CGROUP_MIN_CPU_QUOTA_MICROS {
-            return Err(WorkerExecutionError::Configuration);
-        }
         let configured_quota = u64::from(config.vcpu_count)
             .checked_mul(CGROUP_CPU_PERIOD_MICROS)
             .ok_or(WorkerExecutionError::Configuration)?;
+        let vmm_process_count = u32::from(config.vcpu_count)
+            .checked_mul(VMM_PROCESSES_PER_VCPU)
+            .and_then(|count| count.checked_add(VMM_BASE_PROCESS_LIMIT))
+            .ok_or(WorkerExecutionError::Configuration)?;
         Ok(Self {
             wall_time: Duration::from_millis(limits.wall_time_millis),
-            cpu_quota_micros: requested_quota.min(configured_quota),
+            cpu_quota_micros: requested_quota
+                .max(CGROUP_MIN_CPU_QUOTA_MICROS)
+                .min(configured_quota),
             memory_bytes: limits.memory_bytes,
             memory_mib,
             output_bytes: limits.output_bytes,
-            process_count: limits.process_count,
-            open_files: limits.open_files,
+            vmm_process_count,
         })
     }
 }
@@ -596,7 +600,6 @@ struct HostResourceUsage {
     cpu_time_millis: u64,
     peak_memory_bytes: u64,
     output_bytes: u64,
-    process_peak: u32,
 }
 
 fn reconcile_host_usage(
@@ -623,7 +626,6 @@ fn reconcile_resource_usage(
         || observed.cpu_time_millis > limits.cpu_time_millis
         || observed.peak_memory_bytes > limits.memory_bytes
         || observed.output_bytes > limits.output_bytes
-        || observed.process_peak > limits.process_count
     {
         return Err(WorkerExecutionError::Protocol);
     }
@@ -631,7 +633,6 @@ fn reconcile_resource_usage(
     usage.cpu_time_millis = usage.cpu_time_millis.max(observed.cpu_time_millis);
     usage.peak_memory_bytes = usage.peak_memory_bytes.max(observed.peak_memory_bytes);
     usage.output_bytes = observed.output_bytes;
-    usage.process_peak = usage.process_peak.max(observed.process_peak);
     Ok(())
 }
 
@@ -735,7 +736,7 @@ fn jailer_args(
         "--cgroup".into(),
         format!("memory.max={}", limits.memory_bytes).into(),
         "--cgroup".into(),
-        format!("pids.max={}", limits.process_count).into(),
+        format!("pids.max={}", limits.vmm_process_count).into(),
         "--cgroup".into(),
         format!(
             "cpu.max={} {CGROUP_CPU_PERIOD_MICROS}",
@@ -745,7 +746,7 @@ fn jailer_args(
         "--resource-limit".into(),
         format!("fsize={}", limits.output_bytes).into(),
         "--resource-limit".into(),
-        format!("no-file={}", limits.open_files).into(),
+        format!("no-file={VMM_OPEN_FILES_LIMIT}").into(),
         "--".into(),
         "--no-api".into(),
         "--config-file".into(),
@@ -1540,8 +1541,6 @@ impl JailGuard {
             })
             .ok_or(WorkerExecutionError::Protocol)?;
         let memory_peak = read_cgroup_counter(&self.cgroup_dir.join("memory.peak"))?;
-        let process_peak = read_cgroup_counter(&self.cgroup_dir.join("pids.peak"))
-            .and_then(|value| u32::try_from(value).map_err(|_| WorkerExecutionError::Protocol))?;
         let output_bytes = guest
             .output_artifacts
             .iter()
@@ -1564,7 +1563,6 @@ impl JailGuard {
             cpu_time_millis,
             peak_memory_bytes: memory_peak,
             output_bytes,
-            process_peak,
         };
         Ok(observed)
     }
@@ -1752,12 +1750,12 @@ mod tests {
                 assert!(text
                     .iter()
                     .any(|arg| arg.as_ref() == "memory.max=268435456"));
-                assert!(text.iter().any(|arg| arg.as_ref() == "pids.max=32"));
+                assert!(text.iter().any(|arg| arg.as_ref() == "pids.max=72"));
                 assert!(text
                     .iter()
                     .any(|arg| arg.as_ref() == "cpu.max=50000 100000"));
                 assert!(text.iter().any(|arg| arg.as_ref() == "fsize=8388608"));
-                assert!(text.iter().any(|arg| arg.as_ref() == "no-file=64"));
+                assert!(text.iter().any(|arg| arg.as_ref() == "no-file=4096"));
             }
         }
     }
@@ -1788,6 +1786,22 @@ mod tests {
     }
 
     #[test]
+    fn low_duty_cycle_cpu_budget_uses_the_kernel_minimum_quota() {
+        let temporary = tempfile::tempdir().ok();
+        assert!(temporary.is_some());
+        if let Some(temporary) = temporary {
+            let config = config(temporary.path());
+            let mut requested = job_limits();
+            requested.cpu_time_millis = 1;
+            let limits = EnforcedJobLimits::new(&config, &requested);
+            assert!(limits.is_ok());
+            if let Ok(limits) = limits {
+                assert_eq!(limits.cpu_quota_micros, CGROUP_MIN_CPU_QUOTA_MICROS);
+            }
+        }
+    }
+
+    #[test]
     fn signed_usage_cannot_underreport_host_counters() {
         let limits = job_limits();
         let mut usage = FindingWorkerResourceUsage {
@@ -1804,14 +1818,12 @@ mod tests {
             cpu_time_millis: 1_000,
             peak_memory_bytes: 128 * MIB_BYTES,
             output_bytes: 4_096,
-            process_peak: 4,
         };
         assert!(reconcile_resource_usage(&mut usage, observed, &limits).is_ok());
         assert_eq!(usage.wall_time_millis, observed.wall_time_millis);
         assert_eq!(usage.cpu_time_millis, observed.cpu_time_millis);
         assert_eq!(usage.peak_memory_bytes, observed.peak_memory_bytes);
         assert_eq!(usage.output_bytes, observed.output_bytes);
-        assert_eq!(usage.process_peak, observed.process_peak);
 
         let over_limit = HostResourceUsage {
             peak_memory_bytes: limits.memory_bytes + 1,

@@ -194,9 +194,11 @@ provenance.
 
 M11 does not enable the conditional M7 cross-organization escrow design. The
 hosted profile's ACP rail remains the admitted single-operator settlement
-boundary. A Firecracker guest image is part of the trusted release artifact;
-the worker verifies its digest and isolation configuration, not its semantic
-correctness.
+boundary. A Firecracker guest image is part of the trusted release artifact.
+The worker verifies its digest and requires the guest supervisor to bind exact
+in-guest cgroup-v2 process and `RLIMIT_NOFILE` ceilings into every accepted
+result. The real-KVM canary verifies that contract, but does not establish
+arbitrary guest semantic correctness.
 
 This branch does not ship a hosted network listener. The existing `chio finding
 operator serve` command remains the bounded single-operator SQLite pilot. The
