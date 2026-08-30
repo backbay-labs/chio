@@ -4058,7 +4058,7 @@ fn projected_actionable_liability_without_a_seller_binding_requires_recovery() {
 }
 
 #[test]
-fn projected_v5_and_v6_terminal_liabilities_survive_schema_upgrade() {
+fn projected_v5_and_v6_terminal_liabilities_fail_closed_without_exact_submissions() {
     for (version, schema, state) in [
         (5, finding_challenge_v5_schema(), "settled"),
         (
@@ -4085,27 +4085,33 @@ fn projected_v5_and_v6_terminal_liabilities_survive_schema_upgrade() {
             .expect("stamp projected legacy schema");
         let liability_key = insert_legacy_terminal_liability(&connection, state);
 
-        initialize_finding_challenge_schema(&mut connection)
-            .expect("migrate projected terminal liability");
-        let (stored_state, seller_hex): (String, String) = connection
-            .query_row(
-                "SELECT state, seller_hex FROM liability_heads WHERE liability_key = ?1",
-                [&liability_key],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .expect("read migrated terminal liability");
-        assert_eq!(stored_state, state);
-        assert_eq!(seller_hex, LEGACY_TERMINAL_UNBOUND_SELLER_HEX);
+        let error = initialize_finding_challenge_schema(&mut connection)
+            .expect_err("legacy challenge state without signed submissions must not migrate");
         assert!(
-            connection
-                .execute(
-                    "UPDATE liability_heads SET state = 'finalizing' WHERE liability_key = ?1",
-                    [&liability_key],
-                )
-                .is_err(),
-            "the preserved terminal row stays non-actionable"
+            error
+                .to_string()
+                .contains("no exact retained signed submission"),
+            "unexpected migration error: {error}"
         );
-        verify_finding_challenge_invariants(&connection).expect("verify migrated terminal schema");
+        assert_eq!(
+            crate::check_schema_version(
+                &connection,
+                FINDING_CHALLENGE_SCHEMA_KEY,
+                FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+                FINDING_CHALLENGE_SCHEMA_ANCHORS,
+            )
+            .expect("read rolled-back legacy schema version"),
+            version,
+            "failed migration must not stamp the current schema"
+        );
+        let stored_state: String = connection
+            .query_row(
+                "SELECT state FROM liability_heads WHERE liability_key = ?1",
+                [&liability_key],
+                |row| row.get(0),
+            )
+            .expect("read unchanged terminal liability");
+        assert_eq!(stored_state, state);
     }
 }
 

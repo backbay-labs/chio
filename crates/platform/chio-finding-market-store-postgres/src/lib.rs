@@ -531,6 +531,15 @@ impl PostgresFindingMarketStore {
     ) -> Result<(), HostedMarketStoreError> {
         runtime_boundary::verify_worker_role(&self.pool).await
     }
+
+    #[cfg(feature = "postgres-integration")]
+    #[doc(hidden)]
+    pub async fn begin_tenant_write_for_integration_tests(
+        &self,
+        tenant: &HostedTenantId,
+    ) -> Result<Transaction<'_, Postgres>, HostedMarketStoreError> {
+        self.begin_tenant(tenant).await
+    }
 }
 
 impl PostgresFindingMarketMigrator {
@@ -758,7 +767,7 @@ impl PostgresFindingMarketStore {
         tenant: &HostedTenantId,
     ) -> Result<Transaction<'_, Postgres>, HostedMarketStoreError> {
         let mut transaction = self.begin_tenant_scope(tenant).await?;
-        self.require_enabled_tenant(&mut transaction, tenant)
+        self.require_enabled_tenant(&mut transaction, tenant, true)
             .await?;
         Ok(transaction)
     }
@@ -781,7 +790,7 @@ impl PostgresFindingMarketStore {
             .execute(&mut *transaction)
             .await
             .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        self.require_enabled_tenant(&mut transaction, tenant)
+        self.require_enabled_tenant(&mut transaction, tenant, false)
             .await?;
         Ok(transaction)
     }
@@ -790,15 +799,19 @@ impl PostgresFindingMarketStore {
         &self,
         transaction: &mut Transaction<'_, Postgres>,
         tenant: &HostedTenantId,
+        lock_for_scoped_write: bool,
     ) -> Result<(), HostedMarketStoreError> {
-        let enabled = sqlx::query_scalar::<_, bool>(
-            "SELECT enabled FROM chio_finding_market_tenants WHERE tenant_id = $1",
-        )
-        .bind(tenant.as_str())
-        .fetch_optional(&mut **transaction)
-        .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?
-        .ok_or(HostedMarketStoreError::TenantNotFound)?;
+        let query = if lock_for_scoped_write {
+            "SELECT enabled FROM chio_finding_market_tenants WHERE tenant_id = $1 FOR SHARE"
+        } else {
+            "SELECT enabled FROM chio_finding_market_tenants WHERE tenant_id = $1"
+        };
+        let enabled = sqlx::query_scalar::<_, bool>(query)
+            .bind(tenant.as_str())
+            .fetch_optional(&mut **transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?
+            .ok_or(HostedMarketStoreError::TenantNotFound)?;
         if !enabled {
             return Err(HostedMarketStoreError::TenantDisabled);
         }

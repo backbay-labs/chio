@@ -77,10 +77,10 @@ impl SqliteFindingChallengeStore {
         .map_err(|error| invariant(error.to_string()))?;
         if !matches!(
             schema_version,
-            13 | FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION
+            7..=FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION
         ) {
             return Err(invariant(format!(
-                "challenge submission repair requires schema revision 13 or 14, found {schema_version}",
+                "challenge submission repair requires schema revision 7 through 14, found {schema_version}",
             )));
         }
         repair_database_binding(&connection, schema_version)
@@ -155,11 +155,11 @@ impl SqliteFindingChallengeStore {
             .transpose()
     }
 
-    /// Restore missing exact challenge filings into an offline v13 or v14
+    /// Restore missing exact challenge filings into an offline v7 through v14
     /// database. The database must already contain the matching immutable
     /// challenge rows. Every supplied preimage is canonical and digest-bound,
-    /// the whole repair commits atomically, and v13 is stamped v14 only after
-    /// all current invariants pass.
+    /// the whole repair commits atomically, and legacy state is stamped v14
+    /// only after all current invariants pass.
     pub fn repair_challenge_submissions(
         database_path: &std::path::Path,
         inputs: &[FindingChallengeSubmissionRepairInput<'_>],
@@ -197,15 +197,22 @@ impl SqliteFindingChallengeStore {
             FINDING_CHALLENGE_SCHEMA_ANCHORS,
         )
         .map_err(|error| invariant(error.to_string()))?;
-        if !matches!(on_disk, 13 | FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION) {
+        if !matches!(on_disk, 7..=FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION) {
             return Err(invariant(format!(
-                "challenge submission repair requires schema revision 13 or 14, found {on_disk}",
+                "challenge submission repair requires schema revision 7 through 14, found {on_disk}",
             )));
         }
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Exclusive)
             .map_err(sqlite_error)?;
-        if on_disk == 13 {
+        if on_disk < FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION {
+            if matches!(on_disk, 7..=11)
+                && table_has_rows_where(&transaction, "liability_heads", "state = 'finalizing'")?
+            {
+                return Err(invariant(
+                    "legacy finalizing liability cannot be repaired without its retained authorization policy",
+                ));
+            }
             replace_legacy_effect_root_binding_trigger(&transaction, on_disk)?;
             transaction
                 .execute_batch(FINDING_CHALLENGE_SCHEMA)
@@ -305,7 +312,7 @@ impl SqliteFindingChallengeStore {
                     .ok_or_else(|| invariant("challenge repair count overflow"))?;
             }
         }
-        if on_disk == 13 {
+        if on_disk < FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION {
             crate::stamp_schema_version(
                 &transaction,
                 FINDING_CHALLENGE_SCHEMA_KEY,

@@ -93,6 +93,14 @@ const APPLY_AUTHORITY_TRANSITION_FUNCTION: &str = concat!(
     "chio_finding_market_apply_authority_transition(",
     "text,text,text,text,text,bigint,bigint,bigint,text,text,text,bigint,text,bytea,bigint)"
 );
+const WORKER_JOB_FUNCTIONS: [&str; 6] = [
+    "chio_finding_market_claim_jobs(text,text,bigint,bigint)",
+    "chio_finding_market_renew_job_lease(text,text,text,bigint,bigint)",
+    "chio_finding_market_complete_job(text,text,text,bigint,text,bytea)",
+    "chio_finding_market_fail_job(text,text,text,bigint,text,bigint)",
+    "chio_finding_market_relinquish_job_lease(text,text,text,bigint)",
+    "chio_finding_market_exhaust_job(text,text,text,bigint,text)",
+];
 
 struct RuntimeTablePrivileges {
     name: &'static str,
@@ -274,6 +282,7 @@ pub(crate) async fn verify_runtime_role(pool: &PgPool) -> Result<(), HostedMarke
     }
     verify_runtime_database_privileges(pool).await?;
     verify_runtime_table_privileges(pool).await?;
+    verify_function_privileges(pool, &WORKER_JOB_FUNCTIONS, true).await?;
     verify_runtime_rls_surface(pool).await?;
     Ok(())
 }
@@ -384,6 +393,7 @@ pub(crate) async fn verify_retention_role(pool: &PgPool) -> Result<(), HostedMar
     {
         return Err(HostedMarketStoreError::Configuration);
     }
+    verify_function_privileges(pool, &WORKER_JOB_FUNCTIONS, false).await?;
     verify_runtime_rls_surface(pool).await
 }
 
@@ -403,7 +413,7 @@ pub(crate) async fn verify_worker_role(pool: &PgPool) -> Result<(), HostedMarket
                 name: runtime.name,
                 select: true,
                 insert: false,
-                update: true,
+                update: false,
                 delete: false,
             },
             _ => no_runtime_privilege(runtime.name),
@@ -441,6 +451,7 @@ pub(crate) async fn verify_worker_role(pool: &PgPool) -> Result<(), HostedMarket
             return Err(HostedMarketStoreError::Configuration);
         }
     }
+    verify_function_privileges(pool, &WORKER_JOB_FUNCTIONS, true).await?;
     verify_runtime_rls_surface(pool).await
 }
 
@@ -510,7 +521,27 @@ pub(crate) async fn verify_replicator_role(pool: &PgPool) -> Result<(), HostedMa
             return Err(HostedMarketStoreError::Configuration);
         }
     }
+    verify_function_privileges(pool, &WORKER_JOB_FUNCTIONS, false).await?;
     verify_runtime_rls_surface(pool).await
+}
+
+async fn verify_function_privileges(
+    pool: &PgPool,
+    functions: &[&str],
+    expected: bool,
+) -> Result<(), HostedMarketStoreError> {
+    for function in functions {
+        let actual: bool =
+            sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
+                .bind(function)
+                .fetch_one(pool)
+                .await
+                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        if actual != expected {
+            return Err(HostedMarketStoreError::Configuration);
+        }
+    }
+    Ok(())
 }
 
 async fn verify_unprivileged_login_role(pool: &PgPool) -> Result<(), HostedMarketStoreError> {

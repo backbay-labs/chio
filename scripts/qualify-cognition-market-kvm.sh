@@ -51,6 +51,7 @@ cargo build --locked --release \
 chio_bin="$(realpath -e target/release/chio)"
 canary_bin="$(realpath -e target/release/chio-finding-market-canary)"
 worker_bin="$(realpath -e target/release/chio-finding-worker)"
+unshare_bin="$(realpath -e "$(command -v unshare)")"
 
 python3 - \
   "${CHIO_FINDING_HOSTED_PROFILE}" \
@@ -142,7 +143,7 @@ mkdir -p "${output_root}"
 "${chio_bin}" --json finding operator validate-hosted \
   --profile "${profile_snapshot}" >"${profile_log}"
 
-mapfile -t database_url_envs < <(python3 - "${profile_snapshot}" <<'PY'
+mapfile -t worker_secret_envs < <(python3 - "${profile_snapshot}" <<'PY'
 import json
 import re
 import sys
@@ -158,18 +159,50 @@ for field in ("runtimeUrlEnv", "workerUrlEnv"):
     if not isinstance(value, str) or re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", value) is None:
         raise SystemExit(f"hosted profile database binding {field} is invalid")
     print(value)
+
+signers = profile.get("signers")
+if not isinstance(signers, list):
+    raise SystemExit("hosted profile signer configuration is invalid")
+worker_signers = [signer for signer in signers if signer.get("role") == "worker"]
+if len(worker_signers) != 1 or not isinstance(worker_signers[0], dict):
+    raise SystemExit("hosted profile worker signer configuration is invalid")
+transport = worker_signers[0].get("transport")
+if not isinstance(transport, dict):
+    raise SystemExit("hosted profile worker signer transport is invalid")
+kind = transport.get("kind")
+field = {"http": "bearerTokenEnv", "vault_transit": "tokenEnv"}.get(kind)
+value = transport.get(field) if field is not None else None
+if not isinstance(value, str) or re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", value) is None:
+    raise SystemExit("hosted profile worker signer secret binding is invalid")
+print(value)
 PY
 )
-if [[ "${#database_url_envs[@]}" -ne 2 ]]; then
-  echo "cognition-market KVM qualification could not resolve database bindings" >&2
+if [[ "${#worker_secret_envs[@]}" -ne 3 ]]; then
+  echo "cognition-market KVM qualification could not resolve worker secret bindings" >&2
   exit 1
 fi
-runtime_database_url_env="${database_url_envs[0]}"
-worker_database_url_env="${database_url_envs[1]}"
+runtime_database_url_env="${worker_secret_envs[0]}"
+worker_database_url_env="${worker_secret_envs[1]}"
+worker_signer_token_env="${worker_secret_envs[2]}"
 if [[ "${runtime_database_url_env}" == "${worker_database_url_env}" ]]; then
   echo "cognition-market KVM qualification requires isolated database bindings" >&2
   exit 1
 fi
+if [[ "${worker_signer_token_env}" == "${runtime_database_url_env}" ||
+      "${worker_signer_token_env}" == "${worker_database_url_env}" ]]; then
+  echo "cognition-market KVM qualification requires isolated worker signer credentials" >&2
+  exit 1
+fi
+worker_database_url="${!worker_database_url_env:-}"
+worker_signer_token="${!worker_signer_token_env:-}"
+if [[ -z "${worker_database_url}" || -z "${worker_signer_token}" ]]; then
+  echo "cognition-market KVM qualification worker credentials are unavailable" >&2
+  exit 1
+fi
+worker_environment=(
+  "${worker_database_url_env}=${worker_database_url}"
+  "${worker_signer_token_env}=${worker_signer_token}"
+)
 
 # Each role sees a private PID and proc namespace, so a root subprocess cannot
 # inspect the launcher's environment to recover the opposite database secret.
@@ -178,8 +211,8 @@ CHIO_FINDING_CANDIDATE_SHA="${candidate_sha}" \
   unshare --mount --pid --fork --mount-proc --kill-child=KILL -- \
   "${canary_bin}" --profile "${profile_snapshot}" --job "${job_snapshot}" \
   provision >"${provision_log}"
-env --unset="${runtime_database_url_env}" \
-  unshare --mount --pid --fork --mount-proc --kill-child=KILL -- \
+env -i "${worker_environment[@]}" \
+  "${unshare_bin}" --mount --pid --fork --mount-proc --kill-child=KILL -- \
   "${worker_bin}" \
   --profile "${profile_snapshot}" \
   --worker-id "${CHIO_FINDING_WORKER_ID}" \

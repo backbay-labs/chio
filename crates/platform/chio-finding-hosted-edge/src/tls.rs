@@ -2,9 +2,10 @@ use std::fs::{Metadata, OpenOptions};
 use std::io::Read as _;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use arc_swap::ArcSwap;
-use rustls::pki_types::{pem::PemObject as _, CertificateDer, PrivateKeyDer, ServerName};
+use rustls::pki_types::{pem::PemObject as _, CertificateDer, PrivateKeyDer, ServerName, UnixTime};
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig};
 use sha2::{Digest as _, Sha256};
@@ -145,23 +146,13 @@ fn load_material(config: &HostedTlsConfig, now: u64) -> Result<LoadedTlsMaterial
     }
     let private_key = PrivateKeyDer::from_pem_slice(&private_key_bytes)
         .map_err(|_| HostedEdgeError::Configuration)?;
-    let (_, leaf) = X509Certificate::from_der(certificates[0].as_ref())
-        .map_err(|_| HostedEdgeError::Configuration)?;
     let server_name = public_endpoint_server_name(&config.public_endpoint)?;
-    let end_entity = webpki::EndEntityCert::try_from(&certificates[0])
-        .map_err(|_| HostedEdgeError::Configuration)?;
-    end_entity
-        .verify_is_valid_for_subject_name(&server_name)
-        .map_err(|_| HostedEdgeError::Configuration)?;
-    let certificate_not_before = u64::try_from(leaf.validity().not_before.timestamp())
-        .map_err(|_| HostedEdgeError::Configuration)?;
-    let certificate_not_after = u64::try_from(leaf.validity().not_after.timestamp())
-        .map_err(|_| HostedEdgeError::Configuration)?;
-    if now < certificate_not_before
-        || certificate_not_after < now.saturating_add(config.minimum_remaining_validity_secs)
-    {
-        return Err(HostedEdgeError::Configuration);
-    }
+    let (certificate_not_before, certificate_not_after) = validate_server_chain(
+        &certificates,
+        &server_name,
+        now,
+        config.minimum_remaining_validity_secs,
+    )?;
 
     let provider: Arc<_> = rustls::crypto::aws_lc_rs::default_provider().into();
     let builder = ServerConfig::builder_with_provider(provider)
@@ -209,6 +200,74 @@ fn load_material(config: &HostedTlsConfig, now: u64) -> Result<LoadedTlsMaterial
             certificate_not_after,
         },
     })
+}
+
+fn validate_server_chain(
+    certificates: &[CertificateDer<'_>],
+    server_name: &ServerName<'_>,
+    now: u64,
+    minimum_remaining_validity_secs: u64,
+) -> Result<(u64, u64), HostedEdgeError> {
+    let parsed = certificates
+        .iter()
+        .map(|certificate| {
+            let (remainder, certificate) = X509Certificate::from_der(certificate.as_ref())
+                .map_err(|_| HostedEdgeError::Configuration)?;
+            if !remainder.is_empty() {
+                return Err(HostedEdgeError::Configuration);
+            }
+            Ok(certificate)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut chain_not_before = 0_u64;
+    let mut chain_not_after = u64::MAX;
+    for certificate in &parsed {
+        let not_before = u64::try_from(certificate.validity().not_before.timestamp())
+            .map_err(|_| HostedEdgeError::Configuration)?;
+        let not_after = u64::try_from(certificate.validity().not_after.timestamp())
+            .map_err(|_| HostedEdgeError::Configuration)?;
+        chain_not_before = chain_not_before.max(not_before);
+        chain_not_after = chain_not_after.min(not_after);
+    }
+    if now < chain_not_before
+        || chain_not_after < now.saturating_add(minimum_remaining_validity_secs)
+    {
+        return Err(HostedEdgeError::Configuration);
+    }
+    if parsed.len() == 1 {
+        let leaf = parsed.first().ok_or(HostedEdgeError::Configuration)?;
+        if leaf.subject() != leaf.issuer() || leaf.verify_signature(None).is_err() {
+            return Err(HostedEdgeError::Configuration);
+        }
+    }
+    let end_entity = webpki::EndEntityCert::try_from(
+        certificates.first().ok_or(HostedEdgeError::Configuration)?,
+    )
+    .map_err(|_| HostedEdgeError::Configuration)?;
+    end_entity
+        .verify_is_valid_for_subject_name(server_name)
+        .map_err(|_| HostedEdgeError::Configuration)?;
+    let trust_anchor = webpki::anchor_from_trusted_cert(
+        certificates.last().ok_or(HostedEdgeError::Configuration)?,
+    )
+    .map_err(|_| HostedEdgeError::Configuration)?;
+    let intermediates = if certificates.len() > 2 {
+        &certificates[1..certificates.len() - 1]
+    } else {
+        &[]
+    };
+    end_entity
+        .verify_for_usage(
+            webpki::ALL_VERIFICATION_ALGS,
+            std::slice::from_ref(&trust_anchor),
+            intermediates,
+            UnixTime::since_unix_epoch(Duration::from_secs(now)),
+            webpki::KeyUsage::server_auth(),
+            None,
+            None,
+        )
+        .map_err(|_| HostedEdgeError::Configuration)?;
+    Ok((chain_not_before, chain_not_after))
 }
 
 fn public_endpoint_server_name(value: &str) -> Result<ServerName<'static>, HostedEdgeError> {
@@ -300,7 +359,10 @@ fn same_file(before: &Metadata, after: &Metadata) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rcgen::{generate_simple_self_signed, CertifiedKey};
+    use rcgen::{
+        generate_simple_self_signed, BasicConstraints, CertificateParams, CertifiedKey, IsCa,
+        KeyPair,
+    };
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn now() -> Result<u64, Box<dyn std::error::Error>> {
@@ -317,6 +379,50 @@ mod tests {
         let private_key_path = directory.join("private-key.pem");
         std::fs::write(&certificate_path, cert.pem())?;
         std::fs::write(&private_key_path, key_pair.serialize_pem())?;
+        std::fs::set_permissions(&certificate_path, std::fs::Permissions::from_mode(0o644))?;
+        std::fs::set_permissions(&private_key_path, std::fs::Permissions::from_mode(0o600))?;
+        Ok(HostedTlsConfig {
+            public_endpoint: "https://market.example".to_owned(),
+            certificate_chain_path: certificate_path,
+            private_key_path,
+            client_ca_path: None,
+            require_client_certificate: false,
+            minimum_remaining_validity_secs: 300,
+        })
+    }
+
+    #[cfg(unix)]
+    fn write_ca_chain_material(
+        directory: &Path,
+        include_intermediate: bool,
+        expired_intermediate: bool,
+    ) -> Result<HostedTlsConfig, Box<dyn std::error::Error>> {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let mut root_params = CertificateParams::new(Vec::<String>::new())?;
+        root_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        let root_key = KeyPair::generate()?;
+        let root = root_params.self_signed(&root_key)?;
+        let mut intermediate_params = CertificateParams::new(Vec::<String>::new())?;
+        intermediate_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        if expired_intermediate {
+            intermediate_params.not_before = rcgen::date_time_ymd(2018, 1, 1);
+            intermediate_params.not_after = rcgen::date_time_ymd(2019, 1, 1);
+        }
+        let intermediate_key = KeyPair::generate()?;
+        let intermediate = intermediate_params.signed_by(&intermediate_key, &root, &root_key)?;
+        let leaf_params = CertificateParams::new(vec!["market.example".to_owned()])?;
+        let leaf_key = KeyPair::generate()?;
+        let leaf = leaf_params.signed_by(&leaf_key, &intermediate, &intermediate_key)?;
+        let certificate_path = directory.join("certificate-chain.pem");
+        let private_key_path = directory.join("private-key.pem");
+        let chain = if include_intermediate {
+            format!("{}{}{}", leaf.pem(), intermediate.pem(), root.pem())
+        } else {
+            format!("{}{}", leaf.pem(), root.pem())
+        };
+        std::fs::write(&certificate_path, chain)?;
+        std::fs::write(&private_key_path, leaf_key.serialize_pem())?;
         std::fs::set_permissions(&certificate_path, std::fs::Permissions::from_mode(0o644))?;
         std::fs::set_permissions(&private_key_path, std::fs::Permissions::from_mode(0o600))?;
         Ok(HostedTlsConfig {
@@ -367,6 +473,34 @@ mod tests {
         let directory = tempfile::tempdir()?;
         let mut config = write_material(directory.path())?;
         config.public_endpoint = "https://other.example".to_owned();
+        assert!(HostedTlsState::load(config, now()?).is_err());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn complete_presented_certificate_chain_is_validated() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let directory = tempfile::tempdir()?;
+        let config = write_ca_chain_material(directory.path(), true, false)?;
+        assert!(HostedTlsState::load(config, now()?).is_ok());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn missing_presented_intermediate_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let config = write_ca_chain_material(directory.path(), false, false)?;
+        assert!(HostedTlsState::load(config, now()?).is_err());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn expired_presented_intermediate_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let config = write_ca_chain_material(directory.path(), true, true)?;
         assert!(HostedTlsState::load(config, now()?).is_err());
         Ok(())
     }

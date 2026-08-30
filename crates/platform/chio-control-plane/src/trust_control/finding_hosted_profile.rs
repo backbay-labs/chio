@@ -5,7 +5,7 @@
 //! listener, database pool, payment rail, or remote signer is contacted.
 
 use std::collections::BTreeSet;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Component, Path};
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,7 +25,7 @@ use chio_settle::{RemoteFindingBondObservationSource, RemoteFindingBondObservati
 use chio_settle::{RemoteFindingImpairmentPublisher, RemoteFindingImpairmentPublisherConfig};
 use chio_signing_remote::{HttpSigningBackend, RemoteSigningKey, VaultTransitSigningBackend};
 use serde::{Deserialize, Serialize};
-use url::Url;
+use url::{Host, Url};
 use zeroize::Zeroize as _;
 
 use super::FindingMarketConfig;
@@ -388,6 +388,7 @@ impl FindingHostedProfile {
         self.validate_bond_observer()?;
         self.validate_impairment_publisher()?;
         self.validate_worker()?;
+        self.validate_worker_secret_isolation()?;
         self.validate_tenants()?;
         self.validate_release()?;
         Ok(())
@@ -773,6 +774,46 @@ impl FindingHostedProfile {
         }
         if roles != FindingHostedSigningRole::ALL.into_iter().collect() {
             return Err("hosted profile must configure every signing role exactly once".to_owned());
+        }
+        Ok(())
+    }
+
+    fn validate_worker_secret_isolation(&self) -> Result<(), String> {
+        let worker_signer_env = self
+            .signers
+            .iter()
+            .find(|signer| signer.role == FindingHostedSigningRole::Worker)
+            .map(|signer| signer_transport_secret_env(&signer.transport))
+            .ok_or_else(|| "hosted worker signer is missing".to_owned())?;
+        let worker_bindings = [self.database.worker_url_env.as_str(), worker_signer_env]
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        if worker_bindings.len() != 2 {
+            return Err("hosted worker credentials require distinct bindings".to_owned());
+        }
+        let mut non_worker_bindings = BTreeSet::from([
+            self.database.runtime_url_env.as_str(),
+            self.identity.api_key_pepper_env.as_str(),
+            self.payment.bearer_token_env.as_str(),
+            self.bond_observer.bearer_token_env.as_str(),
+            self.impairment_publisher.bearer_token_env.as_str(),
+        ]);
+        if let FindingHostedEdgeProfile::TrustedProxy {
+            authentication_token_env,
+            ..
+        } = &self.edge
+        {
+            non_worker_bindings.insert(authentication_token_env);
+        }
+        for signer in self
+            .signers
+            .iter()
+            .filter(|signer| signer.role != FindingHostedSigningRole::Worker)
+        {
+            non_worker_bindings.insert(signer_transport_secret_env(&signer.transport));
+        }
+        if !worker_bindings.is_disjoint(&non_worker_bindings) {
+            return Err("hosted worker credentials must not be shared with other roles".to_owned());
         }
         Ok(())
     }
@@ -1171,6 +1212,15 @@ fn validate_signer_transport(transport: &FindingHostedSignerTransport) -> Result
     }
 }
 
+fn signer_transport_secret_env(transport: &FindingHostedSignerTransport) -> &str {
+    match transport {
+        FindingHostedSignerTransport::Http {
+            bearer_token_env, ..
+        } => bearer_token_env,
+        FindingHostedSignerTransport::VaultTransit { token_env, .. } => token_env,
+    }
+}
+
 fn parse_key(value: &str, label: &str) -> Result<PublicKey, String> {
     let key = PublicKey::from_hex(value).map_err(|_| format!("{label} is invalid"))?;
     if key.algorithm() != SigningAlgorithm::Ed25519
@@ -1196,29 +1246,47 @@ fn validate_https_url(value: &str, label: &str, public: bool) -> Result<(), Stri
             "{label} must be an HTTPS URL without credentials or selectors"
         ));
     }
-    if public && parsed.host_str().is_some_and(is_non_public_host) {
-        return Err(format!(
-            "{label} must not target a loopback or private address"
-        ));
+    if public && parsed.host().is_some_and(is_non_public_host) {
+        return Err(format!("{label} must target a public unicast address"));
     }
     Ok(())
 }
 
-fn is_non_public_host(host: &str) -> bool {
-    if host.eq_ignore_ascii_case("localhost") || host.ends_with(".localhost") {
-        return true;
+fn is_non_public_host(host: Host<&str>) -> bool {
+    match host {
+        Host::Domain(domain) => {
+            domain.eq_ignore_ascii_case("localhost") || domain.ends_with(".localhost")
+        }
+        Host::Ipv4(address) => !is_public_ipv4(address),
+        Host::Ipv6(address) => !is_public_ipv6(address),
     }
-    host.parse::<IpAddr>().is_ok_and(|address| match address {
-        IpAddr::V4(address) => {
-            address.is_loopback()
-                || address.is_private()
-                || address.is_link_local()
-                || address.is_unspecified()
-        }
-        IpAddr::V6(address) => {
-            address.is_loopback() || address.is_unspecified() || address.is_unique_local()
-        }
-    })
+}
+
+fn is_public_ipv4(address: Ipv4Addr) -> bool {
+    let octets = address.octets();
+    !address.is_broadcast()
+        && !address.is_documentation()
+        && !address.is_link_local()
+        && !address.is_loopback()
+        && !address.is_multicast()
+        && !address.is_private()
+        && !address.is_unspecified()
+        && octets[0] != 0
+        && !(octets[0] == 100 && (64..=127).contains(&octets[1]))
+        && !(octets[0] == 192 && octets[1] == 0 && octets[2] == 0)
+        && !(octets[0] == 198 && matches!(octets[1], 18 | 19))
+        && octets[0] < 224
+}
+
+fn is_public_ipv6(address: Ipv6Addr) -> bool {
+    let segments = address.segments();
+    !address.is_loopback()
+        && !address.is_multicast()
+        && !address.is_unicast_link_local()
+        && !address.is_unique_local()
+        && !address.is_unspecified()
+        && segments[0] & 0xe000 == 0x2000
+        && !(segments[0] == 0x2001 && segments[1] == 0x0db8)
 }
 
 fn validate_http_path(value: &str, label: &str) -> Result<(), String> {
@@ -1228,9 +1296,18 @@ fn validate_http_path(value: &str, label: &str) -> Result<(), String> {
         || value.starts_with("//")
         || value.contains('?')
         || value.contains('#')
-        || value.chars().any(char::is_control)
+        || value.contains('\\')
+        || value.contains('%')
+        || !value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'-' | b'_' | b'.' | b'~')
+        })
     {
         return Err(format!("{label} is invalid"));
+    }
+    for segment in value.split('/') {
+        if matches!(segment, "." | "..") {
+            return Err(format!("{label} is invalid"));
+        }
     }
     Ok(())
 }
@@ -1309,6 +1386,31 @@ mod tests {
         assert!(validate_https_url("https://user@market.example", "endpoint", true).is_err());
         assert!(validate_https_url("https://127.0.0.1", "endpoint", true).is_err());
         assert!(validate_https_url("https://10.0.0.1", "endpoint", true).is_err());
+        assert!(validate_https_url("https://[2606:4700:4700::1111]", "endpoint", true).is_ok());
+        for endpoint in [
+            "https://[::1]",
+            "https://[fe80::1]",
+            "https://[ff02::1]",
+            "https://[fc00::1]",
+            "https://[2001:db8::1]",
+        ] {
+            assert!(validate_https_url(endpoint, "endpoint", true).is_err());
+        }
+    }
+
+    #[test]
+    fn payment_paths_reject_normalized_route_escapes() {
+        for path in [
+            "/../admin",
+            "/./capture",
+            "/%2e%2e/admin",
+            "/.%2E/admin",
+            "/safe/%2e/capture",
+            "/safe\\..\\admin",
+        ] {
+            assert!(validate_http_path(path, "ACP operation path").is_err());
+        }
+        assert!(validate_http_path("/v1/capture", "ACP operation path").is_ok());
     }
 
     #[test]

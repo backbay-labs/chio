@@ -46,6 +46,8 @@ const VMM_BASE_PROCESS_LIMIT: u32 = 64;
 const VMM_PROCESSES_PER_VCPU: u32 = 4;
 const VMM_OPEN_FILES_LIMIT: u32 = 4_096;
 const MIB_BYTES: u64 = 1024 * 1024;
+const VMM_BASE_MEMORY_HEADROOM_BYTES: u64 = 64 * MIB_BYTES;
+const VMM_MEMORY_HEADROOM_DIVISOR: u64 = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FirecrackerIdentity {
@@ -173,7 +175,9 @@ impl WorkerExecutionError {
 struct EnforcedJobLimits {
     wall_time: Duration,
     cpu_quota_micros: u64,
-    memory_bytes: u64,
+    guest_memory_bytes: u64,
+    cgroup_memory_bytes: u64,
+    vmm_memory_headroom_bytes: u64,
     memory_mib: u32,
     output_bytes: u64,
     vmm_process_count: u32,
@@ -198,9 +202,19 @@ impl EnforcedJobLimits {
         }
         let memory_mib = limits
             .memory_bytes
-            .checked_add(MIB_BYTES - 1)
-            .and_then(|bytes| bytes.checked_div(MIB_BYTES))
+            .checked_div(MIB_BYTES)
             .and_then(|mib| u32::try_from(mib).ok())
+            .filter(|mib| *mib > 0)
+            .ok_or(WorkerExecutionError::Configuration)?;
+        let guest_memory_bytes = u64::from(memory_mib)
+            .checked_mul(MIB_BYTES)
+            .ok_or(WorkerExecutionError::Configuration)?;
+        let vmm_memory_headroom_bytes = guest_memory_bytes
+            .checked_div(VMM_MEMORY_HEADROOM_DIVISOR)
+            .ok_or(WorkerExecutionError::Configuration)?
+            .max(VMM_BASE_MEMORY_HEADROOM_BYTES);
+        let cgroup_memory_bytes = guest_memory_bytes
+            .checked_add(vmm_memory_headroom_bytes)
             .ok_or(WorkerExecutionError::Configuration)?;
         let requested_quota = limits
             .cpu_time_millis
@@ -220,7 +234,9 @@ impl EnforcedJobLimits {
             cpu_quota_micros: requested_quota
                 .max(CGROUP_MIN_CPU_QUOTA_MICROS)
                 .min(configured_quota),
-            memory_bytes: limits.memory_bytes,
+            guest_memory_bytes,
+            cgroup_memory_bytes,
+            vmm_memory_headroom_bytes,
             memory_mib,
             output_bytes: limits.output_bytes,
             vmm_process_count,
@@ -415,7 +431,7 @@ impl FirecrackerExecutor {
             (Ok(_), Err(error), _) | (Ok(_), _, Err(error)) => Err(error),
             (Ok(_), Ok(None), Ok(())) => Err(WorkerExecutionError::Protocol),
         }?;
-        reconcile_host_usage(&mut guest, observed, &request)?;
+        reconcile_host_usage(&mut guest, observed, &request, enforced_limits)?;
         let completed_at = completed_at.ok_or(WorkerExecutionError::Protocol)??;
         let guest_classification = guest.classification;
         let body = FindingWorkerAttestedResult::from_guest(
@@ -586,14 +602,20 @@ struct JailerCommandPlan {
 }
 
 impl JailerCommandPlan {
-    fn spawn(&self) -> Result<Child, WorkerExecutionError> {
+    fn command(&self) -> Command {
         let mut command = Command::new(&self.program);
         command
             .args(&self.args)
+            .env_clear()
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .kill_on_drop(true);
+        command
+    }
+
+    fn spawn(&self) -> Result<Child, WorkerExecutionError> {
+        let mut command = self.command();
         command.spawn().map_err(|_| WorkerExecutionError::Process)
     }
 }
@@ -616,11 +638,13 @@ fn reconcile_host_usage(
     guest: &mut FindingWorkerResult,
     observed: HostResourceUsage,
     request: &FindingWorkerRequest,
+    enforced: EnforcedJobLimits,
 ) -> Result<(), WorkerExecutionError> {
     reconcile_resource_usage(
         &mut guest.resource_usage,
         observed,
         &request.job.resource_limits,
+        enforced,
     )?;
     guest
         .validate_for(request)
@@ -631,17 +655,22 @@ fn reconcile_resource_usage(
     usage: &mut FindingWorkerResourceUsage,
     observed: HostResourceUsage,
     limits: &FindingWorkerResourceLimits,
+    enforced: EnforcedJobLimits,
 ) -> Result<(), WorkerExecutionError> {
     if observed.wall_time_millis > limits.wall_time_millis
         || observed.cpu_time_millis > limits.cpu_time_millis
-        || observed.peak_memory_bytes > limits.memory_bytes
+        || observed.peak_memory_bytes > enforced.cgroup_memory_bytes
         || observed.output_bytes > limits.output_bytes
     {
         return Err(WorkerExecutionError::Protocol);
     }
+    let host_guest_memory_floor = observed
+        .peak_memory_bytes
+        .saturating_sub(enforced.vmm_memory_headroom_bytes)
+        .min(enforced.guest_memory_bytes);
     usage.wall_time_millis = usage.wall_time_millis.max(observed.wall_time_millis);
     usage.cpu_time_millis = usage.cpu_time_millis.max(observed.cpu_time_millis);
-    usage.peak_memory_bytes = usage.peak_memory_bytes.max(observed.peak_memory_bytes);
+    usage.peak_memory_bytes = usage.peak_memory_bytes.max(host_guest_memory_floor);
     usage.output_bytes = observed.output_bytes;
     Ok(())
 }
@@ -744,7 +773,7 @@ fn jailer_args(
         "--cgroup-version".into(),
         "2".into(),
         "--cgroup".into(),
-        format!("memory.max={}", limits.memory_bytes).into(),
+        format!("memory.max={}", limits.cgroup_memory_bytes).into(),
         "--cgroup".into(),
         format!("pids.max={}", limits.vmm_process_count).into(),
         "--cgroup".into(),
@@ -1759,7 +1788,7 @@ mod tests {
                 assert!(!text.iter().any(|arg| arg.as_ref() == "--netns"));
                 assert!(text
                     .iter()
-                    .any(|arg| arg.as_ref() == "memory.max=268435456"));
+                    .any(|arg| arg.as_ref() == "memory.max=335544320"));
                 assert!(text.iter().any(|arg| arg.as_ref() == "pids.max=72"));
                 assert!(text
                     .iter()
@@ -1767,6 +1796,25 @@ mod tests {
                 assert!(text.iter().any(|arg| arg.as_ref() == "fsize=8388608"));
                 assert!(text.iter().any(|arg| arg.as_ref() == "no-file=4096"));
             }
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn jailer_plan_does_not_inherit_worker_credentials() {
+        let plan = JailerCommandPlan {
+            program: PathBuf::from("/usr/bin/env"),
+            args: Vec::new(),
+        };
+        let mut command = plan.command();
+        let output = command.stdout(Stdio::piped()).output().await;
+        assert!(output.is_ok());
+        if let Ok(output) = output {
+            assert!(output.status.success());
+            assert!(
+                output.stdout.is_empty(),
+                "jailer command inherited ambient environment variables"
+            );
         }
     }
 
@@ -1813,7 +1861,18 @@ mod tests {
 
     #[test]
     fn signed_usage_cannot_underreport_host_counters() {
+        let temporary = tempfile::tempdir().ok();
+        assert!(temporary.is_some());
+        let Some(temporary) = temporary else {
+            return;
+        };
+        let config = config(temporary.path());
         let limits = job_limits();
+        let enforced = EnforcedJobLimits::new(&config, &limits);
+        assert!(enforced.is_ok());
+        let Ok(enforced) = enforced else {
+            return;
+        };
         let mut usage = FindingWorkerResourceUsage {
             wall_time_millis: 1,
             cpu_time_millis: 1,
@@ -1829,17 +1888,39 @@ mod tests {
             peak_memory_bytes: 128 * MIB_BYTES,
             output_bytes: 4_096,
         };
-        assert!(reconcile_resource_usage(&mut usage, observed, &limits).is_ok());
+        assert!(reconcile_resource_usage(&mut usage, observed, &limits, enforced).is_ok());
         assert_eq!(usage.wall_time_millis, observed.wall_time_millis);
         assert_eq!(usage.cpu_time_millis, observed.cpu_time_millis);
-        assert_eq!(usage.peak_memory_bytes, observed.peak_memory_bytes);
+        assert_eq!(usage.peak_memory_bytes, 64 * MIB_BYTES);
         assert_eq!(usage.output_bytes, observed.output_bytes);
 
         let over_limit = HostResourceUsage {
-            peak_memory_bytes: limits.memory_bytes + 1,
+            peak_memory_bytes: enforced.cgroup_memory_bytes + 1,
             ..observed
         };
-        assert!(reconcile_resource_usage(&mut usage, over_limit, &limits).is_err());
+        assert!(reconcile_resource_usage(&mut usage, over_limit, &limits, enforced).is_err());
+    }
+
+    #[test]
+    fn non_aligned_guest_memory_stays_below_signed_limit_with_vmm_headroom() {
+        let temporary = tempfile::tempdir().ok();
+        assert!(temporary.is_some());
+        let Some(temporary) = temporary else {
+            return;
+        };
+        let config = config(temporary.path());
+        let mut requested = job_limits();
+        requested.memory_bytes = 256 * MIB_BYTES + 1;
+        let enforced = EnforcedJobLimits::new(&config, &requested);
+        assert!(enforced.is_ok());
+        if let Ok(enforced) = enforced {
+            assert_eq!(enforced.guest_memory_bytes, 256 * MIB_BYTES);
+            assert!(enforced.guest_memory_bytes <= requested.memory_bytes);
+            assert_eq!(
+                enforced.cgroup_memory_bytes,
+                enforced.guest_memory_bytes + VMM_BASE_MEMORY_HEADROOM_BYTES
+            );
+        }
     }
 
     #[test]

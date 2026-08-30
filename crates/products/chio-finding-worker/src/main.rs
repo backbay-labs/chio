@@ -110,6 +110,7 @@ struct WorkerTickSpec<'a> {
     max_tenants: u32,
     max_jobs: u32,
     tenant_failure_threshold: u32,
+    fail_on_tenant_unavailable: bool,
     cancellation: &'a CancellationToken,
 }
 
@@ -168,6 +169,7 @@ async fn run(args: Args) -> Result<(), DaemonError> {
                 max_tenants: profile.worker.max_tenants_per_tick,
                 max_jobs: profile.worker.max_jobs_per_tick,
                 tenant_failure_threshold: profile.worker.tenant_failure_threshold,
+                fail_on_tenant_unavailable: true,
                 cancellation: &cancellation,
             },
             &mut BTreeMap::new(),
@@ -235,6 +237,7 @@ async fn run(args: Args) -> Result<(), DaemonError> {
                 max_tenants: profile.worker.max_tenants_per_tick,
                 max_jobs: profile.worker.max_jobs_per_tick,
                 tenant_failure_threshold: profile.worker.tenant_failure_threshold,
+                fail_on_tenant_unavailable: false,
                 cancellation: &cancellation,
             },
             &mut tenant_failures,
@@ -508,6 +511,7 @@ async fn run_tick(
             Ok(run) => run,
             Err(HostedWorkerServiceError::TenantUnavailable) => {
                 record_tenant_failure(failure, spec.tenant_failure_threshold, now);
+                tenant_unavailable_outcome(spec.fail_on_tenant_unavailable)?;
                 report.tenants_visited = report
                     .tenants_visited
                     .checked_add(1)
@@ -543,6 +547,14 @@ fn record_tenant_failure(state: &mut TenantFailureState, threshold: u32, now: u6
     state.consecutive_failures = state.consecutive_failures.saturating_add(1);
     if state.consecutive_failures >= threshold {
         state.open_until = now.saturating_add(TENANT_BREAKER_OPEN_SECS);
+    }
+}
+
+fn tenant_unavailable_outcome(fail_closed: bool) -> Result<(), DaemonError> {
+    if fail_closed {
+        Err(DaemonError::Tenant)
+    } else {
+        Ok(())
     }
 }
 
@@ -689,6 +701,15 @@ mod tests {
         assert!(!admit_tenant(&mut state, 129));
         assert!(admit_tenant(&mut state, 131));
         assert_eq!(state.consecutive_failures, 0);
+    }
+
+    #[test]
+    fn one_shot_mode_is_configured_to_fail_on_tenant_unavailability() {
+        assert!(matches!(
+            tenant_unavailable_outcome(true),
+            Err(DaemonError::Tenant)
+        ));
+        assert!(tenant_unavailable_outcome(false).is_ok());
     }
 
     #[test]

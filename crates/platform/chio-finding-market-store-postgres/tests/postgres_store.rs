@@ -32,9 +32,10 @@ use sqlx::Row as _;
 mod support;
 
 use support::{
-    append_replication_check, apply_authority_transition,
-    assert_multi_replica_leases_and_shutdown_refunds, migrate_legacy_fixture,
-    signed_domain_payload, signed_principal_replication_event, ReplicationCheckSpec,
+    append_replication_check, apply_authority_transition, assert_forged_job_digest_rejected,
+    assert_multi_replica_leases_and_shutdown_refunds, assert_tenant_disablement_serializes,
+    assert_worker_job_boundary, migrate_legacy_fixture, signed_domain_payload,
+    signed_principal_replication_event, ReplicationCheckSpec,
 };
 
 #[tokio::test]
@@ -160,6 +161,13 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         GRANT EXECUTE ON FUNCTION chio_finding_market_apply_principal_event(
             TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, BIGINT, TEXT, TEXT, BYTEA, BIGINT
         ) TO chio_market_runtime_test;
+        GRANT EXECUTE ON FUNCTION chio_finding_market_claim_jobs(TEXT, TEXT, BIGINT, BIGINT),
+            chio_finding_market_renew_job_lease(TEXT, TEXT, TEXT, BIGINT, BIGINT),
+            chio_finding_market_complete_job(TEXT, TEXT, TEXT, BIGINT, TEXT, BYTEA),
+            chio_finding_market_fail_job(TEXT, TEXT, TEXT, BIGINT, TEXT, BIGINT),
+            chio_finding_market_relinquish_job_lease(TEXT, TEXT, TEXT, BIGINT),
+            chio_finding_market_exhaust_job(TEXT, TEXT, TEXT, BIGINT, TEXT)
+            TO chio_market_runtime_test;
         "#,
     )
     .execute(&admin_pool)
@@ -236,7 +244,14 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         GRANT USAGE ON SCHEMA public TO chio_market_worker_test;
         GRANT SELECT ON _sqlx_migrations, chio_finding_market_tenants
             TO chio_market_worker_test;
-        GRANT SELECT, UPDATE ON chio_finding_market_jobs TO chio_market_worker_test;
+        GRANT SELECT ON chio_finding_market_jobs TO chio_market_worker_test;
+        GRANT EXECUTE ON FUNCTION chio_finding_market_claim_jobs(TEXT, TEXT, BIGINT, BIGINT),
+            chio_finding_market_renew_job_lease(TEXT, TEXT, TEXT, BIGINT, BIGINT),
+            chio_finding_market_complete_job(TEXT, TEXT, TEXT, BIGINT, TEXT, BYTEA),
+            chio_finding_market_fail_job(TEXT, TEXT, TEXT, BIGINT, TEXT, BIGINT),
+            chio_finding_market_relinquish_job_lease(TEXT, TEXT, TEXT, BIGINT),
+            chio_finding_market_exhaust_job(TEXT, TEXT, TEXT, BIGINT, TEXT)
+            TO chio_market_worker_test;
         "#,
     )
     .execute(&admin_pool)
@@ -308,7 +323,8 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         .verify_retention_boundary_for_integration_tests()
         .await?;
     let worker_pool = sqlx::PgPool::connect(&worker_url).await?;
-    let worker_store = PostgresFindingMarketStore::from_pool_for_integration_tests(worker_pool, 8);
+    let worker_store =
+        PostgresFindingMarketStore::from_pool_for_integration_tests(worker_pool.clone(), 8);
     worker_store
         .verify_worker_boundary_for_integration_tests()
         .await?;
@@ -436,6 +452,8 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             1_700_000_000,
         )
         .await?;
+    assert_worker_job_boundary(&worker_pool, &tenant_a).await?;
+    assert_tenant_disablement_serializes(&store, &runtime_pool, &tenant_a).await?;
     store
         .verify_tenant_limits(&tenant_a, &tenant_limits)
         .await?;
@@ -1777,6 +1795,8 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         .complete_job(&tenant_a, "job-1", &stale_lease, result)
         .await
         .is_err());
+    assert_forged_job_digest_rejected(&worker_pool, &tenant_a, "job-1", &recovered_lease, result)
+        .await?;
     assert_eq!(
         store
             .complete_job(&tenant_a, "job-1", &recovered_lease, result)

@@ -1,4 +1,82 @@
 use super::*;
+use std::time::Duration;
+
+pub(super) async fn assert_worker_job_boundary(
+    worker_pool: &sqlx::PgPool,
+    tenant: &HostedTenantId,
+) -> Result<(), Box<dyn Error>> {
+    let mut transaction = worker_pool.begin().await?;
+    sqlx::query("SELECT set_config('chio.tenant_id', $1, TRUE)")
+        .bind(tenant.as_str())
+        .execute(&mut *transaction)
+        .await?;
+    let direct_mutation =
+        sqlx::query("UPDATE chio_finding_market_jobs SET state = 'completed' WHERE tenant_id = $1")
+            .bind(tenant.as_str())
+            .execute(&mut *transaction)
+            .await;
+    assert!(direct_mutation.is_err());
+    transaction.rollback().await?;
+    Ok(())
+}
+
+pub(super) async fn assert_tenant_disablement_serializes(
+    store: &PostgresFindingMarketStore,
+    runtime_pool: &sqlx::PgPool,
+    tenant: &HostedTenantId,
+) -> Result<(), Box<dyn Error>> {
+    let scoped_write = store
+        .begin_tenant_write_for_integration_tests(tenant)
+        .await?;
+    let disable_store =
+        PostgresFindingMarketStore::from_pool_for_integration_tests(runtime_pool.clone(), 8);
+    let disable_tenant = tenant.clone();
+    let mut disable = tokio::spawn(async move {
+        disable_store
+            .set_tenant_enabled(&disable_tenant, false)
+            .await
+    });
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), &mut disable)
+            .await
+            .is_err()
+    );
+    scoped_write.commit().await?;
+    tokio::time::timeout(Duration::from_secs(5), disable).await???;
+    assert!(matches!(
+        store.probe_tenant(tenant).await,
+        Err(HostedMarketStoreError::TenantDisabled)
+    ));
+    store.set_tenant_enabled(tenant, true).await?;
+    Ok(())
+}
+
+pub(super) async fn assert_forged_job_digest_rejected(
+    worker_pool: &sqlx::PgPool,
+    tenant: &HostedTenantId,
+    job_id: &str,
+    lease: &chio_finding_market_store_postgres::HostedJobLease,
+    result: &[u8],
+) -> Result<(), Box<dyn Error>> {
+    let mut transaction = worker_pool.begin().await?;
+    sqlx::query("SELECT set_config('chio.tenant_id', $1, TRUE)")
+        .bind(tenant.as_str())
+        .execute(&mut *transaction)
+        .await?;
+    let outcome: i16 =
+        sqlx::query_scalar("SELECT chio_finding_market_complete_job($1, $2, $3, $4, $5, $6)")
+            .bind(tenant.as_str())
+            .bind(job_id)
+            .bind(lease.worker_id())
+            .bind(i64::try_from(lease.fence())?)
+            .bind("f".repeat(64))
+            .bind(result)
+            .fetch_one(&mut *transaction)
+            .await?;
+    assert_eq!(outcome, 4);
+    transaction.rollback().await?;
+    Ok(())
+}
 
 pub(super) async fn assert_multi_replica_leases_and_shutdown_refunds(
     store: &PostgresFindingMarketStore,

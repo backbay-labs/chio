@@ -402,3 +402,72 @@ fn offline_repair_atomically_restores_v13_exact_submission_bytes() {
     let connection = Connection::open(&database).expect("reopen repaired database");
     verify_finding_challenge_invariants(&connection).expect("verify repaired database");
 }
+
+#[test]
+fn offline_repair_upgrades_earliest_accepted_legacy_submission_schema() {
+    let temp = tempfile::tempdir().expect("create legacy repair directory");
+    secure_temp_directory(temp.path());
+    let database = temp.path().join("challenge-repair-v7.sqlite3");
+    let envelope = br#"{"challenge":"legacy-v7"}"#;
+    let envelope_sha256 = sha256_hex(envelope);
+    {
+        let connection = Connection::open(&database).expect("open legacy repair fixture");
+        connection
+            .execute_batch(FINDING_CHALLENGE_SCHEMA)
+            .expect("install challenge schema fixture");
+        connection
+            .pragma_update(None, "application_id", crate::CHIO_SQLITE_APPLICATION_ID)
+            .expect("stamp Chio application id");
+        connection
+            .execute(
+                r#"
+                INSERT INTO challenges (
+                    challenge_id, finding_id, listing_id,
+                    challenge_envelope_sha256, authorization_branch,
+                    evidence_class, challenger_hex, state, retry_count,
+                    retry_deadline, outcome_envelope_sha256, submitted_at,
+                    updated_at
+                ) VALUES ('challenge-legacy-v7', ?1, ?2, ?3,
+                          'buyer_submission', 'evidence_invalid', ?4,
+                          'submitted', 0, NULL, NULL, ?5, ?5)
+                "#,
+                params![
+                    hex64('a'),
+                    LISTING_ID,
+                    envelope_sha256,
+                    hex64('b'),
+                    i64::try_from(NOW).expect("test time fits sqlite"),
+                ],
+            )
+            .expect("insert legacy challenge");
+        connection
+            .execute_batch("DROP TABLE finding_challenge_submissions;")
+            .expect("remove unavailable legacy retention table");
+        crate::stamp_schema_version(&connection, FINDING_CHALLENGE_SCHEMA_KEY, 7)
+            .expect("stamp earliest accepted schema");
+    }
+    let before = SqliteFindingChallengeStore::inspect_challenge_repair_database(&database)
+        .expect("inspect v7 repair database");
+    assert_eq!(before.schema_version, 7);
+    let row_sha256 =
+        SqliteFindingChallengeStore::inspect_challenge_repair_row(&database, "challenge-legacy-v7")
+            .expect("inspect v7 challenge row");
+    let input = FindingChallengeSubmissionRepairInput {
+        challenge_id: "challenge-legacy-v7",
+        challenge_envelope_sha256: &envelope_sha256,
+        challenge_envelope_json: envelope,
+        challenge_row_sha256: &row_sha256,
+    };
+    let report = SqliteFindingChallengeStore::repair_challenge_submissions(
+        &database,
+        std::slice::from_ref(&input),
+    )
+    .expect("repair v7 submission retention");
+    assert_eq!(report.inserted, 1);
+    assert_eq!(
+        report.schema_version,
+        FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION
+    );
+    let connection = Connection::open(&database).expect("reopen repaired v7 database");
+    verify_finding_challenge_invariants(&connection).expect("verify repaired v7 database");
+}
