@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 umask 022
 
-for command_name in python3 realpath sha256sum stat; do
+for command_name in env python3 realpath sha256sum stat; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
     echo "cognition-market KVM qualification requires ${command_name} on PATH" >&2
     exit 1
@@ -141,14 +141,47 @@ mkdir -p "${output_root}"
 
 "${chio_bin}" --json finding operator validate-hosted \
   --profile "${profile_snapshot}" >"${profile_log}"
+
+mapfile -t database_url_envs < <(python3 - "${profile_snapshot}" <<'PY'
+import json
+import re
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as profile_file:
+    profile = json.load(profile_file)
+
+database = profile.get("database")
+if not isinstance(database, dict):
+    raise SystemExit("hosted profile database configuration is invalid")
+for field in ("runtimeUrlEnv", "workerUrlEnv"):
+    value = database.get(field)
+    if not isinstance(value, str) or re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", value) is None:
+        raise SystemExit(f"hosted profile database binding {field} is invalid")
+    print(value)
+PY
+)
+if [[ "${#database_url_envs[@]}" -ne 2 ]]; then
+  echo "cognition-market KVM qualification could not resolve database bindings" >&2
+  exit 1
+fi
+runtime_database_url_env="${database_url_envs[0]}"
+worker_database_url_env="${database_url_envs[1]}"
+if [[ "${runtime_database_url_env}" == "${worker_database_url_env}" ]]; then
+  echo "cognition-market KVM qualification requires isolated database bindings" >&2
+  exit 1
+fi
+
 CHIO_FINDING_CANDIDATE_SHA="${candidate_sha}" \
+  env --unset="${worker_database_url_env}" \
   "${canary_bin}" --profile "${profile_snapshot}" --job "${job_snapshot}" \
   provision >"${provision_log}"
-"${worker_bin}" \
+env --unset="${runtime_database_url_env}" \
+  "${worker_bin}" \
   --profile "${profile_snapshot}" \
   --worker-id "${CHIO_FINDING_WORKER_ID}" \
   --once >"${worker_log}"
 CHIO_FINDING_CANDIDATE_SHA="${candidate_sha}" \
+  env --unset="${worker_database_url_env}" \
   "${canary_bin}" --profile "${profile_snapshot}" --job "${job_snapshot}" \
   verify >"${terminal_log}"
 "${chio_bin}" --json finding operator evaluate-canary \

@@ -45,6 +45,16 @@ require_text "${kvm}" 'CHIO_FINDING_CANARY_JOB_ID'
 require_text "${kvm}" 'CHIO_FINDING_CANARY_JOB'
 require_text "${kvm}" 'profile_snapshot="${secret_root}/hosted-profile.json"'
 require_text "${kvm}" 'os.O_RDONLY | os.O_NOFOLLOW'
+require_text "${kvm}" 'runtime_database_url_env="${database_url_envs[0]}"'
+require_text "${kvm}" 'worker_database_url_env="${database_url_envs[1]}"'
+if [[ "$(grep -Fc 'env --unset="${worker_database_url_env}"' "${kvm}")" -ne 2 ]]; then
+  echo "KVM canary invocations must not inherit the worker database secret" >&2
+  exit 1
+fi
+if [[ "$(grep -Fc 'env --unset="${runtime_database_url_env}"' "${kvm}")" -ne 1 ]]; then
+  echo "KVM worker invocation must not inherit the runtime database secret" >&2
+  exit 1
+fi
 require_text "${kvm}" 'worker_result.get("completedJobIds") != [expected_job_id]'
 require_text "${kvm}" 'worker_result.get("jobs")'
 require_text "${kvm}" 'worker_job.get("resultSha256") != terminal_result.get("resultSha256")'
