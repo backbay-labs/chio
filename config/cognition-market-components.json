@@ -28,7 +28,6 @@
     "crates/platform/chio-http-core/**",
     "crates/platform/chio-store-sqlite/**",
     "crates/products/chio-cli/**",
-    "crates/products/chio-finding-hosted/**",
     "crates/products/chio-finding-market-canary/**",
     "crates/products/chio-finding-market-migrator/**",
     "crates/products/chio-finding-worker/**",

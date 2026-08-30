@@ -905,7 +905,11 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
         ),
     ];
     const EXPECTED_REGISTRY_ONLY: &[&str] = &[
+        "chio.finding.bond-observation-request.v1",
+        "chio.finding.bond-observation-response.v1",
         "chio.finding.delivery.v1",
+        "chio.finding.impairment-publisher-request.v1",
+        "chio.finding.impairment-publisher-response.v1",
         "chio.finding.purchase-context.v1",
         "chio.finding.recovery-context.v1",
         "chio.finding.replay-observation.v1",
