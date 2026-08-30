@@ -433,6 +433,7 @@ impl FindingHostedProfile {
         };
         HostedTlsState::load(
             HostedTlsConfig {
+                public_endpoint: self.public_endpoint.clone(),
                 certificate_chain_path: certificate_chain_path.into(),
                 private_key_path: private_key_path.into(),
                 client_ca_path: client_ca_path.as_ref().map(Into::into),

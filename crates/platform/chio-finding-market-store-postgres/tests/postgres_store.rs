@@ -943,6 +943,22 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             authority_now,
         )
         .await?;
+    let advanced_projection_revision: i64 = sqlx::query_scalar(
+        "SELECT revision FROM chio_finding_market_domain_projections WHERE tenant_id = $1 AND aggregate_kind = 'finding' AND aggregate_id = $2",
+    )
+    .bind(tenant_a.as_str())
+    .bind(&market_finding_id)
+    .fetch_one(&admin_pool)
+    .await?;
+    assert_eq!(advanced_projection_revision, 2);
+    let projection_tamper = sqlx::query(
+        "UPDATE chio_finding_market_domain_projections SET updated_at = updated_at + 1 WHERE tenant_id = $1 AND aggregate_kind = 'finding' AND aggregate_id = $2",
+    )
+    .bind(tenant_a.as_str())
+    .bind(&market_finding_id)
+    .execute(&admin_pool)
+    .await;
+    assert!(projection_tamper.is_err());
     let rollback_outbox = replicator
         .pending_rollback_outbox(&tenant_a, 3, 0, 10)
         .await?;
@@ -1452,6 +1468,14 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         .aggregate_head(&tenant_a, HostedAggregateKind::Finding, &archive_finding_id,)
         .await?
         .is_none());
+    let retained_projection: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM chio_finding_market_domain_projections WHERE tenant_id = $1 AND aggregate_kind = 'finding' AND aggregate_id = $2",
+    )
+    .bind(tenant_a.as_str())
+    .bind(&archive_finding_id)
+    .fetch_one(&admin_pool)
+    .await?;
+    assert_eq!(retained_projection, 0);
     let post_gc_projection_sha256 = replicator.target_projection_sha256(&tenant_a).await?;
     let post_gc_outbox_sequence = store.authority_state(&tenant_a).await?.last_outbox_sequence;
     append_replication_check(
@@ -1565,16 +1589,12 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             )
             .await?
     );
-    assert!(
-        store
-            .consume_capability_use(&tenant_a, "capability-a", 2, 1_700_000_300, 1_700_000_001,)
-            .await?
+    let (first_capability_use, second_capability_use) = tokio::join!(
+        store.consume_capability_use(&tenant_a, "capability-a", 2, 1_700_000_300, 1_700_000_001,),
+        store.consume_capability_use(&tenant_a, "capability-a", 2, 1_700_000_300, 1_700_000_002,),
     );
-    assert!(
-        store
-            .consume_capability_use(&tenant_a, "capability-a", 2, 1_700_000_300, 1_700_000_002,)
-            .await?
-    );
+    assert!(first_capability_use?);
+    assert!(second_capability_use?);
     assert!(
         !store
             .consume_capability_use(&tenant_a, "capability-a", 2, 1_700_000_300, 1_700_000_003,)

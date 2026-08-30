@@ -332,6 +332,7 @@ ryu = "1"
 sha2 = "0.10"
 reqwest = { version = "0.13.2", default-features = false }
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
+webpki = { package = "rustls-webpki", version = "0.103", default-features = false, features = ["std"] }
 rusqlite = { version = "0.39", features = ["bundled"] }
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls", "postgres"] }
 rs_merkle = "1.5"

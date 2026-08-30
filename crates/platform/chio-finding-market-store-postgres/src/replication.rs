@@ -966,7 +966,8 @@ async fn projection_sha256(
         r#"SELECT principal_id, capability_public_key_hex, valid_through
            FROM chio_finding_market_principal_key_overlaps
            WHERE tenant_id = $1
-           ORDER BY principal_id, capability_public_key_hex"#,
+           ORDER BY principal_id, capability_public_key_hex, valid_through,
+                    lifecycle_event_sha256"#,
     )
     .bind(tenant.as_str())
     .fetch_all(&mut **transaction)

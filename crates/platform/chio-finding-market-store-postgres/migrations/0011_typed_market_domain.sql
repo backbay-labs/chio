@@ -111,9 +111,40 @@ CREATE POLICY chio_finding_market_domain_projections_tenant_isolation
 ON chio_finding_market_domain_projections
 USING (tenant_id = NULLIF(current_setting('chio.tenant_id', TRUE), ''))
 WITH CHECK (tenant_id = NULLIF(current_setting('chio.tenant_id', TRUE), ''));
+
+CREATE FUNCTION chio_finding_market_guard_domain_projection_mutation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = pg_catalog, public
+AS $function$
+BEGIN
+    IF session_user <> current_user
+       AND current_user = pg_get_userbyid((
+           SELECT relowner FROM pg_class WHERE oid = TG_RELID
+       ))
+    THEN
+        IF TG_OP = 'UPDATE'
+           AND NEW.tenant_id = OLD.tenant_id
+           AND NEW.aggregate_kind = OLD.aggregate_kind
+           AND NEW.aggregate_id = OLD.aggregate_id
+           AND NEW.revision = OLD.revision + 1
+           AND NEW.updated_at >= OLD.updated_at
+        THEN
+            RETURN NEW;
+        END IF;
+        IF TG_OP = 'DELETE' AND pg_trigger_depth() > 1 THEN
+            RETURN OLD;
+        END IF;
+    END IF;
+    RAISE EXCEPTION 'cognition-market domain projection cannot be mutated directly'
+        USING ERRCODE = '55000';
+END
+$function$;
+
 CREATE TRIGGER chio_finding_market_domain_projections_immutable
 BEFORE UPDATE OR DELETE ON chio_finding_market_domain_projections
-FOR EACH ROW EXECUTE FUNCTION chio_finding_market_reject_immutable_mutation();
+FOR EACH ROW EXECUTE FUNCTION chio_finding_market_guard_domain_projection_mutation();
 
 CREATE OR REPLACE FUNCTION chio_finding_market_append_domain_event(
     requested_tenant_id TEXT,

@@ -500,11 +500,22 @@ async fn run_tick(
             continue;
         }
         let claim_limit = tenant.limits.max_concurrent_jobs().min(remaining_jobs);
-        let run = spec
+        let run = match spec
             .worker
             .run_once_with_limit_cancellable(&tenant.tenant_id, claim_limit, spec.cancellation)
             .await
-            .map_err(map_worker_error)?;
+        {
+            Ok(run) => run,
+            Err(HostedWorkerServiceError::TenantUnavailable) => {
+                record_tenant_failure(failure, spec.tenant_failure_threshold, now);
+                report.tenants_visited = report
+                    .tenants_visited
+                    .checked_add(1)
+                    .ok_or(DaemonError::Execution)?;
+                continue;
+            }
+            Err(error) => return Err(map_worker_error(error)),
+        };
         let tenant_failed = run.guest_rejected > 0 || run.exhausted > 0;
         if tenant_failed {
             record_tenant_failure(failure, spec.tenant_failure_threshold, now);
@@ -543,6 +554,7 @@ fn record_tenant_failure(state: &mut TenantFailureState, threshold: u32, now: u6
 fn map_worker_error(error: HostedWorkerServiceError) -> DaemonError {
     match error {
         HostedWorkerServiceError::Store => DaemonError::Database,
+        HostedWorkerServiceError::TenantUnavailable => DaemonError::Tenant,
         HostedWorkerServiceError::Configuration | HostedWorkerServiceError::Clock => {
             DaemonError::Execution
         }
@@ -645,6 +657,10 @@ mod tests {
         ] {
             assert!(matches!(map_worker_error(error), DaemonError::Execution));
         }
+        assert!(matches!(
+            map_worker_error(HostedWorkerServiceError::TenantUnavailable),
+            DaemonError::Tenant
+        ));
     }
 
     #[test]

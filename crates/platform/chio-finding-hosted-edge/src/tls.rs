@@ -4,10 +4,11 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use arc_swap::ArcSwap;
-use rustls::pki_types::{pem::PemObject as _, CertificateDer, PrivateKeyDer};
+use rustls::pki_types::{pem::PemObject as _, CertificateDer, PrivateKeyDer, ServerName};
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig};
 use sha2::{Digest as _, Sha256};
+use url::Url;
 use x509_parser::prelude::{FromDer as _, X509Certificate};
 use zeroize::Zeroizing;
 
@@ -17,6 +18,7 @@ const MAX_TLS_FILE_BYTES: u64 = 4 * 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostedTlsConfig {
+    pub public_endpoint: String,
     pub certificate_chain_path: PathBuf,
     pub private_key_path: PathBuf,
     pub client_ca_path: Option<PathBuf>,
@@ -26,6 +28,7 @@ pub struct HostedTlsConfig {
 
 impl HostedTlsConfig {
     fn validate(&self) -> Result<(), HostedEdgeError> {
+        public_endpoint_server_name(&self.public_endpoint)?;
         for path in [
             Some(self.certificate_chain_path.as_path()),
             Some(self.private_key_path.as_path()),
@@ -144,6 +147,12 @@ fn load_material(config: &HostedTlsConfig, now: u64) -> Result<LoadedTlsMaterial
         .map_err(|_| HostedEdgeError::Configuration)?;
     let (_, leaf) = X509Certificate::from_der(certificates[0].as_ref())
         .map_err(|_| HostedEdgeError::Configuration)?;
+    let server_name = public_endpoint_server_name(&config.public_endpoint)?;
+    let end_entity = webpki::EndEntityCert::try_from(&certificates[0])
+        .map_err(|_| HostedEdgeError::Configuration)?;
+    end_entity
+        .verify_is_valid_for_subject_name(&server_name)
+        .map_err(|_| HostedEdgeError::Configuration)?;
     let certificate_not_before = u64::try_from(leaf.validity().not_before.timestamp())
         .map_err(|_| HostedEdgeError::Configuration)?;
     let certificate_not_after = u64::try_from(leaf.validity().not_after.timestamp())
@@ -200,6 +209,27 @@ fn load_material(config: &HostedTlsConfig, now: u64) -> Result<LoadedTlsMaterial
             certificate_not_after,
         },
     })
+}
+
+fn public_endpoint_server_name(value: &str) -> Result<ServerName<'static>, HostedEdgeError> {
+    let endpoint = Url::parse(value).map_err(|_| HostedEdgeError::Configuration)?;
+    if endpoint.scheme() != "https"
+        || endpoint.host_str().is_none()
+        || !endpoint.username().is_empty()
+        || endpoint.password().is_some()
+        || endpoint.query().is_some()
+        || endpoint.fragment().is_some()
+        || endpoint.as_str().trim_end_matches('/') != value
+    {
+        return Err(HostedEdgeError::Configuration);
+    }
+    ServerName::try_from(
+        endpoint
+            .host_str()
+            .ok_or(HostedEdgeError::Configuration)?
+            .to_owned(),
+    )
+    .map_err(|_| HostedEdgeError::Configuration)
 }
 
 fn read_regular(path: &Path, private: bool) -> Result<Vec<u8>, HostedEdgeError> {
@@ -290,6 +320,7 @@ mod tests {
         std::fs::set_permissions(&certificate_path, std::fs::Permissions::from_mode(0o644))?;
         std::fs::set_permissions(&private_key_path, std::fs::Permissions::from_mode(0o600))?;
         Ok(HostedTlsConfig {
+            public_endpoint: "https://market.example".to_owned(),
             certificate_chain_path: certificate_path,
             private_key_path,
             client_ca_path: None,
@@ -327,6 +358,16 @@ mod tests {
         )?;
         let now = now()?;
         assert!(HostedTlsState::load(config, now).is_err());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn certificate_must_cover_public_endpoint() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let mut config = write_material(directory.path())?;
+        config.public_endpoint = "https://other.example".to_owned();
+        assert!(HostedTlsState::load(config, now()?).is_err());
         Ok(())
     }
 }

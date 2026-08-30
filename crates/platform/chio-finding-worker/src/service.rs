@@ -39,6 +39,8 @@ pub struct HostedWorkerJobEvidence {
 pub enum HostedWorkerServiceError {
     #[error("hosted finding worker configuration is invalid")]
     Configuration,
+    #[error("hosted finding worker tenant is unavailable")]
+    TenantUnavailable,
     #[error("hosted finding worker store is unavailable")]
     Store,
     #[error("hosted finding worker system clock is unavailable")]
@@ -349,6 +351,33 @@ fn valid_identifier(value: &str) -> bool {
         })
 }
 
-fn map_store(_error: HostedMarketStoreError) -> HostedWorkerServiceError {
-    HostedWorkerServiceError::Store
+fn map_store(error: HostedMarketStoreError) -> HostedWorkerServiceError {
+    match error {
+        HostedMarketStoreError::TenantDisabled | HostedMarketStoreError::TenantNotFound => {
+            HostedWorkerServiceError::TenantUnavailable
+        }
+        _ => HostedWorkerServiceError::Store,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tenant_lifecycle_errors_remain_tenant_scoped() {
+        for error in [
+            HostedMarketStoreError::TenantDisabled,
+            HostedMarketStoreError::TenantNotFound,
+        ] {
+            assert!(matches!(
+                map_store(error),
+                HostedWorkerServiceError::TenantUnavailable
+            ));
+        }
+        assert!(matches!(
+            map_store(HostedMarketStoreError::Unavailable),
+            HostedWorkerServiceError::Store
+        ));
+    }
 }

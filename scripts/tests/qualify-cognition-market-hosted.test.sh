@@ -57,6 +57,14 @@ require_text "${kvm}" "--expected-candidate \"\${candidate_sha}\""
 require_text "${release}" './scripts/qualify-cognition-market-hosted.sh --code-only'
 require_text "${code_workflow}" './scripts/qualify-cognition-market-hosted.sh --code-only'
 require_text "${code_workflow}" 'astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39'
+if [[ "$(grep -Fc 'crates/core/chio-bounded/**' "${code_workflow}")" -ne 2 ]]; then
+  echo "hosted workflow must qualify its Kani proof dependency on pull requests and main" >&2
+  exit 1
+fi
+if [[ "$(grep -Fc 'crates/tooling/chio-release-evidence/**' "${code_workflow}")" -ne 2 ]]; then
+  echo "hosted workflow must qualify release-evidence changes on pull requests and main" >&2
+  exit 1
+fi
 require_text "${promotion_workflow}" 'runs-on: [self-hosted, linux, x64, kvm, cognition-market, ephemeral, attested]'
 require_text "${promotion_workflow}" 'name: cognition-market-production'
 require_text "${promotion_workflow}" 'ephemeral, attested'
@@ -69,5 +77,13 @@ require_text "${promotion_workflow}" 'cognition-market-promotion-sigstore'
 require_text "${promotion_workflow}" 'cosign sign-blob --yes'
 require_text "${promotion_workflow}" 'cosign verify-blob'
 require_text "${promotion_workflow}" 'id-token: write'
+require_text "${promotion_workflow}" 'DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}'
+require_text "${promotion_workflow}" 'git check-ref-format --branch "${DEFAULT_BRANCH}"'
+require_text "${promotion_workflow}" 'test "${candidate_sha}" = "${default_branch_sha}"'
+require_text "${promotion_workflow}" 'test "${GITHUB_SHA}" = "${default_branch_sha}"'
+if [[ "$(grep -Fc 'git fetch --no-tags --force origin' "${promotion_workflow}")" -ne 2 ]]; then
+  echo "promotion workflow must re-fetch the default branch before qualification and signing" >&2
+  exit 1
+fi
 
 echo "qualify-cognition-market-hosted.test.sh: hosted code and KVM promotion gates are closed"

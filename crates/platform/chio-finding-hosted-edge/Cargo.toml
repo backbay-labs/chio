@@ -27,6 +27,7 @@ url = { workspace = true }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
 rustls = { workspace = true }
+webpki = { workspace = true }
 
 [dev-dependencies]
 chio-core = { workspace = true }

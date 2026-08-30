@@ -411,6 +411,12 @@ impl PostgresFindingMarketStore {
         let expires_at = checked_i64(expires_at, "capability expires_at")?;
         let now = checked_i64(now, "capability now")?;
         let mut transaction = self.begin_tenant(tenant).await?;
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, hashtextextended($2, 4)))")
+            .bind(tenant.as_str())
+            .bind(capability_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
         sqlx::query(
             "DELETE FROM chio_finding_market_capability_uses WHERE tenant_id = $1 AND expires_at <= $2",
         )

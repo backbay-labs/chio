@@ -22,13 +22,21 @@ jobs:
     env:
       CHIO_KVM_RUNNER_IMAGE_SHA256: ${{ vars.CHIO_KVM_RUNNER_IMAGE_SHA256 }}
       CHIO_KVM_RUNNER_ATTESTATION_SHA256: ${{ vars.CHIO_KVM_RUNNER_ATTESTATION_SHA256 }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
       - name: Require the exact default-branch candidate
         run: |
-          test "$(git rev-parse --verify 'HEAD^{commit}')" = "${GITHUB_SHA}"
+          git check-ref-format --branch "${DEFAULT_BRANCH}" >/dev/null
+          git fetch --no-tags --force origin \
+            "refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+          candidate_sha="$(git rev-parse --verify 'HEAD^{commit}')"
+          default_branch_sha="$(git rev-parse --verify "refs/remotes/origin/${DEFAULT_BRANCH}^{commit}")"
+          test "${GITHUB_REF}" = "refs/heads/${DEFAULT_BRANCH}"
+          test "${candidate_sha}" = "${GITHUB_SHA}"
+          test "${candidate_sha}" = "${default_branch_sha}"
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
           test "${GITHUB_RUN_ATTEMPT}" -ge 1
           test -n "${CHIO_KVM_RUNNER_IMAGE_SHA256}"
@@ -39,6 +47,13 @@ jobs:
         uses: sigstore/cosign-installer@1aa8e0f2454b781fbf0fbf306a4c9533a0c57409
         with:
           cosign-release: v2.4.1
+      - name: Recheck the default-branch head before signing
+        run: |
+          git fetch --no-tags --force origin \
+            "refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+          default_branch_sha="$(git rev-parse --verify "refs/remotes/origin/${DEFAULT_BRANCH}^{commit}")"
+          test "$(git rev-parse --verify 'HEAD^{commit}')" = "${GITHUB_SHA}"
+          test "${GITHUB_SHA}" = "${default_branch_sha}"
       - name: Sign and verify exact-candidate promotion evidence
         env:
           EXPECTED_WORKFLOW_IDENTITY: ${{ github.server_url }}/${{ github.repository }}/.github/workflows/cognition-market-promotion.yml@${{ github.ref }}

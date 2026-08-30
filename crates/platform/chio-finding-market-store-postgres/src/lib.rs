@@ -136,6 +136,8 @@ pub enum HostedMarketStoreError {
     Configuration,
     #[error("hosted market tenant identity is invalid")]
     Tenant,
+    #[error("hosted market tenant was not found")]
+    TenantNotFound,
     #[error("hosted market tenant is disabled")]
     TenantDisabled,
     #[error("hosted market job input is invalid: {0}")]
@@ -796,7 +798,7 @@ impl PostgresFindingMarketStore {
         .fetch_optional(&mut **transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?
-        .ok_or(HostedMarketStoreError::NotFound)?;
+        .ok_or(HostedMarketStoreError::TenantNotFound)?;
         if !enabled {
             return Err(HostedMarketStoreError::TenantDisabled);
         }
