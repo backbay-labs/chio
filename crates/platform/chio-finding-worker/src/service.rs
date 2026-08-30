@@ -1,3 +1,5 @@
+use std::future::Future;
+use std::pin::Pin;
 use std::time::Duration;
 
 use chio_finding_market_store_postgres::{
@@ -227,27 +229,37 @@ impl HostedFindingWorker {
             heartbeat_duration,
         );
         heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let execution_cancellation = cancellation.child_token();
         let mut execution = Box::pin(self.executor.execute_cancellable(
             &job,
             job.updated_at,
-            &cancellation,
+            &execution_cancellation,
         ));
         let execution_result = loop {
             tokio::select! {
                 result = execution.as_mut() => break result,
                 () = cancellation.cancelled() => {
-                    break execution.as_mut().await;
+                    break cancel_and_await_execution(
+                        &execution_cancellation,
+                        execution.as_mut(),
+                    ).await;
                 },
                 _ = heartbeat.tick() => {
-                    self.store
+                    let renewal = self.store
                         .renew_job_lease(
                             &job.tenant_id,
                             &job.job_id,
                             &lease,
                             self.lease_duration_secs,
                         )
-                        .await
-                        .map_err(map_store)?;
+                        .await;
+                    if let Err(error) = renewal {
+                        let _ = cancel_and_await_execution(
+                            &execution_cancellation,
+                            execution.as_mut(),
+                        ).await;
+                        return Err(map_store(error));
+                    }
                 }
             }
         };
@@ -353,6 +365,17 @@ fn effective_attempt_limit(profile_limit: u64, signed_limit: u64) -> u64 {
     profile_limit.min(signed_limit)
 }
 
+async fn cancel_and_await_execution<F>(
+    cancellation: &CancellationToken,
+    execution: Pin<&mut F>,
+) -> F::Output
+where
+    F: Future + ?Sized,
+{
+    cancellation.cancel();
+    execution.await
+}
+
 enum JobOutcome {
     Completed(HostedWorkerJobEvidence),
     GuestRejected(HostedWorkerJobEvidence),
@@ -381,6 +404,8 @@ fn map_store(error: HostedMarketStoreError) -> HostedWorkerServiceError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
 
     #[test]
     fn tenant_lifecycle_errors_remain_tenant_scoped() {
@@ -404,5 +429,23 @@ mod tests {
         assert_eq!(effective_attempt_limit(20, 3), 3);
         assert_eq!(effective_attempt_limit(3, 20), 3);
         assert_eq!(effective_attempt_limit(3, 3), 3);
+    }
+
+    #[tokio::test]
+    async fn cancellation_waits_for_execution_cleanup() {
+        let cancellation = CancellationToken::new();
+        let observed_cancellation = cancellation.clone();
+        let cleaned = Arc::new(AtomicBool::new(false));
+        let cleaned_by_execution = Arc::clone(&cleaned);
+        let mut execution = Box::pin(async move {
+            observed_cancellation.cancelled().await;
+            tokio::task::yield_now().await;
+            cleaned_by_execution.store(true, Ordering::SeqCst);
+            7_u8
+        });
+
+        let result = cancel_and_await_execution(&cancellation, execution.as_mut()).await;
+        assert_eq!(result, 7);
+        assert!(cleaned.load(Ordering::SeqCst));
     }
 }

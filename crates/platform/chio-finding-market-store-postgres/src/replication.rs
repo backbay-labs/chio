@@ -338,7 +338,7 @@ impl PostgresFindingMarketReplicator {
             payload_json,
             body.artifact_signer_key.as_ref(),
         )?;
-        let payload_sha256 = sha256_hex(&domain_event.payload_json);
+        let payload_sha256 = sha256_hex(domain_event.payload_json());
         let revision = body
             .expected_revision
             .checked_add(1)
@@ -379,7 +379,7 @@ impl PostgresFindingMarketReplicator {
         .bind(body.event_kind.event_kind())
         .bind(body.event_kind.artifact_schema())
         .bind(&payload_sha256)
-        .bind(&domain_event.payload_json)
+        .bind(domain_event.payload_json())
         .bind(domain_event_sha256)
         .bind(event.signer_key.to_hex())
         .bind(envelope)

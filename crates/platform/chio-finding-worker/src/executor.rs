@@ -399,6 +399,7 @@ impl FirecrackerExecutor {
             ) => result,
             () = cancellation.cancelled() => Err(WorkerExecutionError::Cancelled),
         };
+        let completed_at = result.as_ref().ok().map(|_| unix_time());
         let execution_elapsed = started.elapsed();
         terminate_child(&mut child).await;
         let host_usage = result
@@ -415,7 +416,7 @@ impl FirecrackerExecutor {
             (Ok(_), Ok(None), Ok(())) => Err(WorkerExecutionError::Protocol),
         }?;
         reconcile_host_usage(&mut guest, observed, &request)?;
-        let completed_at = unix_time()?;
+        let completed_at = completed_at.ok_or(WorkerExecutionError::Protocol)??;
         let guest_classification = guest.classification;
         let body = FindingWorkerAttestedResult::from_guest(
             &request,

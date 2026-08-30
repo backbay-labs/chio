@@ -139,10 +139,11 @@ impl HostedMarketDomainEventKind {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostedMarketDomainEvent {
-    pub event_kind: HostedMarketDomainEventKind,
-    pub aggregate_id: String,
-    pub event_id: String,
-    pub payload_json: Vec<u8>,
+    event_kind: HostedMarketDomainEventKind,
+    aggregate_id: String,
+    event_id: String,
+    payload_json: Vec<u8>,
+    expected_signer: Option<PublicKey>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -187,23 +188,36 @@ impl HostedMarketDomainEvent {
         payload_json: Vec<u8>,
         expected_signer: Option<&PublicKey>,
     ) -> Result<Self, HostedMarketStoreError> {
-        let aggregate_id = aggregate_id.into();
-        let event_id = event_id.into();
-        validate_identifier(&aggregate_id, MAX_AGGREGATE_ID_BYTES)
+        let event = Self {
+            event_kind,
+            aggregate_id: aggregate_id.into(),
+            event_id: event_id.into(),
+            payload_json,
+            expected_signer: expected_signer.cloned(),
+        };
+        event.validate()?;
+        Ok(event)
+    }
+
+    fn validate(&self) -> Result<(), HostedMarketStoreError> {
+        validate_identifier(&self.aggregate_id, MAX_AGGREGATE_ID_BYTES)
             .map_err(|()| HostedMarketStoreError::Invalid("aggregate_id"))?;
-        validate_identifier(&event_id, MAX_EVENT_ID_BYTES)
+        validate_identifier(&self.event_id, MAX_EVENT_ID_BYTES)
             .map_err(|()| HostedMarketStoreError::Invalid("event_id"))?;
-        validate_canonical_json(&payload_json, "domain payload")?;
-        if payload_json.len() > MAX_PAYLOAD_BYTES {
+        validate_canonical_json(&self.payload_json, "domain payload")?;
+        if self.payload_json.len() > MAX_PAYLOAD_BYTES {
             return Err(HostedMarketStoreError::Invalid("domain payload"));
         }
-        validate_domain_payload(event_kind, &aggregate_id, &payload_json, expected_signer)?;
-        Ok(Self {
-            event_kind,
-            aggregate_id,
-            event_id,
-            payload_json,
-        })
+        validate_domain_payload(
+            self.event_kind,
+            &self.aggregate_id,
+            &self.payload_json,
+            self.expected_signer.as_ref(),
+        )
+    }
+
+    pub(crate) fn payload_json(&self) -> &[u8] {
+        &self.payload_json
     }
 }
 
@@ -288,6 +302,7 @@ impl PostgresFindingMarketStore {
         expected_event_sha256: Option<&str>,
         committed_at: u64,
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        event.validate()?;
         if expected_revision == 0 {
             if expected_event_sha256.is_some() {
                 return Err(HostedMarketStoreError::Invalid("expected domain head"));
@@ -591,5 +606,28 @@ fn require_aggregate_identity(
         Ok(())
     } else {
         Err(HostedMarketStoreError::Invalid("domain aggregate identity"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn domain_event_validation_cannot_be_bypassed_at_append_input() {
+        let event = HostedMarketDomainEvent {
+            event_kind: HostedMarketDomainEventKind::FindingPublished,
+            aggregate_id: "finding-a".to_owned(),
+            event_id: "event-a".to_owned(),
+            payload_json: b"{}".to_vec(),
+            expected_signer: None,
+        };
+        assert!(event.validate().is_err());
+
+        let mut noncanonical = event;
+        noncanonical.event_kind = HostedMarketDomainEventKind::RecipeRegistered;
+        noncanonical.aggregate_id = sha256_hex(b"{}");
+        noncanonical.payload_json = b"{ \"schema\": \"invalid\" }".to_vec();
+        assert!(noncanonical.validate().is_err());
     }
 }
