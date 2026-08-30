@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::str::FromStr as _;
 use std::time::Duration;
 
-use chio_core_types::{canonical_json_bytes_from_str, sha256_hex};
+use chio_core_types::sha256_hex;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use sqlx::{PgPool, Postgres, Row as _, Transaction};
@@ -27,6 +27,12 @@ mod retention;
 mod runtime_boundary;
 mod spend;
 mod tenant;
+mod validation;
+
+pub(crate) use validation::{
+    checked_i64, checked_nonnegative_i64, checked_timestamp, stored_u64, unavailable,
+    validate_canonical_json, validate_digest, validate_identifier, verify_payload,
+};
 
 pub use aggregates::{HostedAggregateEvent, HostedAggregateHead, HostedAggregateKind};
 pub use auth::{
@@ -119,12 +125,10 @@ const MAX_JOB_KIND_BYTES: usize = 96;
 const GC_JOB_TOMBSTONE_CONSTRAINT: &str = "chio_finding_market_jobs_gc_tombstone_v1";
 const MAX_LEASE_OWNER_BYTES: usize = 256;
 const MAX_ERROR_CODE_BYTES: usize = 128;
-const MAX_JOB_JSON_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CLAIM_BATCH: u32 = 100;
 const DEFAULT_MAX_JOBS_PER_TENANT: i64 = 100_000;
 const MAX_TENANT_JOBS: u64 = 10_000_000;
 const MAX_I_JSON_INTEGER: u64 = (1_u64 << 53) - 1;
-const MAX_SUPPORTED_UNIX_SECS: u64 = 253_402_300_799;
 
 #[derive(Debug, thiserror::Error)]
 pub enum HostedMarketStoreError {
@@ -915,76 +919,6 @@ fn job_from_row(
     })
 }
 
-fn validate_identifier(value: &str, maximum: usize) -> Result<(), ()> {
-    if value.is_empty()
-        || value.len() > maximum
-        || !value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
-        })
-    {
-        return Err(());
-    }
-    Ok(())
-}
-
-fn validate_digest(value: &str, field: &'static str) -> Result<(), HostedMarketStoreError> {
-    if value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
-        return Ok(());
-    }
-    Err(HostedMarketStoreError::Invalid(field))
-}
-
-fn validate_canonical_json(
-    bytes: &[u8],
-    field: &'static str,
-) -> Result<(), HostedMarketStoreError> {
-    if bytes.is_empty() || bytes.len() > MAX_JOB_JSON_BYTES {
-        return Err(HostedMarketStoreError::Invalid(field));
-    }
-    let raw = std::str::from_utf8(bytes).map_err(|_| HostedMarketStoreError::Invalid(field))?;
-    let canonical =
-        canonical_json_bytes_from_str(raw).map_err(|_| HostedMarketStoreError::Invalid(field))?;
-    if canonical != bytes {
-        return Err(HostedMarketStoreError::Invalid(field));
-    }
-    Ok(())
-}
-
-fn verify_payload(digest: &str, bytes: &[u8]) -> Result<(), HostedMarketStoreError> {
-    validate_digest(digest, "durable digest")?;
-    validate_canonical_json(bytes, "durable JSON")?;
-    if sha256_hex(bytes) != digest {
-        return Err(HostedMarketStoreError::DigestMismatch);
-    }
-    Ok(())
-}
-
-fn checked_i64(value: u64, field: &'static str) -> Result<i64, HostedMarketStoreError> {
-    if value == 0 {
-        return Err(HostedMarketStoreError::Invalid(field));
-    }
-    i64::try_from(value).map_err(|_| HostedMarketStoreError::Invalid(field))
-}
-
-fn checked_nonnegative_i64(value: u64, field: &'static str) -> Result<i64, HostedMarketStoreError> {
-    i64::try_from(value).map_err(|_| HostedMarketStoreError::Invalid(field))
-}
-
-fn checked_timestamp(value: u64, field: &'static str) -> Result<i64, HostedMarketStoreError> {
-    if value > MAX_SUPPORTED_UNIX_SECS {
-        return Err(HostedMarketStoreError::Invalid(field));
-    }
-    checked_i64(value, field)
-}
-
-fn stored_u64(value: i64) -> Result<u64, HostedMarketStoreError> {
-    u64::try_from(value).map_err(|_| HostedMarketStoreError::DigestMismatch)
-}
-
 fn parse_state(value: &str) -> Result<HostedJobState, HostedMarketStoreError> {
     match value {
         "pending" => Ok(HostedJobState::Pending),
@@ -994,10 +928,6 @@ fn parse_state(value: &str) -> Result<HostedJobState, HostedMarketStoreError> {
         "exhausted" => Ok(HostedJobState::Exhausted),
         _ => Err(HostedMarketStoreError::DigestMismatch),
     }
-}
-
-fn unavailable(_error: sqlx::Error) -> HostedMarketStoreError {
-    HostedMarketStoreError::Unavailable
 }
 
 #[cfg(test)]
