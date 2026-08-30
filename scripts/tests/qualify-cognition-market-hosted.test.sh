@@ -55,6 +55,10 @@ if [[ "$(grep -Fc 'env --unset="${runtime_database_url_env}"' "${kvm}")" -ne 1 ]
   echo "KVM worker invocation must not inherit the runtime database secret" >&2
   exit 1
 fi
+if [[ "$(grep -Fc 'unshare --mount --pid --fork --mount-proc --kill-child=KILL --' "${kvm}")" -ne 3 ]]; then
+  echo "KVM role subprocesses must run in isolated PID and proc namespaces" >&2
+  exit 1
+fi
 require_text "${kvm}" 'worker_result.get("completedJobIds") != [expected_job_id]'
 require_text "${kvm}" 'worker_result.get("jobs")'
 require_text "${kvm}" 'worker_job.get("resultSha256") != terminal_result.get("resultSha256")'

@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 umask 022
 
-for command_name in env python3 realpath sha256sum stat; do
+for command_name in env python3 realpath sha256sum stat unshare; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
     echo "cognition-market KVM qualification requires ${command_name} on PATH" >&2
     exit 1
@@ -171,17 +171,22 @@ if [[ "${runtime_database_url_env}" == "${worker_database_url_env}" ]]; then
   exit 1
 fi
 
+# Each role sees a private PID and proc namespace, so a root subprocess cannot
+# inspect the launcher's environment to recover the opposite database secret.
 CHIO_FINDING_CANDIDATE_SHA="${candidate_sha}" \
   env --unset="${worker_database_url_env}" \
+  unshare --mount --pid --fork --mount-proc --kill-child=KILL -- \
   "${canary_bin}" --profile "${profile_snapshot}" --job "${job_snapshot}" \
   provision >"${provision_log}"
 env --unset="${runtime_database_url_env}" \
+  unshare --mount --pid --fork --mount-proc --kill-child=KILL -- \
   "${worker_bin}" \
   --profile "${profile_snapshot}" \
   --worker-id "${CHIO_FINDING_WORKER_ID}" \
   --once >"${worker_log}"
 CHIO_FINDING_CANDIDATE_SHA="${candidate_sha}" \
   env --unset="${worker_database_url_env}" \
+  unshare --mount --pid --fork --mount-proc --kill-child=KILL -- \
   "${canary_bin}" --profile "${profile_snapshot}" --job "${job_snapshot}" \
   verify >"${terminal_log}"
 "${chio_bin}" --json finding operator evaluate-canary \
