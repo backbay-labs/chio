@@ -516,12 +516,7 @@ async fn run_tick(
             }
             Err(error) => return Err(map_worker_error(error)),
         };
-        let tenant_failed = run.guest_rejected > 0 || run.exhausted > 0;
-        if tenant_failed {
-            record_tenant_failure(failure, spec.tenant_failure_threshold, now);
-        } else if run.claimed > 0 {
-            *failure = TenantFailureState::default();
-        }
+        record_tenant_dependency_success(failure, &run);
         remaining_jobs = remaining_jobs
             .checked_sub(run.claimed)
             .ok_or(DaemonError::Execution)?;
@@ -549,6 +544,10 @@ fn record_tenant_failure(state: &mut TenantFailureState, threshold: u32, now: u6
     if state.consecutive_failures >= threshold {
         state.open_until = now.saturating_add(TENANT_BREAKER_OPEN_SECS);
     }
+}
+
+fn record_tenant_dependency_success(state: &mut TenantFailureState, _run: &HostedWorkerRun) {
+    *state = TenantFailureState::default();
 }
 
 fn map_worker_error(error: HostedWorkerServiceError) -> DaemonError {
@@ -690,5 +689,27 @@ mod tests {
         assert!(!admit_tenant(&mut state, 129));
         assert!(admit_tenant(&mut state, 131));
         assert_eq!(state.consecutive_failures, 0);
+    }
+
+    #[test]
+    fn job_local_terminal_outcomes_do_not_advance_the_tenant_breaker() {
+        let mut state = TenantFailureState {
+            consecutive_failures: 1,
+            open_until: 0,
+        };
+        let run = HostedWorkerRun {
+            claimed: 2,
+            completed: 0,
+            guest_rejected: 1,
+            retried: 0,
+            exhausted: 1,
+            cancelled: 0,
+            claimed_job_ids: vec!["job-a".to_owned(), "job-b".to_owned()],
+            completed_job_ids: Vec::new(),
+            jobs: Vec::new(),
+        };
+        record_tenant_dependency_success(&mut state, &run);
+        assert_eq!(state.consecutive_failures, 0);
+        assert_eq!(state.open_until, 0);
     }
 }

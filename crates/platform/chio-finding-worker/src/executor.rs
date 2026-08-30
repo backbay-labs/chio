@@ -26,11 +26,11 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::protocol::{
-    sign_attested_result, verify_attested_result, FindingWorkerAttestedResult,
-    FindingWorkerExitClassification, FindingWorkerInputDescriptor, FindingWorkerInputEnd,
-    FindingWorkerInputKind, FindingWorkerRequest, FindingWorkerResourceLimits,
-    FindingWorkerResourceUsage, FindingWorkerResult, FINDING_WORKER_INPUT_END_SCHEMA,
-    FINDING_WORKER_INPUT_SCHEMA,
+    authorized_attempt_limit, sign_attested_result, verify_attested_result,
+    FindingWorkerAttestedResult, FindingWorkerExitClassification, FindingWorkerInputDescriptor,
+    FindingWorkerInputEnd, FindingWorkerInputKind, FindingWorkerRequest,
+    FindingWorkerResourceLimits, FindingWorkerResourceUsage, FindingWorkerResult,
+    FINDING_WORKER_INPUT_END_SCHEMA, FINDING_WORKER_INPUT_SCHEMA,
 };
 
 const MAX_IMAGE_BYTES: u64 = 32 * 1024 * 1024 * 1024;
@@ -277,6 +277,15 @@ impl FirecrackerExecutor {
         self.inner.config.execution_timeout
     }
 
+    pub(crate) fn authorized_attempt_limit(
+        &self,
+        job: &HostedMarketJob,
+        now: u64,
+    ) -> Result<u64, WorkerExecutionError> {
+        authorized_attempt_limit(job, &self.inner.config.capability_authority, now)
+            .map_err(|_| WorkerExecutionError::Protocol)
+    }
+
     /// Verify host privilege, KVM availability, trusted parent ownership,
     /// and every pinned executable and image before the service claims work.
     pub fn preflight_host(&self) -> Result<(), WorkerExecutionError> {
@@ -314,12 +323,9 @@ impl FirecrackerExecutor {
             return Err(WorkerExecutionError::Cancelled);
         }
         let started = Instant::now();
-        let deadline = now
-            .checked_add(self.inner.config.execution_timeout.as_secs())
-            .ok_or(WorkerExecutionError::Configuration)?;
         let request = FindingWorkerRequest::from_job(
             job,
-            deadline,
+            self.inner.config.execution_timeout.as_secs(),
             &self.inner.config.capability_authority,
             now,
         )
@@ -328,11 +334,17 @@ impl FirecrackerExecutor {
             canonical_json_bytes(&request).map_err(|_| WorkerExecutionError::Protocol)?;
         validate_frame_payload(&request_bytes, self.inner.config.max_frame_bytes)?;
         let enforced_limits = self.admit_job_limits(&request)?;
-        let preflight_budget = self
+        let capability_budget = Duration::from_secs(request.deadline_unix_secs.saturating_sub(now));
+        let execution_budget = self
             .inner
             .config
             .execution_timeout
             .min(enforced_limits.wall_time)
+            .min(capability_budget);
+        if execution_budget.is_zero() {
+            return Err(WorkerExecutionError::Timeout);
+        }
+        let preflight_budget = execution_budget
             .checked_sub(started.elapsed())
             .ok_or(WorkerExecutionError::Timeout)?;
         let preflight_executor = self.clone();
@@ -348,9 +360,7 @@ impl FirecrackerExecutor {
         let identity = self.acquire_identity(cancellation).await?;
         let jail_id = format!("chio-{}", Uuid::new_v4().simple());
         let config = self.inner.config.clone();
-        let staging_budget = config
-            .execution_timeout
-            .min(enforced_limits.wall_time)
+        let staging_budget = execution_budget
             .checked_sub(started.elapsed())
             .ok_or(WorkerExecutionError::Timeout)?;
         let staging_cancellation = cancellation.clone();
@@ -374,8 +384,7 @@ impl FirecrackerExecutor {
             return Err(WorkerExecutionError::Cancelled);
         }
         let mut child = staged.plan.spawn()?;
-        let remaining = enforced_limits
-            .wall_time
+        let remaining = execution_budget
             .checked_sub(started.elapsed())
             .ok_or(WorkerExecutionError::Timeout)?;
         let result = tokio::select! {

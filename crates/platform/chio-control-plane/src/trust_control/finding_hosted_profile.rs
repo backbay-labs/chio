@@ -1080,10 +1080,8 @@ impl FindingHostedReleaseProfile {
         {
             return Rollback(Availability);
         }
-        if observation.error_count.saturating_mul(10_000)
-            > observation
-                .request_count
-                .saturating_mul(u64::from(self.max_error_rate_bps))
+        if u128::from(observation.error_count) * 10_000
+            > u128::from(observation.request_count) * u128::from(self.max_error_rate_bps)
         {
             return Rollback(ErrorRate);
         }
@@ -1448,6 +1446,14 @@ mod tests {
             release.evaluate_canary(&observation, 1_700_000_001),
             FindingHostedCanaryDecision::Promote
         );
+        observation.request_count = u64::MAX;
+        observation.error_count = u64::MAX;
+        assert_eq!(
+            release.evaluate_canary(&observation, 1_700_000_001),
+            FindingHostedCanaryDecision::Rollback(FindingHostedRollbackReason::ErrorRate)
+        );
+        observation.request_count = 1_000;
+        observation.error_count = 1;
         observation.tenant_isolation_violations = 1;
         assert_eq!(
             release.evaluate_canary(&observation, 1_700_000_001),

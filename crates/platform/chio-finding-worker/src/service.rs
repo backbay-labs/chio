@@ -197,7 +197,19 @@ impl HostedFindingWorker {
         cancellation: CancellationToken,
     ) -> Result<JobOutcome, HostedWorkerServiceError> {
         let lease = HostedJobLease::new(&self.worker_id, job.lease_fence).map_err(map_store)?;
-        if job.attempt_count > self.max_attempts {
+        let signed_attempt_limit =
+            match self.executor.authorized_attempt_limit(&job, job.updated_at) {
+                Ok(limit) => limit,
+                Err(error) => {
+                    self.store
+                        .exhaust_job(&job.tenant_id, &job.job_id, &lease, error.code())
+                        .await
+                        .map_err(map_store)?;
+                    return self.job_outcome(&job, JobOutcome::Exhausted).await;
+                }
+            };
+        let attempt_limit = effective_attempt_limit(self.max_attempts, signed_attempt_limit);
+        if job.attempt_count > attempt_limit {
             self.store
                 .exhaust_job(
                     &job.tenant_id,
@@ -281,7 +293,7 @@ impl HostedFindingWorker {
                     completed_at: None,
                 }))
             }
-            Err(error) if job.attempt_count >= self.max_attempts => {
+            Err(error) if job.attempt_count >= attempt_limit => {
                 self.store
                     .exhaust_job(&job.tenant_id, &job.job_id, &lease, error.code())
                     .await
@@ -337,6 +349,10 @@ impl HostedFindingWorker {
     }
 }
 
+fn effective_attempt_limit(profile_limit: u64, signed_limit: u64) -> u64 {
+    profile_limit.min(signed_limit)
+}
+
 enum JobOutcome {
     Completed(HostedWorkerJobEvidence),
     GuestRejected(HostedWorkerJobEvidence),
@@ -381,5 +397,12 @@ mod tests {
             map_store(HostedMarketStoreError::Unavailable),
             HostedWorkerServiceError::Store
         ));
+    }
+
+    #[test]
+    fn signed_attempt_budget_caps_the_worker_profile() {
+        assert_eq!(effective_attempt_limit(20, 3), 3);
+        assert_eq!(effective_attempt_limit(3, 20), 3);
+        assert_eq!(effective_attempt_limit(3, 3), 3);
     }
 }

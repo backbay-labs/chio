@@ -299,12 +299,17 @@ pub struct FindingWorkerRequest {
 impl FindingWorkerRequest {
     pub(crate) fn from_job(
         job: &HostedMarketJob,
-        deadline: u64,
+        execution_timeout_secs: u64,
         capability_authority: &PublicKey,
         now: u64,
     ) -> Result<Self, &'static str> {
-        let payload: FindingWorkerJobPayload =
-            serde_json::from_slice(&job.payload_json).map_err(|_| "payload_invalid")?;
+        let payload = authorized_job_payload(job, capability_authority, now)?;
+        let deadline = bounded_execution_deadline(
+            now,
+            execution_timeout_secs,
+            payload.job.resource_limits.wall_time_millis,
+            payload.capability.body.expires_at_unix_secs,
+        )?;
         let request = Self {
             schema: FINDING_WORKER_REQUEST_SCHEMA.to_owned(),
             tenant_id: job.tenant_id.as_str().to_owned(),
@@ -365,6 +370,62 @@ impl FindingWorkerRequest {
         }
         Ok(())
     }
+}
+
+pub(crate) fn authorized_attempt_limit(
+    job: &HostedMarketJob,
+    capability_authority: &PublicKey,
+    now: u64,
+) -> Result<u64, &'static str> {
+    authorized_job_payload(job, capability_authority, now)
+        .map(|payload| u64::from(payload.capability.body.max_attempts))
+}
+
+fn authorized_job_payload(
+    job: &HostedMarketJob,
+    capability_authority: &PublicKey,
+    now: u64,
+) -> Result<FindingWorkerJobPayload, &'static str> {
+    let payload: FindingWorkerJobPayload =
+        serde_json::from_slice(&job.payload_json).map_err(|_| "payload_invalid")?;
+    payload.job.validate()?;
+    verify_job_capability(&payload.capability, capability_authority, now)?;
+    let payload_bytes = canonical_json_bytes(&payload).map_err(|_| "payload_invalid")?;
+    if sha256_hex(&payload_bytes) != job.payload_sha256 {
+        return Err("payload_digest_mismatch");
+    }
+    let capability = &payload.capability.body;
+    if capability.tenant_id != job.tenant_id.as_str()
+        || capability.job_id != job.job_id
+        || capability.job_kind != job.job_kind
+        || capability.request_sha256 != job.request_sha256
+        || capability.job_spec_sha256 != payload.job.sha256()?
+    {
+        return Err("worker_capability_binding_invalid");
+    }
+    Ok(payload)
+}
+
+fn bounded_execution_deadline(
+    now: u64,
+    execution_timeout_secs: u64,
+    wall_time_millis: u64,
+    capability_expires_at: u64,
+) -> Result<u64, &'static str> {
+    let wall_time_secs = wall_time_millis
+        .checked_add(999)
+        .and_then(|millis| millis.checked_div(1_000))
+        .ok_or("worker_deadline_invalid")?;
+    if execution_timeout_secs == 0 || wall_time_secs == 0 || capability_expires_at < now {
+        return Err("worker_deadline_invalid");
+    }
+    let authorized_secs = capability_expires_at - now;
+    now.checked_add(
+        execution_timeout_secs
+            .min(wall_time_secs)
+            .min(authorized_secs),
+    )
+    .ok_or("worker_deadline_invalid")
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -713,6 +774,7 @@ fn valid_text(value: &str, maximum: usize) -> bool {
 mod tests {
     use super::*;
     use chio_core_types::Ed25519Backend;
+    use chio_finding_market_store_postgres::{HostedJobState, HostedTenantId};
 
     fn limits() -> FindingWorkerResourceLimits {
         FindingWorkerResourceLimits {
@@ -813,6 +875,33 @@ mod tests {
         ))
     }
 
+    fn hosted_job(request: &FindingWorkerRequest) -> Option<HostedMarketJob> {
+        let payload = FindingWorkerJobPayload {
+            capability: request.capability.clone(),
+            job: request.job.clone(),
+        };
+        let payload_json = canonical_json_bytes(&payload).ok()?;
+        Some(HostedMarketJob {
+            tenant_id: HostedTenantId::new(request.tenant_id.clone()).ok()?,
+            job_id: request.job_id.clone(),
+            job_kind: request.job_kind.clone(),
+            request_sha256: request.request_sha256.clone(),
+            payload_sha256: sha256_hex(&payload_json),
+            payload_json,
+            state: HostedJobState::Leased,
+            attempt_count: request.attempt,
+            available_at: 10,
+            lease_owner: Some("worker-a".to_owned()),
+            lease_expires_at: Some(100),
+            lease_fence: 1,
+            result_sha256: None,
+            result_json: None,
+            last_error_code: None,
+            created_at: 1,
+            updated_at: 10,
+        })
+    }
+
     fn successful_result(request: &FindingWorkerRequest) -> FindingWorkerResult {
         FindingWorkerResult {
             schema: FINDING_WORKER_RESULT_SCHEMA.to_owned(),
@@ -864,6 +953,49 @@ mod tests {
                 request.validate_authorized(&authority.public_key(), 10),
                 Err("payload_digest_mismatch")
             );
+        }
+    }
+
+    #[test]
+    fn execution_deadline_obeys_every_signed_and_local_window() {
+        assert_eq!(bounded_execution_deadline(100, 3_600, 1_000, 400), Ok(101));
+        assert_eq!(bounded_execution_deadline(100, 10, 60_000, 400), Ok(110));
+        assert_eq!(bounded_execution_deadline(100, 3_600, 60_000, 105), Ok(105));
+        assert_eq!(bounded_execution_deadline(100, 3_600, 1_001, 400), Ok(102));
+        assert_eq!(
+            bounded_execution_deadline(u64::MAX, 1, 1_000, u64::MAX),
+            Ok(u64::MAX)
+        );
+        assert!(bounded_execution_deadline(100, 0, 1_000, 400).is_err());
+        assert!(bounded_execution_deadline(100, 1, 1_000, 99).is_err());
+    }
+
+    #[test]
+    fn retained_signed_attempt_limit_is_available_after_budget_exhaustion() {
+        let prepared = request();
+        assert!(prepared.is_some());
+        if let Some((request, authority)) = prepared {
+            let job = hosted_job(&request);
+            assert!(job.is_some());
+            if let Some(mut job) = job {
+                assert_eq!(
+                    authorized_attempt_limit(&job, &authority.public_key(), 10),
+                    Ok(3)
+                );
+                let bounded =
+                    FindingWorkerRequest::from_job(&job, 3_600, &authority.public_key(), 10);
+                assert_eq!(bounded.map(|request| request.deadline_unix_secs), Ok(20));
+
+                job.attempt_count = 4;
+                assert_eq!(
+                    authorized_attempt_limit(&job, &authority.public_key(), 10),
+                    Ok(3)
+                );
+                assert!(
+                    FindingWorkerRequest::from_job(&job, 3_600, &authority.public_key(), 10,)
+                        .is_err()
+                );
+            }
         }
     }
 
