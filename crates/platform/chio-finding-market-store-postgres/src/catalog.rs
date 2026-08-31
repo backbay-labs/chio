@@ -6,7 +6,8 @@ use chio_finding::{
 use sqlx::Row as _;
 
 use crate::{
-    stored_u64, unavailable, validate_digest, validate_identifier, HostedJobWriteOutcome,
+    aggregates::aggregate_event_digest, domain::validate_persisted_domain_payload, stored_u64,
+    unavailable, validate_digest, validate_identifier, HostedJobWriteOutcome,
     HostedMarketDomainArtifact, HostedMarketDomainEvent, HostedMarketDomainEventKind,
     HostedMarketDomainProjection, HostedMarketStoreError, HostedTenantId,
     PostgresFindingMarketStore,
@@ -167,13 +168,23 @@ impl PostgresFindingMarketStore {
         let fetch_limit = i64::from(limit) + 1;
         let mut transaction = self.begin_tenant_snapshot(tenant).await?;
         let rows = sqlx::query(
-            r#"SELECT aggregate_id, revision, event_sha256, event_kind,
-                      artifact_schema, payload_sha256, payload_json, updated_at
-               FROM chio_finding_market_domain_projections
-               WHERE tenant_id = $1
-                 AND aggregate_kind = $2
-                 AND ($3::TEXT IS NULL OR aggregate_id > $3)
-               ORDER BY aggregate_id ASC
+            r#"SELECT projection.aggregate_id, projection.revision,
+                      projection.event_sha256, projection.event_kind,
+                      projection.artifact_schema, projection.payload_sha256,
+                      projection.payload_json, projection.updated_at,
+                      event.event_id, event.previous_event_sha256,
+                      event.committed_at
+               FROM chio_finding_market_domain_projections AS projection
+               JOIN chio_finding_market_aggregate_events AS event
+                 ON event.tenant_id = projection.tenant_id
+                AND event.aggregate_kind = projection.aggregate_kind
+                AND event.aggregate_id = projection.aggregate_id
+                AND event.revision = projection.revision
+                AND event.event_sha256 = projection.event_sha256
+               WHERE projection.tenant_id = $1
+                 AND projection.aggregate_kind = $2
+                 AND ($3::TEXT IS NULL OR projection.aggregate_id > $3)
+               ORDER BY projection.aggregate_id ASC
                LIMIT $4"#,
         )
         .bind(tenant.as_str())
@@ -290,7 +301,7 @@ impl PostgresFindingMarketStore {
         .await
     }
 
-    async fn append_typed_artifact(
+    pub(crate) async fn append_typed_artifact(
         &self,
         tenant: &HostedTenantId,
         aggregate_id: &str,
@@ -322,12 +333,21 @@ fn projection_from_catalog_row(
     let stored_schema: String = row.try_get(4).map_err(unavailable)?;
     let payload_sha256: String = row.try_get(5).map_err(unavailable)?;
     let payload_json: Vec<u8> = row.try_get(6).map_err(unavailable)?;
+    let event_id: String = row.try_get(8).map_err(unavailable)?;
+    let previous_event_sha256: Option<String> = row.try_get(9).map_err(unavailable)?;
+    let committed_at = stored_u64(row.try_get(10).map_err(unavailable)?)?;
     validate_identifier(&aggregate_id, MAX_AGGREGATE_ID_BYTES)
         .map_err(|()| HostedMarketStoreError::DigestMismatch)?;
     validate_digest(&event_sha256, "catalog event")
         .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
     validate_digest(&payload_sha256, "catalog payload")
         .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+    validate_identifier(&event_id, MAX_EVENT_ID_BYTES)
+        .map_err(|()| HostedMarketStoreError::DigestMismatch)?;
+    if let Some(previous) = previous_event_sha256.as_deref() {
+        validate_digest(previous, "catalog predecessor")
+            .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+    }
     if revision == 0
         || stored_event_kind != event_kind.event_kind()
         || stored_schema != event_kind.artifact_schema()
@@ -335,6 +355,21 @@ fn projection_from_catalog_row(
     {
         return Err(HostedMarketStoreError::DigestMismatch);
     }
+    let expected_event_sha256 = aggregate_event_digest(
+        tenant,
+        event_kind.aggregate_kind(),
+        &aggregate_id,
+        revision,
+        &event_id,
+        event_kind.event_kind(),
+        previous_event_sha256.as_deref(),
+        &payload_sha256,
+        committed_at,
+    )?;
+    if expected_event_sha256 != event_sha256 {
+        return Err(HostedMarketStoreError::DigestMismatch);
+    }
+    validate_persisted_domain_payload(event_kind, &aggregate_id, &payload_json)?;
     Ok(HostedMarketDomainProjection {
         tenant_id: tenant.clone(),
         event_kind,

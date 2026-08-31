@@ -32,6 +32,7 @@ mod retention;
 mod runtime_boundary;
 mod spend;
 mod tenant;
+mod transactions;
 mod validation;
 
 pub(crate) use validation::{
@@ -75,6 +76,7 @@ pub use retention::{
 };
 pub use spend::{HostedSpendReservation, HostedSpendState};
 pub use tenant::HostedTenantLimits;
+pub use transactions::HostedPurchaseRecoveryOutcome;
 
 const MIGRATION_LOCK_NAME: &str = "chio.finding.market.migrations.v1";
 const LEGACY_MIGRATIONS: &[(i64, &str, &str)] = &[

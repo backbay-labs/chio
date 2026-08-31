@@ -479,10 +479,21 @@ impl PostgresFindingMarketStore {
             .map_err(|()| HostedMarketStoreError::Invalid("aggregate_id"))?;
         let mut transaction = self.begin_tenant_snapshot(tenant).await?;
         let row = sqlx::query(
-            r#"SELECT revision, event_sha256, event_kind, artifact_schema,
-                      payload_sha256, payload_json, updated_at
-               FROM chio_finding_market_domain_projections
-               WHERE tenant_id = $1 AND aggregate_kind = $2 AND aggregate_id = $3"#,
+            r#"SELECT projection.revision, projection.event_sha256,
+                      projection.event_kind, projection.artifact_schema,
+                      projection.payload_sha256, projection.payload_json,
+                      projection.updated_at, event.event_id,
+                      event.previous_event_sha256, event.committed_at
+               FROM chio_finding_market_domain_projections AS projection
+               JOIN chio_finding_market_aggregate_events AS event
+                 ON event.tenant_id = projection.tenant_id
+                AND event.aggregate_kind = projection.aggregate_kind
+                AND event.aggregate_id = projection.aggregate_id
+                AND event.revision = projection.revision
+                AND event.event_sha256 = projection.event_sha256
+               WHERE projection.tenant_id = $1
+                 AND projection.aggregate_kind = $2
+                 AND projection.aggregate_id = $3"#,
         )
         .bind(tenant.as_str())
         .bind(event_kind.aggregate_kind().label())
@@ -496,18 +507,47 @@ impl PostgresFindingMarketStore {
             let stored_schema: String = row.try_get(3).map_err(unavailable)?;
             let payload_sha256: String = row.try_get(4).map_err(unavailable)?;
             let payload_json: Vec<u8> = row.try_get(5).map_err(unavailable)?;
+            let revision = stored_u64(row.try_get(0).map_err(unavailable)?)?;
+            let event_sha256: String = row.try_get(1).map_err(unavailable)?;
+            let event_id: String = row.try_get(7).map_err(unavailable)?;
+            let previous_event_sha256: Option<String> = row.try_get(8).map_err(unavailable)?;
+            let committed_at = stored_u64(row.try_get(9).map_err(unavailable)?)?;
             if stored_event_kind != event_kind.event_kind()
                 || stored_schema != event_kind.artifact_schema()
                 || sha256_hex(&payload_json) != payload_sha256
+                || revision == 0
             {
                 return Err(HostedMarketStoreError::DigestMismatch);
             }
+            validate_digest(&event_sha256, "domain projection event")
+                .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+            validate_identifier(&event_id, MAX_EVENT_ID_BYTES)
+                .map_err(|()| HostedMarketStoreError::DigestMismatch)?;
+            if let Some(previous) = previous_event_sha256.as_deref() {
+                validate_digest(previous, "domain projection predecessor")
+                    .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+            }
+            let expected_event_sha256 = aggregate_event_digest(
+                tenant,
+                event_kind.aggregate_kind(),
+                aggregate_id,
+                revision,
+                &event_id,
+                event_kind.event_kind(),
+                previous_event_sha256.as_deref(),
+                &payload_sha256,
+                committed_at,
+            )?;
+            if expected_event_sha256 != event_sha256 {
+                return Err(HostedMarketStoreError::DigestMismatch);
+            }
+            validate_persisted_domain_payload(event_kind, aggregate_id, &payload_json)?;
             Ok(HostedMarketDomainProjection {
                 tenant_id: tenant.clone(),
                 event_kind,
                 aggregate_id: aggregate_id.to_owned(),
-                revision: stored_u64(row.try_get(0).map_err(unavailable)?)?,
-                event_sha256: row.try_get(1).map_err(unavailable)?,
+                revision,
+                event_sha256,
                 payload_sha256,
                 payload_json,
                 updated_at: stored_u64(row.try_get(6).map_err(unavailable)?)?,
@@ -515,6 +555,29 @@ impl PostgresFindingMarketStore {
         })
         .transpose()
     }
+}
+
+pub(crate) fn validate_persisted_domain_payload(
+    event_kind: HostedMarketDomainEventKind,
+    aggregate_id: &str,
+    payload_json: &[u8],
+) -> Result<(), HostedMarketStoreError> {
+    let signer = match event_kind {
+        HostedMarketDomainEventKind::FindingPublished => {
+            Some(parse_canonical::<Finding>(payload_json, "finding artifact")?.issuer)
+        }
+        HostedMarketDomainEventKind::RecipeRegistered
+        | HostedMarketDomainEventKind::DeliveryAccepted
+        | HostedMarketDomainEventKind::SettlementTerminal => None,
+        _ => Some(
+            parse_canonical::<SignedExportEnvelope<serde_json::Value>>(
+                payload_json,
+                "signed domain artifact",
+            )?
+            .signer_key,
+        ),
+    };
+    validate_domain_payload(event_kind, aggregate_id, payload_json, signer.as_ref())
 }
 
 fn validate_domain_payload(

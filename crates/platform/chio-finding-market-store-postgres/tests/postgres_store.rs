@@ -629,19 +629,6 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             .await?,
         HostedJobWriteOutcome::ExactReplay
     );
-    let catalog = store.catalog_findings(&tenant_a, None, 10).await?;
-    assert_eq!(catalog.items.len(), 1);
-    assert_eq!(catalog.items[0].aggregate_id, market_finding_id);
-    assert!(catalog.next_cursor.is_none());
-    assert!(store
-        .catalog_findings(&tenant_b, None, 10)
-        .await?
-        .items
-        .is_empty());
-    assert!(matches!(
-        store.catalog_findings(&tenant_a, None, 0).await,
-        Err(HostedMarketStoreError::Invalid("catalog limit"))
-    ));
     let provision_sha256 = sha256_hex(&canonical_json_bytes(&provision)?);
     let rotated_capability_signer = Keypair::from_seed(&[86_u8; 32]);
     let rotation = SignedExportEnvelope::sign(
@@ -837,6 +824,19 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             .await?,
         HostedJobWriteOutcome::ExactReplay
     );
+    let catalog = store.catalog_findings(&tenant_a, None, 10).await?;
+    assert_eq!(catalog.items.len(), 1);
+    assert_eq!(catalog.items[0].aggregate_id, market_finding_id);
+    assert!(catalog.next_cursor.is_none());
+    assert!(store
+        .catalog_findings(&tenant_b, None, 10)
+        .await?
+        .items
+        .is_empty());
+    assert!(matches!(
+        store.catalog_findings(&tenant_a, None, 0).await,
+        Err(HostedMarketStoreError::Invalid("catalog limit"))
+    ));
     let authority_now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let projection_sha256 = replicator.target_projection_sha256(&tenant_a).await?;
     append_replication_check(
