@@ -61,6 +61,7 @@ from chio_sdk.cognition_market import (
     CognitionMarketBuyer,
     CognitionMarketError,
     CognitionMarketSeller,
+    HostedCognitionMarketClient,
     PurchasedVerifiedFix,
     VerifiedFindingProof,
 )
@@ -84,6 +85,7 @@ __all__ = [
     "CognitionMarketBuyer",
     "CognitionMarketError",
     "CognitionMarketSeller",
+    "HostedCognitionMarketClient",
     "PurchasedVerifiedFix",
     "VerifiedFindingProof",
     # Models -- capabilities

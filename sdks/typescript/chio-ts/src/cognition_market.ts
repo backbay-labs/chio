@@ -81,6 +81,52 @@ export interface PurchasedVerifiedFix {
   purchase: Record<string, unknown>;
 }
 
+export type HostedMutationOperation =
+  | "publish"
+  | "listing"
+  | "admission"
+  | "participation"
+  | "purchase"
+  | "reveal"
+  | "delivery"
+  | "purchase-terminal"
+  | "failed-delivery"
+  | "challenge"
+  | "challenge-outcome"
+  | "verified-fix"
+  | "retraction"
+  | "liability"
+  | "appeal"
+  | "penalty"
+  | "enforcement"
+  | "settlement"
+  | "status"
+  | "audit";
+
+export interface HostedDomainMutation {
+  aggregateId: string;
+  eventId: string;
+  expectedRevision: number;
+  expectedEventSha256?: string;
+  artifactSignerKey?: Record<string, unknown>;
+  payload: Record<string, unknown>;
+}
+
+export interface HostedCognitionMarketOptions {
+  endpoint: string;
+  tenantId: string;
+  apiKeyId: string;
+  apiKeySecret: string;
+  fetch?: Fetch;
+  timeoutMs?: number;
+}
+
+export interface HostedFindingListOptions {
+  requestId: string;
+  after?: string;
+  limit?: number;
+}
+
 type Fetch = typeof globalThis.fetch;
 
 export class CognitionMarketBuyer {
@@ -509,6 +555,158 @@ export class CognitionMarketSeller {
       clearTimeout(timer);
     }
   }
+}
+
+/** Multi-tenant hosted market transport with explicit idempotency. */
+export class HostedCognitionMarketClient {
+  readonly endpoint: string;
+  readonly tenantId: string;
+  readonly apiKeyId: string;
+  readonly apiKeySecret: string;
+  readonly fetch: Fetch;
+  readonly timeoutMs: number;
+
+  constructor(options: HostedCognitionMarketOptions) {
+    this.endpoint = hostedEndpoint(options.endpoint);
+    this.tenantId = hostedIdentifier(options.tenantId, "tenantId", 256);
+    this.apiKeyId = hostedIdentifier(options.apiKeyId, "apiKeyId", 256);
+    this.apiKeySecret = hostedIdentifier(options.apiKeySecret, "apiKeySecret", 4096);
+    this.fetch = options.fetch ?? globalThis.fetch;
+    this.timeoutMs = requireTimeout(options.timeoutMs ?? 30_000);
+  }
+
+  async publish(
+    finding: Record<string, unknown>,
+    requestId: string,
+    idempotencyKey: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/findings/publish", requestId, finding, idempotencyKey);
+  }
+
+  async mutate(
+    operation: HostedMutationOperation,
+    mutation: HostedDomainMutation,
+    requestId: string,
+  ): Promise<Record<string, unknown>> {
+    if (!HOSTED_MUTATION_OPERATIONS.has(operation)) {
+      throw new CognitionMarketError("hosted mutation operation is unsupported");
+    }
+    if (!Number.isSafeInteger(mutation.expectedRevision) || mutation.expectedRevision < 0) {
+      throw new CognitionMarketError("expectedRevision must be a non-negative safe integer");
+    }
+    hostedIdentifier(mutation.aggregateId, "aggregateId", 512);
+    hostedIdentifier(mutation.eventId, "eventId", 256);
+    return this.request(
+      "POST",
+      `/v1/findings/events/${operation}`,
+      requestId,
+      mutation as unknown as Record<string, unknown>,
+      mutation.eventId,
+    );
+  }
+
+  async finding(findingId: string, requestId: string): Promise<Record<string, unknown>> {
+    hostedIdentifier(findingId, "findingId", 512);
+    return this.request(
+      "GET",
+      `/v1/findings/${encodeURIComponent(findingId)}`,
+      requestId,
+    );
+  }
+
+  async findings(options: HostedFindingListOptions): Promise<Record<string, unknown>> {
+    const query = new URLSearchParams();
+    if (options.after !== undefined) {
+      query.set("after", hostedIdentifier(options.after, "after", 512));
+    }
+    if (options.limit !== undefined) {
+      if (!Number.isSafeInteger(options.limit) || options.limit < 1 || options.limit > 100) {
+        throw new CognitionMarketError("limit must be an integer from 1 through 100");
+      }
+      query.set("limit", String(options.limit));
+    }
+    const suffix = query.size === 0 ? "" : `?${query.toString()}`;
+    return this.request("GET", `/v1/findings${suffix}`, options.requestId);
+  }
+
+  private async request(
+    method: "GET" | "POST",
+    path: string,
+    requestId: string,
+    body?: Record<string, unknown>,
+    idempotencyKey?: string,
+  ): Promise<Record<string, unknown>> {
+    const headers: Record<string, string> = {
+      accept: "application/json",
+      "chio-api-key-id": this.apiKeyId,
+      "chio-api-key-secret": this.apiKeySecret,
+      "chio-request-id": hostedIdentifier(requestId, "requestId", 256),
+      "chio-tenant-id": this.tenantId,
+    };
+    const init: RequestInit = { method, headers };
+    if (body !== undefined) {
+      headers["content-type"] = "application/json";
+      headers["idempotency-key"] = hostedIdentifier(
+        idempotencyKey ?? "",
+        "idempotencyKey",
+        256,
+      );
+      init.body = canonicalJson(body);
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    init.signal = controller.signal;
+    try {
+      const response = await this.fetch(`${this.endpoint}${path}`, init);
+      const maximum = response.ok ? JSON_RESPONSE_MAX_BYTES : ERROR_RESPONSE_MAX_BYTES;
+      const label = response.ok
+        ? "hosted market response"
+        : `hosted market HTTP ${response.status} error response`;
+      const bytes = await readBoundedResponse(response, maximum, label);
+      if (!response.ok) {
+        throw new CognitionMarketError(
+          `hosted market returned HTTP ${response.status}: ${Buffer.from(bytes).toString("utf8")}`,
+        );
+      }
+      return parseObject(bytes, "hosted market response");
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new CognitionMarketError("hosted market request timed out");
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
+const HOSTED_MUTATION_OPERATIONS: ReadonlySet<string> = new Set([
+  "publish", "listing", "admission", "participation", "purchase", "reveal", "delivery",
+  "purchase-terminal", "failed-delivery", "challenge", "challenge-outcome", "verified-fix",
+  "retraction", "liability", "appeal", "penalty", "enforcement", "settlement", "status",
+  "audit",
+]);
+
+function hostedEndpoint(value: string): string {
+  let endpoint: URL;
+  try {
+    endpoint = new URL(value);
+  } catch {
+    throw new CognitionMarketError("hosted endpoint is invalid");
+  }
+  if (endpoint.protocol !== "https:" || endpoint.username !== "" || endpoint.password !== ""
+      || endpoint.search !== "" || endpoint.hash !== "" || !["", "/"].includes(endpoint.pathname)) {
+    throw new CognitionMarketError("hosted endpoint is invalid");
+  }
+  return value.replace(/\/$/, "");
+}
+
+function hostedIdentifier(value: string, label: string, maximum: number): string {
+  if (typeof value !== "string" || value.length === 0 || value.length > maximum
+      || value.trim() !== value || /[\u0000-\u001f\u007f]/u.test(value)) {
+    throw new CognitionMarketError(`${label} is invalid`);
+  }
+  return value;
 }
 
 async function readBoundedResponse(

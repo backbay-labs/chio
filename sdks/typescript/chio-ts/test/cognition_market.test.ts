@@ -9,9 +9,65 @@ import {
   CognitionMarketBuyer,
   CognitionMarketError,
   CognitionMarketSeller,
+  HostedCognitionMarketClient,
   type PurchasedVerifiedFix,
   type VerifiedFindingProof,
 } from "../src/cognition_market.ts";
+
+test("hosted client binds tenant credentials canonical bodies and idempotency", async () => {
+  const requests: Request[] = [];
+  const mockedFetch: typeof fetch = async (input, init) => {
+    const request = new Request(input, init);
+    requests.push(request);
+    assert.equal(request.headers.get("chio-tenant-id"), "tenant:test");
+    assert.equal(request.headers.get("chio-api-key-id"), "key:test");
+    assert.equal(request.headers.get("chio-api-key-secret"), "secret:test");
+    assert.equal(request.headers.get("chio-request-id"), `request:${requests.length}`);
+    if (request.method === "POST") {
+      assert.equal(request.headers.get("idempotency-key"), "event:1");
+      const body = await request.text();
+      assert.equal(body, canonical(JSON.parse(body)));
+    }
+    return Response.json({ ok: true });
+  };
+  const client = new HostedCognitionMarketClient({
+    endpoint: "https://market.example",
+    tenantId: "tenant:test",
+    apiKeyId: "key:test",
+    apiKeySecret: "secret:test",
+    fetch: mockedFetch,
+  });
+  await client.publish(
+    { schema: "chio.finding.v1", finding_id: "f".repeat(64) },
+    "request:1",
+    "event:1",
+  );
+  await client.mutate("listing", {
+    aggregateId: "listing:1",
+    eventId: "event:1",
+    expectedRevision: 0,
+    payload: { schema: "chio.finding.market-terms.v1" },
+  }, "request:2");
+  await client.findings({ requestId: "request:3", after: "finding:1", limit: 100 });
+  assert.equal(new URL(requests[1].url).pathname, "/v1/findings/events/listing");
+  assert.equal(new URL(requests[2].url).search, "?after=finding%3A1&limit=100");
+});
+
+test("hosted client rejects unsafe endpoints and unbounded queries", async () => {
+  assert.throws(() => new HostedCognitionMarketClient({
+    endpoint: "http://market.example",
+    tenantId: "tenant",
+    apiKeyId: "key",
+    apiKeySecret: "secret",
+  }), /hosted endpoint is invalid/);
+  const client = new HostedCognitionMarketClient({
+    endpoint: "https://market.example",
+    tenantId: "tenant",
+    apiKeyId: "key",
+    apiKeySecret: "secret",
+  });
+  await assert.rejects(client.findings({ requestId: "request", limit: 101 }), /limit must be/);
+});
 
 function canonical(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
