@@ -19,6 +19,7 @@ mod error;
 mod lifecycle;
 mod operations;
 mod proxy;
+mod server;
 mod tls;
 
 pub use auth::{
@@ -46,5 +47,10 @@ pub use operations::{
 };
 pub use proxy::{
     HostedForwardingHeaders, HostedRequestContext, HostedTrustedProxy, HostedTrustedProxyConfig,
+};
+pub use server::{
+    hosted_market_router, serve_hosted_market_loopback, HostedDomainMutation, HostedHttpBackend,
+    HostedHttpBackendError, HostedHttpBackendOutcome, HostedHttpPage, HostedHttpProjection,
+    HostedHttpServerConfig, HostedHttpServerState,
 };
 pub use tls::{HostedTlsConfig, HostedTlsReload, HostedTlsState};

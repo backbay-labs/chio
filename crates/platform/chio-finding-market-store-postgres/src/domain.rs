@@ -121,6 +121,38 @@ pub enum HostedMarketDomainEventKind {
 }
 
 impl HostedMarketDomainEventKind {
+    pub const ALL: [Self; 23] = [
+        Self::FindingPublished,
+        Self::RecipeRegistered,
+        Self::ProfileRegistered,
+        Self::CollateralRegistered,
+        Self::ListingActivated,
+        Self::AdmissionAdmitted,
+        Self::ParticipationAdmitted,
+        Self::PurchaseAuthorized,
+        Self::RevealCommitted,
+        Self::DeliveryAccepted,
+        Self::PurchaseSettled,
+        Self::DeliveryFailed,
+        Self::ChallengeSubmitted,
+        Self::ChallengeFinalized,
+        Self::VerifiedFixSubmitted,
+        Self::RetractionVoluntary,
+        Self::LiabilityAssessed,
+        Self::AppealFinalized,
+        Self::PenaltyAssessed,
+        Self::EnforcementFinalized,
+        Self::SettlementTerminal,
+        Self::StatusPublished,
+        Self::AuditFinalized,
+    ];
+
+    pub fn from_event_kind(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|candidate| candidate.event_kind() == value)
+    }
+
     pub const fn aggregate_kind(self) -> HostedAggregateKind {
         match self {
             Self::FindingPublished => HostedAggregateKind::Finding,
@@ -258,7 +290,10 @@ impl HostedMarketDomainEvent {
         )
     }
 
-    pub(crate) fn from_canonical_payload(
+    /// Construct a validated event from canonical bytes received through a
+    /// store-neutral edge. The typed artifact, signer, schema, aggregate
+    /// identity, and canonical representation are all revalidated here.
+    pub fn from_canonical_payload(
         event_kind: HostedMarketDomainEventKind,
         aggregate_id: impl Into<String>,
         event_id: impl Into<String>,
@@ -389,9 +424,12 @@ pub struct HostedMarketDomainProjection {
     pub event_kind: HostedMarketDomainEventKind,
     pub aggregate_id: String,
     pub revision: u64,
+    pub event_id: String,
+    pub previous_event_sha256: Option<String>,
     pub event_sha256: String,
     pub payload_sha256: String,
     pub payload_json: Vec<u8>,
+    pub committed_at: u64,
     pub updated_at: u64,
 }
 
@@ -547,9 +585,12 @@ impl PostgresFindingMarketStore {
                 event_kind,
                 aggregate_id: aggregate_id.to_owned(),
                 revision,
+                event_id,
+                previous_event_sha256,
                 event_sha256,
                 payload_sha256,
                 payload_json,
+                committed_at,
                 updated_at: stored_u64(row.try_get(6).map_err(unavailable)?)?,
             })
         })

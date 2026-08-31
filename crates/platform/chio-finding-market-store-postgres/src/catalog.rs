@@ -375,9 +375,12 @@ fn projection_from_catalog_row(
         event_kind,
         aggregate_id,
         revision,
+        event_id,
+        previous_event_sha256,
         event_sha256,
         payload_sha256,
         payload_json,
+        committed_at,
         updated_at: stored_u64(row.try_get(7).map_err(unavailable)?)?,
     })
 }

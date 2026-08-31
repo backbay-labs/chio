@@ -26,6 +26,12 @@ pub enum HostedEdgeError {
     ReplayRejected,
     #[error("hosted request rate limit was exceeded")]
     RateLimited,
+    #[error("hosted resource was not found")]
+    NotFound,
+    #[error("hosted mutation conflicts with durable state")]
+    Conflict,
+    #[error("hosted durable state failed validation")]
+    IntegrityFailure,
     #[error("hosted authentication capacity is unavailable")]
     CapacityUnavailable,
     #[error("hosted authentication dependency is unavailable")]
@@ -43,6 +49,9 @@ impl HostedEdgeError {
             Self::AuthorizationFailed => "authorization_failed",
             Self::ReplayRejected => "replay_rejected",
             Self::RateLimited => "rate_limited",
+            Self::NotFound => "not_found",
+            Self::Conflict => "conflict",
+            Self::IntegrityFailure => "integrity_failure",
             Self::CapacityUnavailable => "authentication_capacity_unavailable",
             Self::DependencyUnavailable => "authentication_dependency_unavailable",
             Self::Configuration => "edge_configuration_invalid",
@@ -74,6 +83,9 @@ impl HostedEdgeError {
                 Self::AuthorizationFailed => "The credential does not authorize this action.",
                 Self::ReplayRejected => "The proof was already used.",
                 Self::RateLimited => "The request rate limit was exceeded.",
+                Self::NotFound => "The requested resource was not found.",
+                Self::Conflict => "The request conflicts with durable state.",
+                Self::IntegrityFailure => "Durable state failed validation.",
                 Self::CapacityUnavailable | Self::DependencyUnavailable => {
                     "Authentication is temporarily unavailable."
                 }
@@ -91,6 +103,9 @@ impl HostedEdgeError {
             Self::AuthenticationFailed => 401,
             Self::AuthorizationFailed => 403,
             Self::ReplayRejected | Self::RateLimited => 429,
+            Self::NotFound => 404,
+            Self::Conflict => 409,
+            Self::IntegrityFailure => 503,
             Self::CapacityUnavailable | Self::DependencyUnavailable => 503,
             Self::Configuration => 500,
         }

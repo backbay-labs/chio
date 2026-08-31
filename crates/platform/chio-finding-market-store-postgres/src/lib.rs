@@ -25,6 +25,7 @@ mod auth;
 mod catalog;
 mod checkpoints;
 mod domain;
+mod http;
 mod import;
 mod job_leases;
 mod ports;
@@ -188,7 +189,8 @@ async fn verify_schema_current(pool: &PgPool) -> Result<(), HostedMarketStoreErr
         let version: i64 = row.try_get(0).map_err(unavailable)?;
         let checksum: Vec<u8> = row.try_get(1).map_err(unavailable)?;
         let success: bool = row.try_get(2).map_err(unavailable)?;
-        if version != expected.version || checksum != expected.checksum.as_ref() || !success {
+        let expected_checksum: &[u8] = expected.checksum.as_ref();
+        if version != expected.version || checksum != expected_checksum || !success {
             return Err(HostedMarketStoreError::MigrationDrift);
         }
     }
@@ -272,12 +274,14 @@ async fn bridge_legacy_migration_ledger(
         if migration.version != version {
             return Err(HostedMarketStoreError::MigrationDrift);
         }
+        let description: &str = migration.description.as_ref();
+        let checksum: &[u8] = migration.checksum.as_ref();
         sqlx::query(
             "INSERT INTO _sqlx_migrations (version, description, success, checksum, execution_time) VALUES ($1, $2, TRUE, $3, 0)",
         )
         .bind(version)
-        .bind(migration.description.as_ref())
-        .bind(migration.checksum.as_ref())
+        .bind(description)
+        .bind(checksum)
         .execute(&mut **connection)
         .await
         .map_err(unavailable)?;
