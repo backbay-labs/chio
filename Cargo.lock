@@ -3683,13 +3683,16 @@ version = "0.1.0"
 dependencies = [
  "chio-control-plane",
  "chio-core-types",
+ "chio-finding",
  "chio-finding-market-store-postgres",
  "chio-finding-worker",
  "clap 4.6.0",
  "nix",
+ "reqwest 0.13.2",
  "serde",
  "serde_json",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]

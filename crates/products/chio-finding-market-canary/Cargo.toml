@@ -15,13 +15,16 @@ path = "src/main.rs"
 [dependencies]
 chio-control-plane = { workspace = true }
 chio-core-types = { workspace = true }
+chio-finding = { workspace = true }
 chio-finding-market-store-postgres = { workspace = true }
 chio-finding-worker = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 nix = { version = "0.31.2", features = ["user"] }
+reqwest = { workspace = true, features = ["rustls"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+zeroize = { workspace = true }
 
 [lints]
 workspace = true

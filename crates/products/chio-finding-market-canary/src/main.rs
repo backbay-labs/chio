@@ -6,7 +6,7 @@ use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chio_control_plane::trust_control::finding_hosted_profile::{
-    FindingHostedProfile, FindingHostedSigningRole,
+    FindingHostedAuthMethod, FindingHostedProfile, FindingHostedSigningRole,
 };
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str, sha256_hex, PublicKey};
 use chio_finding_market_store_postgres::{
@@ -19,10 +19,13 @@ use chio_finding_worker::{
 };
 use clap::{Parser, Subcommand};
 use nix::libc;
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
 const CANARY_SCHEMA: &str = "chio.finding.kvm-canary-job.v1";
+const MAX_NETWORK_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Debug, Parser)]
 #[command(name = "chio-finding-market-canary")]
@@ -31,7 +34,7 @@ struct Args {
     #[arg(long)]
     profile: PathBuf,
     #[arg(long)]
-    job: PathBuf,
+    job: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
@@ -40,6 +43,22 @@ struct Args {
 enum Command {
     Provision,
     Verify,
+    /// Exercise seller publication, exact replay, buyer resolution, and a
+    /// negative tenant-isolation probe through the deployed HTTPS listener.
+    Network {
+        #[arg(long)]
+        finding: PathBuf,
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        seller_key_id_env: String,
+        #[arg(long)]
+        seller_key_secret_env: String,
+        #[arg(long)]
+        buyer_key_id_env: String,
+        #[arg(long)]
+        buyer_key_secret_env: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -92,6 +111,42 @@ struct CanaryReport {
     completed_at: Option<u64>,
 }
 
+#[derive(Serialize)]
+#[serde(untagged)]
+enum CanaryOutput {
+    Kvm(CanaryReport),
+    Network(NetworkCanaryReport),
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NetworkCanaryReport {
+    schema: &'static str,
+    candidate_sha: String,
+    configuration_revision: String,
+    tenant_id: String,
+    finding_id: String,
+    finding_sha256: String,
+    event_id: String,
+    first_outcome: String,
+    retry_outcome: String,
+    buyer_payload_matched: bool,
+    buyer_catalog_matched: bool,
+    tenant_isolation_denied: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct NetworkMutationResponse {
+    schema: String,
+    request_id: String,
+    tenant_id: String,
+    operation_id: String,
+    outcome: String,
+    resource_id: String,
+    resource_sha256: String,
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     match run(Args::parse()).await {
@@ -106,16 +161,376 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run(args: Args) -> Result<CanaryReport, &'static str> {
+async fn network_canary(
+    profile: &FindingHostedProfile,
+    finding_path: &Path,
+    tenant_id: &str,
+    seller_key_id_env: &str,
+    seller_key_secret_env: &str,
+    buyer_key_id_env: &str,
+    buyer_key_secret_env: &str,
+) -> Result<NetworkCanaryReport, &'static str> {
+    let tenant = profile
+        .tenants
+        .iter()
+        .find(|tenant| tenant.enabled && tenant.tenant_id == tenant_id)
+        .ok_or("network_canary_tenant_invalid")?;
+    if !tenant
+        .auth_methods
+        .contains(&FindingHostedAuthMethod::ApiKey)
+    {
+        return Err("network_canary_api_key_not_admitted");
+    }
+    let (finding_bytes, finding): (Vec<u8>, chio_finding::Finding) =
+        read_canonical_private_bytes(finding_path)?;
+    chio_finding::verify_finding(&finding).map_err(|_| "network_canary_finding_invalid")?;
+    let now = current_unix_secs()?;
+    if finding.issued_at > now || finding.expires_at <= now {
+        return Err("network_canary_finding_inactive");
+    }
+    let candidate_sha = candidate_sha()?;
+    let event_id = sha256_hex(
+        format!(
+            "chio.finding.network-canary-event.v1\0{}\0{}\0{}\0{}",
+            candidate_sha, profile.release.configuration_revision, tenant_id, finding.finding_id
+        )
+        .as_bytes(),
+    );
+    let seller_key_id = read_canary_environment(seller_key_id_env)?;
+    let seller_key_secret = Zeroizing::new(read_canary_environment(seller_key_secret_env)?);
+    let buyer_key_id = read_canary_environment(buyer_key_id_env)?;
+    let buyer_key_secret = Zeroizing::new(read_canary_environment(buyer_key_secret_env)?);
+    let client = reqwest::Client::builder()
+        .https_only(true)
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
+        .user_agent("chio-finding-market-network-canary/1")
+        .build()
+        .map_err(|_| "network_canary_client_invalid")?;
+    let first_request_id = sha256_hex(format!("{event_id}:first").as_bytes());
+    let first = publish_network_finding(
+        &client,
+        profile,
+        tenant_id,
+        &seller_key_id,
+        &seller_key_secret,
+        &first_request_id,
+        &event_id,
+        &finding_bytes,
+    )
+    .await?;
+    if first.outcome != "applied" && first.outcome != "exact_replay" {
+        return Err("network_canary_publish_outcome_invalid");
+    }
+    validate_network_mutation(&first, tenant_id, &finding.finding_id, &event_id)?;
+    let retry_request_id = sha256_hex(format!("{event_id}:retry").as_bytes());
+    let retry = publish_network_finding(
+        &client,
+        profile,
+        tenant_id,
+        &seller_key_id,
+        &seller_key_secret,
+        &retry_request_id,
+        &event_id,
+        &finding_bytes,
+    )
+    .await?;
+    validate_network_mutation(&retry, tenant_id, &finding.finding_id, &event_id)?;
+    if retry.outcome != "exact_replay" {
+        return Err("network_canary_retry_not_exact");
+    }
+    let resolved = network_get(
+        &client,
+        profile,
+        tenant_id,
+        &buyer_key_id,
+        &buyer_key_secret,
+        &sha256_hex(format!("{event_id}:get").as_bytes()),
+        &format!("/v1/findings/{}", finding.finding_id),
+    )
+    .await?;
+    if resolved != finding_bytes {
+        return Err("network_canary_payload_mismatch");
+    }
+    let catalog_bytes = network_get(
+        &client,
+        profile,
+        tenant_id,
+        &buyer_key_id,
+        &buyer_key_secret,
+        &sha256_hex(format!("{event_id}:list").as_bytes()),
+        "/v1/findings?limit=100",
+    )
+    .await?;
+    let catalog: serde_json::Value =
+        serde_json::from_slice(&catalog_bytes).map_err(|_| "network_canary_catalog_invalid")?;
+    let finding_value: serde_json::Value =
+        serde_json::from_slice(&finding_bytes).map_err(|_| "network_canary_finding_invalid")?;
+    let catalog_matched = catalog
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|items| {
+            items.iter().any(|item| {
+                item.get("aggregateId").and_then(serde_json::Value::as_str)
+                    == Some(finding.finding_id.as_str())
+                    && item.get("payload") == Some(&finding_value)
+            })
+        });
+    if !catalog_matched {
+        return Err("network_canary_catalog_mismatch");
+    }
+    let isolation_tenant = format!("network-canary-isolation-{}", &event_id[..32]);
+    if profile
+        .tenants
+        .iter()
+        .any(|candidate| candidate.tenant_id == isolation_tenant)
+    {
+        return Err("network_canary_isolation_probe_ambiguous");
+    }
+    let isolation_denied = network_get_status(
+        &client,
+        profile,
+        &isolation_tenant,
+        &buyer_key_id,
+        &buyer_key_secret,
+        &sha256_hex(format!("{event_id}:isolation").as_bytes()),
+        &format!("/v1/findings/{}", finding.finding_id),
+    )
+    .await?
+        == StatusCode::UNAUTHORIZED;
+    if !isolation_denied {
+        return Err("network_canary_tenant_isolation_failed");
+    }
+    Ok(NetworkCanaryReport {
+        schema: "chio.finding.hosted-network-canary-report.v1",
+        candidate_sha,
+        configuration_revision: profile.release.configuration_revision.clone(),
+        tenant_id: tenant_id.to_owned(),
+        finding_id: finding.finding_id,
+        finding_sha256: sha256_hex(&finding_bytes),
+        event_id,
+        first_outcome: first.outcome,
+        retry_outcome: retry.outcome,
+        buyer_payload_matched: true,
+        buyer_catalog_matched: true,
+        tenant_isolation_denied: true,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn publish_network_finding(
+    client: &reqwest::Client,
+    profile: &FindingHostedProfile,
+    tenant_id: &str,
+    key_id: &str,
+    key_secret: &str,
+    request_id: &str,
+    event_id: &str,
+    finding: &[u8],
+) -> Result<NetworkMutationResponse, &'static str> {
+    let response = client
+        .post(format!(
+            "{}/v1/findings/publish",
+            profile.public_endpoint.trim_end_matches('/')
+        ))
+        .header("Chio-Tenant-ID", tenant_id)
+        .header("Chio-Request-ID", request_id)
+        .header("Chio-API-Key-ID", key_id)
+        .header("Chio-API-Key-Secret", key_secret)
+        .header("Idempotency-Key", event_id)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(finding.to_vec())
+        .send()
+        .await
+        .map_err(|_| "network_canary_request_failed")?;
+    if response.status() != StatusCode::OK {
+        return Err("network_canary_publish_failed");
+    }
+    let bytes = bounded_response(response).await?;
+    serde_json::from_slice(&bytes).map_err(|_| "network_canary_publish_response_invalid")
+}
+
+fn validate_network_mutation(
+    response: &NetworkMutationResponse,
+    tenant_id: &str,
+    finding_id: &str,
+    event_id: &str,
+) -> Result<(), &'static str> {
+    if response.schema != "chio.finding.hosted-mutation-response.v1"
+        || response.request_id.len() != 64
+        || response.tenant_id != tenant_id
+        || response.operation_id != event_id
+        || response.resource_id != finding_id
+        || response.resource_sha256.len() != 64
+        || !response
+            .resource_sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err("network_canary_publish_binding_invalid");
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn network_get(
+    client: &reqwest::Client,
+    profile: &FindingHostedProfile,
+    tenant_id: &str,
+    key_id: &str,
+    key_secret: &str,
+    request_id: &str,
+    path: &str,
+) -> Result<Vec<u8>, &'static str> {
+    let response = network_request(
+        client, profile, tenant_id, key_id, key_secret, request_id, path,
+    )
+    .await?;
+    if response.status() != StatusCode::OK {
+        return Err("network_canary_read_failed");
+    }
+    bounded_response(response).await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn network_get_status(
+    client: &reqwest::Client,
+    profile: &FindingHostedProfile,
+    tenant_id: &str,
+    key_id: &str,
+    key_secret: &str,
+    request_id: &str,
+    path: &str,
+) -> Result<StatusCode, &'static str> {
+    network_request(
+        client, profile, tenant_id, key_id, key_secret, request_id, path,
+    )
+    .await
+    .map(|response| response.status())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn network_request(
+    client: &reqwest::Client,
+    profile: &FindingHostedProfile,
+    tenant_id: &str,
+    key_id: &str,
+    key_secret: &str,
+    request_id: &str,
+    path: &str,
+) -> Result<reqwest::Response, &'static str> {
+    client
+        .get(format!(
+            "{}{}",
+            profile.public_endpoint.trim_end_matches('/'),
+            path
+        ))
+        .header("Chio-Tenant-ID", tenant_id)
+        .header("Chio-Request-ID", request_id)
+        .header("Chio-API-Key-ID", key_id)
+        .header("Chio-API-Key-Secret", key_secret)
+        .send()
+        .await
+        .map_err(|_| "network_canary_request_failed")
+}
+
+async fn bounded_response(mut response: reqwest::Response) -> Result<Vec<u8>, &'static str> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_NETWORK_RESPONSE_BYTES as u64)
+    {
+        return Err("network_canary_response_oversized");
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| "network_canary_response_failed")?
+    {
+        if body.len().saturating_add(chunk.len()) > MAX_NETWORK_RESPONSE_BYTES {
+            return Err("network_canary_response_oversized");
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
+fn candidate_sha() -> Result<String, &'static str> {
+    let value =
+        std::env::var("CHIO_FINDING_CANDIDATE_SHA").map_err(|_| "canary_candidate_missing")?;
+    if value.len() != 40
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err("canary_candidate_invalid");
+    }
+    Ok(value)
+}
+
+fn read_canary_environment(name: &str) -> Result<String, &'static str> {
+    if name.is_empty()
+        || name.len() > 128
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+    {
+        return Err("network_canary_environment_invalid");
+    }
+    let value = std::env::var(name).map_err(|_| "network_canary_secret_missing")?;
+    if value.is_empty()
+        || value.len() > 4_096
+        || value.trim() != value
+        || value.chars().any(char::is_control)
+    {
+        return Err("network_canary_secret_invalid");
+    }
+    Ok(value)
+}
+
+async fn run(args: Args) -> Result<CanaryOutput, &'static str> {
     let profile: FindingHostedProfile = read_canonical_private(&args.profile)?;
     profile.validate().map_err(|_| "canary_profile_invalid")?;
-    let job: CanaryJob = read_canonical_private(&args.job)?;
-    validate_job(&profile, &job)?;
-    let tenant = HostedTenantId::new(job.tenant_id.clone()).map_err(|_| "canary_job_invalid")?;
-    let store = connect_store(&profile).await?;
     match args.command {
-        Command::Provision => provision(&store, &tenant, &job).await,
-        Command::Verify => verify(&store, &tenant, &profile, &job).await,
+        command @ (Command::Provision | Command::Verify) => {
+            let job_path = args.job.as_deref().ok_or("canary_job_missing")?;
+            let job: CanaryJob = read_canonical_private(job_path)?;
+            validate_job(&profile, &job)?;
+            let tenant =
+                HostedTenantId::new(job.tenant_id.clone()).map_err(|_| "canary_job_invalid")?;
+            let store = connect_store(&profile).await?;
+            let report = match command {
+                Command::Provision => provision(&store, &tenant, &job).await?,
+                Command::Verify => verify(&store, &tenant, &profile, &job).await?,
+                Command::Network { .. } => return Err("canary_command_invalid"),
+            };
+            Ok(CanaryOutput::Kvm(report))
+        }
+        Command::Network {
+            finding,
+            tenant_id,
+            seller_key_id_env,
+            seller_key_secret_env,
+            buyer_key_id_env,
+            buyer_key_secret_env,
+        } => {
+            if args.job.is_some() {
+                return Err("canary_job_unexpected");
+            }
+            network_canary(
+                &profile,
+                &finding,
+                &tenant_id,
+                &seller_key_id_env,
+                &seller_key_secret_env,
+                &buyer_key_id_env,
+                &buyer_key_secret_env,
+            )
+            .await
+            .map(CanaryOutput::Network)
+        }
     }
 }
 
@@ -384,6 +799,12 @@ async fn connect_store(
 }
 
 fn read_canonical_private<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, &'static str> {
+    read_canonical_private_bytes(path).map(|(_, value)| value)
+}
+
+fn read_canonical_private_bytes<T: serde::de::DeserializeOwned>(
+    path: &Path,
+) -> Result<(Vec<u8>, T), &'static str> {
     if !path.is_absolute() {
         return Err("canary_file_invalid");
     }
@@ -399,7 +820,8 @@ fn read_canonical_private<T: serde::de::DeserializeOwned>(path: &Path) -> Result
     if canonical_json_bytes_from_str(raw).map_err(|_| "canary_file_invalid")? != bytes {
         return Err("canary_file_invalid");
     }
-    serde_json::from_slice(&bytes).map_err(|_| "canary_file_invalid")
+    let value = serde_json::from_slice(&bytes).map_err(|_| "canary_file_invalid")?;
+    Ok((bytes, value))
 }
 
 fn open_private_regular(path: &Path) -> Result<(File, Metadata), &'static str> {
