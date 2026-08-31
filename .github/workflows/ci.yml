@@ -102,6 +102,9 @@ jobs:
           python3 scripts/check-review-slices.py
           bash ./scripts/check-regression-tests.sh
           bash ./scripts/tests/check-regression-tests.test.sh
+          python3 ./scripts/check-rust-toolchain-parity.py
+          bash ./scripts/tests/check-rust-toolchain-parity.test.sh
+          bash ./deploy/docker/chio-workspace/regenerate.sh --check
           bash ./scripts/tests/check-sidecar-docker-context.test.sh
           bash ./scripts/tests/check-sidecar-image-workflow.test.sh
           python3 scripts/check-mutants-examine-globs.py

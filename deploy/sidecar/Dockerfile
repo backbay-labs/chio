@@ -14,13 +14,13 @@
 # serving the health endpoint it exits non-zero and the platform marks the
 # container unhealthy (fail closed).
 
-ARG RUST_VERSION=1.93
+ARG RUST_VERSION=1.94.1
 ARG DEBIAN_VERSION=bookworm
 
 # -----------------------------------------------------------------------------
 # Stage 1: build the chio-sidecar binary.
 # -----------------------------------------------------------------------------
-FROM rust:${RUST_VERSION}-slim-${DEBIAN_VERSION} AS builder
+FROM rust:${RUST_VERSION}-slim-${DEBIAN_VERSION}@sha256:cf9dd0ec73e75f827fe59123fff9dc65af1a1c8363c3c31ee8d7f8ad0b6a5fb2 AS builder
 
 ENV CARGO_TERM_COLOR=always \
     CARGO_NET_RETRY=5 \

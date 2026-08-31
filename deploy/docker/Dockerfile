@@ -3,11 +3,11 @@
 # stages. Base images are digest-pinned to match Dockerfile.sidecar /
 # Dockerfile.tee; bump the digests in lockstep with those files.
 
-ARG RUST_VERSION=1.93
+ARG RUST_VERSION=1.94.1
 ARG ALPINE_VERSION=3.22
 ARG NODE_VERSION=22
 
-FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION}@sha256:3c06253e433c1b2ac2c279a98226d385d25c5f324138ab2861a5414bfa6855f9 AS rust-builder
+FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION}@sha256:797631f9efd6957d0013f200e410478c380907eee3b469c6f80d89022df28bc7 AS rust-builder
 RUN apk add --no-cache build-base cmake openssl-dev pkgconf
 WORKDIR /workspace
 
@@ -26,7 +26,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
  && cargo build --profile docker-release --locked -p chio-cli --bin chio \
  && cp target/docker-release/chio /chio
 
-FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION}@sha256:3c06253e433c1b2ac2c279a98226d385d25c5f324138ab2861a5414bfa6855f9 AS proof-room-builder
+FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION}@sha256:797631f9efd6957d0013f200e410478c380907eee3b469c6f80d89022df28bc7 AS proof-room-builder
 WORKDIR /workspace
 
 COPY deploy/docker/proof-room-workspace/Cargo.toml ./Cargo.toml
