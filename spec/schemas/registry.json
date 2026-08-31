@@ -342,6 +342,12 @@
       "schemaFile": "spec/schemas/chio-finding/v1/challenge.schema.json"
     },
     {
+      "schema": "chio.finding.claim-allocation.v1",
+      "artifactKind": "finding_claim_allocation",
+      "introducedBy": "cognition-market-hosted-completion",
+      "schemaFile": "spec/schemas/chio-finding/v1/claim-allocation.schema.json"
+    },
+    {
       "schema": "chio.finding.delivery.v1",
       "artifactKind": "finding_delivery",
       "introducedBy": "finding-delivery-v1",
@@ -384,6 +390,12 @@
       "schemaFile": "spec/schemas/chio-finding/v1/key-revocation.schema.json"
     },
     {
+      "schema": "chio.finding.liability.v1",
+      "artifactKind": "finding_liability",
+      "introducedBy": "cognition-market-hosted-completion",
+      "schemaFile": "spec/schemas/chio-finding/v1/liability.schema.json"
+    },
+    {
       "schema": "chio.finding.market-terms.v1",
       "artifactKind": "finding_market_terms",
       "introducedBy": "finding-market-v1",
@@ -406,6 +418,12 @@
       "artifactKind": "finding_purchase_record",
       "introducedBy": "finding-market-v1",
       "schemaFile": "spec/schemas/chio-finding/v1/purchase-record.schema.json"
+    },
+    {
+      "schema": "chio.finding.purchase-result.v1",
+      "artifactKind": "finding_purchase_result",
+      "introducedBy": "cognition-market-hosted-completion",
+      "schemaFile": "spec/schemas/chio-finding/v1/purchase-result.schema.json"
     },
     {
       "schema": "chio.finding.recovery-context.v1",
@@ -450,10 +468,22 @@
       "schemaFile": "spec/schemas/chio-finding/v1/finding.schema.json"
     },
     {
+      "schema": "chio.finding.verified-fix-submission.v1",
+      "artifactKind": "finding_verified_fix_submission",
+      "introducedBy": "cognition-market-hosted-completion",
+      "schemaFile": "spec/schemas/chio-finding/v1/verified-fix-submission.schema.json"
+    },
+    {
       "schema": "chio.finding.verifier-report.v1",
       "artifactKind": "finding_verifier_report",
       "introducedBy": "finding-market-v1",
       "schemaFile": "spec/schemas/chio-finding/v1/verifier-report.schema.json"
+    },
+    {
+      "schema": "chio.finding.voluntary-retraction.v1",
+      "artifactKind": "finding_voluntary_retraction",
+      "introducedBy": "cognition-market-hosted-completion",
+      "schemaFile": "spec/schemas/chio-finding/v1/voluntary-retraction.schema.json"
     },
     {
       "schema": "chio.frost.authorization-slot-checkpoint.v1",

@@ -776,7 +776,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         },
         &source_signer,
     )?;
-    let unsupported_replication = SignedExportEnvelope::sign(
+    let mismatched_replication = SignedExportEnvelope::sign(
         HostedReplicationEventBody {
             schema: HOSTED_REPLICATION_EVENT_SCHEMA.to_owned(),
             tenant_id: tenant_a.as_str().to_owned(),
@@ -784,8 +784,8 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             authority_epoch: 1,
             sequence: 3,
             event_kind: HostedMarketDomainEventKind::PenaltyAssessed,
-            aggregate_id: "unsupported-penalty".to_owned(),
-            event_id: "unsupported-penalty-event".to_owned(),
+            aggregate_id: "mismatched-penalty".to_owned(),
+            event_id: "mismatched-penalty-event".to_owned(),
             expected_revision: 0,
             expected_event_sha256: None,
             artifact_signer_key: Some(domain_signer.public_key()),
@@ -799,12 +799,10 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             .apply_replication_event(
                 &tenant_a,
                 &source_signer.public_key(),
-                &unsupported_replication,
+                &mismatched_replication,
             )
             .await,
-        Err(HostedMarketStoreError::Invalid(
-            "unsupported hosted domain artifact"
-        ))
+        Err(HostedMarketStoreError::Invalid("signed domain artifact"))
     ));
     assert_eq!(
         replicator

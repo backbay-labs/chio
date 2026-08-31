@@ -48,8 +48,8 @@ pub use checkpoints::{
     SignedHostedAggregateCheckpoint, HOSTED_AGGREGATE_CHECKPOINT_SCHEMA,
 };
 pub use domain::{
-    HostedMarketDomainArtifact, HostedMarketDomainEvent, HostedMarketDomainEventKind,
-    HostedMarketDomainProjection,
+    HostedCommerceSettlementPacket, HostedCommerceSettlementStatus, HostedMarketDomainArtifact,
+    HostedMarketDomainEvent, HostedMarketDomainEventKind, HostedMarketDomainProjection,
 };
 pub use replication::{
     HostedAuthorityMode, HostedAuthorityState, HostedAuthorityTransitionBody,

@@ -5,9 +5,11 @@ use chio_finding::{
     Finding, FindingReplayRecipeInput, SignedFindingAdmission, SignedFindingAuditReport,
     SignedFindingBondBacking, SignedFindingChallenge, SignedFindingChallengeEnforcement,
     SignedFindingChallengeOutcome, SignedFindingChallengeVerifierProfile,
-    SignedFindingFailedDelivery, SignedFindingMarketTerms, SignedFindingPurchaseRecord,
-    SignedFindingStatusEpoch,
+    SignedFindingClaimAllocation, SignedFindingFailedDelivery, SignedFindingLiability,
+    SignedFindingMarketTerms, SignedFindingPurchaseRecord, SignedFindingPurchaseResult,
+    SignedFindingStatusEpoch, SignedFindingVerifiedFixSubmission, SignedFindingVoluntaryRetraction,
 };
+use chio_open_market::penalty::SignedOpenMarketPenalty;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sqlx::Row as _;
@@ -22,6 +24,73 @@ use super::{
 const MAX_AGGREGATE_ID_BYTES: usize = 256;
 const MAX_EVENT_ID_BYTES: usize = 256;
 const MAX_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
+const MAX_SETTLEMENT_TEXT_BYTES: usize = 512;
+const MAX_I_JSON_INTEGER: u64 = (1_u64 << 53) - 1;
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HostedCommerceSettlementStatus {
+    Dispatched,
+    Reconciled,
+    Settled,
+}
+
+/// Closed unsigned commerce packet. Authenticity is carried by its bound
+/// dispatch and reconciliation receipt references; hosted authorization is
+/// responsible for resolving those references before append.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct HostedCommerceSettlementPacket {
+    pub schema: String,
+    pub id: String,
+    pub issued_at: String,
+    pub order_id: String,
+    pub merchant_subject: String,
+    pub psp: String,
+    pub payment_intent_id: String,
+    pub amount_minor: u64,
+    pub currency: String,
+    pub quote_sha256: String,
+    pub settlement_rail: String,
+    pub settlement_account_ref: String,
+    pub dispatch_receipt_ref: String,
+    pub reconciliation_ref: String,
+    pub status: HostedCommerceSettlementStatus,
+}
+
+impl HostedCommerceSettlementPacket {
+    fn validate(&self) -> Result<(), HostedMarketStoreError> {
+        if self.schema != "chio.commerce.settlement-packet.v1"
+            || self.amount_minor == 0
+            || self.amount_minor > MAX_I_JSON_INTEGER
+            || self.currency.len() != 3
+            || !self.currency.bytes().all(|byte| byte.is_ascii_uppercase())
+        {
+            return Err(HostedMarketStoreError::Invalid("settlement packet"));
+        }
+        for value in [
+            self.id.as_str(),
+            self.issued_at.as_str(),
+            self.order_id.as_str(),
+            self.merchant_subject.as_str(),
+            self.psp.as_str(),
+            self.payment_intent_id.as_str(),
+            self.settlement_rail.as_str(),
+            self.settlement_account_ref.as_str(),
+            self.dispatch_receipt_ref.as_str(),
+            self.reconciliation_ref.as_str(),
+        ] {
+            if value.is_empty()
+                || value.len() > MAX_SETTLEMENT_TEXT_BYTES
+                || value.trim() != value
+                || value.chars().any(char::is_control)
+            {
+                return Err(HostedMarketStoreError::Invalid("settlement packet"));
+            }
+        }
+        validate_digest(&self.quote_sha256, "settlement quote")
+    }
+}
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -154,13 +223,21 @@ pub enum HostedMarketDomainArtifact {
     BondBacking(SignedFindingBondBacking),
     MarketTerms(SignedFindingMarketTerms),
     Admission(SignedFindingAdmission),
+    Participation(SignedFindingClaimAllocation),
     Purchase(SignedFindingPurchaseRecord),
+    Reveal(SignedFindingPurchaseResult),
     Delivery(chio_core_types::receipt::metadata::FindingDelivery),
+    PurchaseSettlement(SignedFindingPurchaseResult),
     FailedDelivery(SignedFindingFailedDelivery),
     Challenge(SignedFindingChallenge),
     ChallengeOutcome(SignedFindingChallengeOutcome),
+    VerifiedFix(SignedFindingVerifiedFixSubmission),
+    Retraction(SignedFindingVoluntaryRetraction),
+    Liability(SignedFindingLiability),
     Appeal(SignedFindingChallengeEnforcement),
+    Penalty(SignedOpenMarketPenalty),
     Enforcement(SignedFindingChallengeEnforcement),
+    Settlement(HostedCommerceSettlementPacket),
     StatusEpoch(SignedFindingStatusEpoch),
     AuditReport(SignedFindingAuditReport),
 }
@@ -230,13 +307,21 @@ impl HostedMarketDomainArtifact {
             Self::BondBacking(_) => HostedMarketDomainEventKind::CollateralRegistered,
             Self::MarketTerms(_) => HostedMarketDomainEventKind::ListingActivated,
             Self::Admission(_) => HostedMarketDomainEventKind::AdmissionAdmitted,
+            Self::Participation(_) => HostedMarketDomainEventKind::ParticipationAdmitted,
             Self::Purchase(_) => HostedMarketDomainEventKind::PurchaseAuthorized,
+            Self::Reveal(_) => HostedMarketDomainEventKind::RevealCommitted,
             Self::Delivery(_) => HostedMarketDomainEventKind::DeliveryAccepted,
+            Self::PurchaseSettlement(_) => HostedMarketDomainEventKind::PurchaseSettled,
             Self::FailedDelivery(_) => HostedMarketDomainEventKind::DeliveryFailed,
             Self::Challenge(_) => HostedMarketDomainEventKind::ChallengeSubmitted,
             Self::ChallengeOutcome(_) => HostedMarketDomainEventKind::ChallengeFinalized,
+            Self::VerifiedFix(_) => HostedMarketDomainEventKind::VerifiedFixSubmitted,
+            Self::Retraction(_) => HostedMarketDomainEventKind::RetractionVoluntary,
+            Self::Liability(_) => HostedMarketDomainEventKind::LiabilityAssessed,
             Self::Appeal(_) => HostedMarketDomainEventKind::AppealFinalized,
+            Self::Penalty(_) => HostedMarketDomainEventKind::PenaltyAssessed,
             Self::Enforcement(_) => HostedMarketDomainEventKind::EnforcementFinalized,
+            Self::Settlement(_) => HostedMarketDomainEventKind::SettlementTerminal,
             Self::StatusEpoch(_) => HostedMarketDomainEventKind::StatusPublished,
             Self::AuditReport(_) => HostedMarketDomainEventKind::AuditFinalized,
         }
@@ -250,11 +335,20 @@ impl HostedMarketDomainArtifact {
             Self::BondBacking(envelope) => Some(&envelope.signer_key),
             Self::MarketTerms(envelope) => Some(&envelope.signer_key),
             Self::Admission(envelope) => Some(&envelope.signer_key),
+            Self::Participation(envelope) => Some(&envelope.signer_key),
             Self::Purchase(envelope) => Some(&envelope.signer_key),
+            Self::Reveal(envelope) | Self::PurchaseSettlement(envelope) => {
+                Some(&envelope.signer_key)
+            }
             Self::FailedDelivery(envelope) => Some(&envelope.signer_key),
             Self::Challenge(envelope) => Some(&envelope.signer_key),
             Self::ChallengeOutcome(envelope) => Some(&envelope.signer_key),
+            Self::VerifiedFix(envelope) => Some(&envelope.signer_key),
+            Self::Retraction(envelope) => Some(&envelope.signer_key),
+            Self::Liability(envelope) => Some(&envelope.signer_key),
             Self::Appeal(envelope) | Self::Enforcement(envelope) => Some(&envelope.signer_key),
+            Self::Penalty(envelope) => Some(&envelope.signer_key),
+            Self::Settlement(_) => None,
             Self::StatusEpoch(envelope) => Some(&envelope.signer_key),
             Self::AuditReport(envelope) => Some(&envelope.signer_key),
         }
@@ -268,12 +362,20 @@ impl HostedMarketDomainArtifact {
             Self::BondBacking(artifact) => canonical_json_bytes(artifact),
             Self::MarketTerms(artifact) => canonical_json_bytes(artifact),
             Self::Admission(artifact) => canonical_json_bytes(artifact),
+            Self::Participation(artifact) => canonical_json_bytes(artifact),
             Self::Purchase(artifact) => canonical_json_bytes(artifact),
+            Self::Reveal(artifact) => canonical_json_bytes(artifact),
             Self::Delivery(artifact) => canonical_json_bytes(artifact),
+            Self::PurchaseSettlement(artifact) => canonical_json_bytes(artifact),
             Self::FailedDelivery(artifact) => canonical_json_bytes(artifact),
             Self::Challenge(artifact) => canonical_json_bytes(artifact),
             Self::ChallengeOutcome(artifact) => canonical_json_bytes(artifact),
+            Self::VerifiedFix(artifact) => canonical_json_bytes(artifact),
+            Self::Retraction(artifact) => canonical_json_bytes(artifact),
+            Self::Liability(artifact) => canonical_json_bytes(artifact),
             Self::Appeal(artifact) | Self::Enforcement(artifact) => canonical_json_bytes(artifact),
+            Self::Penalty(artifact) => canonical_json_bytes(artifact),
+            Self::Settlement(artifact) => canonical_json_bytes(artifact),
             Self::StatusEpoch(artifact) => canonical_json_bytes(artifact),
             Self::AuditReport(artifact) => canonical_json_bytes(artifact),
         };
@@ -424,8 +526,9 @@ fn validate_domain_payload(
     use chio_finding::{
         Finding, FindingAdmission, FindingAuditReport, FindingBondBacking, FindingChallenge,
         FindingChallengeEnforcement, FindingChallengeOutcome, FindingChallengeVerifierProfile,
-        FindingFailedDelivery, FindingMarketTerms, FindingPurchaseRecord, FindingReplayRecipeInput,
-        FindingStatusEpoch,
+        FindingClaimAllocation, FindingFailedDelivery, FindingLiability, FindingMarketTerms,
+        FindingPurchaseRecord, FindingPurchaseResult, FindingReplayRecipeInput, FindingStatusEpoch,
+        FindingVerifiedFixSubmission, FindingVoluntaryRetraction,
     };
 
     match event_kind {
@@ -480,12 +583,31 @@ fn validate_domain_payload(
                 .map_err(|_| HostedMarketStoreError::Invalid("admission artifact"))?;
             require_aggregate_identity(aggregate_id, &artifact.body.admission_id)
         }
+        HostedMarketDomainEventKind::ParticipationAdmitted => {
+            let signer = required_signer(expected_signer)?;
+            let artifact = parse_signed::<FindingClaimAllocation>(payload_json, signer)?;
+            artifact
+                .body
+                .validate()
+                .map_err(|_| HostedMarketStoreError::Invalid("claim allocation artifact"))?;
+            require_aggregate_identity(aggregate_id, &artifact.body.allocation_id)
+        }
         HostedMarketDomainEventKind::PurchaseAuthorized => {
             let signer = required_signer(expected_signer)?;
             let artifact = parse_signed::<FindingPurchaseRecord>(payload_json, signer)?;
             chio_finding::verify_signed_purchase_record(&artifact, signer)
                 .map_err(|_| HostedMarketStoreError::Invalid("purchase artifact"))?;
             require_aggregate_identity(aggregate_id, &artifact.body.purchase_key)
+        }
+        HostedMarketDomainEventKind::RevealCommitted
+        | HostedMarketDomainEventKind::PurchaseSettled => {
+            let signer = required_signer(expected_signer)?;
+            let artifact = parse_signed::<FindingPurchaseResult>(payload_json, signer)?;
+            artifact
+                .body
+                .validate()
+                .map_err(|_| HostedMarketStoreError::Invalid("purchase result artifact"))?;
+            require_aggregate_identity(aggregate_id, &artifact.body.result_id)
         }
         HostedMarketDomainEventKind::DeliveryAccepted => {
             require_unsigned(expected_signer)?;
@@ -517,6 +639,33 @@ fn validate_domain_payload(
                 .map_err(|_| HostedMarketStoreError::Invalid("challenge outcome artifact"))?;
             require_aggregate_identity(aggregate_id, &artifact.body.outcome_id)
         }
+        HostedMarketDomainEventKind::VerifiedFixSubmitted => {
+            let signer = required_signer(expected_signer)?;
+            let artifact = parse_signed::<FindingVerifiedFixSubmission>(payload_json, signer)?;
+            artifact
+                .body
+                .validate()
+                .map_err(|_| HostedMarketStoreError::Invalid("verified fix artifact"))?;
+            require_aggregate_identity(aggregate_id, &artifact.body.submission_id)
+        }
+        HostedMarketDomainEventKind::RetractionVoluntary => {
+            let signer = required_signer(expected_signer)?;
+            let artifact = parse_signed::<FindingVoluntaryRetraction>(payload_json, signer)?;
+            artifact
+                .body
+                .validate()
+                .map_err(|_| HostedMarketStoreError::Invalid("voluntary retraction artifact"))?;
+            require_aggregate_identity(aggregate_id, &artifact.body.intent_id)
+        }
+        HostedMarketDomainEventKind::LiabilityAssessed => {
+            let signer = required_signer(expected_signer)?;
+            let artifact = parse_signed::<FindingLiability>(payload_json, signer)?;
+            artifact
+                .body
+                .validate()
+                .map_err(|_| HostedMarketStoreError::Invalid("liability artifact"))?;
+            require_aggregate_identity(aggregate_id, &artifact.body.liability_key)
+        }
         HostedMarketDomainEventKind::AppealFinalized
         | HostedMarketDomainEventKind::EnforcementFinalized => {
             let signer = required_signer(expected_signer)?;
@@ -524,6 +673,25 @@ fn validate_domain_payload(
             chio_finding::verify_signed_challenge_enforcement(&artifact, signer)
                 .map_err(|_| HostedMarketStoreError::Invalid("challenge enforcement artifact"))?;
             require_aggregate_identity(aggregate_id, &artifact.body.enforcement_id)
+        }
+        HostedMarketDomainEventKind::PenaltyAssessed => {
+            let signer = required_signer(expected_signer)?;
+            let artifact = parse_signed::<chio_open_market::penalty::OpenMarketPenaltyArtifact>(
+                payload_json,
+                signer,
+            )?;
+            artifact
+                .body
+                .validate()
+                .map_err(|_| HostedMarketStoreError::Invalid("market penalty artifact"))?;
+            require_aggregate_identity(aggregate_id, &artifact.body.penalty_id)
+        }
+        HostedMarketDomainEventKind::SettlementTerminal => {
+            require_unsigned(expected_signer)?;
+            let artifact: HostedCommerceSettlementPacket =
+                parse_canonical(payload_json, "settlement packet artifact")?;
+            artifact.validate()?;
+            require_aggregate_identity(aggregate_id, &artifact.id)
         }
         HostedMarketDomainEventKind::StatusPublished => {
             let signer = required_signer(expected_signer)?;
@@ -546,16 +714,6 @@ fn validate_domain_payload(
                 .map_err(|_| HostedMarketStoreError::Invalid("audit report artifact"))?;
             require_aggregate_identity(aggregate_id, &artifact.body.audit_report_id)
         }
-        HostedMarketDomainEventKind::ParticipationAdmitted
-        | HostedMarketDomainEventKind::RevealCommitted
-        | HostedMarketDomainEventKind::PurchaseSettled
-        | HostedMarketDomainEventKind::VerifiedFixSubmitted
-        | HostedMarketDomainEventKind::RetractionVoluntary
-        | HostedMarketDomainEventKind::LiabilityAssessed
-        | HostedMarketDomainEventKind::PenaltyAssessed
-        | HostedMarketDomainEventKind::SettlementTerminal => Err(HostedMarketStoreError::Invalid(
-            "unsupported hosted domain artifact",
-        )),
     }
 }
 
@@ -611,7 +769,46 @@ fn require_aggregate_identity(
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
+    use chio_core_types::capability::scope::MonetaryAmount;
+    use chio_core_types::crypto::Keypair;
+    use chio_finding::{
+        FindingClaimAllocation, FindingClaimAllocationEntry, FindingClaimBeneficiaryKind,
+        FindingHostedPurchaseVerdict, FindingHostedSettlementTerminal, FindingLiability,
+        FindingLiabilityLifecycleState, FindingPurchaseResult, FindingVerifiedFixSubmission,
+        FindingVoluntaryRetraction, FindingVoluntaryRetractionReason,
+        FINDING_CLAIM_ALLOCATION_SCHEMA_V1, FINDING_LIABILITY_SCHEMA_V1,
+        FINDING_PURCHASE_RESULT_SCHEMA_V1, FINDING_VERIFIED_FIX_SUBMISSION_SCHEMA_V1,
+        FINDING_VOLUNTARY_RETRACTION_SCHEMA_V1,
+    };
+    use chio_open_market::evidence::{OpenMarketEvidenceKind, OpenMarketEvidenceReference};
+    use chio_open_market::fee_schedule::OpenMarketBondClass;
+    use chio_open_market::penalty::{
+        OpenMarketAbuseClass, OpenMarketPenaltyAction, OpenMarketPenaltyArtifact,
+        OpenMarketPenaltyState, OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA,
+    };
+    use chio_test_support::prelude::*;
+
+    fn digest(byte: char) -> String {
+        std::iter::repeat_n(byte, 64).collect()
+    }
+
+    fn validate_schema(path: &str, document: serde_json::Value) {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .join("spec/schemas");
+        let schema_path = root.join(path);
+        let schema = chio_spec_validate::load_json(&schema_path).test_unwrap();
+        chio_spec_validate::validate_value(
+            &schema_path,
+            &schema,
+            Path::new("<hosted-domain-artifact>"),
+            &document,
+        )
+        .test_unwrap();
+    }
 
     #[test]
     fn domain_event_validation_cannot_be_bypassed_at_append_input() {
@@ -629,5 +826,258 @@ mod tests {
         noncanonical.aggregate_id = sha256_hex(b"{}");
         noncanonical.payload_json = b"{ \"schema\": \"invalid\" }".to_vec();
         assert!(noncanonical.validate().is_err());
+    }
+
+    #[test]
+    fn every_declared_domain_family_has_a_typed_validated_artifact() {
+        let signer = Keypair::from_seed(&[31_u8; 32]);
+        let public_key = signer.public_key();
+        let allocation_id = digest('a');
+        let claim = SignedExportEnvelope::sign(
+            FindingClaimAllocation {
+                schema: FINDING_CLAIM_ALLOCATION_SCHEMA_V1.to_owned(),
+                allocation_id: allocation_id.clone(),
+                liability_key: digest('b'),
+                purchase_snapshot_sha256: digest('c'),
+                deterministic_allocation_sha256: allocation_id.clone(),
+                cutoff_slot: 10,
+                total_realized_spend_units: 7,
+                slash: MonetaryAmount {
+                    units: 9,
+                    currency: "USD".to_owned(),
+                },
+                buyer_pool_units: 7,
+                community_fund_units: 2,
+                entries: vec![
+                    FindingClaimAllocationEntry {
+                        beneficiary_kind: FindingClaimBeneficiaryKind::Buyer,
+                        destination: "buyer:destination".to_owned(),
+                        amount_units: 7,
+                    },
+                    FindingClaimAllocationEntry {
+                        beneficiary_kind: FindingClaimBeneficiaryKind::CommunityFund,
+                        destination: "community:destination".to_owned(),
+                        amount_units: 2,
+                    },
+                ],
+                recorded_at: 20,
+            },
+            &signer,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+
+        let result_id = digest('d');
+        let purchase = SignedExportEnvelope::sign(
+            FindingPurchaseResult {
+                schema: FINDING_PURCHASE_RESULT_SCHEMA_V1.to_owned(),
+                result_id: result_id.clone(),
+                request_id: result_id.clone(),
+                finding_id: digest('e'),
+                payer: public_key.clone(),
+                reservation_id: "reservation-a".to_owned(),
+                purchase_intent_id: "purchase-intent-a".to_owned(),
+                authoritative_payment_operation_id: "payment-a".to_owned(),
+                verdict: FindingHostedPurchaseVerdict::Allow,
+                settlement: FindingHostedSettlementTerminal::Captured,
+                accepted_price: MonetaryAmount {
+                    units: 10,
+                    currency: "USD".to_owned(),
+                },
+                realized_spend: MonetaryAmount {
+                    units: 10,
+                    currency: "USD".to_owned(),
+                },
+                delivery_receipt_sha256: digest('f'),
+                purchase_record_sha256: Some(digest('1')),
+                failed_delivery_sha256: None,
+                output_sha256: Some(digest('2')),
+                recorded_at: 21,
+            },
+            &signer,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+
+        let submission_id = digest('3');
+        let fix = SignedExportEnvelope::sign(
+            FindingVerifiedFixSubmission {
+                schema: FINDING_VERIFIED_FIX_SUBMISSION_SCHEMA_V1.to_owned(),
+                submission_id: submission_id.clone(),
+                seller: public_key.clone(),
+                finding_id: digest('4'),
+                proof_bundle_sha256: digest('5'),
+                activation_sha256: digest('6'),
+                submitted_at: 22,
+            },
+            &signer,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+
+        let intent_id = digest('7');
+        let retraction = SignedExportEnvelope::sign(
+            FindingVoluntaryRetraction {
+                schema: FINDING_VOLUNTARY_RETRACTION_SCHEMA_V1.to_owned(),
+                intent_id: intent_id.clone(),
+                finding_id: digest('8'),
+                seller: public_key.clone(),
+                status_feed_ref: "status:feed".to_owned(),
+                reason: FindingVoluntaryRetractionReason::SellerVoluntaryRetraction,
+                issued_at: 23,
+                inclusion_deadline: 24,
+            },
+            &signer,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+
+        let liability_key = digest('9');
+        let liability = SignedExportEnvelope::sign(
+            FindingLiability {
+                schema: FINDING_LIABILITY_SCHEMA_V1.to_owned(),
+                liability_key: liability_key.clone(),
+                defect_key: digest('a'),
+                finding_id: digest('b'),
+                listing_id: "listing-a".to_owned(),
+                backing_allocation_id: "backing-a".to_owned(),
+                seller: public_key,
+                venue_id: "venue-a".to_owned(),
+                chain_id: "chain-a".to_owned(),
+                vault_contract: "vault-contract-a".to_owned(),
+                vault_id: "vault-a".to_owned(),
+                state: FindingLiabilityLifecycleState::Open,
+                upheld_challenge_id: None,
+                purchase_snapshot_sha256: None,
+                deterministic_allocation_sha256: None,
+                opened_at: 25,
+                updated_at: 25,
+            },
+            &signer,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+
+        let penalty_id = "penalty-a".to_owned();
+        let penalty = SignedExportEnvelope::sign(
+            OpenMarketPenaltyArtifact {
+                schema: OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA.to_owned(),
+                penalty_id: penalty_id.clone(),
+                fee_schedule_id: "fee-a".to_owned(),
+                charter_id: "charter-a".to_owned(),
+                case_id: "case-a".to_owned(),
+                governing_operator_id: "operator-a".to_owned(),
+                namespace: "finding".to_owned(),
+                listing_id: "listing-a".to_owned(),
+                activation_id: None,
+                subject_operator_id: Some("seller-a".to_owned()),
+                abuse_class: OpenMarketAbuseClass::FraudulentListing,
+                bond_class: OpenMarketBondClass::Listing,
+                action: OpenMarketPenaltyAction::HoldBond,
+                state: OpenMarketPenaltyState::Proposed,
+                penalty_amount: MonetaryAmount {
+                    units: 1,
+                    currency: "USD".to_owned(),
+                },
+                opened_at: 26,
+                updated_at: 26,
+                expires_at: None,
+                evidence_refs: vec![OpenMarketEvidenceReference {
+                    kind: OpenMarketEvidenceKind::External,
+                    reference_id: "evidence-a".to_owned(),
+                    uri: None,
+                    sha256: Some(digest('c')),
+                }],
+                supersedes_penalty_id: None,
+                issued_by: "operator-a".to_owned(),
+                note: None,
+            },
+            &signer,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+
+        let settlement_id = "settlement-a".to_owned();
+        let settlement = HostedCommerceSettlementPacket {
+            schema: "chio.commerce.settlement-packet.v1".to_owned(),
+            id: settlement_id.clone(),
+            issued_at: "2026-08-31T12:00:00Z".to_owned(),
+            order_id: "order-a".to_owned(),
+            merchant_subject: "seller-a".to_owned(),
+            psp: "psp-a".to_owned(),
+            payment_intent_id: "payment-a".to_owned(),
+            amount_minor: 100,
+            currency: "USD".to_owned(),
+            quote_sha256: digest('d'),
+            settlement_rail: "rail-a".to_owned(),
+            settlement_account_ref: "account-a".to_owned(),
+            dispatch_receipt_ref: "dispatch-a".to_owned(),
+            reconciliation_ref: "reconciliation-a".to_owned(),
+            status: HostedCommerceSettlementStatus::Settled,
+        };
+
+        for (schema, value) in [
+            (
+                "chio-finding/v1/claim-allocation.schema.json",
+                serde_json::to_value(&claim).test_unwrap(),
+            ),
+            (
+                "chio-finding/v1/purchase-result.schema.json",
+                serde_json::to_value(&purchase).test_unwrap(),
+            ),
+            (
+                "chio-finding/v1/verified-fix-submission.schema.json",
+                serde_json::to_value(&fix).test_unwrap(),
+            ),
+            (
+                "chio-finding/v1/voluntary-retraction.schema.json",
+                serde_json::to_value(&retraction).test_unwrap(),
+            ),
+            (
+                "chio-finding/v1/liability.schema.json",
+                serde_json::to_value(&liability).test_unwrap(),
+            ),
+            (
+                "chio-finding/v1/market-penalty.schema.json",
+                serde_json::to_value(&penalty).test_unwrap(),
+            ),
+            (
+                "chio-commerce/v1/settlement-packet.schema.json",
+                serde_json::to_value(&settlement).test_unwrap(),
+            ),
+        ] {
+            validate_schema(schema, value);
+        }
+
+        let artifacts = [
+            (
+                allocation_id,
+                HostedMarketDomainArtifact::Participation(claim),
+            ),
+            (
+                result_id.clone(),
+                HostedMarketDomainArtifact::Reveal(purchase.clone()),
+            ),
+            (
+                result_id,
+                HostedMarketDomainArtifact::PurchaseSettlement(purchase),
+            ),
+            (submission_id, HostedMarketDomainArtifact::VerifiedFix(fix)),
+            (
+                intent_id,
+                HostedMarketDomainArtifact::Retraction(retraction),
+            ),
+            (
+                liability_key,
+                HostedMarketDomainArtifact::Liability(liability),
+            ),
+            (penalty_id, HostedMarketDomainArtifact::Penalty(penalty)),
+            (
+                settlement_id,
+                HostedMarketDomainArtifact::Settlement(settlement),
+            ),
+        ];
+        for (index, (aggregate_id, artifact)) in artifacts.iter().enumerate() {
+            assert!(HostedMarketDomainEvent::from_artifact(
+                aggregate_id,
+                format!("event-{index}"),
+                artifact,
+            )
+            .is_ok());
+        }
     }
 }

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/verified-fix-submission.schema.json",
+  "title": "Chio Finding Verified Fix Submission",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "submission_id", "seller", "finding_id", "proof_bundle_sha256", "activation_sha256", "submitted_at"],
+      "properties": {
+        "schema": { "const": "chio.finding.verified-fix-submission.v1" },
+        "submission_id": { "$ref": "#/$defs/sha256" },
+        "seller": { "$ref": "#/$defs/sha256" },
+        "finding_id": { "$ref": "#/$defs/sha256" },
+        "proof_bundle_sha256": { "$ref": "#/$defs/sha256" },
+        "activation_sha256": { "$ref": "#/$defs/sha256" },
+        "submitted_at": { "$ref": "#/$defs/nonzero" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/sha256" },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "nonzero": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+  }
+}
