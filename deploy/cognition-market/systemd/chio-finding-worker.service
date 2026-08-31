@@ -1,0 +1,44 @@
+[Unit]
+Description=Chio cognition-market Firecracker worker
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/dev/kvm
+
+[Service]
+Type=simple
+User=root
+Group=root
+EnvironmentFile=/etc/chio/finding-worker.env
+ExecStartPre=/usr/bin/test -r /dev/kvm
+ExecStartPre=/usr/bin/test -w /dev/kvm
+ExecStartPre=/usr/bin/chio --json finding operator validate-hosted --profile /etc/chio/finding-hosted.json
+ExecStart=/usr/bin/chio-finding-worker --profile /etc/chio/finding-hosted.json --worker-id %H
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=120s
+KillSignal=SIGTERM
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=no
+ProtectSystem=strict
+ProtectHome=yes
+ProtectClock=yes
+ProtectControlGroups=no
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_VSOCK
+RestrictNamespaces=no
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+DevicePolicy=closed
+DeviceAllow=/dev/kvm rw
+ReadWritePaths=/var/lib/chio/finding-worker /run/chio/finding-worker /sys/fs/cgroup
+UMask=0077
+Delegate=yes
+
+[Install]
+WantedBy=multi-user.target

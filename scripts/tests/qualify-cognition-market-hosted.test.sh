@@ -4,15 +4,18 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 hosted="${repo_root}/scripts/qualify-cognition-market-hosted.sh"
 kvm="${repo_root}/scripts/qualify-cognition-market-kvm.sh"
+network="${repo_root}/scripts/qualify-cognition-market-network.sh"
+deployment="${repo_root}/scripts/check-cognition-market-deployment.sh"
 release="${repo_root}/scripts/qualify-release.sh"
 components="${repo_root}/config/cognition-market-components.json"
 code_workflow="${repo_root}/.github/workflows/cognition-market-hosted.yml"
 kvm_workflow="${repo_root}/.github/workflows/cognition-market-kvm-boundary.yml"
+network_workflow="${repo_root}/.github/workflows/cognition-market-network-canary.yml"
 old_promotion_workflow="${repo_root}/.github/workflows/cognition-market-promotion.yml"
 report_generator="${repo_root}/scripts/generate-cognition-market-hosted-report.py"
 report_schema="${repo_root}/spec/schemas/chio-finding/v2/hosted-qualification.schema.json"
 
-bash -n "${hosted}" "${kvm}"
+bash -n "${hosted}" "${kvm}" "${network}" "${deployment}"
 
 require_text() {
   local path="$1"
@@ -31,6 +34,11 @@ require_text "${hosted}" 'run_gate patch-integrity git diff --check'
 require_text "${hosted}" 'postgres-16-rls'
 require_text "${hosted}" 'cargo metadata --locked --manifest-path fuzz/Cargo.toml'
 require_text "${hosted}" 'cargo test -p chio-settle --all-targets'
+require_text "${hosted}" 'cargo test -p chio-finding-market-server --all-targets'
+require_text "${hosted}" 'scripts/check-cognition-market-deployment.sh'
+require_text "${hosted}" 'tests/test_cognition_market.py'
+require_text "${hosted}" 'npm --prefix sdks/typescript/chio-ts test'
+require_text "${hosted}" '-p chio-finding-market-server'
 require_text "${hosted}" 'cargo deny check'
 require_text "${hosted}" 'cargo vet check --locked'
 require_text "${hosted}" './scripts/qualify-cognition-market-kvm.sh'
@@ -95,12 +103,40 @@ require_text "${kvm}" '"workerBinarySha256": digest(worker_path_raw)'
 require_text "${kvm}" 'artifact-manifest.signed.json'
 require_text "${kvm}" "--expected-candidate \"\${candidate_sha}\""
 
+require_text "${network}" 'git status --porcelain=v1 --untracked-files=all'
+require_text "${network}" 'CHIO_FINDING_CANDIDATE_SHA'
+require_text "${network}" 'cargo build --locked -p chio-finding-market-canary --bin chio-finding-market-canary'
+require_text "${network}" 'canary_bin="$(realpath -e target/debug/chio-finding-market-canary)"'
+require_text "${network}" 'env -i "${canary_environment[@]}" "${canary_bin}"'
+require_text "${network}" 'unset \'
+require_text "${network}" '--seller-key-secret-env CHIO_FINDING_NETWORK_SELLER_KEY_SECRET'
+require_text "${network}" '--buyer-key-secret-env CHIO_FINDING_NETWORK_BUYER_KEY_SECRET'
+require_text "${network}" 'retryOutcome") != "exact_replay"'
+require_text "${network}" 'tenantIsolationDenied'
+require_text "${network}" 'artifact-manifest.signed.json'
+require_text "${network}" "--expected-candidate \"\${candidate_sha}\""
+if grep -F -- '--seller-key-secret ' "${network}" >/dev/null \
+  || grep -F -- '--buyer-key-secret ' "${network}" >/dev/null; then
+  echo "network qualification passed a secret as a command argument" >&2
+  exit 1
+fi
+
+require_text "${deployment}" 'image: [^[:space:]]+@sha256:[0-9a-f]{64}'
+require_text "${deployment}" 'ConditionPathExists=/dev/kvm'
+require_text "${deployment}" 'name: chio-finding-market-migrate'
+
 require_text "${release}" './scripts/qualify-cognition-market-hosted.sh --code-only'
 require_text "${code_workflow}" './scripts/qualify-cognition-market-hosted.sh --code-only'
 require_text "${code_workflow}" 'astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39'
 require_text "${code_workflow}" 'cargo install cargo-deny --locked --version 0.19.4'
 require_text "${components}" '.github/workflows/release-qualification.yml'
 require_text "${components}" '.github/workflows/cognition-market-kvm-boundary.yml'
+require_text "${components}" '.github/workflows/cognition-market-network-canary.yml'
+require_text "${components}" '.github/actionlint.yaml'
+require_text "${components}" 'crates/products/chio-finding-market-server/**'
+require_text "${components}" 'deploy/cognition-market/**'
+require_text "${components}" 'sdks/python/chio-sdk-python/**'
+require_text "${components}" 'sdks/typescript/chio-ts/**'
 if [[ -e "${old_promotion_workflow}" ]]; then
   echo "legacy promotion workflow must not survive the KVM boundary rename" >&2
   exit 1
@@ -134,6 +170,11 @@ require_text "${kvm_workflow}" './scripts/qualify-cognition-market-hosted.sh --k
 require_text "${kvm_workflow}" 'Require bounded KVM claims and digest binding'
 require_text "${kvm_workflow}" '"promotionReady": False'
 require_text "${code_workflow}" 'Require bounded code-only claims'
+require_text "${code_workflow}" 'crates/products/chio-finding-market-server/**'
+require_text "${code_workflow}" 'deploy/cognition-market/**'
+require_text "${code_workflow}" 'sdks/python/chio-sdk-python/**'
+require_text "${code_workflow}" 'sdks/typescript/chio-ts/**'
+require_text "${code_workflow}" '.github/workflows/cognition-market-network-canary.yml'
 require_text "${code_workflow}" '"promotionReady": False'
 require_text "${kvm_workflow}" 'cognition-market-hosted/artifact-manifest.signed.json'
 require_text "${kvm_workflow}" 'cognition-market-kvm/artifact-manifest.signed.json'
@@ -149,6 +190,15 @@ if [[ "$(grep -Fc 'git fetch --no-tags --force origin' "${kvm_workflow}")" -ne 2
   echo "KVM workflow must re-fetch the default branch before qualification and signing" >&2
   exit 1
 fi
+
+require_text "${network_workflow}" 'workflow_dispatch:'
+require_text "${network_workflow}" 'runs-on: [self-hosted, linux, x64, cognition-market, network, ephemeral, attested]'
+require_text "${network_workflow}" 'environment: cognition-market-dark'
+require_text "${network_workflow}" 'ref: ${{ github.sha }}'
+require_text "${network_workflow}" 'test "${candidate_sha}" = "${GITHUB_SHA}"'
+require_text "${network_workflow}" 'test "${candidate_sha}" = "${default_branch_sha}"'
+require_text "${network_workflow}" './scripts/qualify-cognition-market-network.sh'
+require_text "${network_workflow}" 'cognition-market-network-${{ github.sha }}'
 
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/chio-hosted-report.XXXXXX")"
 trap 'rm -rf "${test_root}"' EXIT

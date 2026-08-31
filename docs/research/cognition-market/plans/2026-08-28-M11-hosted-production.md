@@ -1,9 +1,9 @@
 # M11 Hosted Production Execution
 
-Status: hosted boundary implementation branch. Public multi-tenant activation
-is not part of this branch. Promotion of the boundary is blocked until every
-qualification command below passes on the exact release commit and the canary
-decision is `promote`.
+Status: dark hosted implementation. Public multi-tenant activation is not part
+of this branch. Promotion is blocked until the code, PostgreSQL, KVM, and
+authenticated network qualifications pass on the exact deployed release
+commit and the signed canary decision is `promote`.
 
 ## Objective
 
@@ -46,6 +46,12 @@ the profile and referenced files without following symlinks, verifies modes
 and image digests, resolves bounded secret references, validates native TLS or
 trusted-proxy material, preflights every remote key pin, and constructs the
 authentication and worker configurations.
+
+The shipped server executable accepts only the trusted-proxy edge mode and a
+loopback listener. The proxy peer, one exact `Forwarded` header, and a private
+proxy token are mandatory before routing. Native TLS remains a validated
+profile capability for other hosted consumers, but this deployment does not
+silently switch between edge modes.
 
 ## Durable execution
 
@@ -156,9 +162,10 @@ chio finding operator evaluate-canary \
 
 The ordinary hosted CI lane qualifies code, PostgreSQL 16.6, forced RLS,
 remote custody, settlement transports, the worker boundary, RustSec and
-duplicate-dependency policy, and cargo-vet attestations without making a
-production readiness claim. Code-only is the safe default; the explicit flag
-is retained for CI readability:
+duplicate-dependency policy, cargo-vet attestations, the hosted server, both
+hosted SDKs, and deployment contracts without making a production readiness
+claim. Code-only is the safe default; the explicit flag is retained for CI
+readability:
 
 ```bash
 scripts/qualify-cognition-market-hosted.sh --code-only
@@ -183,9 +190,19 @@ under `target/release-qualification/`. The KVM boundary workflow additionally
 applies and verifies keyless Sigstore signatures over both the KVM sub-manifest
 and the final hosted manifest that binds every gate plus the KVM manifest
 digest. Neither mode claims network qualification, production readiness, or
-promotion readiness. Those fields remain false until a real hosted listener
-and authenticated network canary are implemented and qualified. Full workspace
-build, test, Clippy, format, and release CI remain mandatory before deployment.
+promotion readiness. Those fields remain false. A separate manual workflow
+runs the authenticated network canary against the dark deployment and emits
+its own signed exact-candidate manifest:
+
+```bash
+scripts/qualify-cognition-market-network.sh
+```
+
+That canary proves only seller publication, later exact replay, exact buyer
+resolution, bounded catalog discovery, and denial when the buyer credential is
+reused under another tenant. It does not upgrade the hosted v2 report or make a
+public-traffic claim. Full workspace build, test, Clippy, format, and release CI
+remain mandatory before deployment.
 Each qualification script immediately re-verifies the emitted envelope against
 the checked-out commit and tree, `Cargo.lock`, canonical manifest bytes, every
 artifact digest and byte count, and the exact checksum file before reporting
@@ -203,19 +220,19 @@ in-guest cgroup-v2 process and `RLIMIT_NOFILE` ceilings into every accepted
 result. The real-KVM canary verifies that contract, but does not establish
 arbitrary guest semantic correctness.
 
-This branch does not ship a hosted network listener. The existing `chio finding
-operator serve` command remains the bounded single-operator SQLite pilot. The
-PostgreSQL crate provides tenant-scoped authentication, quotas, jobs, leases,
-spend reservations, and an integrity-checked aggregate journal, but those
-generic journal records are not replacements for the M0-M6 domain repositories
-until each domain command and projection is ported and qualified. No public
-request is therefore routed into these hosted primitives, and no customer
-traffic may be admitted from this branch.
+This branch ships a dark hosted listener, typed and signature-validating
+PostgreSQL domain journals, resumable SQLite import, tenant-scoped catalog
+reads, authenticated SDK clients, and immutable Kubernetes and KVM deployment
+contracts. SQLite remains local-only and is never mounted into either hosted
+production role. `/v1/findings/publish` preserves the raw signed Finding
+contract used by existing clients.
 
-Hosted activation requires a separately reviewed change that authenticates
-every configured credential mode at the edge, passes only the resulting tenant
-identity into transaction-scoped PostgreSQL operations, ports every market
-command and projection without weakening its signed-artifact or settlement
-invariants, and drives a real seller-to-buyer canary through that exact network
-surface. The component and KVM qualification claims above must not be read as
-evidence that this later activation work has shipped.
+The generic hosted event endpoints persist validated artifacts and verified
+event chains. They do not by themselves run the complete M0-M6 business
+orchestration, authorize a payment, dispatch settlement, or prove that a remote
+signer and external rail performed their side effects. Public and customer
+traffic therefore remains forbidden. Activation requires exact-release code,
+PostgreSQL, KVM, and network evidence plus a separately reviewed traffic
+promotion that binds those event writes to the existing command and settlement
+orchestrators. M7 bilateral escrow, auctions, and usage-gated stochastic R&D
+remain outside M11.

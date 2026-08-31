@@ -196,6 +196,7 @@ async fn network_canary(
         )
         .as_bytes(),
     );
+    let finding_sha256 = sha256_hex(&finding_bytes);
     let seller_key_id = read_canary_environment(seller_key_id_env)?;
     let seller_key_secret = Zeroizing::new(read_canary_environment(seller_key_secret_env)?);
     let buyer_key_id = read_canary_environment(buyer_key_id_env)?;
@@ -224,7 +225,15 @@ async fn network_canary(
     if first.outcome != "applied" && first.outcome != "exact_replay" {
         return Err("network_canary_publish_outcome_invalid");
     }
-    validate_network_mutation(&first, tenant_id, &finding.finding_id, &event_id)?;
+    validate_network_mutation(
+        &first,
+        tenant_id,
+        &finding.finding_id,
+        &event_id,
+        &first_request_id,
+        &finding_sha256,
+    )?;
+    tokio::time::sleep(Duration::from_secs(2)).await;
     let retry_request_id = sha256_hex(format!("{event_id}:retry").as_bytes());
     let retry = publish_network_finding(
         &client,
@@ -237,7 +246,14 @@ async fn network_canary(
         &finding_bytes,
     )
     .await?;
-    validate_network_mutation(&retry, tenant_id, &finding.finding_id, &event_id)?;
+    validate_network_mutation(
+        &retry,
+        tenant_id,
+        &finding.finding_id,
+        &event_id,
+        &retry_request_id,
+        &finding_sha256,
+    )?;
     if retry.outcome != "exact_replay" {
         return Err("network_canary_retry_not_exact");
     }
@@ -309,7 +325,7 @@ async fn network_canary(
         configuration_revision: profile.release.configuration_revision.clone(),
         tenant_id: tenant_id.to_owned(),
         finding_id: finding.finding_id,
-        finding_sha256: sha256_hex(&finding_bytes),
+        finding_sha256,
         event_id,
         first_outcome: first.outcome,
         retry_outcome: retry.outcome,
@@ -357,17 +373,15 @@ fn validate_network_mutation(
     tenant_id: &str,
     finding_id: &str,
     event_id: &str,
+    request_id: &str,
+    finding_sha256: &str,
 ) -> Result<(), &'static str> {
     if response.schema != "chio.finding.hosted-mutation-response.v1"
-        || response.request_id.len() != 64
+        || response.request_id != request_id
         || response.tenant_id != tenant_id
         || response.operation_id != event_id
         || response.resource_id != finding_id
-        || response.resource_sha256.len() != 64
-        || !response
-            .resource_sha256
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        || response.resource_sha256 != finding_sha256
     {
         return Err("network_canary_publish_binding_invalid");
     }
