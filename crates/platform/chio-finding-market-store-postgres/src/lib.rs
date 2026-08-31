@@ -12,6 +12,9 @@ use std::str::FromStr as _;
 use std::time::Duration;
 
 use chio_core_types::sha256_hex;
+pub use chio_finding_market_port::{
+    HostedApiKeyRecord, HostedPrincipal, HostedPrincipalRole, HostedTenantId,
+};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use sqlx::{PgPool, Postgres, Row as _, Transaction};
@@ -22,6 +25,7 @@ mod auth;
 mod checkpoints;
 mod domain;
 mod job_leases;
+mod ports;
 mod replication;
 mod retention;
 mod runtime_boundary;
@@ -36,8 +40,7 @@ pub(crate) use validation::{
 
 pub use aggregates::{HostedAggregateEvent, HostedAggregateHead, HostedAggregateKind};
 pub use auth::{
-    HostedApiKeyRecord, HostedPrincipal, HostedPrincipalLifecycleBody,
-    HostedPrincipalLifecycleOperation, HostedPrincipalRole, HostedSecurityEventOutcome,
+    HostedPrincipalLifecycleBody, HostedPrincipalLifecycleOperation, HostedSecurityEventOutcome,
     SignedHostedPrincipalLifecycleEvent, HOSTED_PRINCIPAL_LIFECYCLE_SCHEMA,
 };
 pub use checkpoints::{
@@ -119,7 +122,6 @@ const LEGACY_MIGRATIONS: &[(i64, &str, &str)] = &[
         include_str!("../migrations/0009_aggregate_checkpoints.sql"),
     ),
 ];
-const MAX_TENANT_ID_BYTES: usize = 128;
 const MAX_JOB_ID_BYTES: usize = 256;
 const MAX_JOB_KIND_BYTES: usize = 96;
 const GC_JOB_TOMBSTONE_CONSTRAINT: &str = "chio_finding_market_jobs_gc_tombstone_v1";
@@ -272,26 +274,6 @@ async fn bridge_legacy_migration_ledger(
         .map_err(unavailable)?;
     }
     Ok(())
-}
-
-/// A validated opaque tenant identity. It is always bound separately from
-/// caller-provided object identifiers in database primary keys.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct HostedTenantId(String);
-
-impl HostedTenantId {
-    pub fn new(value: impl Into<String>) -> Result<Self, HostedMarketStoreError> {
-        let value = value.into();
-        validate_identifier(&value, MAX_TENANT_ID_BYTES)
-            .map_err(|_| HostedMarketStoreError::Tenant)?;
-        Ok(Self(value))
-    }
-
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
 }
 
 /// TLS-required PostgreSQL pool configuration. The DSN is redacted from

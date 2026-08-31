@@ -5,7 +5,7 @@ fn tenant_ids_are_closed_and_bounded() {
     assert!(HostedTenantId::new("tenant:acme-1").is_ok());
     assert!(HostedTenantId::new("").is_err());
     assert!(HostedTenantId::new("tenant with spaces").is_err());
-    assert!(HostedTenantId::new("x".repeat(MAX_TENANT_ID_BYTES + 1)).is_err());
+    assert!(HostedTenantId::new("x".repeat(129)).is_err());
 }
 
 #[test]

@@ -2,15 +2,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use chio_core_types::capability::scope::Operation;
 use chio_core_types::capability::token::CapabilityToken;
 use chio_core_types::{canonical_json_bytes, sha256_hex, PublicKey};
-use chio_finding_market_store_postgres::{
-    HostedApiKeyRecord, HostedMarketStoreError, HostedPrincipal, HostedPrincipalRole,
-    HostedTenantId, PostgresFindingMarketStore,
+use chio_finding_market_port::{
+    HostedMarketPortError, HostedPrincipal, HostedPrincipalRole, HostedTenantId,
 };
 use chio_kernel::{DpopProof, DPOP_SCHEMA};
 use hmac::{Hmac, Mac as _};
@@ -203,117 +201,7 @@ impl ApiKeyPepper for StaticApiKeyPepper {
     }
 }
 
-#[async_trait]
-pub trait HostedAuthRepository: Send + Sync {
-    async fn principal_by_capability_key(
-        &self,
-        tenant: &HostedTenantId,
-        public_key_hex: &str,
-        now: u64,
-    ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError>;
-
-    async fn principal(
-        &self,
-        tenant: &HostedTenantId,
-        principal_id: &str,
-    ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError>;
-
-    async fn active_api_key(
-        &self,
-        tenant: &HostedTenantId,
-        key_id: &str,
-        now: u64,
-    ) -> Result<Option<HostedApiKeyRecord>, HostedMarketStoreError>;
-
-    async fn consume_dpop_nonce(
-        &self,
-        tenant: &HostedTenantId,
-        capability_id: &str,
-        nonce_sha256: &str,
-        valid_through: u64,
-        now: u64,
-        tenant_capacity: u64,
-    ) -> Result<bool, HostedMarketStoreError>;
-
-    async fn consume_capability_use(
-        &self,
-        tenant: &HostedTenantId,
-        capability_id: &str,
-        max_invocations: u32,
-        expires_at: u64,
-        now: u64,
-    ) -> Result<bool, HostedMarketStoreError>;
-}
-
-#[async_trait]
-impl HostedAuthRepository for PostgresFindingMarketStore {
-    async fn principal_by_capability_key(
-        &self,
-        tenant: &HostedTenantId,
-        public_key_hex: &str,
-        now: u64,
-    ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError> {
-        self.get_principal_by_capability_key(tenant, public_key_hex, now)
-            .await
-    }
-
-    async fn principal(
-        &self,
-        tenant: &HostedTenantId,
-        principal_id: &str,
-    ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError> {
-        self.get_principal(tenant, principal_id).await
-    }
-
-    async fn active_api_key(
-        &self,
-        tenant: &HostedTenantId,
-        key_id: &str,
-        now: u64,
-    ) -> Result<Option<HostedApiKeyRecord>, HostedMarketStoreError> {
-        self.get_active_api_key(tenant, key_id, now).await
-    }
-
-    async fn consume_dpop_nonce(
-        &self,
-        tenant: &HostedTenantId,
-        capability_id: &str,
-        nonce_sha256: &str,
-        valid_through: u64,
-        now: u64,
-        tenant_capacity: u64,
-    ) -> Result<bool, HostedMarketStoreError> {
-        PostgresFindingMarketStore::consume_dpop_nonce(
-            self,
-            tenant,
-            capability_id,
-            nonce_sha256,
-            valid_through,
-            now,
-            tenant_capacity,
-        )
-        .await
-    }
-
-    async fn consume_capability_use(
-        &self,
-        tenant: &HostedTenantId,
-        capability_id: &str,
-        max_invocations: u32,
-        expires_at: u64,
-        now: u64,
-    ) -> Result<bool, HostedMarketStoreError> {
-        PostgresFindingMarketStore::consume_capability_use(
-            self,
-            tenant,
-            capability_id,
-            max_invocations,
-            expires_at,
-            now,
-        )
-        .await
-    }
-}
+pub use chio_finding_market_port::HostedAuthPort as HostedAuthRepository;
 
 pub struct HostedAuthenticator {
     config: HostedAuthenticatorConfig,
@@ -673,10 +561,10 @@ fn require_role(
     Ok(())
 }
 
-fn map_store(error: HostedMarketStoreError) -> HostedEdgeError {
+fn map_store(error: HostedMarketPortError) -> HostedEdgeError {
     match error {
-        HostedMarketStoreError::Capacity => HostedEdgeError::CapacityUnavailable,
-        HostedMarketStoreError::Unavailable => HostedEdgeError::DependencyUnavailable,
+        HostedMarketPortError::Capacity => HostedEdgeError::CapacityUnavailable,
+        HostedMarketPortError::Unavailable => HostedEdgeError::DependencyUnavailable,
         _ => HostedEdgeError::AuthenticationFailed,
     }
 }
@@ -707,9 +595,11 @@ fn valid_digest(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
     use chio_core::capability::scope::{ChioScope, ToolGrant};
     use chio_core::capability::token::CapabilityTokenBody;
     use chio_core::Keypair;
+    use chio_finding_market_port::HostedApiKeyRecord;
     use chio_kernel::DpopProofBody;
     use std::sync::Mutex;
 
@@ -727,7 +617,7 @@ mod tests {
             _tenant: &HostedTenantId,
             _public_key_hex: &str,
             _now: u64,
-        ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError> {
+        ) -> Result<Option<HostedPrincipal>, HostedMarketPortError> {
             Ok(Some(self.principal.clone()))
         }
 
@@ -735,7 +625,7 @@ mod tests {
             &self,
             _tenant: &HostedTenantId,
             _principal_id: &str,
-        ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError> {
+        ) -> Result<Option<HostedPrincipal>, HostedMarketPortError> {
             Ok(Some(self.principal.clone()))
         }
 
@@ -744,7 +634,7 @@ mod tests {
             _tenant: &HostedTenantId,
             _key_id: &str,
             _now: u64,
-        ) -> Result<Option<HostedApiKeyRecord>, HostedMarketStoreError> {
+        ) -> Result<Option<HostedApiKeyRecord>, HostedMarketPortError> {
             Ok(Some(self.key.clone()))
         }
 
@@ -756,7 +646,7 @@ mod tests {
             _valid_through: u64,
             _now: u64,
             _tenant_capacity: u64,
-        ) -> Result<bool, HostedMarketStoreError> {
+        ) -> Result<bool, HostedMarketPortError> {
             self.nonce_fresh
                 .lock()
                 .map(|mut value| {
@@ -764,7 +654,7 @@ mod tests {
                     *value = false;
                     admitted
                 })
-                .map_err(|_| HostedMarketStoreError::Unavailable)
+                .map_err(|_| HostedMarketPortError::Unavailable)
         }
 
         async fn consume_capability_use(
@@ -774,11 +664,11 @@ mod tests {
             _max_invocations: u32,
             _expires_at: u64,
             _now: u64,
-        ) -> Result<bool, HostedMarketStoreError> {
+        ) -> Result<bool, HostedMarketPortError> {
             self.capability_available
                 .lock()
                 .map(|value| *value)
-                .map_err(|_| HostedMarketStoreError::Unavailable)
+                .map_err(|_| HostedMarketPortError::Unavailable)
         }
     }
 

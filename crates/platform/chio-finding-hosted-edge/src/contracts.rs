@@ -1,4 +1,4 @@
-use chio_finding_market_store_postgres::HostedTenantId;
+use chio_finding_market_port::HostedTenantId;
 use serde::Serialize;
 use url::Url;
 
@@ -361,7 +361,7 @@ fn valid_target(value: &str) -> bool {
 mod tests {
     use std::path::Path;
 
-    use chio_finding_market_store_postgres::HostedPrincipalRole;
+    use chio_finding_market_port::HostedPrincipalRole;
     use chio_test_support::prelude::*;
     use serde_json::json;
 

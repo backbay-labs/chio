@@ -19,39 +19,6 @@ pub const HOSTED_PRINCIPAL_LIFECYCLE_SCHEMA: &str = "chio.finding.hosted-princip
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum HostedPrincipalRole {
-    Buyer,
-    Seller,
-    Evaluator,
-    Auditor,
-    Operator,
-}
-
-impl HostedPrincipalRole {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Buyer => "buyer",
-            Self::Seller => "seller",
-            Self::Evaluator => "evaluator",
-            Self::Auditor => "auditor",
-            Self::Operator => "operator",
-        }
-    }
-
-    pub(crate) fn parse(value: &str) -> Result<Self, HostedMarketStoreError> {
-        match value {
-            "buyer" => Ok(Self::Buyer),
-            "seller" => Ok(Self::Seller),
-            "evaluator" => Ok(Self::Evaluator),
-            "auditor" => Ok(Self::Auditor),
-            "operator" => Ok(Self::Operator),
-            _ => Err(HostedMarketStoreError::DigestMismatch),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
 pub enum HostedPrincipalLifecycleOperation {
     Provision,
     Disable,
@@ -98,31 +65,6 @@ pub struct HostedPrincipalLifecycleBody {
 }
 
 pub type SignedHostedPrincipalLifecycleEvent = SignedExportEnvelope<HostedPrincipalLifecycleBody>;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HostedPrincipal {
-    pub tenant_id: HostedTenantId,
-    pub principal_id: String,
-    pub role: HostedPrincipalRole,
-    pub capability_public_key_hex: Option<String>,
-    pub enabled: bool,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HostedApiKeyRecord {
-    pub tenant_id: HostedTenantId,
-    pub key_id: String,
-    pub principal_id: String,
-    pub verifier_sha256: String,
-    pub allowed_actions: BTreeSet<String>,
-    pub active_from: u64,
-    pub expires_at: u64,
-    pub revoked_at: Option<u64>,
-    pub rotated_from_key_id: Option<String>,
-    pub created_at: u64,
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HostedSecurityEventOutcome {
@@ -889,7 +831,11 @@ fn principal_from_row(
     let principal_id: String = row.try_get(0).map_err(unavailable)?;
     validate_identifier(&principal_id, MAX_PRINCIPAL_ID_BYTES)
         .map_err(|()| HostedMarketStoreError::DigestMismatch)?;
-    let role = HostedPrincipalRole::parse(&row.try_get::<String, _>(1).map_err(unavailable)?)?;
+    let role = row
+        .try_get::<String, _>(1)
+        .map_err(unavailable)?
+        .parse::<HostedPrincipalRole>()
+        .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
     let capability_public_key_hex: Option<String> = row.try_get(2).map_err(unavailable)?;
     if let Some(key) = capability_public_key_hex.as_deref() {
         let parsed = chio_core_types::PublicKey::from_hex(key)

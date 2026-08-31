@@ -8,6 +8,11 @@
 
 #![forbid(unsafe_code)]
 
+pub use chio_finding_market_port::{
+    HostedApiKeyLifecyclePort, HostedApiKeyRecord, HostedAuthPort, HostedMarketPortError,
+    HostedPortWriteOutcome, HostedPrincipal, HostedPrincipalRole, HostedTenantId,
+};
+
 mod auth;
 mod contracts;
 mod error;

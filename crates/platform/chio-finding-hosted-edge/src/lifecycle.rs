@@ -2,16 +2,13 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{
     canonical_json_bytes, sha256_hex, PublicKey, SigningAlgorithm, SigningBackend,
 };
-use chio_finding_market_store_postgres::{
-    HostedJobWriteOutcome, HostedMarketStoreError, HostedTenantId, PostgresFindingMarketStore,
-};
+use chio_finding_market_port::{HostedMarketPortError, HostedPortWriteOutcome, HostedTenantId};
 use rand_core::{OsRng, RngCore as _};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize as _, Zeroizing};
@@ -19,8 +16,6 @@ use zeroize::{Zeroize as _, Zeroizing};
 use crate::{ApiKeyPepper, HostedEdgeError};
 
 pub const HOSTED_API_KEY_LIFECYCLE_SCHEMA: &str = "chio.finding.hosted-api-key-lifecycle.v1";
-const API_KEY_ISSUED_EVENT_KIND: &str = "hosted.api_key.issued";
-const API_KEY_REVOKED_EVENT_KIND: &str = "hosted.api_key.revoked";
 const MAX_IDENTIFIER_BYTES: usize = 256;
 const MAX_KEY_ID_BYTES: usize = 128;
 const MAX_ACTION_BYTES: usize = 96;
@@ -147,86 +142,7 @@ pub struct HostedIssuedApiKey {
     pub receipt: SignedHostedApiKeyLifecycleEvent,
 }
 
-#[async_trait]
-pub trait HostedApiKeyLifecycleRepository: Send + Sync {
-    #[allow(clippy::too_many_arguments)]
-    async fn issue_with_event(
-        &self,
-        tenant: &HostedTenantId,
-        key_id: &str,
-        principal_id: &str,
-        verifier_sha256: &str,
-        allowed_actions: &BTreeSet<String>,
-        active_from: u64,
-        expires_at: u64,
-        rotated_from_key_id: Option<&str>,
-        event_id: &str,
-        artifact_json: &[u8],
-        now: u64,
-    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError>;
-
-    async fn revoke_with_event(
-        &self,
-        tenant: &HostedTenantId,
-        key_id: &str,
-        revoked_at: u64,
-        event_id: &str,
-        artifact_json: &[u8],
-    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError>;
-}
-
-#[async_trait]
-impl HostedApiKeyLifecycleRepository for PostgresFindingMarketStore {
-    async fn issue_with_event(
-        &self,
-        tenant: &HostedTenantId,
-        key_id: &str,
-        principal_id: &str,
-        verifier_sha256: &str,
-        allowed_actions: &BTreeSet<String>,
-        active_from: u64,
-        expires_at: u64,
-        rotated_from_key_id: Option<&str>,
-        event_id: &str,
-        artifact_json: &[u8],
-        now: u64,
-    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
-        self.put_api_key_with_security_event(
-            tenant,
-            key_id,
-            principal_id,
-            verifier_sha256,
-            allowed_actions,
-            active_from,
-            expires_at,
-            rotated_from_key_id,
-            event_id,
-            API_KEY_ISSUED_EVENT_KIND,
-            artifact_json,
-            now,
-        )
-        .await
-    }
-
-    async fn revoke_with_event(
-        &self,
-        tenant: &HostedTenantId,
-        key_id: &str,
-        revoked_at: u64,
-        event_id: &str,
-        artifact_json: &[u8],
-    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
-        self.revoke_api_key_with_security_event(
-            tenant,
-            key_id,
-            revoked_at,
-            event_id,
-            API_KEY_REVOKED_EVENT_KIND,
-            artifact_json,
-        )
-        .await
-    }
-}
+pub use chio_finding_market_port::HostedApiKeyLifecyclePort as HostedApiKeyLifecycleRepository;
 
 pub struct HostedApiKeyManager {
     repository: Arc<dyn HostedApiKeyLifecycleRepository>,
@@ -300,7 +216,7 @@ impl HostedApiKeyManager {
             .map_err(map_store)?;
         if !matches!(
             outcome,
-            HostedJobWriteOutcome::Inserted | HostedJobWriteOutcome::ExactReplay
+            HostedPortWriteOutcome::Inserted | HostedPortWriteOutcome::ExactReplay
         ) {
             return Err(HostedEdgeError::DependencyUnavailable);
         }
@@ -453,10 +369,10 @@ fn valid_bounded_identifier(value: &str, maximum: usize) -> bool {
         })
 }
 
-fn map_store(error: HostedMarketStoreError) -> HostedEdgeError {
+fn map_store(error: HostedMarketPortError) -> HostedEdgeError {
     match error {
-        HostedMarketStoreError::Capacity => HostedEdgeError::CapacityUnavailable,
-        HostedMarketStoreError::Unavailable => HostedEdgeError::DependencyUnavailable,
+        HostedMarketPortError::Capacity => HostedEdgeError::CapacityUnavailable,
+        HostedMarketPortError::Unavailable => HostedEdgeError::DependencyUnavailable,
         _ => HostedEdgeError::InvalidRequest,
     }
 }
@@ -464,6 +380,7 @@ fn map_store(error: HostedMarketStoreError) -> HostedEdgeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
     use chio_core::Ed25519Backend;
     use std::sync::Mutex;
 
@@ -488,25 +405,25 @@ mod tests {
             _event_id: &str,
             artifact_json: &[u8],
             _now: u64,
-        ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        ) -> Result<HostedPortWriteOutcome, HostedMarketPortError> {
             let candidate = (verifier_sha256.to_owned(), artifact_json.to_vec());
             let mut issued = self
                 .issued
                 .lock()
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(|_| HostedMarketPortError::Unavailable)?;
             if let Some(existing) = issued.as_ref() {
                 return if existing == &candidate {
-                    Ok(HostedJobWriteOutcome::ExactReplay)
+                    Ok(HostedPortWriteOutcome::ExactReplay)
                 } else {
-                    Err(HostedMarketStoreError::Conflict)
+                    Err(HostedMarketPortError::Conflict)
                 };
             }
             *issued = Some(candidate);
             self.artifacts
                 .lock()
-                .map_err(|_| HostedMarketStoreError::Unavailable)?
+                .map_err(|_| HostedMarketPortError::Unavailable)?
                 .push(artifact_json.to_vec());
-            Ok(HostedJobWriteOutcome::Inserted)
+            Ok(HostedPortWriteOutcome::Inserted)
         }
 
         async fn revoke_with_event(
@@ -516,12 +433,12 @@ mod tests {
             _revoked_at: u64,
             _event_id: &str,
             artifact_json: &[u8],
-        ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        ) -> Result<HostedPortWriteOutcome, HostedMarketPortError> {
             self.artifacts
                 .lock()
-                .map_err(|_| HostedMarketStoreError::Unavailable)?
+                .map_err(|_| HostedMarketPortError::Unavailable)?
                 .push(artifact_json.to_vec());
-            Ok(HostedJobWriteOutcome::Inserted)
+            Ok(HostedPortWriteOutcome::Inserted)
         }
     }
 

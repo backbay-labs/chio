@@ -834,8 +834,11 @@ fn principal_rollback_record(
     let operation = super::HostedPrincipalLifecycleOperation::parse(
         &row.try_get::<String, _>(3).map_err(unavailable)?,
     )?;
-    let role =
-        super::HostedPrincipalRole::parse(&row.try_get::<String, _>(4).map_err(unavailable)?)?;
+    let role = row
+        .try_get::<String, _>(4)
+        .map_err(unavailable)?
+        .parse::<super::HostedPrincipalRole>()
+        .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
     let capability_public_key_hex: Option<String> = row.try_get(5).map_err(unavailable)?;
     let overlap_expires_at = row
         .try_get::<Option<i64>, _>(6)

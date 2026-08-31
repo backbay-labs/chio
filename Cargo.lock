@@ -3651,7 +3651,7 @@ dependencies = [
  "base64 0.22.1",
  "chio-core",
  "chio-core-types",
- "chio-finding-market-store-postgres",
+ "chio-finding-market-port",
  "chio-kernel",
  "chio-spec-validate",
  "chio-test-support",
@@ -3708,12 +3708,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-finding-market-port"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-finding-market-store-postgres"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-core-types",
  "chio-finding",
  "chio-finding-market-migrations",
+ "chio-finding-market-port",
  "serde",
  "serde_json",
  "sqlx",
