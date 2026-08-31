@@ -12,7 +12,7 @@ use chio_finding::{
 use chio_open_market::penalty::SignedOpenMarketPenalty;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use sqlx::Row as _;
+use sqlx::{Postgres, Row as _, Transaction};
 
 use super::{
     aggregates::aggregate_event_digest, checked_i64, checked_nonnegative_i64, stored_u64,
@@ -471,6 +471,26 @@ impl PostgresFindingMarketStore {
             committed_at,
         )?;
         let mut transaction = self.begin_tenant(tenant).await?;
+        if let Some(exact) = retained_event_matches(
+            &mut transaction,
+            tenant,
+            aggregate_kind,
+            event,
+            revision,
+            expected_event_sha256,
+            &payload_sha256,
+        )
+        .await?
+        {
+            if !exact {
+                return Err(HostedMarketStoreError::Conflict);
+            }
+            transaction
+                .commit()
+                .await
+                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            return Ok(HostedJobWriteOutcome::ExactReplay);
+        }
         let outcome: i16 = sqlx::query_scalar(
             r#"SELECT chio_finding_market_append_domain_event(
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
@@ -497,7 +517,22 @@ impl PostgresFindingMarketStore {
         let outcome = match outcome {
             0 => HostedJobWriteOutcome::Inserted,
             1 => HostedJobWriteOutcome::ExactReplay,
-            2 => return Err(HostedMarketStoreError::Conflict),
+            2 => {
+                match retained_event_matches(
+                    &mut transaction,
+                    tenant,
+                    aggregate_kind,
+                    event,
+                    revision,
+                    expected_event_sha256,
+                    &payload_sha256,
+                )
+                .await?
+                {
+                    Some(true) => HostedJobWriteOutcome::ExactReplay,
+                    Some(false) | None => return Err(HostedMarketStoreError::Conflict),
+                }
+            }
             _ => return Err(HostedMarketStoreError::Unavailable),
         };
         transaction
@@ -596,6 +631,50 @@ impl PostgresFindingMarketStore {
         })
         .transpose()
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn retained_event_matches(
+    transaction: &mut Transaction<'_, Postgres>,
+    tenant: &HostedTenantId,
+    aggregate_kind: HostedAggregateKind,
+    event: &HostedMarketDomainEvent,
+    revision: u64,
+    expected_event_sha256: Option<&str>,
+    payload_sha256: &str,
+) -> Result<Option<bool>, HostedMarketStoreError> {
+    let row = sqlx::query(
+        r#"SELECT aggregate_kind, aggregate_id, revision, event_kind,
+                  previous_event_sha256, payload_sha256, payload_json
+           FROM chio_finding_market_aggregate_events
+           WHERE tenant_id = $1 AND event_id = $2"#,
+    )
+    .bind(tenant.as_str())
+    .bind(&event.event_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(unavailable)?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let retained_kind: String = row.try_get("aggregate_kind").map_err(unavailable)?;
+    let retained_id: String = row.try_get("aggregate_id").map_err(unavailable)?;
+    let retained_revision: i64 = row.try_get("revision").map_err(unavailable)?;
+    let retained_event_kind: String = row.try_get("event_kind").map_err(unavailable)?;
+    let retained_previous: Option<String> =
+        row.try_get("previous_event_sha256").map_err(unavailable)?;
+    let retained_payload_sha256: String = row.try_get("payload_sha256").map_err(unavailable)?;
+    let retained_payload: Vec<u8> = row.try_get("payload_json").map_err(unavailable)?;
+    let expected_revision = checked_nonnegative_i64(revision, "domain revision")?;
+    Ok(Some(
+        retained_kind == aggregate_kind.label()
+            && retained_id == event.aggregate_id
+            && retained_revision == expected_revision
+            && retained_event_kind == event.event_kind.event_kind()
+            && retained_previous.as_deref() == expected_event_sha256
+            && retained_payload_sha256 == payload_sha256
+            && retained_payload == event.payload_json,
+    ))
 }
 
 pub(crate) fn validate_persisted_domain_payload(

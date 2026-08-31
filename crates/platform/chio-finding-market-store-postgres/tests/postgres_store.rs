@@ -957,6 +957,19 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         HostedJobWriteOutcome::ExactReplay,
         "an exact response-loss retry must bypass the newly stale replication gate"
     );
+    assert_eq!(
+        store
+            .append_domain_event(
+                &tenant_a,
+                &advanced_event,
+                head.revision,
+                Some(&head.event_sha256),
+                authority_now + 1,
+            )
+            .await?,
+        HostedJobWriteOutcome::ExactReplay,
+        "server-owned retry time must not change the idempotent event identity"
+    );
     let advanced_projection_revision: i64 = sqlx::query_scalar(
         "SELECT revision FROM chio_finding_market_domain_projections WHERE tenant_id = $1 AND aggregate_kind = 'finding' AND aggregate_id = $2",
     )
