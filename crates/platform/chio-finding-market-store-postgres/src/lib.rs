@@ -22,6 +22,7 @@ use zeroize::Zeroize as _;
 
 mod aggregates;
 mod auth;
+mod catalog;
 mod checkpoints;
 mod domain;
 mod job_leases;
@@ -43,6 +44,7 @@ pub use auth::{
     HostedPrincipalLifecycleBody, HostedPrincipalLifecycleOperation, HostedSecurityEventOutcome,
     SignedHostedPrincipalLifecycleEvent, HOSTED_PRINCIPAL_LIFECYCLE_SCHEMA,
 };
+pub use catalog::{HostedDomainPage, HostedDomainWrite};
 pub use checkpoints::{
     HostedAggregateCheckpointBody, HostedAggregateCheckpointRecord,
     SignedHostedAggregateCheckpoint, HOSTED_AGGREGATE_CHECKPOINT_SCHEMA,

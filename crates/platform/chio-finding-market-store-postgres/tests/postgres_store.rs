@@ -12,9 +12,9 @@ use chio_finding::{
 };
 use chio_finding_market_store_postgres::{
     HostedAggregateCheckpointBody, HostedAggregateKind, HostedArchiveManifestBody,
-    HostedAuthorityTransitionBody, HostedAuthorityTransitionOperation, HostedGcReceiptBody,
-    HostedJobState, HostedJobWriteOutcome, HostedJournalCheckpointBody, HostedLegalHoldAction,
-    HostedLegalHoldBody, HostedMarketAuthority, HostedMarketDomainArtifact,
+    HostedAuthorityTransitionBody, HostedAuthorityTransitionOperation, HostedDomainWrite,
+    HostedGcReceiptBody, HostedJobState, HostedJobWriteOutcome, HostedJournalCheckpointBody,
+    HostedLegalHoldAction, HostedLegalHoldBody, HostedMarketAuthority, HostedMarketDomainArtifact,
     HostedMarketDomainEvent, HostedMarketDomainEventKind, HostedMarketStoreError,
     HostedPrincipalLifecycleBody, HostedPrincipalLifecycleOperation,
     HostedPrincipalReplicationEventBody, HostedPrincipalRole, HostedReplicationCheckBody,
@@ -629,6 +629,19 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             .await?,
         HostedJobWriteOutcome::ExactReplay
     );
+    let catalog = store.catalog_findings(&tenant_a, None, 10).await?;
+    assert_eq!(catalog.items.len(), 1);
+    assert_eq!(catalog.items[0].aggregate_id, market_finding_id);
+    assert!(catalog.next_cursor.is_none());
+    assert!(store
+        .catalog_findings(&tenant_b, None, 10)
+        .await?
+        .items
+        .is_empty());
+    assert!(matches!(
+        store.catalog_findings(&tenant_a, None, 0).await,
+        Err(HostedMarketStoreError::Invalid("catalog limit"))
+    ));
     let provision_sha256 = sha256_hex(&canonical_json_bytes(&provision)?);
     let rotated_capability_signer = Keypair::from_seed(&[86_u8; 32]);
     let rotation = SignedExportEnvelope::sign(
@@ -904,6 +917,16 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         .aggregate_head(&tenant_b, HostedAggregateKind::Finding, &market_finding_id,)
         .await?
         .is_none());
+    assert_eq!(
+        store
+            .publish_finding(
+                &tenant_a,
+                &market_finding,
+                &HostedDomainWrite::new("challenge-a-submitted", 0, None, 1_700_000_001,)?,
+            )
+            .await?,
+        HostedJobWriteOutcome::ExactReplay
+    );
     let advanced_event = HostedMarketDomainEvent::from_artifact(
         market_finding_id.clone(),
         "challenge-a-evaluating",

@@ -1,0 +1,361 @@
+use chio_core_types::sha256_hex;
+use chio_finding::{
+    Finding, SignedFindingAdmission, SignedFindingMarketTerms, SignedFindingStatusEpoch,
+    SignedFindingVerifiedFixSubmission, SignedFindingVoluntaryRetraction,
+};
+use sqlx::Row as _;
+
+use crate::{
+    stored_u64, unavailable, validate_digest, validate_identifier, HostedJobWriteOutcome,
+    HostedMarketDomainArtifact, HostedMarketDomainEvent, HostedMarketDomainEventKind,
+    HostedMarketDomainProjection, HostedMarketStoreError, HostedTenantId,
+    PostgresFindingMarketStore,
+};
+
+const MAX_CATALOG_PAGE: u32 = 100;
+const MAX_EVENT_ID_BYTES: usize = 256;
+const MAX_AGGREGATE_ID_BYTES: usize = 256;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostedDomainPage {
+    pub items: Vec<HostedMarketDomainProjection>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostedDomainWrite {
+    pub event_id: String,
+    pub expected_revision: u64,
+    pub expected_event_sha256: Option<String>,
+    pub committed_at: u64,
+}
+
+impl HostedDomainWrite {
+    pub fn new(
+        event_id: impl Into<String>,
+        expected_revision: u64,
+        expected_event_sha256: Option<String>,
+        committed_at: u64,
+    ) -> Result<Self, HostedMarketStoreError> {
+        let write = Self {
+            event_id: event_id.into(),
+            expected_revision,
+            expected_event_sha256,
+            committed_at,
+        };
+        validate_identifier(&write.event_id, MAX_EVENT_ID_BYTES)
+            .map_err(|()| HostedMarketStoreError::Invalid("event_id"))?;
+        if write.committed_at == 0
+            || (write.expected_revision == 0 && write.expected_event_sha256.is_some())
+            || (write.expected_revision > 0
+                && write
+                    .expected_event_sha256
+                    .as_deref()
+                    .is_none_or(|digest| validate_digest(digest, "expected event").is_err()))
+        {
+            return Err(HostedMarketStoreError::Invalid("domain write"));
+        }
+        Ok(write)
+    }
+}
+
+impl PostgresFindingMarketStore {
+    pub async fn catalog_findings(
+        &self,
+        tenant: &HostedTenantId,
+        after: Option<&str>,
+        limit: u32,
+    ) -> Result<HostedDomainPage, HostedMarketStoreError> {
+        self.list_domain_projections(
+            tenant,
+            HostedMarketDomainEventKind::FindingPublished,
+            after,
+            limit,
+        )
+        .await
+    }
+
+    pub async fn catalog_listings(
+        &self,
+        tenant: &HostedTenantId,
+        after: Option<&str>,
+        limit: u32,
+    ) -> Result<HostedDomainPage, HostedMarketStoreError> {
+        self.list_domain_projections(
+            tenant,
+            HostedMarketDomainEventKind::ListingActivated,
+            after,
+            limit,
+        )
+        .await
+    }
+
+    pub async fn catalog_admissions(
+        &self,
+        tenant: &HostedTenantId,
+        after: Option<&str>,
+        limit: u32,
+    ) -> Result<HostedDomainPage, HostedMarketStoreError> {
+        self.list_domain_projections(
+            tenant,
+            HostedMarketDomainEventKind::AdmissionAdmitted,
+            after,
+            limit,
+        )
+        .await
+    }
+
+    pub async fn catalog_status_epochs(
+        &self,
+        tenant: &HostedTenantId,
+        after: Option<&str>,
+        limit: u32,
+    ) -> Result<HostedDomainPage, HostedMarketStoreError> {
+        self.list_domain_projections(
+            tenant,
+            HostedMarketDomainEventKind::StatusPublished,
+            after,
+            limit,
+        )
+        .await
+    }
+
+    pub async fn catalog_verified_fixes(
+        &self,
+        tenant: &HostedTenantId,
+        after: Option<&str>,
+        limit: u32,
+    ) -> Result<HostedDomainPage, HostedMarketStoreError> {
+        self.list_domain_projections(
+            tenant,
+            HostedMarketDomainEventKind::VerifiedFixSubmitted,
+            after,
+            limit,
+        )
+        .await
+    }
+
+    pub async fn catalog_retractions(
+        &self,
+        tenant: &HostedTenantId,
+        after: Option<&str>,
+        limit: u32,
+    ) -> Result<HostedDomainPage, HostedMarketStoreError> {
+        self.list_domain_projections(
+            tenant,
+            HostedMarketDomainEventKind::RetractionVoluntary,
+            after,
+            limit,
+        )
+        .await
+    }
+
+    pub async fn list_domain_projections(
+        &self,
+        tenant: &HostedTenantId,
+        event_kind: HostedMarketDomainEventKind,
+        after: Option<&str>,
+        limit: u32,
+    ) -> Result<HostedDomainPage, HostedMarketStoreError> {
+        if limit == 0 || limit > MAX_CATALOG_PAGE {
+            return Err(HostedMarketStoreError::Invalid("catalog limit"));
+        }
+        if let Some(after) = after {
+            validate_identifier(after, MAX_AGGREGATE_ID_BYTES)
+                .map_err(|()| HostedMarketStoreError::Invalid("catalog cursor"))?;
+        }
+        let fetch_limit = i64::from(limit) + 1;
+        let mut transaction = self.begin_tenant_snapshot(tenant).await?;
+        let rows = sqlx::query(
+            r#"SELECT aggregate_id, revision, event_sha256, event_kind,
+                      artifact_schema, payload_sha256, payload_json, updated_at
+               FROM chio_finding_market_domain_projections
+               WHERE tenant_id = $1
+                 AND aggregate_kind = $2
+                 AND ($3::TEXT IS NULL OR aggregate_id > $3)
+               ORDER BY aggregate_id ASC
+               LIMIT $4"#,
+        )
+        .bind(tenant.as_str())
+        .bind(event_kind.aggregate_kind().label())
+        .bind(after)
+        .bind(fetch_limit)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
+
+        let has_more = rows.len() > limit as usize;
+        let mut items = rows
+            .iter()
+            .take(limit as usize)
+            .map(|row| projection_from_catalog_row(tenant, event_kind, row))
+            .collect::<Result<Vec<_>, _>>()?;
+        let next_cursor = if has_more {
+            items.last().map(|item| item.aggregate_id.clone())
+        } else {
+            None
+        };
+        items.shrink_to_fit();
+        Ok(HostedDomainPage { items, next_cursor })
+    }
+
+    pub async fn publish_finding(
+        &self,
+        tenant: &HostedTenantId,
+        artifact: &Finding,
+        write: &HostedDomainWrite,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        self.append_typed_artifact(
+            tenant,
+            &artifact.finding_id,
+            &HostedMarketDomainArtifact::Finding(artifact.clone()),
+            write,
+        )
+        .await
+    }
+
+    pub async fn activate_listing(
+        &self,
+        tenant: &HostedTenantId,
+        artifact: &SignedFindingMarketTerms,
+        write: &HostedDomainWrite,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        self.append_typed_artifact(
+            tenant,
+            &artifact.body.listing_id,
+            &HostedMarketDomainArtifact::MarketTerms(artifact.clone()),
+            write,
+        )
+        .await
+    }
+
+    pub async fn admit_finding(
+        &self,
+        tenant: &HostedTenantId,
+        artifact: &SignedFindingAdmission,
+        write: &HostedDomainWrite,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        self.append_typed_artifact(
+            tenant,
+            &artifact.body.admission_id,
+            &HostedMarketDomainArtifact::Admission(artifact.clone()),
+            write,
+        )
+        .await
+    }
+
+    pub async fn publish_status_epoch(
+        &self,
+        tenant: &HostedTenantId,
+        artifact: &SignedFindingStatusEpoch,
+        write: &HostedDomainWrite,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        self.append_typed_artifact(
+            tenant,
+            &artifact.body.status_epoch_id,
+            &HostedMarketDomainArtifact::StatusEpoch(artifact.clone()),
+            write,
+        )
+        .await
+    }
+
+    pub async fn submit_verified_fix(
+        &self,
+        tenant: &HostedTenantId,
+        artifact: &SignedFindingVerifiedFixSubmission,
+        write: &HostedDomainWrite,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        self.append_typed_artifact(
+            tenant,
+            &artifact.body.submission_id,
+            &HostedMarketDomainArtifact::VerifiedFix(artifact.clone()),
+            write,
+        )
+        .await
+    }
+
+    pub async fn record_voluntary_retraction(
+        &self,
+        tenant: &HostedTenantId,
+        artifact: &SignedFindingVoluntaryRetraction,
+        write: &HostedDomainWrite,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        self.append_typed_artifact(
+            tenant,
+            &artifact.body.intent_id,
+            &HostedMarketDomainArtifact::Retraction(artifact.clone()),
+            write,
+        )
+        .await
+    }
+
+    async fn append_typed_artifact(
+        &self,
+        tenant: &HostedTenantId,
+        aggregate_id: &str,
+        artifact: &HostedMarketDomainArtifact,
+        write: &HostedDomainWrite,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        let event =
+            HostedMarketDomainEvent::from_artifact(aggregate_id, &write.event_id, artifact)?;
+        self.append_domain_event(
+            tenant,
+            &event,
+            write.expected_revision,
+            write.expected_event_sha256.as_deref(),
+            write.committed_at,
+        )
+        .await
+    }
+}
+
+fn projection_from_catalog_row(
+    tenant: &HostedTenantId,
+    event_kind: HostedMarketDomainEventKind,
+    row: &sqlx::postgres::PgRow,
+) -> Result<HostedMarketDomainProjection, HostedMarketStoreError> {
+    let aggregate_id: String = row.try_get(0).map_err(unavailable)?;
+    let revision = stored_u64(row.try_get(1).map_err(unavailable)?)?;
+    let event_sha256: String = row.try_get(2).map_err(unavailable)?;
+    let stored_event_kind: String = row.try_get(3).map_err(unavailable)?;
+    let stored_schema: String = row.try_get(4).map_err(unavailable)?;
+    let payload_sha256: String = row.try_get(5).map_err(unavailable)?;
+    let payload_json: Vec<u8> = row.try_get(6).map_err(unavailable)?;
+    validate_identifier(&aggregate_id, MAX_AGGREGATE_ID_BYTES)
+        .map_err(|()| HostedMarketStoreError::DigestMismatch)?;
+    validate_digest(&event_sha256, "catalog event")
+        .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+    validate_digest(&payload_sha256, "catalog payload")
+        .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+    if revision == 0
+        || stored_event_kind != event_kind.event_kind()
+        || stored_schema != event_kind.artifact_schema()
+        || sha256_hex(&payload_json) != payload_sha256
+    {
+        return Err(HostedMarketStoreError::DigestMismatch);
+    }
+    Ok(HostedMarketDomainProjection {
+        tenant_id: tenant.clone(),
+        event_kind,
+        aggregate_id,
+        revision,
+        event_sha256,
+        payload_sha256,
+        payload_json,
+        updated_at: stored_u64(row.try_get(7).map_err(unavailable)?)?,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_expectation_requires_a_coherent_head() {
+        assert!(HostedDomainWrite::new("event-a", 0, None, 1).is_ok());
+        assert!(HostedDomainWrite::new("event-a", 0, Some("a".repeat(64)), 1).is_err());
+        assert!(HostedDomainWrite::new("event-a", 1, None, 1).is_err());
+        assert!(HostedDomainWrite::new("event-a", 1, Some("a".repeat(64)), 1).is_ok());
+    }
+}
