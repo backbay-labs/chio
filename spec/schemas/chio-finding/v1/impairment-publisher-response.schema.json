@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-finding/impairment-publisher-response/v1",
+  "title": "Chio Finding Impairment Publisher Response V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "requestSha256", "attempt"],
+  "properties": {
+    "schema": { "const": "chio.finding.impairment-publisher-response.v1" },
+    "requestSha256": { "$ref": "#/$defs/digest" },
+    "attempt": { "$ref": "#/$defs/attempt" }
+  },
+  "$defs": {
+    "text": { "type": "string", "minLength": 1, "maxLength": 2097152 },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "address": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+    "log": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["address", "topics", "data"],
+      "properties": {
+        "address": { "$ref": "#/$defs/address" },
+        "topics": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/text" }
+        },
+        "data": { "$ref": "#/$defs/text" },
+        "log_index": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tx_hash",
+        "block_number",
+        "block_hash",
+        "status",
+        "from_address",
+        "to_address",
+        "gas_used",
+        "observed_at"
+      ],
+      "properties": {
+        "tx_hash": { "$ref": "#/$defs/text" },
+        "block_number": { "type": "integer", "minimum": 0 },
+        "block_hash": { "$ref": "#/$defs/text" },
+        "status": { "type": "boolean" },
+        "from_address": { "$ref": "#/$defs/address" },
+        "to_address": { "$ref": "#/$defs/address" },
+        "gas_used": { "type": "integer", "minimum": 0 },
+        "observed_at": { "type": "integer", "minimum": 0 },
+        "logs": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/log" }
+        }
+      }
+    },
+    "stored": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chain_id", "tx_hash", "to_address", "input_data", "receipt", "finality"],
+      "properties": {
+        "chain_id": { "$ref": "#/$defs/text" },
+        "tx_hash": { "$ref": "#/$defs/text" },
+        "to_address": { "$ref": "#/$defs/address" },
+        "input_data": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^0x[0-9a-fA-F]*$", "maxLength": 2097152 }
+          ]
+        },
+        "receipt": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/receipt" }
+          ]
+        },
+        "finality": {
+          "anyOf": [
+            { "type": "null" },
+            { "enum": ["awaiting_confirmations", "awaiting_dispute_window", "finalized", "reorged"] }
+          ]
+        }
+      }
+    },
+    "attempt": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["observed"],
+          "properties": {
+            "observed": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["stored"],
+              "properties": { "stored": { "$ref": "#/$defs/stored" } }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rejected"],
+          "properties": {
+            "rejected": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["rejection", "stored"],
+              "properties": {
+                "rejection": {
+                  "enum": [
+                    "evidence_already_used",
+                    "bond_not_live",
+                    "invalid_evidence",
+                    "invalid_slash_distribution",
+                    "operator_not_qualified",
+                    "vault_paused",
+                    "transfer_failed"
+                  ]
+                },
+                "stored": {
+                  "anyOf": [
+                    { "type": "null" },
+                    { "$ref": "#/$defs/stored" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

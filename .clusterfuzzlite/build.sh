@@ -20,6 +20,7 @@ set -euo pipefail
 # the workspace's target/ tree, namespaced by host triple; CFLite builders
 # run on x86_64-unknown-linux-gnu.
 cd "$SRC/chio/fuzz"
+cargo metadata --locked --format-version 1 --no-deps >/dev/null
 
 TARGETS=(
     attest_verify
@@ -42,6 +43,7 @@ TARGETS=(
     capability_receipt
     manifest_roundtrip
     federation_trust_establishment
+    finding_worker_protocol
     underwriting_policy_input
     fuzz_policy_parse_compile
     policy_analyze

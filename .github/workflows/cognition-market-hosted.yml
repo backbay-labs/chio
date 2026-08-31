@@ -1,0 +1,156 @@
+name: Cognition market hosted
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/cognition-market-promotion.yml"
+      - ".github/workflows/release-qualification.yml"
+      - "Makefile"
+      - "audits/**"
+      - "config/cognition-market-components.json"
+      - "crates/core/chio-bounded/**"
+      - "crates/core/chio-core-types/**"
+      - "crates/core/chio-core/**"
+      - "crates/economy/chio-credit/**"
+      - "crates/platform/chio-finding-market-store-postgres/**"
+      - "crates/platform/chio-finding-market-migrations/**"
+      - "crates/platform/chio-finding-hosted-edge/**"
+      - "crates/platform/chio-finding-worker/**"
+      - "crates/platform/chio-control-plane/**"
+      - "crates/platform/chio-store-sqlite/**"
+      - "crates/products/chio-finding-worker/**"
+      - "crates/products/chio-finding-market-migrator/**"
+      - "crates/trust/chio-signing-remote/**"
+      - "crates/trust/chio-finding-challenge/**"
+      - "crates/economy/chio-finding/**"
+      - "crates/economy/chio-settle/**"
+      - "crates/economy/chio-market/**"
+      - "crates/economy/chio-open-market/**"
+      - "crates/kernel/chio-kernel-core/**"
+      - "crates/kernel/chio-kernel/**"
+      - "crates/kernel/chio-runtime-core/**"
+      - "crates/platform/chio-http-core/**"
+      - "crates/protocol/chio-egress-contract/**"
+      - "crates/protocol/chio-http-serve/**"
+      - "crates/products/chio-cli/**"
+      - "crates/products/chio-finding-market-canary/**"
+      - "crates/tooling/chio-release-evidence/**"
+      - "crates/trust/chio-finding-verifier/**"
+      - "deny.toml"
+      - "docs/research/cognition-market/**"
+      - "formal/**"
+      - "fuzz/**"
+      - "rust-toolchain.toml"
+      - "scripts/**"
+      - "spec/schemas/**"
+      - "supply-chain/**"
+      - "scripts/qualify-cognition-market-hosted.sh"
+      - "scripts/qualify-cognition-market-kvm.sh"
+      - ".github/workflows/cognition-market-hosted.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cognition-market-promotion.yml"
+      - ".github/workflows/release-qualification.yml"
+      - "Makefile"
+      - "audits/**"
+      - "config/cognition-market-components.json"
+      - "crates/core/chio-bounded/**"
+      - "crates/core/chio-core-types/**"
+      - "crates/core/chio-core/**"
+      - "crates/economy/chio-credit/**"
+      - "crates/platform/chio-finding-market-store-postgres/**"
+      - "crates/platform/chio-finding-market-migrations/**"
+      - "crates/platform/chio-finding-hosted-edge/**"
+      - "crates/platform/chio-finding-worker/**"
+      - "crates/platform/chio-control-plane/**"
+      - "crates/platform/chio-store-sqlite/**"
+      - "crates/products/chio-finding-worker/**"
+      - "crates/products/chio-finding-market-migrator/**"
+      - "crates/trust/chio-signing-remote/**"
+      - "crates/trust/chio-finding-challenge/**"
+      - "crates/economy/chio-finding/**"
+      - "crates/economy/chio-settle/**"
+      - "crates/economy/chio-market/**"
+      - "crates/economy/chio-open-market/**"
+      - "crates/kernel/chio-kernel-core/**"
+      - "crates/kernel/chio-kernel/**"
+      - "crates/kernel/chio-runtime-core/**"
+      - "crates/platform/chio-http-core/**"
+      - "crates/protocol/chio-egress-contract/**"
+      - "crates/protocol/chio-http-serve/**"
+      - "crates/products/chio-cli/**"
+      - "crates/products/chio-finding-market-canary/**"
+      - "crates/tooling/chio-release-evidence/**"
+      - "crates/trust/chio-finding-verifier/**"
+      - "deny.toml"
+      - "docs/research/cognition-market/**"
+      - "formal/**"
+      - "fuzz/**"
+      - "rust-toolchain.toml"
+      - "scripts/**"
+      - "spec/schemas/**"
+      - "supply-chain/**"
+      - "scripts/qualify-cognition-market-hosted.sh"
+      - "scripts/qualify-cognition-market-kvm.sh"
+      - ".github/workflows/cognition-market-hosted.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-store:
+    name: Cognition market PostgreSQL isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: chio
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d chio"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      CHIO_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/chio?sslmode=disable
+      CHIO_TEST_POSTGRES_MIGRATOR_URL: postgres://chio_market_migrator_test:test-only-password@127.0.0.1:5432/chio?sslmode=disable
+      CHIO_TEST_POSTGRES_RUNTIME_URL: postgres://chio_market_runtime_test:test-only-password@127.0.0.1:5432/chio?sslmode=disable
+      CHIO_TEST_POSTGRES_RETENTION_URL: postgres://chio_market_retention_test:test-only-password@127.0.0.1:5432/chio?sslmode=disable
+      CHIO_TEST_POSTGRES_WORKER_URL: postgres://chio_market_worker_test:test-only-password@127.0.0.1:5432/chio?sslmode=disable
+      CHIO_TEST_POSTGRES_REPLICATOR_URL: postgres://chio_market_replicator_test:test-only-password@127.0.0.1:5432/chio?sslmode=disable
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+      - name: Install Rust toolchain
+        run: rustup toolchain install --profile minimal --component rustfmt --component clippy
+      - name: Install uv (Python codegen toolchain runner)
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      - name: Install cargo-vet
+        run: cargo install cargo-vet --locked --version 0.10.2
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked --version 0.19.4
+      - name: Qualify hosted cognition market
+        run: ./scripts/qualify-cognition-market-hosted.sh --code-only
+      - name: Upload hosted qualification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cognition-market-hosted-code-${{ github.sha }}
+          path: target/release-qualification/cognition-market-hosted
+          if-no-files-found: error
+          retention-days: 21

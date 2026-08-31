@@ -40,7 +40,7 @@ sha2 = { workspace = true }
 # `build.rs` calls `uniffi::generate_scaffolding`, and `uniffi-bindgen`
 # (installed separately on the operator's machine) reads the UDL to emit
 # Swift / Kotlin glue code. See `bindings/README.md` for workflow.
-uniffi = { version = "0.28", features = ["cli"] }
+uniffi = { version = "0.32", features = ["cli"] }
 # `getrandom` is the cross-platform entropy bridge the `MobileRng` impl
 # delegates to. On iOS it routes to `SecRandomCopyBytes`; on Android it
 # routes to `/dev/urandom`. No `js` feature is needed: this crate never
@@ -51,7 +51,7 @@ getrandom = "0.2"
 # `uniffi::generate_scaffolding` in `build.rs` produces the extern-C shim
 # that the `include_scaffolding!` macro slots into the crate at compile
 # time. The `build` feature gates access to that helper.
-uniffi = { version = "0.28", features = ["build"] }
+uniffi = { version = "0.32", features = ["build"] }
 
 [dev-dependencies]
 # Round-trip helpers for the Rust-side FFI tests. These mirror the types

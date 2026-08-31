@@ -1,0 +1,21 @@
+[package]
+name = "chio-finding-market-migrator"
+description = "Dedicated schema migrator for the hosted Chio cognition market"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "chio-finding-market-migrate"
+path = "src/main.rs"
+
+[dependencies]
+chio-finding-market-store-postgres = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

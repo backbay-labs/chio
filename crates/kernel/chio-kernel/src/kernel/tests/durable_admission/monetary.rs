@@ -53,6 +53,7 @@ fn durable_monetary_guard_denial_closes_unstarted_payment() {
     kernel.set_payment_adapter(Box::new(QualifiedDurablePaymentAdapter {
         authorization_references: authorization_references.clone(),
         settlement_actions: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        settlement_references: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
     }));
     let invocations = std::sync::Arc::new(AtomicU64::new(0));
     kernel.register_tool_server(Box::new(DurableAdmissionCheckingServer {
@@ -94,6 +95,93 @@ fn durable_monetary_guard_denial_closes_unstarted_payment() {
         .lock()
         .expect("authorization references")
         .is_empty());
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn predispatch_payment_release_uses_the_durable_operation_reference() {
+    let mut grant = make_grant("durable-server", "mutate");
+    grant.max_cost_per_invocation = Some(MonetaryAmount {
+        units: 10,
+        currency: "USD".to_owned(),
+    });
+    grant.max_total_cost = Some(MonetaryAmount {
+        units: 100,
+        currency: "USD".to_owned(),
+    });
+    let (mut kernel, request, store, invocations) = durable_admission_fixture_with_grants(
+        "durable-predispatch-release-reference",
+        vec![grant],
+    );
+    let settlement_references = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    kernel.set_payment_adapter(Box::new(QualifiedDurablePaymentAdapter {
+        authorization_references: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        settlement_actions: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        settlement_references: settlement_references.clone(),
+    }));
+    let matching = resolve_required_matching_grants(
+        &request.capability,
+        &request.tool_name,
+        &request.server_id,
+        &request.arguments,
+        request.model_metadata.as_ref(),
+    )
+    .expect("matching grants");
+    let now = current_unix_timestamp_ms();
+    let mut admission = kernel
+        .begin_durable_tool_admission(&request, &matching, now)
+        .expect("durable monetary admission")
+        .expect("covered durable admission");
+    let (_, mutation) = kernel
+        .check_and_increment_budget(
+            &request,
+            &request.capability,
+            &matching,
+            false,
+            Some(&mut admission),
+            now,
+        )
+        .expect("combined budget authorization")
+        .into_authorized()
+        .expect("authorized budget outcome");
+    kernel
+        .authorize_payment_if_needed(
+            &request,
+            mutation.charge_result(),
+            Some(&admission),
+            now + 1,
+            None,
+        )
+        .expect("durable payment authorization")
+        .expect("payment authorization");
+    let operation = store.operation();
+    let expected_reference = operation.binding().operation_id().as_str().to_owned();
+    assert_ne!(expected_reference, request.request_id);
+
+    kernel
+        .compensate_durable_admission_before_dispatch(
+            &operation,
+            serde_json::json!({"authority": "predispatch-reference-regression"}),
+            now + 2,
+            None,
+        )
+        .expect("durable pre-dispatch compensation");
+
+    assert_eq!(
+        settlement_references
+            .lock()
+            .expect("settlement references")
+            .as_slice(),
+        [expected_reference]
+    );
+    assert_eq!(
+        store.operation().state(),
+        AdmissionOperationState::CompensatedBeforeDispatch
+    );
+    assert_eq!(
+        store.payment_journal().map(|journal| journal.state),
+        Some(PaymentJournalState::Settled)
+    );
     assert_eq!(invocations.load(Ordering::SeqCst), 0);
 }
 
@@ -188,6 +276,7 @@ fn durable_monetary_selection_skips_a_cumulative_only_grant() {
     kernel.set_payment_adapter(Box::new(QualifiedDurablePaymentAdapter {
         authorization_references: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
         settlement_actions: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        settlement_references: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
     }));
     let invocations = std::sync::Arc::new(AtomicU64::new(0));
     kernel.register_tool_server(Box::new(DurableAdmissionCheckingServer {
@@ -253,6 +342,7 @@ fn durable_monetary_lifecycle_uses_the_qualified_projection_store() {
     kernel.set_payment_adapter(Box::new(QualifiedDurablePaymentAdapter {
         authorization_references: authorization_references.clone(),
         settlement_actions,
+        settlement_references: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
     }));
     let invocations = std::sync::Arc::new(AtomicU64::new(0));
     kernel.register_tool_server(Box::new(DurableAdmissionCheckingServer {
@@ -422,6 +512,7 @@ fn durable_recovery_captures_after_tool_return_and_never_releases_from_authorize
     kernel.set_payment_adapter(Box::new(QualifiedDurablePaymentAdapter {
         authorization_references: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
         settlement_actions: settlement_actions.clone(),
+        settlement_references: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
     }));
     let invocations = std::sync::Arc::new(AtomicU64::new(0));
     kernel.register_tool_server(Box::new(DurableAdmissionCheckingServer {
@@ -503,6 +594,7 @@ fn durable_zero_charge_commits_release_evidence_before_releasing_payment() {
     kernel.set_payment_adapter(Box::new(QualifiedDurablePaymentAdapter {
         authorization_references,
         settlement_actions: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        settlement_references: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
     }));
     kernel.register_tool_server(Box::new(MonetaryCostServer::new(
         "durable-zero-server",

@@ -9,7 +9,11 @@
 use axum::body::{Body, Bytes};
 use axum::extract::Request;
 use chio_finding::{verify_signed_challenge, Finding, SignedFindingChallenge};
-use chio_store_sqlite::{FindingChallengeAuthorizationBranch, FindingChallengeWriteOutcome};
+use chio_store_sqlite::{
+    FindingChallengeAuthorizationBranch, FindingChallengeEvidenceClass,
+    FindingChallengeOutcomeRecord, FindingChallengeRecord, FindingChallengeState,
+    FindingChallengeWriteOutcome,
+};
 
 use super::finding_challenge_coordinator::{
     ChallengeCoordinatorError, ChallengeSubmissionOutcome, FindingAuthorityStatusResolver,
@@ -74,6 +78,28 @@ pub struct FindingChallengeSubmissionResponse {
     pub dispute_bond_lock_id: Option<String>,
 }
 
+/// Stable authenticated projection of one durable challenge lifecycle.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindingChallengeStatusResponse {
+    pub schema: String,
+    pub challenge_id: String,
+    pub finding_id: String,
+    pub listing_id: String,
+    pub challenge_envelope_sha256: String,
+    pub authorization_branch: String,
+    pub evidence_class: String,
+    pub state: String,
+    pub retry_count: u64,
+    pub retry_deadline: Option<u64>,
+    pub outcome_envelope_sha256: Option<String>,
+    pub outcome: Option<serde_json::Value>,
+    pub submitted_at: u64,
+    pub updated_at: u64,
+}
+
+const FINDING_CHALLENGE_STATUS_SCHEMA: &str = "chio.finding.challenge-status.v1";
+
 impl From<ChallengeSubmissionOutcome> for FindingChallengeSubmissionResponse {
     fn from(outcome: ChallengeSubmissionOutcome) -> Self {
         let authorization_branch = match outcome.branch {
@@ -114,6 +140,19 @@ pub(crate) trait FindingChallengeSubmissionExecutor: Send + Sync {
         raw_finding: &str,
         now: u64,
     ) -> Result<ChallengeSubmissionOutcome, ChallengeCoordinatorError>;
+
+    fn challenge(&self, challenge_id: &str) -> Result<Option<FindingChallengeRecord>, String> {
+        let _ = challenge_id;
+        Err("challenge status resolution is not configured".to_owned())
+    }
+
+    fn outcome(
+        &self,
+        outcome_envelope_sha256: &str,
+    ) -> Result<Option<FindingChallengeOutcomeRecord>, String> {
+        let _ = outcome_envelope_sha256;
+        Err("challenge outcome resolution is not configured".to_owned())
+    }
 }
 
 /// Checked production composition for the live challenge route.
@@ -189,6 +228,19 @@ impl FindingChallengeSubmissionExecutor for FindingChallengeCoordinator {
             return Err(ChallengeCoordinatorError::Canonical);
         }
         FindingChallengeCoordinator::submit(self, &request.challenge, raw_finding, now)
+    }
+
+    fn challenge(&self, challenge_id: &str) -> Result<Option<FindingChallengeRecord>, String> {
+        self.challenge_record(challenge_id)
+            .map_err(|error| error.to_string())
+    }
+
+    fn outcome(
+        &self,
+        outcome_envelope_sha256: &str,
+    ) -> Result<Option<FindingChallengeOutcomeRecord>, String> {
+        self.challenge_outcome(outcome_envelope_sha256)
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -370,6 +422,174 @@ pub(crate) async fn handle_submit_finding_challenge(
     }
 }
 
+/// GET /v1/findings/{finding_id}/challenges/{challenge_id}.
+///
+/// A buyer credential may read only the challenge filed by its signing key.
+/// The service credential may read either authorization branch for operator
+/// reconciliation. The response omits the challenge evidence body and exposes
+/// a signed outcome only after its retained bytes pass canonical and digest
+/// checks again.
+pub(crate) async fn handle_get_finding_challenge(
+    State(state): State<TrustServiceState>,
+    AxumPath((finding_id, challenge_id)): AxumPath<(String, String)>,
+    request: Request,
+) -> Response {
+    if !is_lower_hex_64(&finding_id) || !is_lower_hex_64(&challenge_id) {
+        return plain_http_error(StatusCode::BAD_REQUEST, "invalid challenge identity");
+    }
+    let Some(executor) = state.finding_challenge_executor.clone() else {
+        return plain_http_error(
+            StatusCode::CONFLICT,
+            "finding challenge coordinator is not configured",
+        );
+    };
+    let permit = match try_acquire_challenge_lane(&state.finding_challenge_submission_lane) {
+        Ok(permit) => permit,
+        Err(_) => {
+            return plain_http_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "finding challenge lane is busy",
+            )
+        }
+    };
+    let headers = request.headers().clone();
+    let purchase_executor = state.finding_purchase_executor.clone();
+    let service_token = state.config.service_token.clone();
+    let response = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        let record = match executor.challenge(&challenge_id) {
+            Ok(Some(record)) if record.finding_id == finding_id => record,
+            Ok(Some(_)) | Ok(None) => {
+                return plain_http_error(StatusCode::NOT_FOUND, "unknown finding challenge")
+            }
+            Err(_) => {
+                return plain_http_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "finding challenge store is unavailable",
+                )
+            }
+        };
+        let service_authenticated = validate_service_auth(&headers, &service_token).is_ok();
+        match record.authorization_branch {
+            FindingChallengeAuthorizationBranch::BuyerSubmission if !service_authenticated => {
+                let authenticated = purchase_executor.as_ref().and_then(|purchase| {
+                    bearer_token(&headers).and_then(|token| purchase.authenticate_buyer(token).ok())
+                });
+                if authenticated
+                    .as_ref()
+                    .map(|buyer| buyer.public_key().to_hex())
+                    != record.challenger_hex
+                {
+                    return plain_http_error(
+                        StatusCode::UNAUTHORIZED,
+                        "finding challenge authentication failed",
+                    );
+                }
+            }
+            FindingChallengeAuthorizationBranch::VenueAudit if !service_authenticated => {
+                return plain_http_error(
+                    StatusCode::UNAUTHORIZED,
+                    "finding challenge authentication failed",
+                )
+            }
+            _ => {}
+        }
+
+        let outcome = match record.outcome_envelope_sha256.as_deref() {
+            Some(digest) => match executor.outcome(digest) {
+                Ok(Some(outcome)) if outcome.challenge_id == record.challenge_id => {
+                    match checked_outcome_json(&outcome) {
+                        Ok(value) => Some(value),
+                        Err(()) => {
+                            return plain_http_error(
+                                StatusCode::SERVICE_UNAVAILABLE,
+                                "retained challenge outcome failed integrity verification",
+                            )
+                        }
+                    }
+                }
+                Ok(Some(_)) | Ok(None) | Err(_) => {
+                    return plain_http_error(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "retained challenge outcome is unavailable",
+                    )
+                }
+            },
+            None => None,
+        };
+        Json(FindingChallengeStatusResponse {
+            schema: FINDING_CHALLENGE_STATUS_SCHEMA.to_owned(),
+            challenge_id: record.challenge_id,
+            finding_id: record.finding_id,
+            listing_id: record.listing_id,
+            challenge_envelope_sha256: record.challenge_envelope_sha256,
+            authorization_branch: challenge_authorization_name(record.authorization_branch)
+                .to_owned(),
+            evidence_class: challenge_evidence_name(record.evidence_class).to_owned(),
+            state: challenge_state_name(record.state).to_owned(),
+            retry_count: record.retry_count,
+            retry_deadline: record.retry_deadline,
+            outcome_envelope_sha256: record.outcome_envelope_sha256,
+            outcome,
+            submitted_at: record.submitted_at,
+            updated_at: record.updated_at,
+        })
+        .into_response()
+    })
+    .await;
+    match response {
+        Ok(response) => response,
+        Err(_) => plain_http_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "finding challenge status worker failed",
+        ),
+    }
+}
+
+fn checked_outcome_json(outcome: &FindingChallengeOutcomeRecord) -> Result<serde_json::Value, ()> {
+    let raw = std::str::from_utf8(&outcome.outcome_envelope_json).map_err(|_| ())?;
+    let canonical = chio_core::canonical::canonical_json_bytes_from_str(raw).map_err(|_| ())?;
+    if canonical != outcome.outcome_envelope_json
+        || chio_core::sha256_hex(&outcome.outcome_envelope_json) != outcome.outcome_envelope_sha256
+    {
+        return Err(());
+    }
+    serde_json::from_slice(&outcome.outcome_envelope_json).map_err(|_| ())
+}
+
+const fn challenge_authorization_name(branch: FindingChallengeAuthorizationBranch) -> &'static str {
+    match branch {
+        FindingChallengeAuthorizationBranch::BuyerSubmission => "buyer_submission",
+        FindingChallengeAuthorizationBranch::VenueAudit => "venue_audit",
+    }
+}
+
+const fn challenge_evidence_name(class: FindingChallengeEvidenceClass) -> &'static str {
+    match class {
+        FindingChallengeEvidenceClass::DigestMismatch => "digest_mismatch",
+        FindingChallengeEvidenceClass::EvidenceInvalid => "evidence_invalid",
+        FindingChallengeEvidenceClass::ReplayContradiction => "replay_contradiction",
+    }
+}
+
+const fn challenge_state_name(state: FindingChallengeState) -> &'static str {
+    match state {
+        FindingChallengeState::Submitted => "submitted",
+        FindingChallengeState::Evaluating => "evaluating",
+        FindingChallengeState::Rejected => "rejected",
+        FindingChallengeState::IndeterminateRetryable => "indeterminate_retryable",
+        FindingChallengeState::IndeterminateClosed => "indeterminate_closed",
+        FindingChallengeState::Upheld => "upheld",
+    }
+}
+
+fn is_lower_hex_64(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
 async fn collect_challenge_body(
     body: Body,
     permit: tokio::sync::OwnedSemaphorePermit,
@@ -427,10 +647,18 @@ fn coordinator_unavailable(error: &ChallengeCoordinatorError) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_challenge_body, coordinator_unavailable, try_acquire_challenge_lane};
+    use super::{
+        challenge_authorization_name, challenge_evidence_name, challenge_state_name,
+        checked_outcome_json, collect_challenge_body, coordinator_unavailable, is_lower_hex_64,
+        try_acquire_challenge_lane,
+    };
     use crate::trust_control::finding_challenge_coordinator::ChallengeCoordinatorError;
     use axum::body::{Body, Bytes};
     use axum::http::StatusCode;
+    use chio_store_sqlite::{
+        FindingChallengeAuthorizationBranch, FindingChallengeEvidenceClass,
+        FindingChallengeOutcomeRecord, FindingChallengeState,
+    };
     use futures_util::stream;
     use std::time::Duration;
 
@@ -455,6 +683,43 @@ mod tests {
         assert!(try_acquire_challenge_lane(&lane).is_err());
         drop(permit);
         assert!(try_acquire_challenge_lane(&lane).is_ok());
+    }
+
+    #[test]
+    fn challenge_status_projection_has_closed_vocabulary() {
+        assert_eq!(
+            challenge_authorization_name(FindingChallengeAuthorizationBranch::BuyerSubmission),
+            "buyer_submission"
+        );
+        assert_eq!(
+            challenge_evidence_name(FindingChallengeEvidenceClass::ReplayContradiction),
+            "replay_contradiction"
+        );
+        assert_eq!(
+            challenge_state_name(FindingChallengeState::IndeterminateRetryable),
+            "indeterminate_retryable"
+        );
+        assert!(is_lower_hex_64(&"a".repeat(64)));
+        assert!(!is_lower_hex_64(&"A".repeat(64)));
+    }
+
+    #[test]
+    fn challenge_status_rechecks_retained_outcome_bytes() {
+        let raw = br#"{"body":{"challenge_id":"challenge-1"},"schema":"outcome"}"#.to_vec();
+        let digest = chio_core::sha256_hex(&raw);
+        let valid = FindingChallengeOutcomeRecord {
+            challenge_id: "challenge-1".to_owned(),
+            outcome_envelope_sha256: digest,
+            outcome_envelope_json: raw.clone(),
+            recorded_at: 1,
+        };
+        assert!(checked_outcome_json(&valid).is_ok());
+
+        let tampered = FindingChallengeOutcomeRecord {
+            outcome_envelope_json: br#"{"schema":"outcome"}"#.to_vec(),
+            ..valid
+        };
+        assert!(checked_outcome_json(&tampered).is_err());
     }
 
     #[tokio::test]

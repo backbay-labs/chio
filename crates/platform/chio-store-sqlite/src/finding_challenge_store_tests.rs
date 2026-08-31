@@ -19,6 +19,9 @@ use crate::finding_purchase_store::{
 };
 use crate::SqliteAuthorityStore;
 
+#[path = "finding_challenge_store_tests/submission_retention.rs"]
+mod submission_retention;
+
 const LISTING_ID: &str = "challenge-listing-01";
 const OTHER_LISTING_ID: &str = "challenge-listing-02";
 const PAYOUT_DESTINATION: &str = "0x000000000000000000000000000000000000002a";
@@ -204,6 +207,7 @@ struct Challenge {
     finding_id: String,
     listing_id: String,
     envelope_sha256: String,
+    envelope_json: Vec<u8>,
     branch: FindingChallengeAuthorizationBranch,
     class: FindingChallengeEvidenceClass,
     challenger_hex: Option<String>,
@@ -212,11 +216,13 @@ struct Challenge {
 
 impl Challenge {
     fn buyer(tag: &str) -> Self {
+        let envelope_json = format!(r#"{{"tag":"{tag}"}}"#).into_bytes();
         Self {
             challenge_id: format!("challenge-{tag}"),
             finding_id: hex64('a'),
             listing_id: LISTING_ID.to_owned(),
-            envelope_sha256: digest(&format!("challenge-envelope-{tag}")),
+            envelope_sha256: sha256_hex(&envelope_json),
+            envelope_json,
             branch: FindingChallengeAuthorizationBranch::BuyerSubmission,
             class: FindingChallengeEvidenceClass::EvidenceInvalid,
             challenger_hex: Some(hex64('b')),
@@ -248,6 +254,7 @@ impl Challenge {
             finding_id: &self.finding_id,
             listing_id: &self.listing_id,
             challenge_envelope_sha256: &self.envelope_sha256,
+            challenge_envelope_json: &self.envelope_json,
             authorization_branch: self.branch,
             evidence_class: self.class,
             challenger_hex: self.challenger_hex.as_deref(),
@@ -836,128 +843,6 @@ fn deny_slot(fixture: &Fixture, tag: &str, now: u64) {
             now,
         })
         .expect("deny delivery");
-}
-
-#[test]
-fn submit_challenge_inserts_replays_and_rejects_conflicts() {
-    let fixture = fixture();
-    let challenge = Challenge::buyer("alpha");
-    assert_eq!(
-        submit(&fixture, &challenge),
-        FindingChallengeWriteOutcome::Inserted
-    );
-    assert_eq!(
-        fixture
-            .store
-            .get_challenge(&challenge.challenge_id)
-            .expect("get challenge")
-            .expect("challenge present"),
-        FindingChallengeRecord {
-            challenge_id: challenge.challenge_id.clone(),
-            finding_id: challenge.finding_id.clone(),
-            listing_id: LISTING_ID.to_string(),
-            challenge_envelope_sha256: challenge.envelope_sha256.clone(),
-            authorization_branch: FindingChallengeAuthorizationBranch::BuyerSubmission,
-            evidence_class: FindingChallengeEvidenceClass::EvidenceInvalid,
-            challenger_hex: Some(hex64('b')),
-            state: FindingChallengeState::Submitted,
-            retry_count: 0,
-            retry_deadline: None,
-            outcome_envelope_sha256: None,
-            submitted_at: NOW,
-            updated_at: NOW,
-        },
-        "every challenge column must round-trip, so a column-index swap fails here"
-    );
-
-    assert_eq!(
-        submit(&fixture, &challenge),
-        FindingChallengeWriteOutcome::ExistingSame,
-        "an identical replay must not open a second adjudication"
-    );
-
-    // A retry carries the clock it retries from, so the submission time
-    // must not decide whether it is the same challenge.
-    let mut later = challenge.input();
-    later.submitted_at = NOW + 30;
-    assert_eq!(
-        fixture
-            .store
-            .submit_challenge(&later)
-            .expect("replay from a later clock"),
-        FindingChallengeWriteOutcome::ExistingSame
-    );
-    assert_eq!(
-        fixture
-            .store
-            .get_challenge(&challenge.challenge_id)
-            .expect("get challenge")
-            .expect("challenge present")
-            .submitted_at,
-        NOW,
-        "a replay never moves the submission time the first call committed"
-    );
-
-    let mut conflicting = challenge.input();
-    conflicting.evidence_class = FindingChallengeEvidenceClass::DigestMismatch;
-    assert!(
-        matches!(
-            fixture.store.submit_challenge(&conflicting),
-            Err(FindingChallengeStoreError::Conflict(_))
-        ),
-        "conflicting parameters under an existing challenge id must reject"
-    );
-
-    let mut duplicate_envelope = Challenge::buyer("beta");
-    duplicate_envelope
-        .envelope_sha256
-        .clone_from(&challenge.envelope_sha256);
-    assert!(
-        matches!(
-            fixture.store.submit_challenge(&duplicate_envelope.input()),
-            Err(FindingChallengeStoreError::Conflict(_))
-        ),
-        "one signed challenge envelope cannot open two adjudications"
-    );
-
-    let mut audit_with_challenger = Challenge::audit("gamma");
-    audit_with_challenger.challenger_hex = Some(hex64('b'));
-    assert!(
-        matches!(
-            fixture
-                .store
-                .submit_challenge(&audit_with_challenger.input()),
-            Err(FindingChallengeStoreError::Invariant(_))
-        ),
-        "a venue audit must not name a challenger"
-    );
-    let mut buyer_without_challenger = Challenge::buyer("delta");
-    buyer_without_challenger.challenger_hex = None;
-    assert!(
-        matches!(
-            fixture
-                .store
-                .submit_challenge(&buyer_without_challenger.input()),
-            Err(FindingChallengeStoreError::Invariant(_))
-        ),
-        "a buyer submission must name its challenger"
-    );
-
-    let audit = Challenge::audit("epsilon").in_class(FindingChallengeEvidenceClass::DigestMismatch);
-    assert_eq!(
-        submit(&fixture, &audit),
-        FindingChallengeWriteOutcome::Inserted
-    );
-    let listed = fixture
-        .store
-        .list_challenges(&hex64('a'), LISTING_ID)
-        .expect("list challenges");
-    assert_eq!(listed.len(), 2);
-    assert!(fixture
-        .store
-        .get_challenge("challenge-absent")
-        .expect("absent challenge lookup")
-        .is_none());
 }
 
 #[test]
@@ -4173,7 +4058,7 @@ fn projected_actionable_liability_without_a_seller_binding_requires_recovery() {
 }
 
 #[test]
-fn projected_v5_and_v6_terminal_liabilities_survive_schema_upgrade() {
+fn projected_v5_and_v6_terminal_liabilities_fail_closed_without_exact_submissions() {
     for (version, schema, state) in [
         (5, finding_challenge_v5_schema(), "settled"),
         (
@@ -4200,27 +4085,33 @@ fn projected_v5_and_v6_terminal_liabilities_survive_schema_upgrade() {
             .expect("stamp projected legacy schema");
         let liability_key = insert_legacy_terminal_liability(&connection, state);
 
-        initialize_finding_challenge_schema(&mut connection)
-            .expect("migrate projected terminal liability");
-        let (stored_state, seller_hex): (String, String) = connection
-            .query_row(
-                "SELECT state, seller_hex FROM liability_heads WHERE liability_key = ?1",
-                [&liability_key],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .expect("read migrated terminal liability");
-        assert_eq!(stored_state, state);
-        assert_eq!(seller_hex, LEGACY_TERMINAL_UNBOUND_SELLER_HEX);
+        let error = initialize_finding_challenge_schema(&mut connection)
+            .expect_err("legacy challenge state without signed submissions must not migrate");
         assert!(
-            connection
-                .execute(
-                    "UPDATE liability_heads SET state = 'finalizing' WHERE liability_key = ?1",
-                    [&liability_key],
-                )
-                .is_err(),
-            "the preserved terminal row stays non-actionable"
+            error
+                .to_string()
+                .contains("no exact retained signed submission"),
+            "unexpected migration error: {error}"
         );
-        verify_finding_challenge_invariants(&connection).expect("verify migrated terminal schema");
+        assert_eq!(
+            crate::check_schema_version(
+                &connection,
+                FINDING_CHALLENGE_SCHEMA_KEY,
+                FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION,
+                FINDING_CHALLENGE_SCHEMA_ANCHORS,
+            )
+            .expect("read rolled-back legacy schema version"),
+            version,
+            "failed migration must not stamp the current schema"
+        );
+        let stored_state: String = connection
+            .query_row(
+                "SELECT state FROM liability_heads WHERE liability_key = ?1",
+                [&liability_key],
+                |row| row.get(0),
+            )
+            .expect("read unchanged terminal liability");
+        assert_eq!(stored_state, state);
     }
 }
 

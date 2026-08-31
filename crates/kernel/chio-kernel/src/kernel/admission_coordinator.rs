@@ -1710,7 +1710,7 @@ impl ChioKernel {
                         )
                     })?;
                     let result = adapter
-                        .release(&authorization_id, current.binding().request_id().as_str())
+                        .release(&authorization_id, &journal.operation_id)
                         .map_err(|error| KernelError::DurableAdmission(error.to_string()))?;
                     if result.settlement_status != crate::payment::RailSettlementStatus::Released {
                         return Err(KernelError::DurableAdmission(

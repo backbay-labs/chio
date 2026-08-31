@@ -430,6 +430,16 @@ where
         })
     }
 
+    /// Sign an export payload through an external or platform signing backend.
+    pub fn sign_with_backend(body: T, backend: &dyn SigningBackend) -> Result<Self> {
+        let (signature, _) = sign_canonical_with_backend(backend, &body)?;
+        Ok(Self {
+            body,
+            signer_key: backend.public_key(),
+            signature,
+        })
+    }
+
     /// Verify the envelope signature against the embedded signer key.
     pub fn verify_signature(&self) -> Result<bool> {
         self.signer_key

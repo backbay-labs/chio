@@ -1,5 +1,7 @@
 #![allow(clippy::result_large_err)]
 
+#[path = "trust_control/finding_hosted_profile.rs"]
+pub mod finding_hosted_profile;
 #[path = "trust_control/fiscal_handlers.rs"]
 mod fiscal_handlers;
 #[path = "trust_control/fiscal_runtime.rs"]
@@ -373,12 +375,14 @@ pub(crate) use self::budget_handlers::*;
 pub use self::capital_and_liability::*;
 pub(crate) use self::certification_handlers::*;
 pub(crate) use self::credit_and_loss::*;
-pub(crate) use self::finding_challenge_handlers::handle_submit_finding_challenge;
 pub(crate) use self::finding_challenge_handlers::FindingChallengeSubmissionExecutor;
+pub(crate) use self::finding_challenge_handlers::{
+    handle_get_finding_challenge, handle_submit_finding_challenge,
+};
 pub use self::finding_challenge_handlers::{
-    FindingChallengeSubmissionAuthorization, FindingChallengeSubmissionRequest,
-    FindingChallengeSubmissionResponse, FindingChallengeSubmissionRuntime,
-    FindingChallengeSubmissionWrite,
+    FindingChallengeStatusResponse, FindingChallengeSubmissionAuthorization,
+    FindingChallengeSubmissionRequest, FindingChallengeSubmissionResponse,
+    FindingChallengeSubmissionRuntime, FindingChallengeSubmissionWrite,
 };
 pub(crate) use self::finding_handlers::*;
 pub(crate) use self::finding_operator_seller_routes::{

@@ -1,0 +1,1 @@
+{"attempt":0,"deadlineUnixSecs":0,"jobId":"job-a","jobKind":"finding.verify","payloadSha256":"not-a-digest","requestSha256":"not-a-digest","schema":"chio.finding.worker-request.v1","tenantId":"tenant-a"}

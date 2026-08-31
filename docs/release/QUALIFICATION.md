@@ -133,7 +133,7 @@ The current retained decision is therefore:
 Regular workspace CI:
 
 - Rust stable with `rustfmt` and `clippy`
-- Rust `1.93.0` for the explicit MSRV lane
+- Rust `1.94.1` for the explicit MSRV lane
 - `node`
 - `python3`
 - `go`
@@ -395,7 +395,7 @@ Release readiness for the current surface requires:
 2. `./scripts/check-sdk-parity.sh` green
 3. `./scripts/check-web3-contract-parity.sh` green
 4. `./scripts/qualify-release.sh` green
-5. the explicit MSRV lane in `.github/workflows/ci.yml` green on Rust `1.93.0`
+5. the explicit MSRV lane in `.github/workflows/ci.yml` green on Rust `1.94.1`
 6. [RELEASE_CANDIDATE.md](RELEASE_CANDIDATE.md),
    [RELEASE_AUDIT.md](RELEASE_AUDIT.md), and
    [OPERATIONS_RUNBOOK.md](OPERATIONS_RUNBOOK.md) updated together

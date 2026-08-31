@@ -27,6 +27,7 @@ use chio_kernel::{
 use chio_manifest::{validate_manifest, LatencyHint, ToolDefinition, ToolManifest};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use ureq::rustls::pki_types::pem::PemObject as _;
 use url::form_urlencoded::{byte_serialize, Serializer as UrlFormSerializer};
 use url::Url;
 

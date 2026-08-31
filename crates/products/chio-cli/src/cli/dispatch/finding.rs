@@ -19,6 +19,13 @@ use finding_challenge::cmd_finding_challenge;
 #[path = "finding/operator.rs"]
 mod finding_operator;
 use finding_operator::{cmd_finding_operator_init, cmd_finding_operator_serve, cmd_finding_operator_tick};
+use finding_operator::cmd_finding_operator_repair_challenge_retention;
+
+#[path = "finding/hosted.rs"]
+mod finding_hosted;
+use finding_hosted::{
+    cmd_finding_operator_evaluate_canary, cmd_finding_operator_validate_hosted,
+};
 
 #[path = "finding/verified_fix.rs"]
 mod finding_verified_fix;
@@ -86,6 +93,27 @@ pub(crate) fn dispatch_finding(
             FindingOperatorCommands::Tick { profile } => {
                 cmd_finding_operator_tick(&profile, json_output)
             }
+            FindingOperatorCommands::RepairChallengeRetention {
+                database,
+                bundle,
+                receipt,
+                receipt_signing_seed_env,
+            } => {
+                cmd_finding_operator_repair_challenge_retention(
+                    &database,
+                    &bundle,
+                    &receipt,
+                    &receipt_signing_seed_env,
+                    json_output,
+                )
+            }
+            FindingOperatorCommands::ValidateHosted { profile } => {
+                cmd_finding_operator_validate_hosted(&profile, json_output)
+            }
+            FindingOperatorCommands::EvaluateCanary {
+                profile,
+                observation,
+            } => cmd_finding_operator_evaluate_canary(&profile, &observation, json_output),
         },
         FindingCommands::Package { command } => match command {
             FindingPackageCommands::VerifiedFix {

@@ -4,7 +4,9 @@ use std::collections::BTreeSet;
 
 use chio_core_types::canonical_json_bytes;
 use chio_core_types::capability::runtime_attestation::RuntimeAssuranceTier;
-use chio_core_types::crypto::{sha256_hex, Keypair, Signature, SigningAlgorithm};
+use chio_core_types::crypto::{
+    sha256_hex, sign_canonical_with_backend, Keypair, Signature, SigningAlgorithm, SigningBackend,
+};
 
 use crate::types::{Finding, FindingEvidenceClass, FindingGuaranteeClass, FINDING_SCHEMA_V1};
 
@@ -353,6 +355,25 @@ pub fn sign_finding(mut finding: Finding, keypair: &Keypair) -> Result<Finding, 
     let (signature, _) = keypair
         .sign_canonical(&finding)
         .map_err(|_| FindingError::Signing)?;
+    finding.signature = signature.to_hex();
+    Ok(finding)
+}
+
+/// Sign a finding through an external or platform signing backend.
+pub fn sign_finding_with_backend(
+    mut finding: Finding,
+    backend: &dyn SigningBackend,
+) -> Result<Finding, FindingError> {
+    if backend.algorithm() != SigningAlgorithm::Ed25519
+        || backend.public_key().is_weak_ed25519()
+        || finding.issuer != backend.public_key()
+    {
+        return Err(FindingError::Signing);
+    }
+    finding.signature.clear();
+    finding.validate()?;
+    let (signature, _) =
+        sign_canonical_with_backend(backend, &finding).map_err(|_| FindingError::Signing)?;
     finding.signature = signature.to_hex();
     Ok(finding)
 }

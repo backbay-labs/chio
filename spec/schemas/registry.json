@@ -306,6 +306,18 @@
       "schemaFile": "spec/schemas/chio-finding/v1/bond-backing.schema.json"
     },
     {
+      "schema": "chio.finding.bond-observation-request.v1",
+      "artifactKind": "finding_bond_observation_request",
+      "introducedBy": "cognition-market-m11",
+      "schemaFile": "spec/schemas/chio-finding/v1/bond-observation-request.schema.json"
+    },
+    {
+      "schema": "chio.finding.bond-observation-response.v1",
+      "artifactKind": "finding_bond_observation_response",
+      "introducedBy": "cognition-market-m11",
+      "schemaFile": "spec/schemas/chio-finding/v1/bond-observation-response.schema.json"
+    },
+    {
       "schema": "chio.finding.challenge-enforcement.v1",
       "artifactKind": "finding_challenge_enforcement",
       "introducedBy": "finding-market-v1",
@@ -346,6 +358,18 @@
       "artifactKind": "finding_finalized_bond_snapshot",
       "introducedBy": "finding-market-v1",
       "schemaFile": "spec/schemas/chio-finding/v1/finalized-bond-snapshot.schema.json"
+    },
+    {
+      "schema": "chio.finding.impairment-publisher-request.v1",
+      "artifactKind": "finding_impairment_publisher_request",
+      "introducedBy": "cognition-market-m11",
+      "schemaFile": "spec/schemas/chio-finding/v1/impairment-publisher-request.schema.json"
+    },
+    {
+      "schema": "chio.finding.impairment-publisher-response.v1",
+      "artifactKind": "finding_impairment_publisher_response",
+      "introducedBy": "cognition-market-m11",
+      "schemaFile": "spec/schemas/chio-finding/v1/impairment-publisher-response.schema.json"
     },
     {
       "schema": "chio.finding.key-revocation.v1",

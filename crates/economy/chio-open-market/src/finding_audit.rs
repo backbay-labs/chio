@@ -31,6 +31,7 @@ use chio_finding::{
     SignedFindingChallengeOutcome, MAX_AUDIT_SELECTION, MAX_FINDING_IDENTIFIER_BYTES,
     MAX_PUBLISHED_RATE_BPS,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::capability::scope::MonetaryAmount;
 
@@ -64,7 +65,8 @@ const MAX_AUDIT_STATUS_AGE_SECS: u64 = 3_600;
 /// The snapshot is the round's entire universe: a listing absent from it can
 /// never be selected, which is why the epoch commits its digest and its
 /// count before the seed is revealed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EligibleListing {
     /// Content-addressed finding identity, 64 lowercase hex characters, the
     /// same shape a report's selection list carries.

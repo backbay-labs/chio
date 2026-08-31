@@ -96,6 +96,10 @@ path  = "crates/trust/chio-revocation-oracle"
 crate = "chio-federation"
 path  = "crates/trust/chio-federation"
 
+[targets.finding_worker_protocol]
+crate = "chio-finding-worker"
+path  = "crates/platform/chio-finding-worker"
+
 [targets.underwriting_policy_input]
 crate = "chio-underwriting"
 path  = "crates/economy/chio-underwriting"

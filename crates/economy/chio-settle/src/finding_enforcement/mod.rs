@@ -23,6 +23,7 @@
 //!   artifact cannot widen its own authorization, and a key valid in one role
 //!   is rejected in the other.
 
+mod observation_source;
 mod plan;
 mod publish;
 mod reconcile;
@@ -31,6 +32,13 @@ mod verify;
 #[cfg(test)]
 mod tests;
 
+pub use observation_source::{
+    FindingBondObservationOperation, FindingBondObservationRequest, FindingBondObservationResponse,
+    FindingBondObservationSourceConfigError, RemoteFindingBondObservationSource,
+    RemoteFindingBondObservationSourceConfig, FINDING_BOND_OBSERVATION_REQUEST_SCHEMA,
+    FINDING_BOND_OBSERVATION_RESPONSE_SCHEMA, FINDING_BOND_OBSERVE_PATH,
+    FINDING_BOND_RECONCILE_PATH,
+};
 pub use plan::{
     finding_anchor_checkpoint_statement_sha256, finding_enforcement_anchor_parameters,
     finding_enforcement_anchor_parameters_for_artifact, plan_finding_impairment,
@@ -46,7 +54,12 @@ use plan::{require_anchor_publisher_lifecycle, require_anchor_publisher_role_sep
 pub use publish::{
     dispatch_finding_impairment, reobserve_finding_impairment,
     reobserve_finding_impairment_for_reconciliation, FindingImpairmentPublishError,
-    FindingImpairmentPublisher,
+    FindingImpairmentPublisher, FindingImpairmentPublisherConfigError,
+    FindingImpairmentPublisherOperation, FindingImpairmentPublisherRequest,
+    FindingImpairmentPublisherResponse, RemoteFindingImpairmentPublisher,
+    RemoteFindingImpairmentPublisherConfig, FINDING_IMPAIRMENT_DISPATCH_PATH,
+    FINDING_IMPAIRMENT_OBSERVE_PATH, FINDING_IMPAIRMENT_PUBLISHER_REQUEST_SCHEMA,
+    FINDING_IMPAIRMENT_PUBLISHER_RESPONSE_SCHEMA,
 };
 pub use reconcile::{
     reconcile_finding_impairment, ConfirmedFindingImpairmentReconciliation,

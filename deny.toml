@@ -12,72 +12,34 @@ no-default-features = false
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
-# Each ignore below is individually dated and justified (see the per-entry
-# `last-checked` notes). Keep this list small: every entry must be one of an
-# unmaintained build-time/test-only transitive, an ecosystem migration that
-# needs a coordinated upstream bump, or one RSA advisory with no upstream fix.
-# rustls-webpki advisories are not ignored.
-# Last full refresh: 2026-08-12.
+# The resolved graph has seven upstream advisories without safe compatible
+# upgrades. Each exception is narrow, dated, and restricted to compile-time,
+# test-only, or public-key verification use. Known exploitable runtime paths
+# remain unconditionally denied.
 ignore = [
-    # --- unmaintained / unsound clusters: each requires a dep migration. ---
-    # last-checked = 2026-05-02; bincode 1.3.3 unmaintained (RUSTSEC-2025-0141). Pulled by uniffi 0.28.x build deps;
-    # only used in chio-kernel-mobile codegen, not at runtime. Migrate uniffi or accept.
-    "RUSTSEC-2025-0141",
-    # last-checked = 2026-05-02; paste 1.0.15 unmaintained (RUSTSEC-2024-0436). Pulled transitively by alloy and
-    # wasmtime. No runtime risk (proc-macro). Replace once `pastey` is widely adopted.
-    "RUSTSEC-2024-0436",
-    # last-checked = 2026-05-02; rustls-pemfile unmaintained (RUSTSEC-2025-0134). Pull a maintained replacement
-    # in the rustls bump ticket; functionality is PEM parsing, not crypto.
-    "RUSTSEC-2025-0134",
-    # last-checked = 2026-05-02; serde_yml unsound and unmaintained (RUSTSEC-2025-0068). Migration to serde_yaml_ng
-    # or hand-rolled config is tracked alongside the dep-bump batch.
-    "RUSTSEC-2025-0068",
-    # last-checked = 2026-05-02; rand 0.8 unsound when paired with a custom logger using rng() (RUSTSEC-2026-0097).
-    # We do not register a custom global logger that calls rand::rng(); risk is latent.
-    # Clears with the rand-family unification ticket already noted in [bans.skip].
-    "RUSTSEC-2026-0097",
-    # last-checked = 2026-05-05; RSA Marvin attack timing sidechannel (RUSTSEC-2023-0071). Production uses RSA
-    # only for public-key verification of OIDC/JWKS and platform attestations;
-    # private-key signing is confined to tests. No upstream fix yet (tracked
-    # in rsa#19).
-    "RUSTSEC-2023-0071",
-    # last-checked = 2026-05-02; ansi_term is pulled only by dudect-bencher's legacy clap 2 harness for
-    # local timing experiments. It is not linked into production binaries.
+    # last-checked = 2026-08-29. dudect-bencher 0.7 is the current release and
+    # retains clap 2, which pulls ansi_term and atty. Both are test-only timing
+    # harness dependencies and have no safe upstream upgrade.
     "RUSTSEC-2021-0139",
-    # last-checked = 2026-05-02; atty is the same dudect-bencher -> clap 2 test harness transitive.
-    # Production CLI paths use the clap 4 stack.
     "RUSTSEC-2024-0375",
-    # last-checked = 2026-05-02; proc-macro-error is a compile-time transitive of sigstore 0.13 through
-    # json-syntax/locspan-derive. No runtime code is shipped from this crate.
-    "RUSTSEC-2024-0370",
-    # last-checked = 2026-06-08; proc-macro-error2 is unmaintained (RUSTSEC-2026-0173). It is a compile-time
-    # transitive through alloy-sol-macro and sigstore/oci-spec codegen. No runtime code is shipped from this crate.
-    "RUSTSEC-2026-0173",
-    # last-checked = 2026-07-03; quick-xml 0.39.4 unbounded-allocation memory-exhaustion DoS
-    # (RUSTSEC-2026-0194 entity expansion, RUSTSEC-2026-0195 NsReader namespace declarations).
-    # Pulled only transitively via iroh -> netwatch -> netdev -> plist for local network-interface
-    # discovery; the parsed XML is the host's own Apple property lists, not attacker-controlled
-    # input, so the DoS vector is unreachable. The fix needs quick-xml >=0.41.0, outside the ^0.39
-    # range pinned through the iroh chain; no semver-compatible bump exists and we do not edit iroh
-    # crate versions. Clears when the iroh/plist chain updates quick-xml upstream.
-    "RUSTSEC-2026-0194",
-    "RUSTSEC-2026-0195",
-    # last-checked = 2026-07-16; atomic-polyfill is unmaintained (RUSTSEC-2023-0089). Postcard 1.1.3
-    # still requires heapless 0.7, whose cas feature depends on atomic-polyfill. No compatible postcard release
-    # permits heapless 0.8 or portable-atomic yet. Clear this exception when the postcard/heapless chain updates.
+    # last-checked = 2026-08-29. postcard 1.1.3 still permits heapless 0.7,
+    # whose CAS target feature pulls atomic-polyfill. The affected package is
+    # target-specific and no safe compatible upstream upgrade exists.
     "RUSTSEC-2023-0089",
-    # last-checked = 2026-07-31; wasmtime 43 type-index confusion across engines (RUSTSEC-2026-0222).
-    # The guard runtime holds one Arc<Engine> per backend and builds every Store from that same
-    # engine, so no store is ever paired with a Module from a different engine. Clears with the
-    # wasmtime 46/47 upgrade tracked for the guard runtime.
-    "RUSTSEC-2026-0222",
-    # last-checked = 2026-08-12; Wasmtime 43 pulls wasm-compose 0.245.1, whose immutable
-    # data structures use the archived bitmaps, im-rc, and sized-chunks crates. These
-    # advisories report maintenance status rather than a known vulnerability. Clear all
-    # three exceptions with the tracked Wasmtime 46/47 guard-runtime migration.
-    "RUSTSEC-2026-0247",
-    "RUSTSEC-2026-0250",
-    "RUSTSEC-2026-0251",
+    # last-checked = 2026-08-29. paste remains a compile-time transitive of
+    # alloy and Linux network discovery. It contributes no runtime code, and
+    # those upstreams have not completed migration to pastey.
+    "RUSTSEC-2024-0436",
+    # last-checked = 2026-08-29. These proc-macro helpers are compile-time
+    # transitives of iroh, alloy, and sigstore. Neither advisory has a safe
+    # compatible upstream upgrade.
+    "RUSTSEC-2024-0370",
+    "RUSTSEC-2026-0173",
+    # last-checked = 2026-08-29. rsa has no patched release. Production Chio
+    # paths use it only for RSA public-key signature verification in JWT,
+    # attestation, and Sigstore validation. Private-key operations are limited
+    # to local tests, outside an attacker-observable signing service.
+    "RUSTSEC-2023-0071",
 ]
 
 # cargo-deny 0.16 enforces an explicit allow-list only: unlisted licenses are
@@ -114,6 +76,16 @@ allow = [
 # Ref: https://embarkstudios.github.io/cargo-deny/checks/licenses/cfg.html#the-private-field
 [licenses.private]
 ignore = true
+
+[[licenses.clarify]]
+# The published manifest points at the parent workspace license; the packaged
+# crate carries the exact Apache-2.0 text at this pinned digest.
+name = "sigstore-protobuf-specs-derive"
+version = "0.0.1"
+expression = "Apache-2.0"
+license-files = [
+    { path = "LICENSE", hash = 0x18785531 },
+]
 
 [[licenses.exceptions]]
 # `ring` ships under a bespoke license that is OpenSSL-derived but not
@@ -156,10 +128,10 @@ allow = ["MPL-2.0"]
 name = "uniffi_build"
 allow = ["MPL-2.0"]
 [[licenses.exceptions]]
-name = "uniffi_checksum_derive"
+name = "uniffi_core"
 allow = ["MPL-2.0"]
 [[licenses.exceptions]]
-name = "uniffi_core"
+name = "uniffi_internal_macros"
 allow = ["MPL-2.0"]
 [[licenses.exceptions]]
 name = "uniffi_macros"
@@ -168,7 +140,7 @@ allow = ["MPL-2.0"]
 name = "uniffi_meta"
 allow = ["MPL-2.0"]
 [[licenses.exceptions]]
-name = "uniffi_testing"
+name = "uniffi_pipeline"
 allow = ["MPL-2.0"]
 [[licenses.exceptions]]
 name = "uniffi_udl"
@@ -212,26 +184,11 @@ name = "option-ext"
 allow = ["MPL-2.0"]
 
 [[licenses.exceptions]]
-# Wasmtime 43 pulls `wasm-compose`, which depends on these persistent-data
-# structure crates. They are MPL-2.0 weak copyleft, so keep the exception
-# pinned to the exact crate names instead of widening the global allow-list.
-name = "bitmaps"
-allow = ["MPL-2.0"]
-
-[[licenses.exceptions]]
-name = "im-rc"
-allow = ["MPL-2.0"]
-
-[[licenses.exceptions]]
 # `minicbor` is pulled by aws-smithy-cbor through the AWS Marketplace
 # entitlement client. BlueOak-1.0.0 is OSI-approved and permissive, but keep
 # it pinned to this crate instead of widening the workspace allow-list.
 name = "minicbor"
 allow = ["BlueOak-1.0.0"]
-
-[[licenses.exceptions]]
-name = "sized-chunks"
-allow = ["MPL-2.0"]
 
 [[licenses.exceptions]]
 # last-checked = 2026-07-16. These Unlicense crates implement the browser
@@ -320,6 +277,13 @@ name = "core-foundation"
 # unify without bumping tonic or wasmtime, both gated on separate roadmap
 # items. Revisit when chio-envoy-ext-authz moves to tonic 0.13+.
 name = "hashbrown"
+
+[[bans.skip]]
+# last-checked = 2026-08-29. sqlx-core 0.8.6 requires hashlink 0.10 while
+# rusqlite 0.39 requires hashlink 0.11. Both database drivers are production
+# dependencies and neither exposes hashlink in Chio's public types. Remove this
+# exception when either upstream accepts the other's compatible major.
+name = "hashlink"
 
 [[bans.skip]]
 # `getrandom` cascades through the `rand` family: 0.2 (rand 0.8 consumers),
@@ -578,9 +542,6 @@ name = "sha2"
 
 [[bans.skip]]
 name = "signature"
-
-[[bans.skip]]
-name = "siphasher"
 
 [[bans.skip]]
 name = "socket2"

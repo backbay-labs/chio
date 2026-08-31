@@ -1570,6 +1570,28 @@ release_workflow = Path(".github/workflows/release-qualification.yml").read_text
 )
 if "actions: read" not in release_workflow or "GH_TOKEN: ${{ github.token }}" not in release_workflow:
     raise SystemExit("release qualification lacks GitHub Actions read credentials")
+for msrv_contract in (
+    "rustup toolchain install 1.94.1 --profile minimal",
+    "cargo +1.94.1 build --workspace",
+    "cargo +1.94.1 test --workspace",
+):
+    if msrv_contract not in release_workflow:
+        raise SystemExit(f"release qualification MSRV contract lacks {msrv_contract}")
+ci_workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+if 'toolchain: "1.94.1"' not in ci_workflow:
+    raise SystemExit("CI workspace MSRV toolchain is not Rust 1.94.1")
+for postgres_role_url in (
+    "CHIO_TEST_POSTGRES_URL",
+    "CHIO_TEST_POSTGRES_MIGRATOR_URL",
+    "CHIO_TEST_POSTGRES_RUNTIME_URL",
+    "CHIO_TEST_POSTGRES_RETENTION_URL",
+    "CHIO_TEST_POSTGRES_WORKER_URL",
+    "CHIO_TEST_POSTGRES_REPLICATOR_URL",
+):
+    if postgres_role_url not in release_workflow:
+        raise SystemExit(
+            f"release qualification lacks PostgreSQL role credential: {postgres_role_url}"
+        )
 for required in (
     "Retain formal proof evidence",
     "target/release-qualification/formal/proof-report.json",

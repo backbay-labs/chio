@@ -48,7 +48,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::{canonical_json_bytes, canonical_json_bytes_from_str};
 use chio_core::capability::scope::MonetaryAmount;
-use chio_core::crypto::{sha256_hex, Keypair, PublicKey};
+use chio_core::crypto::{sha256_hex, Ed25519Backend, Keypair, PublicKey, SigningBackend};
 use chio_core::web3::anchors::AnchorInclusionProof;
 use chio_finding::{
     audit_epoch_precommitment_sha256, compute_enforcement_id, derive_outcome_id,
@@ -533,7 +533,8 @@ pub enum ChallengeCoordinatorError {
 /// epoch that fixed the round's inputs before it sampled, the seed the
 /// venue revealed afterwards, and the eligible listing snapshot the epoch
 /// committed the digest of.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingAuditRound {
     pub epoch: SignedFindingAuditEpoch,
     /// Governance-root-signed authorization for every epoch field other
@@ -938,14 +939,14 @@ pub struct FindingChallengeCoordinator {
     market_config: FindingMarketConfig,
     status: SqliteFindingStatusStore,
     pins: ChallengeRolePins,
-    evaluator_authority: Keypair,
+    evaluator_authority: Arc<dyn SigningBackend>,
     /// The evaluator role's full lifecycle pin. Like every other
     /// value-bearing role, its key, epoch, window, and authenticated
     /// revocation source all have to hold when it acts.
     evaluator_pin: FindingAuthorityPin,
-    finalization_authority: Keypair,
+    finalization_authority: Arc<dyn SigningBackend>,
     finalization_pin: FindingAuthorityPin,
-    penalty_authority: Keypair,
+    penalty_authority: Arc<dyn SigningBackend>,
     penalty_pin: FindingAuthorityPin,
     authority_status: Arc<dyn FindingAuthorityStatusResolver>,
     rail: Arc<dyn FindingRailObserver>,
@@ -962,54 +963,16 @@ pub struct FindingChallengeCoordinator {
 }
 
 impl FindingChallengeCoordinator {
-    /// Build the coordinator over the two durable stores that share one
-    /// connection, verifying every signing key against its configured pin
-    /// and refusing a key that holds more than one role.
-    ///
-    /// The roster check runs before anything else: the whole lane rests on
-    /// the evaluator, the finalization authority, the penalty authority,
-    /// and the settlement observer being four different keys, so a
-    /// configuration that collapses any two of them must never load.
+    /// Build with custody-backed signers and an injected commit clock.
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub fn new_with_signing_backends_and_status_commit_clock(
         challenges: SqliteFindingChallengeStore,
         purchases: SqliteFindingPurchaseStore,
         status: SqliteFindingStatusStore,
         config: &FindingMarketConfig,
-        evaluator_authority: Keypair,
-        finalization_authority: Keypair,
-        penalty_authority: Keypair,
-        authority_status: Arc<dyn FindingAuthorityStatusResolver>,
-        rail: Arc<dyn FindingRailObserver>,
-        filings: Arc<dyn FindingFilingResolver>,
-        failed_challenge_disposition: FindingDisputeLockDisposition,
-    ) -> Result<Self, ChallengeCoordinatorError> {
-        Self::new_with_status_commit_clock(
-            challenges,
-            purchases,
-            status,
-            config,
-            evaluator_authority,
-            finalization_authority,
-            penalty_authority,
-            authority_status,
-            rail,
-            filings,
-            failed_challenge_disposition,
-            Arc::new(SystemFindingStatusCommitClock),
-        )
-    }
-
-    /// Build with an injected clock for deterministic boundary tests.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new_with_status_commit_clock(
-        challenges: SqliteFindingChallengeStore,
-        purchases: SqliteFindingPurchaseStore,
-        status: SqliteFindingStatusStore,
-        config: &FindingMarketConfig,
-        evaluator_authority: Keypair,
-        finalization_authority: Keypair,
-        penalty_authority: Keypair,
+        evaluator_authority: Arc<dyn SigningBackend>,
+        finalization_authority: Arc<dyn SigningBackend>,
+        penalty_authority: Arc<dyn SigningBackend>,
         authority_status: Arc<dyn FindingAuthorityStatusResolver>,
         rail: Arc<dyn FindingRailObserver>,
         filings: Arc<dyn FindingFilingResolver>,
@@ -1087,23 +1050,6 @@ impl FindingChallengeCoordinator {
             status_commit_clock,
             failed_challenge_disposition,
         })
-    }
-
-    /// Serving identity shared by the coordinator's durable stores.
-    #[must_use]
-    pub fn mutation_fence(&self) -> StoreMutationFence {
-        self.challenges.mutation_fence()
-    }
-
-    /// Exact validated market configuration this coordinator enforces.
-    #[must_use]
-    pub const fn market_config(&self) -> &FindingMarketConfig {
-        &self.market_config
-    }
-
-    /// Resolver used by read paths to recheck current authority standing.
-    pub(crate) fn authority_status_resolver(&self) -> Arc<dyn FindingAuthorityStatusResolver> {
-        Arc::clone(&self.authority_status)
     }
 
     /// Authenticate and durably record one challenge, charging the
@@ -1189,6 +1135,8 @@ impl FindingChallengeCoordinator {
         .map_err(|error| ChallengeCoordinatorError::ClassIncompatible(error.to_string()))?;
 
         let challenge_envelope_sha256 = self.envelope_digest(challenge)?;
+        let challenge_envelope_json =
+            canonical_json_bytes(challenge).map_err(|_| ChallengeCoordinatorError::Canonical)?;
         let (branch, challenger_hex) = match &body.authorization {
             FindingChallengeAuthorization::BuyerSubmission(submission) => (
                 FindingChallengeAuthorizationBranch::BuyerSubmission,
@@ -1309,6 +1257,7 @@ impl FindingChallengeCoordinator {
                 finding_id: &body.finding_id,
                 listing_id: &body.listing_id,
                 challenge_envelope_sha256: &challenge_envelope_sha256,
+                challenge_envelope_json: &challenge_envelope_json,
                 authorization_branch: branch,
                 evidence_class: evidence_class_of(body.evidence.kind()),
                 challenger_hex: challenger_hex.as_deref(),
@@ -1642,8 +1591,11 @@ impl FindingChallengeCoordinator {
         outcome
             .validate()
             .map_err(|error| ChallengeCoordinatorError::ArtifactValidation(error.to_string()))?;
-        let signed = SignedFindingChallengeOutcome::sign(outcome, &self.evaluator_authority)
-            .map_err(|_| ChallengeCoordinatorError::Signing)?;
+        let signed = SignedFindingChallengeOutcome::sign_with_backend(
+            outcome,
+            self.evaluator_authority.as_ref(),
+        )
+        .map_err(|_| ChallengeCoordinatorError::Signing)?;
         let outcome_envelope_json =
             canonical_json_bytes(&signed).map_err(|_| ChallengeCoordinatorError::Canonical)?;
         let outcome_envelope_sha256 = sha256_hex(&outcome_envelope_json);
@@ -2421,8 +2373,11 @@ impl FindingChallengeCoordinator {
             .map_err(|error| ChallengeCoordinatorError::ArtifactValidation(error.to_string()))?;
         let (_, finalization_status) =
             self.resolve_live_role(&self.finalization_pin, now, now, "finalization")?;
-        let refreshed = SignedFindingChallengeEnforcement::sign(body, &self.finalization_authority)
-            .map_err(|_| ChallengeCoordinatorError::Signing)?;
+        let refreshed = SignedFindingChallengeEnforcement::sign_with_backend(
+            body,
+            self.finalization_authority.as_ref(),
+        )
+        .map_err(|_| ChallengeCoordinatorError::Signing)?;
 
         self.require_live_settlement_observer(bond_snapshot, now)?;
         let (settlement_observer, settlement_observer_status) = self.resolve_live_role(
@@ -2949,6 +2904,8 @@ impl FindingChallengeCoordinator {
 
 include!("finding_challenge_coordinator/status_settlement.rs");
 include!("finding_challenge_coordinator/artifact_resolution.rs");
+include!("finding_challenge_coordinator/read_api.rs");
+include!("finding_challenge_coordinator/constructors.rs");
 
 impl FindingChallengeCoordinator {
     /// Resolve and verify the retained venue admission that bound the
@@ -5956,9 +5913,11 @@ impl FindingChallengeCoordinator {
             .validate()
             .map_err(|error| ChallengeCoordinatorError::ArtifactValidation(error.to_string()))?;
         self.require_live_role(&self.finalization_pin, now, now, "finalization")?;
-        let signed =
-            SignedFindingChallengeEnforcement::sign(enforcement, &self.finalization_authority)
-                .map_err(|_| ChallengeCoordinatorError::Signing)?;
+        let signed = SignedFindingChallengeEnforcement::sign_with_backend(
+            enforcement,
+            self.finalization_authority.as_ref(),
+        )
+        .map_err(|_| ChallengeCoordinatorError::Signing)?;
         let enforcement_envelope_sha256 = self.envelope_digest(&signed)?;
         let authorized = AuthorizedImpairment {
             enforcement: signed.clone(),
@@ -6133,8 +6092,9 @@ impl FindingChallengeCoordinator {
             &trusted,
         )
         .map_err(ChallengeCoordinatorError::PenaltyMint)?;
-        let penalty = SignedOpenMarketPenalty::sign(artifact, &self.penalty_authority)
-            .map_err(|_| ChallengeCoordinatorError::Signing)?;
+        let penalty =
+            SignedOpenMarketPenalty::sign_with_backend(artifact, self.penalty_authority.as_ref())
+                .map_err(|_| ChallengeCoordinatorError::Signing)?;
         let penalty_envelope_sha256 = self.envelope_digest(&penalty)?;
         let request = OpenMarketPenaltyEvaluationRequest {
             fee_schedule: governance.fee_schedule.clone(),

@@ -96,14 +96,21 @@ use crate::finding_purchase_store::{
 };
 use crate::serving_owner::SqliteServingOwner;
 
+mod submission_retention;
+pub use submission_retention::*;
+use submission_retention::{
+    store_challenge_submission_tx, validate_submission, verify_challenge_submissions,
+};
+
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
+/// Revision 14 retains exact signed challenge submissions atomically.
 /// Revision 13 combines authenticated seller-impairment reconciliations,
 /// append-only enforcement-root refreshes, and exact legacy anchor-binding
 /// recovery; revision 11 retains pre-dispatch authorization refreshes.
 /// revision 10 retains the initial exact finalizing authorization atomically
 /// with the liability transition; revision 9 retains exact signed evaluator
 /// outcomes with their verdict.
-pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 13;
+pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 14;
 const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] = &[
     "challenges",
     "finding_challenge_projection_commits",
@@ -301,6 +308,7 @@ pub struct FindingChallengeSubmission<'a> {
     pub finding_id: &'a str,
     pub listing_id: &'a str,
     pub challenge_envelope_sha256: &'a str,
+    pub challenge_envelope_json: &'a [u8],
     pub authorization_branch: FindingChallengeAuthorizationBranch,
     pub evidence_class: FindingChallengeEvidenceClass,
     pub challenger_hex: Option<&'a str>,
@@ -720,6 +728,11 @@ impl SqliteFindingChallengeStore {
         let transaction = self.begin_write(&mut connection)?;
         if let Some(existing) = load_challenge_tx(&transaction, input.challenge_id)? {
             if challenge_matches(&existing, input) {
+                let inserted = store_challenge_submission_tx(&transaction, input)?;
+                if inserted {
+                    self.commit_write(transaction)?;
+                    self.sync_after_write(&connection)?;
+                }
                 return Ok(FindingChallengeWriteOutcome::ExistingSame);
             }
             return Err(FindingChallengeStoreError::Conflict(
@@ -760,6 +773,11 @@ impl SqliteFindingChallengeStore {
             .map_err(sqlite_error)?;
         if inserted != 1 {
             return Err(invariant("challenge insert did not affect one row"));
+        }
+        if !store_challenge_submission_tx(&transaction, input)? {
+            return Err(invariant(
+                "new challenge did not create its retained signed envelope",
+            ));
         }
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
@@ -4445,28 +4463,6 @@ fn claim_snapshot_matches(
         && existing.community_fund_units == input.community_fund_units
 }
 
-fn validate_submission(
-    input: &FindingChallengeSubmission<'_>,
-) -> Result<(), FindingChallengeStoreError> {
-    require_identifier(input.challenge_id, "challenge_id")?;
-    require_identifier(input.listing_id, "listing_id")?;
-    require_hex64(input.finding_id, "finding_id")?;
-    require_hex64(input.challenge_envelope_sha256, "challenge_envelope_sha256")?;
-    match (input.authorization_branch, input.challenger_hex) {
-        (FindingChallengeAuthorizationBranch::BuyerSubmission, Some(challenger)) => {
-            require_hex64(challenger, "challenger_hex")?;
-        }
-        (FindingChallengeAuthorizationBranch::BuyerSubmission, None) => {
-            return Err(invariant("a buyer submission must name its challenger"));
-        }
-        (FindingChallengeAuthorizationBranch::VenueAudit, Some(_)) => {
-            return Err(invariant("a venue audit must not name a challenger"));
-        }
-        (FindingChallengeAuthorizationBranch::VenueAudit, None) => {}
-    }
-    require_trusted_time(input.submitted_at, "submitted_at")
-}
-
 fn validate_dispute_lock(
     input: &FindingDisputeLockInput<'_>,
 ) -> Result<(), FindingChallengeStoreError> {
@@ -4800,7 +4796,7 @@ pub(crate) fn initialize_finding_challenge_schema(
     if on_disk == FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION {
         return verify_finding_challenge_invariants(connection);
     }
-    if matches!(on_disk, 10..=12) {
+    if matches!(on_disk, 10..=13) {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(sqlite_error)?;
@@ -5307,6 +5303,7 @@ pub(crate) fn verify_finding_challenge_invariants(
             "finding challenge schema differs from the canonical definition",
         ));
     }
+    verify_challenge_submissions(connection)?;
     let invalid_authorization_coverage = connection
         .query_row(
             r#"
@@ -5421,6 +5418,8 @@ fn finding_challenge_schema_catalog(
             SELECT type, name, tbl_name, sql
             FROM sqlite_schema
             WHERE name GLOB 'challenges*' OR tbl_name GLOB 'challenges*'
+               OR name GLOB 'finding_challenge_submissions*'
+               OR tbl_name GLOB 'finding_challenge_submissions*'
                OR name GLOB 'finding_challenge_outcomes*'
                OR tbl_name GLOB 'finding_challenge_outcomes*'
                OR name GLOB 'dispute_locks*' OR tbl_name GLOB 'dispute_locks*'

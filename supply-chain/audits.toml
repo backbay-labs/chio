@@ -307,6 +307,12 @@ criteria = "safe-to-deploy"
 version = "0.1.89"
 notes = "Top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
+[[audits.atoi]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "2.0.0"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
+
 [[audits.auditable-serde]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
@@ -505,6 +511,12 @@ criteria = "safe-to-deploy"
 delta = "0.9.18 -> 0.9.20"
 notes = "Reviewed delta 0.9.18 to 0.9.20 for the RUSTSEC-2026-0204 fix. fmt::Pointer now formats raw addresses without dereferencing invalid or null pointers; Atomic::fetch_update returns the previous value; the new build script only emits TSan cfg from environment state. No new file or network capability."
 
+[[audits.crossbeam-queue]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.3.13"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
+
 [[audits.darling_macro]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
@@ -553,11 +565,29 @@ criteria = "safe-to-deploy"
 version = "0.5.0"
 notes = "cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked separately."
 
+[[audits.dotenvy]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.15.7"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
+
 [[audits.ed25519-dalek]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "2.2.0"
 notes = "Top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
+
+[[audits.etcetera]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.8.0"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
+
+[[audits.event-listener]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "5.4.2"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
 
 [[audits.fips204]]
 who = "Chio supply-chain reviewer"
@@ -589,6 +619,12 @@ criteria = "safe-to-deploy"
 version = "0.3.32"
 notes = "Top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
+[[audits.futures-intrusive]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.5.0"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
+
 [[audits.futures-util]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
@@ -619,6 +655,12 @@ criteria = "safe-to-deploy"
 version = "0.16.1"
 notes = "Backing implementation for std HashMap; well-audited swisstable port, no IO."
 
+[[audits.hashlink]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.10.0"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
+
 [[audits.heck]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
@@ -630,6 +672,12 @@ who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.4.3"
 notes = "Top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
+
+[[audits.home]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.5.12"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
 
 [[audits.http]]
 who = "Chio supply-chain reviewer"
@@ -762,6 +810,12 @@ who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.94.1"
 notes = "cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked separately."
+
+[[audits.md-5]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.10.6"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
 
 [[audits.memchr]]
 who = "Chio supply-chain reviewer"
@@ -937,6 +991,12 @@ criteria = "safe-to-deploy"
 version = "1.0.45"
 notes = "Macro quoting helper by dtolnay; build-time dependency, no runtime IO."
 
+[[audits.rand]]
+who = "OpenAI Codex <noreply@openai.com>"
+criteria = "safe-to-deploy"
+delta = "0.8.5 -> 0.8.6"
+notes = "Reviewed the complete 0.8.5 to 0.8.6 delta. The release removes logger reentrancy that caused RUSTSEC-2026-0097, removes experimental SIMD code, and adds a valid nightly TrustedLen impl for the infinite iterator."
+
 [[audits.rand_core]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
@@ -1074,6 +1134,42 @@ who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 delta = "0.10.0 -> 0.10.1"
 notes = "Local cargo-vet review of the full published-source diff after upstream yanked 0.10.0. Same double-drop fix as the 0.9.9 release (ManuallyDrop in Once::force_into_inner) plus a regression test; remaining changes are cargo publish manifest normalization and a dev-only lockfile refresh. No new dependencies, no build script, no new unsafe surface."
+
+[[audits.sqlx]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.8.6"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
+
+[[audits.sqlx-core]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.8.6"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
+
+[[audits.sqlx-macros]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.8.6"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
+
+[[audits.sqlx-macros-core]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.8.6"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
+
+[[audits.sqlx-postgres]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.8.6"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
+
+[[audits.stringprep]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.1.5"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
 
 [[audits.subtle]]
 who = "Chio supply-chain reviewer"
@@ -1219,11 +1315,23 @@ criteria = "safe-to-deploy"
 version = "1.19.0"
 notes = "Compile-time numeric types; build-time only, no IO."
 
+[[audits.unicode-bidi]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.3.18"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and the single repr-transparent slice conversion unsafe block reviewed for the bounded SQLx PostgreSQL runtime role."
+
 [[audits.unicode-ident]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.24"
 notes = "Unicode XID identifier tables by dtolnay; static lookup, no IO."
+
+[[audits.unicode-properties]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.1.4"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
 
 [[audits.unindent]]
 who = "Chio supply-chain reviewer"
@@ -1248,6 +1356,12 @@ who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.22.0"
 notes = "Exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
+
+[[audits.wasite]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.1.0"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
 
 [[audits.wasm-bindgen]]
 who = "Chio supply-chain reviewer"
@@ -1320,6 +1434,12 @@ who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.5.2"
 notes = "cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked separately."
+
+[[audits.whoami]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "1.6.1"
+notes = "Hosted PostgreSQL dependency review. Exact locked source, manifest, license, build behavior, and unsafe surface reviewed for the bounded SQLx PostgreSQL runtime role."
 
 [[audits.windows-sys]]
 who = "Chio supply-chain reviewer"
@@ -1446,3 +1566,934 @@ who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.8.2"
 notes = "Top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
+
+[[trusted.cargo-platform]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2023-07-13"
+end = "2027-08-29"
+notes = "Scoped publisher trust corroborated by Mozilla and Bytecode Alliance peer audits."
+
+[[trusted.chio-a2a-adapter]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-a2a-edge]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-acp-edge]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-acp-proxy]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-adversarial-suite]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-ag-ui-proxy]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-agent-web-interop]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-anchor]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-anthropic-tools-adapter]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-api-protect]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-appraisal]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-arena]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-attest-buyer]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-attest-buyer-core]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-attest-loopback]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-attest-verify]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-autonomy]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-bedrock-converse-adapter]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-binding-helpers]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-bindings-ffi]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-bounded]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-cli]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-cohere-tools-adapter]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-commerce-order]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-config]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-conformance]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-control-plane]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-core]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-core-types]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-cpp-kernel-ffi]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-credentials]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-credit]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-cross-protocol]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-custody-hw]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-data-guards]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-data-guards-redactors-default]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-did]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-disclosure-lineage]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-edge-metrics]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-egress-contract]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-enterprise-export]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-envoy-ext-authz]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-errors]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-eval-receipt]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-external-guards]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-federation]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-federation-authority]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-federation-transport-iroh]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-fincred]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-fiscal]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-gemini-tools-adapter]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-governance]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-groq-tools-adapter]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-guard-registry]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-guard-sdk]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-guard-sdk-macros]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-guards]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-hosted-mcp]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-http-core]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-http-serve]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-http-session]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-kernel]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-kernel-browser]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-kernel-core]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-kernel-mobile]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-lineage]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-link]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-listing]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-log-redact]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-lsp]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-manifest]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-market]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-mcp-adapter]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-mcp-edge]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-mercury]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-mercury-core]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-metering]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-metrics-spec]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-mistral-tools-adapter]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-ollama-tools-adapter]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-open-market]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-openai-adapter]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-openapi]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-openapi-mcp-bridge]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-otel-receipt-exporter]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-pheromone]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-pheromone-relay]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-pheromone-runtime]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-policy]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-proof-room]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-provider-conformance]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-replay-corpus]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-reputation]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-revocation-oracle]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-risk-comptroller]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-runtime]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-runtime-core]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-runtime-harness]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-runtime-proof-parity]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-selective-disclosure]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-settle]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-siem]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-spec-codegen]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-spec-validate]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-store-sqlite]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-supervisor]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-swarm-authority]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-tee]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-tee-frame]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-test-support]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-tool-call-fabric]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-tower]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-transaction-passport]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-trust-market-context]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-underwriting]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-verdict-matrix-driver-lambda]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-wall]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-wall-core]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-wasm-guards]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-web3]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-04-22"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-web3-bindings]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-weights]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-01"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-workflow]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.chio-workflow-preflight]]
+criteria = "safe-to-deploy"
+user-id = 386786 # connor (bb-connor)
+start = "2026-08-02"
+end = "2027-08-29"
+notes = "First-party Chio publisher for workspace crates; scoped to currently required packages and the cargo-vet trust window."
+
+[[trusted.fs-err]]
+criteria = "safe-to-deploy"
+user-id = 6872 # Andrew Hickman (andrewhickman)
+start = "2020-02-02"
+end = "2027-08-29"
+notes = "Scoped publisher trust for UniFFI build tooling; build script only performs rustc feature detection."
+
+[[trusted.indexmap]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2020-01-15"
+end = "2027-08-29"
+notes = "Scoped publisher trust corroborated by Mozilla and Bytecode Alliance peer audits."
+
+[[trusted.libc]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2024-08-15"
+end = "2027-08-29"
+notes = "Scoped publisher trust corroborated by Mozilla and Bytecode Alliance peer audits."
+
+[[trusted.mach2]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:JohnTitor/mach2"
+start = "2025-11-16"
+end = "2027-08-29"
+notes = "Scoped publisher trust corroborated by Bytecode Alliance peer audits."
+
+[[trusted.object]]
+criteria = "safe-to-deploy"
+user-id = 4415 # Philip Craig (philipc)
+start = "2019-04-26"
+end = "2027-08-29"
+notes = "Scoped publisher trust corroborated by Bytecode Alliance peer audits."
+
+[[trusted.plist]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:ebarnard/rust-plist"
+start = "2025-09-15"
+end = "2027-08-29"
+notes = "Scoped publisher trust for the Apple-only netdev parsing path; paired with the quick-xml advisory-clearing upgrade."
+
+[[trusted.quick-xml]]
+criteria = "safe-to-deploy"
+user-id = 2927 # Mingun
+start = "2022-05-25"
+end = "2027-08-29"
+notes = "Scoped publisher trust for the maintained XML parser version that clears the known resource-exhaustion advisories."
+
+[[trusted.serde_yaml_ng]]
+criteria = "safe-to-deploy"
+user-id = 141900 # Antoine Catton (acatton)
+start = "2024-05-03"
+end = "2027-08-29"
+notes = "Scoped publisher trust for the RustSec-recommended maintained serde_yaml fork replacing unsound serde_yml."

@@ -202,7 +202,11 @@ fn dispatch_with_redirect_validation<F>(
     mut send: F,
 ) -> Result<ureq::Response, AdapterError>
 where
-    F: FnMut(&str, bool) -> Result<ureq::Response, ureq::Error>,
+    F: FnMut(
+        &str,
+        bool,
+        &HttpEgressContract,
+    ) -> Result<ureq::Response, AdapterError>,
 {
     let Some(contract) = transport_config.egress_contract.as_ref() else {
         return Err(AdapterError::InvalidUrl(
@@ -214,8 +218,7 @@ where
     let mut chain_len: u8 = 0;
     let mut strip_sensitive_headers = false;
     loop {
-        let response =
-            send(&current_url, strip_sensitive_headers).map_err(|error| map_ureq_error_with_contract(error, contract))?;
+        let response = send(&current_url, strip_sensitive_headers, contract)?;
         let status = response.status();
         if !(300..400).contains(&status) {
             return Ok(response);
@@ -316,12 +319,14 @@ fn fetch_json<T: for<'de> Deserialize<'de>>(
         request_url.as_str(),
         transport_config,
         true,
-        |target, strip_sensitive_headers| {
+        |target, strip_sensitive_headers, contract| {
             let request = agent
                 .get(target)
                 .set(A2A_VERSION_HEADER, A2A_PROTOCOL_VERSION_HEADER_VALUE);
             let request = apply_request_auth(request, request_auth, strip_sensitive_headers);
-            request.call()
+            request
+                .call()
+                .map_err(|error| map_ureq_error_with_contract(error, contract))
         },
     )?;
     read_json_response_with_contract(response, request_url.as_str(), transport_config)
@@ -340,12 +345,14 @@ fn delete_empty(
         request_url.as_str(),
         transport_config,
         true,
-        |target, strip_sensitive_headers| {
+        |target, strip_sensitive_headers, contract| {
             let request = agent
                 .delete(target)
                 .set(A2A_VERSION_HEADER, A2A_PROTOCOL_VERSION_HEADER_VALUE);
             let request = apply_request_auth(request, request_auth, strip_sensitive_headers);
-            request.call()
+            request
+                .call()
+                .map_err(|error| map_ureq_error_with_contract(error, contract))
         },
     )?;
     Ok(())
@@ -368,13 +375,15 @@ where
         request_url.as_str(),
         transport_config,
         true,
-        |target, strip_sensitive_headers| {
+        |target, strip_sensitive_headers, contract| {
             let request = agent
                 .get(target)
                 .set("Accept", SSE_CONTENT_TYPE)
                 .set(A2A_VERSION_HEADER, A2A_PROTOCOL_VERSION_HEADER_VALUE);
             let request = apply_request_auth(request, request_auth, strip_sensitive_headers);
-            request.call()
+            request
+                .call()
+                .map_err(|error| map_ureq_error_with_contract(error, contract))
         },
     )?;
     let content_type = response.header("Content-Type").unwrap_or_default();
@@ -406,14 +415,16 @@ fn post_json<T: for<'de> Deserialize<'de>, B: Serialize>(
         request_url.as_str(),
         transport_config,
         false,
-        |target, strip_sensitive_headers| {
+        |target, strip_sensitive_headers, contract| {
             let request = agent
                 .post(target)
                 .set("Content-Type", "application/json")
                 .set("Accept", "application/json")
                 .set(A2A_VERSION_HEADER, A2A_PROTOCOL_VERSION_HEADER_VALUE);
             let request = apply_request_auth(request, request_auth, strip_sensitive_headers);
-            request.send_json(body_value.clone())
+            request
+                .send_json(body_value.clone())
+                .map_err(|error| map_ureq_error_with_contract(error, contract))
         },
     )?;
     read_json_response_with_contract(response, request_url.as_str(), transport_config)
@@ -433,14 +444,16 @@ fn post_form_json<T: for<'de> Deserialize<'de>>(
         url.as_str(),
         transport_config,
         false,
-        |target, strip_sensitive_headers| {
+        |target, strip_sensitive_headers, contract| {
             let request = agent
                 .post(target)
                 .set("Content-Type", "application/x-www-form-urlencoded")
                 .set("Accept", "application/json");
             let request =
                 apply_request_headers(request, request_headers, strip_sensitive_headers);
-            request.send_string(body)
+            request
+                .send_string(body)
+                .map_err(|error| map_ureq_error_with_contract(error, contract))
         },
     )?;
     read_json_response_with_contract(response, url.as_str(), transport_config)
@@ -470,14 +483,16 @@ where
         request_url.as_str(),
         transport_config,
         false,
-        |target, strip_sensitive_headers| {
+        |target, strip_sensitive_headers, contract| {
             let request = agent
                 .post(target)
                 .set("Content-Type", "application/json")
                 .set("Accept", SSE_CONTENT_TYPE)
                 .set(A2A_VERSION_HEADER, A2A_PROTOCOL_VERSION_HEADER_VALUE);
             let request = apply_request_auth(request, request_auth, strip_sensitive_headers);
-            request.send_json(body_value.clone())
+            request
+                .send_json(body_value.clone())
+                .map_err(|error| map_ureq_error_with_contract(error, contract))
         },
     )?;
     let content_type = response.header("Content-Type").unwrap_or_default();
@@ -560,8 +575,7 @@ fn parse_pem_certificates(
     pem: &str,
     field_name: &str,
 ) -> Result<Vec<ureq::rustls::pki_types::CertificateDer<'static>>, AdapterError> {
-    let mut reader = pem.as_bytes();
-    let certificates = rustls_pemfile::certs(&mut reader)
+    let certificates = ureq::rustls::pki_types::CertificateDer::pem_slice_iter(pem.as_bytes())
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| {
             AdapterError::AuthNegotiation(format!("failed to parse {field_name}: {error}"))
@@ -578,15 +592,9 @@ fn parse_pem_private_key(
     pem: &str,
     field_name: &str,
 ) -> Result<ureq::rustls::pki_types::PrivateKeyDer<'static>, AdapterError> {
-    let mut reader = pem.as_bytes();
-    let private_key = rustls_pemfile::private_key(&mut reader)
+    let private_key = ureq::rustls::pki_types::PrivateKeyDer::from_pem_slice(pem.as_bytes())
         .map_err(|error| {
             AdapterError::AuthNegotiation(format!("failed to parse {field_name}: {error}"))
-        })?
-        .ok_or_else(|| {
-            AdapterError::AuthNegotiation(format!(
-                "{field_name} did not contain a supported PEM private key"
-            ))
         })?;
     Ok(private_key)
 }

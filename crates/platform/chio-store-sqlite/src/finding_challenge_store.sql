@@ -55,6 +55,15 @@ CREATE INDEX IF NOT EXISTS challenges_finding
 CREATE INDEX IF NOT EXISTS challenges_state
     ON challenges(state, challenge_id);
 
+CREATE TABLE IF NOT EXISTS finding_challenge_submissions (
+    challenge_envelope_sha256 TEXT NOT NULL PRIMARY KEY REFERENCES challenges(challenge_envelope_sha256),
+    challenge_id TEXT NOT NULL UNIQUE REFERENCES challenges(challenge_id),
+    challenge_envelope_json BLOB NOT NULL CHECK (
+        length(challenge_envelope_json) BETWEEN 1 AND 1048576
+    ),
+    recorded_at INTEGER NOT NULL CHECK (recorded_at > 0)
+);
+
 CREATE TRIGGER IF NOT EXISTS challenges_immutable_identity
 BEFORE UPDATE ON challenges
 WHEN NEW.challenge_id <> OLD.challenge_id

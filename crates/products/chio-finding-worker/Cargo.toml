@@ -1,0 +1,30 @@
+[package]
+name = "chio-finding-worker-daemon"
+description = "Dedicated hosted cognition-market Firecracker worker daemon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "chio-finding-worker"
+path = "src/main.rs"
+
+[dependencies]
+chio-control-plane = { workspace = true }
+chio-core-types = { workspace = true }
+chio-finding-hosted-edge = { workspace = true }
+chio-finding-market-store-postgres = { workspace = true }
+chio-finding-worker = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+nix = { version = "0.31.2", features = ["user"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { version = "0.7", features = ["rt"] }
+
+[lints]
+workspace = true

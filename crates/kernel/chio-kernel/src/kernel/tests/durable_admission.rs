@@ -580,6 +580,7 @@ impl ReceiptStore for TestAdmissionOperationStore {
 struct QualifiedDurablePaymentAdapter {
     authorization_references: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     settlement_actions: std::sync::Arc<std::sync::Mutex<Vec<&'static str>>>,
+    settlement_references: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 impl PaymentAdapter for QualifiedDurablePaymentAdapter {
@@ -611,12 +612,16 @@ impl PaymentAdapter for QualifiedDurablePaymentAdapter {
         authorization_id: &str,
         _amount_units: u64,
         _currency: &str,
-        _reference: &str,
+        reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
         self.settlement_actions
             .lock()
             .map_err(|_| PaymentError::RailError("test payment lock poisoned".to_owned()))?
             .push("capture");
+        self.settlement_references
+            .lock()
+            .map_err(|_| PaymentError::RailError("test payment lock poisoned".to_owned()))?
+            .push(reference.to_owned());
         Ok(PaymentResult {
             transaction_id: authorization_id.to_owned(),
             settlement_status: RailSettlementStatus::Settled,
@@ -627,12 +632,16 @@ impl PaymentAdapter for QualifiedDurablePaymentAdapter {
     fn release(
         &self,
         authorization_id: &str,
-        _reference: &str,
+        reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
         self.settlement_actions
             .lock()
             .map_err(|_| PaymentError::RailError("test payment lock poisoned".to_owned()))?
             .push("release");
+        self.settlement_references
+            .lock()
+            .map_err(|_| PaymentError::RailError("test payment lock poisoned".to_owned()))?
+            .push(reference.to_owned());
         Ok(PaymentResult {
             transaction_id: authorization_id.to_owned(),
             settlement_status: RailSettlementStatus::Released,

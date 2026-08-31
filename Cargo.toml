@@ -80,6 +80,7 @@ members = [
     "crates/trust/chio-attest-buyer",
     "crates/trust/chio-attest-verify",
     "crates/trust/chio-custody-hw",
+    "crates/trust/chio-signing-remote",
     "crates/trust/chio-weights",
     "crates/trust/chio-tee",
     "crates/trust/chio-tee-frame",
@@ -120,6 +121,10 @@ members = [
     "crates/platform/chio-config",
     "crates/platform/chio-control-plane",
     "crates/platform/chio-enterprise-export",
+    "crates/platform/chio-finding-market-migrations",
+    "crates/platform/chio-finding-market-store-postgres",
+    "crates/platform/chio-finding-hosted-edge",
+    "crates/platform/chio-finding-worker",
     "crates/platform/chio-manifest",
     "crates/platform/chio-risk-comptroller",
     "crates/platform/chio-sqlite-file-identity",
@@ -140,6 +145,9 @@ members = [
     # Products
     "crates/products/chio-api-protect",
     "crates/products/chio-cli",
+    "crates/products/chio-finding-market-migrator",
+    "crates/products/chio-finding-market-canary",
+    "crates/products/chio-finding-worker",
     "crates/products/chio-mercury",
     "crates/products/chio-mercury-core",
     "crates/products/chio-proof-room",
@@ -152,6 +160,7 @@ members = [
     "crates/sdk/chio-cpp-kernel-ffi",
     "crates/tooling/chio-conformance",
     "crates/tooling/chio-conformance/verdict_matrix/drivers/lambda",
+    "crates/tooling/chio-release-evidence",
     "crates/sdk/chio-eval-receipt",
     "crates/tooling/chio-spec-codegen",
     "crates/tooling/chio-spec-validate",
@@ -194,7 +203,7 @@ exclude = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.93"
+rust-version = "1.94"
 license = "Apache-2.0"
 repository = "https://github.com/backbay-labs/chio"
 
@@ -291,7 +300,7 @@ serde = { version = "1", features = ["derive"] }
 # float yields the exact bits that were signed.
 serde_json = { version = "1", features = ["float_roundtrip"] }
 serde_yaml = "0.9"
-serde_yml = "0.0.12"
+serde_yml = { package = "serde_yaml_ng", version = "0.10.0" }
 tokio = { version = "1", features = ["full"] }
 thiserror = "1"
 miette = { version = "7.6.0", features = ["fancy"] }
@@ -315,12 +324,17 @@ hex = "0.4"
 base64 = "0.22"
 base64ct = "=1.8.3"
 hmac = "0.12"
+subtle = "2"
+libc = "0.2"
 bs58 = "0.5"
 chacha20poly1305 = "0.10"
 ryu = "1"
 sha2 = "0.10"
 reqwest = { version = "0.13.2", default-features = false }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
+webpki = { package = "rustls-webpki", version = "0.103", default-features = false, features = ["std"] }
 rusqlite = { version = "0.39", features = ["bundled"] }
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls", "postgres"] }
 rs_merkle = "1.5"
 uuid = "1"
 url = "2"
@@ -378,6 +392,7 @@ chio-bedrock-converse-adapter = { path = "crates/protocol/chio-bedrock-converse-
 chio-binding-helpers = { path = "crates/sdk/chio-binding-helpers" }
 chio-bounded = { path = "crates/core/chio-bounded" }
 chio-supervisor = { path = "crates/core/chio-supervisor" }
+chio-signing-remote = { path = "crates/trust/chio-signing-remote" }
 chio-cohere-tools-adapter = { path = "crates/protocol/chio-cohere-tools-adapter" }
 chio-config = { path = "crates/platform/chio-config" }
 chio-conformance = { path = "crates/tooling/chio-conformance" }
@@ -389,6 +404,10 @@ chio-credentials = { path = "crates/trust/chio-credentials" }
 chio-credit = { path = "crates/economy/chio-credit" }
 chio-fincred = { path = "crates/economy/chio-fincred" }
 chio-finding = { path = "crates/economy/chio-finding" }
+chio-finding-hosted-edge = { path = "crates/platform/chio-finding-hosted-edge" }
+chio-finding-market-migrations = { path = "crates/platform/chio-finding-market-migrations" }
+chio-finding-market-store-postgres = { path = "crates/platform/chio-finding-market-store-postgres" }
+chio-finding-worker = { path = "crates/platform/chio-finding-worker" }
 chio-finding-challenge = { path = "crates/trust/chio-finding-challenge" }
 chio-finding-verifier = { path = "crates/trust/chio-finding-verifier" }
 chio-fiscal = { path = "crates/economy/chio-fiscal" }

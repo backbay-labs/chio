@@ -130,6 +130,130 @@ fn artifact_lookup_does_not_read_unrelated_bundles() {
 }
 
 #[test]
+fn retained_challenge_policy_is_exact_replay_and_tamper_checked() {
+    let store = SqliteFindingOperatorBundleStore::open_in_memory().unwrap();
+    let digest = "9".repeat(64);
+    let policy = br#"{"authorityId":"challenge-evaluator","keyEpoch":1}"#;
+    assert_eq!(
+        store
+            .put_retained_challenge_policy(
+                FindingOperatorRetainedPolicyArtifactKind::ChallengeOutcome,
+                &digest,
+                FindingOperatorRetainedPolicyRole::Evaluator,
+                policy,
+            )
+            .unwrap(),
+        FindingOperatorBundleWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store
+            .put_retained_challenge_policy(
+                FindingOperatorRetainedPolicyArtifactKind::ChallengeOutcome,
+                &digest,
+                FindingOperatorRetainedPolicyRole::Evaluator,
+                policy,
+            )
+            .unwrap(),
+        FindingOperatorBundleWriteOutcome::ExactReplay
+    );
+    assert!(matches!(
+        store.put_retained_challenge_policy(
+            FindingOperatorRetainedPolicyArtifactKind::ChallengeOutcome,
+            &digest,
+            FindingOperatorRetainedPolicyRole::Evaluator,
+            br#"{"authorityId":"substitute","keyEpoch":1}"#,
+        ),
+        Err(FindingOperatorBundleStoreError::Conflict)
+    ));
+
+    let retained = store
+        .get_retained_challenge_policy(
+            FindingOperatorRetainedPolicyArtifactKind::ChallengeOutcome,
+            &digest,
+            FindingOperatorRetainedPolicyRole::Evaluator,
+        )
+        .unwrap();
+    assert_eq!(retained.policy_json, policy);
+    assert_eq!(retained.policy_sha256, sha256_hex(policy));
+
+    let changed = store
+        .pool
+        .get()
+        .unwrap()
+        .execute(
+            "UPDATE chio_finding_operator_retained_challenge_policies SET policy_json = X'7B7D' WHERE artifact_envelope_sha256 = ?1",
+            [&digest],
+        )
+        .unwrap();
+    assert_eq!(changed, 1);
+    let error = store
+        .get_retained_challenge_policy(
+            FindingOperatorRetainedPolicyArtifactKind::ChallengeOutcome,
+            &digest,
+            FindingOperatorRetainedPolicyRole::Evaluator,
+        )
+        .unwrap_err();
+    assert!(
+        matches!(error, FindingOperatorBundleStoreError::DigestMismatch),
+        "unexpected error: {error:?}"
+    );
+}
+
+#[test]
+fn retained_challenge_policy_rejects_noncanonical_input() {
+    let store = SqliteFindingOperatorBundleStore::open_in_memory().unwrap();
+    assert!(matches!(
+        store.put_retained_challenge_policy(
+            FindingOperatorRetainedPolicyArtifactKind::Penalty,
+            &"8".repeat(64),
+            FindingOperatorRetainedPolicyRole::PenaltyAuthority,
+            br#"{ "authorityId": "penalty" }"#,
+        ),
+        Err(FindingOperatorBundleStoreError::Invalid(
+            "retained challenge policy"
+        ))
+    ));
+}
+
+#[test]
+fn audit_round_is_digest_checked_and_exact_replay_only() {
+    let store = SqliteFindingOperatorBundleStore::open_in_memory().unwrap();
+    let epoch_digest = "7".repeat(64);
+    let round = br#"{"eligible":[],"epoch":{"schema":"chio.finding.audit-epoch.v1"}}"#;
+    assert_eq!(
+        store.put_audit_round(&epoch_digest, round).unwrap(),
+        FindingOperatorBundleWriteOutcome::Inserted
+    );
+    assert_eq!(
+        store.put_audit_round(&epoch_digest, round).unwrap(),
+        FindingOperatorBundleWriteOutcome::ExactReplay
+    );
+    assert!(matches!(
+        store.put_audit_round(&epoch_digest, br#"{"eligible":[1]}"#),
+        Err(FindingOperatorBundleStoreError::Conflict)
+    ));
+    let retained = store.get_audit_round(&epoch_digest).unwrap();
+    assert_eq!(retained.epoch_envelope_sha256, epoch_digest);
+    assert_eq!(retained.round_sha256, sha256_hex(round));
+    assert_eq!(retained.round_json, round);
+
+    let changed = store
+        .pool
+        .get()
+        .unwrap()
+        .execute(
+            "UPDATE chio_finding_operator_audit_rounds SET round_json = X'7B7D' WHERE epoch_envelope_sha256 = ?1",
+            [&epoch_digest],
+        )
+        .unwrap();
+    assert_eq!(changed, 1);
+    assert!(matches!(
+        store.get_audit_round(&epoch_digest),
+        Err(FindingOperatorBundleStoreError::DigestMismatch)
+    ));
+}
+
+#[test]
 fn complete_artifact_indexes_are_not_backfilled_again() {
     let store = SqliteFindingOperatorBundleStore::open_in_memory().unwrap();
     let bundle = br#"{"bundle":"indexed"}"#;

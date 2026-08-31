@@ -471,17 +471,18 @@ async fn full_flow_revocation_cascade() {
 
     // Build a delegated capability B: issued by the CA (kernel) to agent_b,
     // but with a delegation chain showing that agent_a delegated to agent_b.
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    // Derive the child window from the authenticated parent. Reading the wall
+    // clock again can cross a second boundary after cap_a is issued, which
+    // would make a fresh 300-second child outlive the parent by one second and
+    // turn this revocation test into an invalid-chain test.
+    let delegation_timestamp = cap_a.issued_at;
 
     let link_body = DelegationLinkBody {
         capability_id: cap_a.id.clone(),
         delegator: agent_a_kp.public_key(),
         delegatee: agent_b_kp.public_key(),
         attenuations: vec![],
-        timestamp: now,
+        timestamp: delegation_timestamp,
         scope_hash: Some(scope_hash(&cap_a.scope).expect("hash delegated parent scope")),
         aggregate_budget: None,
         cumulative_approval: None,
@@ -489,7 +490,7 @@ async fn full_flow_revocation_cascade() {
     let link = DelegationLink::sign(link_body, &agent_a_kp).expect("sign delegation link");
 
     let cap_b_body = CapabilityTokenBody {
-        id: format!("cap-delegated-{now}"),
+        id: format!("cap-delegated-{delegation_timestamp}"),
         issuer: ca_kp.public_key(),
         subject: agent_b_kp.public_key(),
         scope: ChioScope {
@@ -505,8 +506,8 @@ async fn full_flow_revocation_cascade() {
             }],
             ..ChioScope::default()
         },
-        issued_at: now,
-        expires_at: now + 300,
+        issued_at: delegation_timestamp,
+        expires_at: cap_a.expires_at,
         delegation_chain: vec![link],
         aggregate_invocation_budget: None,
     };

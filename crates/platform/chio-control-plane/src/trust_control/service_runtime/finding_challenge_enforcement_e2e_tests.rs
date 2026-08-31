@@ -6,7 +6,6 @@
 //! slash, an unresolved appeal quarantines instead of impairing, and an
 //! ambiguous impairment leaves the liability parked with purchases still
 //! denied.
-//!
 //! All three evidence classes are driven from real artifacts rather than
 //! from a stubbed verdict: the findings are signed, the receipts are
 //! kernel signed and Merkle committed to real checkpoints, the profile is
@@ -11390,6 +11389,7 @@ fn finding_challenge_uphold_refuses_an_outcome_for_a_different_challenge() -> Te
                 finding_id: &finding.finding_id,
                 listing_id: LISTING_ID,
                 challenge_envelope_sha256: &signed_envelope_sha256(challenge)?,
+                challenge_envelope_json: &canonical_json_bytes(challenge)?,
                 authorization_branch:
                     chio_store_sqlite::FindingChallengeAuthorizationBranch::VenueAudit,
                 evidence_class: chio_store_sqlite::FindingChallengeEvidenceClass::EvidenceInvalid,

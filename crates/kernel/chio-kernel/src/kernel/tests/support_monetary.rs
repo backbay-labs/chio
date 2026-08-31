@@ -451,55 +451,116 @@ fn spawn_payment_test_server(
         .local_addr()
         .expect("listener should expose local address");
     let (request_tx, request_rx) = mpsc::channel();
-    let body_text = body.to_string();
     let handle = thread::spawn(move || {
         let (mut stream, _) = listener.accept().expect("server should accept request");
-        let mut request = Vec::new();
-        let mut chunk = [0_u8; 1024];
-        let mut header_end = None;
-        let mut content_length = 0_usize;
-
-        stream
-            .set_read_timeout(Some(Duration::from_secs(2)))
-            .expect("server should configure read timeout");
-        loop {
-            let read = stream
-                .read(&mut chunk)
-                .expect("server should read request bytes");
-            if read == 0 {
-                break;
-            }
-            request.extend_from_slice(&chunk[..read]);
-
-            if header_end.is_none() {
-                header_end = find_http_header_end(&request);
-                if let Some(end) = header_end {
-                    content_length = parse_http_content_length(&request[..end]);
-                }
-            }
-
-            if let Some(end) = header_end {
-                if request.len() >= end + content_length {
-                    break;
-                }
-            }
-        }
-
+        let request = read_payment_test_request(&mut stream);
         request_tx
             .send(String::from_utf8_lossy(&request).into_owned())
             .expect("request should be sent to test");
-        let response = format!(
-            "HTTP/1.1 {status_code} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            http_status_text(status_code),
-            body_text.len(),
-            body_text
-        );
-        stream
-            .write_all(response.as_bytes())
-            .expect("server should write response");
+        write_payment_test_response(&mut stream, status_code, &body);
     });
 
     (format!("http://{address}"), request_rx, handle)
+}
+
+fn spawn_bound_acp_test_server() -> (String, mpsc::Receiver<String>, thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
+    let address = listener
+        .local_addr()
+        .expect("listener should expose local address");
+    let (request_tx, request_rx) = mpsc::channel();
+    let handle = thread::spawn(move || {
+        for operation in ["authorize", "capture"] {
+            let (mut stream, _) = listener.accept().expect("server should accept request");
+            let request = read_payment_test_request(&mut stream);
+            let body = payment_test_request_json(&request);
+            let response = match operation {
+                "authorize" => serde_json::json!({
+                    "schema": "chio.payment.acp-authorize-response.v1",
+                    "requestDigest": body["requestDigest"],
+                    "reference": body["request"]["reference"],
+                    "authorizationId": "acp_hold_governed",
+                    "metadata": {
+                        "provider": "stripe",
+                        "seller": "merchant.example"
+                    }
+                }),
+                "capture" => serde_json::json!({
+                    "schema": "chio.payment.acp-terminal-operation-response.v1",
+                    "operation": "capture",
+                    "requestDigest": body["requestDigest"],
+                    "reference": body["binding"]["reference"],
+                    "authorizationId": body["binding"]["authorizationId"],
+                    "transactionId": "acp_capture_governed",
+                    "settlementStatus": "settled",
+                    "metadata": {"providerReference": "provider-capture-governed"}
+                }),
+                _ => unreachable!("test server operation sequence is closed"),
+            };
+            request_tx
+                .send(String::from_utf8_lossy(&request).into_owned())
+                .expect("request should be sent to test");
+            write_payment_test_response(&mut stream, 200, &response);
+        }
+    });
+
+    (format!("http://{address}"), request_rx, handle)
+}
+
+fn read_payment_test_request(stream: &mut std::net::TcpStream) -> Vec<u8> {
+    let mut request = Vec::new();
+    let mut chunk = [0_u8; 1024];
+    let mut header_end = None;
+    let mut content_length = 0_usize;
+
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .expect("server should configure read timeout");
+    loop {
+        let read = stream
+            .read(&mut chunk)
+            .expect("server should read request bytes");
+        if read == 0 {
+            break;
+        }
+        request.extend_from_slice(&chunk[..read]);
+
+        if header_end.is_none() {
+            header_end = find_http_header_end(&request);
+            if let Some(end) = header_end {
+                content_length = parse_http_content_length(&request[..end]);
+            }
+        }
+
+        if let Some(end) = header_end {
+            if request.len() >= end + content_length {
+                break;
+            }
+        }
+    }
+    request
+}
+
+fn payment_test_request_json(request: &[u8]) -> serde_json::Value {
+    let body_start = find_http_header_end(request).expect("request should contain HTTP headers");
+    serde_json::from_slice(&request[body_start..]).expect("request body should be valid JSON")
+}
+
+fn write_payment_test_response(
+    stream: &mut std::net::TcpStream,
+    status_code: u16,
+    body: &serde_json::Value,
+) {
+    let body_text = body.to_string();
+    let response = format!(
+        "HTTP/1.1 {status_code} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        http_status_text(status_code),
+        body_text.len(),
+        body_text
+    );
+    stream
+        .write_all(response.as_bytes())
+        .expect("server should write response");
 }
 
 fn find_http_header_end(request: &[u8]) -> Option<usize> {

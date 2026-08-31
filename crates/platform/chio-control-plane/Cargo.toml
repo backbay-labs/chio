@@ -23,7 +23,10 @@ async-trait = { workspace = true }
 chio-agent-web-interop = { workspace = true }
 chio-finding = { workspace = true }
 chio-finding-challenge = { workspace = true }
+chio-finding-hosted-edge = { workspace = true }
+chio-finding-market-store-postgres = { workspace = true }
 chio-finding-verifier = { workspace = true }
+chio-finding-worker = { workspace = true }
 chio-revocation-oracle = { workspace = true }
 chio-spec-validate = { workspace = true }
 chio-appraisal = { workspace = true }
@@ -51,6 +54,7 @@ chio-mcp-adapter = { workspace = true }
 chio-store-sqlite = { workspace = true }
 chio-risk-comptroller = { workspace = true }
 chio-settle = { workspace = true }
+chio-signing-remote = { workspace = true }
 chio-transaction-passport = { workspace = true }
 chio-trust-market-context = { workspace = true }
 chio-underwriting = { workspace = true }
@@ -81,6 +85,7 @@ x509-cert = "0.2"
 url = "2"
 uuid = { workspace = true }
 libc = "0.2"
+zeroize = { workspace = true }
 nix = { version = "0.31.2", features = ["dir", "user"] }
 
 [target.'cfg(windows)'.dependencies]

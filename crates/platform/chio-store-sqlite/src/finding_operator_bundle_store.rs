@@ -28,6 +28,9 @@ const SCHEMA_ANCHORS: &[&str] = &[
 ];
 const MAX_BUNDLE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_ARTIFACT_AUTHORITY_POLICY_BYTES: usize = 16 * 1024;
+const MAX_RETAINED_CHALLENGE_POLICIES: i64 = 100_000;
+const MAX_RETAINED_AUDIT_ROUNDS: i64 = 10_000;
+const MAX_RETAINED_AUDIT_ROUND_BYTES: usize = 16 * 1024 * 1024;
 const MAX_TERMINAL_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PROOF_BYTES: usize = 24 * 1024 * 1024;
 const MAX_PURCHASE_JOB_BYTES: usize = 2 * 1024 * 1024;
@@ -85,6 +88,69 @@ pub struct FindingOperatorBundleArtifactIndex {
     /// carry a policy. Legacy backfill leaves this absent and therefore cannot
     /// invent historical authority after rotation.
     pub authority_policy_json: Option<Vec<u8>>,
+}
+
+/// Challenge artifact families whose historical authority policy must remain
+/// resolvable after key rotation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FindingOperatorRetainedPolicyArtifactKind {
+    GovernanceCase,
+    TrustActivation,
+    Penalty,
+    ChallengeOutcome,
+    AuditEpoch,
+    AuditAuthorization,
+}
+
+impl FindingOperatorRetainedPolicyArtifactKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::GovernanceCase => "governance_case",
+            Self::TrustActivation => "trust_activation",
+            Self::Penalty => "penalty",
+            Self::ChallengeOutcome => "challenge_outcome",
+            Self::AuditEpoch => "audit_epoch",
+            Self::AuditAuthorization => "audit_authorization",
+        }
+    }
+}
+
+/// Authority role under which one historical artifact was authenticated.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FindingOperatorRetainedPolicyRole {
+    Governance,
+    PenaltyAuthority,
+    Evaluator,
+    AuditAuthority,
+    RandomnessWitness,
+}
+
+impl FindingOperatorRetainedPolicyRole {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Governance => "governance",
+            Self::PenaltyAuthority => "penalty_authority",
+            Self::Evaluator => "evaluator",
+            Self::AuditAuthority => "audit_authority",
+            Self::RandomnessWitness => "randomness_witness",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FindingOperatorRetainedPolicyRecord {
+    pub artifact_kind: FindingOperatorRetainedPolicyArtifactKind,
+    pub artifact_envelope_sha256: String,
+    pub policy_role: FindingOperatorRetainedPolicyRole,
+    pub policy_sha256: String,
+    pub policy_json: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FindingOperatorAuditRoundRecord {
+    pub epoch_envelope_sha256: String,
+    pub round_sha256: String,
+    pub round_json: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -165,6 +231,10 @@ pub enum FindingOperatorBundleStoreError {
     TerminalCapacity,
     #[error("finding operator seller artifact capacity is exhausted")]
     SellerArtifactCapacity,
+    #[error("finding operator retained challenge-policy capacity is exhausted")]
+    RetainedPolicyCapacity,
+    #[error("finding operator retained audit-round capacity is exhausted")]
+    AuditRoundCapacity,
     #[error("finding operator bundle was not found")]
     NotFound,
     #[error("finding operator bundle failed its durable digest check")]
@@ -258,6 +328,42 @@ impl SqliteFindingOperatorBundleStore {
                         envelope_sha256,
                         finding_id
                     )
+            );
+
+            CREATE TABLE IF NOT EXISTS chio_finding_operator_retained_challenge_policies (
+                artifact_kind TEXT NOT NULL CHECK(
+                    artifact_kind IN (
+                        'governance_case',
+                        'trust_activation',
+                        'penalty',
+                        'challenge_outcome',
+                        'audit_epoch',
+                        'audit_authorization'
+                    )
+                ),
+                artifact_envelope_sha256 TEXT NOT NULL
+                    CHECK(length(artifact_envelope_sha256) = 64),
+                policy_role TEXT NOT NULL CHECK(
+                    policy_role IN (
+                        'governance',
+                        'penalty_authority',
+                        'evaluator',
+                        'audit_authority',
+                        'randomness_witness'
+                    )
+                ),
+                policy_sha256 TEXT NOT NULL CHECK(length(policy_sha256) = 64),
+                policy_json BLOB NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (artifact_kind, artifact_envelope_sha256, policy_role)
+            );
+
+            CREATE TABLE IF NOT EXISTS chio_finding_operator_audit_rounds (
+                epoch_envelope_sha256 TEXT PRIMARY KEY
+                    CHECK(length(epoch_envelope_sha256) = 64),
+                round_sha256 TEXT NOT NULL CHECK(length(round_sha256) = 64),
+                round_json BLOB NOT NULL,
+                created_at INTEGER NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS chio_finding_operator_terminals (
@@ -525,6 +631,221 @@ impl SqliteFindingOperatorBundleStore {
                 }
             }
             _ => return Err(FindingOperatorBundleStoreError::DigestMismatch),
+        }
+        Ok(record)
+    }
+
+    /// Retain an externally authenticated authority policy for one exact
+    /// challenge artifact. Replays must be byte-identical.
+    pub fn put_retained_challenge_policy(
+        &self,
+        artifact_kind: FindingOperatorRetainedPolicyArtifactKind,
+        artifact_envelope_sha256: &str,
+        policy_role: FindingOperatorRetainedPolicyRole,
+        policy_json: &[u8],
+    ) -> Result<FindingOperatorBundleWriteOutcome, FindingOperatorBundleStoreError> {
+        validate_digest(
+            artifact_envelope_sha256,
+            "retained policy artifact envelope_sha256",
+        )?;
+        validate_canonical_json(
+            policy_json,
+            MAX_ARTIFACT_AUTHORITY_POLICY_BYTES,
+            "retained challenge policy",
+        )?;
+        let policy_sha256 = sha256_hex(policy_json);
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let existing = tx
+            .query_row(
+                "SELECT policy_sha256, policy_json FROM chio_finding_operator_retained_challenge_policies WHERE artifact_kind = ?1 AND artifact_envelope_sha256 = ?2 AND policy_role = ?3",
+                params![
+                    artifact_kind.as_str(),
+                    artifact_envelope_sha256,
+                    policy_role.as_str()
+                ],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
+            )
+            .optional()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let outcome = if let Some((stored_sha256, stored_json)) = existing {
+            if stored_sha256 != sha256_hex(&stored_json) {
+                return Err(FindingOperatorBundleStoreError::DigestMismatch);
+            }
+            if stored_sha256 != policy_sha256 || stored_json != policy_json {
+                return Err(FindingOperatorBundleStoreError::Conflict);
+            }
+            FindingOperatorBundleWriteOutcome::ExactReplay
+        } else {
+            let count: i64 = tx
+                .query_row(
+                    "SELECT COUNT(*) FROM chio_finding_operator_retained_challenge_policies",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+            if count >= MAX_RETAINED_CHALLENGE_POLICIES {
+                return Err(FindingOperatorBundleStoreError::RetainedPolicyCapacity);
+            }
+            tx.execute(
+                "INSERT INTO chio_finding_operator_retained_challenge_policies (artifact_kind, artifact_envelope_sha256, policy_role, policy_sha256, policy_json, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    artifact_kind.as_str(),
+                    artifact_envelope_sha256,
+                    policy_role.as_str(),
+                    policy_sha256,
+                    policy_json,
+                    now_secs()
+                ],
+            )
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+            FindingOperatorBundleWriteOutcome::Inserted
+        };
+        tx.commit()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        Ok(outcome)
+    }
+
+    pub fn get_retained_challenge_policy(
+        &self,
+        artifact_kind: FindingOperatorRetainedPolicyArtifactKind,
+        artifact_envelope_sha256: &str,
+        policy_role: FindingOperatorRetainedPolicyRole,
+    ) -> Result<FindingOperatorRetainedPolicyRecord, FindingOperatorBundleStoreError> {
+        validate_digest(
+            artifact_envelope_sha256,
+            "retained policy artifact envelope_sha256",
+        )?;
+        let conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let record = conn
+            .query_row(
+                "SELECT policy_sha256, policy_json FROM chio_finding_operator_retained_challenge_policies WHERE artifact_kind = ?1 AND artifact_envelope_sha256 = ?2 AND policy_role = ?3",
+                params![
+                    artifact_kind.as_str(),
+                    artifact_envelope_sha256,
+                    policy_role.as_str()
+                ],
+                |row| {
+                    Ok(FindingOperatorRetainedPolicyRecord {
+                        artifact_kind,
+                        artifact_envelope_sha256: artifact_envelope_sha256.to_owned(),
+                        policy_role,
+                        policy_sha256: row.get(0)?,
+                        policy_json: row.get(1)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?
+            .ok_or(FindingOperatorBundleStoreError::NotFound)?;
+        validate_digest(&record.policy_sha256, "retained policy sha256")?;
+        validate_canonical_json(
+            &record.policy_json,
+            MAX_ARTIFACT_AUTHORITY_POLICY_BYTES,
+            "retained challenge policy",
+        )?;
+        if record.policy_sha256 != sha256_hex(&record.policy_json) {
+            return Err(FindingOperatorBundleStoreError::DigestMismatch);
+        }
+        Ok(record)
+    }
+
+    /// Retain one complete published audit round under the digest of its
+    /// signed epoch. Replays must preserve the exact canonical bytes.
+    pub fn put_audit_round(
+        &self,
+        epoch_envelope_sha256: &str,
+        round_json: &[u8],
+    ) -> Result<FindingOperatorBundleWriteOutcome, FindingOperatorBundleStoreError> {
+        validate_digest(epoch_envelope_sha256, "audit round epoch envelope_sha256")?;
+        validate_canonical_json(round_json, MAX_RETAINED_AUDIT_ROUND_BYTES, "audit round")?;
+        let round_sha256 = sha256_hex(round_json);
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let existing = tx
+            .query_row(
+                "SELECT round_sha256, round_json FROM chio_finding_operator_audit_rounds WHERE epoch_envelope_sha256 = ?1",
+                [epoch_envelope_sha256],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
+            )
+            .optional()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let outcome = if let Some((stored_sha256, stored_json)) = existing {
+            if stored_sha256 != sha256_hex(&stored_json) {
+                return Err(FindingOperatorBundleStoreError::DigestMismatch);
+            }
+            if stored_sha256 != round_sha256 || stored_json != round_json {
+                return Err(FindingOperatorBundleStoreError::Conflict);
+            }
+            FindingOperatorBundleWriteOutcome::ExactReplay
+        } else {
+            let count: i64 = tx
+                .query_row(
+                    "SELECT COUNT(*) FROM chio_finding_operator_audit_rounds",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+            if count >= MAX_RETAINED_AUDIT_ROUNDS {
+                return Err(FindingOperatorBundleStoreError::AuditRoundCapacity);
+            }
+            tx.execute(
+                "INSERT INTO chio_finding_operator_audit_rounds (epoch_envelope_sha256, round_sha256, round_json, created_at) VALUES (?1, ?2, ?3, ?4)",
+                params![epoch_envelope_sha256, round_sha256, round_json, now_secs()],
+            )
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+            FindingOperatorBundleWriteOutcome::Inserted
+        };
+        tx.commit()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        Ok(outcome)
+    }
+
+    pub fn get_audit_round(
+        &self,
+        epoch_envelope_sha256: &str,
+    ) -> Result<FindingOperatorAuditRoundRecord, FindingOperatorBundleStoreError> {
+        validate_digest(epoch_envelope_sha256, "audit round epoch envelope_sha256")?;
+        let conn = self
+            .pool
+            .get()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?;
+        let record = conn
+            .query_row(
+                "SELECT round_sha256, round_json FROM chio_finding_operator_audit_rounds WHERE epoch_envelope_sha256 = ?1",
+                [epoch_envelope_sha256],
+                |row| {
+                    Ok(FindingOperatorAuditRoundRecord {
+                        epoch_envelope_sha256: epoch_envelope_sha256.to_owned(),
+                        round_sha256: row.get(0)?,
+                        round_json: row.get(1)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|error| FindingOperatorBundleStoreError::Unavailable(error.to_string()))?
+            .ok_or(FindingOperatorBundleStoreError::NotFound)?;
+        validate_digest(&record.round_sha256, "audit round sha256")?;
+        validate_canonical_json(
+            &record.round_json,
+            MAX_RETAINED_AUDIT_ROUND_BYTES,
+            "audit round",
+        )?;
+        if record.round_sha256 != sha256_hex(&record.round_json) {
+            return Err(FindingOperatorBundleStoreError::DigestMismatch);
         }
         Ok(record)
     }

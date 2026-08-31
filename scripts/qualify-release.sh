@@ -20,8 +20,25 @@ coverage_root="${output_root}/coverage"
 formal_root="${output_root}/formal"
 peer_root="${output_root}/peers"
 checksum_path="${output_root}/SHA256SUMS"
-manifest_path="${output_root}/artifact-manifest.json"
-certify_seed="${output_root}/certify-release.seed"
+manifest_path="${output_root}/artifact-manifest.signed.json"
+release_secret_root="$(mktemp -d "${TMPDIR:-/tmp}/chio-release-qualification.XXXXXX")"
+chmod 0700 "${release_secret_root}"
+certify_seed="${release_secret_root}/certify-release.seed"
+cleanup_release_secrets() {
+  rm -f "${certify_seed}"
+  rmdir "${release_secret_root}" || true
+}
+trap cleanup_release_secrets EXIT
+
+candidate_sha="$(git rev-parse --verify 'HEAD^{commit}')"
+if [[ -n "$(git status --porcelain=v1 --untracked-files=all)" ]]; then
+  echo "release qualification requires a clean exact candidate" >&2
+  exit 1
+fi
+if [[ -n "${GITHUB_SHA:-}" && "${GITHUB_SHA}" != "${candidate_sha}" ]]; then
+  echo "GITHUB_SHA does not match the checked-out release candidate" >&2
+  exit 1
+fi
 
 # ci-workspace is the fast regression gate.
 ./scripts/ci-workspace.sh
@@ -43,6 +60,7 @@ install -m 0644 target/formal/coverage.json "${formal_root}/coverage.json"
 # Bind the promoted cognition-market profile, live local routes, CLI surface,
 # passport, and durable pool to this exact release candidate.
 ./scripts/qualify-cognition-market.sh
+./scripts/qualify-cognition-market-hosted.sh --code-only
 
 required_formal_lane_count="$(
   python3 - <<'PY'
@@ -280,50 +298,17 @@ cargo test -p chio-cli --test trust_cluster trust_control_cluster_repeat_run_qua
 COVERAGE_FAIL_UNDER=65 ./scripts/run-coverage.sh | tee "${log_root}/coverage.log"
 cp -R coverage/. "${coverage_root}/"
 
-python3 - <<'PY' "${output_root}" "${checksum_path}" "${manifest_path}"
-from __future__ import annotations
-
-import hashlib
-import json
-import os
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-output_root = Path(sys.argv[1])
-checksum_path = Path(sys.argv[2])
-manifest_path = Path(sys.argv[3])
-
-entries = []
-for artifact in sorted(output_root.rglob("*")):
-    if not artifact.is_file():
-        continue
-    if artifact in {checksum_path, manifest_path}:
-        continue
-    payload = artifact.read_bytes()
-    entries.append(
-        {
-            "path": artifact.relative_to(output_root).as_posix(),
-            "sha256": hashlib.sha256(payload).hexdigest(),
-            "bytes": len(payload),
-        }
-    )
-
-checksum_path.write_text(
-    "".join(f"{entry['sha256']}  {entry['path']}\n" for entry in entries)
-)
-
-manifest = {
-    "generatedAt": datetime.now(timezone.utc)
-    .replace(microsecond=0)
-    .isoformat()
-    .replace("+00:00", "Z"),
-    "source": "github-actions" if os.environ.get("GITHUB_ACTIONS") == "true" else "local",
-    "candidateSha": os.environ.get("GITHUB_SHA", "local"),
-    "workflowRunId": os.environ.get("GITHUB_RUN_ID"),
-    "workflowRunAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
-    "artifacts": entries,
-}
-
-manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
-PY
+cargo run -p chio-release-evidence --bin chio-release-qualification-manifest -- \
+  --repo-root . \
+  --artifact-root "${output_root}" \
+  --signing-seed "${certify_seed}" \
+  --output "${manifest_path}" \
+  --checksums "${checksum_path}" \
+  --expected-candidate "${candidate_sha}"
+cargo run -p chio-release-evidence --bin chio-release-qualification-manifest -- \
+  --verify \
+  --repo-root . \
+  --artifact-root "${output_root}" \
+  --output "${manifest_path}" \
+  --checksums "${checksum_path}" \
+  --expected-candidate "${candidate_sha}"

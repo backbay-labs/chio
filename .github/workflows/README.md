@@ -5,7 +5,7 @@
 The required gate that catches workspace-wide compile breakage is the
 `check` job ("Build, lint, test") in [`ci.yml`](./ci.yml). It runs on
 `pull_request` and `push` to `main`, on the toolchain pinned by the
-repo-root `rust-toolchain.toml` (1.93.0), with `Swatinem/rust-cache` for the
+repo-root `rust-toolchain.toml` (1.94.1), with `Swatinem/rust-cache` for the
 cargo registry/target cache. The four gate steps are:
 
 | Gate | Step in `ci.yml` | Command |
@@ -175,7 +175,7 @@ exercised by any PR gate**. No PR gate compiles or runs
 workflows build browser SDK artifacts, run conformance peers, or run benches
 via `cargo bench`, none of which invoke these integration targets). They are
 covered outside the PR gates instead: the push-to-`main` and manual
-`release-qualification.yml` workflow runs `cargo +1.93.0 test --workspace` with
+`release-qualification.yml` workflow runs `cargo +1.94.1 test --workspace` with
 no `--exclude`, which does compile and run those `wasmtime-runtime` integration
 targets. So editing or adding a test under `crates/guards/chio-wasm-guards/tests/`
 will not be caught by any PR gate (only later, by Release Qualification on
