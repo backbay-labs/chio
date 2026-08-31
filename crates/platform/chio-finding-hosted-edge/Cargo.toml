@@ -31,7 +31,10 @@ webpki = { workspace = true }
 
 [dev-dependencies]
 chio-core = { workspace = true }
+chio-spec-validate = { workspace = true }
+chio-test-support = { workspace = true }
 rcgen = "0.13"
+serde_json = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
 

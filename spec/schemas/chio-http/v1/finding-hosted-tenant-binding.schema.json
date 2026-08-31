@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-http/v1/finding-hosted-tenant-binding.schema.json",
+  "title": "Chio Hosted Finding Tenant Binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "headerName", "tenantId"],
+  "properties": {
+    "schema": {
+      "const": "chio.finding.hosted-tenant-binding.v1"
+    },
+    "headerName": {
+      "const": "Chio-Tenant-ID"
+    },
+    "tenantId": {
+      "$ref": "#/$defs/tenantId"
+    }
+  },
+  "$defs": {
+    "tenantId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:/-]{1,128}$"
+    }
+  }
+}

@@ -1,4 +1,4 @@
-1f24b2c30ecf2c1e367fd45c353b862c340d45cd50169a71654fe6ace03671c2  spec/schemas/MANIFEST.sha256
+07dcea0522e394234b4908fb35775d37814a48f3f33a7914d50fad3ee436243a  spec/schemas/MANIFEST.sha256
 59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03  spec/schemas/VERSION
 e90c7bc3c555c335559650c71f7fda1e3c13d134a5ff8ceaa0041000536c2ea9  spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json
 1cd24132ad8f98fad89bb62aa756304c2dee0b51aacd69c922e0f786dce2abec  spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json
@@ -161,6 +161,11 @@ ff8468f1af7517bf8bf7ea385741e8c5e6cbfa506c5f9dbec6cb83a5e5427e72  spec/schemas/c
 24688da03454d2352781d352f4bf15dc25af77bdc74765248454f7c26cad5923  spec/schemas/chio-http/v1/error-envelope.schema.json
 396b4642e8a76e6cab9e5d4a686ea2f0aa92a34875fbc71b5d34b6e055f57e5c  spec/schemas/chio-http/v1/evaluate-request.schema.json
 2f28760f2a4d4af3f55d07aaca512e0b1bcb453d190e01871d0ba2562a8b6b2b  spec/schemas/chio-http/v1/evaluate-response.schema.json
+ecc9e9fdba82b4d3f8e7784d01af404d65a3c27e0710db493a761cec681f821a  spec/schemas/chio-http/v1/finding-hosted-domain-event.schema.json
+701c4007b216392db3405b868bf5b413e205a540951e5002e56433ba86ca916b  spec/schemas/chio-http/v1/finding-hosted-error.schema.json
+ecc83762362fae36c3c222edfce22b0bac2584b73a7345f69ee76ebc000ec021  spec/schemas/chio-http/v1/finding-hosted-mutation-response.schema.json
+0e5cab9cb7ee3c086931f9c83011922ad2af1387fb8a85767fd07f62e1f4a18c  spec/schemas/chio-http/v1/finding-hosted-request-context.schema.json
+d25b57b54b32eb2bc27ed9498e3972ca7ad42db6195760b5845f722b499928b3  spec/schemas/chio-http/v1/finding-hosted-tenant-binding.schema.json
 4cd820d23355cc3ca7d0c307e8ea484769920b72608bc77fd850a7a2235ad24c  spec/schemas/chio-http/v1/http-receipt.schema.json
 430ca703947641d7bb28880a8fe66a825e1c50897e3c7a75409efe401168c206  spec/schemas/chio-http/v1/session-init.schema.json
 33af76be7bb1af74d8fafdf70d0b5f66713ed5a2167a318b1990df7047439a41  spec/schemas/chio-http/v1/session-resume.schema.json

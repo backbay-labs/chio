@@ -9,6 +9,7 @@
 #![forbid(unsafe_code)]
 
 mod auth;
+mod contracts;
 mod error;
 mod lifecycle;
 mod operations;
@@ -20,7 +21,13 @@ pub use auth::{
     HostedAuthenticatedPrincipal, HostedAuthenticator, HostedAuthenticatorConfig,
     HostedTenantAuthPolicy, StaticApiKeyPepper,
 };
-pub use error::{HostedEdgeError, HostedErrorBody};
+pub use contracts::{
+    HostedDomainEventEnvelope, HostedHttpMethod, HostedMutationOutcome, HostedMutationResponse,
+    HostedRequestContract, HostedTenantBinding, HOSTED_DOMAIN_EVENT_SCHEMA,
+    HOSTED_MUTATION_RESPONSE_SCHEMA, HOSTED_REQUEST_CONTRACT_SCHEMA, HOSTED_TENANT_BINDING_SCHEMA,
+    HOSTED_TENANT_HEADER,
+};
+pub use error::{HostedEdgeError, HostedErrorBody, HOSTED_ERROR_SCHEMA};
 pub use lifecycle::{
     verify_signed_hosted_api_key_lifecycle_event, HostedApiKeyIssueRequest,
     HostedApiKeyLifecycleEvent, HostedApiKeyLifecycleOperation, HostedApiKeyLifecycleRepository,

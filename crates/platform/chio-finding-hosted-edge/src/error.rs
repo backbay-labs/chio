@@ -1,8 +1,13 @@
 use serde::Serialize;
 
+pub const HOSTED_ERROR_SCHEMA: &str = "chio.finding.hosted-error.v1";
+const MAX_REQUEST_ID_BYTES: usize = 128;
+const FALLBACK_REQUEST_ID: &str = "invalid-request-id";
+
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostedErrorBody {
+    pub schema: &'static str,
     pub code: &'static str,
     pub message: &'static str,
     pub request_id: String,
@@ -54,7 +59,14 @@ impl HostedEdgeError {
 
     #[must_use]
     pub fn body(self, request_id: impl Into<String>) -> HostedErrorBody {
+        let request_id = request_id.into();
+        let request_id = if valid_request_id(&request_id) {
+            request_id
+        } else {
+            FALLBACK_REQUEST_ID.to_owned()
+        };
         HostedErrorBody {
+            schema: HOSTED_ERROR_SCHEMA,
             code: self.code(),
             message: match self {
                 Self::InvalidRequest => "The request is invalid.",
@@ -67,7 +79,7 @@ impl HostedEdgeError {
                 }
                 Self::Configuration => "The hosted edge is not ready.",
             },
-            request_id: request_id.into(),
+            request_id,
             retryable: self.retryable(),
         }
     }
@@ -85,6 +97,13 @@ impl HostedEdgeError {
     }
 }
 
+fn valid_request_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_REQUEST_ID_BYTES
+        && value.trim() == value
+        && !value.chars().any(char::is_control)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,5 +114,7 @@ mod tests {
         assert_eq!(body.code, "authentication_dependency_unavailable");
         assert!(body.retryable);
         assert!(!body.message.contains("SQL"));
+        let sanitized = HostedEdgeError::InvalidRequest.body("\r\nsecret: leaked");
+        assert_eq!(sanitized.request_id, FALLBACK_REQUEST_ID);
     }
 }

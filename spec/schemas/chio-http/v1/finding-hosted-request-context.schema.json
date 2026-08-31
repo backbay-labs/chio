@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-http/v1/finding-hosted-request-context.schema.json",
+  "title": "Chio Hosted Finding Authenticated Request Context",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "requestId",
+    "tenantId",
+    "principalId",
+    "action",
+    "method",
+    "canonicalTarget",
+    "bodySha256",
+    "idempotencyKey",
+    "receivedAt"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.finding.hosted-request-context.v1"
+    },
+    "requestId": {
+      "$ref": "#/$defs/requestId"
+    },
+    "tenantId": {
+      "$ref": "#/$defs/tenantId"
+    },
+    "principalId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:/-]{1,256}$"
+    },
+    "action": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:/-]{1,128}$"
+    },
+    "method": {
+      "enum": ["GET", "POST", "PUT", "DELETE"]
+    },
+    "canonicalTarget": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "bodySha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "idempotencyKey": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._:/-]{1,256}$"
+        },
+        { "type": "null" }
+      ]
+    },
+    "receivedAt": {
+      "$ref": "#/$defs/iJsonU64NonZero"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "method": { "enum": ["POST", "PUT", "DELETE"] } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "idempotencyKey": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:/-]{1,256}$"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "requestId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[^\\s\\u0000-\\u001F\\u007F-\\u009F](?:[^\\u0000-\\u001F\\u007F-\\u009F]*[^\\s\\u0000-\\u001F\\u007F-\\u009F])?$"
+    },
+    "tenantId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:/-]{1,128}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "iJsonU64NonZero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    }
+  }
+}
