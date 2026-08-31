@@ -13,6 +13,14 @@ use crate::{
 
 #[async_trait]
 impl HostedHttpBackend for PostgresFindingMarketStore {
+    async fn ready(&self) -> Result<(), HostedHttpBackendError> {
+        sqlx::query_scalar::<_, i32>("SELECT 1")
+            .fetch_one(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(|_| HostedHttpBackendError::Unavailable)
+    }
+
     async fn append(
         &self,
         tenant: &HostedTenantId,

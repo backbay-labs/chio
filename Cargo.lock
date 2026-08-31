@@ -3723,6 +3723,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-finding-market-server"
+version = "0.1.0"
+dependencies = [
+ "chio-control-plane",
+ "chio-core-types",
+ "chio-finding-hosted-edge",
+ "chio-finding-market-store-postgres",
+ "clap 4.6.0",
+ "nix",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
 name = "chio-finding-market-store-postgres"
 version = "0.1.0"
 dependencies = [

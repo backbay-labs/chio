@@ -1,12 +1,17 @@
 use std::collections::BTreeSet;
+use std::future::Future;
 use std::io;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use axum::body::{to_bytes, Body, Bytes};
-use axum::extract::{OriginalUri, Path, State};
+#[cfg(test)]
+use axum::body::to_bytes;
+use axum::body::{Body, Bytes};
+use axum::extract::{ConnectInfo, OriginalUri, Path, State};
 use axum::http::{HeaderMap, Request, StatusCode};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -17,9 +22,9 @@ use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str, sha25
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    HostedAuthCredential, HostedAuthRequest, HostedAuthenticator, HostedDomainEventEnvelope,
-    HostedEdgeError, HostedHttpMethod, HostedMutationOutcome, HostedMutationResponse,
-    HostedPrincipalRole, HostedRequestContract, HostedTenantBinding, HOSTED_TENANT_HEADER,
+    HostedAuthCredential, HostedAuthRequest, HostedAuthenticator, HostedEdgeError,
+    HostedHttpMethod, HostedMutationOutcome, HostedMutationResponse, HostedPrincipalRole,
+    HostedRequestContract, HostedTenantBinding, HOSTED_TENANT_HEADER,
 };
 
 const REQUEST_ID_HEADER: &str = "Chio-Request-ID";
@@ -28,6 +33,7 @@ const API_KEY_ID_HEADER: &str = "Chio-API-Key-ID";
 const API_KEY_SECRET_HEADER: &str = "Chio-API-Key-Secret";
 const CAPABILITY_HEADER: &str = "Chio-Capability";
 const DPOP_HEADER: &str = "Chio-DPoP";
+const PROXY_AUTHENTICATION_HEADER: &str = "Chio-Proxy-Authentication";
 const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CREDENTIAL_BYTES: usize = 64 * 1024;
 
@@ -117,6 +123,8 @@ pub enum HostedHttpBackendError {
 
 #[async_trait]
 pub trait HostedHttpBackend: Send + Sync {
+    async fn ready(&self) -> Result<(), HostedHttpBackendError>;
+
     async fn append(
         &self,
         tenant: &crate::HostedTenantId,
@@ -145,6 +153,7 @@ pub struct HostedHttpServerState {
     config: HostedHttpServerConfig,
     authenticator: Arc<HostedAuthenticator>,
     backend: Arc<dyn HostedHttpBackend>,
+    trusted_proxy: Arc<crate::HostedTrustedProxy>,
 }
 
 impl HostedHttpServerState {
@@ -152,12 +161,14 @@ impl HostedHttpServerState {
         config: HostedHttpServerConfig,
         authenticator: Arc<HostedAuthenticator>,
         backend: Arc<dyn HostedHttpBackend>,
+        trusted_proxy: Arc<crate::HostedTrustedProxy>,
     ) -> Result<Self, HostedEdgeError> {
         config.validate()?;
         Ok(Self {
             config,
             authenticator,
             backend,
+            trusted_proxy,
         })
     }
 }
@@ -334,11 +345,16 @@ struct FindingQuery {
 pub fn hosted_market_router(state: HostedHttpServerState) -> Router {
     Router::new()
         .route("/health/live", get(live))
+        .route("/health/ready", get(ready))
         .route("/v1/findings", get(list_findings))
         .route("/v1/findings/{finding_id}", get(get_finding))
         .route("/v1/findings/events/{operation}", post(mutate))
         .route("/v1/findings/publish", post(publish))
         .fallback(not_found)
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            enforce_trusted_proxy,
+        ))
         .with_state(state.clone())
         .layer(axum::extract::DefaultBodyLimit::max(
             state.config.maximum_body_bytes,
@@ -351,17 +367,99 @@ pub async fn serve_hosted_market_loopback(
     listener: tokio::net::TcpListener,
     state: HostedHttpServerState,
 ) -> io::Result<()> {
+    serve_hosted_market_loopback_with_shutdown(listener, state, std::future::pending()).await
+}
+
+pub async fn serve_hosted_market_loopback_with_shutdown<F>(
+    listener: tokio::net::TcpListener,
+    state: HostedHttpServerState,
+    shutdown: F,
+) -> io::Result<()>
+where
+    F: Future<Output = ()> + Send + 'static,
+{
     if !listener.local_addr()?.ip().is_loopback() {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
-            "hosted cognition-market edge must listen on loopback",
+            "hosted cognition-market edge requires an authenticated loopback proxy",
         ));
     }
-    axum::serve(listener, hosted_market_router(state)).await
+    axum::serve(
+        listener,
+        hosted_market_router(state).into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown)
+    .await
+}
+
+async fn enforce_trusted_proxy(
+    State(state): State<HostedHttpServerState>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let result = (|| {
+        let peer = request
+            .extensions()
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|connection| connection.0.ip())
+            .ok_or(HostedEdgeError::AuthenticationFailed)?;
+        let forwarding = crate::HostedForwardingHeaders {
+            forwarded: header_strings(request.headers(), "Forwarded")?,
+            x_forwarded_for: header_strings(request.headers(), "X-Forwarded-For")?,
+            x_forwarded_host: header_strings(request.headers(), "X-Forwarded-Host")?,
+            x_forwarded_proto: header_strings(request.headers(), "X-Forwarded-Proto")?,
+        };
+        state.trusted_proxy.reconstruct(
+            peer,
+            &forwarding,
+            single_header(request.headers(), PROXY_AUTHENTICATION_HEADER),
+        )
+    })();
+    match result {
+        Ok(context) => {
+            let mut request = request;
+            for name in [
+                "Forwarded",
+                "X-Forwarded-For",
+                "X-Forwarded-Host",
+                "X-Forwarded-Proto",
+                PROXY_AUTHENTICATION_HEADER,
+            ] {
+                request.headers_mut().remove(name);
+            }
+            request.extensions_mut().insert(context);
+            next.run(request).await
+        }
+        Err(error) => error_response(error, "proxy-authentication"),
+    }
+}
+
+fn header_strings(headers: &HeaderMap, name: &str) -> Result<Vec<String>, HostedEdgeError> {
+    headers
+        .get_all(name)
+        .iter()
+        .map(|value| {
+            value
+                .to_str()
+                .map(str::to_owned)
+                .map_err(|_| HostedEdgeError::InvalidRequest)
+        })
+        .collect()
 }
 
 async fn live() -> impl IntoResponse {
     (StatusCode::OK, Json(serde_json::json!({"status": "live"})))
+}
+
+async fn ready(State(state): State<HostedHttpServerState>) -> Response {
+    match state.backend.ready().await {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!({"status": "ready"}))).into_response(),
+        Err(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"status": "not_ready"})),
+        )
+            .into_response(),
+    }
 }
 
 async fn not_found() -> Response {
@@ -781,30 +879,6 @@ fn error_response(error: HostedEdgeError, request_id: &str) -> Response {
     (status, Json(error.body(request_id))).into_response()
 }
 
-#[allow(dead_code)]
-fn projection_event_envelope(
-    tenant: crate::HostedTenantId,
-    projection: &HostedHttpProjection,
-) -> Result<HostedDomainEventEnvelope, HostedEdgeError> {
-    HostedDomainEventEnvelope::new(
-        tenant,
-        &projection.event_kind,
-        &projection.aggregate_kind,
-        &projection.aggregate_id,
-        &projection.event_id,
-        projection.revision,
-        projection.previous_event_sha256.clone(),
-        &projection.artifact_schema,
-        &projection.artifact_sha256,
-        projection.committed_at,
-    )
-}
-
-#[allow(dead_code)]
-async fn drain_rejected_body(request: Request<Body>) {
-    let _ = to_bytes(request.into_body(), MAX_BODY_BYTES).await;
-}
-
 #[cfg(test)]
 mod tests {
     use chio_core_types::crypto::Keypair;
@@ -876,6 +950,10 @@ mod tests {
 
     #[async_trait]
     impl HostedHttpBackend for ClosedBackend {
+        async fn ready(&self) -> Result<(), HostedHttpBackendError> {
+            Err(HostedHttpBackendError::Unavailable)
+        }
+
         async fn append(
             &self,
             _tenant: &HostedTenantId,
@@ -933,12 +1011,46 @@ mod tests {
             },
             Arc::new(authenticator),
             Arc::new(ClosedBackend),
+            Arc::new(trusted_proxy()?),
         )?;
         Ok(state)
     }
 
     fn router() -> Result<Router, HostedEdgeError> {
         server_state().map(hosted_market_router)
+    }
+
+    fn trusted_proxy() -> Result<crate::HostedTrustedProxy, HostedEdgeError> {
+        crate::HostedTrustedProxy::new(crate::HostedTrustedProxyConfig {
+            listen: "127.0.0.1:8080"
+                .parse()
+                .map_err(|_| HostedEdgeError::Configuration)?,
+            trusted_peer_ips: ["127.0.0.1"
+                .parse()
+                .map_err(|_| HostedEdgeError::Configuration)?]
+            .into_iter()
+            .collect(),
+            public_endpoint: "https://market.example".to_owned(),
+            authentication_token: vec![b'p'; 43],
+        })
+    }
+
+    fn proxied_request(mut builder: axum::http::request::Builder, body: Body) -> Request<Body> {
+        builder = builder
+            .header(
+                "Forwarded",
+                "for=192.0.2.10;proto=https;host=market.example",
+            )
+            .header(PROXY_AUTHENTICATION_HEADER, "p".repeat(43));
+        let mut request = builder
+            .body(body)
+            .unwrap_or_else(|error| panic!("test request failed: {error}"));
+        request.extensions_mut().insert(ConnectInfo(
+            "127.0.0.1:40000"
+                .parse::<SocketAddr>()
+                .unwrap_or_else(|error| panic!("test peer failed: {error}")),
+        ));
+        request
     }
 
     #[test]
@@ -1028,10 +1140,35 @@ mod tests {
             .unwrap_or_else(|error| panic!("test listener failed: {error}"));
         let state =
             server_state().unwrap_or_else(|error| panic!("test server state failed: {error}"));
-        let error = serve_hosted_market_loopback(listener, state)
-            .await
-            .expect_err("non-loopback listener must fail closed");
+        let error = match serve_hosted_market_loopback(listener, state).await {
+            Err(error) => error,
+            Ok(()) => panic!("non-loopback listener must fail closed"),
+        };
         assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    }
+
+    #[tokio::test]
+    async fn trusted_proxy_is_authenticated_and_forwarding_is_closed() {
+        let service =
+            router().unwrap_or_else(|error| panic!("test trusted proxy router failed: {error}"));
+        let request = || proxied_request(Request::builder().uri("/health/live"), Body::empty());
+        let accepted = service
+            .clone()
+            .oneshot(request())
+            .await
+            .unwrap_or_else(|error| panic!("test response failed: {error}"));
+        assert_eq!(accepted.status(), StatusCode::OK);
+
+        let mut spoofed = request();
+        spoofed.headers_mut().insert(
+            "X-Forwarded-For",
+            axum::http::HeaderValue::from_static("192.0.2.11"),
+        );
+        let rejected = service
+            .oneshot(spoofed)
+            .await
+            .unwrap_or_else(|error| panic!("test response failed: {error}"));
+        assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
@@ -1039,13 +1176,12 @@ mod tests {
         let service = router().unwrap_or_else(|error| panic!("test router failed: {error}"));
         let missing_tenant = service
             .clone()
-            .oneshot(
+            .oneshot(proxied_request(
                 Request::builder()
                     .uri("/v1/findings")
-                    .header(REQUEST_ID_HEADER, "request-1")
-                    .body(Body::empty())
-                    .unwrap_or_else(|error| panic!("test request failed: {error}")),
-            )
+                    .header(REQUEST_ID_HEADER, "request-1"),
+                Body::empty(),
+            ))
             .await
             .unwrap_or_else(|error| panic!("test response failed: {error}"));
         assert_eq!(missing_tenant.status(), StatusCode::UNAUTHORIZED);
@@ -1058,14 +1194,13 @@ mod tests {
         assert_eq!(error["requestId"], "request-1");
 
         let noncanonical = service
-            .oneshot(
+            .oneshot(proxied_request(
                 Request::builder()
                     .method("POST")
                     .uri("/v1/findings/publish")
-                    .header(REQUEST_ID_HEADER, "request-2")
-                    .body(Body::from("{ \"payload\": {} }"))
-                    .unwrap_or_else(|error| panic!("test request failed: {error}")),
-            )
+                    .header(REQUEST_ID_HEADER, "request-2"),
+                Body::from("{ \"payload\": {} }"),
+            ))
             .await
             .unwrap_or_else(|error| panic!("test response failed: {error}"));
         assert_eq!(noncanonical.status(), StatusCode::BAD_REQUEST);

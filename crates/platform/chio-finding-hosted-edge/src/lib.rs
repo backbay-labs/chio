@@ -49,8 +49,8 @@ pub use proxy::{
     HostedForwardingHeaders, HostedRequestContext, HostedTrustedProxy, HostedTrustedProxyConfig,
 };
 pub use server::{
-    hosted_market_router, serve_hosted_market_loopback, HostedDomainMutation, HostedHttpBackend,
-    HostedHttpBackendError, HostedHttpBackendOutcome, HostedHttpPage, HostedHttpProjection,
-    HostedHttpServerConfig, HostedHttpServerState,
+    hosted_market_router, serve_hosted_market_loopback, serve_hosted_market_loopback_with_shutdown,
+    HostedDomainMutation, HostedHttpBackend, HostedHttpBackendError, HostedHttpBackendOutcome,
+    HostedHttpPage, HostedHttpProjection, HostedHttpServerConfig, HostedHttpServerState,
 };
 pub use tls::{HostedTlsConfig, HostedTlsReload, HostedTlsState};

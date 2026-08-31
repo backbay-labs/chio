@@ -148,6 +148,7 @@ members = [
     "crates/products/chio-cli",
     "crates/products/chio-finding-market-migrator",
     "crates/products/chio-finding-market-canary",
+    "crates/products/chio-finding-market-server",
     "crates/products/chio-finding-worker",
     "crates/products/chio-mercury",
     "crates/products/chio-mercury-core",
