@@ -6,12 +6,19 @@ umask 022
 export CARGO_INCREMENTAL=0
 export CARGO_PROFILE_TEST_DEBUG=0
 
-qualification_mode="promotion"
-if [[ "${1:-}" == "--code-only" && "$#" -eq 1 ]]; then
-  qualification_mode="code-only"
-elif [[ "$#" -ne 0 ]]; then
-  echo "usage: $0 [--code-only]" >&2
+qualification_mode="code-only"
+if [[ "$#" -gt 1 ]]; then
+  echo "usage: $0 [--code-only|--kvm-boundary]" >&2
   exit 2
+elif [[ "$#" -eq 1 ]]; then
+  case "$1" in
+    --code-only) ;;
+    --kvm-boundary) qualification_mode="kvm-boundary" ;;
+    *)
+      echo "usage: $0 [--code-only|--kvm-boundary]" >&2
+      exit 2
+      ;;
+  esac
 fi
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -138,7 +145,7 @@ run_gate dependency-policy cargo deny check
 run_gate supply-chain cargo vet check --locked
 
 kvm_evidence_sha256=""
-if [[ "${qualification_mode}" == "promotion" ]]; then
+if [[ "${qualification_mode}" == "kvm-boundary" ]]; then
   run_gate real-kvm-canary ./scripts/qualify-cognition-market-kvm.sh
   kvm_manifest="target/release-qualification/cognition-market-kvm/artifact-manifest.signed.json"
   if [[ ! -s "${kvm_manifest}" ]]; then
@@ -148,68 +155,15 @@ if [[ "${qualification_mode}" == "promotion" ]]; then
   kvm_evidence_sha256="$(sha256sum "${kvm_manifest}" | cut -d' ' -f1)"
 fi
 
-python3 - \
-  "${candidate_sha}" \
-  "${qualification_mode}" \
-  "${kvm_evidence_sha256}" \
-  "${gate_index}" \
-  "${report_path}" <<'PY'
-from __future__ import annotations
-
-import hashlib
-import json
-import os
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-candidate_sha, mode, kvm_sha, gate_index_raw, report_path_raw = sys.argv[1:]
-gate_index = Path(gate_index_raw)
-report_path = Path(report_path_raw)
-artifact_root = report_path.parent
-
-gates = []
-for line in gate_index.read_text(encoding="utf-8").splitlines():
-    gate_id, relative_log, command = line.split("\t", 2)
-    payload = (artifact_root / relative_log).read_bytes()
-    gates.append(
-        {
-            "id": gate_id,
-            "command": command,
-            "result": "passed",
-            "log": relative_log,
-            "logSha256": hashlib.sha256(payload).hexdigest(),
-        }
-    )
-
-promotion = mode == "promotion"
-report = {
-    "schema": "chio.finding.hosted-qualification.v1",
-    "candidateSha": candidate_sha,
-    "generatedAt": datetime.now(timezone.utc)
-    .replace(microsecond=0)
-    .isoformat()
-    .replace("+00:00", "Z"),
-    "source": "github-actions"
-    if os.environ.get("GITHUB_ACTIONS") == "true"
-    else "local",
-    "workflowRunId": os.environ.get("GITHUB_RUN_ID"),
-    "workflowRunAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
-    "mode": mode,
-    "decision": "promote" if promotion else "qualified-code-boundary",
-    "promotionReady": promotion,
-    "kvmEvidenceSha256": kvm_sha or None,
-    "claims": [
-        "claim.finding.hosted_postgres_rls_forced",
-        "claim.finding.hosted_runtime_role_least_privilege",
-        "claim.finding.hosted_remote_custody",
-        "claim.finding.hosted_settlement_transport",
-        "claim.finding.hosted_worker_protocol",
-    ],
-    "gates": gates,
-}
-report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-PY
+python3 scripts/generate-cognition-market-hosted-report.py \
+  --candidate-sha "${candidate_sha}" \
+  --mode "${qualification_mode}" \
+  --kvm-evidence-sha256 "${kvm_evidence_sha256}" \
+  --gate-index "${gate_index}" \
+  --report "${report_path}"
+cargo run -p chio-spec-validate -- \
+  spec/schemas/chio-finding/v2/hosted-qualification.schema.json \
+  "${report_path}"
 
 rm -f "${gate_index}"
 cargo run -p chio-release-evidence \

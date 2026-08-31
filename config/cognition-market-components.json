@@ -2,7 +2,7 @@
   "schema": "chio.cognition-market.components.v1",
   "workflowPaths": [
     ".github/workflows/cognition-market-hosted.yml",
-    ".github/workflows/cognition-market-promotion.yml",
+    ".github/workflows/cognition-market-kvm-boundary.yml",
     ".github/workflows/release-qualification.yml",
     "Cargo.lock",
     "Cargo.toml",

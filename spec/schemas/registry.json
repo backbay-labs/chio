@@ -360,6 +360,12 @@
       "schemaFile": "spec/schemas/chio-finding/v1/finalized-bond-snapshot.schema.json"
     },
     {
+      "schema": "chio.finding.hosted-qualification.v2",
+      "artifactKind": "finding_hosted_qualification",
+      "introducedBy": "cognition-market-m11-qualification-truth",
+      "schemaFile": "spec/schemas/chio-finding/v2/hosted-qualification.schema.json"
+    },
+    {
       "schema": "chio.finding.impairment-publisher-request.v1",
       "artifactKind": "finding_impairment_publisher_request",
       "introducedBy": "cognition-market-m11",

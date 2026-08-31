@@ -157,38 +157,40 @@ chio finding operator evaluate-canary \
 The ordinary hosted CI lane qualifies code, PostgreSQL 16.6, forced RLS,
 remote custody, settlement transports, the worker boundary, RustSec and
 duplicate-dependency policy, and cargo-vet attestations without making a
-production promotion claim:
+production readiness claim. Code-only is the safe default; the explicit flag
+is retained for CI readability:
 
 ```bash
 scripts/qualify-cognition-market-hosted.sh --code-only
 ```
 
-Production promotion runs the same script without `--code-only` on a dedicated
-root-owned KVM runner. The runner must provision the canonical private hosted
+KVM boundary qualification uses an explicit mode on a dedicated root-owned KVM
+runner. The runner must provision the canonical private hosted
 profile, its secrets and assets, one isolated worker canary job, and a bounded
 canary observation through `CHIO_FINDING_HOSTED_PROFILE`,
 `CHIO_FINDING_CANARY_OBSERVATION`, and `CHIO_FINDING_WORKER_ID`. The profile
 must pin the exact release-mode worker built from the checked-out candidate.
 The gate requires that worker to claim and complete exactly one real
 Firecracker job with no retry or rejection, then requires `evaluate-canary` to
-return `promote`:
+return `promote` for that bounded worker canary only:
 
 ```bash
-scripts/qualify-cognition-market-hosted.sh
+scripts/qualify-cognition-market-hosted.sh --kvm-boundary
 ```
 
 Both modes emit per-gate logs, checksums, and a signed exact-candidate manifest
-under `target/release-qualification/`. The promotion workflow additionally
+under `target/release-qualification/`. The KVM boundary workflow additionally
 applies and verifies keyless Sigstore signatures over both the KVM sub-manifest
 and the final hosted manifest that binds every gate plus the KVM manifest
-digest. A green unit-only run or a `--code-only` report is not promotion
-evidence. Full workspace build, test, Clippy, format, and release CI remain
-mandatory before promotion.
+digest. Neither mode claims network qualification, production readiness, or
+promotion readiness. Those fields remain false until a real hosted listener
+and authenticated network canary are implemented and qualified. Full workspace
+build, test, Clippy, format, and release CI remain mandatory before deployment.
 Each qualification script immediately re-verifies the emitted envelope against
 the checked-out commit and tree, `Cargo.lock`, canonical manifest bytes, every
 artifact digest and byte count, and the exact checksum file before reporting
 success. The embedded signature provides internal integrity; only the
-promotion workflow's separately verified Sigstore identity supplies external
+KVM boundary workflow's separately verified Sigstore identity supplies external
 provenance.
 
 ## Explicit residual boundary

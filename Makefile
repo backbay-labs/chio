@@ -30,7 +30,8 @@ KB_DIR ?= tools/knowledge-base
 	sdk-parity sdk-bindings-parity sdk-py sdk-go sdk-cpp sdk-drogon sdk-ts-deps \
 	vet deny supply-chain \
 	qualify-release qualify-trust qualify-portable-browser qualify-mobile-kernel \
-	qualify-cognition-market qualify-cognition-market-m11 schema-registry-check \
+	qualify-cognition-market qualify-cognition-market-m11 \
+	qualify-cognition-market-m11-kvm schema-registry-check \
 	qualify-cross-protocol qualify-bounded \
 	coverage fuzz fuzz-budget kani kani-smoke loom mutants mutants-fuzz-cocoverage \
 	docker-demo-up docker-demo-down docker-demo-smoke \
@@ -230,6 +231,9 @@ qualify-cognition-market:
 
 qualify-cognition-market-m11:
 	./scripts/qualify-cognition-market-hosted.sh
+
+qualify-cognition-market-m11-kvm:
+	./scripts/qualify-cognition-market-hosted.sh --kvm-boundary
 
 schema-registry-check:
 	./scripts/check-chio-schema-registry.sh

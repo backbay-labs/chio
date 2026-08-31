@@ -1,4 +1,4 @@
-name: Cognition market production promotion
+name: Cognition market KVM boundary qualification
 
 on:
   workflow_dispatch:
@@ -8,15 +8,15 @@ permissions:
   id-token: write
 
 concurrency:
-  group: cognition-market-production-promotion
+  group: cognition-market-kvm-boundary
   cancel-in-progress: false
 
 jobs:
   qualify:
-    name: Real KVM promotion qualification
+    name: Real KVM boundary qualification
     if: github.ref == 'refs/heads/main'
     environment:
-      name: cognition-market-production
+      name: cognition-market-kvm-qualification
     runs-on: [self-hosted, linux, x64, kvm, cognition-market, ephemeral, attested]
     timeout-minutes: 180
     env:
@@ -41,8 +41,38 @@ jobs:
           test "${GITHUB_RUN_ATTEMPT}" -ge 1
           test -n "${CHIO_KVM_RUNNER_IMAGE_SHA256}"
           test -n "${CHIO_KVM_RUNNER_ATTESTATION_SHA256}"
-      - name: Qualify hosted cognition market on real KVM
-        run: ./scripts/qualify-cognition-market-hosted.sh
+      - name: Qualify hosted cognition market KVM boundary
+        run: ./scripts/qualify-cognition-market-hosted.sh --kvm-boundary
+      - name: Require bounded KVM claims and digest binding
+        shell: bash
+        run: |
+          python3 - \
+            target/release-qualification/cognition-market-hosted/qualification.json \
+            target/release-qualification/cognition-market-kvm/artifact-manifest.signed.json <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          import sys
+
+          report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          kvm_digest = hashlib.sha256(Path(sys.argv[2]).read_bytes()).hexdigest()
+          expected = {
+              "schema": "chio.finding.hosted-qualification.v2",
+              "mode": "kvm-boundary",
+              "decision": "qualified-kvm-boundary",
+              "codeQualified": True,
+              "kvmQualified": True,
+              "networkQualified": False,
+              "productionReady": False,
+              "promotionReady": False,
+              "kvmEvidenceSha256": kvm_digest,
+          }
+          for field, value in expected.items():
+              if report.get(field) != value:
+                  raise SystemExit(
+                      f"hosted KVM report has unsafe {field}: {report.get(field)!r}"
+                  )
+          PY
       - name: Install cosign
         uses: sigstore/cosign-installer@1aa8e0f2454b781fbf0fbf306a4c9533a0c57409
         with:
@@ -54,11 +84,11 @@ jobs:
           default_branch_sha="$(git rev-parse --verify "refs/remotes/origin/${DEFAULT_BRANCH}^{commit}")"
           test "$(git rev-parse --verify 'HEAD^{commit}')" = "${GITHUB_SHA}"
           test "${GITHUB_SHA}" = "${default_branch_sha}"
-      - name: Sign and verify exact-candidate promotion evidence
+      - name: Sign and verify exact-candidate KVM boundary evidence
         env:
-          EXPECTED_WORKFLOW_IDENTITY: ${{ github.server_url }}/${{ github.repository }}/.github/workflows/cognition-market-promotion.yml@${{ github.ref }}
+          EXPECTED_WORKFLOW_IDENTITY: ${{ github.server_url }}/${{ github.repository }}/.github/workflows/cognition-market-kvm-boundary.yml@${{ github.ref }}
         run: |
-          signature_root=target/release-qualification/cognition-market-promotion-sigstore
+          signature_root=target/release-qualification/cognition-market-kvm-boundary-sigstore
           mkdir -p "${signature_root}"
           for evidence in hosted kvm; do
             if test "${evidence}" = hosted; then
@@ -82,14 +112,14 @@ jobs:
               --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
               "${manifest}"
           done
-      - name: Upload promotion evidence
+      - name: Upload KVM boundary evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: cognition-market-promotion-${{ github.sha }}
+          name: cognition-market-kvm-boundary-${{ github.sha }}
           path: |
             target/release-qualification/cognition-market-hosted
             target/release-qualification/cognition-market-kvm
-            target/release-qualification/cognition-market-promotion-sigstore
+            target/release-qualification/cognition-market-kvm-boundary-sigstore
           if-no-files-found: error
           retention-days: 90

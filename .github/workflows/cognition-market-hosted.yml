@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - ".github/workflows/cognition-market-promotion.yml"
+      - ".github/workflows/cognition-market-kvm-boundary.yml"
       - ".github/workflows/release-qualification.yml"
       - "Makefile"
       - "audits/**"
@@ -53,7 +53,7 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/cognition-market-promotion.yml"
+      - ".github/workflows/cognition-market-kvm-boundary.yml"
       - ".github/workflows/release-qualification.yml"
       - "Makefile"
       - "audits/**"
@@ -146,6 +146,32 @@ jobs:
         run: cargo install cargo-deny --locked --version 0.19.4
       - name: Qualify hosted cognition market
         run: ./scripts/qualify-cognition-market-hosted.sh --code-only
+      - name: Require bounded code-only claims
+        shell: bash
+        run: |
+          python3 - target/release-qualification/cognition-market-hosted/qualification.json <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected = {
+              "schema": "chio.finding.hosted-qualification.v2",
+              "mode": "code-only",
+              "decision": "qualified-code-boundary",
+              "codeQualified": True,
+              "kvmQualified": False,
+              "networkQualified": False,
+              "productionReady": False,
+              "promotionReady": False,
+              "kvmEvidenceSha256": None,
+          }
+          for field, value in expected.items():
+              if report.get(field) != value:
+                  raise SystemExit(
+                      f"hosted code report has unsafe {field}: {report.get(field)!r}"
+                  )
+          PY
       - name: Upload hosted qualification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

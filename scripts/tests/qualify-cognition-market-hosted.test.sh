@@ -7,7 +7,10 @@ kvm="${repo_root}/scripts/qualify-cognition-market-kvm.sh"
 release="${repo_root}/scripts/qualify-release.sh"
 components="${repo_root}/config/cognition-market-components.json"
 code_workflow="${repo_root}/.github/workflows/cognition-market-hosted.yml"
-promotion_workflow="${repo_root}/.github/workflows/cognition-market-promotion.yml"
+kvm_workflow="${repo_root}/.github/workflows/cognition-market-kvm-boundary.yml"
+old_promotion_workflow="${repo_root}/.github/workflows/cognition-market-promotion.yml"
+report_generator="${repo_root}/scripts/generate-cognition-market-hosted-report.py"
+report_schema="${repo_root}/spec/schemas/chio-finding/v2/hosted-qualification.schema.json"
 
 bash -n "${hosted}" "${kvm}"
 
@@ -20,8 +23,9 @@ require_text() {
   fi
 }
 
-require_text "${hosted}" 'qualification_mode="promotion"'
+require_text "${hosted}" 'qualification_mode="code-only"'
 require_text "${hosted}" '--code-only'
+require_text "${hosted}" '--kvm-boundary'
 require_text "${hosted}" 'git status --porcelain=v1 --untracked-files=all'
 require_text "${hosted}" 'run_gate patch-integrity git diff --check'
 require_text "${hosted}" 'postgres-16-rls'
@@ -30,9 +34,23 @@ require_text "${hosted}" 'cargo test -p chio-settle --all-targets'
 require_text "${hosted}" 'cargo deny check'
 require_text "${hosted}" 'cargo vet check --locked'
 require_text "${hosted}" './scripts/qualify-cognition-market-kvm.sh'
+require_text "${hosted}" 'scripts/generate-cognition-market-hosted-report.py'
+require_text "${hosted}" 'spec/schemas/chio-finding/v2/hosted-qualification.schema.json'
 require_text "${hosted}" 'artifact-manifest.signed.json'
 require_text "${hosted}" "--expected-candidate \"\${candidate_sha}\""
-require_text "${hosted}" '"promotionReady": promotion'
+require_text "${report_generator}" '"promotionReady": False'
+require_text "${report_generator}" '"networkQualified": False'
+require_text "${report_generator}" '"productionReady": False'
+require_text "${report_generator}" 'chio.finding.hosted-qualification.v2'
+if "${hosted}" --promotion >/dev/null 2>&1; then
+  invalid_mode_status=0
+else
+  invalid_mode_status="$?"
+fi
+if [[ "${invalid_mode_status}" -ne 2 ]]; then
+  echo "hosted qualification returned the wrong status for an invalid mode" >&2
+  exit 1
+fi
 
 require_text "${kvm}" '[[ ! -c /dev/kvm || ! -r /dev/kvm || ! -w /dev/kvm ]]'
 require_text "${kvm}" "[[ \"\$(id -u)\" -ne 0 ]]"
@@ -82,6 +100,11 @@ require_text "${code_workflow}" './scripts/qualify-cognition-market-hosted.sh --
 require_text "${code_workflow}" 'astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39'
 require_text "${code_workflow}" 'cargo install cargo-deny --locked --version 0.19.4'
 require_text "${components}" '.github/workflows/release-qualification.yml'
+require_text "${components}" '.github/workflows/cognition-market-kvm-boundary.yml'
+if [[ -e "${old_promotion_workflow}" ]]; then
+  echo "legacy promotion workflow must not survive the KVM boundary rename" >&2
+  exit 1
+fi
 if [[ "$(grep -Fc 'crates/core/chio-bounded/**' "${code_workflow}")" -ne 2 ]]; then
   echo "hosted workflow must qualify its Kani proof dependency on pull requests and main" >&2
   exit 1
@@ -102,25 +125,106 @@ if [[ "$(grep -Fc 'crates/protocol/chio-egress-contract/**' "${components}")" -n
   echo "hosted component ownership must include the egress contract exactly once" >&2
   exit 1
 fi
-require_text "${promotion_workflow}" 'runs-on: [self-hosted, linux, x64, kvm, cognition-market, ephemeral, attested]'
-require_text "${promotion_workflow}" 'name: cognition-market-production'
-require_text "${promotion_workflow}" 'ephemeral, attested'
-require_text "${promotion_workflow}" 'CHIO_KVM_RUNNER_IMAGE_SHA256'
-require_text "${promotion_workflow}" 'CHIO_KVM_RUNNER_ATTESTATION_SHA256'
-require_text "${promotion_workflow}" './scripts/qualify-cognition-market-hosted.sh'
-require_text "${promotion_workflow}" 'cognition-market-hosted/artifact-manifest.signed.json'
-require_text "${promotion_workflow}" 'cognition-market-kvm/artifact-manifest.signed.json'
-require_text "${promotion_workflow}" 'cognition-market-promotion-sigstore'
-require_text "${promotion_workflow}" 'cosign sign-blob --yes'
-require_text "${promotion_workflow}" 'cosign verify-blob'
-require_text "${promotion_workflow}" 'id-token: write'
-require_text "${promotion_workflow}" 'DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}'
-require_text "${promotion_workflow}" 'git check-ref-format --branch "${DEFAULT_BRANCH}"'
-require_text "${promotion_workflow}" 'test "${candidate_sha}" = "${default_branch_sha}"'
-require_text "${promotion_workflow}" 'test "${GITHUB_SHA}" = "${default_branch_sha}"'
-if [[ "$(grep -Fc 'git fetch --no-tags --force origin' "${promotion_workflow}")" -ne 2 ]]; then
-  echo "promotion workflow must re-fetch the default branch before qualification and signing" >&2
+require_text "${kvm_workflow}" 'runs-on: [self-hosted, linux, x64, kvm, cognition-market, ephemeral, attested]'
+require_text "${kvm_workflow}" 'name: cognition-market-kvm-qualification'
+require_text "${kvm_workflow}" 'ephemeral, attested'
+require_text "${kvm_workflow}" 'CHIO_KVM_RUNNER_IMAGE_SHA256'
+require_text "${kvm_workflow}" 'CHIO_KVM_RUNNER_ATTESTATION_SHA256'
+require_text "${kvm_workflow}" './scripts/qualify-cognition-market-hosted.sh --kvm-boundary'
+require_text "${kvm_workflow}" 'Require bounded KVM claims and digest binding'
+require_text "${kvm_workflow}" '"promotionReady": False'
+require_text "${code_workflow}" 'Require bounded code-only claims'
+require_text "${code_workflow}" '"promotionReady": False'
+require_text "${kvm_workflow}" 'cognition-market-hosted/artifact-manifest.signed.json'
+require_text "${kvm_workflow}" 'cognition-market-kvm/artifact-manifest.signed.json'
+require_text "${kvm_workflow}" 'cognition-market-kvm-boundary-sigstore'
+require_text "${kvm_workflow}" 'cosign sign-blob --yes'
+require_text "${kvm_workflow}" 'cosign verify-blob'
+require_text "${kvm_workflow}" 'id-token: write'
+require_text "${kvm_workflow}" 'DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}'
+require_text "${kvm_workflow}" 'git check-ref-format --branch "${DEFAULT_BRANCH}"'
+require_text "${kvm_workflow}" 'test "${candidate_sha}" = "${default_branch_sha}"'
+require_text "${kvm_workflow}" 'test "${GITHUB_SHA}" = "${default_branch_sha}"'
+if [[ "$(grep -Fc 'git fetch --no-tags --force origin' "${kvm_workflow}")" -ne 2 ]]; then
+  echo "KVM workflow must re-fetch the default branch before qualification and signing" >&2
   exit 1
 fi
 
-echo "qualify-cognition-market-hosted.test.sh: hosted code and KVM promotion gates are closed"
+test_root="$(mktemp -d "${TMPDIR:-/tmp}/chio-hosted-report.XXXXXX")"
+trap 'rm -rf "${test_root}"' EXIT
+mkdir -p "${test_root}/logs"
+printf 'gate passed\n' >"${test_root}/logs/unit.log"
+printf 'unit\tlogs/unit.log\tcargo test\n' >"${test_root}/gate-index.tsv"
+candidate_sha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+kvm_sha="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+python3 "${report_generator}" \
+  --candidate-sha "${candidate_sha}" \
+  --mode code-only \
+  --gate-index "${test_root}/gate-index.tsv" \
+  --report "${test_root}/qualification.json"
+cargo run --quiet -p chio-spec-validate -- \
+  "${report_schema}" "${test_root}/qualification.json"
+python3 - "${test_root}/qualification.json" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+expected = {
+    "mode": "code-only",
+    "decision": "qualified-code-boundary",
+    "codeQualified": True,
+    "kvmQualified": False,
+    "networkQualified": False,
+    "productionReady": False,
+    "promotionReady": False,
+    "kvmEvidenceSha256": None,
+}
+for field, value in expected.items():
+    if report.get(field) != value:
+        raise SystemExit(f"code-only report has unsafe {field}: {report.get(field)!r}")
+PY
+
+python3 "${report_generator}" \
+  --candidate-sha "${candidate_sha}" \
+  --mode kvm-boundary \
+  --kvm-evidence-sha256 "${kvm_sha}" \
+  --gate-index "${test_root}/gate-index.tsv" \
+  --report "${test_root}/qualification.json"
+cargo run --quiet -p chio-spec-validate -- \
+  "${report_schema}" "${test_root}/qualification.json"
+python3 - "${test_root}/qualification.json" "${kvm_sha}" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if report.get("kvmQualified") is not True:
+    raise SystemExit("KVM report did not qualify the KVM boundary")
+if report.get("kvmEvidenceSha256") != sys.argv[2]:
+    raise SystemExit("KVM report did not bind the KVM evidence digest")
+for field in ("networkQualified", "productionReady", "promotionReady"):
+    if report.get(field) is not False:
+        raise SystemExit(f"KVM report made unsafe {field} claim")
+PY
+
+if python3 "${report_generator}" \
+  --candidate-sha "${candidate_sha}" \
+  --mode code-only \
+  --kvm-evidence-sha256 "${kvm_sha}" \
+  --gate-index "${test_root}/gate-index.tsv" \
+  --report "${test_root}/qualification.json" >/dev/null 2>&1; then
+  echo "code-only report accepted KVM evidence" >&2
+  exit 1
+fi
+if python3 "${report_generator}" \
+  --candidate-sha "${candidate_sha}" \
+  --mode kvm-boundary \
+  --gate-index "${test_root}/gate-index.tsv" \
+  --report "${test_root}/qualification.json" >/dev/null 2>&1; then
+  echo "KVM report accepted missing KVM evidence" >&2
+  exit 1
+fi
+
+echo "qualify-cognition-market-hosted.test.sh: code and KVM claims remain bounded"
