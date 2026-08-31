@@ -1071,7 +1071,7 @@ async fn load_authority_state(
     })
 }
 
-fn validate_signed<T: Serialize + Clone>(
+pub(crate) fn validate_signed<T: Serialize + Clone>(
     tenant: &HostedTenantId,
     expected_signer: &PublicKey,
     envelope: &SignedExportEnvelope<T>,

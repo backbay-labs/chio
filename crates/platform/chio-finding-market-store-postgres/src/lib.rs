@@ -25,6 +25,7 @@ mod auth;
 mod catalog;
 mod checkpoints;
 mod domain;
+mod import;
 mod job_leases;
 mod ports;
 mod replication;
@@ -53,6 +54,10 @@ pub use checkpoints::{
 pub use domain::{
     HostedCommerceSettlementPacket, HostedCommerceSettlementStatus, HostedMarketDomainArtifact,
     HostedMarketDomainEvent, HostedMarketDomainEventKind, HostedMarketDomainProjection,
+};
+pub use import::{
+    HostedSqliteImportBatchBody, HostedSqliteImportEntry, HostedSqliteImportOutcome,
+    SignedHostedSqliteImportBatch, HOSTED_SQLITE_IMPORT_BATCH_SCHEMA,
 };
 pub use replication::{
     HostedAuthorityMode, HostedAuthorityState, HostedAuthorityTransitionBody,
