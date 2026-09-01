@@ -724,6 +724,16 @@ impl PostgresFindingMarketReplicator {
         Ok(digest)
     }
 
+    pub async fn authority_state(
+        &self,
+        tenant: &HostedTenantId,
+    ) -> Result<HostedAuthorityState, HostedMarketStoreError> {
+        let mut transaction = begin(&self.pool, tenant).await?;
+        let state = load_authority_state(&mut transaction, tenant).await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(state)
+    }
+
     pub async fn apply_authority_transition(
         &self,
         tenant: &HostedTenantId,

@@ -36,11 +36,47 @@ const DPOP_HEADER: &str = "Chio-DPoP";
 const PROXY_AUTHENTICATION_HEADER: &str = "Chio-Proxy-Authentication";
 const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CREDENTIAL_BYTES: usize = 64 * 1024;
+pub const HOSTED_RELEASE_IDENTITY_SCHEMA: &str = "chio.finding.hosted-release-identity.v1";
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HostedReleaseIdentity {
+    pub schema: String,
+    pub deployment_id: String,
+    pub candidate_sha: String,
+    pub artifact_sha256: String,
+    pub configuration_revision: String,
+}
+
+impl HostedReleaseIdentity {
+    fn validate(&self) -> Result<(), HostedEdgeError> {
+        if self.schema != HOSTED_RELEASE_IDENTITY_SCHEMA
+            || self.deployment_id.is_empty()
+            || self.deployment_id.len() > 256
+            || self.candidate_sha.len() != 40
+            || !self
+                .candidate_sha
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            || self.artifact_sha256.len() != 64
+            || !self
+                .artifact_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            || self.configuration_revision.is_empty()
+            || self.configuration_revision.len() > 256
+        {
+            return Err(HostedEdgeError::Configuration);
+        }
+        Ok(())
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct HostedHttpServerConfig {
     pub public_endpoint: String,
     pub maximum_body_bytes: usize,
+    pub release_identity: HostedReleaseIdentity,
 }
 
 impl HostedHttpServerConfig {
@@ -53,12 +89,14 @@ impl HostedHttpServerConfig {
             || endpoint.password().is_some()
             || endpoint.query().is_some()
             || endpoint.fragment().is_some()
+            || endpoint.path() != "/"
             || endpoint.as_str().trim_end_matches('/') != self.public_endpoint
             || self.maximum_body_bytes == 0
             || self.maximum_body_bytes > MAX_BODY_BYTES
         {
             return Err(HostedEdgeError::Configuration);
         }
+        self.release_identity.validate()?;
         Ok(())
     }
 }
@@ -335,6 +373,35 @@ impl HostedOperation {
             role: operation.4,
         })
     }
+
+    fn has_signed_artifact(self) -> bool {
+        !matches!(
+            self.artifact_schema,
+            "chio.finding.delivery.v1" | "chio.commerce.settlement-packet.v1"
+        )
+    }
+}
+
+fn authenticated_artifact_signer(
+    operation: HostedOperation,
+    principal: &crate::HostedAuthenticatedPrincipal,
+    requested_signer: Option<&PublicKey>,
+) -> Result<Option<PublicKey>, HostedEdgeError> {
+    if !operation.has_signed_artifact() {
+        return if requested_signer.is_none() {
+            Ok(None)
+        } else {
+            Err(HostedEdgeError::InvalidRequest)
+        };
+    }
+    let trusted_signer = principal
+        .artifact_signer_key
+        .as_ref()
+        .ok_or(HostedEdgeError::AuthorizationFailed)?;
+    if requested_signer != Some(trusted_signer) {
+        return Err(HostedEdgeError::AuthorizationFailed);
+    }
+    Ok(Some(trusted_signer.clone()))
 }
 
 struct FindingQuery {
@@ -346,6 +413,7 @@ pub fn hosted_market_router(state: HostedHttpServerState) -> Router {
     Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
+        .route("/v1/release", get(release_identity))
         .route("/v1/findings", get(list_findings))
         .route("/v1/findings/{finding_id}", get(get_finding))
         .route("/v1/findings/events/{operation}", post(mutate))
@@ -466,6 +534,35 @@ async fn not_found() -> Response {
     error_response(HostedEdgeError::InvalidRequest, "route-not-found")
 }
 
+async fn release_identity(
+    State(state): State<HostedHttpServerState>,
+    OriginalUri(uri): OriginalUri,
+    headers: HeaderMap,
+) -> Response {
+    let request_id = single_header(&headers, REQUEST_ID_HEADER).unwrap_or("invalid-request-id");
+    let result = async {
+        let now = unix_now()?;
+        authenticate(
+            &state,
+            &headers,
+            &uri,
+            "finding.release.read",
+            HostedHttpMethod::Get,
+            HostedPrincipalRole::Buyer,
+            sha256_hex(&[]),
+            None,
+            now,
+        )
+        .await?;
+        Ok::<_, HostedEdgeError>(state.config.release_identity.clone())
+    }
+    .await;
+    match result {
+        Ok(identity) => (StatusCode::OK, Json(identity)).into_response(),
+        Err(error) => error_response(error, request_id),
+    }
+}
+
 async fn publish(
     state: State<HostedHttpServerState>,
     uri: OriginalUri,
@@ -492,6 +589,7 @@ async fn publish_inner(
             return Err(HostedEdgeError::InvalidRequest);
         }
         let operation = HostedOperation::parse("publish").ok_or(HostedEdgeError::Configuration)?;
+        let event_id = required_header(&headers, IDEMPOTENCY_KEY_HEADER)?.to_owned();
         let principal = authenticate(
             &state,
             &headers,
@@ -500,11 +598,14 @@ async fn publish_inner(
             HostedHttpMethod::Post,
             operation.role,
             sha256_hex(&canonical_body),
+            Some(&event_id),
             received_at,
         )
         .await?;
+        if principal.artifact_signer_key.as_ref() != Some(&finding.issuer) {
+            return Err(HostedEdgeError::AuthorizationFailed);
+        }
         let binding = tenant_binding(&headers)?;
-        let event_id = required_header(&headers, IDEMPOTENCY_KEY_HEADER)?.to_owned();
         let contract = HostedRequestContract::new(
             &binding,
             &principal,
@@ -523,7 +624,7 @@ async fn publish_inner(
             event_id,
             expected_revision: 0,
             expected_event_sha256: None,
-            artifact_signer_key: Some(finding.issuer),
+            artifact_signer_key: principal.artifact_signer_key,
             payload,
         };
         let outcome = state
@@ -585,6 +686,7 @@ async fn mutate_inner(
             return Err(HostedEdgeError::InvalidRequest);
         }
         let received_at = unix_now()?;
+        let idempotency_key = required_header(&headers, IDEMPOTENCY_KEY_HEADER)?.to_owned();
         let principal = authenticate(
             &state,
             &headers,
@@ -593,6 +695,7 @@ async fn mutate_inner(
             HostedHttpMethod::Post,
             operation.role,
             sha256_hex(&canonical_body),
+            Some(&idempotency_key),
             received_at,
         )
         .await?;
@@ -605,12 +708,19 @@ async fn mutate_inner(
             HostedHttpMethod::Post,
             canonical_target(&state.config.public_endpoint, &uri)?,
             sha256_hex(&canonical_body),
-            Some(required_header(&headers, IDEMPOTENCY_KEY_HEADER)?.to_owned()),
+            Some(idempotency_key),
             received_at,
         )?;
         if mutation.event_id != contract.idempotency_key().unwrap_or_default() {
             return Err(HostedEdgeError::InvalidRequest);
         }
+        let trusted_signer = authenticated_artifact_signer(
+            operation,
+            &principal,
+            mutation.artifact_signer_key.as_ref(),
+        )?;
+        let mut mutation = mutation;
+        mutation.artifact_signer_key = trusted_signer;
         let outcome = state
             .backend
             .append(
@@ -640,6 +750,7 @@ async fn get_finding(
     let request_id = single_header(&headers, REQUEST_ID_HEADER).unwrap_or("invalid-request-id");
     let result = async {
         let binding = tenant_binding(&headers)?;
+        let requested_at = unix_now()?;
         authenticate(
             &state,
             &headers,
@@ -648,19 +759,21 @@ async fn get_finding(
             HostedHttpMethod::Get,
             HostedPrincipalRole::Buyer,
             sha256_hex(&[]),
-            unix_now()?,
+            None,
+            requested_at,
         )
         .await?;
-        state
+        let projection = state
             .backend
             .finding(binding.tenant_id(), &finding_id)
             .await
             .map_err(map_backend)?
-            .ok_or(HostedEdgeError::NotFound)
+            .ok_or(HostedEdgeError::NotFound)?;
+        live_finding_payload(&projection, requested_at)?.ok_or(HostedEdgeError::NotFound)
     }
     .await;
     match result {
-        Ok(projection) => (StatusCode::OK, Json(projection.payload)).into_response(),
+        Ok(payload) => (StatusCode::OK, Json(payload)).into_response(),
         Err(error) => error_response(error, request_id),
     }
 }
@@ -674,6 +787,7 @@ async fn list_findings(
     let result = async {
         let binding = tenant_binding(&headers)?;
         let query = parse_finding_query(uri.query())?;
+        let requested_at = unix_now()?;
         authenticate(
             &state,
             &headers,
@@ -682,10 +796,11 @@ async fn list_findings(
             HostedHttpMethod::Get,
             HostedPrincipalRole::Buyer,
             sha256_hex(&[]),
-            unix_now()?,
+            None,
+            requested_at,
         )
         .await?;
-        state
+        let mut page = state
             .backend
             .findings(
                 binding.tenant_id(),
@@ -693,7 +808,19 @@ async fn list_findings(
                 query.limit.unwrap_or(50),
             )
             .await
-            .map_err(map_backend)
+            .map_err(map_backend)?;
+        page.items = page
+            .items
+            .into_iter()
+            .map(|projection| {
+                live_finding_payload(&projection, requested_at)
+                    .map(|payload| payload.map(|_| projection))
+            })
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+        Ok(page)
     }
     .await;
     match result {
@@ -759,6 +886,7 @@ async fn authenticate(
     method: HostedHttpMethod,
     role: HostedPrincipalRole,
     body_sha256: String,
+    idempotency_key: Option<&str>,
     now_unix_secs: u64,
 ) -> Result<crate::HostedAuthenticatedPrincipal, HostedEdgeError> {
     let binding = tenant_binding(headers)?;
@@ -771,11 +899,39 @@ async fn authenticate(
             method: method.as_str().to_owned(),
             canonical_target: canonical_target(&state.config.public_endpoint, uri)?,
             body_sha256,
+            idempotency_key: idempotency_key.map(str::to_owned),
             required_role: role,
             credential,
             now_unix_secs,
         })
         .await
+}
+
+fn live_finding_payload(
+    projection: &HostedHttpProjection,
+    now_unix_secs: u64,
+) -> Result<Option<serde_json::Value>, HostedEdgeError> {
+    if projection.event_kind != "finding.published"
+        || projection.aggregate_kind != "finding"
+        || projection.artifact_schema != "chio.finding.v1"
+    {
+        return Err(HostedEdgeError::IntegrityFailure);
+    }
+    let canonical =
+        canonical_json_bytes(&projection.payload).map_err(|_| HostedEdgeError::IntegrityFailure)?;
+    if sha256_hex(&canonical) != projection.artifact_sha256 {
+        return Err(HostedEdgeError::IntegrityFailure);
+    }
+    let finding: chio_finding::Finding =
+        serde_json::from_slice(&canonical).map_err(|_| HostedEdgeError::IntegrityFailure)?;
+    chio_finding::verify_finding(&finding).map_err(|_| HostedEdgeError::IntegrityFailure)?;
+    if finding.finding_id != projection.aggregate_id || finding.issued_at > now_unix_secs {
+        return Err(HostedEdgeError::IntegrityFailure);
+    }
+    if finding.expires_at <= now_unix_secs {
+        return Ok(None);
+    }
+    Ok(Some(projection.payload.clone()))
 }
 
 fn credential(headers: &HeaderMap) -> Result<HostedAuthCredential, HostedEdgeError> {
@@ -1008,6 +1164,13 @@ mod tests {
             HostedHttpServerConfig {
                 public_endpoint: "https://market.example".to_owned(),
                 maximum_body_bytes: 1024 * 1024,
+                release_identity: HostedReleaseIdentity {
+                    schema: HOSTED_RELEASE_IDENTITY_SCHEMA.to_owned(),
+                    deployment_id: "deployment:test".to_owned(),
+                    candidate_sha: "a".repeat(40),
+                    artifact_sha256: "b".repeat(64),
+                    configuration_revision: "revision:test".to_owned(),
+                },
             },
             Arc::new(authenticator),
             Arc::new(ClosedBackend),
@@ -1122,6 +1285,49 @@ mod tests {
     }
 
     #[test]
+    fn artifact_signer_is_pinned_to_the_authenticated_principal() {
+        let pinned = Keypair::from_seed(&[48_u8; 32]).public_key();
+        let untrusted = Keypair::from_seed(&[49_u8; 32]).public_key();
+        let principal = crate::HostedAuthenticatedPrincipal {
+            tenant_id: HostedTenantId::new("tenant:test")
+                .unwrap_or_else(|error| panic!("test tenant failed: {error}")),
+            principal_id: "seller:test".to_owned(),
+            role: HostedPrincipalRole::Seller,
+            method: HostedAuthMethod::ApiKey,
+            credential_id: "key:test".to_owned(),
+            artifact_signer_key: Some(pinned.clone()),
+        };
+        let Some(signed) = HostedOperation::parse("listing") else {
+            panic!("test signed operation missing");
+        };
+        assert_eq!(
+            authenticated_artifact_signer(signed, &principal, Some(&pinned)),
+            Ok(Some(pinned.clone()))
+        );
+        assert_eq!(
+            authenticated_artifact_signer(signed, &principal, Some(&untrusted)),
+            Err(HostedEdgeError::AuthorizationFailed)
+        );
+        let mut unpinned = principal.clone();
+        unpinned.artifact_signer_key = None;
+        assert_eq!(
+            authenticated_artifact_signer(signed, &unpinned, Some(&pinned)),
+            Err(HostedEdgeError::AuthorizationFailed)
+        );
+        let Some(unsigned) = HostedOperation::parse("delivery") else {
+            panic!("test unsigned operation missing");
+        };
+        assert_eq!(
+            authenticated_artifact_signer(unsigned, &principal, None),
+            Ok(None)
+        );
+        assert_eq!(
+            authenticated_artifact_signer(unsigned, &principal, Some(&pinned)),
+            Err(HostedEdgeError::InvalidRequest)
+        );
+    }
+
+    #[test]
     fn finding_query_is_closed_bounded_and_unambiguous() {
         let query = parse_finding_query(Some("after=finding%3A1&limit=100"))
             .unwrap_or_else(|error| panic!("test query failed: {error}"));
@@ -1131,6 +1337,65 @@ mod tests {
         assert!(parse_finding_query(Some("limit=0")).is_err());
         assert!(parse_finding_query(Some("topic=secret")).is_err());
         assert!(parse_finding_query(Some("after=")).is_err());
+    }
+
+    #[test]
+    fn public_endpoint_is_an_origin_and_release_identity_is_exact() {
+        let mut config = HostedHttpServerConfig {
+            public_endpoint: "https://market.example/api".to_owned(),
+            maximum_body_bytes: 1024,
+            release_identity: HostedReleaseIdentity {
+                schema: HOSTED_RELEASE_IDENTITY_SCHEMA.to_owned(),
+                deployment_id: "deployment:test".to_owned(),
+                candidate_sha: "a".repeat(40),
+                artifact_sha256: "b".repeat(64),
+                configuration_revision: "revision:test".to_owned(),
+            },
+        };
+        assert!(config.validate().is_err());
+        config.public_endpoint = "https://market.example".to_owned();
+        assert!(config.validate().is_ok());
+        config.release_identity.candidate_sha = "a".repeat(39);
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn catalog_projection_expires_and_corruption_fails_closed() {
+        let raw = include_str!(
+            "../../../../fixtures/proof-room/finding/cognition-market-qualified-profile/finding.json"
+        );
+        let payload: serde_json::Value = serde_json::from_str(raw)
+            .unwrap_or_else(|error| panic!("test finding fixture failed: {error}"));
+        let finding: chio_finding::Finding = serde_json::from_value(payload.clone())
+            .unwrap_or_else(|error| panic!("test finding decode failed: {error}"));
+        let canonical = canonical_json_bytes(&payload)
+            .unwrap_or_else(|error| panic!("test finding canonicalization failed: {error}"));
+        let mut projection = HostedHttpProjection {
+            event_kind: "finding.published".to_owned(),
+            aggregate_kind: "finding".to_owned(),
+            aggregate_id: finding.finding_id.clone(),
+            event_id: "event:test".to_owned(),
+            revision: 1,
+            previous_event_sha256: None,
+            event_sha256: "c".repeat(64),
+            artifact_schema: "chio.finding.v1".to_owned(),
+            artifact_sha256: sha256_hex(&canonical),
+            payload,
+            committed_at: finding.issued_at,
+        };
+        assert!(matches!(
+            live_finding_payload(&projection, finding.expires_at.saturating_sub(1)),
+            Ok(Some(_))
+        ));
+        assert_eq!(
+            live_finding_payload(&projection, finding.expires_at),
+            Ok(None)
+        );
+        projection.artifact_sha256 = "d".repeat(64);
+        assert_eq!(
+            live_finding_payload(&projection, finding.issued_at),
+            Err(HostedEdgeError::IntegrityFailure)
+        );
     }
 
     #[tokio::test]

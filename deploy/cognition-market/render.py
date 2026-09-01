@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 IMAGE = re.compile(r"^[a-z0-9][a-z0-9./_-]{0,254}$")
 HOST = re.compile(
     r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
@@ -26,13 +27,24 @@ def image_reference(repository: str, digest: str) -> str:
     return f"{repository}@sha256:{digest}"
 
 
-def render(template: str, chio_image: str, proxy_image: str, public_host: str) -> str:
+def render(
+    template: str,
+    chio_image: str,
+    proxy_image: str,
+    public_host: str,
+    candidate_sha: str,
+    chio_digest: str,
+) -> str:
     if not HOST.fullmatch(public_host):
         raise ValueError("public host must be a canonical lowercase DNS name")
+    if not COMMIT_SHA.fullmatch(candidate_sha) or candidate_sha == "0" * 40:
+        raise ValueError("candidate SHA must be a nonzero lowercase commit SHA")
     replacements = {
         "@CHIO_IMAGE@": chio_image,
         "@PROXY_IMAGE@": proxy_image,
         "@PUBLIC_HOST@": public_host,
+        "@CANDIDATE_SHA@": candidate_sha,
+        "@CHIO_IMAGE_SHA256@": chio_digest,
     }
     result = template
     for marker, value in replacements.items():
@@ -66,6 +78,7 @@ def main() -> int:
     parser.add_argument("--proxy-image", required=True)
     parser.add_argument("--proxy-digest", required=True)
     parser.add_argument("--public-host", required=True)
+    parser.add_argument("--candidate-sha", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     root = Path(__file__).resolve().parent
@@ -75,6 +88,8 @@ def main() -> int:
         image_reference(args.chio_image, args.chio_digest),
         image_reference(args.proxy_image, args.proxy_digest),
         args.public_host,
+        args.candidate_sha,
+        args.chio_digest,
     )
     write_atomic(args.output, content)
     return 0

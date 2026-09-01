@@ -99,6 +99,32 @@ spec:
               readOnly: true
             - name: profile
               mountPath: /profile
+        - name: seed-replication-freshness
+          image: @CHIO_IMAGE@
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/chio-finding-market-server"]
+          args:
+            - --profile
+            - /run/chio/profile/finding-hosted.json
+            - --replication-check-once
+          envFrom:
+            - secretRef:
+                name: chio-finding-market-replicator
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: profile
+              mountPath: /run/chio/profile
+              readOnly: true
+            - name: postgres-ca
+              mountPath: /run/chio/postgres-ca
+              readOnly: true
       containers:
         - name: market
           image: @CHIO_IMAGE@
@@ -108,6 +134,10 @@ spec:
             - --profile
             - /run/chio/profile/finding-hosted.json
           env:
+            - name: CHIO_FINDING_DEPLOYED_CANDIDATE_SHA
+              value: "@CANDIDATE_SHA@"
+            - name: CHIO_FINDING_DEPLOYED_ARTIFACT_SHA256
+              value: "@CHIO_IMAGE_SHA256@"
             - name: CHIO_MARKET_RUNTIME_DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -210,6 +240,40 @@ spec:
               mountPath: /var/cache/nginx
             - name: proxy-run
               mountPath: /var/run
+        - name: replication-freshness
+          image: @CHIO_IMAGE@
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/chio-finding-market-server"]
+          args:
+            - --profile
+            - /run/chio/profile/finding-hosted.json
+            - --replication-check-interval-secs
+            - "10"
+          envFrom:
+            - secretRef:
+                name: chio-finding-market-replicator
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: profile
+              mountPath: /run/chio/profile
+              readOnly: true
+            - name: postgres-ca
+              mountPath: /run/chio/postgres-ca
+              readOnly: true
       volumes:
         - name: profile-source
           secret:

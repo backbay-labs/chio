@@ -16,14 +16,15 @@ python3 "${renderer}" \
   --proxy-image docker.io/library/nginx \
   --proxy-digest bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
   --public-host market.example.com \
+  --candidate-sha cccccccccccccccccccccccccccccccccccccccc \
   --output "${rendered}"
 
 if grep -E 'image:.*:(latest|main|master)([[:space:]]|$)' "${rendered}" >/dev/null; then
   echo "cognition-market deployment admits a mutable image tag" >&2
   exit 1
 fi
-if [[ "$(grep -Ec 'image: [^[:space:]]+@sha256:[0-9a-f]{64}$' "${rendered}")" -ne 4 ]]; then
-  echo "cognition-market deployment must pin all four container references" >&2
+if [[ "$(grep -Ec 'image: [^[:space:]]+@sha256:[0-9a-f]{64}$' "${rendered}")" -ne 6 ]]; then
+  echo "cognition-market deployment must pin all six container references" >&2
   exit 1
 fi
 for required in \
@@ -36,6 +37,15 @@ for required in \
   'drop: ["ALL"]' \
   'kind: NetworkPolicy' \
   'name: chio-finding-market-migrate' \
+  'name: seed-replication-freshness' \
+  'name: replication-freshness' \
+  'name: chio-finding-market-replicator' \
+  'name: CHIO_FINDING_DEPLOYED_CANDIDATE_SHA' \
+  'name: CHIO_FINDING_DEPLOYED_ARTIFACT_SHA256' \
+  'value: "cccccccccccccccccccccccccccccccccccccccc"' \
+  'value: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"' \
+  '--replication-check-once' \
+  '--replication-check-interval-secs' \
   'ingress: []' \
   'kind: PodDisruptionBudget' \
   'chio.world/market-ingress-client: "true"' \
@@ -46,7 +56,7 @@ for required in \
   'Chio-Proxy-Authentication' \
   'invalid proxy token' \
   'ssl_protocols TLSv1.3'; do
-  if ! grep -F "${required}" "${rendered}" >/dev/null; then
+  if ! grep -F -- "${required}" "${rendered}" >/dev/null; then
     echo "cognition-market deployment omits required contract: ${required}" >&2
     exit 1
   fi
@@ -87,6 +97,7 @@ if python3 "${renderer}" \
   --proxy-image docker.io/library/nginx \
   --proxy-digest bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
   --public-host market.example.com \
+  --candidate-sha cccccccccccccccccccccccccccccccccccccccc \
   --output "${rendered}" >/dev/null 2>&1; then
   echo "cognition-market renderer accepted a tagged image" >&2
   exit 1
@@ -97,6 +108,7 @@ if python3 "${renderer}" \
   --proxy-image docker.io/library/nginx \
   --proxy-digest bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
   --public-host market.example.com \
+  --candidate-sha cccccccccccccccccccccccccccccccccccccccc \
   --output "${rendered}" >/dev/null 2>&1; then
   echo "cognition-market renderer accepted the zero image digest" >&2
   exit 1
@@ -106,7 +118,19 @@ if python3 "${renderer}" \
   --chio-digest aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
   --proxy-image docker.io/library/nginx \
   --proxy-digest bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+  --public-host market.example.com \
+  --candidate-sha 0000000000000000000000000000000000000000 \
+  --output "${rendered}" >/dev/null 2>&1; then
+  echo "cognition-market renderer accepted the zero candidate SHA" >&2
+  exit 1
+fi
+if python3 "${renderer}" \
+  --chio-image ghcr.io/bb-connor/arc \
+  --chio-digest aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  --proxy-image docker.io/library/nginx \
+  --proxy-digest bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
   --public-host Market.example.com \
+  --candidate-sha cccccccccccccccccccccccccccccccccccccccc \
   --output "${rendered}" >/dev/null 2>&1; then
   echo "cognition-market renderer accepted a noncanonical public host" >&2
   exit 1

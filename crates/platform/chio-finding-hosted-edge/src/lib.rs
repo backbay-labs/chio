@@ -52,5 +52,6 @@ pub use server::{
     hosted_market_router, serve_hosted_market_loopback, serve_hosted_market_loopback_with_shutdown,
     HostedDomainMutation, HostedHttpBackend, HostedHttpBackendError, HostedHttpBackendOutcome,
     HostedHttpPage, HostedHttpProjection, HostedHttpServerConfig, HostedHttpServerState,
+    HostedReleaseIdentity, HOSTED_RELEASE_IDENTITY_SCHEMA,
 };
 pub use tls::{HostedTlsConfig, HostedTlsReload, HostedTlsState};

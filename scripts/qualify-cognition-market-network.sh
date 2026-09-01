@@ -115,6 +115,9 @@ expected_true = (
 if (
     report.get("schema") != "chio.finding.hosted-network-canary-report.v1"
     or report.get("candidateSha") != sys.argv[2]
+    or report.get("deployedCandidateSha") != sys.argv[2]
+    or len(report.get("deployedArtifactSha256", "")) != 64
+    or any(character not in "0123456789abcdef" for character in report.get("deployedArtifactSha256", ""))
     or report.get("retryOutcome") != "exact_replay"
     or any(report.get(field) is not True for field in expected_true)
 ):

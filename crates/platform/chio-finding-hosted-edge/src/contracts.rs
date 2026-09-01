@@ -377,6 +377,7 @@ mod tests {
             role: HostedPrincipalRole::Buyer,
             method: HostedAuthMethod::ApiKey,
             credential_id: "key-1".to_owned(),
+            artifact_signer_key: None,
         }
     }
 

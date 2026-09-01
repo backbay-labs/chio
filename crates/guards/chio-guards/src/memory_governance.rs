@@ -487,6 +487,11 @@ impl MemoryGovernanceGuard {
         let mut quarantined = self.quarantined_findings.lock().map_err(|_| {
             KernelError::GuardDenied("Finding memory quarantine state is unavailable".to_owned())
         })?;
+        if quarantined.saturated {
+            return Err(KernelError::GuardDenied(
+                "Finding memory quarantine state is saturated".to_owned(),
+            ));
+        }
         if !live {
             if quarantined.keys.len() < MAX_QUARANTINED_FINDING_KEYS {
                 quarantined.keys.insert(marker);
@@ -673,6 +678,35 @@ fn extract_content_text(arguments: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::finding_retraction::FindingRetractionResolveError;
+
+    struct LiveResolver;
+
+    impl FindingRetractionResolver for LiveResolver {
+        fn resolver_id(&self) -> &str {
+            "resolver"
+        }
+
+        fn feed_id(&self) -> &str {
+            "feed"
+        }
+
+        fn resolve(
+            &self,
+            _query: FindingRetractionQuery<'_>,
+        ) -> Result<FindingRetractionResolution, FindingRetractionResolveError> {
+            Ok(FindingRetractionResolution {
+                delivery_receipt_id: "delivery".to_owned(),
+                finding_id: "finding".to_owned(),
+                feed_id: "feed".to_owned(),
+                map_epoch: 1,
+                epoch_id: "a".repeat(64),
+                root_hash: "b".repeat(64),
+                value: FindingStatusValue::Live,
+                memory_content_sha256: "c".repeat(64),
+            })
+        }
+    }
 
     #[test]
     fn store_matches_wildcards() {
@@ -696,5 +730,34 @@ mod tests {
     fn content_size_falls_back_to_text_length() {
         let args = serde_json::json!({"content": "hello"});
         assert_eq!(extract_content_size_bytes(&args), Some(5));
+    }
+
+    #[test]
+    fn saturated_quarantine_never_reopens_on_a_live_resolution() {
+        let guard = MemoryGovernanceGuard::with_config_and_retraction_resolver(
+            MemoryGovernanceConfig {
+                finding_retraction: Some(FindingRetractionGuardConfig {
+                    resolver_id: "resolver".to_owned(),
+                    feed_id: "feed".to_owned(),
+                }),
+                ..MemoryGovernanceConfig::default()
+            },
+            Arc::new(LiveResolver),
+        );
+        assert!(guard.is_ok());
+        if let Ok(guard) = guard {
+            if let Ok(mut quarantine) = guard.quarantined_findings.lock() {
+                quarantine.saturated = true;
+            } else {
+                panic!("test quarantine lock poisoned");
+            }
+            let Some(binding) = guard.finding_retraction.as_ref() else {
+                panic!("test retraction binding missing");
+            };
+            assert!(guard
+                .resolve_live_finding(binding, "memory", "key")
+                .is_err());
+            assert!(guard.is_finding_quarantined("memory", "key"));
+        }
     }
 }

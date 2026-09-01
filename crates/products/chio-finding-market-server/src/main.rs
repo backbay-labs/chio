@@ -6,19 +6,28 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chio_control_plane::trust_control::finding_hosted_profile::FindingHostedProfile;
+use chio_control_plane::trust_control::finding_hosted_profile::{
+    FindingHostedProfile, FindingHostedSigningRole,
+};
 use chio_core_types::canonical_json_bytes_from_str;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding_hosted_edge::{
     serve_hosted_market_loopback_with_shutdown, HostedAuthenticator, HostedHttpServerConfig,
-    HostedHttpServerState,
+    HostedHttpServerState, HostedReleaseIdentity, HOSTED_RELEASE_IDENTITY_SCHEMA,
 };
-use chio_finding_market_store_postgres::{HostedPostgresConfig, PostgresFindingMarketStore};
+use chio_finding_market_store_postgres::{
+    HostedAuthorityMode, HostedMarketAuthority, HostedMarketStoreError, HostedPostgresConfig,
+    HostedReplicationCheckBody, HostedTenantId, PostgresFindingMarketReplicator,
+    PostgresFindingMarketStore, HOSTED_REPLICATION_CHECK_SCHEMA,
+};
 use clap::Parser;
 use nix::libc;
 use zeroize::Zeroizing;
 
 const MAX_PROFILE_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_HTTP_BODY_BYTES: usize = 4 * 1024 * 1024;
+const DEPLOYED_CANDIDATE_SHA_ENV: &str = "CHIO_FINDING_DEPLOYED_CANDIDATE_SHA";
+const DEPLOYED_ARTIFACT_SHA256_ENV: &str = "CHIO_FINDING_DEPLOYED_ARTIFACT_SHA256";
 
 #[derive(Debug, Parser)]
 #[command(name = "chio-finding-market-server")]
@@ -26,6 +35,10 @@ const MAX_HTTP_BODY_BYTES: usize = 4 * 1024 * 1024;
 struct Args {
     #[arg(long)]
     profile: PathBuf,
+    #[arg(long, conflicts_with = "replication_check_interval_secs")]
+    replication_check_once: bool,
+    #[arg(long, value_parser = clap::value_parser!(u64).range(5..=20))]
+    replication_check_interval_secs: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, thiserror::Error)]
@@ -40,6 +53,8 @@ enum ServerError {
     Authentication,
     #[error("hosted server listener is unavailable")]
     Listener,
+    #[error("hosted server replication freshness is unavailable")]
+    Replication,
 }
 
 #[tokio::main]
@@ -56,6 +71,9 @@ async fn main() -> ExitCode {
 async fn run(args: Args) -> Result<(), ServerError> {
     let profile: FindingHostedProfile = read_profile(&args.profile)?;
     profile.validate().map_err(|_| ServerError::Profile)?;
+    if args.replication_check_once || args.replication_check_interval_secs.is_some() {
+        return run_replication_checks(&profile, args.replication_check_interval_secs).await;
+    }
     if !profile.listen.ip().is_loopback() {
         return Err(ServerError::Profile);
     }
@@ -97,10 +115,12 @@ async fn run(args: Args) -> Result<(), ServerError> {
         )
         .map_err(|_| ServerError::Authentication)?,
     );
+    let release_identity = deployed_release_identity(&profile)?;
     let state = HostedHttpServerState::new(
         HostedHttpServerConfig {
             public_endpoint: profile.public_endpoint.clone(),
             maximum_body_bytes: MAX_HTTP_BODY_BYTES,
+            release_identity,
         },
         authenticator,
         store,
@@ -113,6 +133,144 @@ async fn run(args: Args) -> Result<(), ServerError> {
     serve_hosted_market_loopback_with_shutdown(listener, state, shutdown_signal())
         .await
         .map_err(|_| ServerError::Listener)
+}
+
+fn deployed_release_identity(
+    profile: &FindingHostedProfile,
+) -> Result<HostedReleaseIdentity, ServerError> {
+    let candidate_sha =
+        std::env::var(DEPLOYED_CANDIDATE_SHA_ENV).map_err(|_| ServerError::Secret)?;
+    let artifact_sha256 =
+        std::env::var(DEPLOYED_ARTIFACT_SHA256_ENV).map_err(|_| ServerError::Secret)?;
+    validate_deployed_binding(
+        &profile.release.candidate_sha,
+        &profile.release.artifact_sha256,
+        &candidate_sha,
+        &artifact_sha256,
+    )?;
+    Ok(HostedReleaseIdentity {
+        schema: HOSTED_RELEASE_IDENTITY_SCHEMA.to_owned(),
+        deployment_id: profile.deployment_id.clone(),
+        candidate_sha,
+        artifact_sha256,
+        configuration_revision: profile.release.configuration_revision.clone(),
+    })
+}
+
+fn validate_deployed_binding(
+    expected_candidate_sha: &str,
+    expected_artifact_sha256: &str,
+    deployed_candidate_sha: &str,
+    deployed_artifact_sha256: &str,
+) -> Result<(), ServerError> {
+    if deployed_candidate_sha != expected_candidate_sha
+        || deployed_artifact_sha256 != expected_artifact_sha256
+    {
+        return Err(ServerError::Profile);
+    }
+    Ok(())
+}
+
+async fn run_replication_checks(
+    profile: &FindingHostedProfile,
+    interval_secs: Option<u64>,
+) -> Result<(), ServerError> {
+    let database_url = Zeroizing::new(
+        std::env::var(&profile.database.replicator_url_env).map_err(|_| ServerError::Secret)?,
+    );
+    let database_config = HostedPostgresConfig::new(database_url.to_string())
+        .and_then(|config| config.with_ca_certificate(&profile.database.ca_certificate_path))
+        .and_then(|config| config.with_max_connections(profile.database.max_connections.min(8)))
+        .and_then(|config| {
+            config.with_acquire_timeout(Duration::from_millis(
+                profile.database.acquire_timeout_millis,
+            ))
+        })
+        .map_err(|_| ServerError::Profile)?;
+    let replicator = PostgresFindingMarketReplicator::connect(&database_config)
+        .await
+        .map_err(|_| ServerError::Replication)?;
+    let signer = profile
+        .load_signer(FindingHostedSigningRole::AuthorityStatus)
+        .map_err(|_| ServerError::Replication)?;
+    write_replication_checks(profile, &replicator, signer.as_ref()).await?;
+    let Some(interval_secs) = interval_secs else {
+        return Ok(());
+    };
+    let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    interval.tick().await;
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {
+                write_replication_checks(profile, &replicator, signer.as_ref()).await?;
+            }
+            _ = shutdown_signal() => return Ok(()),
+        }
+    }
+}
+
+async fn write_replication_checks(
+    profile: &FindingHostedProfile,
+    replicator: &PostgresFindingMarketReplicator,
+    signer: &dyn chio_core_types::SigningBackend,
+) -> Result<(), ServerError> {
+    for tenant in profile.tenants.iter().filter(|tenant| tenant.enabled) {
+        let tenant_id =
+            HostedTenantId::new(tenant.tenant_id.clone()).map_err(|_| ServerError::Profile)?;
+        let retry_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let state = replicator
+                .authority_state(&tenant_id)
+                .await
+                .map_err(|_| ServerError::Replication)?;
+            if state.authority != HostedMarketAuthority::Postgres
+                || state.mode != HostedAuthorityMode::Authoritative
+                || !state.mutations_enabled
+                || state.configuration_revision != profile.release.configuration_revision
+            {
+                return Err(ServerError::Replication);
+            }
+            let projection_sha256 = replicator
+                .target_projection_sha256(&tenant_id)
+                .await
+                .map_err(|_| ServerError::Replication)?;
+            let checked_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|_| ServerError::Replication)?
+                .as_secs();
+            let check = SignedExportEnvelope::sign_with_backend(
+                HostedReplicationCheckBody {
+                    schema: HOSTED_REPLICATION_CHECK_SCHEMA.to_owned(),
+                    tenant_id: tenant_id.as_str().to_owned(),
+                    source_authority: HostedMarketAuthority::Postgres,
+                    authority_epoch: state.authority_epoch,
+                    through_sequence: state.last_outbox_sequence,
+                    source_projection_sha256: projection_sha256.clone(),
+                    target_projection_sha256: projection_sha256,
+                    lag_seconds: 0,
+                    projection_difference_count: 0,
+                    security_counter_count: 0,
+                    checked_at,
+                },
+                signer,
+            )
+            .map_err(|_| ServerError::Replication)?;
+            match replicator
+                .append_replication_check(&tenant_id, &signer.public_key(), &check)
+                .await
+            {
+                Ok(_) => break,
+                Err(HostedMarketStoreError::Conflict | HostedMarketStoreError::DigestMismatch)
+                    if tokio::time::Instant::now() < retry_deadline =>
+                {
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+                Err(_) => return Err(ServerError::Replication),
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -225,6 +383,19 @@ mod tests {
             "hosted server database is unavailable"
         );
         assert!(!ServerError::Secret.to_string().contains("environment"));
+    }
+
+    #[test]
+    fn deployed_release_binding_rejects_candidate_or_artifact_drift() {
+        let candidate = "a".repeat(40);
+        let artifact = "b".repeat(64);
+        assert!(validate_deployed_binding(&candidate, &artifact, &candidate, &artifact).is_ok());
+        assert!(
+            validate_deployed_binding(&candidate, &artifact, &"c".repeat(40), &artifact).is_err()
+        );
+        assert!(
+            validate_deployed_binding(&candidate, &artifact, &candidate, &"d".repeat(64)).is_err()
+        );
     }
 
     #[test]

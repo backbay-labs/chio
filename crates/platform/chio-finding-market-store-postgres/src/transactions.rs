@@ -42,6 +42,12 @@ impl PostgresFindingMarketStore {
             artifact.body.accepted_price.units,
         )?;
 
+        // Persist the terminal fence before any recovery side effect. The
+        // append is exact-replay stable, so concurrent recovery attempts with
+        // incompatible terminal artifacts cannot both reach spend mutation.
+        let terminal = self
+            .settle_purchase(tenant, artifact, terminal_write)
+            .await?;
         let reveal = self.commit_reveal(tenant, artifact, reveal_write).await?;
         let spend = match desired {
             HostedSpendState::Committed => {
@@ -56,9 +62,6 @@ impl PostgresFindingMarketStore {
                 return Err(HostedMarketStoreError::Invalid("purchase terminal"));
             }
         };
-        let terminal = self
-            .settle_purchase(tenant, artifact, terminal_write)
-            .await?;
         Ok(HostedPurchaseRecoveryOutcome {
             reveal,
             spend,

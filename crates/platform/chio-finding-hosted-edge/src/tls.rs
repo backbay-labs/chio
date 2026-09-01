@@ -278,6 +278,7 @@ fn public_endpoint_server_name(value: &str) -> Result<ServerName<'static>, Hoste
         || endpoint.password().is_some()
         || endpoint.query().is_some()
         || endpoint.fragment().is_some()
+        || endpoint.path() != "/"
         || endpoint.as_str().trim_end_matches('/') != value
     {
         return Err(HostedEdgeError::Configuration);

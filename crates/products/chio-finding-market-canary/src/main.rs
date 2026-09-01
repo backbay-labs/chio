@@ -124,6 +124,8 @@ struct NetworkCanaryReport {
     schema: &'static str,
     candidate_sha: String,
     configuration_revision: String,
+    deployed_candidate_sha: String,
+    deployed_artifact_sha256: String,
     tenant_id: String,
     finding_id: String,
     finding_sha256: String,
@@ -133,6 +135,16 @@ struct NetworkCanaryReport {
     buyer_payload_matched: bool,
     buyer_catalog_matched: bool,
     tenant_isolation_denied: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct NetworkReleaseIdentity {
+    schema: String,
+    deployment_id: String,
+    candidate_sha: String,
+    artifact_sha256: String,
+    configuration_revision: String,
 }
 
 #[derive(Deserialize)]
@@ -189,6 +201,9 @@ async fn network_canary(
         return Err("network_canary_finding_inactive");
     }
     let candidate_sha = candidate_sha()?;
+    if candidate_sha != profile.release.candidate_sha {
+        return Err("network_canary_profile_candidate_mismatch");
+    }
     let event_id = sha256_hex(
         format!(
             "chio.finding.network-canary-event.v1\0{}\0{}\0{}\0{}",
@@ -210,6 +225,26 @@ async fn network_canary(
         .user_agent("chio-finding-market-network-canary/1")
         .build()
         .map_err(|_| "network_canary_client_invalid")?;
+    let release_bytes = network_get(
+        &client,
+        profile,
+        tenant_id,
+        &buyer_key_id,
+        &buyer_key_secret,
+        &sha256_hex(format!("{candidate_sha}:release").as_bytes()),
+        "/v1/release",
+    )
+    .await?;
+    let deployed: NetworkReleaseIdentity = serde_json::from_slice(&release_bytes)
+        .map_err(|_| "network_canary_release_identity_invalid")?;
+    if deployed.schema != "chio.finding.hosted-release-identity.v1"
+        || deployed.deployment_id != profile.deployment_id
+        || deployed.candidate_sha != candidate_sha
+        || deployed.artifact_sha256 != profile.release.artifact_sha256
+        || deployed.configuration_revision != profile.release.configuration_revision
+    {
+        return Err("network_canary_release_identity_mismatch");
+    }
     let first_request_id = sha256_hex(format!("{event_id}:first").as_bytes());
     let first = publish_network_finding(
         &client,
@@ -323,6 +358,8 @@ async fn network_canary(
         schema: "chio.finding.hosted-network-canary-report.v1",
         candidate_sha,
         configuration_revision: profile.release.configuration_revision.clone(),
+        deployed_candidate_sha: deployed.candidate_sha,
+        deployed_artifact_sha256: deployed.artifact_sha256,
         tenant_id: tenant_id.to_owned(),
         finding_id: finding.finding_id,
         finding_sha256,

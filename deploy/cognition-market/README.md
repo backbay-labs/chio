@@ -2,8 +2,10 @@
 
 This directory deploys the hosted market in the approved hybrid topology:
 
-- Kubernetes runs stateless `chio-finding-market-server` replicas and an
-  authenticated TLS proxy sidecar.
+- Kubernetes runs stateless `chio-finding-market-server` replicas, an
+  authenticated TLS proxy sidecar, and a least-privilege replication-freshness
+  writer. An init check establishes the first freshness fence before the edge
+  starts, and the sidecar refreshes it every ten seconds.
 - A dedicated migration Job owns schema changes. Runtime pods do not receive
   migration credentials.
 - Dedicated Linux KVM hosts run `chio-finding-worker` under systemd. SQLite is
@@ -20,6 +22,7 @@ python3 deploy/cognition-market/render.py \
   --proxy-image docker.io/library/nginx \
   --proxy-digest "$NGINX_IMAGE_SHA256" \
   --public-host market.example.com \
+  --candidate-sha "$CHIO_CANDIDATE_SHA" \
   --output /tmp/chio-cognition-market.yaml
 ```
 
@@ -30,12 +33,16 @@ Before applying the Deployment:
    before the Job exits successfully. Runtime startup also verifies the exact
    embedded migration ledger and fails closed on drift.
 2. Provision `chio-finding-market-profile`, `chio-finding-market-runtime`,
-   `chio-finding-market-proxy`, and `chio-finding-market-tls` Secrets through
+   `chio-finding-market-replicator`, `chio-finding-market-proxy`, and
+   `chio-finding-market-tls` Secrets through
    the existing secret controller. The profile is canonical JSON with mode
    `trusted_proxy`, listener `127.0.0.1:8080`, trusted peer `127.0.0.1`, and the
    rendered public endpoint.
 3. Provision the PostgreSQL CA ConfigMap and enforce separate non-superuser
-   migration, runtime, and worker database roles.
+   migration, runtime, replicator, and worker database roles. The replicator
+   Secret exposes only the profile-named replicator database URL and the
+   profile-named AuthorityStatus remote-signer token. The runtime container
+   must not receive either value.
 4. Label only the approved ingress controller, PostgreSQL, and HTTPS egress
    gateway pods and namespaces with the exact `chio.world/market-*` selectors
    in the two NetworkPolicies, then apply the remaining objects. Direct
@@ -53,7 +60,21 @@ additive and are not rolled back in place. A failed or incompatible migration
 blocks the new server at startup while the previous ready ReplicaSet remains
 available.
 
-The proxy token, API-key pepper, database URLs, TLS private key, and network
-canary credentials are secret values. They must never enter these manifests,
-Git, command arguments, or qualification logs. The proxy token must be 43 to
-128 base64url characters; use at least 32 random bytes and omit base64 padding.
+The profile release block must bind the exact 40-character candidate commit,
+artifact digest, and configuration revision. The renderer injects that
+candidate and the pinned Chio image digest into the market process, which
+fails closed unless both match the profile and serves the bound identity from
+the authenticated release endpoint. Buyer canary credentials must allow
+`finding.release.read` in addition to the catalog actions so the network
+canary can verify the deployed identity before publishing.
+
+Every principal admitted to submit signed artifacts must carry its signer key
+in `capabilityPublicKeyHex`, including principals that authenticate by API key.
+The replicated principal record is the authenticated signer pin; a request
+cannot select a different artifact signer.
+
+The proxy token, remote-signer tokens, API-key pepper, database URLs, TLS
+private key, and network canary credentials are secret values. They must never
+enter these manifests, Git, command arguments, or qualification logs. The
+proxy token must be 43 to 128 base64url characters; use at least 32 random
+bytes and omit base64 padding.

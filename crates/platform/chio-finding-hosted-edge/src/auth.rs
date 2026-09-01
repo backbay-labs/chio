@@ -131,6 +131,7 @@ pub struct HostedAuthRequest {
     pub method: String,
     pub canonical_target: String,
     pub body_sha256: String,
+    pub idempotency_key: Option<String>,
     pub required_role: HostedPrincipalRole,
     pub credential: HostedAuthCredential,
     pub now_unix_secs: u64,
@@ -143,6 +144,7 @@ pub struct HostedAuthenticatedPrincipal {
     pub role: HostedPrincipalRole,
     pub method: HostedAuthMethod,
     pub credential_id: String,
+    pub artifact_signer_key: Option<PublicKey>,
 }
 
 pub trait ApiKeyPepper: Send + Sync {
@@ -274,6 +276,10 @@ impl HostedAuthenticator {
             || !matches!(request.method.as_str(), "GET" | "POST" | "PUT" | "DELETE")
             || !target_belongs_to_endpoint(&request.canonical_target, &self.public_endpoint)
             || !valid_digest(&request.body_sha256)
+            || request
+                .idempotency_key
+                .as_deref()
+                .is_some_and(|value| !valid_identifier(value, 256))
             || request.now_unix_secs == 0
         {
             return Err(HostedEdgeError::InvalidRequest);
@@ -326,12 +332,14 @@ impl HostedAuthenticator {
             .filter(|principal| principal.enabled)
             .ok_or(HostedEdgeError::AuthenticationFailed)?;
         require_role(&principal, request.required_role)?;
+        let artifact_signer_key = principal_signer_key(&principal)?;
         Ok(HostedAuthenticatedPrincipal {
             tenant_id: request.tenant_id.clone(),
             principal_id: principal.principal_id,
             role: principal.role,
             method: HostedAuthMethod::ApiKey,
             credential_id: record.key_id,
+            artifact_signer_key,
         })
     }
 
@@ -394,6 +402,7 @@ impl HostedAuthenticator {
             .filter(|principal| principal.enabled)
             .ok_or(HostedEdgeError::AuthenticationFailed)?;
         require_role(&principal, request.required_role)?;
+        let artifact_signer_key = principal_signer_key(&principal)?;
         let action_hash = request_action_hash(request)?;
         verify_dpop_stateless(
             proof,
@@ -446,6 +455,7 @@ impl HostedAuthenticator {
             role: principal.role,
             method: HostedAuthMethod::CapabilityDpop,
             credential_id: capability.id.clone(),
+            artifact_signer_key,
         })
     }
 
@@ -467,6 +477,7 @@ fn parse_public_endpoint(value: &str) -> Result<Url, HostedEdgeError> {
         || endpoint.password().is_some()
         || endpoint.query().is_some()
         || endpoint.fragment().is_some()
+        || endpoint.path() != "/"
         || endpoint.as_str().trim_end_matches('/') != value
     {
         return Err(HostedEdgeError::Configuration);
@@ -490,10 +501,7 @@ fn target_belongs_to_endpoint(value: &str, endpoint: &Url) -> bool {
     {
         return false;
     }
-    let base_path = endpoint.path().trim_end_matches('/');
-    target.path().strip_prefix(base_path).is_some_and(|suffix| {
-        base_path.is_empty() && suffix.starts_with('/') || suffix.starts_with('/')
-    })
+    target.path().starts_with('/')
 }
 
 #[derive(Serialize)]
@@ -505,16 +513,18 @@ struct RequestActionBinding<'a> {
     method: &'a str,
     canonical_target: &'a str,
     body_sha256: &'a str,
+    idempotency_key: Option<&'a str>,
 }
 
 fn request_action_hash(request: &HostedAuthRequest) -> Result<String, HostedEdgeError> {
     canonical_json_bytes(&RequestActionBinding {
-        schema: "chio.finding.hosted-request-action.v1",
+        schema: "chio.finding.hosted-request-action.v2",
         tenant_id: request.tenant_id.as_str(),
         action: &request.action,
         method: &request.method,
         canonical_target: &request.canonical_target,
         body_sha256: &request.body_sha256,
+        idempotency_key: request.idempotency_key.as_deref(),
     })
     .map(|bytes| sha256_hex(&bytes))
     .map_err(|_| HostedEdgeError::InvalidRequest)
@@ -559,6 +569,24 @@ fn require_role(
         return Err(HostedEdgeError::AuthorizationFailed);
     }
     Ok(())
+}
+
+fn principal_signer_key(principal: &HostedPrincipal) -> Result<Option<PublicKey>, HostedEdgeError> {
+    principal
+        .capability_public_key_hex
+        .as_deref()
+        .map(|value| {
+            PublicKey::from_hex(value)
+                .map_err(|_| HostedEdgeError::AuthenticationFailed)
+                .and_then(|key| {
+                    if key.is_weak_ed25519() {
+                        Err(HostedEdgeError::AuthenticationFailed)
+                    } else {
+                        Ok(key)
+                    }
+                })
+        })
+        .transpose()
 }
 
 fn map_store(error: HostedMarketPortError) -> HostedEdgeError {
@@ -727,23 +755,20 @@ mod tests {
 
     #[test]
     fn endpoint_validation_rejects_origin_and_path_confusion() {
-        let endpoint = parse_public_endpoint("https://market.example/api");
+        assert!(parse_public_endpoint("https://market.example/api").is_err());
+        let endpoint = parse_public_endpoint("https://market.example");
         assert!(endpoint.is_ok());
         if let Ok(endpoint) = endpoint {
             assert!(target_belongs_to_endpoint(
-                "https://market.example/api/findings?limit=1",
+                "https://market.example/v1/findings?limit=1",
                 &endpoint
             ));
             assert!(!target_belongs_to_endpoint(
-                "https://market.example.evil/api/findings",
+                "https://market.example.evil/v1/findings",
                 &endpoint
             ));
             assert!(!target_belongs_to_endpoint(
-                "https://market.example/api2/findings",
-                &endpoint
-            ));
-            assert!(!target_belongs_to_endpoint(
-                "https://market.example/api/findings#unsigned",
+                "https://market.example/v1/findings#unsigned",
                 &endpoint
             ));
         }
@@ -759,6 +784,7 @@ mod tests {
             method: "POST".to_owned(),
             canonical_target: "https://market.example/v1/findings/a/purchases".to_owned(),
             body_sha256: sha256_hex(b"{}"),
+            idempotency_key: Some("event-a".to_owned()),
             required_role: HostedPrincipalRole::Buyer,
             credential,
             now_unix_secs: 100,
@@ -855,6 +881,13 @@ mod tests {
                 );
                 assert!(proof.is_ok());
                 if let Ok(proof) = proof {
+                    let mut wrong_binding = base_request(HostedAuthCredential::CapabilityDpop {
+                        capability: Box::new(capability.clone()),
+                        proof: Box::new(proof.clone()),
+                    });
+                    wrong_binding.idempotency_key = Some("event-b".to_owned());
+                    let rejected = authenticator.authenticate(wrong_binding).await;
+                    assert_eq!(rejected, Err(HostedEdgeError::AuthenticationFailed));
                     let accepted = authenticator
                         .authenticate(base_request(HostedAuthCredential::CapabilityDpop {
                             capability: Box::new(capability.clone()),

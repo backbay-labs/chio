@@ -71,6 +71,7 @@ impl HostedTrustedProxy {
             || endpoint.host_str().is_none()
             || endpoint.query().is_some()
             || endpoint.fragment().is_some()
+            || endpoint.path() != "/"
             || !endpoint.username().is_empty()
             || endpoint.password().is_some()
         {
