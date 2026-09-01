@@ -847,12 +847,7 @@ fn validate_job(profile: &FindingHostedProfile, job: &CanaryJob) -> Result<(), &
     let current =
         std::env::var("CHIO_FINDING_CANDIDATE_SHA").map_err(|_| "canary_candidate_missing")?;
     if job.schema != CANARY_SCHEMA
-        || current != job.candidate_sha
-        || job.candidate_sha.len() != 40
-        || !job
-            .candidate_sha
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        || !candidate_binding_is_exact(&current, &job.candidate_sha, &profile.release.candidate_sha)
         || job.configuration_revision != profile.release.configuration_revision
         || job.nonce.len() < 32
         || job.nonce.len() > 256
@@ -915,6 +910,15 @@ fn validate_job(profile: &FindingHostedProfile, job: &CanaryJob) -> Result<(), &
         return Err("canary_capability_invalid");
     }
     Ok(())
+}
+
+fn candidate_binding_is_exact(current: &str, job: &str, profile: &str) -> bool {
+    current == job
+        && job == profile
+        && job.len() == 40
+        && job
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 async fn provision(
@@ -1255,6 +1259,22 @@ mod tests {
         assert_eq!(network_run_nonce_from("100", "2"), Ok("100:2".to_owned()));
         assert!(network_run_nonce_from("0", "1").is_err());
         assert!(network_run_nonce_from("100", "attempt-1").is_err());
+    }
+
+    #[test]
+    fn kvm_job_is_bound_to_the_profile_candidate() {
+        let candidate = "a".repeat(40);
+        let other = "b".repeat(40);
+        assert!(candidate_binding_is_exact(
+            &candidate, &candidate, &candidate
+        ));
+        assert!(!candidate_binding_is_exact(&candidate, &candidate, &other));
+        assert!(!candidate_binding_is_exact(&candidate, &other, &candidate));
+        assert!(!candidate_binding_is_exact(
+            &"A".repeat(40),
+            &"A".repeat(40),
+            &"A".repeat(40)
+        ));
     }
 
     #[test]
