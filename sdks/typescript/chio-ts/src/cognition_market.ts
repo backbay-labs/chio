@@ -82,7 +82,6 @@ export interface PurchasedVerifiedFix {
 }
 
 export type HostedMutationOperation =
-  | "publish"
   | "listing"
   | "admission"
   | "participation"
@@ -681,7 +680,7 @@ export class HostedCognitionMarketClient {
 }
 
 const HOSTED_MUTATION_OPERATIONS: ReadonlySet<string> = new Set([
-  "publish", "listing", "admission", "participation", "purchase", "reveal", "delivery",
+  "listing", "admission", "participation", "purchase", "reveal", "delivery",
   "purchase-terminal", "failed-delivery", "challenge", "challenge-outcome", "verified-fix",
   "retraction", "liability", "appeal", "penalty", "enforcement", "settlement", "status",
   "audit",

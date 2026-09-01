@@ -10,8 +10,8 @@ use std::time::Duration;
 use chio_control_plane::trust_control::finding_hosted_profile::{
     FindingHostedProfile, FindingHostedSigningRole,
 };
-use chio_core_types::canonical_json_bytes_from_str;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
+use chio_core_types::{canonical_json_bytes_from_str, PublicKey};
 use chio_finding_hosted_edge::{
     serve_hosted_market_loopback_with_shutdown, HostedAuthenticator, HostedHttpServerConfig,
     HostedHttpServerState, HostedReleaseIdentity, HOSTED_RELEASE_IDENTITY_SCHEMA,
@@ -117,10 +117,17 @@ async fn run(args: Args) -> Result<(), ServerError> {
         .map_err(|_| ServerError::Authentication)?,
     );
     let release_identity = deployed_release_identity(&profile)?;
+    let kernel_receipt_key =
+        PublicKey::from_hex(&profile.kernel_public_key_hex).map_err(|_| ServerError::Profile)?;
+    let penalty_authority_key = PublicKey::from_hex(&profile.market.market_penalty.key_hex)
+        .map_err(|_| ServerError::Profile)?;
     let state = HostedHttpServerState::new(
         HostedHttpServerConfig {
             public_endpoint: profile.public_endpoint.clone(),
             maximum_body_bytes: MAX_HTTP_BODY_BYTES,
+            penalty_authority_id: profile.market.market_penalty.authority_id.clone(),
+            penalty_authority_key,
+            kernel_receipt_key,
             release_identity,
         },
         authenticator,
@@ -194,20 +201,33 @@ async fn run_replication_checks(
     let signer = profile
         .load_signer(FindingHostedSigningRole::AuthorityStatus)
         .map_err(|_| ServerError::Replication)?;
-    let initial_result = write_replication_checks(profile, &replicator, signer.clone()).await;
+    let initial = write_replication_checks(profile, &replicator, signer.clone()).await?;
     let Some(interval_secs) = interval_secs else {
-        return initial_result;
+        return initial.require_complete();
     };
-    if initial_result.is_err() {
+    if initial.all_failed() {
+        return Err(ServerError::Replication);
+    }
+    if initial.has_failures() {
         eprintln!("{}", ServerError::Replication);
     }
+    let mut consecutive_all_failed_rounds = 0_u8;
     let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     interval.tick().await;
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                if write_replication_checks(profile, &replicator, signer.clone()).await.is_err() {
+                let round = write_replication_checks(profile, &replicator, signer.clone()).await?;
+                if round.all_failed() {
+                    consecutive_all_failed_rounds = consecutive_all_failed_rounds.saturating_add(1);
+                    if consecutive_all_failed_rounds >= 3 {
+                        return Err(ServerError::Replication);
+                    }
+                } else {
+                    consecutive_all_failed_rounds = 0;
+                }
+                if round.has_failures() {
                     eprintln!("{}", ServerError::Replication);
                 }
             }
@@ -220,7 +240,7 @@ async fn write_replication_checks(
     profile: &FindingHostedProfile,
     replicator: &PostgresFindingMarketReplicator,
     signer: Arc<dyn chio_core_types::SigningBackend>,
-) -> Result<(), ServerError> {
+) -> Result<ReplicationRoundOutcome, ServerError> {
     let tenant_ids = profile
         .tenants
         .iter()
@@ -230,7 +250,7 @@ async fn write_replication_checks(
         .map_err(|_| ServerError::Profile)?;
     let configuration_revision = profile.release.configuration_revision.clone();
     let replicator = replicator.clone();
-    run_replication_round(tenant_ids, move |tenant_id| {
+    Ok(run_replication_round(tenant_ids, move |tenant_id| {
         let configuration_revision = configuration_revision.clone();
         let replicator = replicator.clone();
         let signer = signer.clone();
@@ -244,13 +264,37 @@ async fn write_replication_checks(
             .await
         }
     })
-    .await
+    .await)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ReplicationRoundOutcome {
+    attempted: usize,
+    succeeded: usize,
+}
+
+impl ReplicationRoundOutcome {
+    fn has_failures(self) -> bool {
+        self.succeeded != self.attempted
+    }
+
+    fn all_failed(self) -> bool {
+        self.attempted == 0 || self.succeeded == 0
+    }
+
+    fn require_complete(self) -> Result<(), ServerError> {
+        if self.has_failures() {
+            Err(ServerError::Replication)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 async fn run_replication_round<F, Fut>(
     tenant_ids: Vec<HostedTenantId>,
     mut refresh: F,
-) -> Result<(), ServerError>
+) -> ReplicationRoundOutcome
 where
     F: FnMut(HostedTenantId) -> Fut,
     Fut: Future<Output = Result<(), ServerError>> + Send + 'static,
@@ -259,16 +303,16 @@ where
     for tenant_id in tenant_ids {
         jobs.spawn(refresh(tenant_id));
     }
-    let mut failed = false;
+    let attempted = jobs.len();
+    let mut succeeded = 0;
     while let Some(result) = jobs.join_next().await {
-        if !matches!(result, Ok(Ok(()))) {
-            failed = true;
+        if matches!(result, Ok(Ok(()))) {
+            succeeded += 1;
         }
     }
-    if failed {
-        Err(ServerError::Replication)
-    } else {
-        Ok(())
+    ReplicationRoundOutcome {
+        attempted,
+        succeeded,
     }
 }
 
@@ -482,8 +526,41 @@ mod tests {
             }
         })
         .await;
-        assert!(matches!(result, Err(ServerError::Replication)));
+        assert_eq!(
+            result,
+            ReplicationRoundOutcome {
+                attempted: 3,
+                succeeded: 2
+            }
+        );
+        assert!(result.has_failures());
+        assert!(!result.all_failed());
         assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn replication_round_reports_global_freshness_loss() {
+        let tenants = ["tenant:first", "tenant:second"]
+            .into_iter()
+            .map(|tenant| {
+                HostedTenantId::new(tenant)
+                    .unwrap_or_else(|error| panic!("test tenant failed: {error}"))
+            })
+            .collect();
+        let result =
+            run_replication_round(tenants, |_| async { Err(ServerError::Replication) }).await;
+        assert_eq!(
+            result,
+            ReplicationRoundOutcome {
+                attempted: 2,
+                succeeded: 0
+            }
+        );
+        assert!(result.all_failed());
+        assert!(matches!(
+            result.require_complete(),
+            Err(ServerError::Replication)
+        ));
     }
 
     #[test]

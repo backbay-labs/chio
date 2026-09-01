@@ -1,6 +1,12 @@
 use super::*;
 use std::time::Duration;
 
+use chio_core_types::capability::scope::MonetaryAmount;
+use chio_finding::{
+    FindingHostedPurchaseVerdict, FindingHostedSettlementTerminal, FindingPurchaseResult,
+    FINDING_PURCHASE_RESULT_SCHEMA_V1,
+};
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn assert_terminal_job_retention_gc(
     retention: &PostgresFindingMarketRetention,
@@ -733,5 +739,229 @@ pub(super) async fn migrate_legacy_fixture(
         .execute(admin_pool)
         .await?;
     migrator.migrate().await?;
+    Ok(())
+}
+
+pub(super) async fn assert_legacy_delivery_upgrade_rejects(
+    admin_pool: &sqlx::PgPool,
+    tenant: &HostedTenantId,
+) -> Result<(), Box<dyn Error>> {
+    let mut transaction = admin_pool.begin().await?;
+    sqlx::raw_sql(
+        r#"
+        ALTER TABLE chio_finding_market_domain_event_contracts
+            DISABLE TRIGGER chio_finding_market_domain_event_contracts_immutable;
+        DELETE FROM chio_finding_market_domain_event_contracts
+        WHERE aggregate_kind = 'delivery'
+          AND event_kind = 'delivery.accepted'
+          AND artifact_schema = 'chio.finding.hosted-authenticated-delivery.v1';
+        INSERT INTO chio_finding_market_domain_event_contracts (
+            aggregate_kind, event_kind, artifact_schema, signed_artifact
+        ) VALUES (
+            'delivery', 'delivery.accepted', 'chio.finding.delivery.v1', FALSE
+        );
+        ALTER TABLE chio_finding_market_domain_event_contracts
+            ENABLE TRIGGER chio_finding_market_domain_event_contracts_immutable;
+        "#,
+    )
+    .execute(&mut *transaction)
+    .await?;
+    sqlx::query(
+        r#"INSERT INTO chio_finding_market_replication_outbox (
+               tenant_id, authority_epoch, sequence, aggregate_kind,
+               aggregate_id, expected_revision, expected_event_sha256,
+               event_id, event_kind, artifact_schema, payload_sha256,
+               payload_json, event_sha256, committed_at
+           ) VALUES (
+               $1, 1, 999, 'delivery', 'legacy-delivery', 0, NULL,
+               'legacy-delivery-event', 'delivery.accepted',
+               'chio.finding.delivery.v1', $2, $3, $4, 1700000000
+           )"#,
+    )
+    .bind(tenant.as_str())
+    .bind("a".repeat(64))
+    .bind(b"{}".as_slice())
+    .bind("b".repeat(64))
+    .execute(&mut *transaction)
+    .await?;
+    let unsafe_upgrade = sqlx::raw_sql(include_str!(
+        "../../migrations/0016_authenticated_delivery_receipt.sql"
+    ))
+    .execute(&mut *transaction)
+    .await;
+    assert!(unsafe_upgrade.is_err());
+    transaction.rollback().await?;
+    Ok(())
+}
+
+pub(super) async fn assert_atomic_purchase_recovery(
+    store: &PostgresFindingMarketStore,
+    tenant: &HostedTenantId,
+    domain_signer: &Keypair,
+    market_finding_id: &str,
+    replicator: &PostgresFindingMarketReplicator,
+    source_signer: &Keypair,
+    authority_now: u64,
+) -> Result<(), Box<dyn Error>> {
+    let projection_sha256 = replicator.target_projection_sha256(tenant).await?;
+    append_replication_check(
+        replicator,
+        tenant,
+        source_signer,
+        ReplicationCheckSpec {
+            authority_epoch: 3,
+            through_sequence: 2,
+            projection_sha256: &projection_sha256,
+            source_authority: HostedMarketAuthority::Postgres,
+            checked_at: authority_now,
+        },
+    )
+    .await?;
+    let purchase_result = SignedExportEnvelope::sign(
+        FindingPurchaseResult {
+            schema: FINDING_PURCHASE_RESULT_SCHEMA_V1.to_owned(),
+            result_id: "a".repeat(64),
+            request_id: "a".repeat(64),
+            finding_id: market_finding_id.to_owned(),
+            payer: domain_signer.public_key(),
+            reservation_id: "purchase-spend-after-release".to_owned(),
+            purchase_intent_id: "recovery-intent-a".to_owned(),
+            authoritative_payment_operation_id: "recovery-payment-a".to_owned(),
+            verdict: FindingHostedPurchaseVerdict::Allow,
+            settlement: FindingHostedSettlementTerminal::Captured,
+            accepted_price: MonetaryAmount {
+                units: 4_000,
+                currency: "USD".to_owned(),
+            },
+            realized_spend: MonetaryAmount {
+                units: 4_000,
+                currency: "USD".to_owned(),
+            },
+            delivery_receipt_sha256: "4".repeat(64),
+            purchase_record_sha256: Some("5".repeat(64)),
+            failed_delivery_sha256: None,
+            output_sha256: Some("6".repeat(64)),
+            recorded_at: authority_now,
+        },
+        domain_signer,
+    )?;
+    let reveal_write = HostedDomainWrite::new("recovery-reveal-a", 0, None, authority_now)?;
+    let terminal_write = HostedDomainWrite::new("recovery-terminal-a", 0, None, authority_now)?;
+    let recovery = store
+        .recover_purchase_result(tenant, &purchase_result, &reveal_write, &terminal_write)
+        .await?;
+    assert_eq!(recovery.reveal, HostedJobWriteOutcome::Inserted);
+    assert_eq!(recovery.terminal, HostedJobWriteOutcome::Inserted);
+    assert_eq!(recovery.spend, HostedJobWriteOutcome::Inserted);
+    assert_eq!(store.authority_state(tenant).await?.last_outbox_sequence, 4);
+    let recovery_retry = store
+        .recover_purchase_result(tenant, &purchase_result, &reveal_write, &terminal_write)
+        .await?;
+    assert_eq!(recovery_retry.reveal, HostedJobWriteOutcome::ExactReplay);
+    assert_eq!(recovery_retry.terminal, HostedJobWriteOutcome::ExactReplay);
+    assert_eq!(recovery_retry.spend, HostedJobWriteOutcome::ExactReplay);
+    let recovered_spend = store
+        .monthly_spend_reservation(tenant, "purchase-spend-after-release")
+        .await?
+        .ok_or("recovered spend reservation missing")?;
+    assert_eq!(
+        recovered_spend.state,
+        chio_finding_market_store_postgres::HostedSpendState::Committed
+    );
+    let projection_sha256 = replicator.target_projection_sha256(tenant).await?;
+    append_replication_check(
+        replicator,
+        tenant,
+        source_signer,
+        ReplicationCheckSpec {
+            authority_epoch: 3,
+            through_sequence: 4,
+            projection_sha256: &projection_sha256,
+            source_authority: HostedMarketAuthority::Postgres,
+            checked_at: authority_now,
+        },
+    )
+    .await?;
+
+    let conflict_base = SignedExportEnvelope::sign(
+        FindingPurchaseResult {
+            schema: FINDING_PURCHASE_RESULT_SCHEMA_V1.to_owned(),
+            result_id: "b".repeat(64),
+            request_id: "b".repeat(64),
+            finding_id: market_finding_id.to_owned(),
+            payer: domain_signer.public_key(),
+            reservation_id: "purchase-spend-release".to_owned(),
+            purchase_intent_id: "recovery-intent-conflict".to_owned(),
+            authoritative_payment_operation_id: "recovery-payment-conflict".to_owned(),
+            verdict: FindingHostedPurchaseVerdict::Deny,
+            settlement: FindingHostedSettlementTerminal::Released,
+            accepted_price: MonetaryAmount {
+                units: 4_000,
+                currency: "USD".to_owned(),
+            },
+            realized_spend: MonetaryAmount {
+                units: 0,
+                currency: "USD".to_owned(),
+            },
+            delivery_receipt_sha256: "7".repeat(64),
+            purchase_record_sha256: None,
+            failed_delivery_sha256: Some("8".repeat(64)),
+            output_sha256: None,
+            recorded_at: authority_now,
+        },
+        domain_signer,
+    )?;
+    let conflict_reveal_write =
+        HostedDomainWrite::new("recovery-reveal-conflict", 0, None, authority_now)?;
+    store
+        .commit_reveal(tenant, &conflict_base, &conflict_reveal_write)
+        .await?;
+    let projection_sha256 = replicator.target_projection_sha256(tenant).await?;
+    append_replication_check(
+        replicator,
+        tenant,
+        source_signer,
+        ReplicationCheckSpec {
+            authority_epoch: 3,
+            through_sequence: 5,
+            projection_sha256: &projection_sha256,
+            source_authority: HostedMarketAuthority::Postgres,
+            checked_at: authority_now,
+        },
+    )
+    .await?;
+    let mut conflicting_body = conflict_base.body.clone();
+    conflicting_body.delivery_receipt_sha256 = "9".repeat(64);
+    let conflicting_result = SignedExportEnvelope::sign(conflicting_body, domain_signer)?;
+    let conflict_terminal_write =
+        HostedDomainWrite::new("recovery-terminal-conflict", 0, None, authority_now)?;
+    assert!(matches!(
+        store
+            .recover_purchase_result(
+                tenant,
+                &conflicting_result,
+                &conflict_reveal_write,
+                &conflict_terminal_write,
+            )
+            .await,
+        Err(HostedMarketStoreError::Conflict)
+    ));
+    assert!(store
+        .domain_projection(
+            tenant,
+            HostedMarketDomainEventKind::PurchaseSettled,
+            &conflicting_result.body.result_id,
+        )
+        .await?
+        .is_none());
+    assert_eq!(store.authority_state(tenant).await?.last_outbox_sequence, 5);
+    assert_eq!(
+        store
+            .monthly_spend_reservation(tenant, "purchase-spend-release")
+            .await?
+            .ok_or("released recovery reservation missing")?
+            .state,
+        chio_finding_market_store_postgres::HostedSpendState::Released
+    );
     Ok(())
 }

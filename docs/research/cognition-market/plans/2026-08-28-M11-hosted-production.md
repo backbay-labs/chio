@@ -199,8 +199,9 @@ scripts/qualify-cognition-market-network.sh
 ```
 
 That canary proves only seller publication, later exact replay, exact buyer
-resolution, bounded catalog discovery, and denial when the buyer credential is
-reused under another tenant. It does not upgrade the hosted v2 report or make a
+resolution, bounded catalog discovery, and authenticated non-visibility from a
+distinct enabled tenant using that tenant's own buyer credential. It does not
+upgrade the hosted v2 report or make a
 public-traffic claim. Full workspace build, test, Clippy, format, and release CI
 remain mandatory before deployment.
 Each qualification script immediately re-verifies the emitted envelope against

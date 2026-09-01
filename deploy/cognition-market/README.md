@@ -71,6 +71,21 @@ fails closed unless both match the profile and serves the bound identity from
 the authenticated release endpoint. Buyer canary credentials must allow
 `finding.release.read` in addition to the catalog actions so the network
 canary can verify the deployed identity before publishing.
+The dark-canary environment must also configure
+`CHIO_FINDING_NETWORK_ISOLATION_TENANT_ID`,
+`CHIO_FINDING_NETWORK_ISOLATION_BUYER_KEY_ID`, and
+`CHIO_FINDING_NETWORK_ISOLATION_BUYER_KEY_SECRET` for a distinct enabled
+API-key tenant. Those credentials must differ from the publishing tenant's
+buyer credentials. The canary authenticates as that second tenant and requires
+the first tenant's Finding lookup to return `404`, which exercises the backend
+tenant boundary rather than stopping at authentication.
+
+Migration `0016_authenticated_delivery_receipt.sql` intentionally refuses to
+upgrade a database that retains the legacy unsigned hosted delivery contract.
+Before deploying this revision, export and quarantine any legacy delivery
+events, projections, replication records, and rollback outbox entries through
+the approved retention procedure. Those records cannot be converted into
+kernel-authenticated receipts after issuance.
 
 `CHIO_FINDING_NETWORK_CANARY_POOL` names the manifest, not an individual
 Finding. It is canonical JSON with schema

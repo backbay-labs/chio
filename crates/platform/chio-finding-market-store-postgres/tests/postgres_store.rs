@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes, sha256_hex};
@@ -32,11 +31,12 @@ use sqlx::Row as _;
 mod support;
 
 use support::{
-    append_replication_check, apply_authority_transition,
+    append_replication_check, apply_authority_transition, assert_atomic_purchase_recovery,
     assert_disabled_tenant_blocks_worker_transitions, assert_forged_job_digest_rejected,
-    assert_multi_replica_leases_and_shutdown_refunds, assert_tenant_disablement_serializes,
-    assert_terminal_job_retention_gc, assert_worker_job_boundary, migrate_legacy_fixture,
-    signed_domain_payload, signed_principal_replication_event, ReplicationCheckSpec,
+    assert_legacy_delivery_upgrade_rejects, assert_multi_replica_leases_and_shutdown_refunds,
+    assert_tenant_disablement_serializes, assert_terminal_job_retention_gc,
+    assert_worker_job_boundary, migrate_legacy_fixture, signed_domain_payload,
+    signed_principal_replication_event, ReplicationCheckSpec,
 };
 
 #[tokio::test]
@@ -453,6 +453,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             1_700_000_000,
         )
         .await?;
+    assert_legacy_delivery_upgrade_rejects(&admin_pool, &tenant_a).await?;
     assert_worker_job_boundary(&worker_pool, &tenant_a).await?;
     assert_tenant_disablement_serializes(&store, &runtime_pool, &tenant_a).await?;
     assert_disabled_tenant_blocks_worker_transitions(&store, &worker_pool, nonce).await?;
@@ -802,7 +803,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
                 &mismatched_replication,
             )
             .await,
-        Err(HostedMarketStoreError::Invalid("signed domain artifact"))
+        Err(HostedMarketStoreError::Invalid("market penalty authority"))
     ));
     assert_eq!(
         replicator
@@ -964,12 +965,32 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
                 &advanced_event,
                 head.revision,
                 Some(&head.event_sha256),
-                authority_now + 1,
+                1_900_000_001,
             )
             .await?,
         HostedJobWriteOutcome::ExactReplay,
         "server-owned retry time must not change the idempotent event identity"
     );
+    let expired_payload = signed_domain_payload(
+        HostedMarketDomainEventKind::FindingPublished,
+        &domain_signer,
+        serde_json::json!({"findingId": "expired-fresh-publication"}),
+    )?;
+    let expired_finding: Finding = serde_json::from_slice(&expired_payload)?;
+    let expired_finding_id = expired_finding.finding_id.clone();
+    let expired_event = HostedMarketDomainEvent::from_artifact(
+        &expired_finding_id,
+        "expired-fresh-publication",
+        &HostedMarketDomainArtifact::Finding(expired_finding),
+    )?;
+    assert!(matches!(
+        store
+            .append_domain_event(&tenant_a, &expired_event, 0, None, 1_900_000_001)
+            .await,
+        Err(HostedMarketStoreError::Invalid(
+            "finding artifact freshness"
+        ))
+    ));
     let advanced_projection_revision: i64 = sqlx::query_scalar(
         "SELECT revision FROM chio_finding_market_domain_projections WHERE tenant_id = $1 AND aggregate_kind = 'finding' AND aggregate_id = $2",
     )
@@ -1076,18 +1097,14 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
                 && record.principal_id == "buyer-a"
                 && record.operation == HostedPrincipalLifecycleOperation::KeyRotation
     ));
-    let projection_sha256 = replicator.target_projection_sha256(&tenant_a).await?;
-    append_replication_check(
-        &replicator,
+    assert_atomic_purchase_recovery(
+        &store,
         &tenant_a,
+        &domain_signer,
+        &market_finding_id,
+        &replicator,
         &source_signer,
-        ReplicationCheckSpec {
-            authority_epoch: 3,
-            through_sequence: 2,
-            projection_sha256: &projection_sha256,
-            source_authority: HostedMarketAuthority::Postgres,
-            checked_at: authority_now,
-        },
+        authority_now,
     )
     .await?;
     let history = store

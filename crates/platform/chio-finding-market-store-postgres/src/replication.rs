@@ -331,12 +331,22 @@ impl PostgresFindingMarketReplicator {
         }
         let payload_json = canonical_json_bytes(&body.payload)
             .map_err(|_| HostedMarketStoreError::Invalid("replication payload"))?;
+        let artifact_authority_id =
+            if body.event_kind == HostedMarketDomainEventKind::PenaltyAssessed {
+                body.payload
+                    .get("body")
+                    .and_then(|value| value.get("issuedBy"))
+                    .and_then(serde_json::Value::as_str)
+            } else {
+                None
+            };
         let domain_event = HostedMarketDomainEvent::from_canonical_payload(
             body.event_kind,
             body.aggregate_id.clone(),
             body.event_id.clone(),
             payload_json,
             body.artifact_signer_key.as_ref(),
+            artifact_authority_id,
         )?;
         let payload_sha256 = sha256_hex(domain_event.payload_json());
         let revision = body

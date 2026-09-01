@@ -50,20 +50,41 @@ enum Command {
     Verify,
     /// Exercise seller publication, exact replay, buyer resolution, and a
     /// negative tenant-isolation probe through the deployed HTTPS listener.
-    Network {
-        #[arg(long)]
-        finding_pool: PathBuf,
-        #[arg(long)]
-        tenant_id: String,
-        #[arg(long)]
-        seller_key_id_env: String,
-        #[arg(long)]
-        seller_key_secret_env: String,
-        #[arg(long)]
-        buyer_key_id_env: String,
-        #[arg(long)]
-        buyer_key_secret_env: String,
-    },
+    Network(Box<NetworkArgs>),
+}
+
+#[derive(Debug, clap::Args)]
+struct NetworkArgs {
+    #[arg(long)]
+    finding_pool: PathBuf,
+    #[arg(long)]
+    tenant_id: String,
+    #[arg(long)]
+    seller_key_id_env: String,
+    #[arg(long)]
+    seller_key_secret_env: String,
+    #[arg(long)]
+    buyer_key_id_env: String,
+    #[arg(long)]
+    buyer_key_secret_env: String,
+    #[arg(long)]
+    isolation_tenant_id: String,
+    #[arg(long)]
+    isolation_buyer_key_id_env: String,
+    #[arg(long)]
+    isolation_buyer_key_secret_env: String,
+}
+
+struct NetworkCanaryInputs<'a> {
+    finding_pool_path: &'a Path,
+    tenant_id: &'a str,
+    seller_key_id_env: &'a str,
+    seller_key_secret_env: &'a str,
+    buyer_key_id_env: &'a str,
+    buyer_key_secret_env: &'a str,
+    isolation_tenant_id: &'a str,
+    isolation_buyer_key_id_env: &'a str,
+    isolation_buyer_key_secret_env: &'a str,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -200,13 +221,19 @@ async fn main() -> ExitCode {
 
 async fn network_canary(
     profile: &FindingHostedProfile,
-    finding_pool_path: &Path,
-    tenant_id: &str,
-    seller_key_id_env: &str,
-    seller_key_secret_env: &str,
-    buyer_key_id_env: &str,
-    buyer_key_secret_env: &str,
+    inputs: NetworkCanaryInputs<'_>,
 ) -> Result<NetworkCanaryReport, &'static str> {
+    let NetworkCanaryInputs {
+        finding_pool_path,
+        tenant_id,
+        seller_key_id_env,
+        seller_key_secret_env,
+        buyer_key_id_env,
+        buyer_key_secret_env,
+        isolation_tenant_id,
+        isolation_buyer_key_id_env,
+        isolation_buyer_key_secret_env,
+    } = inputs;
     let tenant = profile
         .tenants
         .iter()
@@ -217,6 +244,18 @@ async fn network_canary(
         .contains(&FindingHostedAuthMethod::ApiKey)
     {
         return Err("network_canary_api_key_not_admitted");
+    }
+    let isolation_tenant = profile
+        .tenants
+        .iter()
+        .find(|candidate| candidate.enabled && candidate.tenant_id == isolation_tenant_id)
+        .ok_or("network_canary_isolation_tenant_invalid")?;
+    if isolation_tenant.tenant_id == tenant.tenant_id
+        || !isolation_tenant
+            .auth_methods
+            .contains(&FindingHostedAuthMethod::ApiKey)
+    {
+        return Err("network_canary_isolation_tenant_invalid");
     }
     let now = current_unix_secs()?;
     let candidate_sha = candidate_sha()?;
@@ -231,6 +270,14 @@ async fn network_canary(
     let seller_key_secret = Zeroizing::new(read_canary_environment(seller_key_secret_env)?);
     let buyer_key_id = read_canary_environment(buyer_key_id_env)?;
     let buyer_key_secret = Zeroizing::new(read_canary_environment(buyer_key_secret_env)?);
+    let isolation_buyer_key_id = read_canary_environment(isolation_buyer_key_id_env)?;
+    let isolation_buyer_key_secret =
+        Zeroizing::new(read_canary_environment(isolation_buyer_key_secret_env)?);
+    if isolation_buyer_key_id == buyer_key_id
+        || isolation_buyer_key_secret.as_str() == buyer_key_secret.as_str()
+    {
+        return Err("network_canary_isolation_credential_reused");
+    }
     let client = reqwest::Client::builder()
         .https_only(true)
         .redirect(reqwest::redirect::Policy::none())
@@ -345,25 +392,17 @@ async fn network_canary(
     if !catalog_matched {
         return Err("network_canary_catalog_mismatch");
     }
-    let isolation_tenant = format!("network-canary-isolation-{}", &event_id[..32]);
-    if profile
-        .tenants
-        .iter()
-        .any(|candidate| candidate.tenant_id == isolation_tenant)
-    {
-        return Err("network_canary_isolation_probe_ambiguous");
-    }
     let isolation_denied = network_get_status(
         &client,
         profile,
-        &isolation_tenant,
-        &buyer_key_id,
-        &buyer_key_secret,
+        isolation_tenant_id,
+        &isolation_buyer_key_id,
+        &isolation_buyer_key_secret,
         &sha256_hex(format!("{event_id}:isolation").as_bytes()),
         &format!("/v1/findings/{}", finding.finding_id),
     )
     .await?
-        == StatusCode::UNAUTHORIZED;
+        == StatusCode::NOT_FOUND;
     if !isolation_denied {
         return Err("network_canary_tenant_isolation_failed");
     }
@@ -713,11 +752,13 @@ async fn network_get_status(
     request_id: &str,
     path: &str,
 ) -> Result<StatusCode, &'static str> {
-    network_request(
+    let response = network_request(
         client, profile, tenant_id, key_id, key_secret, request_id, path,
     )
-    .await
-    .map(|response| response.status())
+    .await?;
+    let status = response.status();
+    bounded_response(response).await?;
+    Ok(status)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -813,29 +854,27 @@ async fn run(args: Args) -> Result<CanaryOutput, &'static str> {
             let report = match command {
                 Command::Provision => provision(&store, &tenant, &job).await?,
                 Command::Verify => verify(&store, &tenant, &profile, &job).await?,
-                Command::Network { .. } => return Err("canary_command_invalid"),
+                Command::Network(_) => return Err("canary_command_invalid"),
             };
             Ok(CanaryOutput::Kvm(report))
         }
-        Command::Network {
-            finding_pool,
-            tenant_id,
-            seller_key_id_env,
-            seller_key_secret_env,
-            buyer_key_id_env,
-            buyer_key_secret_env,
-        } => {
+        Command::Network(network) => {
             if args.job.is_some() {
                 return Err("canary_job_unexpected");
             }
             network_canary(
                 &profile,
-                &finding_pool,
-                &tenant_id,
-                &seller_key_id_env,
-                &seller_key_secret_env,
-                &buyer_key_id_env,
-                &buyer_key_secret_env,
+                NetworkCanaryInputs {
+                    finding_pool_path: &network.finding_pool,
+                    tenant_id: &network.tenant_id,
+                    seller_key_id_env: &network.seller_key_id_env,
+                    seller_key_secret_env: &network.seller_key_secret_env,
+                    buyer_key_id_env: &network.buyer_key_id_env,
+                    buyer_key_secret_env: &network.buyer_key_secret_env,
+                    isolation_tenant_id: &network.isolation_tenant_id,
+                    isolation_buyer_key_id_env: &network.isolation_buyer_key_id_env,
+                    isolation_buyer_key_secret_env: &network.isolation_buyer_key_secret_env,
+                },
             )
             .await
             .map(CanaryOutput::Network)
@@ -1259,6 +1298,58 @@ mod tests {
         assert_eq!(network_run_nonce_from("100", "2"), Ok("100:2".to_owned()));
         assert!(network_run_nonce_from("0", "1").is_err());
         assert!(network_run_nonce_from("100", "attempt-1").is_err());
+    }
+
+    #[test]
+    fn network_command_requires_the_distinct_isolation_tenant_contract() {
+        let args = Args::try_parse_from([
+            "canary",
+            "--profile",
+            "/tmp/profile.json",
+            "network",
+            "--finding-pool",
+            "/tmp/findings.json",
+            "--tenant-id",
+            "tenant:primary",
+            "--seller-key-id-env",
+            "SELLER_ID",
+            "--seller-key-secret-env",
+            "SELLER_SECRET",
+            "--buyer-key-id-env",
+            "BUYER_ID",
+            "--buyer-key-secret-env",
+            "BUYER_SECRET",
+            "--isolation-tenant-id",
+            "tenant:isolation",
+            "--isolation-buyer-key-id-env",
+            "ISOLATION_BUYER_ID",
+            "--isolation-buyer-key-secret-env",
+            "ISOLATION_BUYER_SECRET",
+        ])
+        .unwrap_or_else(|error| panic!("network arguments failed: {error}"));
+        let Command::Network(network) = args.command else {
+            panic!("network command was not parsed");
+        };
+        assert_eq!(network.isolation_tenant_id, "tenant:isolation");
+        assert!(Args::try_parse_from([
+            "canary",
+            "--profile",
+            "/tmp/profile.json",
+            "network",
+            "--finding-pool",
+            "/tmp/findings.json",
+            "--tenant-id",
+            "tenant:primary",
+            "--seller-key-id-env",
+            "SELLER_ID",
+            "--seller-key-secret-env",
+            "SELLER_SECRET",
+            "--buyer-key-id-env",
+            "BUYER_ID",
+            "--buyer-key-secret-env",
+            "BUYER_SECRET",
+        ])
+        .is_err());
     }
 
     #[test]

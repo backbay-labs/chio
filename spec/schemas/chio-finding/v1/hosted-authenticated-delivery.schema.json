@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/hosted-authenticated-delivery.schema.json",
+  "title": "Chio Hosted Authenticated Finding Delivery",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "receipt"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.finding.hosted-authenticated-delivery.v1"
+    },
+    "receipt": {
+      "$ref": "../../chio-wire/v1/receipt/record.schema.json"
+    }
+  }
+}

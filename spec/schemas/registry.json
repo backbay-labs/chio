@@ -366,6 +366,12 @@
       "schemaFile": "spec/schemas/chio-finding/v1/finalized-bond-snapshot.schema.json"
     },
     {
+      "schema": "chio.finding.hosted-authenticated-delivery.v1",
+      "artifactKind": "finding_hosted_authenticated_delivery",
+      "introducedBy": "cognition-market-m11-delivery-authentication",
+      "schemaFile": "spec/schemas/chio-finding/v1/hosted-authenticated-delivery.schema.json"
+    },
+    {
       "schema": "chio.finding.hosted-qualification.v1",
       "artifactKind": "finding_hosted_qualification",
       "introducedBy": "cognition-market-m11-qualification-truth",

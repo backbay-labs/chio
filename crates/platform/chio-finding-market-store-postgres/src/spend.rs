@@ -137,6 +137,31 @@ impl PostgresFindingMarketStore {
         reservation_id: &str,
         desired: HostedSpendState,
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let outcome = self
+            .finish_monthly_spend_in_transaction(
+                &mut transaction,
+                tenant,
+                reservation_id,
+                desired,
+                None,
+            )
+            .await?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        Ok(outcome)
+    }
+
+    pub(crate) async fn finish_monthly_spend_in_transaction(
+        &self,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        tenant: &HostedTenantId,
+        reservation_id: &str,
+        desired: HostedSpendState,
+        expected_units: Option<u64>,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
         validate_identifier(reservation_id, MAX_JOB_ID_BYTES)
             .map_err(|_| HostedMarketStoreError::Invalid("spend_reservation_id"))?;
         if !matches!(
@@ -145,31 +170,32 @@ impl PostgresFindingMarketStore {
         ) {
             return Err(HostedMarketStoreError::Invalid("spend_state"));
         }
-        let mut transaction = self.begin_tenant(tenant).await?;
         let now: i64 =
             sqlx::query_scalar("SELECT FLOOR(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP))::BIGINT")
-                .fetch_one(&mut *transaction)
+                .fetch_one(&mut **transaction)
                 .await
                 .map_err(|_| HostedMarketStoreError::Unavailable)?;
         let row = sqlx::query(
-            "SELECT state, created_at FROM chio_finding_market_spend_reservations WHERE tenant_id = $1 AND reservation_id = $2 FOR UPDATE",
+            "SELECT state, created_at, units FROM chio_finding_market_spend_reservations WHERE tenant_id = $1 AND reservation_id = $2 FOR UPDATE",
         )
         .bind(tenant.as_str())
         .bind(reservation_id)
-        .fetch_optional(&mut *transaction)
+        .fetch_optional(&mut **transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?
         .ok_or(HostedMarketStoreError::NotFound)?;
         let stored = parse_spend_state(&row.try_get::<String, _>(0).map_err(unavailable)?)?;
         let created_at: i64 = row.try_get(1).map_err(unavailable)?;
+        let units: i64 = row.try_get(2).map_err(unavailable)?;
+        if let Some(expected_units) = expected_units {
+            if units != checked_i64(expected_units, "spend units")? {
+                return Err(HostedMarketStoreError::Conflict);
+            }
+        }
         if now < created_at {
             return Err(HostedMarketStoreError::Invalid("spend time"));
         }
         if stored == desired {
-            transaction
-                .commit()
-                .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
             return Ok(HostedJobWriteOutcome::ExactReplay);
         }
         if stored != HostedSpendState::Reserved {
@@ -182,17 +208,13 @@ impl PostgresFindingMarketStore {
         .bind(reservation_id)
         .bind(spend_state_name(desired))
         .bind(now)
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?
         .rows_affected();
         if updated != 1 {
             return Err(HostedMarketStoreError::Conflict);
         }
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
         Ok(HostedJobWriteOutcome::Inserted)
     }
 

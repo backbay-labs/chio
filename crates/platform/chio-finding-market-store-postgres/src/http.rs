@@ -42,6 +42,7 @@ impl HostedHttpBackend for PostgresFindingMarketStore {
             &mutation.event_id,
             payload_json,
             mutation.artifact_signer_key.as_ref(),
+            mutation.artifact_authority_id.as_deref(),
         )
         .map_err(map_store_error)?;
         self.append_domain_event(

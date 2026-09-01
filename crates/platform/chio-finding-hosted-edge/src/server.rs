@@ -18,6 +18,7 @@ use axum::{Json, Router};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use chio_core_types::crypto::PublicKey;
+use chio_core_types::receipt::body::ChioReceipt;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str, sha256_hex};
 use serde::{Deserialize, Serialize};
 
@@ -37,6 +38,8 @@ const PROXY_AUTHENTICATION_HEADER: &str = "Chio-Proxy-Authentication";
 const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CREDENTIAL_BYTES: usize = 64 * 1024;
 pub const HOSTED_RELEASE_IDENTITY_SCHEMA: &str = "chio.finding.hosted-release-identity.v1";
+pub const HOSTED_AUTHENTICATED_DELIVERY_SCHEMA: &str =
+    "chio.finding.hosted-authenticated-delivery.v1";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -76,6 +79,9 @@ impl HostedReleaseIdentity {
 pub struct HostedHttpServerConfig {
     pub public_endpoint: String,
     pub maximum_body_bytes: usize,
+    pub penalty_authority_id: String,
+    pub penalty_authority_key: PublicKey,
+    pub kernel_receipt_key: PublicKey,
     pub release_identity: HostedReleaseIdentity,
 }
 
@@ -93,6 +99,12 @@ impl HostedHttpServerConfig {
             || endpoint.as_str().trim_end_matches('/') != self.public_endpoint
             || self.maximum_body_bytes == 0
             || self.maximum_body_bytes > MAX_BODY_BYTES
+            || self.penalty_authority_id.is_empty()
+            || self.penalty_authority_id.len() > 256
+            || self.penalty_authority_id.trim() != self.penalty_authority_id
+            || self.penalty_authority_id.chars().any(char::is_control)
+            || self.penalty_authority_key.is_weak_ed25519()
+            || self.kernel_receipt_key.is_weak_ed25519()
         {
             return Err(HostedEdgeError::Configuration);
         }
@@ -101,7 +113,7 @@ impl HostedHttpServerConfig {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostedDomainMutation {
     pub aggregate_id: String,
@@ -111,7 +123,16 @@ pub struct HostedDomainMutation {
     pub expected_event_sha256: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact_signer_key: Option<PublicKey>,
+    #[serde(skip)]
+    pub artifact_authority_id: Option<String>,
     pub payload: serde_json::Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HostedAuthenticatedFindingDelivery {
+    pub schema: String,
+    pub receipt: ChioReceipt,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -269,7 +290,7 @@ impl HostedOperation {
             "delivery" => (
                 "delivery.accepted",
                 "delivery",
-                "chio.finding.delivery.v1",
+                HOSTED_AUTHENTICATED_DELIVERY_SCHEMA,
                 "finding.delivery.accept",
                 HostedPrincipalRole::Operator,
             ),
@@ -375,10 +396,10 @@ impl HostedOperation {
         })
     }
 
-    fn has_signed_artifact(self) -> bool {
+    fn requires_principal_artifact_signer(self) -> bool {
         !matches!(
             self.artifact_schema,
-            "chio.finding.delivery.v1" | "chio.commerce.settlement-packet.v1"
+            HOSTED_AUTHENTICATED_DELIVERY_SCHEMA | "chio.commerce.settlement-packet.v1"
         )
     }
 }
@@ -387,8 +408,9 @@ fn authenticated_artifact_signer(
     operation: HostedOperation,
     principal: &crate::HostedAuthenticatedPrincipal,
     requested_signer: Option<&PublicKey>,
+    penalty_authority_key: &PublicKey,
 ) -> Result<Option<PublicKey>, HostedEdgeError> {
-    if !operation.has_signed_artifact() {
+    if !operation.requires_principal_artifact_signer() {
         return if requested_signer.is_none() {
             Ok(None)
         } else {
@@ -402,7 +424,35 @@ fn authenticated_artifact_signer(
     if requested_signer != Some(trusted_signer) {
         return Err(HostedEdgeError::AuthorizationFailed);
     }
+    if operation.event_kind == "penalty.assessed" && trusted_signer != penalty_authority_key {
+        return Err(HostedEdgeError::AuthorizationFailed);
+    }
     Ok(Some(trusted_signer.clone()))
+}
+
+fn authenticated_artifact_authority(
+    operation: HostedOperation,
+    principal: &crate::HostedAuthenticatedPrincipal,
+    payload: &serde_json::Value,
+    penalty_authority_id: &str,
+) -> Result<Option<String>, HostedEdgeError> {
+    if operation.event_kind != "penalty.assessed" {
+        return Ok(None);
+    }
+    let body = payload
+        .get("body")
+        .and_then(serde_json::Value::as_object)
+        .ok_or(HostedEdgeError::InvalidRequest)?;
+    if principal.principal_id != penalty_authority_id
+        || body.get("issuedBy").and_then(serde_json::Value::as_str) != Some(penalty_authority_id)
+        || body
+            .get("governingOperatorId")
+            .and_then(serde_json::Value::as_str)
+            != Some(penalty_authority_id)
+    {
+        return Err(HostedEdgeError::AuthorizationFailed);
+    }
+    Ok(Some(penalty_authority_id.to_owned()))
 }
 
 struct FindingQuery {
@@ -586,9 +636,6 @@ async fn publish_inner(
             serde_json::from_slice(&canonical_body).map_err(|_| HostedEdgeError::InvalidRequest)?;
         chio_finding::verify_finding(&finding).map_err(|_| HostedEdgeError::InvalidRequest)?;
         let received_at = unix_now()?;
-        if finding.issued_at > received_at || finding.expires_at <= received_at {
-            return Err(HostedEdgeError::InvalidRequest);
-        }
         let operation = PUBLISH_OPERATION;
         let event_id = required_header(&headers, IDEMPOTENCY_KEY_HEADER)?.to_owned();
         let principal = authenticate(
@@ -626,6 +673,7 @@ async fn publish_inner(
             expected_revision: 0,
             expected_event_sha256: None,
             artifact_signer_key: principal.artifact_signer_key,
+            artifact_authority_id: None,
             payload,
         };
         let outcome = state
@@ -719,9 +767,20 @@ async fn mutate_inner(
             operation,
             &principal,
             mutation.artifact_signer_key.as_ref(),
+            &state.config.penalty_authority_key,
         )?;
         let mut mutation = mutation;
-        mutation.artifact_signer_key = trusted_signer;
+        mutation.artifact_signer_key = if operation.event_kind == "delivery.accepted" {
+            Some(state.config.kernel_receipt_key.clone())
+        } else {
+            trusted_signer
+        };
+        mutation.artifact_authority_id = authenticated_artifact_authority(
+            operation,
+            &principal,
+            &mutation.payload,
+            &state.config.penalty_authority_id,
+        )?;
         let outcome = state
             .backend
             .append(
@@ -1157,6 +1216,9 @@ mod tests {
             HostedHttpServerConfig {
                 public_endpoint: "https://market.example".to_owned(),
                 maximum_body_bytes: 1024 * 1024,
+                penalty_authority_id: "market-penalty".to_owned(),
+                penalty_authority_key: authority.public_key(),
+                kernel_receipt_key: authority.public_key(),
                 release_identity: HostedReleaseIdentity {
                     schema: HOSTED_RELEASE_IDENTITY_SCHEMA.to_owned(),
                     deployment_id: "deployment:test".to_owned(),
@@ -1238,6 +1300,42 @@ mod tests {
     }
 
     #[test]
+    fn penalty_authority_binds_principal_and_both_body_identities() {
+        let principal = crate::HostedAuthenticatedPrincipal {
+            tenant_id: HostedTenantId::new("tenant:test")
+                .unwrap_or_else(|error| panic!("test tenant failed: {error}")),
+            principal_id: "market-penalty".to_owned(),
+            role: HostedPrincipalRole::Operator,
+            method: HostedAuthMethod::ApiKey,
+            credential_id: "key:test".to_owned(),
+            artifact_signer_key: Some(Keypair::from_seed(&[49_u8; 32]).public_key()),
+        };
+        let operation = HostedOperation::parse("penalty")
+            .unwrap_or_else(|| panic!("test penalty operation missing"));
+        let payload = serde_json::json!({
+            "schema": "chio.registry.market-penalty.v1",
+            "body": {
+                "issuedBy": "market-penalty",
+                "governingOperatorId": "market-penalty"
+            }
+        });
+        assert_eq!(
+            authenticated_artifact_authority(operation, &principal, &payload, "market-penalty"),
+            Ok(Some("market-penalty".to_owned()))
+        );
+        let substituted = serde_json::json!({
+            "body": {
+                "issuedBy": "market-penalty",
+                "governingOperatorId": "other-operator"
+            }
+        });
+        assert!(matches!(
+            authenticated_artifact_authority(operation, &principal, &substituted, "market-penalty"),
+            Err(HostedEdgeError::AuthorizationFailed)
+        ));
+    }
+
+    #[test]
     fn operations_are_closed_and_role_bound() {
         let operations = [
             "listing",
@@ -1295,28 +1393,35 @@ mod tests {
             panic!("test signed operation missing");
         };
         assert_eq!(
-            authenticated_artifact_signer(signed, &principal, Some(&pinned)),
+            authenticated_artifact_signer(signed, &principal, Some(&pinned), &pinned),
             Ok(Some(pinned.clone()))
         );
         assert_eq!(
-            authenticated_artifact_signer(signed, &principal, Some(&untrusted)),
+            authenticated_artifact_signer(signed, &principal, Some(&untrusted), &pinned),
+            Err(HostedEdgeError::AuthorizationFailed)
+        );
+        let Some(penalty) = HostedOperation::parse("penalty") else {
+            panic!("test penalty operation missing");
+        };
+        assert_eq!(
+            authenticated_artifact_signer(penalty, &principal, Some(&pinned), &untrusted),
             Err(HostedEdgeError::AuthorizationFailed)
         );
         let mut unpinned = principal.clone();
         unpinned.artifact_signer_key = None;
         assert_eq!(
-            authenticated_artifact_signer(signed, &unpinned, Some(&pinned)),
+            authenticated_artifact_signer(signed, &unpinned, Some(&pinned), &pinned),
             Err(HostedEdgeError::AuthorizationFailed)
         );
         let Some(unsigned) = HostedOperation::parse("delivery") else {
             panic!("test unsigned operation missing");
         };
         assert_eq!(
-            authenticated_artifact_signer(unsigned, &principal, None),
+            authenticated_artifact_signer(unsigned, &principal, None, &pinned),
             Ok(None)
         );
         assert_eq!(
-            authenticated_artifact_signer(unsigned, &principal, Some(&pinned)),
+            authenticated_artifact_signer(unsigned, &principal, Some(&pinned), &pinned),
             Err(HostedEdgeError::InvalidRequest)
         );
     }
@@ -1338,6 +1443,9 @@ mod tests {
         let mut config = HostedHttpServerConfig {
             public_endpoint: "https://market.example/api".to_owned(),
             maximum_body_bytes: 1024,
+            penalty_authority_id: "market-penalty".to_owned(),
+            penalty_authority_key: Keypair::from_seed(&[47_u8; 32]).public_key(),
+            kernel_receipt_key: Keypair::from_seed(&[48_u8; 32]).public_key(),
             release_identity: HostedReleaseIdentity {
                 schema: HOSTED_RELEASE_IDENTITY_SCHEMA.to_owned(),
                 deployment_id: "deployment:test".to_owned(),

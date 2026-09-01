@@ -67,6 +67,12 @@ test("hosted client rejects unsafe endpoints and unbounded queries", async () =>
     apiKeySecret: "secret",
   });
   await assert.rejects(client.findings({ requestId: "request", limit: 101 }), /limit must be/);
+  await assert.rejects(client.mutate("publish" as never, {
+    aggregateId: "finding:1",
+    eventId: "event:1",
+    expectedRevision: 0,
+    payload: { schema: "chio.finding.v1" },
+  }, "request"), /operation is unsupported/);
 });
 
 function canonical(value: unknown): string {

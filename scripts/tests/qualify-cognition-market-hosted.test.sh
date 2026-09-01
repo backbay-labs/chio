@@ -113,6 +113,9 @@ require_text "${network}" 'env -i "${canary_environment[@]}" "${canary_bin}"'
 require_text "${network}" 'unset \'
 require_text "${network}" '--seller-key-secret-env CHIO_FINDING_NETWORK_SELLER_KEY_SECRET'
 require_text "${network}" '--buyer-key-secret-env CHIO_FINDING_NETWORK_BUYER_KEY_SECRET'
+require_text "${network}" '--isolation-tenant-id "${CHIO_FINDING_NETWORK_ISOLATION_TENANT_ID}"'
+require_text "${network}" '--isolation-buyer-key-id-env CHIO_FINDING_NETWORK_ISOLATION_BUYER_KEY_ID'
+require_text "${network}" '--isolation-buyer-key-secret-env CHIO_FINDING_NETWORK_ISOLATION_BUYER_KEY_SECRET'
 require_text "${network}" '--finding-pool "${CHIO_FINDING_NETWORK_CANARY_POOL}"'
 require_text "${network}" 'firstOutcome") != "applied"'
 require_text "${network}" 'retryOutcome") != "exact_replay"'
@@ -122,7 +125,8 @@ require_text "${network}" 'tenantIsolationDenied'
 require_text "${network}" 'artifact-manifest.signed.json'
 require_text "${network}" "--expected-candidate \"\${candidate_sha}\""
 if grep -F -- '--seller-key-secret ' "${network}" >/dev/null \
-  || grep -F -- '--buyer-key-secret ' "${network}" >/dev/null; then
+  || grep -F -- '--buyer-key-secret ' "${network}" >/dev/null \
+  || grep -F -- '--isolation-buyer-key-secret ' "${network}" >/dev/null; then
   echo "network qualification passed a secret as a command argument" >&2
   exit 1
 fi

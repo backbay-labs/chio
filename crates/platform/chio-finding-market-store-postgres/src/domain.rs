@@ -1,5 +1,7 @@
 use chio_core_types::crypto::PublicKey;
+use chio_core_types::receipt::decision::Decision;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
+use chio_core_types::receipt::metadata::{FindingDelivery, FINDING_DELIVERY_METADATA_KEY};
 use chio_core_types::{canonical_json_bytes, sha256_hex};
 use chio_finding::{
     Finding, FindingReplayRecipeInput, SignedFindingAdmission, SignedFindingAuditReport,
@@ -8,6 +10,9 @@ use chio_finding::{
     SignedFindingClaimAllocation, SignedFindingFailedDelivery, SignedFindingLiability,
     SignedFindingMarketTerms, SignedFindingPurchaseRecord, SignedFindingPurchaseResult,
     SignedFindingStatusEpoch, SignedFindingVerifiedFixSubmission, SignedFindingVoluntaryRetraction,
+};
+use chio_finding_hosted_edge::{
+    HostedAuthenticatedFindingDelivery, HOSTED_AUTHENTICATED_DELIVERY_SCHEMA,
 };
 use chio_open_market::penalty::SignedOpenMarketPenalty;
 use serde::de::DeserializeOwned;
@@ -220,7 +225,7 @@ impl HostedMarketDomainEventKind {
             Self::ParticipationAdmitted => "chio.finding.claim-allocation.v1",
             Self::PurchaseAuthorized => "chio.finding.purchase-record.v1",
             Self::RevealCommitted | Self::PurchaseSettled => "chio.finding.purchase-result.v1",
-            Self::DeliveryAccepted => "chio.finding.delivery.v1",
+            Self::DeliveryAccepted => HOSTED_AUTHENTICATED_DELIVERY_SCHEMA,
             Self::DeliveryFailed => "chio.finding.failed-delivery.v1",
             Self::ChallengeSubmitted => "chio.finding.challenge.v1",
             Self::ChallengeFinalized => "chio.finding.challenge-outcome.v1",
@@ -245,9 +250,10 @@ pub struct HostedMarketDomainEvent {
     event_id: String,
     payload_json: Vec<u8>,
     expected_signer: Option<PublicKey>,
+    expected_authority_id: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum HostedMarketDomainArtifact {
     Finding(Finding),
     ReplayRecipe(FindingReplayRecipeInput),
@@ -258,7 +264,7 @@ pub enum HostedMarketDomainArtifact {
     Participation(SignedFindingClaimAllocation),
     Purchase(SignedFindingPurchaseRecord),
     Reveal(SignedFindingPurchaseResult),
-    Delivery(chio_core_types::receipt::metadata::FindingDelivery),
+    Delivery(HostedAuthenticatedFindingDelivery),
     PurchaseSettlement(SignedFindingPurchaseResult),
     FailedDelivery(SignedFindingFailedDelivery),
     Challenge(SignedFindingChallenge),
@@ -275,11 +281,20 @@ pub enum HostedMarketDomainArtifact {
 }
 
 impl HostedMarketDomainEvent {
+    /// Build an event whose signer is self-contained in a validated artifact.
+    /// Delivery receipts and penalties require an external tenant or authority
+    /// pin and must use their dedicated store operations instead.
     pub fn from_artifact(
         aggregate_id: impl Into<String>,
         event_id: impl Into<String>,
         artifact: &HostedMarketDomainArtifact,
     ) -> Result<Self, HostedMarketStoreError> {
+        if matches!(
+            artifact,
+            HostedMarketDomainArtifact::Delivery(_) | HostedMarketDomainArtifact::Penalty(_)
+        ) {
+            return Err(HostedMarketStoreError::Invalid("domain artifact authority"));
+        }
         let payload_json = artifact.canonical_payload()?;
         Self::from_canonical_payload(
             artifact.event_kind(),
@@ -287,6 +302,7 @@ impl HostedMarketDomainEvent {
             event_id,
             payload_json,
             artifact.signer(),
+            None,
         )
     }
 
@@ -299,6 +315,7 @@ impl HostedMarketDomainEvent {
         event_id: impl Into<String>,
         payload_json: Vec<u8>,
         expected_signer: Option<&PublicKey>,
+        expected_authority_id: Option<&str>,
     ) -> Result<Self, HostedMarketStoreError> {
         let event = Self {
             event_kind,
@@ -306,6 +323,7 @@ impl HostedMarketDomainEvent {
             event_id: event_id.into(),
             payload_json,
             expected_signer: expected_signer.cloned(),
+            expected_authority_id: expected_authority_id.map(str::to_owned),
         };
         event.validate()?;
         Ok(event)
@@ -325,6 +343,7 @@ impl HostedMarketDomainEvent {
             &self.aggregate_id,
             &self.payload_json,
             self.expected_signer.as_ref(),
+            self.expected_authority_id.as_deref(),
         )
     }
 
@@ -365,7 +384,8 @@ impl HostedMarketDomainArtifact {
     fn signer(&self) -> Option<&PublicKey> {
         match self {
             Self::Finding(finding) => Some(&finding.issuer),
-            Self::ReplayRecipe(_) | Self::Delivery(_) => None,
+            Self::ReplayRecipe(_) => None,
+            Self::Delivery(artifact) => Some(&artifact.receipt.kernel_key),
             Self::VerifierProfile(envelope) => Some(&envelope.signer_key),
             Self::BondBacking(envelope) => Some(&envelope.signer_key),
             Self::MarketTerms(envelope) => Some(&envelope.signer_key),
@@ -442,7 +462,35 @@ impl PostgresFindingMarketStore {
         expected_event_sha256: Option<&str>,
         committed_at: u64,
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let outcome = self
+            .append_domain_event_in_transaction(
+                &mut transaction,
+                tenant,
+                event,
+                expected_revision,
+                expected_event_sha256,
+                committed_at,
+            )
+            .await?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        Ok(outcome)
+    }
+
+    pub(crate) async fn append_domain_event_in_transaction(
+        &self,
+        transaction: &mut Transaction<'_, Postgres>,
+        tenant: &HostedTenantId,
+        event: &HostedMarketDomainEvent,
+        expected_revision: u64,
+        expected_event_sha256: Option<&str>,
+        committed_at: u64,
+    ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
         event.validate()?;
+        validate_domain_tenant_binding(event, tenant)?;
         if expected_revision == 0 {
             if expected_event_sha256.is_some() {
                 return Err(HostedMarketStoreError::Invalid("expected domain head"));
@@ -470,9 +518,8 @@ impl PostgresFindingMarketStore {
             &payload_sha256,
             committed_at,
         )?;
-        let mut transaction = self.begin_tenant(tenant).await?;
         if let Some(exact) = retained_event_matches(
-            &mut transaction,
+            transaction,
             tenant,
             aggregate_kind,
             event,
@@ -485,12 +532,9 @@ impl PostgresFindingMarketStore {
             if !exact {
                 return Err(HostedMarketStoreError::Conflict);
             }
-            transaction
-                .commit()
-                .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
             return Ok(HostedJobWriteOutcome::ExactReplay);
         }
+        validate_fresh_domain_event(event, committed_at)?;
         let outcome: i16 = sqlx::query_scalar(
             r#"SELECT chio_finding_market_append_domain_event(
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
@@ -511,7 +555,7 @@ impl PostgresFindingMarketStore {
         .bind(&event.payload_json)
         .bind(&event_sha256)
         .bind(checked_i64(committed_at, "domain event time")?)
-        .fetch_one(&mut *transaction)
+        .fetch_one(&mut **transaction)
         .await
         .map_err(|_| HostedMarketStoreError::Unavailable)?;
         let outcome = match outcome {
@@ -519,7 +563,7 @@ impl PostgresFindingMarketStore {
             1 => HostedJobWriteOutcome::ExactReplay,
             2 => {
                 match retained_event_matches(
-                    &mut transaction,
+                    transaction,
                     tenant,
                     aggregate_kind,
                     event,
@@ -535,10 +579,6 @@ impl PostgresFindingMarketStore {
             }
             _ => return Err(HostedMarketStoreError::Unavailable),
         };
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
         Ok(outcome)
     }
 
@@ -677,6 +717,22 @@ async fn retained_event_matches(
     ))
 }
 
+fn validate_fresh_domain_event(
+    event: &HostedMarketDomainEvent,
+    committed_at: u64,
+) -> Result<(), HostedMarketStoreError> {
+    if event.event_kind != HostedMarketDomainEventKind::FindingPublished {
+        return Ok(());
+    }
+    let finding: Finding = parse_canonical(&event.payload_json, "finding artifact")?;
+    if finding.issued_at > committed_at || finding.expires_at <= committed_at {
+        return Err(HostedMarketStoreError::Invalid(
+            "finding artifact freshness",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_persisted_domain_payload(
     event_kind: HostedMarketDomainEventKind,
     aggregate_id: &str,
@@ -687,8 +743,15 @@ pub(crate) fn validate_persisted_domain_payload(
             Some(parse_canonical::<Finding>(payload_json, "finding artifact")?.issuer)
         }
         HostedMarketDomainEventKind::RecipeRegistered
-        | HostedMarketDomainEventKind::DeliveryAccepted
         | HostedMarketDomainEventKind::SettlementTerminal => None,
+        HostedMarketDomainEventKind::DeliveryAccepted => Some(
+            parse_canonical::<HostedAuthenticatedFindingDelivery>(
+                payload_json,
+                "authenticated delivery artifact",
+            )?
+            .receipt
+            .kernel_key,
+        ),
         _ => Some(
             parse_canonical::<SignedExportEnvelope<serde_json::Value>>(
                 payload_json,
@@ -697,7 +760,22 @@ pub(crate) fn validate_persisted_domain_payload(
             .signer_key,
         ),
     };
-    validate_domain_payload(event_kind, aggregate_id, payload_json, signer.as_ref())
+    let authority_id = if event_kind == HostedMarketDomainEventKind::PenaltyAssessed {
+        Some(
+            parse_canonical::<SignedOpenMarketPenalty>(payload_json, "market penalty artifact")?
+                .body
+                .issued_by,
+        )
+    } else {
+        None
+    };
+    validate_domain_payload(
+        event_kind,
+        aggregate_id,
+        payload_json,
+        signer.as_ref(),
+        authority_id.as_deref(),
+    )
 }
 
 fn validate_domain_payload(
@@ -705,6 +783,7 @@ fn validate_domain_payload(
     aggregate_id: &str,
     payload_json: &[u8],
     expected_signer: Option<&PublicKey>,
+    expected_authority_id: Option<&str>,
 ) -> Result<(), HostedMarketStoreError> {
     use chio_finding::{
         Finding, FindingAdmission, FindingAuditReport, FindingBondBacking, FindingChallenge,
@@ -793,13 +872,9 @@ fn validate_domain_payload(
             require_aggregate_identity(aggregate_id, &artifact.body.result_id)
         }
         HostedMarketDomainEventKind::DeliveryAccepted => {
-            require_unsigned(expected_signer)?;
-            let artifact: chio_core_types::receipt::metadata::FindingDelivery =
-                parse_canonical(payload_json, "delivery artifact")?;
-            artifact
-                .validate()
-                .map_err(|_| HostedMarketStoreError::Invalid("delivery artifact"))?;
-            require_aggregate_identity(aggregate_id, &artifact.purchase_intent_id)
+            let signer = required_signer(expected_signer)?;
+            let (_, delivery) = parse_authenticated_delivery(payload_json, signer)?;
+            require_aggregate_identity(aggregate_id, &delivery.purchase_intent_id)
         }
         HostedMarketDomainEventKind::DeliveryFailed => {
             let signer = required_signer(expected_signer)?;
@@ -859,6 +934,8 @@ fn validate_domain_payload(
         }
         HostedMarketDomainEventKind::PenaltyAssessed => {
             let signer = required_signer(expected_signer)?;
+            let authority_id = expected_authority_id
+                .ok_or(HostedMarketStoreError::Invalid("market penalty authority"))?;
             let artifact = parse_signed::<chio_open_market::penalty::OpenMarketPenaltyArtifact>(
                 payload_json,
                 signer,
@@ -867,6 +944,11 @@ fn validate_domain_payload(
                 .body
                 .validate()
                 .map_err(|_| HostedMarketStoreError::Invalid("market penalty artifact"))?;
+            if artifact.body.issued_by != authority_id
+                || artifact.body.governing_operator_id != authority_id
+            {
+                return Err(HostedMarketStoreError::Invalid("market penalty authority"));
+            }
             require_aggregate_identity(aggregate_id, &artifact.body.penalty_id)
         }
         HostedMarketDomainEventKind::SettlementTerminal => {
@@ -898,6 +980,58 @@ fn validate_domain_payload(
             require_aggregate_identity(aggregate_id, &artifact.body.audit_report_id)
         }
     }
+}
+
+fn parse_authenticated_delivery(
+    payload_json: &[u8],
+    expected_kernel_key: &PublicKey,
+) -> Result<(HostedAuthenticatedFindingDelivery, FindingDelivery), HostedMarketStoreError> {
+    let artifact: HostedAuthenticatedFindingDelivery =
+        parse_canonical(payload_json, "authenticated delivery artifact")?;
+    if artifact.schema != HOSTED_AUTHENTICATED_DELIVERY_SCHEMA
+        || artifact.receipt.kernel_key != *expected_kernel_key
+        || expected_kernel_key.is_weak_ed25519()
+        || !matches!(artifact.receipt.decision, Some(Decision::Allow))
+        || !artifact
+            .receipt
+            .action
+            .verify_hash()
+            .map_err(|_| HostedMarketStoreError::Invalid("delivery receipt"))?
+        || !artifact
+            .receipt
+            .verify_signature()
+            .map_err(|_| HostedMarketStoreError::Invalid("delivery receipt"))?
+    {
+        return Err(HostedMarketStoreError::Invalid("delivery receipt"));
+    }
+    let delivery = artifact
+        .receipt
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get(FINDING_DELIVERY_METADATA_KEY))
+        .cloned()
+        .ok_or(HostedMarketStoreError::Invalid("delivery receipt"))?;
+    let delivery: FindingDelivery = serde_json::from_value(delivery)
+        .map_err(|_| HostedMarketStoreError::Invalid("delivery receipt"))?;
+    delivery
+        .validate()
+        .map_err(|_| HostedMarketStoreError::Invalid("delivery receipt"))?;
+    Ok((artifact, delivery))
+}
+
+fn validate_domain_tenant_binding(
+    event: &HostedMarketDomainEvent,
+    tenant: &HostedTenantId,
+) -> Result<(), HostedMarketStoreError> {
+    if event.event_kind != HostedMarketDomainEventKind::DeliveryAccepted {
+        return Ok(());
+    }
+    let expected_kernel_key = required_signer(event.expected_signer.as_ref())?;
+    let (artifact, _) = parse_authenticated_delivery(&event.payload_json, expected_kernel_key)?;
+    if artifact.receipt.tenant_id.as_deref() != Some(tenant.as_str()) {
+        return Err(HostedMarketStoreError::Invalid("delivery receipt tenant"));
+    }
+    Ok(())
 }
 
 fn parse_canonical<T: DeserializeOwned + Serialize>(
@@ -957,6 +1091,15 @@ mod tests {
     use super::*;
     use chio_core_types::capability::scope::MonetaryAmount;
     use chio_core_types::crypto::Keypair;
+    use chio_core_types::receipt::body::{ChioReceipt, ChioReceiptBody};
+    use chio_core_types::receipt::decision::ToolCallAction;
+    use chio_core_types::receipt::kinds::{
+        BoundaryClass, ReceiptKind, RedactionMode, ToolOrigin, TrustLevel,
+    };
+    use chio_core_types::receipt::metadata::{
+        DeliveryResult, FindingDeliverySettlementMode, FindingMediaTypeCheck,
+        FindingTransformProfile, FINDING_DELIVERY_SCHEMA,
+    };
     use chio_finding::{
         FindingClaimAllocation, FindingClaimAllocationEntry, FindingClaimBeneficiaryKind,
         FindingHostedPurchaseVerdict, FindingHostedSettlementTerminal, FindingLiability,
@@ -976,6 +1119,64 @@ mod tests {
 
     fn digest(byte: char) -> String {
         std::iter::repeat_n(byte, 64).collect()
+    }
+
+    fn authenticated_delivery(
+        signer: &Keypair,
+        tenant_id: &str,
+    ) -> HostedAuthenticatedFindingDelivery {
+        let delivery = FindingDelivery {
+            schema: FINDING_DELIVERY_SCHEMA.to_owned(),
+            finding_id: digest('a'),
+            listing_id: "listing-a".to_owned(),
+            transform_profile: FindingTransformProfile::Identity,
+            digest_check: DeliveryResult::Matched,
+            media_type_check: FindingMediaTypeCheck::Matched,
+            settlement_mode: FindingDeliverySettlementMode::LocalReversibleHold,
+            accepted_bid_envelope_sha256: digest('b'),
+            venue_admission_envelope_sha256: digest('c'),
+            reservation_id: "reservation-a".to_owned(),
+            purchase_intent_id: "purchase-intent-a".to_owned(),
+            authoritative_payment_operation_id: "payment-a".to_owned(),
+            status_proof: None,
+        };
+        let action = ToolCallAction::from_parameters(serde_json::json!({
+            "findingId": delivery.finding_id.clone()
+        }))
+        .unwrap_or_else(|error| panic!("{error}"));
+        let receipt = ChioReceipt::sign(
+            ChioReceiptBody {
+                id: "pending".to_owned(),
+                timestamp: 1_700_000_000,
+                capability_id: "capability-a".to_owned(),
+                tool_server: "finding-market".to_owned(),
+                tool_name: "read_finding".to_owned(),
+                action,
+                decision: Some(Decision::Allow),
+                receipt_kind: ReceiptKind::MediatedDecision,
+                boundary_class: BoundaryClass::Prevent,
+                observation_outcome: None,
+                tool_origin: ToolOrigin::CallerExecuted,
+                redaction_mode: RedactionMode::None,
+                actor_chain: Vec::new(),
+                content_hash: digest('d'),
+                policy_hash: digest('e'),
+                evidence: Vec::new(),
+                metadata: Some(serde_json::json!({
+                    FINDING_DELIVERY_METADATA_KEY: delivery
+                })),
+                trust_level: TrustLevel::Mediated,
+                tenant_id: Some(tenant_id.to_owned()),
+                kernel_key: signer.public_key(),
+                bbs_projection_version: None,
+            },
+            signer,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        HostedAuthenticatedFindingDelivery {
+            schema: HOSTED_AUTHENTICATED_DELIVERY_SCHEMA.to_owned(),
+            receipt,
+        }
     }
 
     fn validate_schema(path: &str, document: serde_json::Value) {
@@ -1001,6 +1202,7 @@ mod tests {
             event_id: "event-a".to_owned(),
             payload_json: b"{}".to_vec(),
             expected_signer: None,
+            expected_authority_id: None,
         };
         assert!(event.validate().is_err());
 
@@ -1009,6 +1211,49 @@ mod tests {
         noncanonical.aggregate_id = sha256_hex(b"{}");
         noncanonical.payload_json = b"{ \"schema\": \"invalid\" }".to_vec();
         assert!(noncanonical.validate().is_err());
+    }
+
+    #[test]
+    fn delivery_requires_a_pinned_valid_receipt_and_exact_tenant() {
+        let signer = Keypair::from_seed(&[50_u8; 32]);
+        let artifact = authenticated_delivery(&signer, "tenant:test");
+        let payload = canonical_json_bytes(&artifact)
+            .unwrap_or_else(|error| panic!("test delivery payload failed: {error}"));
+        let event = HostedMarketDomainEvent::from_canonical_payload(
+            HostedMarketDomainEventKind::DeliveryAccepted,
+            "purchase-intent-a",
+            "delivery-a",
+            payload,
+            Some(&signer.public_key()),
+            None,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        let tenant = HostedTenantId::new("tenant:test")
+            .unwrap_or_else(|error| panic!("test tenant failed: {error}"));
+        assert!(validate_domain_tenant_binding(&event, &tenant).is_ok());
+        let other_tenant = HostedTenantId::new("tenant:other")
+            .unwrap_or_else(|error| panic!("test tenant failed: {error}"));
+        assert!(validate_domain_tenant_binding(&event, &other_tenant).is_err());
+        assert!(parse_authenticated_delivery(event.payload_json(), &signer.public_key()).is_ok());
+        assert!(parse_authenticated_delivery(
+            event.payload_json(),
+            &Keypair::from_seed(&[51_u8; 32]).public_key()
+        )
+        .is_err());
+
+        let mut tampered = artifact;
+        tampered.receipt.content_hash = digest('f');
+        let tampered_payload = canonical_json_bytes(&tampered)
+            .unwrap_or_else(|error| panic!("test delivery payload failed: {error}"));
+        assert!(HostedMarketDomainEvent::from_canonical_payload(
+            HostedMarketDomainEventKind::DeliveryAccepted,
+            "purchase-intent-a",
+            "delivery-tampered",
+            tampered_payload,
+            Some(&signer.public_key()),
+            None,
+        )
+        .is_err());
     }
 
     #[test]
@@ -1173,6 +1418,22 @@ mod tests {
             &signer,
         )
         .unwrap_or_else(|error| panic!("{error}"));
+        let mut mismatched_penalty_body = penalty.body.clone();
+        mismatched_penalty_body.governing_operator_id = "substituted-operator".to_owned();
+        let mismatched_penalty = SignedExportEnvelope::sign(mismatched_penalty_body, &signer)
+            .unwrap_or_else(|error| panic!("{error}"));
+        let mismatched_penalty_id = mismatched_penalty.body.penalty_id.clone();
+        let mismatched_payload = canonical_json_bytes(&mismatched_penalty)
+            .unwrap_or_else(|error| panic!("test penalty payload failed: {error}"));
+        assert!(HostedMarketDomainEvent::from_canonical_payload(
+            HostedMarketDomainEventKind::PenaltyAssessed,
+            &mismatched_penalty_id,
+            "penalty-authority-substitution",
+            mismatched_payload,
+            Some(&signer.public_key()),
+            Some("operator-a"),
+        )
+        .is_err());
 
         let settlement_id = "settlement-a".to_owned();
         let settlement = HostedCommerceSettlementPacket {
@@ -1255,12 +1516,20 @@ mod tests {
             ),
         ];
         for (index, (aggregate_id, artifact)) in artifacts.iter().enumerate() {
-            assert!(HostedMarketDomainEvent::from_artifact(
-                aggregate_id,
-                format!("event-{index}"),
-                artifact,
-            )
-            .is_ok());
+            let event_id = format!("event-{index}");
+            let result = if let HostedMarketDomainArtifact::Penalty(penalty) = artifact {
+                HostedMarketDomainEvent::from_canonical_payload(
+                    HostedMarketDomainEventKind::PenaltyAssessed,
+                    aggregate_id,
+                    event_id,
+                    canonical_json_bytes(penalty).test_unwrap(),
+                    Some(&penalty.signer_key),
+                    Some(&penalty.body.issued_by),
+                )
+            } else {
+                HostedMarketDomainEvent::from_artifact(aggregate_id, event_id, artifact)
+            };
+            assert!(result.is_ok());
         }
     }
 }

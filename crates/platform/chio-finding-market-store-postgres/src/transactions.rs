@@ -1,16 +1,17 @@
-use chio_core_types::receipt::metadata::FindingDelivery;
+use chio_core_types::{canonical_json_bytes, PublicKey};
 use chio_finding::{
     FindingHostedSettlementTerminal, SignedFindingAuditReport, SignedFindingChallenge,
     SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome, SignedFindingClaimAllocation,
     SignedFindingFailedDelivery, SignedFindingLiability, SignedFindingPurchaseRecord,
     SignedFindingPurchaseResult,
 };
+use chio_finding_hosted_edge::HostedAuthenticatedFindingDelivery;
 use chio_open_market::penalty::SignedOpenMarketPenalty;
 
 use crate::{
     HostedCommerceSettlementPacket, HostedDomainPage, HostedDomainWrite, HostedJobWriteOutcome,
-    HostedMarketDomainArtifact, HostedMarketDomainEventKind, HostedMarketStoreError,
-    HostedSpendState, HostedTenantId, PostgresFindingMarketStore,
+    HostedMarketDomainArtifact, HostedMarketDomainEvent, HostedMarketDomainEventKind,
+    HostedMarketStoreError, HostedSpendState, HostedTenantId, PostgresFindingMarketStore,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,9 +22,9 @@ pub struct HostedPurchaseRecoveryOutcome {
 }
 
 impl PostgresFindingMarketStore {
-    /// Converge a purchase result after a process crash. Every step is
-    /// exact-replay stable, and incompatible spend state rejects before a new
-    /// domain event is written.
+    /// Converge a purchase result after a process crash. The terminal, reveal,
+    /// and spend transition share one tenant transaction, so none can become
+    /// visible unless every fence admits the same result.
     pub async fn recover_purchase_result(
         &self,
         tenant: &HostedTenantId,
@@ -31,37 +32,54 @@ impl PostgresFindingMarketStore {
         reveal_write: &HostedDomainWrite,
         terminal_write: &HostedDomainWrite,
     ) -> Result<HostedPurchaseRecoveryOutcome, HostedMarketStoreError> {
-        let reservation = self
-            .monthly_spend_reservation(tenant, &artifact.body.reservation_id)
-            .await?
-            .ok_or(HostedMarketStoreError::NotFound)?;
-        let desired = validate_purchase_recovery_state(
-            artifact.body.settlement,
-            reservation.state,
-            reservation.units,
-            artifact.body.accepted_price.units,
-        )?;
-
-        // Persist the terminal fence before any recovery side effect. The
-        // append is exact-replay stable, so concurrent recovery attempts with
-        // incompatible terminal artifacts cannot both reach spend mutation.
-        let terminal = self
-            .settle_purchase(tenant, artifact, terminal_write)
-            .await?;
-        let reveal = self.commit_reveal(tenant, artifact, reveal_write).await?;
-        let spend = match desired {
-            HostedSpendState::Committed => {
-                self.commit_monthly_spend(tenant, &artifact.body.reservation_id)
-                    .await?
-            }
-            HostedSpendState::Released => {
-                self.release_monthly_spend(tenant, &artifact.body.reservation_id)
-                    .await?
-            }
-            HostedSpendState::Reserved => {
-                return Err(HostedMarketStoreError::Invalid("purchase terminal"));
-            }
+        let desired = match artifact.body.settlement {
+            FindingHostedSettlementTerminal::Captured => HostedSpendState::Committed,
+            FindingHostedSettlementTerminal::Released => HostedSpendState::Released,
         };
+        let terminal_event = HostedMarketDomainEvent::from_artifact(
+            &artifact.body.result_id,
+            &terminal_write.event_id,
+            &HostedMarketDomainArtifact::PurchaseSettlement(artifact.clone()),
+        )?;
+        let reveal_event = HostedMarketDomainEvent::from_artifact(
+            &artifact.body.result_id,
+            &reveal_write.event_id,
+            &HostedMarketDomainArtifact::Reveal(artifact.clone()),
+        )?;
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let terminal = self
+            .append_domain_event_in_transaction(
+                &mut transaction,
+                tenant,
+                &terminal_event,
+                terminal_write.expected_revision,
+                terminal_write.expected_event_sha256.as_deref(),
+                terminal_write.committed_at,
+            )
+            .await?;
+        let reveal = self
+            .append_domain_event_in_transaction(
+                &mut transaction,
+                tenant,
+                &reveal_event,
+                reveal_write.expected_revision,
+                reveal_write.expected_event_sha256.as_deref(),
+                reveal_write.committed_at,
+            )
+            .await?;
+        let spend = self
+            .finish_monthly_spend_in_transaction(
+                &mut transaction,
+                tenant,
+                &artifact.body.reservation_id,
+                desired,
+                Some(artifact.body.accepted_price.units),
+            )
+            .await?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| HostedMarketStoreError::Unavailable)?;
         Ok(HostedPurchaseRecoveryOutcome {
             reveal,
             spend,
@@ -222,14 +240,39 @@ impl PostgresFindingMarketStore {
     pub async fn accept_delivery(
         &self,
         tenant: &HostedTenantId,
-        artifact: &FindingDelivery,
+        expected_kernel_key: &PublicKey,
+        artifact: &HostedAuthenticatedFindingDelivery,
         write: &HostedDomainWrite,
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
-        self.append_typed_artifact(
+        if artifact.receipt.kernel_key != *expected_kernel_key {
+            return Err(HostedMarketStoreError::Invalid("delivery receipt signer"));
+        }
+        let purchase_intent_id = artifact
+            .receipt
+            .metadata
+            .as_ref()
+            .and_then(|metadata| {
+                metadata.get(chio_core_types::receipt::metadata::FINDING_DELIVERY_METADATA_KEY)
+            })
+            .and_then(|delivery| delivery.get("purchase_intent_id"))
+            .and_then(serde_json::Value::as_str)
+            .ok_or(HostedMarketStoreError::Invalid("delivery receipt"))?;
+        let payload_json = canonical_json_bytes(artifact)
+            .map_err(|_| HostedMarketStoreError::Invalid("delivery receipt"))?;
+        let event = HostedMarketDomainEvent::from_canonical_payload(
+            HostedMarketDomainEventKind::DeliveryAccepted,
+            purchase_intent_id,
+            &write.event_id,
+            payload_json,
+            Some(expected_kernel_key),
+            None,
+        )?;
+        self.append_domain_event(
             tenant,
-            &artifact.purchase_intent_id,
-            &HostedMarketDomainArtifact::Delivery(artifact.clone()),
-            write,
+            &event,
+            write.expected_revision,
+            write.expected_event_sha256.as_deref(),
+            write.committed_at,
         )
         .await
     }
@@ -342,14 +385,31 @@ impl PostgresFindingMarketStore {
     pub async fn assess_penalty(
         &self,
         tenant: &HostedTenantId,
+        authority_id: &str,
         artifact: &SignedOpenMarketPenalty,
         write: &HostedDomainWrite,
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
-        self.append_typed_artifact(
-            tenant,
+        if artifact.body.issued_by != authority_id
+            || artifact.body.governing_operator_id != authority_id
+        {
+            return Err(HostedMarketStoreError::Invalid("market penalty authority"));
+        }
+        let payload_json = canonical_json_bytes(artifact)
+            .map_err(|_| HostedMarketStoreError::Invalid("market penalty artifact"))?;
+        let event = HostedMarketDomainEvent::from_canonical_payload(
+            HostedMarketDomainEventKind::PenaltyAssessed,
             &artifact.body.penalty_id,
-            &HostedMarketDomainArtifact::Penalty(artifact.clone()),
-            write,
+            &write.event_id,
+            payload_json,
+            Some(&artifact.signer_key),
+            Some(authority_id),
+        )?;
+        self.append_domain_event(
+            tenant,
+            &event,
+            write.expected_revision,
+            write.expected_event_sha256.as_deref(),
+            write.committed_at,
         )
         .await
     }
@@ -397,65 +457,5 @@ impl PostgresFindingMarketStore {
             write,
         )
         .await
-    }
-}
-
-fn validate_purchase_recovery_state(
-    settlement: FindingHostedSettlementTerminal,
-    reservation_state: HostedSpendState,
-    reserved_units: u64,
-    accepted_units: u64,
-) -> Result<HostedSpendState, HostedMarketStoreError> {
-    let desired = match settlement {
-        FindingHostedSettlementTerminal::Captured => HostedSpendState::Committed,
-        FindingHostedSettlementTerminal::Released => HostedSpendState::Released,
-    };
-    if reserved_units != accepted_units
-        || (!matches!(reservation_state, HostedSpendState::Reserved)
-            && reservation_state != desired)
-    {
-        return Err(HostedMarketStoreError::Conflict);
-    }
-    Ok(desired)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn recovery_only_converges_to_the_bound_terminal() {
-        assert!(matches!(
-            validate_purchase_recovery_state(
-                FindingHostedSettlementTerminal::Captured,
-                HostedSpendState::Reserved,
-                10,
-                10,
-            ),
-            Ok(HostedSpendState::Committed)
-        ));
-        assert!(matches!(
-            validate_purchase_recovery_state(
-                FindingHostedSettlementTerminal::Captured,
-                HostedSpendState::Committed,
-                10,
-                10,
-            ),
-            Ok(HostedSpendState::Committed)
-        ));
-        assert!(validate_purchase_recovery_state(
-            FindingHostedSettlementTerminal::Captured,
-            HostedSpendState::Released,
-            10,
-            10,
-        )
-        .is_err());
-        assert!(validate_purchase_recovery_state(
-            FindingHostedSettlementTerminal::Released,
-            HostedSpendState::Reserved,
-            11,
-            10,
-        )
-        .is_err());
     }
 }

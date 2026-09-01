@@ -77,6 +77,8 @@ def test_hosted_client_rejects_ambiguous_or_unsafe_inputs() -> None:
     client = HostedCognitionMarketClient("https://market.example", "tenant", "key", "secret")
     with pytest.raises(CognitionMarketError, match="operation"):
         asyncio.run(client.mutate("custom", {}, "request"))
+    with pytest.raises(CognitionMarketError, match="operation"):
+        asyncio.run(client.mutate("publish", {}, "request"))
     asyncio.run(client.close())
 
 
