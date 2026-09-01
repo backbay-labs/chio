@@ -105,13 +105,17 @@ require_text "${kvm}" "--expected-candidate \"\${candidate_sha}\""
 
 require_text "${network}" 'git status --porcelain=v1 --untracked-files=all'
 require_text "${network}" 'CHIO_FINDING_CANDIDATE_SHA'
+require_text "${network}" 'GITHUB_RUN_ID'
+require_text "${network}" 'GITHUB_RUN_ATTEMPT'
 require_text "${network}" 'cargo build --locked -p chio-finding-market-canary --bin chio-finding-market-canary'
 require_text "${network}" 'canary_bin="$(realpath -e target/debug/chio-finding-market-canary)"'
 require_text "${network}" 'env -i "${canary_environment[@]}" "${canary_bin}"'
 require_text "${network}" 'unset \'
 require_text "${network}" '--seller-key-secret-env CHIO_FINDING_NETWORK_SELLER_KEY_SECRET'
 require_text "${network}" '--buyer-key-secret-env CHIO_FINDING_NETWORK_BUYER_KEY_SECRET'
+require_text "${network}" 'firstOutcome") != "applied"'
 require_text "${network}" 'retryOutcome") != "exact_replay"'
+require_text "${network}" 'runNonceSha256'
 require_text "${network}" 'tenantIsolationDenied'
 require_text "${network}" 'artifact-manifest.signed.json'
 require_text "${network}" "--expected-candidate \"\${candidate_sha}\""
@@ -127,6 +131,8 @@ require_text "${deployment}" 'name: chio-finding-market-migrate'
 
 require_text "${release}" './scripts/qualify-cognition-market-hosted.sh --code-only'
 require_text "${code_workflow}" './scripts/qualify-cognition-market-hosted.sh --code-only'
+require_text "${code_workflow}" '"schema": "chio.finding.hosted-qualification.v1"'
+require_text "${kvm_workflow}" '"schema": "chio.finding.hosted-qualification.v1"'
 require_text "${code_workflow}" 'astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39'
 require_text "${code_workflow}" 'cargo install cargo-deny --locked --version 0.19.4'
 require_text "${components}" '.github/workflows/release-qualification.yml'
@@ -143,6 +149,11 @@ if [[ -e "${old_promotion_workflow}" ]]; then
 fi
 if [[ "$(grep -Fc 'crates/core/chio-bounded/**' "${code_workflow}")" -ne 2 ]]; then
   echo "hosted workflow must qualify its Kani proof dependency on pull requests and main" >&2
+  exit 1
+fi
+post_v1_schema='chio.finding.hosted-qualification.v'2
+if grep -F -- "${post_v1_schema}" "${code_workflow}" "${kvm_workflow}" >/dev/null; then
+  echo "hosted qualification workflows must not assert a post-v1 schema" >&2
   exit 1
 fi
 if [[ "$(grep -Fc 'crates/tooling/chio-release-evidence/**' "${code_workflow}")" -ne 2 ]]; then

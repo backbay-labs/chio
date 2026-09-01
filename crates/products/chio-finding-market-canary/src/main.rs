@@ -26,6 +26,8 @@ use zeroize::Zeroizing;
 const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
 const CANARY_SCHEMA: &str = "chio.finding.kvm-canary-job.v1";
 const MAX_NETWORK_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+const GITHUB_RUN_ID_ENV: &str = "GITHUB_RUN_ID";
+const GITHUB_RUN_ATTEMPT_ENV: &str = "GITHUB_RUN_ATTEMPT";
 
 #[derive(Debug, Parser)]
 #[command(name = "chio-finding-market-canary")]
@@ -129,6 +131,7 @@ struct NetworkCanaryReport {
     tenant_id: String,
     finding_id: String,
     finding_sha256: String,
+    run_nonce_sha256: String,
     event_id: String,
     first_outcome: String,
     retry_outcome: String,
@@ -204,12 +207,14 @@ async fn network_canary(
     if candidate_sha != profile.release.candidate_sha {
         return Err("network_canary_profile_candidate_mismatch");
     }
-    let event_id = sha256_hex(
-        format!(
-            "chio.finding.network-canary-event.v1\0{}\0{}\0{}\0{}",
-            candidate_sha, profile.release.configuration_revision, tenant_id, finding.finding_id
-        )
-        .as_bytes(),
+    let run_nonce = network_run_nonce()?;
+    let run_nonce_sha256 = sha256_hex(run_nonce.as_bytes());
+    let event_id = network_event_id(
+        &candidate_sha,
+        &profile.release.configuration_revision,
+        tenant_id,
+        &finding.finding_id,
+        &run_nonce,
     );
     let finding_sha256 = sha256_hex(&finding_bytes);
     let seller_key_id = read_canary_environment(seller_key_id_env)?;
@@ -257,9 +262,7 @@ async fn network_canary(
         &finding_bytes,
     )
     .await?;
-    if first.outcome != "applied" && first.outcome != "exact_replay" {
-        return Err("network_canary_publish_outcome_invalid");
-    }
+    require_fresh_network_publish(&first.outcome)?;
     validate_network_mutation(
         &first,
         tenant_id,
@@ -363,6 +366,7 @@ async fn network_canary(
         tenant_id: tenant_id.to_owned(),
         finding_id: finding.finding_id,
         finding_sha256,
+        run_nonce_sha256,
         event_id,
         first_outcome: first.outcome,
         retry_outcome: retry.outcome,
@@ -370,6 +374,50 @@ async fn network_canary(
         buyer_catalog_matched: true,
         tenant_isolation_denied: true,
     })
+}
+
+fn network_run_nonce() -> Result<String, &'static str> {
+    let run_id =
+        std::env::var(GITHUB_RUN_ID_ENV).map_err(|_| "network_canary_run_identity_missing")?;
+    let run_attempt =
+        std::env::var(GITHUB_RUN_ATTEMPT_ENV).map_err(|_| "network_canary_run_identity_missing")?;
+    network_run_nonce_from(&run_id, &run_attempt)
+}
+
+fn network_run_nonce_from(run_id: &str, run_attempt: &str) -> Result<String, &'static str> {
+    let valid_number = |value: &str, maximum_length: usize| {
+        !value.is_empty()
+            && value.len() <= maximum_length
+            && value.bytes().all(|byte| byte.is_ascii_digit())
+            && value.parse::<u64>().is_ok_and(|number| number > 0)
+    };
+    if !valid_number(run_id, 32) || !valid_number(run_attempt, 10) {
+        return Err("network_canary_run_identity_invalid");
+    }
+    Ok(format!("{run_id}:{run_attempt}"))
+}
+
+fn network_event_id(
+    candidate_sha: &str,
+    configuration_revision: &str,
+    tenant_id: &str,
+    finding_id: &str,
+    run_nonce: &str,
+) -> String {
+    sha256_hex(
+        format!(
+            "chio.finding.network-canary-event.v1\0{candidate_sha}\0{configuration_revision}\0{tenant_id}\0{finding_id}\0{run_nonce}"
+        )
+        .as_bytes(),
+    )
+}
+
+fn require_fresh_network_publish(outcome: &str) -> Result<(), &'static str> {
+    if outcome == "applied" {
+        Ok(())
+    } else {
+        Err("network_canary_publish_outcome_invalid")
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -909,4 +957,30 @@ fn write_stdout(bytes: &[u8]) -> Result<(), ()> {
     lock.write_all(bytes).map_err(|_| ())?;
     lock.write_all(b"\n").map_err(|_| ())?;
     lock.flush().map_err(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn network_event_identity_is_bound_to_the_workflow_attempt() {
+        let first = network_event_id("a", "revision", "tenant", "finding", "100:1");
+        let rerun = network_event_id("a", "revision", "tenant", "finding", "100:2");
+        let new_run = network_event_id("a", "revision", "tenant", "finding", "101:1");
+        assert_ne!(first, rerun);
+        assert_ne!(first, new_run);
+        assert_eq!(network_run_nonce_from("100", "2"), Ok("100:2".to_owned()));
+        assert!(network_run_nonce_from("0", "1").is_err());
+        assert!(network_run_nonce_from("100", "attempt-1").is_err());
+    }
+
+    #[test]
+    fn network_canary_requires_a_fresh_first_publication() {
+        assert_eq!(require_fresh_network_publish("applied"), Ok(()));
+        assert_eq!(
+            require_fresh_network_publish("exact_replay"),
+            Err("network_canary_publish_outcome_invalid")
+        );
+    }
 }

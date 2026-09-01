@@ -170,7 +170,7 @@ jobs:
 
           report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           expected = {
-              "schema": "chio.finding.hosted-qualification.v2",
+              "schema": "chio.finding.hosted-qualification.v1",
               "mode": "code-only",
               "decision": "qualified-code-boundary",
               "codeQualified": True,

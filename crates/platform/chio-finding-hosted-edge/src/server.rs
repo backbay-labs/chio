@@ -220,16 +220,17 @@ struct HostedOperation {
     role: HostedPrincipalRole,
 }
 
+const PUBLISH_OPERATION: HostedOperation = HostedOperation {
+    event_kind: "finding.published",
+    aggregate_kind: "finding",
+    artifact_schema: "chio.finding.v1",
+    action: "finding.publish",
+    role: HostedPrincipalRole::Seller,
+};
+
 impl HostedOperation {
     fn parse(value: &str) -> Option<Self> {
         let operation = match value {
-            "publish" => (
-                "finding.published",
-                "finding",
-                "chio.finding.v1",
-                "finding.publish",
-                HostedPrincipalRole::Seller,
-            ),
             "listing" => (
                 "listing.activated",
                 "listing",
@@ -588,7 +589,7 @@ async fn publish_inner(
         if finding.issued_at > received_at || finding.expires_at <= received_at {
             return Err(HostedEdgeError::InvalidRequest);
         }
-        let operation = HostedOperation::parse("publish").ok_or(HostedEdgeError::Configuration)?;
+        let operation = PUBLISH_OPERATION;
         let event_id = required_header(&headers, IDEMPOTENCY_KEY_HEADER)?.to_owned();
         let principal = authenticate(
             &state,
@@ -1247,7 +1248,6 @@ mod tests {
     #[test]
     fn operations_are_closed_and_role_bound() {
         let operations = [
-            "publish",
             "listing",
             "admission",
             "participation",
@@ -1273,7 +1273,9 @@ mod tests {
             .filter_map(|operation| HostedOperation::parse(operation))
             .collect::<Vec<_>>();
         assert_eq!(parsed.len(), operations.len());
+        assert!(HostedOperation::parse("publish").is_none());
         assert!(HostedOperation::parse("custom").is_none());
+        assert_eq!(PUBLISH_OPERATION.role, HostedPrincipalRole::Seller);
         assert_eq!(
             HostedOperation::parse("purchase").map(|operation| operation.role),
             Some(HostedPrincipalRole::Buyer)

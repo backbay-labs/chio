@@ -12,6 +12,8 @@ required_environment=(
   CHIO_FINDING_NETWORK_SELLER_KEY_SECRET
   CHIO_FINDING_NETWORK_BUYER_KEY_ID
   CHIO_FINDING_NETWORK_BUYER_KEY_SECRET
+  GITHUB_RUN_ID
+  GITHUB_RUN_ATTEMPT
 )
 for name in "${required_environment[@]}"; do
   if [[ -z "${!name:-}" ]]; then
@@ -72,6 +74,8 @@ canary_environment=(
   "CHIO_FINDING_NETWORK_SELLER_KEY_SECRET=${CHIO_FINDING_NETWORK_SELLER_KEY_SECRET}"
   "CHIO_FINDING_NETWORK_BUYER_KEY_ID=${CHIO_FINDING_NETWORK_BUYER_KEY_ID}"
   "CHIO_FINDING_NETWORK_BUYER_KEY_SECRET=${CHIO_FINDING_NETWORK_BUYER_KEY_SECRET}"
+  "GITHUB_RUN_ID=${GITHUB_RUN_ID}"
+  "GITHUB_RUN_ATTEMPT=${GITHUB_RUN_ATTEMPT}"
 )
 env -i "${canary_environment[@]}" "${canary_bin}" \
   --profile "${CHIO_FINDING_HOSTED_PROFILE}" \
@@ -118,6 +122,9 @@ if (
     or report.get("deployedCandidateSha") != sys.argv[2]
     or len(report.get("deployedArtifactSha256", "")) != 64
     or any(character not in "0123456789abcdef" for character in report.get("deployedArtifactSha256", ""))
+    or len(report.get("runNonceSha256", "")) != 64
+    or any(character not in "0123456789abcdef" for character in report.get("runNonceSha256", ""))
+    or report.get("firstOutcome") != "applied"
     or report.get("retryOutcome") != "exact_replay"
     or any(report.get(field) is not True for field in expected_true)
 ):

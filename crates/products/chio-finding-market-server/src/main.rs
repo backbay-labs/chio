@@ -1,4 +1,5 @@
 use std::fs::{File, Metadata, OpenOptions};
+use std::future::Future;
 use std::io::Read as _;
 use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
 use std::path::{Path, PathBuf};
@@ -193,17 +194,22 @@ async fn run_replication_checks(
     let signer = profile
         .load_signer(FindingHostedSigningRole::AuthorityStatus)
         .map_err(|_| ServerError::Replication)?;
-    write_replication_checks(profile, &replicator, signer.as_ref()).await?;
+    let initial_result = write_replication_checks(profile, &replicator, signer.clone()).await;
     let Some(interval_secs) = interval_secs else {
-        return Ok(());
+        return initial_result;
     };
+    if initial_result.is_err() {
+        eprintln!("{}", ServerError::Replication);
+    }
     let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     interval.tick().await;
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                write_replication_checks(profile, &replicator, signer.as_ref()).await?;
+                if write_replication_checks(profile, &replicator, signer.clone()).await.is_err() {
+                    eprintln!("{}", ServerError::Replication);
+                }
             }
             _ = shutdown_signal() => return Ok(()),
         }
@@ -213,64 +219,116 @@ async fn run_replication_checks(
 async fn write_replication_checks(
     profile: &FindingHostedProfile,
     replicator: &PostgresFindingMarketReplicator,
-    signer: &dyn chio_core_types::SigningBackend,
+    signer: Arc<dyn chio_core_types::SigningBackend>,
 ) -> Result<(), ServerError> {
-    for tenant in profile.tenants.iter().filter(|tenant| tenant.enabled) {
-        let tenant_id =
-            HostedTenantId::new(tenant.tenant_id.clone()).map_err(|_| ServerError::Profile)?;
-        let retry_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-        loop {
-            let state = replicator
-                .authority_state(&tenant_id)
-                .await
-                .map_err(|_| ServerError::Replication)?;
-            if state.authority != HostedMarketAuthority::Postgres
-                || state.mode != HostedAuthorityMode::Authoritative
-                || !state.mutations_enabled
-                || state.configuration_revision != profile.release.configuration_revision
-            {
-                return Err(ServerError::Replication);
-            }
-            let projection_sha256 = replicator
-                .target_projection_sha256(&tenant_id)
-                .await
-                .map_err(|_| ServerError::Replication)?;
-            let checked_at = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|_| ServerError::Replication)?
-                .as_secs();
-            let check = SignedExportEnvelope::sign_with_backend(
-                HostedReplicationCheckBody {
-                    schema: HOSTED_REPLICATION_CHECK_SCHEMA.to_owned(),
-                    tenant_id: tenant_id.as_str().to_owned(),
-                    source_authority: HostedMarketAuthority::Postgres,
-                    authority_epoch: state.authority_epoch,
-                    through_sequence: state.last_outbox_sequence,
-                    source_projection_sha256: projection_sha256.clone(),
-                    target_projection_sha256: projection_sha256,
-                    lag_seconds: 0,
-                    projection_difference_count: 0,
-                    security_counter_count: 0,
-                    checked_at,
-                },
-                signer,
+    let tenant_ids = profile
+        .tenants
+        .iter()
+        .filter(|tenant| tenant.enabled)
+        .map(|tenant| HostedTenantId::new(tenant.tenant_id.clone()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| ServerError::Profile)?;
+    let configuration_revision = profile.release.configuration_revision.clone();
+    let replicator = replicator.clone();
+    run_replication_round(tenant_ids, move |tenant_id| {
+        let configuration_revision = configuration_revision.clone();
+        let replicator = replicator.clone();
+        let signer = signer.clone();
+        async move {
+            write_replication_check(
+                &configuration_revision,
+                &tenant_id,
+                &replicator,
+                signer.as_ref(),
             )
-            .map_err(|_| ServerError::Replication)?;
-            match replicator
-                .append_replication_check(&tenant_id, &signer.public_key(), &check)
-                .await
-            {
-                Ok(_) => break,
-                Err(HostedMarketStoreError::Conflict | HostedMarketStoreError::DigestMismatch)
-                    if tokio::time::Instant::now() < retry_deadline =>
-                {
-                    tokio::time::sleep(Duration::from_millis(25)).await;
-                }
-                Err(_) => return Err(ServerError::Replication),
-            }
+            .await
+        }
+    })
+    .await
+}
+
+async fn run_replication_round<F, Fut>(
+    tenant_ids: Vec<HostedTenantId>,
+    mut refresh: F,
+) -> Result<(), ServerError>
+where
+    F: FnMut(HostedTenantId) -> Fut,
+    Fut: Future<Output = Result<(), ServerError>> + Send + 'static,
+{
+    let mut jobs = tokio::task::JoinSet::new();
+    for tenant_id in tenant_ids {
+        jobs.spawn(refresh(tenant_id));
+    }
+    let mut failed = false;
+    while let Some(result) = jobs.join_next().await {
+        if !matches!(result, Ok(Ok(()))) {
+            failed = true;
         }
     }
-    Ok(())
+    if failed {
+        Err(ServerError::Replication)
+    } else {
+        Ok(())
+    }
+}
+
+async fn write_replication_check(
+    configuration_revision: &str,
+    tenant_id: &HostedTenantId,
+    replicator: &PostgresFindingMarketReplicator,
+    signer: &dyn chio_core_types::SigningBackend,
+) -> Result<(), ServerError> {
+    let retry_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let state = replicator
+            .authority_state(tenant_id)
+            .await
+            .map_err(|_| ServerError::Replication)?;
+        if state.authority != HostedMarketAuthority::Postgres
+            || state.mode != HostedAuthorityMode::Authoritative
+            || !state.mutations_enabled
+            || state.configuration_revision != configuration_revision
+        {
+            return Err(ServerError::Replication);
+        }
+        let projection_sha256 = replicator
+            .target_projection_sha256(tenant_id)
+            .await
+            .map_err(|_| ServerError::Replication)?;
+        let checked_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| ServerError::Replication)?
+            .as_secs();
+        let check = SignedExportEnvelope::sign_with_backend(
+            HostedReplicationCheckBody {
+                schema: HOSTED_REPLICATION_CHECK_SCHEMA.to_owned(),
+                tenant_id: tenant_id.as_str().to_owned(),
+                source_authority: HostedMarketAuthority::Postgres,
+                authority_epoch: state.authority_epoch,
+                through_sequence: state.last_outbox_sequence,
+                source_projection_sha256: projection_sha256.clone(),
+                target_projection_sha256: projection_sha256,
+                lag_seconds: 0,
+                projection_difference_count: 0,
+                security_counter_count: 0,
+                checked_at,
+            },
+            signer,
+        )
+        .map_err(|_| ServerError::Replication)?;
+        match replicator
+            .append_replication_check(tenant_id, &signer.public_key(), &check)
+            .await
+        {
+            Ok(_) => return Ok(()),
+            Err(HostedMarketStoreError::Conflict | HostedMarketStoreError::DigestMismatch)
+                if tokio::time::Instant::now() < retry_deadline =>
+            {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            Err(_) => return Err(ServerError::Replication),
+        }
+    }
 }
 
 #[cfg(unix)]
@@ -354,6 +412,7 @@ fn open_private_regular(path: &Path) -> Result<(File, Metadata), ServerError> {
 mod tests {
     use std::io::Write as _;
     use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
 
@@ -396,6 +455,35 @@ mod tests {
         assert!(
             validate_deployed_binding(&candidate, &artifact, &candidate, &"d".repeat(64)).is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn replication_round_attempts_every_tenant_after_one_fails() {
+        let tenants = ["tenant:first", "tenant:frozen", "tenant:last"]
+            .into_iter()
+            .map(|tenant| {
+                HostedTenantId::new(tenant)
+                    .unwrap_or_else(|error| panic!("test tenant failed: {error}"))
+            })
+            .collect();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let result = run_replication_round(tenants, {
+            let attempts = attempts.clone();
+            move |tenant| {
+                let attempts = attempts.clone();
+                async move {
+                    attempts.fetch_add(1, Ordering::SeqCst);
+                    if tenant.as_str() == "tenant:frozen" {
+                        Err(ServerError::Replication)
+                    } else {
+                        Ok(())
+                    }
+                }
+            }
+        })
+        .await;
+        assert!(matches!(result, Err(ServerError::Replication)));
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
     }
 
     #[test]

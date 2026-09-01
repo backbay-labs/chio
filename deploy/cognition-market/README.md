@@ -51,8 +51,11 @@ Before applying the Deployment:
    claim.
 5. Dispatch `Cognition market dark network canary` on the exact default-branch
    commit. The environment must point to private canonical profile and Finding
-   files on the attested ephemeral runner. Promote only through the signed
-   qualification and canary-decision process.
+   files on the attested ephemeral runner. Each workflow attempt requires a
+   freshly signed Finding with a never-published Finding ID. The run-bound
+   first publication must be applied, and only its immediate retry may be an
+   exact replay. Promote only through the signed qualification and
+   canary-decision process.
 
 Rollback changes the Deployment image digest back to the last qualified
 ReplicaSet and re-runs readiness and the dark network canary. Migrations are

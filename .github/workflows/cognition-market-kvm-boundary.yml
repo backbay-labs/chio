@@ -57,7 +57,7 @@ jobs:
           report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           kvm_digest = hashlib.sha256(Path(sys.argv[2]).read_bytes()).hexdigest()
           expected = {
-              "schema": "chio.finding.hosted-qualification.v2",
+              "schema": "chio.finding.hosted-qualification.v1",
               "mode": "kvm-boundary",
               "decision": "qualified-kvm-boundary",
               "codeQualified": True,
