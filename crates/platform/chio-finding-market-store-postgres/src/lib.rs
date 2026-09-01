@@ -13,7 +13,8 @@ use std::time::Duration;
 
 use chio_core_types::sha256_hex;
 pub use chio_finding_market_port::{
-    HostedApiKeyRecord, HostedPrincipal, HostedPrincipalRole, HostedTenantId,
+    HostedApiKeyRecord, HostedCapabilityAdmissionOutcome, HostedPrincipal, HostedPrincipalRole,
+    HostedTenantId,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};

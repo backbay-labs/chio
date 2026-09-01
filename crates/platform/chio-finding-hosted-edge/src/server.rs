@@ -1040,7 +1040,8 @@ fn error_response(error: HostedEdgeError, request_id: &str) -> Response {
 mod tests {
     use chio_core_types::crypto::Keypair;
     use chio_finding_market_port::{
-        HostedApiKeyRecord, HostedAuthPort, HostedMarketPortError, HostedPrincipal, HostedTenantId,
+        HostedApiKeyRecord, HostedAuthPort, HostedCapabilityAdmissionOutcome,
+        HostedMarketPortError, HostedPrincipal, HostedTenantId,
     };
     use tower::ServiceExt as _;
 
@@ -1079,27 +1080,18 @@ mod tests {
             Ok(None)
         }
 
-        async fn consume_dpop_nonce(
+        async fn consume_capability_dpop_admission(
             &self,
             _tenant: &HostedTenantId,
             _capability_id: &str,
             _nonce_sha256: &str,
             _valid_through: u64,
-            _now: u64,
-            _tenant_capacity: u64,
-        ) -> Result<bool, HostedMarketPortError> {
-            Ok(false)
-        }
-
-        async fn consume_capability_use(
-            &self,
-            _tenant: &HostedTenantId,
-            _capability_id: &str,
             _max_invocations: u32,
             _expires_at: u64,
             _now: u64,
-        ) -> Result<bool, HostedMarketPortError> {
-            Ok(false)
+            _tenant_nonce_capacity: u64,
+        ) -> Result<HostedCapabilityAdmissionOutcome, HostedMarketPortError> {
+            Ok(HostedCapabilityAdmissionOutcome::Replay)
         }
     }
 

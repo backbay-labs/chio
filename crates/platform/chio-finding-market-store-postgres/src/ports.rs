@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use chio_finding_market_port::{
-    HostedApiKeyLifecyclePort, HostedApiKeyRecord, HostedAuthPort, HostedMarketPortError,
-    HostedPortWriteOutcome, HostedPrincipal, HostedTenantId, HOSTED_API_KEY_ISSUED_EVENT_KIND,
+    HostedApiKeyLifecyclePort, HostedApiKeyRecord, HostedAuthPort,
+    HostedCapabilityAdmissionOutcome, HostedMarketPortError, HostedPortWriteOutcome,
+    HostedPrincipal, HostedTenantId, HOSTED_API_KEY_ISSUED_EVENT_KIND,
     HOSTED_API_KEY_REVOKED_EVENT_KIND,
 };
 
@@ -41,43 +42,27 @@ impl HostedAuthPort for PostgresFindingMarketStore {
             .map_err(map_error)
     }
 
-    async fn consume_dpop_nonce(
+    async fn consume_capability_dpop_admission(
         &self,
         tenant: &HostedTenantId,
         capability_id: &str,
         nonce_sha256: &str,
         valid_through: u64,
+        max_invocations: u32,
+        expires_at: u64,
         now: u64,
-        tenant_capacity: u64,
-    ) -> Result<bool, HostedMarketPortError> {
-        PostgresFindingMarketStore::consume_dpop_nonce(
+        tenant_nonce_capacity: u64,
+    ) -> Result<HostedCapabilityAdmissionOutcome, HostedMarketPortError> {
+        PostgresFindingMarketStore::consume_capability_dpop_admission(
             self,
             tenant,
             capability_id,
             nonce_sha256,
             valid_through,
-            now,
-            tenant_capacity,
-        )
-        .await
-        .map_err(map_error)
-    }
-
-    async fn consume_capability_use(
-        &self,
-        tenant: &HostedTenantId,
-        capability_id: &str,
-        max_invocations: u32,
-        expires_at: u64,
-        now: u64,
-    ) -> Result<bool, HostedMarketPortError> {
-        PostgresFindingMarketStore::consume_capability_use(
-            self,
-            tenant,
-            capability_id,
             max_invocations,
             expires_at,
             now,
+            tenant_nonce_capacity,
         )
         .await
         .map_err(map_error)

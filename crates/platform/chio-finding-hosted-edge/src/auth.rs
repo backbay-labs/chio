@@ -8,7 +8,8 @@ use chio_core_types::capability::scope::Operation;
 use chio_core_types::capability::token::CapabilityToken;
 use chio_core_types::{canonical_json_bytes, sha256_hex, PublicKey};
 use chio_finding_market_port::{
-    HostedMarketPortError, HostedPrincipal, HostedPrincipalRole, HostedTenantId,
+    HostedCapabilityAdmissionOutcome, HostedMarketPortError, HostedPrincipal, HostedPrincipalRole,
+    HostedTenantId,
 };
 use chio_kernel::{DpopProof, DPOP_SCHEMA};
 use hmac::{Hmac, Mac as _};
@@ -420,34 +421,28 @@ impl HostedAuthenticator {
             .checked_add(self.config.dpop_proof_ttl_secs)
             .ok_or(HostedEdgeError::AuthenticationFailed)?;
         let nonce_sha256 = sha256_hex(proof.body.nonce.as_bytes());
-        let fresh = self
+        let admission = self
             .repository
-            .consume_dpop_nonce(
+            .consume_capability_dpop_admission(
                 &request.tenant_id,
                 &capability.id,
                 &nonce_sha256,
                 valid_through,
+                max_invocations,
+                capability.expires_at,
                 request.now_unix_secs,
                 self.config.dpop_nonce_capacity_per_tenant,
             )
             .await
             .map_err(map_store)?;
-        if !fresh {
-            return Err(HostedEdgeError::ReplayRejected);
-        }
-        let within_budget = self
-            .repository
-            .consume_capability_use(
-                &request.tenant_id,
-                &capability.id,
-                max_invocations,
-                capability.expires_at,
-                request.now_unix_secs,
-            )
-            .await
-            .map_err(map_store)?;
-        if !within_budget {
-            return Err(HostedEdgeError::AuthorizationFailed);
+        match admission {
+            HostedCapabilityAdmissionOutcome::Admitted => {}
+            HostedCapabilityAdmissionOutcome::Replay => {
+                return Err(HostedEdgeError::ReplayRejected);
+            }
+            HostedCapabilityAdmissionOutcome::BudgetExceeded => {
+                return Err(HostedEdgeError::AuthorizationFailed);
+            }
         }
         Ok(HostedAuthenticatedPrincipal {
             tenant_id: request.tenant_id.clone(),
@@ -666,37 +661,33 @@ mod tests {
             Ok(Some(self.key.clone()))
         }
 
-        async fn consume_dpop_nonce(
+        async fn consume_capability_dpop_admission(
             &self,
             _tenant: &HostedTenantId,
             _capability_id: &str,
             _nonce_sha256: &str,
             _valid_through: u64,
-            _now: u64,
-            _tenant_capacity: u64,
-        ) -> Result<bool, HostedMarketPortError> {
-            self.nonce_fresh
-                .lock()
-                .map(|mut value| {
-                    let admitted = *value;
-                    *value = false;
-                    admitted
-                })
-                .map_err(|_| HostedMarketPortError::Unavailable)
-        }
-
-        async fn consume_capability_use(
-            &self,
-            _tenant: &HostedTenantId,
-            _capability_id: &str,
             _max_invocations: u32,
             _expires_at: u64,
             _now: u64,
-        ) -> Result<bool, HostedMarketPortError> {
-            self.capability_available
+            _tenant_nonce_capacity: u64,
+        ) -> Result<HostedCapabilityAdmissionOutcome, HostedMarketPortError> {
+            let mut nonce_fresh = self
+                .nonce_fresh
                 .lock()
-                .map(|value| *value)
-                .map_err(|_| HostedMarketPortError::Unavailable)
+                .map_err(|_| HostedMarketPortError::Unavailable)?;
+            if !*nonce_fresh {
+                return Ok(HostedCapabilityAdmissionOutcome::Replay);
+            }
+            let capability_available = self
+                .capability_available
+                .lock()
+                .map_err(|_| HostedMarketPortError::Unavailable)?;
+            if !*capability_available {
+                return Ok(HostedCapabilityAdmissionOutcome::BudgetExceeded);
+            }
+            *nonce_fresh = false;
+            Ok(HostedCapabilityAdmissionOutcome::Admitted)
         }
     }
 
@@ -828,8 +819,9 @@ mod tests {
         let pepper =
             Arc::new(StaticApiKeyPepper::new(vec![7; 32]).unwrap_or_else(|_| unreachable!()));
         let repository = repository(&pepper, &subject.public_key());
+        let auth_repository: Arc<dyn HostedAuthRepository> = repository.clone();
         let authenticator =
-            HostedAuthenticator::new(config(authority.public_key()), repository, pepper);
+            HostedAuthenticator::new(config(authority.public_key()), auth_repository, pepper);
         assert!(authenticator.is_ok());
         if let Ok(authenticator) = authenticator {
             let audience = authenticator.audience(&tenant());
@@ -888,6 +880,23 @@ mod tests {
                     wrong_binding.idempotency_key = Some("event-b".to_owned());
                     let rejected = authenticator.authenticate(wrong_binding).await;
                     assert_eq!(rejected, Err(HostedEdgeError::AuthenticationFailed));
+                    assert!(repository
+                        .capability_available
+                        .lock()
+                        .map(|mut available| *available = false)
+                        .is_ok());
+                    let budget_rejected = authenticator
+                        .authenticate(base_request(HostedAuthCredential::CapabilityDpop {
+                            capability: Box::new(capability.clone()),
+                            proof: Box::new(proof.clone()),
+                        }))
+                        .await;
+                    assert_eq!(budget_rejected, Err(HostedEdgeError::AuthorizationFailed));
+                    assert!(repository
+                        .capability_available
+                        .lock()
+                        .map(|mut available| *available = true)
+                        .is_ok());
                     let accepted = authenticator
                         .authenticate(base_request(HostedAuthCredential::CapabilityDpop {
                             capability: Box::new(capability.clone()),

@@ -12,18 +12,18 @@ use chio_finding::{
 };
 use chio_finding_market_store_postgres::{
     HostedAggregateCheckpointBody, HostedAggregateKind, HostedArchiveManifestBody,
-    HostedAuthorityTransitionBody, HostedAuthorityTransitionOperation, HostedDomainWrite,
-    HostedGcReceiptBody, HostedJobState, HostedJobWriteOutcome, HostedJournalCheckpointBody,
-    HostedLegalHoldAction, HostedLegalHoldBody, HostedMarketAuthority, HostedMarketDomainArtifact,
-    HostedMarketDomainEvent, HostedMarketDomainEventKind, HostedMarketStoreError,
-    HostedPrincipalLifecycleBody, HostedPrincipalLifecycleOperation,
-    HostedPrincipalReplicationEventBody, HostedPrincipalRole, HostedReplicationCheckBody,
-    HostedReplicationEventBody, HostedRestoreVerificationBody, HostedRetentionResourceKind,
-    HostedRetentionTarget, HostedRollbackOutboxEntry, HostedTenantId, HostedTenantLimits,
-    PostgresFindingMarketMigrator, PostgresFindingMarketReplicator, PostgresFindingMarketRetention,
-    PostgresFindingMarketStore, HOSTED_AGGREGATE_CHECKPOINT_SCHEMA, HOSTED_ARCHIVE_MANIFEST_SCHEMA,
-    HOSTED_AUTHORITY_TRANSITION_SCHEMA, HOSTED_GC_RECEIPT_SCHEMA, HOSTED_JOURNAL_CHECKPOINT_SCHEMA,
-    HOSTED_LEGAL_HOLD_SCHEMA, HOSTED_PRINCIPAL_LIFECYCLE_SCHEMA,
+    HostedAuthorityTransitionBody, HostedAuthorityTransitionOperation,
+    HostedCapabilityAdmissionOutcome, HostedDomainWrite, HostedGcReceiptBody, HostedJobState,
+    HostedJobWriteOutcome, HostedJournalCheckpointBody, HostedLegalHoldAction, HostedLegalHoldBody,
+    HostedMarketAuthority, HostedMarketDomainArtifact, HostedMarketDomainEvent,
+    HostedMarketDomainEventKind, HostedMarketStoreError, HostedPrincipalLifecycleBody,
+    HostedPrincipalLifecycleOperation, HostedPrincipalReplicationEventBody, HostedPrincipalRole,
+    HostedReplicationCheckBody, HostedReplicationEventBody, HostedRestoreVerificationBody,
+    HostedRetentionResourceKind, HostedRetentionTarget, HostedRollbackOutboxEntry, HostedTenantId,
+    HostedTenantLimits, PostgresFindingMarketMigrator, PostgresFindingMarketReplicator,
+    PostgresFindingMarketRetention, PostgresFindingMarketStore, HOSTED_AGGREGATE_CHECKPOINT_SCHEMA,
+    HOSTED_ARCHIVE_MANIFEST_SCHEMA, HOSTED_AUTHORITY_TRANSITION_SCHEMA, HOSTED_GC_RECEIPT_SCHEMA,
+    HOSTED_JOURNAL_CHECKPOINT_SCHEMA, HOSTED_LEGAL_HOLD_SCHEMA, HOSTED_PRINCIPAL_LIFECYCLE_SCHEMA,
     HOSTED_PRINCIPAL_REPLICATION_EVENT_SCHEMA, HOSTED_REPLICATION_CHECK_SCHEMA,
     HOSTED_REPLICATION_EVENT_SCHEMA, HOSTED_RESTORE_VERIFICATION_SCHEMA,
 };
@@ -1603,41 +1603,74 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     .execute(&admin_pool)
     .await;
     assert!(security_event_tamper.is_err());
-    assert!(
+    let first_nonce = "d".repeat(64);
+    let second_nonce = "e".repeat(64);
+    let (first_admission, second_admission) = tokio::join!(
+        store.consume_capability_dpop_admission(
+            &tenant_a,
+            "capability-atomic",
+            &first_nonce,
+            1_700_000_300,
+            2,
+            1_700_000_300,
+            1_700_000_001,
+            8,
+        ),
+        store.consume_capability_dpop_admission(
+            &tenant_a,
+            "capability-atomic",
+            &second_nonce,
+            1_700_000_300,
+            2,
+            1_700_000_300,
+            1_700_000_002,
+            8,
+        ),
+    );
+    assert_eq!(first_admission?, HostedCapabilityAdmissionOutcome::Admitted);
+    assert_eq!(
+        second_admission?,
+        HostedCapabilityAdmissionOutcome::Admitted
+    );
+    assert_eq!(
         store
-            .consume_dpop_nonce(
+            .consume_capability_dpop_admission(
                 &tenant_a,
-                "capability-a",
-                &"d".repeat(64),
+                "capability-atomic",
+                &"f".repeat(64),
                 1_700_000_300,
-                1_700_000_001,
+                2,
+                1_700_000_300,
+                1_700_000_003,
                 8,
             )
-            .await?
+            .await?,
+        HostedCapabilityAdmissionOutcome::BudgetExceeded
     );
-    assert!(
-        !store
-            .consume_dpop_nonce(
+    assert_eq!(
+        store
+            .consume_capability_dpop_admission(
                 &tenant_a,
-                "capability-a",
+                "capability-atomic",
                 &"d".repeat(64),
                 1_700_000_300,
-                1_700_000_001,
+                2,
+                1_700_000_300,
+                1_700_000_004,
                 8,
             )
-            .await?
+            .await?,
+        HostedCapabilityAdmissionOutcome::Replay
     );
-    let (first_capability_use, second_capability_use) = tokio::join!(
-        store.consume_capability_use(&tenant_a, "capability-a", 2, 1_700_000_300, 1_700_000_001,),
-        store.consume_capability_use(&tenant_a, "capability-a", 2, 1_700_000_300, 1_700_000_002,),
-    );
-    assert!(first_capability_use?);
-    assert!(second_capability_use?);
-    assert!(
-        !store
-            .consume_capability_use(&tenant_a, "capability-a", 2, 1_700_000_300, 1_700_000_003,)
-            .await?
-    );
+    let rejected_nonce_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM chio_finding_market_dpop_nonces WHERE tenant_id = $1 AND capability_id = $2 AND nonce_sha256 = $3",
+    )
+    .bind(tenant_a.as_str())
+    .bind("capability-atomic")
+    .bind("f".repeat(64))
+    .fetch_one(&admin_pool)
+    .await?;
+    assert_eq!(rejected_nonce_count, 0);
 
     let request = "a".repeat(64);
     let payload_a =

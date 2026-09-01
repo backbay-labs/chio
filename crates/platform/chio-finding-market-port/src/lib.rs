@@ -133,6 +133,13 @@ pub enum HostedPortWriteOutcome {
     ExactReplay,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostedCapabilityAdmissionOutcome {
+    Admitted,
+    Replay,
+    BudgetExceeded,
+}
+
 #[async_trait]
 pub trait HostedAuthPort: Send + Sync {
     async fn principal_by_capability_key(
@@ -155,24 +162,18 @@ pub trait HostedAuthPort: Send + Sync {
         now: u64,
     ) -> Result<Option<HostedApiKeyRecord>, HostedMarketPortError>;
 
-    async fn consume_dpop_nonce(
+    #[allow(clippy::too_many_arguments)]
+    async fn consume_capability_dpop_admission(
         &self,
         tenant: &HostedTenantId,
         capability_id: &str,
         nonce_sha256: &str,
         valid_through: u64,
-        now: u64,
-        tenant_capacity: u64,
-    ) -> Result<bool, HostedMarketPortError>;
-
-    async fn consume_capability_use(
-        &self,
-        tenant: &HostedTenantId,
-        capability_id: &str,
         max_invocations: u32,
         expires_at: u64,
         now: u64,
-    ) -> Result<bool, HostedMarketPortError>;
+        tenant_nonce_capacity: u64,
+    ) -> Result<HostedCapabilityAdmissionOutcome, HostedMarketPortError>;
 }
 
 #[async_trait]
