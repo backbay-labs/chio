@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.world/schemas/chio-finding/v2/hosted-qualification.schema.json",
+  "$id": "https://chio.world/schemas/chio-finding/v1/hosted-qualification.schema.json",
   "title": "Chio Hosted Finding Market Qualification",
   "type": "object",
   "additionalProperties": false,
@@ -24,7 +24,7 @@
   ],
   "properties": {
     "schema": {
-      "const": "chio.finding.hosted-qualification.v2"
+      "const": "chio.finding.hosted-qualification.v1"
     },
     "candidateSha": {
       "type": "string",

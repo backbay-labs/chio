@@ -173,7 +173,7 @@ python3 scripts/generate-cognition-market-hosted-report.py \
   --gate-index "${gate_index}" \
   --report "${report_path}"
 cargo run -p chio-spec-validate -- \
-  spec/schemas/chio-finding/v2/hosted-qualification.schema.json \
+  spec/schemas/chio-finding/v1/hosted-qualification.schema.json \
   "${report_path}"
 
 rm -f "${gate_index}"

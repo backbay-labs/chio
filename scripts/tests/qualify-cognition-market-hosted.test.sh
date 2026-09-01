@@ -13,7 +13,7 @@ kvm_workflow="${repo_root}/.github/workflows/cognition-market-kvm-boundary.yml"
 network_workflow="${repo_root}/.github/workflows/cognition-market-network-canary.yml"
 old_promotion_workflow="${repo_root}/.github/workflows/cognition-market-promotion.yml"
 report_generator="${repo_root}/scripts/generate-cognition-market-hosted-report.py"
-report_schema="${repo_root}/spec/schemas/chio-finding/v2/hosted-qualification.schema.json"
+report_schema="${repo_root}/spec/schemas/chio-finding/v1/hosted-qualification.schema.json"
 
 bash -n "${hosted}" "${kvm}" "${network}" "${deployment}"
 
@@ -43,13 +43,13 @@ require_text "${hosted}" 'cargo deny check'
 require_text "${hosted}" 'cargo vet check --locked'
 require_text "${hosted}" './scripts/qualify-cognition-market-kvm.sh'
 require_text "${hosted}" 'scripts/generate-cognition-market-hosted-report.py'
-require_text "${hosted}" 'spec/schemas/chio-finding/v2/hosted-qualification.schema.json'
+require_text "${hosted}" 'spec/schemas/chio-finding/v1/hosted-qualification.schema.json'
 require_text "${hosted}" 'artifact-manifest.signed.json'
 require_text "${hosted}" "--expected-candidate \"\${candidate_sha}\""
 require_text "${report_generator}" '"promotionReady": False'
 require_text "${report_generator}" '"networkQualified": False'
 require_text "${report_generator}" '"productionReady": False'
-require_text "${report_generator}" 'chio.finding.hosted-qualification.v2'
+require_text "${report_generator}" 'chio.finding.hosted-qualification.v1'
 if "${hosted}" --promotion >/dev/null 2>&1; then
   invalid_mode_status=0
 else

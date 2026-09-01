@@ -112,7 +112,7 @@ def build_report(
         "qualified-code-boundary" if mode == "code-only" else "qualified-kvm-boundary"
     )
     return {
-        "schema": "chio.finding.hosted-qualification.v2",
+        "schema": "chio.finding.hosted-qualification.v1",
         "candidateSha": candidate_sha,
         "generatedAt": datetime.now(timezone.utc)
         .replace(microsecond=0)

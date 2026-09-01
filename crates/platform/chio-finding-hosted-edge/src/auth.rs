@@ -518,7 +518,7 @@ struct RequestActionBinding<'a> {
 
 fn request_action_hash(request: &HostedAuthRequest) -> Result<String, HostedEdgeError> {
     canonical_json_bytes(&RequestActionBinding {
-        schema: "chio.finding.hosted-request-action.v2",
+        schema: "chio.finding.hosted-request-action.v1",
         tenant_id: request.tenant_id.as_str(),
         action: &request.action,
         method: &request.method,
