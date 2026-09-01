@@ -79,6 +79,23 @@ def test_hosted_client_rejects_ambiguous_or_unsafe_inputs() -> None:
         asyncio.run(client.mutate("custom", {}, "request"))
     with pytest.raises(CognitionMarketError, match="operation"):
         asyncio.run(client.mutate("publish", {}, "request"))
+    for internal_operation in (
+        "admission",
+        "participation",
+        "purchase",
+        "reveal",
+        "failed-delivery",
+        "challenge-outcome",
+        "liability",
+        "appeal",
+        "purchase-terminal",
+        "enforcement",
+        "settlement",
+        "status",
+        "audit",
+    ):
+        with pytest.raises(CognitionMarketError, match="operation"):
+            asyncio.run(client.mutate(internal_operation, {}, "request"))
     asyncio.run(client.close())
 
 

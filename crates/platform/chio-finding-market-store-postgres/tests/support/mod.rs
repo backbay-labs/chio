@@ -3,9 +3,131 @@ use std::time::Duration;
 
 use chio_core_types::capability::scope::MonetaryAmount;
 use chio_finding::{
-    FindingHostedPurchaseVerdict, FindingHostedSettlementTerminal, FindingPurchaseResult,
-    FINDING_PURCHASE_RESULT_SCHEMA_V1,
+    compute_status_epoch_id, FindingHostedPurchaseVerdict, FindingHostedSettlementTerminal,
+    FindingPurchaseResult, FindingStatusEpoch, FindingVoluntaryRetraction,
+    FindingVoluntaryRetractionReason, FINDING_PURCHASE_RESULT_SCHEMA_V1,
+    FINDING_STATUS_EPOCH_SCHEMA_V1, FINDING_STATUS_SIGNATURE_DOMAIN,
+    FINDING_VOLUNTARY_RETRACTION_SCHEMA_V1,
 };
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn assert_catalog_retractions(
+    store: &PostgresFindingMarketStore,
+    tenant: &HostedTenantId,
+    other_tenant: &HostedTenantId,
+    signer: &Keypair,
+    finding_id: &str,
+    replicator: &PostgresFindingMarketReplicator,
+    source_signer: &Keypair,
+    authority_now: u64,
+) -> Result<(), Box<dyn Error>> {
+    let retraction = SignedExportEnvelope::sign(
+        FindingVoluntaryRetraction {
+            schema: FINDING_VOLUNTARY_RETRACTION_SCHEMA_V1.to_owned(),
+            intent_id: "c".repeat(64),
+            finding_id: finding_id.to_owned(),
+            seller: signer.public_key(),
+            status_feed_ref: "integration-status".to_owned(),
+            reason: FindingVoluntaryRetractionReason::SellerVoluntaryRetraction,
+            issued_at: authority_now,
+            inclusion_deadline: authority_now + 300,
+        },
+        signer,
+    )?;
+    assert_eq!(
+        store
+            .record_voluntary_retraction(
+                tenant,
+                &retraction,
+                &HostedDomainWrite::new("retraction-market-finding", 0, None, authority_now)?,
+            )
+            .await?,
+        HostedJobWriteOutcome::Inserted
+    );
+    let query = vec![finding_id.to_owned(), "d".repeat(64)];
+    assert_eq!(
+        store.catalog_non_live_finding_ids(tenant, &query).await?,
+        [finding_id.to_owned()].into_iter().collect()
+    );
+    assert!(store
+        .catalog_non_live_finding_ids(other_tenant, &query)
+        .await?
+        .is_empty());
+    assert!(matches!(
+        store
+            .catalog_non_live_finding_ids(tenant, &[finding_id.to_owned(), finding_id.to_owned()])
+            .await,
+        Err(HostedMarketStoreError::Invalid("status query"))
+    ));
+    let retraction_projection_sha256 = replicator.target_projection_sha256(tenant).await?;
+    let retraction_sequence = store.authority_state(tenant).await?.last_outbox_sequence;
+    append_replication_check(
+        replicator,
+        tenant,
+        source_signer,
+        ReplicationCheckSpec {
+            authority_epoch: 3,
+            through_sequence: retraction_sequence,
+            projection_sha256: &retraction_projection_sha256,
+            source_authority: HostedMarketAuthority::Postgres,
+            checked_at: authority_now,
+        },
+    )
+    .await?;
+    let mut epoch = FindingStatusEpoch {
+        schema: FINDING_STATUS_EPOCH_SCHEMA_V1.to_owned(),
+        status_epoch_id: String::new(),
+        signature_domain: FINDING_STATUS_SIGNATURE_DOMAIN.to_owned(),
+        status_map_version: "sparse_map_v1".to_owned(),
+        proof_semantics: "siblings_leaf_to_root_v1".to_owned(),
+        feed_id: "integration-status".to_owned(),
+        key_domain_nonce: 3_318_287_169_837_494,
+        map_epoch: 1,
+        operator_id: "integration-status-operator".to_owned(),
+        operator_key: signer.public_key(),
+        operator_key_epoch: 1,
+        root_hash: "e".repeat(64),
+        tree_depth: 256,
+        hash_algorithm: "sha256".to_owned(),
+        key_hash_domain: "chio.finding.status.v1:key".to_owned(),
+        empty_leaf_domain: "chio.finding.status.v1:empty-leaf".to_owned(),
+        occupied_leaf_domain: "chio.finding.status.v1:occupied-leaf".to_owned(),
+        branch_domain: "chio.finding.status.v1:branch".to_owned(),
+        empty_leaf_hash: sha256_hex(b"chio.finding.status.v1:empty-leaf\0"),
+        anchor_refs: Vec::new(),
+        generated_at: authority_now,
+        valid_from: authority_now,
+        valid_until: authority_now + 300,
+    };
+    epoch.status_epoch_id = compute_status_epoch_id(&epoch)?;
+    let signed_epoch = SignedExportEnvelope::sign(epoch, signer)?;
+    store
+        .publish_status_epoch(
+            tenant,
+            &signed_epoch,
+            &HostedDomainWrite::new("catalog-status-epoch", 0, None, authority_now)?,
+        )
+        .await?;
+    assert_eq!(
+        store.catalog_non_live_finding_ids(tenant, &query).await?,
+        query.iter().cloned().collect()
+    );
+    let projection_sha256 = replicator.target_projection_sha256(tenant).await?;
+    let through_sequence = store.authority_state(tenant).await?.last_outbox_sequence;
+    append_replication_check(
+        replicator,
+        tenant,
+        source_signer,
+        ReplicationCheckSpec {
+            authority_epoch: 3,
+            through_sequence,
+            projection_sha256: &projection_sha256,
+            source_authority: HostedMarketAuthority::Postgres,
+            checked_at: authority_now,
+        },
+    )
+    .await
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn assert_terminal_job_retention_gc(

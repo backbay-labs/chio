@@ -32,11 +32,11 @@ mod support;
 
 use support::{
     append_replication_check, apply_authority_transition, assert_atomic_purchase_recovery,
-    assert_disabled_tenant_blocks_worker_transitions, assert_forged_job_digest_rejected,
-    assert_legacy_delivery_upgrade_rejects, assert_multi_replica_leases_and_shutdown_refunds,
-    assert_tenant_disablement_serializes, assert_terminal_job_retention_gc,
-    assert_worker_job_boundary, migrate_legacy_fixture, signed_domain_payload,
-    signed_principal_replication_event, ReplicationCheckSpec,
+    assert_catalog_retractions, assert_disabled_tenant_blocks_worker_transitions,
+    assert_forged_job_digest_rejected, assert_legacy_delivery_upgrade_rejects,
+    assert_multi_replica_leases_and_shutdown_refunds, assert_tenant_disablement_serializes,
+    assert_terminal_job_retention_gc, assert_worker_job_boundary, migrate_legacy_fixture,
+    signed_domain_payload, signed_principal_replication_event, ReplicationCheckSpec,
 };
 
 #[tokio::test]
@@ -1100,6 +1100,17 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     assert_atomic_purchase_recovery(
         &store,
         &tenant_a,
+        &domain_signer,
+        &market_finding_id,
+        &replicator,
+        &source_signer,
+        authority_now,
+    )
+    .await?;
+    assert_catalog_retractions(
+        &store,
+        &tenant_a,
+        &tenant_b,
         &domain_signer,
         &market_finding_id,
         &replicator,

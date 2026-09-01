@@ -73,6 +73,18 @@ test("hosted client rejects unsafe endpoints and unbounded queries", async () =>
     expectedRevision: 0,
     payload: { schema: "chio.finding.v1" },
   }, "request"), /operation is unsupported/);
+  for (const internalOperation of [
+    "admission", "participation", "purchase", "reveal", "failed-delivery",
+    "challenge-outcome", "liability", "appeal", "purchase-terminal", "enforcement",
+    "settlement", "status", "audit",
+  ]) {
+    await assert.rejects(client.mutate(internalOperation as never, {
+      aggregateId: "internal:1",
+      eventId: "event:1",
+      expectedRevision: 0,
+      payload: { schema: "internal.v1" },
+    }, "request"), /operation is unsupported/);
+  }
 });
 
 function canonical(value: unknown): string {

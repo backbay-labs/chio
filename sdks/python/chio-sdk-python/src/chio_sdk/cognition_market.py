@@ -74,24 +74,11 @@ class PurchasedVerifiedFix:
 HOSTED_MUTATION_OPERATIONS = frozenset(
     {
         "listing",
-        "admission",
-        "participation",
-        "purchase",
-        "reveal",
         "delivery",
-        "purchase-terminal",
-        "failed-delivery",
         "challenge",
-        "challenge-outcome",
         "verified-fix",
         "retraction",
-        "liability",
-        "appeal",
         "penalty",
-        "enforcement",
-        "settlement",
-        "status",
-        "audit",
     }
 )
 

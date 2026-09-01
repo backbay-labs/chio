@@ -205,6 +205,12 @@ pub trait HostedHttpBackend: Send + Sync {
         after: Option<&str>,
         limit: u32,
     ) -> Result<HostedHttpPage, HostedHttpBackendError>;
+
+    async fn non_live_findings(
+        &self,
+        tenant: &crate::HostedTenantId,
+        finding_ids: &[String],
+    ) -> Result<BTreeSet<String>, HostedHttpBackendError>;
 }
 
 #[derive(Clone)]
@@ -259,53 +265,11 @@ impl HostedOperation {
                 "finding.listing.activate",
                 HostedPrincipalRole::Seller,
             ),
-            "admission" => (
-                "admission.admitted",
-                "admission",
-                "chio.finding.admission.v1",
-                "finding.admission.admit",
-                HostedPrincipalRole::Operator,
-            ),
-            "participation" => (
-                "participation.admitted",
-                "participation",
-                "chio.finding.claim-allocation.v1",
-                "finding.participation.admit",
-                HostedPrincipalRole::Operator,
-            ),
-            "purchase" => (
-                "purchase.authorized",
-                "purchase",
-                "chio.finding.purchase-record.v1",
-                "finding.purchase.authorize",
-                HostedPrincipalRole::Buyer,
-            ),
-            "reveal" => (
-                "reveal.committed",
-                "reveal",
-                "chio.finding.purchase-result.v1",
-                "finding.reveal.commit",
-                HostedPrincipalRole::Seller,
-            ),
             "delivery" => (
                 "delivery.accepted",
                 "delivery",
                 HOSTED_AUTHENTICATED_DELIVERY_SCHEMA,
                 "finding.delivery.accept",
-                HostedPrincipalRole::Operator,
-            ),
-            "purchase-terminal" => (
-                "purchase.settled",
-                "purchase_terminal",
-                "chio.finding.purchase-result.v1",
-                "finding.purchase.settle",
-                HostedPrincipalRole::Operator,
-            ),
-            "failed-delivery" => (
-                "delivery.failed",
-                "failed_delivery",
-                "chio.finding.failed-delivery.v1",
-                "finding.delivery.fail",
                 HostedPrincipalRole::Operator,
             ),
             "challenge" => (
@@ -314,13 +278,6 @@ impl HostedOperation {
                 "chio.finding.challenge.v1",
                 "finding.challenge.submit",
                 HostedPrincipalRole::Buyer,
-            ),
-            "challenge-outcome" => (
-                "challenge.finalized",
-                "challenge_outcome",
-                "chio.finding.challenge-outcome.v1",
-                "finding.challenge.finalize",
-                HostedPrincipalRole::Evaluator,
             ),
             "verified-fix" => (
                 "verified_fix.submitted",
@@ -336,54 +293,12 @@ impl HostedOperation {
                 "finding.retraction.submit",
                 HostedPrincipalRole::Seller,
             ),
-            "liability" => (
-                "liability.assessed",
-                "liability",
-                "chio.finding.liability.v1",
-                "finding.liability.assess",
-                HostedPrincipalRole::Operator,
-            ),
-            "appeal" => (
-                "appeal.finalized",
-                "appeal",
-                "chio.finding.challenge-enforcement.v1",
-                "finding.appeal.finalize",
-                HostedPrincipalRole::Evaluator,
-            ),
             "penalty" => (
                 "penalty.assessed",
                 "penalty",
                 "chio.registry.market-penalty.v1",
                 "finding.penalty.assess",
                 HostedPrincipalRole::Operator,
-            ),
-            "enforcement" => (
-                "enforcement.finalized",
-                "enforcement",
-                "chio.finding.challenge-enforcement.v1",
-                "finding.enforcement.finalize",
-                HostedPrincipalRole::Operator,
-            ),
-            "settlement" => (
-                "settlement.terminal",
-                "settlement",
-                "chio.commerce.settlement-packet.v1",
-                "finding.settlement.record",
-                HostedPrincipalRole::Operator,
-            ),
-            "status" => (
-                "status.published",
-                "status_epoch",
-                "chio.finding.status-epoch.v1",
-                "finding.status.publish",
-                HostedPrincipalRole::Operator,
-            ),
-            "audit" => (
-                "audit.finalized",
-                "audit_round",
-                "chio.finding.audit-report.v1",
-                "finding.audit.finalize",
-                HostedPrincipalRole::Auditor,
             ),
             _ => return None,
         };
@@ -397,10 +312,7 @@ impl HostedOperation {
     }
 
     fn requires_principal_artifact_signer(self) -> bool {
-        !matches!(
-            self.artifact_schema,
-            HOSTED_AUTHENTICATED_DELIVERY_SCHEMA | "chio.commerce.settlement-packet.v1"
-        )
+        self.artifact_schema != HOSTED_AUTHENTICATED_DELIVERY_SCHEMA
     }
 }
 
@@ -829,7 +741,18 @@ async fn get_finding(
             .await
             .map_err(map_backend)?
             .ok_or(HostedEdgeError::NotFound)?;
-        live_finding_payload(&projection, requested_at)?.ok_or(HostedEdgeError::NotFound)
+        let payload =
+            live_finding_payload(&projection, requested_at)?.ok_or(HostedEdgeError::NotFound)?;
+        let non_live = state
+            .backend
+            .non_live_findings(binding.tenant_id(), std::slice::from_ref(&finding_id))
+            .await
+            .map_err(map_backend)?;
+        ensure_non_live_subset(std::slice::from_ref(&finding_id), &non_live)?;
+        if non_live.contains(&finding_id) {
+            return Err(HostedEdgeError::NotFound);
+        }
+        Ok(payload)
     }
     .await;
     match result {
@@ -880,12 +803,39 @@ async fn list_findings(
             .into_iter()
             .flatten()
             .collect();
+        let finding_ids = page
+            .items
+            .iter()
+            .map(|projection| projection.aggregate_id.clone())
+            .collect::<Vec<_>>();
+        let non_live = state
+            .backend
+            .non_live_findings(binding.tenant_id(), &finding_ids)
+            .await
+            .map_err(map_backend)?;
+        ensure_non_live_subset(&finding_ids, &non_live)?;
+        page.items
+            .retain(|projection| !non_live.contains(&projection.aggregate_id));
         Ok(page)
     }
     .await;
     match result {
         Ok(page) => (StatusCode::OK, Json(page)).into_response(),
         Err(error) => error_response(error, request_id),
+    }
+}
+
+fn ensure_non_live_subset(
+    requested: &[String],
+    non_live: &BTreeSet<String>,
+) -> Result<(), HostedEdgeError> {
+    if non_live
+        .iter()
+        .all(|finding_id| requested.iter().any(|candidate| candidate == finding_id))
+    {
+        Ok(())
+    } else {
+        Err(HostedEdgeError::IntegrityFailure)
     }
 }
 
@@ -1189,6 +1139,14 @@ mod tests {
         ) -> Result<HostedHttpPage, HostedHttpBackendError> {
             Err(HostedHttpBackendError::Unavailable)
         }
+
+        async fn non_live_findings(
+            &self,
+            _tenant: &HostedTenantId,
+            _finding_ids: &[String],
+        ) -> Result<BTreeSet<String>, HostedHttpBackendError> {
+            Err(HostedHttpBackendError::Unavailable)
+        }
     }
 
     fn server_state() -> Result<HostedHttpServerState, HostedEdgeError> {
@@ -1339,24 +1297,11 @@ mod tests {
     fn operations_are_closed_and_role_bound() {
         let operations = [
             "listing",
-            "admission",
-            "participation",
-            "purchase",
-            "reveal",
             "delivery",
-            "purchase-terminal",
-            "failed-delivery",
             "challenge",
-            "challenge-outcome",
             "verified-fix",
             "retraction",
-            "liability",
-            "appeal",
             "penalty",
-            "enforcement",
-            "settlement",
-            "status",
-            "audit",
         ];
         let parsed = operations
             .iter()
@@ -1366,14 +1311,23 @@ mod tests {
         assert!(HostedOperation::parse("publish").is_none());
         assert!(HostedOperation::parse("custom").is_none());
         assert_eq!(PUBLISH_OPERATION.role, HostedPrincipalRole::Seller);
-        assert_eq!(
-            HostedOperation::parse("purchase").map(|operation| operation.role),
-            Some(HostedPrincipalRole::Buyer)
-        );
-        assert_eq!(
-            HostedOperation::parse("enforcement").map(|operation| operation.role),
-            Some(HostedPrincipalRole::Operator)
-        );
+        for internal_only in [
+            "admission",
+            "participation",
+            "purchase",
+            "reveal",
+            "failed-delivery",
+            "challenge-outcome",
+            "liability",
+            "appeal",
+            "purchase-terminal",
+            "enforcement",
+            "settlement",
+            "status",
+            "audit",
+        ] {
+            assert!(HostedOperation::parse(internal_only).is_none());
+        }
     }
 
     #[test]
@@ -1436,6 +1390,20 @@ mod tests {
         assert!(parse_finding_query(Some("limit=0")).is_err());
         assert!(parse_finding_query(Some("topic=secret")).is_err());
         assert!(parse_finding_query(Some("after=")).is_err());
+    }
+
+    #[test]
+    fn catalog_status_results_must_be_a_subset_of_the_request() {
+        let requested = vec!["a".repeat(64)];
+        assert!(ensure_non_live_subset(&requested, &BTreeSet::new()).is_ok());
+        assert!(
+            ensure_non_live_subset(&requested, &[requested[0].clone()].into_iter().collect())
+                .is_ok()
+        );
+        assert_eq!(
+            ensure_non_live_subset(&requested, &["b".repeat(64)].into_iter().collect()),
+            Err(HostedEdgeError::IntegrityFailure)
+        );
     }
 
     #[test]

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use async_trait::async_trait;
 use chio_core_types::canonical_json_bytes;
 use chio_finding_hosted_edge::{
@@ -92,6 +94,16 @@ impl HostedHttpBackend for PostgresFindingMarketStore {
             items,
             next_cursor: page.next_cursor,
         })
+    }
+
+    async fn non_live_findings(
+        &self,
+        tenant: &HostedTenantId,
+        finding_ids: &[String],
+    ) -> Result<BTreeSet<String>, HostedHttpBackendError> {
+        self.catalog_non_live_finding_ids(tenant, finding_ids)
+            .await
+            .map_err(map_store_error)
     }
 }
 

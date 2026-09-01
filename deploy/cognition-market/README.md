@@ -100,6 +100,13 @@ in `capabilityPublicKeyHex`, including principals that authenticate by API key.
 The replicated principal record is the authenticated signer pin; a request
 cannot select a different artifact signer.
 
+The public generic event route accepts only listing, delivery, challenge,
+verified-fix, retraction, and penalty artifacts. All coordinator-produced
+records, including admission, purchase, purchase-terminal, adjudication,
+enforcement, settlement, status, and audit records, are internal-only. Catalog
+reads hide sticky retractions. If a status epoch exists without a retained
+per-Finding sparse proof, the requested catalog page is quarantined fail closed.
+
 The proxy token, remote-signer tokens, API-key pepper, database URLs, TLS
 private key, and network canary credentials are secret values. They must never
 enter these manifests, Git, command arguments, or qualification logs. The

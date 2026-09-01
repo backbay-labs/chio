@@ -904,6 +904,11 @@ fn validate_domain_payload(
                 .body
                 .validate()
                 .map_err(|_| HostedMarketStoreError::Invalid("verified fix artifact"))?;
+            if artifact.body.seller != *signer {
+                return Err(HostedMarketStoreError::Invalid(
+                    "verified fix artifact signer",
+                ));
+            }
             require_aggregate_identity(aggregate_id, &artifact.body.submission_id)
         }
         HostedMarketDomainEventKind::RetractionVoluntary => {
@@ -913,6 +918,11 @@ fn validate_domain_payload(
                 .body
                 .validate()
                 .map_err(|_| HostedMarketStoreError::Invalid("voluntary retraction artifact"))?;
+            if artifact.body.seller != *signer {
+                return Err(HostedMarketStoreError::Invalid(
+                    "voluntary retraction artifact signer",
+                ));
+            }
             require_aggregate_identity(aggregate_id, &artifact.body.intent_id)
         }
         HostedMarketDomainEventKind::LiabilityAssessed => {
@@ -1355,6 +1365,29 @@ mod tests {
             &signer,
         )
         .unwrap_or_else(|error| panic!("{error}"));
+        let mut substituted_retraction_body = retraction.body.clone();
+        substituted_retraction_body.seller = Keypair::from_seed(&[91_u8; 32]).public_key();
+        let substituted_retraction =
+            SignedExportEnvelope::sign(substituted_retraction_body, &signer)
+                .unwrap_or_else(|error| panic!("{error}"));
+        let substituted_intent_id = substituted_retraction.body.intent_id.clone();
+        assert!(HostedMarketDomainEvent::from_artifact(
+            &substituted_intent_id,
+            "retraction-seller-substitution",
+            &HostedMarketDomainArtifact::Retraction(substituted_retraction),
+        )
+        .is_err());
+        let mut substituted_fix_body = fix.body.clone();
+        substituted_fix_body.seller = Keypair::from_seed(&[92_u8; 32]).public_key();
+        let substituted_fix = SignedExportEnvelope::sign(substituted_fix_body, &signer)
+            .unwrap_or_else(|error| panic!("{error}"));
+        let substituted_submission_id = substituted_fix.body.submission_id.clone();
+        assert!(HostedMarketDomainEvent::from_artifact(
+            &substituted_submission_id,
+            "verified-fix-seller-substitution",
+            &HostedMarketDomainArtifact::VerifiedFix(substituted_fix),
+        )
+        .is_err());
 
         let liability_key = digest('9');
         let liability = SignedExportEnvelope::sign(

@@ -1,7 +1,10 @@
+use std::collections::BTreeSet;
+
 use chio_core_types::sha256_hex;
 use chio_finding::{
-    Finding, SignedFindingAdmission, SignedFindingMarketTerms, SignedFindingStatusEpoch,
-    SignedFindingVerifiedFixSubmission, SignedFindingVoluntaryRetraction,
+    Finding, FindingEffectIntentKind, SignedFindingAdmission, SignedFindingChallengeEnforcement,
+    SignedFindingMarketTerms, SignedFindingStatusEpoch, SignedFindingVerifiedFixSubmission,
+    SignedFindingVoluntaryRetraction,
 };
 use sqlx::Row as _;
 
@@ -149,6 +152,140 @@ impl PostgresFindingMarketStore {
             limit,
         )
         .await
+    }
+
+    /// Resolve non-live Findings for one bounded catalog page. Sticky
+    /// voluntary and enforcement-pending retractions suppress their exact
+    /// Finding. A status epoch is only a signed sparse-map root, so this
+    /// PostgreSQL journal cannot derive per-Finding liveness without a
+    /// retained sparse proof. Once any epoch exists, the whole requested page
+    /// therefore fails closed until a proof-aware catalog backend is wired.
+    /// Every returned retraction row is revalidated against its signed
+    /// artifact and append-only event digest.
+    pub async fn catalog_non_live_finding_ids(
+        &self,
+        tenant: &HostedTenantId,
+        finding_ids: &[String],
+    ) -> Result<BTreeSet<String>, HostedMarketStoreError> {
+        if finding_ids.is_empty() {
+            return Ok(BTreeSet::new());
+        }
+        if finding_ids.len() > MAX_CATALOG_PAGE as usize {
+            return Err(HostedMarketStoreError::Invalid("status query limit"));
+        }
+        let requested = finding_ids.iter().collect::<BTreeSet<_>>();
+        if requested.len() != finding_ids.len()
+            || finding_ids
+                .iter()
+                .any(|finding_id| validate_identifier(finding_id, MAX_AGGREGATE_ID_BYTES).is_err())
+        {
+            return Err(HostedMarketStoreError::Invalid("status query"));
+        }
+        let maximum_rows = finding_ids
+            .len()
+            .checked_mul(2)
+            .ok_or(HostedMarketStoreError::Invalid("status query limit"))?;
+        let fetch_limit = i64::try_from(maximum_rows)
+            .map_err(|_| HostedMarketStoreError::Invalid("status query limit"))?
+            .checked_add(1)
+            .ok_or(HostedMarketStoreError::Invalid("status query limit"))?;
+        let mut transaction = self.begin_tenant_snapshot(tenant).await?;
+        let has_status_epoch: bool = sqlx::query_scalar(
+            r#"SELECT EXISTS (
+                   SELECT 1
+                   FROM chio_finding_market_domain_projections
+                   WHERE tenant_id = $1 AND aggregate_kind = 'status_epoch'
+               )"#,
+        )
+        .bind(tenant.as_str())
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if has_status_epoch {
+            transaction.commit().await.map_err(unavailable)?;
+            return Ok(finding_ids.iter().cloned().collect());
+        }
+        let rows = sqlx::query(
+            r#"SELECT DISTINCT ON (
+                         projection.subject_finding_id,
+                         projection.aggregate_kind
+                     )
+                      projection.aggregate_id, projection.revision,
+                      projection.event_sha256, projection.event_kind,
+                      projection.artifact_schema, projection.payload_sha256,
+                      projection.payload_json, projection.updated_at,
+                      event.event_id, event.previous_event_sha256,
+                      event.committed_at
+               FROM chio_finding_market_domain_projections AS projection
+               JOIN chio_finding_market_aggregate_events AS event
+                 ON event.tenant_id = projection.tenant_id
+                AND event.aggregate_kind = projection.aggregate_kind
+                AND event.aggregate_id = projection.aggregate_id
+                AND event.revision = projection.revision
+                AND event.event_sha256 = projection.event_sha256
+               WHERE projection.tenant_id = $1
+                 AND projection.aggregate_kind IN ('retraction', 'enforcement')
+                 AND projection.subject_finding_id = ANY($2::TEXT[])
+               ORDER BY projection.subject_finding_id ASC,
+                        projection.aggregate_kind ASC,
+                        projection.aggregate_id ASC
+               LIMIT $3"#,
+        )
+        .bind(tenant.as_str())
+        .bind(finding_ids.to_vec())
+        .bind(fetch_limit)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
+        if rows.len() > maximum_rows {
+            return Err(HostedMarketStoreError::DigestMismatch);
+        }
+        let mut retracted = BTreeSet::new();
+        for row in &rows {
+            let stored_event_kind: String = row.try_get(3).map_err(unavailable)?;
+            let event_kind = HostedMarketDomainEventKind::from_event_kind(&stored_event_kind)
+                .filter(|kind| {
+                    matches!(
+                        kind,
+                        HostedMarketDomainEventKind::RetractionVoluntary
+                            | HostedMarketDomainEventKind::EnforcementFinalized
+                    )
+                })
+                .ok_or(HostedMarketStoreError::DigestMismatch)?;
+            let projection = projection_from_catalog_row(tenant, event_kind, row)?;
+            if projection.revision != 1 || projection.previous_event_sha256.is_some() {
+                return Err(HostedMarketStoreError::DigestMismatch);
+            }
+            let finding_id = match event_kind {
+                HostedMarketDomainEventKind::RetractionVoluntary => {
+                    let artifact: SignedFindingVoluntaryRetraction =
+                        serde_json::from_slice(&projection.payload_json)
+                            .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+                    artifact.body.finding_id
+                }
+                HostedMarketDomainEventKind::EnforcementFinalized => {
+                    let artifact: SignedFindingChallengeEnforcement =
+                        serde_json::from_slice(&projection.payload_json)
+                            .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+                    if !artifact
+                        .body
+                        .effect_intents
+                        .iter()
+                        .any(|intent| intent.kind == FindingEffectIntentKind::Retraction)
+                    {
+                        return Err(HostedMarketStoreError::DigestMismatch);
+                    }
+                    artifact.body.finding_id
+                }
+                _ => return Err(HostedMarketStoreError::DigestMismatch),
+            };
+            if !requested.contains(&finding_id) {
+                return Err(HostedMarketStoreError::DigestMismatch);
+            }
+            retracted.insert(finding_id);
+        }
+        Ok(retracted)
     }
 
     pub async fn list_domain_projections(

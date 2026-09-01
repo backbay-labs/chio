@@ -83,24 +83,11 @@ export interface PurchasedVerifiedFix {
 
 export type HostedMutationOperation =
   | "listing"
-  | "admission"
-  | "participation"
-  | "purchase"
-  | "reveal"
   | "delivery"
-  | "purchase-terminal"
-  | "failed-delivery"
   | "challenge"
-  | "challenge-outcome"
   | "verified-fix"
   | "retraction"
-  | "liability"
-  | "appeal"
-  | "penalty"
-  | "enforcement"
-  | "settlement"
-  | "status"
-  | "audit";
+  | "penalty";
 
 export interface HostedDomainMutation {
   aggregateId: string;
@@ -680,10 +667,7 @@ export class HostedCognitionMarketClient {
 }
 
 const HOSTED_MUTATION_OPERATIONS: ReadonlySet<string> = new Set([
-  "listing", "admission", "participation", "purchase", "reveal", "delivery",
-  "purchase-terminal", "failed-delivery", "challenge", "challenge-outcome", "verified-fix",
-  "retraction", "liability", "appeal", "penalty", "enforcement", "settlement", "status",
-  "audit",
+  "listing", "delivery", "challenge", "verified-fix", "retraction", "penalty",
 ]);
 
 function hostedEndpoint(value: string): string {

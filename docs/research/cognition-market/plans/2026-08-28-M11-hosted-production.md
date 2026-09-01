@@ -228,12 +228,20 @@ contracts. SQLite remains local-only and is never mounted into either hosted
 production role. `/v1/findings/publish` preserves the raw signed Finding
 contract used by existing clients.
 
-The generic hosted event endpoints persist validated artifacts and verified
-event chains. They do not by themselves run the complete M0-M6 business
-orchestration, authorize a payment, dispatch settlement, or prove that a remote
-signer and external rail performed their side effects. Public and customer
-traffic therefore remains forbidden. Activation requires exact-release code,
-PostgreSQL, KVM, and network evidence plus a separately reviewed traffic
-promotion that binds those event writes to the existing command and settlement
-orchestrators. M7 bilateral escrow, auctions, and usage-gated stochastic R&D
-remain outside M11.
+The generic hosted event endpoint admits only immutable artifact ingress for
+listings, kernel-authenticated deliveries, buyer challenges, seller verified
+fixes, seller voluntary retractions, and operator penalties. Admission,
+allocation, purchase, reveal, failed-delivery, adjudication, liability, appeal,
+purchase-terminal, enforcement, settlement, status publication, and audit
+writes are internal-only outputs of their atomic coordinators. This split keeps
+the HTTP boundary from bypassing authority checks, payment journaling, recovery,
+or multi-record state transitions.
+
+Catalog reads suppress sticky voluntary and enforcement-pending retractions.
+A status epoch stores a signed sparse-map root but the hosted PostgreSQL profile
+does not yet retain per-Finding sparse proofs. Once an epoch exists, catalog
+reads therefore quarantine the requested page instead of guessing liveness.
+Public and customer traffic remains forbidden. Activation requires exact-release
+code, PostgreSQL, KVM, and network evidence plus a separately reviewed traffic
+promotion. M7 bilateral escrow, auctions, and usage-gated stochastic R&D remain
+outside M11.
