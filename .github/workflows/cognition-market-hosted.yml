@@ -4,7 +4,9 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - ".github/workflows/cognition-market-promotion.yml"
+      - ".github/actionlint.yaml"
+      - ".github/workflows/cognition-market-kvm-boundary.yml"
+      - ".github/workflows/cognition-market-network-canary.yml"
       - ".github/workflows/release-qualification.yml"
       - "Makefile"
       - "audits/**"
@@ -13,6 +15,7 @@ on:
       - "crates/core/chio-core-types/**"
       - "crates/core/chio-core/**"
       - "crates/economy/chio-credit/**"
+      - "crates/platform/chio-finding-market-port/**"
       - "crates/platform/chio-finding-market-store-postgres/**"
       - "crates/platform/chio-finding-market-migrations/**"
       - "crates/platform/chio-finding-hosted-edge/**"
@@ -21,6 +24,7 @@ on:
       - "crates/platform/chio-store-sqlite/**"
       - "crates/products/chio-finding-worker/**"
       - "crates/products/chio-finding-market-migrator/**"
+      - "crates/products/chio-finding-market-server/**"
       - "crates/trust/chio-signing-remote/**"
       - "crates/trust/chio-finding-challenge/**"
       - "crates/economy/chio-finding/**"
@@ -38,11 +42,14 @@ on:
       - "crates/tooling/chio-release-evidence/**"
       - "crates/trust/chio-finding-verifier/**"
       - "deny.toml"
+      - "deploy/cognition-market/**"
       - "docs/research/cognition-market/**"
       - "formal/**"
       - "fuzz/**"
       - "rust-toolchain.toml"
       - "scripts/**"
+      - "sdks/python/chio-sdk-python/**"
+      - "sdks/typescript/chio-ts/**"
       - "spec/schemas/**"
       - "supply-chain/**"
       - "scripts/qualify-cognition-market-hosted.sh"
@@ -53,7 +60,9 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/cognition-market-promotion.yml"
+      - ".github/actionlint.yaml"
+      - ".github/workflows/cognition-market-kvm-boundary.yml"
+      - ".github/workflows/cognition-market-network-canary.yml"
       - ".github/workflows/release-qualification.yml"
       - "Makefile"
       - "audits/**"
@@ -62,6 +71,7 @@ on:
       - "crates/core/chio-core-types/**"
       - "crates/core/chio-core/**"
       - "crates/economy/chio-credit/**"
+      - "crates/platform/chio-finding-market-port/**"
       - "crates/platform/chio-finding-market-store-postgres/**"
       - "crates/platform/chio-finding-market-migrations/**"
       - "crates/platform/chio-finding-hosted-edge/**"
@@ -70,6 +80,7 @@ on:
       - "crates/platform/chio-store-sqlite/**"
       - "crates/products/chio-finding-worker/**"
       - "crates/products/chio-finding-market-migrator/**"
+      - "crates/products/chio-finding-market-server/**"
       - "crates/trust/chio-signing-remote/**"
       - "crates/trust/chio-finding-challenge/**"
       - "crates/economy/chio-finding/**"
@@ -87,11 +98,14 @@ on:
       - "crates/tooling/chio-release-evidence/**"
       - "crates/trust/chio-finding-verifier/**"
       - "deny.toml"
+      - "deploy/cognition-market/**"
       - "docs/research/cognition-market/**"
       - "formal/**"
       - "fuzz/**"
       - "rust-toolchain.toml"
       - "scripts/**"
+      - "sdks/python/chio-sdk-python/**"
+      - "sdks/typescript/chio-ts/**"
       - "spec/schemas/**"
       - "supply-chain/**"
       - "scripts/qualify-cognition-market-hosted.sh"
@@ -146,6 +160,32 @@ jobs:
         run: cargo install cargo-deny --locked --version 0.19.4
       - name: Qualify hosted cognition market
         run: ./scripts/qualify-cognition-market-hosted.sh --code-only
+      - name: Require bounded code-only claims
+        shell: bash
+        run: |
+          python3 - target/release-qualification/cognition-market-hosted/qualification.json <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected = {
+              "schema": "chio.finding.hosted-qualification.v1",
+              "mode": "code-only",
+              "decision": "qualified-code-boundary",
+              "codeQualified": True,
+              "kvmQualified": False,
+              "networkQualified": False,
+              "productionReady": False,
+              "promotionReady": False,
+              "kvmEvidenceSha256": None,
+          }
+          for field, value in expected.items():
+              if report.get(field) != value:
+                  raise SystemExit(
+                      f"hosted code report has unsafe {field}: {report.get(field)!r}"
+                  )
+          PY
       - name: Upload hosted qualification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

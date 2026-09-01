@@ -83,6 +83,7 @@ pub enum FindingHostedEdgeProfile {
 pub struct FindingHostedDatabaseProfile {
     pub runtime_url_env: String,
     pub worker_url_env: String,
+    pub replicator_url_env: String,
     pub ca_certificate_path: String,
     pub max_connections: u32,
     pub acquire_timeout_millis: u64,
@@ -99,7 +100,18 @@ impl FindingHostedDatabaseProfile {
             &self.worker_url_env,
             "database worker URL environment variable",
         )?;
-        if self.runtime_url_env == self.worker_url_env {
+        validate_env_name(
+            &self.replicator_url_env,
+            "database replicator URL environment variable",
+        )?;
+        if BTreeSet::from([
+            self.runtime_url_env.as_str(),
+            self.worker_url_env.as_str(),
+            self.replicator_url_env.as_str(),
+        ])
+        .len()
+            != 3
+        {
             return Err("hosted database roles require distinct URL bindings".to_owned());
         }
         validate_absolute_path(&self.ca_certificate_path, "database CA certificate")?;
@@ -311,6 +323,7 @@ pub struct FindingHostedPrincipalProfile {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FindingHostedReleaseProfile {
     pub environment: String,
+    pub candidate_sha: String,
     pub artifact_sha256: String,
     pub configuration_revision: String,
     pub minimum_ready_replicas: u32,
@@ -379,6 +392,13 @@ impl FindingHostedProfile {
             return Err("hosted listener must use a concrete address and nonzero port".to_owned());
         }
         validate_https_url(&self.public_endpoint, "public endpoint", true)?;
+        if Url::parse(&self.public_endpoint)
+            .map_err(|_| "public endpoint is invalid".to_owned())?
+            .path()
+            != "/"
+        {
+            return Err("public endpoint must be an HTTPS origin without a base path".to_owned());
+        }
         self.validate_edge()?;
         self.validate_database()?;
         self.validate_identity()?;
@@ -793,6 +813,7 @@ impl FindingHostedProfile {
         }
         let mut non_worker_bindings = BTreeSet::from([
             self.database.runtime_url_env.as_str(),
+            self.database.replicator_url_env.as_str(),
             self.identity.api_key_pepper_env.as_str(),
             self.payment.bearer_token_env.as_str(),
             self.bond_observer.bearer_token_env.as_str(),
@@ -1039,15 +1060,9 @@ impl FindingHostedProfile {
                 }
                 any_enabled |= principal.enabled;
                 if let Some(key) = principal.capability_public_key_hex.as_deref() {
-                    if !tenant
-                        .auth_methods
-                        .contains(&FindingHostedAuthMethod::CapabilityDpop)
-                    {
-                        return Err("API-key-only tenant contains a capability key".to_owned());
-                    }
-                    let key = parse_key(key, "principal capability key")?;
+                    let key = parse_key(key, "principal custody key")?;
                     if !capability_keys.insert(key.to_hex()) {
-                        return Err("principal capability keys must be globally unique".to_owned());
+                        return Err("principal custody keys must be globally unique".to_owned());
                     }
                 }
             }
@@ -1071,6 +1086,15 @@ impl FindingHostedProfile {
 
     fn validate_release(&self) -> Result<(), String> {
         validate_identifier(&self.release.environment, "release environment")?;
+        if self.release.candidate_sha.len() != 40
+            || !self
+                .release
+                .candidate_sha
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err("release candidate SHA is invalid".to_owned());
+        }
         validate_digest(&self.release.artifact_sha256, "release artifact digest")?;
         validate_identifier(
             &self.release.configuration_revision,
@@ -1426,6 +1450,7 @@ mod tests {
         let mut database = FindingHostedDatabaseProfile {
             runtime_url_env: "CHIO_MARKET_RUNTIME_DATABASE_URL".to_owned(),
             worker_url_env: "CHIO_MARKET_WORKER_DATABASE_URL".to_owned(),
+            replicator_url_env: "CHIO_MARKET_REPLICATOR_DATABASE_URL".to_owned(),
             ca_certificate_path: "/etc/chio/postgres-ca.pem".to_owned(),
             max_connections: 8,
             acquire_timeout_millis: 1_000,
@@ -1545,6 +1570,7 @@ mod tests {
     fn canary_security_invariant_forces_rollback() {
         let release = FindingHostedReleaseProfile {
             environment: "production".to_owned(),
+            candidate_sha: "b".repeat(40),
             artifact_sha256: "a".repeat(64),
             configuration_revision: "revision-1".to_owned(),
             minimum_ready_replicas: 2,

@@ -2,15 +2,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use chio_core_types::capability::scope::Operation;
 use chio_core_types::capability::token::CapabilityToken;
 use chio_core_types::{canonical_json_bytes, sha256_hex, PublicKey};
-use chio_finding_market_store_postgres::{
-    HostedApiKeyRecord, HostedMarketStoreError, HostedPrincipal, HostedPrincipalRole,
-    HostedTenantId, PostgresFindingMarketStore,
+use chio_finding_market_port::{
+    HostedCapabilityAdmissionOutcome, HostedMarketPortError, HostedPrincipal, HostedPrincipalRole,
+    HostedTenantId,
 };
 use chio_kernel::{DpopProof, DPOP_SCHEMA};
 use hmac::{Hmac, Mac as _};
@@ -133,6 +132,7 @@ pub struct HostedAuthRequest {
     pub method: String,
     pub canonical_target: String,
     pub body_sha256: String,
+    pub idempotency_key: Option<String>,
     pub required_role: HostedPrincipalRole,
     pub credential: HostedAuthCredential,
     pub now_unix_secs: u64,
@@ -145,6 +145,7 @@ pub struct HostedAuthenticatedPrincipal {
     pub role: HostedPrincipalRole,
     pub method: HostedAuthMethod,
     pub credential_id: String,
+    pub artifact_signer_key: Option<PublicKey>,
 }
 
 pub trait ApiKeyPepper: Send + Sync {
@@ -203,117 +204,7 @@ impl ApiKeyPepper for StaticApiKeyPepper {
     }
 }
 
-#[async_trait]
-pub trait HostedAuthRepository: Send + Sync {
-    async fn principal_by_capability_key(
-        &self,
-        tenant: &HostedTenantId,
-        public_key_hex: &str,
-        now: u64,
-    ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError>;
-
-    async fn principal(
-        &self,
-        tenant: &HostedTenantId,
-        principal_id: &str,
-    ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError>;
-
-    async fn active_api_key(
-        &self,
-        tenant: &HostedTenantId,
-        key_id: &str,
-        now: u64,
-    ) -> Result<Option<HostedApiKeyRecord>, HostedMarketStoreError>;
-
-    async fn consume_dpop_nonce(
-        &self,
-        tenant: &HostedTenantId,
-        capability_id: &str,
-        nonce_sha256: &str,
-        valid_through: u64,
-        now: u64,
-        tenant_capacity: u64,
-    ) -> Result<bool, HostedMarketStoreError>;
-
-    async fn consume_capability_use(
-        &self,
-        tenant: &HostedTenantId,
-        capability_id: &str,
-        max_invocations: u32,
-        expires_at: u64,
-        now: u64,
-    ) -> Result<bool, HostedMarketStoreError>;
-}
-
-#[async_trait]
-impl HostedAuthRepository for PostgresFindingMarketStore {
-    async fn principal_by_capability_key(
-        &self,
-        tenant: &HostedTenantId,
-        public_key_hex: &str,
-        now: u64,
-    ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError> {
-        self.get_principal_by_capability_key(tenant, public_key_hex, now)
-            .await
-    }
-
-    async fn principal(
-        &self,
-        tenant: &HostedTenantId,
-        principal_id: &str,
-    ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError> {
-        self.get_principal(tenant, principal_id).await
-    }
-
-    async fn active_api_key(
-        &self,
-        tenant: &HostedTenantId,
-        key_id: &str,
-        now: u64,
-    ) -> Result<Option<HostedApiKeyRecord>, HostedMarketStoreError> {
-        self.get_active_api_key(tenant, key_id, now).await
-    }
-
-    async fn consume_dpop_nonce(
-        &self,
-        tenant: &HostedTenantId,
-        capability_id: &str,
-        nonce_sha256: &str,
-        valid_through: u64,
-        now: u64,
-        tenant_capacity: u64,
-    ) -> Result<bool, HostedMarketStoreError> {
-        PostgresFindingMarketStore::consume_dpop_nonce(
-            self,
-            tenant,
-            capability_id,
-            nonce_sha256,
-            valid_through,
-            now,
-            tenant_capacity,
-        )
-        .await
-    }
-
-    async fn consume_capability_use(
-        &self,
-        tenant: &HostedTenantId,
-        capability_id: &str,
-        max_invocations: u32,
-        expires_at: u64,
-        now: u64,
-    ) -> Result<bool, HostedMarketStoreError> {
-        PostgresFindingMarketStore::consume_capability_use(
-            self,
-            tenant,
-            capability_id,
-            max_invocations,
-            expires_at,
-            now,
-        )
-        .await
-    }
-}
+pub use chio_finding_market_port::HostedAuthPort as HostedAuthRepository;
 
 pub struct HostedAuthenticator {
     config: HostedAuthenticatorConfig,
@@ -386,6 +277,10 @@ impl HostedAuthenticator {
             || !matches!(request.method.as_str(), "GET" | "POST" | "PUT" | "DELETE")
             || !target_belongs_to_endpoint(&request.canonical_target, &self.public_endpoint)
             || !valid_digest(&request.body_sha256)
+            || request
+                .idempotency_key
+                .as_deref()
+                .is_some_and(|value| !valid_identifier(value, 256))
             || request.now_unix_secs == 0
         {
             return Err(HostedEdgeError::InvalidRequest);
@@ -438,12 +333,14 @@ impl HostedAuthenticator {
             .filter(|principal| principal.enabled)
             .ok_or(HostedEdgeError::AuthenticationFailed)?;
         require_role(&principal, request.required_role)?;
+        let artifact_signer_key = principal_signer_key(&principal)?;
         Ok(HostedAuthenticatedPrincipal {
             tenant_id: request.tenant_id.clone(),
             principal_id: principal.principal_id,
             role: principal.role,
             method: HostedAuthMethod::ApiKey,
             credential_id: record.key_id,
+            artifact_signer_key,
         })
     }
 
@@ -506,6 +403,7 @@ impl HostedAuthenticator {
             .filter(|principal| principal.enabled)
             .ok_or(HostedEdgeError::AuthenticationFailed)?;
         require_role(&principal, request.required_role)?;
+        let artifact_signer_key = principal_signer_key(&principal)?;
         let action_hash = request_action_hash(request)?;
         verify_dpop_stateless(
             proof,
@@ -523,34 +421,28 @@ impl HostedAuthenticator {
             .checked_add(self.config.dpop_proof_ttl_secs)
             .ok_or(HostedEdgeError::AuthenticationFailed)?;
         let nonce_sha256 = sha256_hex(proof.body.nonce.as_bytes());
-        let fresh = self
+        let admission = self
             .repository
-            .consume_dpop_nonce(
+            .consume_capability_dpop_admission(
                 &request.tenant_id,
                 &capability.id,
                 &nonce_sha256,
                 valid_through,
+                max_invocations,
+                capability.expires_at,
                 request.now_unix_secs,
                 self.config.dpop_nonce_capacity_per_tenant,
             )
             .await
             .map_err(map_store)?;
-        if !fresh {
-            return Err(HostedEdgeError::ReplayRejected);
-        }
-        let within_budget = self
-            .repository
-            .consume_capability_use(
-                &request.tenant_id,
-                &capability.id,
-                max_invocations,
-                capability.expires_at,
-                request.now_unix_secs,
-            )
-            .await
-            .map_err(map_store)?;
-        if !within_budget {
-            return Err(HostedEdgeError::AuthorizationFailed);
+        match admission {
+            HostedCapabilityAdmissionOutcome::Admitted => {}
+            HostedCapabilityAdmissionOutcome::Replay => {
+                return Err(HostedEdgeError::ReplayRejected);
+            }
+            HostedCapabilityAdmissionOutcome::BudgetExceeded => {
+                return Err(HostedEdgeError::AuthorizationFailed);
+            }
         }
         Ok(HostedAuthenticatedPrincipal {
             tenant_id: request.tenant_id.clone(),
@@ -558,6 +450,7 @@ impl HostedAuthenticator {
             role: principal.role,
             method: HostedAuthMethod::CapabilityDpop,
             credential_id: capability.id.clone(),
+            artifact_signer_key,
         })
     }
 
@@ -579,6 +472,7 @@ fn parse_public_endpoint(value: &str) -> Result<Url, HostedEdgeError> {
         || endpoint.password().is_some()
         || endpoint.query().is_some()
         || endpoint.fragment().is_some()
+        || endpoint.path() != "/"
         || endpoint.as_str().trim_end_matches('/') != value
     {
         return Err(HostedEdgeError::Configuration);
@@ -602,10 +496,7 @@ fn target_belongs_to_endpoint(value: &str, endpoint: &Url) -> bool {
     {
         return false;
     }
-    let base_path = endpoint.path().trim_end_matches('/');
-    target.path().strip_prefix(base_path).is_some_and(|suffix| {
-        base_path.is_empty() && suffix.starts_with('/') || suffix.starts_with('/')
-    })
+    target.path().starts_with('/')
 }
 
 #[derive(Serialize)]
@@ -617,6 +508,7 @@ struct RequestActionBinding<'a> {
     method: &'a str,
     canonical_target: &'a str,
     body_sha256: &'a str,
+    idempotency_key: Option<&'a str>,
 }
 
 fn request_action_hash(request: &HostedAuthRequest) -> Result<String, HostedEdgeError> {
@@ -627,6 +519,7 @@ fn request_action_hash(request: &HostedAuthRequest) -> Result<String, HostedEdge
         method: &request.method,
         canonical_target: &request.canonical_target,
         body_sha256: &request.body_sha256,
+        idempotency_key: request.idempotency_key.as_deref(),
     })
     .map(|bytes| sha256_hex(&bytes))
     .map_err(|_| HostedEdgeError::InvalidRequest)
@@ -673,10 +566,28 @@ fn require_role(
     Ok(())
 }
 
-fn map_store(error: HostedMarketStoreError) -> HostedEdgeError {
+fn principal_signer_key(principal: &HostedPrincipal) -> Result<Option<PublicKey>, HostedEdgeError> {
+    principal
+        .capability_public_key_hex
+        .as_deref()
+        .map(|value| {
+            PublicKey::from_hex(value)
+                .map_err(|_| HostedEdgeError::AuthenticationFailed)
+                .and_then(|key| {
+                    if key.is_weak_ed25519() {
+                        Err(HostedEdgeError::AuthenticationFailed)
+                    } else {
+                        Ok(key)
+                    }
+                })
+        })
+        .transpose()
+}
+
+fn map_store(error: HostedMarketPortError) -> HostedEdgeError {
     match error {
-        HostedMarketStoreError::Capacity => HostedEdgeError::CapacityUnavailable,
-        HostedMarketStoreError::Unavailable => HostedEdgeError::DependencyUnavailable,
+        HostedMarketPortError::Capacity => HostedEdgeError::CapacityUnavailable,
+        HostedMarketPortError::Unavailable => HostedEdgeError::DependencyUnavailable,
         _ => HostedEdgeError::AuthenticationFailed,
     }
 }
@@ -707,9 +618,11 @@ fn valid_digest(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
     use chio_core::capability::scope::{ChioScope, ToolGrant};
     use chio_core::capability::token::CapabilityTokenBody;
     use chio_core::Keypair;
+    use chio_finding_market_port::HostedApiKeyRecord;
     use chio_kernel::DpopProofBody;
     use std::sync::Mutex;
 
@@ -727,7 +640,7 @@ mod tests {
             _tenant: &HostedTenantId,
             _public_key_hex: &str,
             _now: u64,
-        ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError> {
+        ) -> Result<Option<HostedPrincipal>, HostedMarketPortError> {
             Ok(Some(self.principal.clone()))
         }
 
@@ -735,7 +648,7 @@ mod tests {
             &self,
             _tenant: &HostedTenantId,
             _principal_id: &str,
-        ) -> Result<Option<HostedPrincipal>, HostedMarketStoreError> {
+        ) -> Result<Option<HostedPrincipal>, HostedMarketPortError> {
             Ok(Some(self.principal.clone()))
         }
 
@@ -744,41 +657,37 @@ mod tests {
             _tenant: &HostedTenantId,
             _key_id: &str,
             _now: u64,
-        ) -> Result<Option<HostedApiKeyRecord>, HostedMarketStoreError> {
+        ) -> Result<Option<HostedApiKeyRecord>, HostedMarketPortError> {
             Ok(Some(self.key.clone()))
         }
 
-        async fn consume_dpop_nonce(
+        async fn consume_capability_dpop_admission(
             &self,
             _tenant: &HostedTenantId,
             _capability_id: &str,
             _nonce_sha256: &str,
             _valid_through: u64,
-            _now: u64,
-            _tenant_capacity: u64,
-        ) -> Result<bool, HostedMarketStoreError> {
-            self.nonce_fresh
-                .lock()
-                .map(|mut value| {
-                    let admitted = *value;
-                    *value = false;
-                    admitted
-                })
-                .map_err(|_| HostedMarketStoreError::Unavailable)
-        }
-
-        async fn consume_capability_use(
-            &self,
-            _tenant: &HostedTenantId,
-            _capability_id: &str,
             _max_invocations: u32,
             _expires_at: u64,
             _now: u64,
-        ) -> Result<bool, HostedMarketStoreError> {
-            self.capability_available
+            _tenant_nonce_capacity: u64,
+        ) -> Result<HostedCapabilityAdmissionOutcome, HostedMarketPortError> {
+            let mut nonce_fresh = self
+                .nonce_fresh
                 .lock()
-                .map(|value| *value)
-                .map_err(|_| HostedMarketStoreError::Unavailable)
+                .map_err(|_| HostedMarketPortError::Unavailable)?;
+            if !*nonce_fresh {
+                return Ok(HostedCapabilityAdmissionOutcome::Replay);
+            }
+            let capability_available = self
+                .capability_available
+                .lock()
+                .map_err(|_| HostedMarketPortError::Unavailable)?;
+            if !*capability_available {
+                return Ok(HostedCapabilityAdmissionOutcome::BudgetExceeded);
+            }
+            *nonce_fresh = false;
+            Ok(HostedCapabilityAdmissionOutcome::Admitted)
         }
     }
 
@@ -837,23 +746,20 @@ mod tests {
 
     #[test]
     fn endpoint_validation_rejects_origin_and_path_confusion() {
-        let endpoint = parse_public_endpoint("https://market.example/api");
+        assert!(parse_public_endpoint("https://market.example/api").is_err());
+        let endpoint = parse_public_endpoint("https://market.example");
         assert!(endpoint.is_ok());
         if let Ok(endpoint) = endpoint {
             assert!(target_belongs_to_endpoint(
-                "https://market.example/api/findings?limit=1",
+                "https://market.example/v1/findings?limit=1",
                 &endpoint
             ));
             assert!(!target_belongs_to_endpoint(
-                "https://market.example.evil/api/findings",
+                "https://market.example.evil/v1/findings",
                 &endpoint
             ));
             assert!(!target_belongs_to_endpoint(
-                "https://market.example/api2/findings",
-                &endpoint
-            ));
-            assert!(!target_belongs_to_endpoint(
-                "https://market.example/api/findings#unsigned",
+                "https://market.example/v1/findings#unsigned",
                 &endpoint
             ));
         }
@@ -869,6 +775,7 @@ mod tests {
             method: "POST".to_owned(),
             canonical_target: "https://market.example/v1/findings/a/purchases".to_owned(),
             body_sha256: sha256_hex(b"{}"),
+            idempotency_key: Some("event-a".to_owned()),
             required_role: HostedPrincipalRole::Buyer,
             credential,
             now_unix_secs: 100,
@@ -912,8 +819,9 @@ mod tests {
         let pepper =
             Arc::new(StaticApiKeyPepper::new(vec![7; 32]).unwrap_or_else(|_| unreachable!()));
         let repository = repository(&pepper, &subject.public_key());
+        let auth_repository: Arc<dyn HostedAuthRepository> = repository.clone();
         let authenticator =
-            HostedAuthenticator::new(config(authority.public_key()), repository, pepper);
+            HostedAuthenticator::new(config(authority.public_key()), auth_repository, pepper);
         assert!(authenticator.is_ok());
         if let Ok(authenticator) = authenticator {
             let audience = authenticator.audience(&tenant());
@@ -965,6 +873,30 @@ mod tests {
                 );
                 assert!(proof.is_ok());
                 if let Ok(proof) = proof {
+                    let mut wrong_binding = base_request(HostedAuthCredential::CapabilityDpop {
+                        capability: Box::new(capability.clone()),
+                        proof: Box::new(proof.clone()),
+                    });
+                    wrong_binding.idempotency_key = Some("event-b".to_owned());
+                    let rejected = authenticator.authenticate(wrong_binding).await;
+                    assert_eq!(rejected, Err(HostedEdgeError::AuthenticationFailed));
+                    assert!(repository
+                        .capability_available
+                        .lock()
+                        .map(|mut available| *available = false)
+                        .is_ok());
+                    let budget_rejected = authenticator
+                        .authenticate(base_request(HostedAuthCredential::CapabilityDpop {
+                            capability: Box::new(capability.clone()),
+                            proof: Box::new(proof.clone()),
+                        }))
+                        .await;
+                    assert_eq!(budget_rejected, Err(HostedEdgeError::AuthorizationFailed));
+                    assert!(repository
+                        .capability_available
+                        .lock()
+                        .map(|mut available| *available = true)
+                        .is_ok());
                     let accepted = authenticator
                         .authenticate(base_request(HostedAuthCredential::CapabilityDpop {
                             capability: Box::new(capability.clone()),

@@ -1,0 +1,62 @@
+name: Cognition market dark network canary
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cognition-market-dark-network-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: Exact-SHA authenticated network boundary
+    runs-on: [self-hosted, linux, x64, cognition-market, network, ephemeral, attested]
+    timeout-minutes: 30
+    environment: cognition-market-dark
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Require exact default-branch candidate
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          git check-ref-format --branch "${DEFAULT_BRANCH}"
+          candidate_sha="$(git rev-parse --verify 'HEAD^{commit}')"
+          test "${candidate_sha}" = "${GITHUB_SHA}"
+          git fetch --no-tags --force origin \
+            "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+          default_branch_sha="$(git rev-parse --verify "origin/${DEFAULT_BRANCH}^{commit}")"
+          test "${candidate_sha}" = "${default_branch_sha}"
+      - name: Install Rust toolchain
+        run: rustup toolchain install --profile minimal
+      - name: Run bounded network qualification
+        env:
+          CHIO_FINDING_HOSTED_PROFILE: ${{ vars.CHIO_FINDING_HOSTED_PROFILE }}
+          CHIO_FINDING_NETWORK_CANARY_POOL: ${{ vars.CHIO_FINDING_NETWORK_CANARY_POOL }}
+          CHIO_FINDING_NETWORK_TENANT_ID: ${{ secrets.CHIO_FINDING_NETWORK_TENANT_ID }}
+          CHIO_FINDING_NETWORK_SELLER_KEY_ID: ${{ secrets.CHIO_FINDING_NETWORK_SELLER_KEY_ID }}
+          CHIO_FINDING_NETWORK_SELLER_KEY_SECRET: ${{ secrets.CHIO_FINDING_NETWORK_SELLER_KEY_SECRET }}
+          CHIO_FINDING_NETWORK_BUYER_KEY_ID: ${{ secrets.CHIO_FINDING_NETWORK_BUYER_KEY_ID }}
+          CHIO_FINDING_NETWORK_BUYER_KEY_SECRET: ${{ secrets.CHIO_FINDING_NETWORK_BUYER_KEY_SECRET }}
+          CHIO_FINDING_NETWORK_ISOLATION_TENANT_ID: ${{ secrets.CHIO_FINDING_NETWORK_ISOLATION_TENANT_ID }}
+          CHIO_FINDING_NETWORK_ISOLATION_BUYER_KEY_ID: ${{ secrets.CHIO_FINDING_NETWORK_ISOLATION_BUYER_KEY_ID }}
+          CHIO_FINDING_NETWORK_ISOLATION_BUYER_KEY_SECRET: ${{ secrets.CHIO_FINDING_NETWORK_ISOLATION_BUYER_KEY_SECRET }}
+        run: ./scripts/qualify-cognition-market-network.sh
+      - name: Upload signed network evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cognition-market-network-${{ github.sha }}
+          path: target/release-qualification/cognition-market-network
+          if-no-files-found: error
+          retention-days: 21

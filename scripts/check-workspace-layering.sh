@@ -18,6 +18,7 @@ domain_manifests=(
 # depth or group folder (e.g. `path = "../../products/chio-cli"`).
 blocked_workspace_paths='path = "[^"]*/(chio-cli|chio-control-plane|chio-hosted-mcp)"'
 blocked_transport_deps='^(clap|axum|reqwest)[[:space:]]*='
+blocked_hosted_edge_storage='^chio-finding-market-store-postgres[[:space:]]*='
 failed=0
 
 search_pattern() {
@@ -44,6 +45,13 @@ for manifest in "${domain_manifests[@]}"; do
     failed=1
   fi
 done
+
+hosted_edge_manifest="crates/platform/chio-finding-hosted-edge/Cargo.toml"
+if search_pattern "${blocked_hosted_edge_storage}" "${hosted_edge_manifest}" >/dev/null; then
+  echo "concrete storage dependency found in ${hosted_edge_manifest}" >&2
+  search_pattern "${blocked_hosted_edge_storage}" "${hosted_edge_manifest}" >&2 || true
+  failed=1
+fi
 
 if [[ "${failed}" -ne 0 ]]; then
   exit 1

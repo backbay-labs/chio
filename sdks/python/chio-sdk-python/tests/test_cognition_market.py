@@ -17,11 +17,86 @@ from chio_sdk.cognition_market import (
     CognitionMarketBuyer,
     CognitionMarketError,
     CognitionMarketSeller,
+    HostedCognitionMarketClient,
     PurchasedVerifiedFix,
     VerifiedFindingProof,
     _canonical_json,
     _request_id,
 )
+
+
+@pytest.mark.asyncio
+async def test_hosted_client_binds_tenant_credentials_and_idempotency() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        assert request.headers["chio-tenant-id"] == "tenant:test"
+        assert request.headers["chio-api-key-id"] == "key:test"
+        assert request.headers["chio-api-key-secret"] == "secret:test"
+        assert request.headers["chio-request-id"] == f"request:{len(seen)}"
+        if request.method == "POST":
+            assert request.headers["idempotency-key"] == "event:1"
+            assert request.content == _canonical_json(json.loads(request.content))
+        return httpx.Response(200, json={"ok": True})
+
+    client = HostedCognitionMarketClient(
+        "https://market.example",
+        "tenant:test",
+        "key:test",
+        "secret:test",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        await client.publish(
+            {"schema": "chio.finding.v1", "finding_id": "f" * 64},
+            "request:1",
+            "event:1",
+        )
+        await client.mutate(
+            "listing",
+            {
+                "aggregateId": "listing:1",
+                "eventId": "event:1",
+                "expectedRevision": 0,
+                "payload": {"schema": "chio.finding.market-terms.v1"},
+            },
+            "request:2",
+        )
+        await client.findings("request:3", after="finding:1", limit=100)
+    finally:
+        await client.close()
+
+    assert seen[1].url.path == "/v1/findings/events/listing"
+    assert seen[2].url.query == b"after=finding%3A1&limit=100"
+
+
+def test_hosted_client_rejects_ambiguous_or_unsafe_inputs() -> None:
+    with pytest.raises(CognitionMarketError, match="endpoint"):
+        HostedCognitionMarketClient("http://market.example", "tenant", "key", "secret")
+    client = HostedCognitionMarketClient("https://market.example", "tenant", "key", "secret")
+    with pytest.raises(CognitionMarketError, match="operation"):
+        asyncio.run(client.mutate("custom", {}, "request"))
+    with pytest.raises(CognitionMarketError, match="operation"):
+        asyncio.run(client.mutate("publish", {}, "request"))
+    for internal_operation in (
+        "admission",
+        "participation",
+        "purchase",
+        "reveal",
+        "failed-delivery",
+        "challenge-outcome",
+        "liability",
+        "appeal",
+        "purchase-terminal",
+        "enforcement",
+        "settlement",
+        "status",
+        "audit",
+    ):
+        with pytest.raises(CognitionMarketError, match="operation"):
+            asyncio.run(client.mutate(internal_operation, {}, "request"))
+    asyncio.run(client.close())
 
 
 def buyer_profile(path: Path) -> Path:

@@ -844,6 +844,12 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
             "spec/schemas/chio-finding/v1/challenge.schema.json",
         ),
         (
+            "chio.finding.claim-allocation.v1",
+            "finding_claim_allocation",
+            "cognition-market-hosted-completion",
+            "spec/schemas/chio-finding/v1/claim-allocation.schema.json",
+        ),
+        (
             "chio.finding.failed-delivery.v1",
             "finding_failed_delivery",
             "finding-market-v1",
@@ -860,6 +866,12 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
             "finding_key_revocation",
             "finding-market-v1",
             "spec/schemas/chio-finding/v1/key-revocation.schema.json",
+        ),
+        (
+            "chio.finding.liability.v1",
+            "finding_liability",
+            "cognition-market-hosted-completion",
+            "spec/schemas/chio-finding/v1/liability.schema.json",
         ),
         (
             "chio.finding.market-terms.v1",
@@ -880,6 +892,12 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
             "spec/schemas/chio-finding/v1/purchase-record.schema.json",
         ),
         (
+            "chio.finding.purchase-result.v1",
+            "finding_purchase_result",
+            "cognition-market-hosted-completion",
+            "spec/schemas/chio-finding/v1/purchase-result.schema.json",
+        ),
+        (
             "chio.finding.seller-authorization.v1",
             "finding_seller_authorization",
             "finding-market-v1",
@@ -892,10 +910,22 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
             "spec/schemas/chio-finding/v1/status-epoch.schema.json",
         ),
         (
+            "chio.finding.verified-fix-submission.v1",
+            "finding_verified_fix_submission",
+            "cognition-market-hosted-completion",
+            "spec/schemas/chio-finding/v1/verified-fix-submission.schema.json",
+        ),
+        (
             "chio.finding.verifier-report.v1",
             "finding_verifier_report",
             "finding-market-v1",
             "spec/schemas/chio-finding/v1/verifier-report.schema.json",
+        ),
+        (
+            "chio.finding.voluntary-retraction.v1",
+            "finding_voluntary_retraction",
+            "cognition-market-hosted-completion",
+            "spec/schemas/chio-finding/v1/voluntary-retraction.schema.json",
         ),
         (
             MARKET_PENALTY_SCHEMA,
@@ -908,6 +938,8 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
         "chio.finding.bond-observation-request.v1",
         "chio.finding.bond-observation-response.v1",
         "chio.finding.delivery.v1",
+        "chio.finding.hosted-authenticated-delivery.v1",
+        "chio.finding.hosted-qualification.v1",
         "chio.finding.impairment-publisher-request.v1",
         "chio.finding.impairment-publisher-response.v1",
         "chio.finding.purchase-context.v1",

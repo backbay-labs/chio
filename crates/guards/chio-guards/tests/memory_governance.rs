@@ -619,6 +619,48 @@ fn finding_quarantine_rechecks_status_immediately_before_dispatch() {
         guard.revalidate_before_dispatch(&ctx),
         Err(chio_kernel::KernelError::GuardDenied(_))
     ));
+    assert!(guard.is_finding_quarantined("memory", "key-1"));
+    *resolver.value.lock().expect("status lock") = FindingStatusValue::Live;
+    assert!(matches!(
+        guard.evaluate(&ctx).expect("restored evaluation").verdict,
+        Verdict::Allow
+    ));
+    assert!(!guard.is_finding_quarantined("memory", "key-1"));
+}
+
+#[test]
+fn finding_quarantine_rejects_unbounded_marker_keys() {
+    let resolver = Arc::new(MutableFindingResolver {
+        value: Mutex::new(FindingStatusValue::Live),
+        memory_content_sha256: Mutex::new("c".repeat(64)),
+    });
+    let guard = MemoryGovernanceGuard::with_config_and_retraction_resolver(
+        finding_quarantine_config(),
+        resolver,
+    )
+    .expect("build finding quarantine guard");
+    let scope = ChioScope::default();
+    let kp = Keypair::generate();
+    let oversized_key = "k".repeat(1_025);
+    let (request, agent_id, server_id) = make_request_in_scope(
+        &kp,
+        &scope,
+        "vector_query",
+        serde_json::json!({"collection": "memory", "id": oversized_key}),
+    );
+    let ctx = GuardContext {
+        request: &request,
+        scope: &scope,
+        agent_id: &agent_id,
+        server_id: &server_id,
+        session_filesystem_roots: None,
+        matched_grant_index: None,
+    };
+    assert!(matches!(
+        guard.evaluate(&ctx).expect("bounded evaluation").verdict,
+        Verdict::Deny
+    ));
+    assert!(guard.is_finding_quarantined("memory", &"k".repeat(1_025)));
 }
 
 #[test]

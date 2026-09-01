@@ -12,6 +12,10 @@ use std::str::FromStr as _;
 use std::time::Duration;
 
 use chio_core_types::sha256_hex;
+pub use chio_finding_market_port::{
+    HostedApiKeyRecord, HostedCapabilityAdmissionOutcome, HostedPrincipal, HostedPrincipalRole,
+    HostedTenantId,
+};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use sqlx::{PgPool, Postgres, Row as _, Transaction};
@@ -19,14 +23,19 @@ use zeroize::Zeroize as _;
 
 mod aggregates;
 mod auth;
+mod catalog;
 mod checkpoints;
 mod domain;
+mod http;
+mod import;
 mod job_leases;
+mod ports;
 mod replication;
 mod retention;
 mod runtime_boundary;
 mod spend;
 mod tenant;
+mod transactions;
 mod validation;
 
 pub(crate) use validation::{
@@ -36,17 +45,21 @@ pub(crate) use validation::{
 
 pub use aggregates::{HostedAggregateEvent, HostedAggregateHead, HostedAggregateKind};
 pub use auth::{
-    HostedApiKeyRecord, HostedPrincipal, HostedPrincipalLifecycleBody,
-    HostedPrincipalLifecycleOperation, HostedPrincipalRole, HostedSecurityEventOutcome,
+    HostedPrincipalLifecycleBody, HostedPrincipalLifecycleOperation, HostedSecurityEventOutcome,
     SignedHostedPrincipalLifecycleEvent, HOSTED_PRINCIPAL_LIFECYCLE_SCHEMA,
 };
+pub use catalog::{HostedDomainPage, HostedDomainWrite};
 pub use checkpoints::{
     HostedAggregateCheckpointBody, HostedAggregateCheckpointRecord,
     SignedHostedAggregateCheckpoint, HOSTED_AGGREGATE_CHECKPOINT_SCHEMA,
 };
 pub use domain::{
-    HostedMarketDomainArtifact, HostedMarketDomainEvent, HostedMarketDomainEventKind,
-    HostedMarketDomainProjection,
+    HostedCommerceSettlementPacket, HostedCommerceSettlementStatus, HostedMarketDomainArtifact,
+    HostedMarketDomainEvent, HostedMarketDomainEventKind, HostedMarketDomainProjection,
+};
+pub use import::{
+    HostedSqliteImportBatchBody, HostedSqliteImportEntry, HostedSqliteImportOutcome,
+    SignedHostedSqliteImportBatch, HOSTED_SQLITE_IMPORT_BATCH_SCHEMA,
 };
 pub use replication::{
     HostedAuthorityMode, HostedAuthorityState, HostedAuthorityTransitionBody,
@@ -70,6 +83,7 @@ pub use retention::{
 };
 pub use spend::{HostedSpendReservation, HostedSpendState};
 pub use tenant::HostedTenantLimits;
+pub use transactions::HostedPurchaseRecoveryOutcome;
 
 const MIGRATION_LOCK_NAME: &str = "chio.finding.market.migrations.v1";
 const LEGACY_MIGRATIONS: &[(i64, &str, &str)] = &[
@@ -119,7 +133,6 @@ const LEGACY_MIGRATIONS: &[(i64, &str, &str)] = &[
         include_str!("../migrations/0009_aggregate_checkpoints.sql"),
     ),
 ];
-const MAX_TENANT_ID_BYTES: usize = 128;
 const MAX_JOB_ID_BYTES: usize = 256;
 const MAX_JOB_KIND_BYTES: usize = 96;
 const GC_JOB_TOMBSTONE_CONSTRAINT: &str = "chio_finding_market_jobs_gc_tombstone_v1";
@@ -177,7 +190,8 @@ async fn verify_schema_current(pool: &PgPool) -> Result<(), HostedMarketStoreErr
         let version: i64 = row.try_get(0).map_err(unavailable)?;
         let checksum: Vec<u8> = row.try_get(1).map_err(unavailable)?;
         let success: bool = row.try_get(2).map_err(unavailable)?;
-        if version != expected.version || checksum != expected.checksum.as_ref() || !success {
+        let expected_checksum: &[u8] = expected.checksum.as_ref();
+        if version != expected.version || checksum != expected_checksum || !success {
             return Err(HostedMarketStoreError::MigrationDrift);
         }
     }
@@ -261,37 +275,19 @@ async fn bridge_legacy_migration_ledger(
         if migration.version != version {
             return Err(HostedMarketStoreError::MigrationDrift);
         }
+        let description: &str = migration.description.as_ref();
+        let checksum: &[u8] = migration.checksum.as_ref();
         sqlx::query(
             "INSERT INTO _sqlx_migrations (version, description, success, checksum, execution_time) VALUES ($1, $2, TRUE, $3, 0)",
         )
         .bind(version)
-        .bind(migration.description.as_ref())
-        .bind(migration.checksum.as_ref())
+        .bind(description)
+        .bind(checksum)
         .execute(&mut **connection)
         .await
         .map_err(unavailable)?;
     }
     Ok(())
-}
-
-/// A validated opaque tenant identity. It is always bound separately from
-/// caller-provided object identifiers in database primary keys.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct HostedTenantId(String);
-
-impl HostedTenantId {
-    pub fn new(value: impl Into<String>) -> Result<Self, HostedMarketStoreError> {
-        let value = value.into();
-        validate_identifier(&value, MAX_TENANT_ID_BYTES)
-            .map_err(|_| HostedMarketStoreError::Tenant)?;
-        Ok(Self(value))
-    }
-
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
 }
 
 /// TLS-required PostgreSQL pool configuration. The DSN is redacted from

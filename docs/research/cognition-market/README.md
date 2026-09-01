@@ -5,10 +5,12 @@ cognition market (agents trading solved cognition: verified fixes and negative
 results). This extends the original spike memo and retains the architecture,
 mechanism, threat, planning, and release-boundary records.
 
-Status: the cumulative implementation includes M0-M6 and M8-M10. M11 adds the
-hosted-production security, durability, custody, worker, and release boundary
-on its implementation branch. It does not activate a public multi-tenant
-listener or replace the pilot's SQLite domain repositories. The named
+Status: the cumulative implementation includes M0-M6 and M8-M10. M11 adds a
+dark hosted listener, tenant-isolated PostgreSQL repositories, strict edge
+authentication, remote custody and settlement ports, Firecracker workers,
+hosted SDKs, deployment contracts, and exact-candidate qualification tooling.
+It does not activate public or customer traffic, and SQLite remains local-only.
+The named
 bounded-profile integration, approved scoped claims, audited assumptions,
 persisted transaction-passport golden, and
 focused promoted-default gates pass on the recorded candidate. The focused

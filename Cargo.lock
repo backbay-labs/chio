@@ -3648,11 +3648,15 @@ version = "0.1.0"
 dependencies = [
  "arc-swap",
  "async-trait",
+ "axum 0.8.8",
  "base64 0.22.1",
  "chio-core",
  "chio-core-types",
- "chio-finding-market-store-postgres",
+ "chio-finding",
+ "chio-finding-market-port",
  "chio-kernel",
+ "chio-spec-validate",
+ "chio-test-support",
  "hex",
  "hmac 0.12.1",
  "libc",
@@ -3661,11 +3665,13 @@ dependencies = [
  "rustls",
  "rustls-webpki",
  "serde",
+ "serde_json",
  "sha2 0.10.9",
  "subtle",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "tower 0.5.3",
  "url",
  "x509-parser 0.16.0",
  "zeroize",
@@ -3677,13 +3683,18 @@ version = "0.1.0"
 dependencies = [
  "chio-control-plane",
  "chio-core-types",
+ "chio-egress-contract",
+ "chio-finding",
  "chio-finding-market-store-postgres",
  "chio-finding-worker",
  "clap 4.6.0",
  "nix",
+ "reqwest 0.13.2",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]
@@ -3705,12 +3716,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-finding-market-port"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "chio-finding-market-server"
+version = "0.1.0"
+dependencies = [
+ "chio-control-plane",
+ "chio-core-types",
+ "chio-finding-hosted-edge",
+ "chio-finding-market-store-postgres",
+ "clap 4.6.0",
+ "nix",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
 name = "chio-finding-market-store-postgres"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-core-types",
  "chio-finding",
+ "chio-finding-hosted-edge",
  "chio-finding-market-migrations",
+ "chio-finding-market-port",
+ "chio-open-market",
+ "chio-spec-validate",
+ "chio-test-support",
  "serde",
  "serde_json",
  "sqlx",

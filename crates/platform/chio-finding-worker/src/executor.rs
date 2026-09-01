@@ -1784,17 +1784,13 @@ mod tests {
                 assert!(text.contains(&std::borrow::Cow::Borrowed("--new-pid-ns")));
                 assert!(text.contains(&std::borrow::Cow::Borrowed("--cgroup-version")));
                 assert!(text.contains(&std::borrow::Cow::Borrowed("--no-api")));
-                assert!(!text.iter().any(|arg| arg.as_ref() == "--no-seccomp"));
-                assert!(!text.iter().any(|arg| arg.as_ref() == "--netns"));
-                assert!(text
-                    .iter()
-                    .any(|arg| arg.as_ref() == "memory.max=335544320"));
-                assert!(text.iter().any(|arg| arg.as_ref() == "pids.max=72"));
-                assert!(text
-                    .iter()
-                    .any(|arg| arg.as_ref() == "cpu.max=50000 100000"));
-                assert!(text.iter().any(|arg| arg.as_ref() == "fsize=8388608"));
-                assert!(text.iter().any(|arg| arg.as_ref() == "no-file=4096"));
+                assert!(!text.contains(&std::borrow::Cow::Borrowed("--no-seccomp")));
+                assert!(!text.contains(&std::borrow::Cow::Borrowed("--netns")));
+                assert!(text.contains(&std::borrow::Cow::Borrowed("memory.max=335544320")));
+                assert!(text.contains(&std::borrow::Cow::Borrowed("pids.max=72")));
+                assert!(text.contains(&std::borrow::Cow::Borrowed("cpu.max=50000 100000")));
+                assert!(text.contains(&std::borrow::Cow::Borrowed("fsize=8388608")));
+                assert!(text.contains(&std::borrow::Cow::Borrowed("no-file=4096")));
             }
         }
     }

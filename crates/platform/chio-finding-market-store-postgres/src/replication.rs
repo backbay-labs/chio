@@ -331,12 +331,22 @@ impl PostgresFindingMarketReplicator {
         }
         let payload_json = canonical_json_bytes(&body.payload)
             .map_err(|_| HostedMarketStoreError::Invalid("replication payload"))?;
+        let artifact_authority_id =
+            if body.event_kind == HostedMarketDomainEventKind::PenaltyAssessed {
+                body.payload
+                    .get("body")
+                    .and_then(|value| value.get("issuedBy"))
+                    .and_then(serde_json::Value::as_str)
+            } else {
+                None
+            };
         let domain_event = HostedMarketDomainEvent::from_canonical_payload(
             body.event_kind,
             body.aggregate_id.clone(),
             body.event_id.clone(),
             payload_json,
             body.artifact_signer_key.as_ref(),
+            artifact_authority_id,
         )?;
         let payload_sha256 = sha256_hex(domain_event.payload_json());
         let revision = body
@@ -724,6 +734,16 @@ impl PostgresFindingMarketReplicator {
         Ok(digest)
     }
 
+    pub async fn authority_state(
+        &self,
+        tenant: &HostedTenantId,
+    ) -> Result<HostedAuthorityState, HostedMarketStoreError> {
+        let mut transaction = begin(&self.pool, tenant).await?;
+        let state = load_authority_state(&mut transaction, tenant).await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(state)
+    }
+
     pub async fn apply_authority_transition(
         &self,
         tenant: &HostedTenantId,
@@ -834,8 +854,11 @@ fn principal_rollback_record(
     let operation = super::HostedPrincipalLifecycleOperation::parse(
         &row.try_get::<String, _>(3).map_err(unavailable)?,
     )?;
-    let role =
-        super::HostedPrincipalRole::parse(&row.try_get::<String, _>(4).map_err(unavailable)?)?;
+    let role = row
+        .try_get::<String, _>(4)
+        .map_err(unavailable)?
+        .parse::<super::HostedPrincipalRole>()
+        .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
     let capability_public_key_hex: Option<String> = row.try_get(5).map_err(unavailable)?;
     let overlap_expires_at = row
         .try_get::<Option<i64>, _>(6)
@@ -1068,7 +1091,7 @@ async fn load_authority_state(
     })
 }
 
-fn validate_signed<T: Serialize + Clone>(
+pub(crate) fn validate_signed<T: Serialize + Clone>(
     tenant: &HostedTenantId,
     expected_signer: &PublicKey,
     envelope: &SignedExportEnvelope<T>,

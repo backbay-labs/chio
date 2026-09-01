@@ -71,6 +71,187 @@ class PurchasedVerifiedFix:
     purchase: dict[str, Any]
 
 
+HOSTED_MUTATION_OPERATIONS = frozenset(
+    {
+        "listing",
+        "delivery",
+        "challenge",
+        "verified-fix",
+        "retraction",
+        "penalty",
+    }
+)
+
+
+class HostedCognitionMarketClient:
+    """Authenticated multi-tenant hosted market transport."""
+
+    def __init__(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        api_key_id: str,
+        api_key_secret: str,
+        *,
+        timeout: float = 30.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise CognitionMarketError("timeout must be a positive finite number")
+        self.endpoint = _hosted_endpoint(endpoint)
+        self.tenant_id = _hosted_identifier(tenant_id, "tenant_id", 256)
+        self.api_key_id = _hosted_identifier(api_key_id, "api_key_id", 256)
+        self.api_key_secret = _hosted_identifier(api_key_secret, "api_key_secret", 4096)
+        self._deadline_seconds = timeout
+        self._client = httpx.AsyncClient(base_url=self.endpoint, timeout=timeout, transport=transport)
+
+    async def __aenter__(self) -> HostedCognitionMarketClient:
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.close()
+
+    async def close(self) -> None:
+        await self._client.aclose()
+
+    async def publish(
+        self,
+        finding: dict[str, Any],
+        request_id: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST", "/v1/findings/publish", request_id, finding, idempotency_key
+        )
+
+    async def mutate(
+        self,
+        operation: str,
+        mutation: dict[str, Any],
+        request_id: str,
+    ) -> dict[str, Any]:
+        if operation not in HOSTED_MUTATION_OPERATIONS:
+            raise CognitionMarketError("hosted mutation operation is unsupported")
+        if set(mutation) - {
+            "aggregateId",
+            "eventId",
+            "expectedRevision",
+            "expectedEventSha256",
+            "artifactSignerKey",
+            "payload",
+        }:
+            raise CognitionMarketError("hosted mutation contains an unsupported field")
+        event_id = _hosted_identifier(mutation.get("eventId"), "eventId", 256)
+        _hosted_identifier(mutation.get("aggregateId"), "aggregateId", 512)
+        revision = mutation.get("expectedRevision")
+        if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+            raise CognitionMarketError("expectedRevision must be a non-negative integer")
+        if not isinstance(mutation.get("payload"), dict):
+            raise CognitionMarketError("payload must be a JSON object")
+        return await self._request(
+            "POST", f"/v1/findings/events/{operation}", request_id, mutation, event_id
+        )
+
+    async def finding(self, finding_id: str, request_id: str) -> dict[str, Any]:
+        finding_id = _hosted_identifier(finding_id, "finding_id", 512)
+        from urllib.parse import quote
+
+        return await self._request("GET", f"/v1/findings/{quote(finding_id, safe='')}", request_id)
+
+    async def findings(
+        self,
+        request_id: str,
+        *,
+        after: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        from urllib.parse import urlencode
+
+        query: dict[str, str] = {}
+        if after is not None:
+            query["after"] = _hosted_identifier(after, "after", 512)
+        if limit is not None:
+            if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+                raise CognitionMarketError("limit must be an integer from 1 through 100")
+            query["limit"] = str(limit)
+        suffix = f"?{urlencode(query)}" if query else ""
+        return await self._request("GET", f"/v1/findings{suffix}", request_id)
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        request_id: str,
+        body: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        headers = {
+            "accept": "application/json",
+            "chio-api-key-id": self.api_key_id,
+            "chio-api-key-secret": self.api_key_secret,
+            "chio-request-id": _hosted_identifier(request_id, "request_id", 256),
+            "chio-tenant-id": self.tenant_id,
+        }
+        content = None
+        if body is not None:
+            headers["content-type"] = "application/json"
+            headers["idempotency-key"] = _hosted_identifier(
+                idempotency_key, "idempotency_key", 256
+            )
+            content = _canonical_json(body)
+        response = await _request_bytes(
+            self._client,
+            method,
+            path,
+            maximum=JSON_RESPONSE_MAX_BYTES,
+            label="hosted market response",
+            deadline_seconds=self._deadline_seconds,
+            content=content,
+            headers=headers,
+        )
+        try:
+            value = json.loads(response)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise CognitionMarketError("hosted market returned invalid JSON") from error
+        if not isinstance(value, dict):
+            raise CognitionMarketError("hosted market JSON response is not an object")
+        return value
+
+
+def _hosted_endpoint(value: str) -> str:
+    if not isinstance(value, str):
+        raise CognitionMarketError("hosted endpoint is invalid")
+    parsed = urlsplit(value)
+    try:
+        port = parsed.port
+    except ValueError as error:
+        raise CognitionMarketError("hosted endpoint is invalid") from error
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or port == 0
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in ("", "/")
+    ):
+        raise CognitionMarketError("hosted endpoint is invalid")
+    return value.rstrip("/")
+
+
+def _hosted_identifier(value: Any, label: str, maximum: int) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > maximum
+        or value.strip() != value
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
+        raise CognitionMarketError(f"{label} is invalid")
+    return value
+
+
 def _canonical_json(value: Any) -> bytes:
     return json.dumps(
         value,

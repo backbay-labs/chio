@@ -28,9 +28,12 @@
 //! - writes with an explicit retention TTL above `max_retention_ttl_secs`
 //!   are denied;
 //! - writes whose total matches / exceeds `max_memory_entries` are
-//!   denied (fail-closed on counter mutex poisoning).
+//!   denied (fail-closed on counter mutex poisoning);
+//! - finding-backed reads are denied and locally marked quarantined when the
+//!   pinned status resolver is unavailable or no longer live. The underlying
+//!   memory value is preserved for audit and possible status restoration.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use regex::Regex;
@@ -42,8 +45,12 @@ use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, ToolServerOut
 
 use crate::action::{extract_action_checked, ToolAction};
 use crate::finding_retraction::{
-    FindingRetractionQuery, FindingRetractionResolver, FindingStatusValue,
+    FindingRetractionQuery, FindingRetractionResolution, FindingRetractionResolver,
+    FindingStatusValue,
 };
+
+const MAX_QUARANTINED_FINDING_KEYS: usize = 10_000;
+const MAX_QUARANTINE_COMPONENT_BYTES: usize = 1_024;
 
 /// Errors produced when building a [`MemoryGovernanceGuard`].
 #[derive(Debug, thiserror::Error)]
@@ -141,6 +148,12 @@ struct FindingRetractionBinding {
     resolver: Arc<dyn FindingRetractionResolver>,
 }
 
+#[derive(Default)]
+struct FindingQuarantine {
+    keys: HashSet<(String, String)>,
+    saturated: bool,
+}
+
 /// Guard implementing memory governance.
 pub struct MemoryGovernanceGuard {
     enabled: bool,
@@ -151,6 +164,7 @@ pub struct MemoryGovernanceGuard {
     deny_patterns: Vec<Regex>,
     counters: Mutex<HashMap<SessionKey, u64>>,
     finding_retraction: Option<FindingRetractionBinding>,
+    quarantined_findings: Mutex<FindingQuarantine>,
 }
 
 impl MemoryGovernanceGuard {
@@ -167,6 +181,7 @@ impl MemoryGovernanceGuard {
             deny_patterns: Vec::new(),
             counters: Mutex::new(HashMap::new()),
             finding_retraction: None,
+            quarantined_findings: Mutex::new(FindingQuarantine::default()),
         })
     }
 
@@ -227,6 +242,7 @@ impl MemoryGovernanceGuard {
             deny_patterns,
             counters: Mutex::new(HashMap::new()),
             finding_retraction,
+            quarantined_findings: Mutex::new(FindingQuarantine::default()),
         })
     }
 
@@ -240,6 +256,24 @@ impl MemoryGovernanceGuard {
                     .copied()
             })
             .unwrap_or(0)
+    }
+
+    /// Report whether an exact memory key is locally quarantined. A poisoned
+    /// marker lock reports quarantined so observability never upgrades an
+    /// indeterminate state to live.
+    pub fn is_finding_quarantined(&self, store: &str, key: &str) -> bool {
+        if !quarantine_key_is_bounded(store, key) {
+            return true;
+        }
+        self.quarantined_findings
+            .lock()
+            .map(|quarantined| {
+                quarantined.saturated
+                    || quarantined
+                        .keys
+                        .contains(&(store.to_owned(), key.to_owned()))
+            })
+            .unwrap_or(true)
     }
 
     /// Gather the effective store allowlist from the matched grant plus
@@ -398,22 +432,7 @@ impl Guard for MemoryGovernanceGuard {
                 "Finding memory read resolver identity changed".to_owned(),
             ));
         }
-        let resolution = binding
-            .resolver
-            .resolve(FindingRetractionQuery {
-                store: &store,
-                key: &key,
-            })
-            .map_err(|error| {
-                KernelError::GuardDenied(format!(
-                    "Finding memory read output provenance rejected: {error}"
-                ))
-            })?;
-        if resolution.feed_id != binding.feed_id || resolution.value != FindingStatusValue::Live {
-            return Err(KernelError::GuardDenied(
-                "Finding memory read output is not live under the pinned feed".to_owned(),
-            ));
-        }
+        let resolution = self.resolve_live_finding(binding, &store, &key)?;
         let ToolServerOutput::Value(value) = output else {
             return Err(KernelError::GuardDenied(
                 "Finding memory read output must be one canonical value".to_owned(),
@@ -444,6 +463,51 @@ impl Guard for MemoryGovernanceGuard {
 }
 
 impl MemoryGovernanceGuard {
+    fn resolve_live_finding(
+        &self,
+        binding: &FindingRetractionBinding,
+        store: &str,
+        key: &str,
+    ) -> Result<FindingRetractionResolution, KernelError> {
+        if !quarantine_key_is_bounded(store, key) {
+            return Err(KernelError::GuardDenied(
+                "Finding memory key is quarantined".to_owned(),
+            ));
+        }
+        let resolution = binding
+            .resolver
+            .resolve(FindingRetractionQuery { store, key });
+        let live = matches!(
+            &resolution,
+            Ok(value)
+                if value.feed_id == binding.feed_id
+                    && value.value == FindingStatusValue::Live
+        );
+        let marker = (store.to_owned(), key.to_owned());
+        let mut quarantined = self.quarantined_findings.lock().map_err(|_| {
+            KernelError::GuardDenied("Finding memory quarantine state is unavailable".to_owned())
+        })?;
+        if quarantined.saturated {
+            return Err(KernelError::GuardDenied(
+                "Finding memory quarantine state is saturated".to_owned(),
+            ));
+        }
+        if !live {
+            if quarantined.keys.len() < MAX_QUARANTINED_FINDING_KEYS {
+                quarantined.keys.insert(marker);
+            } else {
+                quarantined.saturated = true;
+            }
+            return Err(KernelError::GuardDenied(
+                "Finding memory key is quarantined".to_owned(),
+            ));
+        }
+        quarantined.keys.remove(&marker);
+        drop(quarantined);
+        resolution
+            .map_err(|_| KernelError::GuardDenied("Finding memory key is quarantined".to_owned()))
+    }
+
     fn evaluate_write(
         &self,
         ctx: &GuardContext,
@@ -543,20 +607,19 @@ impl MemoryGovernanceGuard {
             {
                 return Ok(GuardDecision::deny(Vec::new()));
             }
-            let resolution = binding
-                .resolver
-                .resolve(FindingRetractionQuery { store, key });
-            if !matches!(
-                resolution,
-                Ok(value)
-                    if value.feed_id == binding.feed_id
-                        && value.value == FindingStatusValue::Live
-            ) {
+            if self.resolve_live_finding(binding, store, key).is_err() {
                 return Ok(GuardDecision::deny(Vec::new()));
             }
         }
         Ok(GuardDecision::allow())
     }
+}
+
+fn quarantine_key_is_bounded(store: &str, key: &str) -> bool {
+    !store.is_empty()
+        && !key.is_empty()
+        && store.len() <= MAX_QUARANTINE_COMPONENT_BYTES
+        && key.len() <= MAX_QUARANTINE_COMPONENT_BYTES
 }
 
 /// Store allowlist match: supports exact match and `*` wildcard.
@@ -615,6 +678,35 @@ fn extract_content_text(arguments: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::finding_retraction::FindingRetractionResolveError;
+
+    struct LiveResolver;
+
+    impl FindingRetractionResolver for LiveResolver {
+        fn resolver_id(&self) -> &str {
+            "resolver"
+        }
+
+        fn feed_id(&self) -> &str {
+            "feed"
+        }
+
+        fn resolve(
+            &self,
+            _query: FindingRetractionQuery<'_>,
+        ) -> Result<FindingRetractionResolution, FindingRetractionResolveError> {
+            Ok(FindingRetractionResolution {
+                delivery_receipt_id: "delivery".to_owned(),
+                finding_id: "finding".to_owned(),
+                feed_id: "feed".to_owned(),
+                map_epoch: 1,
+                epoch_id: "a".repeat(64),
+                root_hash: "b".repeat(64),
+                value: FindingStatusValue::Live,
+                memory_content_sha256: "c".repeat(64),
+            })
+        }
+    }
 
     #[test]
     fn store_matches_wildcards() {
@@ -638,5 +730,34 @@ mod tests {
     fn content_size_falls_back_to_text_length() {
         let args = serde_json::json!({"content": "hello"});
         assert_eq!(extract_content_size_bytes(&args), Some(5));
+    }
+
+    #[test]
+    fn saturated_quarantine_never_reopens_on_a_live_resolution() {
+        let guard = MemoryGovernanceGuard::with_config_and_retraction_resolver(
+            MemoryGovernanceConfig {
+                finding_retraction: Some(FindingRetractionGuardConfig {
+                    resolver_id: "resolver".to_owned(),
+                    feed_id: "feed".to_owned(),
+                }),
+                ..MemoryGovernanceConfig::default()
+            },
+            Arc::new(LiveResolver),
+        );
+        assert!(guard.is_ok());
+        if let Ok(guard) = guard {
+            if let Ok(mut quarantine) = guard.quarantined_findings.lock() {
+                quarantine.saturated = true;
+            } else {
+                panic!("test quarantine lock poisoned");
+            }
+            let Some(binding) = guard.finding_retraction.as_ref() else {
+                panic!("test retraction binding missing");
+            };
+            assert!(guard
+                .resolve_live_finding(binding, "memory", "key")
+                .is_err());
+            assert!(guard.is_finding_quarantined("memory", "key"));
+        }
     }
 }

@@ -1,8 +1,13 @@
 use serde::Serialize;
 
+pub const HOSTED_ERROR_SCHEMA: &str = "chio.finding.hosted-error.v1";
+const MAX_REQUEST_ID_BYTES: usize = 128;
+const FALLBACK_REQUEST_ID: &str = "invalid-request-id";
+
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostedErrorBody {
+    pub schema: &'static str,
     pub code: &'static str,
     pub message: &'static str,
     pub request_id: String,
@@ -21,6 +26,12 @@ pub enum HostedEdgeError {
     ReplayRejected,
     #[error("hosted request rate limit was exceeded")]
     RateLimited,
+    #[error("hosted resource was not found")]
+    NotFound,
+    #[error("hosted mutation conflicts with durable state")]
+    Conflict,
+    #[error("hosted durable state failed validation")]
+    IntegrityFailure,
     #[error("hosted authentication capacity is unavailable")]
     CapacityUnavailable,
     #[error("hosted authentication dependency is unavailable")]
@@ -38,6 +49,9 @@ impl HostedEdgeError {
             Self::AuthorizationFailed => "authorization_failed",
             Self::ReplayRejected => "replay_rejected",
             Self::RateLimited => "rate_limited",
+            Self::NotFound => "not_found",
+            Self::Conflict => "conflict",
+            Self::IntegrityFailure => "integrity_failure",
             Self::CapacityUnavailable => "authentication_capacity_unavailable",
             Self::DependencyUnavailable => "authentication_dependency_unavailable",
             Self::Configuration => "edge_configuration_invalid",
@@ -54,7 +68,14 @@ impl HostedEdgeError {
 
     #[must_use]
     pub fn body(self, request_id: impl Into<String>) -> HostedErrorBody {
+        let request_id = request_id.into();
+        let request_id = if valid_request_id(&request_id) {
+            request_id
+        } else {
+            FALLBACK_REQUEST_ID.to_owned()
+        };
         HostedErrorBody {
+            schema: HOSTED_ERROR_SCHEMA,
             code: self.code(),
             message: match self {
                 Self::InvalidRequest => "The request is invalid.",
@@ -62,12 +83,15 @@ impl HostedEdgeError {
                 Self::AuthorizationFailed => "The credential does not authorize this action.",
                 Self::ReplayRejected => "The proof was already used.",
                 Self::RateLimited => "The request rate limit was exceeded.",
+                Self::NotFound => "The requested resource was not found.",
+                Self::Conflict => "The request conflicts with durable state.",
+                Self::IntegrityFailure => "Durable state failed validation.",
                 Self::CapacityUnavailable | Self::DependencyUnavailable => {
                     "Authentication is temporarily unavailable."
                 }
                 Self::Configuration => "The hosted edge is not ready.",
             },
-            request_id: request_id.into(),
+            request_id,
             retryable: self.retryable(),
         }
     }
@@ -79,10 +103,20 @@ impl HostedEdgeError {
             Self::AuthenticationFailed => 401,
             Self::AuthorizationFailed => 403,
             Self::ReplayRejected | Self::RateLimited => 429,
+            Self::NotFound => 404,
+            Self::Conflict => 409,
+            Self::IntegrityFailure => 503,
             Self::CapacityUnavailable | Self::DependencyUnavailable => 503,
             Self::Configuration => 500,
         }
     }
+}
+
+fn valid_request_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_REQUEST_ID_BYTES
+        && value.trim() == value
+        && !value.chars().any(char::is_control)
 }
 
 #[cfg(test)]
@@ -95,5 +129,7 @@ mod tests {
         assert_eq!(body.code, "authentication_dependency_unavailable");
         assert!(body.retryable);
         assert!(!body.message.contains("SQL"));
+        let sanitized = HostedEdgeError::InvalidRequest.body("\r\nsecret: leaked");
+        assert_eq!(sanitized.request_id, FALLBACK_REQUEST_ID);
     }
 }

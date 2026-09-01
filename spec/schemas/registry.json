@@ -342,6 +342,12 @@
       "schemaFile": "spec/schemas/chio-finding/v1/challenge.schema.json"
     },
     {
+      "schema": "chio.finding.claim-allocation.v1",
+      "artifactKind": "finding_claim_allocation",
+      "introducedBy": "cognition-market-hosted-completion",
+      "schemaFile": "spec/schemas/chio-finding/v1/claim-allocation.schema.json"
+    },
+    {
       "schema": "chio.finding.delivery.v1",
       "artifactKind": "finding_delivery",
       "introducedBy": "finding-delivery-v1",
@@ -360,6 +366,18 @@
       "schemaFile": "spec/schemas/chio-finding/v1/finalized-bond-snapshot.schema.json"
     },
     {
+      "schema": "chio.finding.hosted-authenticated-delivery.v1",
+      "artifactKind": "finding_hosted_authenticated_delivery",
+      "introducedBy": "cognition-market-m11-delivery-authentication",
+      "schemaFile": "spec/schemas/chio-finding/v1/hosted-authenticated-delivery.schema.json"
+    },
+    {
+      "schema": "chio.finding.hosted-qualification.v1",
+      "artifactKind": "finding_hosted_qualification",
+      "introducedBy": "cognition-market-m11-qualification-truth",
+      "schemaFile": "spec/schemas/chio-finding/v1/hosted-qualification.schema.json"
+    },
+    {
       "schema": "chio.finding.impairment-publisher-request.v1",
       "artifactKind": "finding_impairment_publisher_request",
       "introducedBy": "cognition-market-m11",
@@ -376,6 +394,12 @@
       "artifactKind": "finding_key_revocation",
       "introducedBy": "finding-market-v1",
       "schemaFile": "spec/schemas/chio-finding/v1/key-revocation.schema.json"
+    },
+    {
+      "schema": "chio.finding.liability.v1",
+      "artifactKind": "finding_liability",
+      "introducedBy": "cognition-market-hosted-completion",
+      "schemaFile": "spec/schemas/chio-finding/v1/liability.schema.json"
     },
     {
       "schema": "chio.finding.market-terms.v1",
@@ -400,6 +424,12 @@
       "artifactKind": "finding_purchase_record",
       "introducedBy": "finding-market-v1",
       "schemaFile": "spec/schemas/chio-finding/v1/purchase-record.schema.json"
+    },
+    {
+      "schema": "chio.finding.purchase-result.v1",
+      "artifactKind": "finding_purchase_result",
+      "introducedBy": "cognition-market-hosted-completion",
+      "schemaFile": "spec/schemas/chio-finding/v1/purchase-result.schema.json"
     },
     {
       "schema": "chio.finding.recovery-context.v1",
@@ -444,10 +474,22 @@
       "schemaFile": "spec/schemas/chio-finding/v1/finding.schema.json"
     },
     {
+      "schema": "chio.finding.verified-fix-submission.v1",
+      "artifactKind": "finding_verified_fix_submission",
+      "introducedBy": "cognition-market-hosted-completion",
+      "schemaFile": "spec/schemas/chio-finding/v1/verified-fix-submission.schema.json"
+    },
+    {
       "schema": "chio.finding.verifier-report.v1",
       "artifactKind": "finding_verifier_report",
       "introducedBy": "finding-market-v1",
       "schemaFile": "spec/schemas/chio-finding/v1/verifier-report.schema.json"
+    },
+    {
+      "schema": "chio.finding.voluntary-retraction.v1",
+      "artifactKind": "finding_voluntary_retraction",
+      "introducedBy": "cognition-market-hosted-completion",
+      "schemaFile": "spec/schemas/chio-finding/v1/voluntary-retraction.schema.json"
     },
     {
       "schema": "chio.frost.authorization-slot-checkpoint.v1",

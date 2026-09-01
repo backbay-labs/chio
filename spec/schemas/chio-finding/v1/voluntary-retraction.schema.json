@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/voluntary-retraction.schema.json",
+  "title": "Chio Finding Voluntary Retraction",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "intent_id", "finding_id", "seller", "status_feed_ref", "reason", "issued_at", "inclusion_deadline"],
+      "properties": {
+        "schema": { "const": "chio.finding.voluntary-retraction.v1" },
+        "intent_id": { "$ref": "#/$defs/sha256" },
+        "finding_id": { "$ref": "#/$defs/sha256" },
+        "seller": { "$ref": "#/$defs/sha256" },
+        "status_feed_ref": { "$ref": "#/$defs/id" },
+        "reason": { "enum": ["seller_voluntary_retraction", "seller_verified_fix_supersession"] },
+        "issued_at": { "$ref": "#/$defs/nonzero" },
+        "inclusion_deadline": { "$ref": "#/$defs/nonzero" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/sha256" },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "id": { "type": "string", "pattern": "\\S", "maxLength": 512 },
+    "nonzero": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+  }
+}

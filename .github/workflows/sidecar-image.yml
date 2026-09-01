@@ -5,6 +5,22 @@ on:
     branches: [main]
     tags:
       - "v*.*.*"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".cargo/**"
+      - ".github/workflows/sidecar-image.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "contracts/**"
+      - "crates/**"
+      - "deploy/docker/Dockerfile.sidecar"
+      - "deploy/docker/chio-workspace/**"
+      - "fixtures/**"
+      - "rust-toolchain.toml"
+      - "scripts/tests/check-sidecar-image-workflow.test.sh"
+      - "spec/**"
+      - "wit/**"
   workflow_dispatch:
     inputs:
       tag:

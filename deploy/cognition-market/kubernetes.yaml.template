@@ -1,0 +1,469 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chio-finding-market
+  labels:
+    app.kubernetes.io/name: chio-finding-market
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chio-finding-market-proxy
+data:
+  default.conf.template: |
+    server {
+      listen 8443 ssl;
+      listen [::]:8443 ssl;
+      server_name @PUBLIC_HOST@;
+      ssl_protocols TLSv1.3;
+      ssl_certificate /run/chio/tls/tls.crt;
+      ssl_certificate_key /run/chio/tls/tls.key;
+      client_max_body_size 4m;
+      proxy_request_buffering on;
+      location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Forwarded "for=$remote_addr;proto=https;host=@PUBLIC_HOST@";
+        proxy_set_header Chio-Proxy-Authentication "${CHIO_PROXY_AUTHENTICATION}";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Forwarded-Host "";
+        proxy_set_header X-Forwarded-Proto "";
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chio-finding-market
+  labels:
+    app.kubernetes.io/name: chio-finding-market
+spec:
+  replicas: 3
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chio-finding-market
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chio-finding-market
+        chio.world/network-role: market-edge
+    spec:
+      serviceAccountName: chio-finding-market
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        fsGroup: 101
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        - name: install-private-profile
+          image: @PROXY_IMAGE@
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              case "${CHIO_PROXY_AUTHENTICATION}" in
+                *[!A-Za-z0-9_-]*|'') echo "invalid proxy token" >&2; exit 1 ;;
+              esac
+              test "${#CHIO_PROXY_AUTHENTICATION}" -ge 43
+              test "${#CHIO_PROXY_AUTHENTICATION}" -le 128
+              install -o 65532 -g 65532 -m 0600 /profile-source/finding-hosted.json /profile/finding-hosted.json
+          env:
+            - name: CHIO_PROXY_AUTHENTICATION
+              valueFrom:
+                secretKeyRef:
+                  name: chio-finding-market-proxy
+                  key: authentication-token
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: false
+            runAsUser: 0
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
+          volumeMounts:
+            - name: profile-source
+              mountPath: /profile-source
+              readOnly: true
+            - name: profile
+              mountPath: /profile
+        - name: seed-replication-freshness
+          image: @CHIO_IMAGE@
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/chio-finding-market-server"]
+          args:
+            - --profile
+            - /run/chio/profile/finding-hosted.json
+            - --replication-check-once
+          envFrom:
+            - secretRef:
+                name: chio-finding-market-replicator
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: profile
+              mountPath: /run/chio/profile
+              readOnly: true
+            - name: postgres-ca
+              mountPath: /run/chio/postgres-ca
+              readOnly: true
+      containers:
+        - name: market
+          image: @CHIO_IMAGE@
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/chio-finding-market-server"]
+          args:
+            - --profile
+            - /run/chio/profile/finding-hosted.json
+          env:
+            - name: CHIO_FINDING_DEPLOYED_CANDIDATE_SHA
+              value: "@CANDIDATE_SHA@"
+            - name: CHIO_FINDING_DEPLOYED_ARTIFACT_SHA256
+              value: "@CHIO_IMAGE_SHA256@"
+            - name: CHIO_MARKET_RUNTIME_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: chio-finding-market-runtime
+                  key: database-url
+            - name: CHIO_API_KEY_PEPPER
+              valueFrom:
+                secretKeyRef:
+                  name: chio-finding-market-runtime
+                  key: api-key-pepper
+            - name: CHIO_TRUSTED_PROXY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: chio-finding-market-proxy
+                  key: authentication-token
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: profile
+              mountPath: /run/chio/profile
+              readOnly: true
+            - name: postgres-ca
+              mountPath: /run/chio/postgres-ca
+              readOnly: true
+        - name: trusted-proxy
+          image: @PROXY_IMAGE@
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NGINX_ENVSUBST_FILTER
+              value: ^CHIO_PROXY_AUTHENTICATION$
+            - name: CHIO_PROXY_AUTHENTICATION
+              valueFrom:
+                secretKeyRef:
+                  name: chio-finding-market-proxy
+                  key: authentication-token
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              scheme: HTTPS
+              port: https
+              path: /health/ready
+              httpHeaders:
+                - name: Host
+                  value: @PUBLIC_HOST@
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              scheme: HTTPS
+              port: https
+              path: /health/live
+              httpHeaders:
+                - name: Host
+                  value: @PUBLIC_HOST@
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: proxy-config
+              mountPath: /etc/nginx/templates
+              readOnly: true
+            - name: proxy-conf
+              mountPath: /etc/nginx/conf.d
+            - name: tls
+              mountPath: /run/chio/tls
+              readOnly: true
+            - name: proxy-cache
+              mountPath: /var/cache/nginx
+            - name: proxy-run
+              mountPath: /var/run
+        - name: replication-freshness
+          image: @CHIO_IMAGE@
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/chio-finding-market-server"]
+          args:
+            - --profile
+            - /run/chio/profile/finding-hosted.json
+            - --replication-check-interval-secs
+            - "10"
+          envFrom:
+            - secretRef:
+                name: chio-finding-market-replicator
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: profile
+              mountPath: /run/chio/profile
+              readOnly: true
+            - name: postgres-ca
+              mountPath: /run/chio/postgres-ca
+              readOnly: true
+      volumes:
+        - name: profile-source
+          secret:
+            secretName: chio-finding-market-profile
+            defaultMode: 0400
+        - name: profile
+          emptyDir:
+            sizeLimit: 8Mi
+        - name: postgres-ca
+          configMap:
+            name: chio-finding-market-postgres-ca
+            defaultMode: 0444
+        - name: proxy-config
+          configMap:
+            name: chio-finding-market-proxy
+            defaultMode: 0444
+        - name: tls
+          secret:
+            secretName: chio-finding-market-tls
+            defaultMode: 0440
+        - name: proxy-cache
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: proxy-run
+          emptyDir:
+            sizeLimit: 8Mi
+        - name: proxy-conf
+          emptyDir:
+            sizeLimit: 8Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chio-finding-market
+spec:
+  selector:
+    app.kubernetes.io/name: chio-finding-market
+  ports:
+    - name: https
+      port: 443
+      targetPort: https
+      protocol: TCP
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: chio-finding-market
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chio-finding-market
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: chio-finding-market
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: chio-finding-market
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              chio.world/market-ingress: "true"
+          podSelector:
+            matchLabels:
+              chio.world/market-ingress-client: "true"
+      ports:
+        - port: 8443
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              chio.world/market-data: "true"
+          podSelector:
+            matchLabels:
+              chio.world/market-postgres: "true"
+      ports:
+        - port: 5432
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              chio.world/market-egress: "true"
+          podSelector:
+            matchLabels:
+              chio.world/market-egress-gateway: "true"
+      ports:
+        - port: 443
+          protocol: TCP
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: chio-finding-market-migrate
+  labels:
+    app.kubernetes.io/name: chio-finding-market-migrate
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chio-finding-market-migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrator
+          image: @CHIO_IMAGE@
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/chio-finding-market-migrate"]
+          args:
+            - --ca-certificate
+            - /run/chio/postgres-ca/ca.crt
+          env:
+            - name: CHIO_FINDING_MARKET_MIGRATOR_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: chio-finding-market-migrator
+                  key: database-url
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: postgres-ca
+              mountPath: /run/chio/postgres-ca
+              readOnly: true
+      volumes:
+        - name: postgres-ca
+          configMap:
+            name: chio-finding-market-postgres-ca
+            defaultMode: 0444
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: chio-finding-market-migrate
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: chio-finding-market-migrate
+  policyTypes: ["Ingress", "Egress"]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              chio.world/market-data: "true"
+          podSelector:
+            matchLabels:
+              chio.world/market-postgres: "true"
+      ports:
+        - port: 5432
+          protocol: TCP

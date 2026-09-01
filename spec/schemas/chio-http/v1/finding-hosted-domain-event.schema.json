@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-http/v1/finding-hosted-domain-event.schema.json",
+  "title": "Chio Hosted Finding Domain Event Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "tenantId",
+    "eventKind",
+    "aggregateKind",
+    "aggregateId",
+    "eventId",
+    "revision",
+    "previousEventSha256",
+    "artifactSchema",
+    "artifactSha256",
+    "occurredAt"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.finding.hosted-domain-event.v1"
+    },
+    "tenantId": {
+      "$ref": "#/$defs/tenantId"
+    },
+    "eventKind": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:/-]{1,96}$"
+    },
+    "aggregateKind": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:/-]{1,96}$"
+    },
+    "aggregateId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:/-]{1,256}$"
+    },
+    "eventId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:/-]{1,256}$"
+    },
+    "revision": {
+      "$ref": "#/$defs/iJsonU64NonZero"
+    },
+    "previousEventSha256": {
+      "oneOf": [
+        { "$ref": "#/$defs/sha256" },
+        { "type": "null" }
+      ]
+    },
+    "artifactSchema": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:/-]{1,256}$"
+    },
+    "artifactSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "occurredAt": {
+      "$ref": "#/$defs/iJsonU64NonZero"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "revision": { "const": 1 } },
+        "required": ["revision"]
+      },
+      "then": {
+        "properties": { "previousEventSha256": { "type": "null" } }
+      },
+      "else": {
+        "properties": { "previousEventSha256": { "$ref": "#/$defs/sha256" } }
+      }
+    }
+  ],
+  "$defs": {
+    "tenantId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:/-]{1,128}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "iJsonU64NonZero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    }
+  }
+}

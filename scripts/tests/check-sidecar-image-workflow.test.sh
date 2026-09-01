@@ -11,6 +11,11 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding="utf-8")
 
 required = {
+    "pull_request:": "pull-request trigger",
+    '- "rust-toolchain.toml"': "Rust toolchain path trigger",
+    '- "Cargo.lock"': "Cargo lockfile path trigger",
+    '- "deploy/docker/Dockerfile.sidecar"': "sidecar Dockerfile path trigger",
+    '- "deploy/docker/chio-workspace/**"': "generated sidecar workspace path trigger",
     "- platform: linux/amd64": "native amd64 matrix leg",
     "runner: ubuntu-24.04": "native amd64 runner",
     "- platform: linux/arm64": "native arm64 matrix leg",
@@ -24,6 +29,8 @@ required = {
     '"linux/amd64"': "amd64 manifest verification",
     '"linux/arm64"': "arm64 manifest verification",
     "IMAGE_DIGEST: ${{ steps.manifest.outputs.digest }}": "assembled-manifest signing",
+    "if: github.event_name != 'push'": "non-publishing pull-request build",
+    "if: github.event_name == 'push'": "push-only publishing",
 }
 missing = [description for marker, description in required.items() if marker not in text]
 if missing:
@@ -35,6 +42,10 @@ if "docker/setup-qemu-action@" in text:
     raise SystemExit("sidecar image workflow must not emulate a release architecture with QEMU")
 if "platforms: linux/amd64,linux/arm64" in text:
     raise SystemExit("sidecar image workflow must not serialize both release builds on one runner")
+if text.count("if: github.event_name != 'push'") != 1:
+    raise SystemExit("sidecar image workflow must have exactly one non-publishing build path")
+if text.count("push: false") != 1:
+    raise SystemExit("sidecar pull-request build must explicitly disable image pushes")
 
-print("PASS: sidecar image workflow builds natively and verifies the assembled manifest")
+print("PASS: sidecar image workflow gates pull requests and native release platforms")
 PY

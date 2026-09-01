@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-http/v1/finding-hosted-error.schema.json",
+  "title": "Chio Hosted Finding Error",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "code", "message", "requestId", "retryable"],
+  "properties": {
+    "schema": {
+      "const": "chio.finding.hosted-error.v1"
+    },
+    "code": {
+      "enum": [
+        "invalid_request",
+        "authentication_failed",
+        "authorization_failed",
+        "replay_rejected",
+        "rate_limited",
+        "authentication_capacity_unavailable",
+        "authentication_dependency_unavailable",
+        "edge_configuration_invalid"
+      ]
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$"
+    },
+    "requestId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[^\\s\\u0000-\\u001F\\u007F-\\u009F](?:[^\\u0000-\\u001F\\u007F-\\u009F]*[^\\s\\u0000-\\u001F\\u007F-\\u009F])?$"
+    },
+    "retryable": {
+      "type": "boolean"
+    }
+  }
+}

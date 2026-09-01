@@ -1,8 +1,10 @@
 {
   "schema": "chio.cognition-market.components.v1",
   "workflowPaths": [
+    ".github/actionlint.yaml",
     ".github/workflows/cognition-market-hosted.yml",
-    ".github/workflows/cognition-market-promotion.yml",
+    ".github/workflows/cognition-market-kvm-boundary.yml",
+    ".github/workflows/cognition-market-network-canary.yml",
     ".github/workflows/release-qualification.yml",
     "Cargo.lock",
     "Cargo.toml",
@@ -23,6 +25,7 @@
     "crates/platform/chio-control-plane/**",
     "crates/platform/chio-finding-hosted-edge/**",
     "crates/platform/chio-finding-market-migrations/**",
+    "crates/platform/chio-finding-market-port/**",
     "crates/platform/chio-finding-market-store-postgres/**",
     "crates/platform/chio-finding-worker/**",
     "crates/platform/chio-http-core/**",
@@ -30,6 +33,7 @@
     "crates/products/chio-cli/**",
     "crates/products/chio-finding-market-canary/**",
     "crates/products/chio-finding-market-migrator/**",
+    "crates/products/chio-finding-market-server/**",
     "crates/products/chio-finding-worker/**",
     "crates/protocol/chio-egress-contract/**",
     "crates/protocol/chio-http-serve/**",
@@ -38,11 +42,14 @@
     "crates/trust/chio-finding-verifier/**",
     "crates/trust/chio-signing-remote/**",
     "deny.toml",
+    "deploy/cognition-market/**",
     "docs/research/cognition-market/**",
     "formal/**",
     "fuzz/**",
     "rust-toolchain.toml",
     "scripts/**",
+    "sdks/python/chio-sdk-python/**",
+    "sdks/typescript/chio-ts/**",
     "spec/schemas/**",
     "supply-chain/**"
   ]

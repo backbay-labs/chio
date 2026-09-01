@@ -58,7 +58,11 @@ impl HostedTrustedProxy {
             || config.listen.port() == 0
             || config.trusted_peer_ips.is_empty()
             || config.trusted_peer_ips.len() > 32
-            || !(32..=4_096).contains(&config.authentication_token.len())
+            || !(43..=128).contains(&config.authentication_token.len())
+            || !config
+                .authentication_token
+                .iter()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
             || config
                 .trusted_peer_ips
                 .iter()
@@ -67,6 +71,7 @@ impl HostedTrustedProxy {
             || endpoint.host_str().is_none()
             || endpoint.query().is_some()
             || endpoint.fragment().is_some()
+            || endpoint.path() != "/"
             || !endpoint.username().is_empty()
             || endpoint.password().is_some()
         {
@@ -315,6 +320,8 @@ fn host_matches_endpoint(value: &str, endpoint: &Url) -> bool {
 mod tests {
     use super::*;
 
+    const PROXY_TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789A";
+
     fn proxy() -> Result<HostedTrustedProxy, HostedEdgeError> {
         proxy_for_endpoint("https://market.example")
     }
@@ -326,8 +333,27 @@ mod tests {
                 .map_err(|_| HostedEdgeError::Configuration)?,
             trusted_peer_ips: [IpAddr::from([127, 0, 0, 1])].into_iter().collect(),
             public_endpoint: public_endpoint.to_owned(),
-            authentication_token: vec![b'p'; 32],
+            authentication_token: PROXY_TOKEN.as_bytes().to_vec(),
         })
+    }
+
+    #[test]
+    fn proxy_token_is_safe_for_deployment_configuration() {
+        for token in [vec![b'p'; 42], vec![b'p'; 129], {
+            let mut token = vec![b'p'; 43];
+            token[20] = b'"';
+            token
+        }] {
+            assert!(HostedTrustedProxy::new(HostedTrustedProxyConfig {
+                listen: "127.0.0.1:9443"
+                    .parse()
+                    .unwrap_or_else(|error| panic!("test listener failed: {error}")),
+                trusted_peer_ips: [IpAddr::from([127, 0, 0, 1])].into_iter().collect(),
+                public_endpoint: "https://market.example".to_owned(),
+                authentication_token: token,
+            })
+            .is_err());
+        }
     }
 
     #[test]
@@ -344,7 +370,7 @@ mod tests {
                     ],
                     ..HostedForwardingHeaders::default()
                 },
-                Some("pppppppppppppppppppppppppppppppp"),
+                Some(PROXY_TOKEN),
             );
             assert_eq!(
                 context,
@@ -376,7 +402,7 @@ mod tests {
                             forwarded: vec![forwarded.to_owned()],
                             ..HostedForwardingHeaders::default()
                         },
-                        Some("pppppppppppppppppppppppppppppppp"),
+                        Some(PROXY_TOKEN),
                     )
                     .is_err());
             }
@@ -394,7 +420,7 @@ mod tests {
                     forwarded: vec!["for=192.0.2.44;proto=https;host=market.example".to_owned()],
                     ..HostedForwardingHeaders::default()
                 },
-                Some("pppppppppppppppppppppppppppppppp"),
+                Some(PROXY_TOKEN),
             );
             assert!(context.is_ok());
             assert_eq!(
@@ -414,22 +440,14 @@ mod tests {
                 ..HostedForwardingHeaders::default()
             };
             assert!(proxy
-                .reconstruct(
-                    IpAddr::from([192, 0, 2, 1]),
-                    &valid,
-                    Some("pppppppppppppppppppppppppppppppp")
-                )
+                .reconstruct(IpAddr::from([192, 0, 2, 1]), &valid, Some(PROXY_TOKEN))
                 .is_err());
             let ambiguous = HostedForwardingHeaders {
                 x_forwarded_for: vec!["192.0.2.99".to_owned()],
                 ..valid
             };
             assert!(proxy
-                .reconstruct(
-                    IpAddr::from([127, 0, 0, 1]),
-                    &ambiguous,
-                    Some("pppppppppppppppppppppppppppppppp")
-                )
+                .reconstruct(IpAddr::from([127, 0, 0, 1]), &ambiguous, Some(PROXY_TOKEN))
                 .is_err());
             assert_eq!(
                 proxy.reconstruct(

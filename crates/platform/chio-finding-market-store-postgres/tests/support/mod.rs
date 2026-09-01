@@ -1,6 +1,317 @@
 use super::*;
 use std::time::Duration;
 
+use chio_core_types::capability::scope::MonetaryAmount;
+use chio_finding::{
+    compute_status_epoch_id, FindingHostedPurchaseVerdict, FindingHostedSettlementTerminal,
+    FindingPurchaseResult, FindingStatusEpoch, FindingVoluntaryRetraction,
+    FindingVoluntaryRetractionReason, FINDING_PURCHASE_RESULT_SCHEMA_V1,
+    FINDING_STATUS_EPOCH_SCHEMA_V1, FINDING_STATUS_SIGNATURE_DOMAIN,
+    FINDING_VOLUNTARY_RETRACTION_SCHEMA_V1,
+};
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn assert_catalog_retractions(
+    store: &PostgresFindingMarketStore,
+    tenant: &HostedTenantId,
+    other_tenant: &HostedTenantId,
+    signer: &Keypair,
+    finding_id: &str,
+    replicator: &PostgresFindingMarketReplicator,
+    source_signer: &Keypair,
+    authority_now: u64,
+) -> Result<(), Box<dyn Error>> {
+    let foreign_signer = Keypair::from_seed(&[93_u8; 32]);
+    let cross_seller_retraction = SignedExportEnvelope::sign(
+        FindingVoluntaryRetraction {
+            schema: FINDING_VOLUNTARY_RETRACTION_SCHEMA_V1.to_owned(),
+            intent_id: "b".repeat(64),
+            finding_id: finding_id.to_owned(),
+            seller: foreign_signer.public_key(),
+            status_feed_ref: "integration-status".to_owned(),
+            reason: FindingVoluntaryRetractionReason::SellerVoluntaryRetraction,
+            issued_at: authority_now,
+            inclusion_deadline: authority_now + 300,
+        },
+        &foreign_signer,
+    )?;
+    assert!(matches!(
+        store
+            .record_voluntary_retraction(
+                tenant,
+                &cross_seller_retraction,
+                &HostedDomainWrite::new("cross-seller-retraction", 0, None, authority_now)?,
+            )
+            .await,
+        Err(HostedMarketStoreError::Invalid("subject finding binding"))
+    ));
+    let wrong_feed_retraction = SignedExportEnvelope::sign(
+        FindingVoluntaryRetraction {
+            schema: FINDING_VOLUNTARY_RETRACTION_SCHEMA_V1.to_owned(),
+            intent_id: "a".repeat(64),
+            finding_id: finding_id.to_owned(),
+            seller: signer.public_key(),
+            status_feed_ref: "wrong-status-feed".to_owned(),
+            reason: FindingVoluntaryRetractionReason::SellerVoluntaryRetraction,
+            issued_at: authority_now,
+            inclusion_deadline: authority_now + 300,
+        },
+        signer,
+    )?;
+    assert!(matches!(
+        store
+            .record_voluntary_retraction(
+                tenant,
+                &wrong_feed_retraction,
+                &HostedDomainWrite::new("wrong-feed-retraction", 0, None, authority_now)?,
+            )
+            .await,
+        Err(HostedMarketStoreError::Invalid("subject finding binding"))
+    ));
+    let retraction = SignedExportEnvelope::sign(
+        FindingVoluntaryRetraction {
+            schema: FINDING_VOLUNTARY_RETRACTION_SCHEMA_V1.to_owned(),
+            intent_id: "c".repeat(64),
+            finding_id: finding_id.to_owned(),
+            seller: signer.public_key(),
+            status_feed_ref: "integration-status".to_owned(),
+            reason: FindingVoluntaryRetractionReason::SellerVoluntaryRetraction,
+            issued_at: authority_now,
+            inclusion_deadline: authority_now + 300,
+        },
+        signer,
+    )?;
+    assert_eq!(
+        store
+            .record_voluntary_retraction(
+                tenant,
+                &retraction,
+                &HostedDomainWrite::new("retraction-market-finding", 0, None, authority_now)?,
+            )
+            .await?,
+        HostedJobWriteOutcome::Inserted
+    );
+    let query = vec![finding_id.to_owned(), "d".repeat(64)];
+    assert_eq!(
+        store.catalog_non_live_finding_ids(tenant, &query).await?,
+        [finding_id.to_owned()].into_iter().collect()
+    );
+    assert!(store
+        .catalog_non_live_finding_ids(other_tenant, &query)
+        .await?
+        .is_empty());
+    assert!(matches!(
+        store
+            .catalog_non_live_finding_ids(tenant, &[finding_id.to_owned(), finding_id.to_owned()])
+            .await,
+        Err(HostedMarketStoreError::Invalid("status query"))
+    ));
+    let retraction_projection_sha256 = replicator.target_projection_sha256(tenant).await?;
+    let retraction_sequence = store.authority_state(tenant).await?.last_outbox_sequence;
+    append_replication_check(
+        replicator,
+        tenant,
+        source_signer,
+        ReplicationCheckSpec {
+            authority_epoch: 3,
+            through_sequence: retraction_sequence,
+            projection_sha256: &retraction_projection_sha256,
+            source_authority: HostedMarketAuthority::Postgres,
+            checked_at: authority_now,
+        },
+    )
+    .await?;
+    let mut epoch = FindingStatusEpoch {
+        schema: FINDING_STATUS_EPOCH_SCHEMA_V1.to_owned(),
+        status_epoch_id: String::new(),
+        signature_domain: FINDING_STATUS_SIGNATURE_DOMAIN.to_owned(),
+        status_map_version: "sparse_map_v1".to_owned(),
+        proof_semantics: "siblings_leaf_to_root_v1".to_owned(),
+        feed_id: "integration-status".to_owned(),
+        key_domain_nonce: 3_318_287_169_837_494,
+        map_epoch: 1,
+        operator_id: "integration-status-operator".to_owned(),
+        operator_key: signer.public_key(),
+        operator_key_epoch: 1,
+        root_hash: "e".repeat(64),
+        tree_depth: 256,
+        hash_algorithm: "sha256".to_owned(),
+        key_hash_domain: "chio.finding.status.v1:key".to_owned(),
+        empty_leaf_domain: "chio.finding.status.v1:empty-leaf".to_owned(),
+        occupied_leaf_domain: "chio.finding.status.v1:occupied-leaf".to_owned(),
+        branch_domain: "chio.finding.status.v1:branch".to_owned(),
+        empty_leaf_hash: sha256_hex(b"chio.finding.status.v1:empty-leaf\0"),
+        anchor_refs: Vec::new(),
+        generated_at: authority_now,
+        valid_from: authority_now,
+        valid_until: authority_now + 300,
+    };
+    epoch.status_epoch_id = compute_status_epoch_id(&epoch)?;
+    let signed_epoch = SignedExportEnvelope::sign(epoch, signer)?;
+    store
+        .publish_status_epoch(
+            tenant,
+            &signed_epoch,
+            &HostedDomainWrite::new("catalog-status-epoch", 0, None, authority_now)?,
+        )
+        .await?;
+    assert_eq!(
+        store.catalog_non_live_finding_ids(tenant, &query).await?,
+        query.iter().cloned().collect()
+    );
+    let projection_sha256 = replicator.target_projection_sha256(tenant).await?;
+    let through_sequence = store.authority_state(tenant).await?.last_outbox_sequence;
+    append_replication_check(
+        replicator,
+        tenant,
+        source_signer,
+        ReplicationCheckSpec {
+            authority_epoch: 3,
+            through_sequence,
+            projection_sha256: &projection_sha256,
+            source_authority: HostedMarketAuthority::Postgres,
+            checked_at: authority_now,
+        },
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn assert_terminal_job_retention_gc(
+    retention: &PostgresFindingMarketRetention,
+    admin_pool: &sqlx::PgPool,
+    store: &PostgresFindingMarketStore,
+    tenant: &HostedTenantId,
+    retention_signer: &Keypair,
+    retention_public_key: &chio_core_types::crypto::PublicKey,
+    authority_now: u64,
+    request_sha256: &str,
+    payload: &[u8],
+) -> Result<(), Box<dyn Error>> {
+    let terminal_commitment = retention.journal_commitment(tenant).await?;
+    let terminal_checkpoint_body = HostedJournalCheckpointBody {
+        schema: HOSTED_JOURNAL_CHECKPOINT_SCHEMA.to_owned(),
+        tenant_id: tenant.as_str().to_owned(),
+        aggregate_heads_sha256: terminal_commitment.aggregate_heads_sha256,
+        terminal_jobs_sha256: terminal_commitment.terminal_jobs_sha256,
+        previous_checkpoint_sha256: terminal_commitment.previous_checkpoint_sha256,
+        migration_version: terminal_commitment.migration_version,
+        configuration_revision: "integration-revision-1".to_owned(),
+        created_at: authority_now + 20,
+    };
+    let terminal_checkpoint_a =
+        SignedExportEnvelope::sign(terminal_checkpoint_body.clone(), retention_signer)?;
+    let terminal_checkpoint_b = SignedExportEnvelope::sign(
+        HostedJournalCheckpointBody {
+            created_at: authority_now + 21,
+            ..terminal_checkpoint_body
+        },
+        retention_signer,
+    )?;
+    let (checkpoint_a_result, checkpoint_b_result) = tokio::join!(
+        retention.append_journal_checkpoint(tenant, retention_public_key, &terminal_checkpoint_a,),
+        retention.append_journal_checkpoint(tenant, retention_public_key, &terminal_checkpoint_b,),
+    );
+    let checkpoint_a_inserted = matches!(&checkpoint_a_result, Ok(HostedJobWriteOutcome::Inserted));
+    let checkpoint_b_inserted = matches!(&checkpoint_b_result, Ok(HostedJobWriteOutcome::Inserted));
+    assert!(
+        (checkpoint_a_inserted
+            && matches!(&checkpoint_b_result, Err(HostedMarketStoreError::Conflict)))
+            || (checkpoint_b_inserted
+                && matches!(&checkpoint_a_result, Err(HostedMarketStoreError::Conflict)))
+    );
+    let terminal_checkpoint = if checkpoint_a_inserted {
+        &terminal_checkpoint_a
+    } else {
+        &terminal_checkpoint_b
+    };
+    let terminal_checkpoint_sha256 = sha256_hex(&canonical_json_bytes(terminal_checkpoint)?);
+    let terminal_job_sha256: String = sqlx::query_scalar(
+        r#"SELECT member_sha256
+           FROM chio_finding_market_journal_checkpoint_members
+           WHERE tenant_id = $1 AND checkpoint_sha256 = $2
+             AND member_kind = 'job' AND member_family = $3
+             AND member_id = $4 AND member_revision = 0"#,
+    )
+    .bind(tenant.as_str())
+    .bind(&terminal_checkpoint_sha256)
+    .bind("finding.purchase")
+    .bind("job-1")
+    .fetch_one(admin_pool)
+    .await?;
+    let terminal_job_target = HostedRetentionTarget {
+        resource_kind: HostedRetentionResourceKind::Job,
+        resource_family: "finding.purchase".to_owned(),
+        resource_id: "job-1".to_owned(),
+        resource_revision: 0,
+        resource_sha256: terminal_job_sha256,
+    };
+    let terminal_job_manifest = SignedExportEnvelope::sign(
+        HostedArchiveManifestBody {
+            schema: HOSTED_ARCHIVE_MANIFEST_SCHEMA.to_owned(),
+            tenant_id: tenant.as_str().to_owned(),
+            target: terminal_job_target.clone(),
+            covered_checkpoint_sha256: terminal_checkpoint_sha256,
+            object_uri: "s3://chio-test/job-1.json".to_owned(),
+            object_sha256: "d".repeat(64),
+            object_size: 128,
+            configuration_revision: "integration-revision-1".to_owned(),
+            previous_archive_sha256: None,
+            created_at: authority_now + 22,
+        },
+        retention_signer,
+    )?;
+    retention
+        .append_archive_manifest(tenant, retention_public_key, &terminal_job_manifest)
+        .await?;
+    let terminal_job_archive_sha256 = sha256_hex(&canonical_json_bytes(&terminal_job_manifest)?);
+    let terminal_job_restore = SignedExportEnvelope::sign(
+        HostedRestoreVerificationBody {
+            schema: HOSTED_RESTORE_VERIFICATION_SCHEMA.to_owned(),
+            tenant_id: tenant.as_str().to_owned(),
+            archive_sha256: terminal_job_archive_sha256.clone(),
+            restored_resource_sha256: terminal_job_target.resource_sha256.clone(),
+            verified_at: authority_now + 23,
+        },
+        retention_signer,
+    )?;
+    retention
+        .append_restore_verification(tenant, retention_public_key, &terminal_job_restore)
+        .await?;
+    let terminal_job_gc = SignedExportEnvelope::sign(
+        HostedGcReceiptBody {
+            schema: HOSTED_GC_RECEIPT_SCHEMA.to_owned(),
+            tenant_id: tenant.as_str().to_owned(),
+            archive_sha256: terminal_job_archive_sha256,
+            target: terminal_job_target,
+            completed_at: authority_now + 24,
+        },
+        retention_signer,
+    )?;
+    assert_eq!(
+        retention
+            .garbage_collect(tenant, retention_public_key, &terminal_job_gc)
+            .await?,
+        HostedJobWriteOutcome::Inserted
+    );
+    assert!(store.get_job(tenant, "job-1").await?.is_none());
+    assert!(matches!(
+        store
+            .put_job(
+                tenant,
+                "job-1",
+                "finding.purchase",
+                request_sha256,
+                payload,
+                authority_now + 25,
+                authority_now + 25,
+            )
+            .await,
+        Err(HostedMarketStoreError::Conflict)
+    ));
+    Ok(())
+}
+
 pub(super) async fn assert_worker_job_boundary(
     worker_pool: &sqlx::PgPool,
     tenant: &HostedTenantId,
@@ -597,5 +908,229 @@ pub(super) async fn migrate_legacy_fixture(
         .execute(admin_pool)
         .await?;
     migrator.migrate().await?;
+    Ok(())
+}
+
+pub(super) async fn assert_legacy_delivery_upgrade_rejects(
+    admin_pool: &sqlx::PgPool,
+    tenant: &HostedTenantId,
+) -> Result<(), Box<dyn Error>> {
+    let mut transaction = admin_pool.begin().await?;
+    sqlx::raw_sql(
+        r#"
+        ALTER TABLE chio_finding_market_domain_event_contracts
+            DISABLE TRIGGER chio_finding_market_domain_event_contracts_immutable;
+        DELETE FROM chio_finding_market_domain_event_contracts
+        WHERE aggregate_kind = 'delivery'
+          AND event_kind = 'delivery.accepted'
+          AND artifact_schema = 'chio.finding.hosted-authenticated-delivery.v1';
+        INSERT INTO chio_finding_market_domain_event_contracts (
+            aggregate_kind, event_kind, artifact_schema, signed_artifact
+        ) VALUES (
+            'delivery', 'delivery.accepted', 'chio.finding.delivery.v1', FALSE
+        );
+        ALTER TABLE chio_finding_market_domain_event_contracts
+            ENABLE TRIGGER chio_finding_market_domain_event_contracts_immutable;
+        "#,
+    )
+    .execute(&mut *transaction)
+    .await?;
+    sqlx::query(
+        r#"INSERT INTO chio_finding_market_replication_outbox (
+               tenant_id, authority_epoch, sequence, aggregate_kind,
+               aggregate_id, expected_revision, expected_event_sha256,
+               event_id, event_kind, artifact_schema, payload_sha256,
+               payload_json, event_sha256, committed_at
+           ) VALUES (
+               $1, 1, 999, 'delivery', 'legacy-delivery', 0, NULL,
+               'legacy-delivery-event', 'delivery.accepted',
+               'chio.finding.delivery.v1', $2, $3, $4, 1700000000
+           )"#,
+    )
+    .bind(tenant.as_str())
+    .bind("a".repeat(64))
+    .bind(b"{}".as_slice())
+    .bind("b".repeat(64))
+    .execute(&mut *transaction)
+    .await?;
+    let unsafe_upgrade = sqlx::raw_sql(include_str!(
+        "../../migrations/0016_authenticated_delivery_receipt.sql"
+    ))
+    .execute(&mut *transaction)
+    .await;
+    assert!(unsafe_upgrade.is_err());
+    transaction.rollback().await?;
+    Ok(())
+}
+
+pub(super) async fn assert_atomic_purchase_recovery(
+    store: &PostgresFindingMarketStore,
+    tenant: &HostedTenantId,
+    domain_signer: &Keypair,
+    market_finding_id: &str,
+    replicator: &PostgresFindingMarketReplicator,
+    source_signer: &Keypair,
+    authority_now: u64,
+) -> Result<(), Box<dyn Error>> {
+    let projection_sha256 = replicator.target_projection_sha256(tenant).await?;
+    append_replication_check(
+        replicator,
+        tenant,
+        source_signer,
+        ReplicationCheckSpec {
+            authority_epoch: 3,
+            through_sequence: 2,
+            projection_sha256: &projection_sha256,
+            source_authority: HostedMarketAuthority::Postgres,
+            checked_at: authority_now,
+        },
+    )
+    .await?;
+    let purchase_result = SignedExportEnvelope::sign(
+        FindingPurchaseResult {
+            schema: FINDING_PURCHASE_RESULT_SCHEMA_V1.to_owned(),
+            result_id: "a".repeat(64),
+            request_id: "a".repeat(64),
+            finding_id: market_finding_id.to_owned(),
+            payer: domain_signer.public_key(),
+            reservation_id: "purchase-spend-after-release".to_owned(),
+            purchase_intent_id: "recovery-intent-a".to_owned(),
+            authoritative_payment_operation_id: "recovery-payment-a".to_owned(),
+            verdict: FindingHostedPurchaseVerdict::Allow,
+            settlement: FindingHostedSettlementTerminal::Captured,
+            accepted_price: MonetaryAmount {
+                units: 4_000,
+                currency: "USD".to_owned(),
+            },
+            realized_spend: MonetaryAmount {
+                units: 4_000,
+                currency: "USD".to_owned(),
+            },
+            delivery_receipt_sha256: "4".repeat(64),
+            purchase_record_sha256: Some("5".repeat(64)),
+            failed_delivery_sha256: None,
+            output_sha256: Some("6".repeat(64)),
+            recorded_at: authority_now,
+        },
+        domain_signer,
+    )?;
+    let reveal_write = HostedDomainWrite::new("recovery-reveal-a", 0, None, authority_now)?;
+    let terminal_write = HostedDomainWrite::new("recovery-terminal-a", 0, None, authority_now)?;
+    let recovery = store
+        .recover_purchase_result(tenant, &purchase_result, &reveal_write, &terminal_write)
+        .await?;
+    assert_eq!(recovery.reveal, HostedJobWriteOutcome::Inserted);
+    assert_eq!(recovery.terminal, HostedJobWriteOutcome::Inserted);
+    assert_eq!(recovery.spend, HostedJobWriteOutcome::Inserted);
+    assert_eq!(store.authority_state(tenant).await?.last_outbox_sequence, 4);
+    let recovery_retry = store
+        .recover_purchase_result(tenant, &purchase_result, &reveal_write, &terminal_write)
+        .await?;
+    assert_eq!(recovery_retry.reveal, HostedJobWriteOutcome::ExactReplay);
+    assert_eq!(recovery_retry.terminal, HostedJobWriteOutcome::ExactReplay);
+    assert_eq!(recovery_retry.spend, HostedJobWriteOutcome::ExactReplay);
+    let recovered_spend = store
+        .monthly_spend_reservation(tenant, "purchase-spend-after-release")
+        .await?
+        .ok_or("recovered spend reservation missing")?;
+    assert_eq!(
+        recovered_spend.state,
+        chio_finding_market_store_postgres::HostedSpendState::Committed
+    );
+    let projection_sha256 = replicator.target_projection_sha256(tenant).await?;
+    append_replication_check(
+        replicator,
+        tenant,
+        source_signer,
+        ReplicationCheckSpec {
+            authority_epoch: 3,
+            through_sequence: 4,
+            projection_sha256: &projection_sha256,
+            source_authority: HostedMarketAuthority::Postgres,
+            checked_at: authority_now,
+        },
+    )
+    .await?;
+
+    let conflict_base = SignedExportEnvelope::sign(
+        FindingPurchaseResult {
+            schema: FINDING_PURCHASE_RESULT_SCHEMA_V1.to_owned(),
+            result_id: "b".repeat(64),
+            request_id: "b".repeat(64),
+            finding_id: market_finding_id.to_owned(),
+            payer: domain_signer.public_key(),
+            reservation_id: "purchase-spend-release".to_owned(),
+            purchase_intent_id: "recovery-intent-conflict".to_owned(),
+            authoritative_payment_operation_id: "recovery-payment-conflict".to_owned(),
+            verdict: FindingHostedPurchaseVerdict::Deny,
+            settlement: FindingHostedSettlementTerminal::Released,
+            accepted_price: MonetaryAmount {
+                units: 4_000,
+                currency: "USD".to_owned(),
+            },
+            realized_spend: MonetaryAmount {
+                units: 0,
+                currency: "USD".to_owned(),
+            },
+            delivery_receipt_sha256: "7".repeat(64),
+            purchase_record_sha256: None,
+            failed_delivery_sha256: Some("8".repeat(64)),
+            output_sha256: None,
+            recorded_at: authority_now,
+        },
+        domain_signer,
+    )?;
+    let conflict_reveal_write =
+        HostedDomainWrite::new("recovery-reveal-conflict", 0, None, authority_now)?;
+    store
+        .commit_reveal(tenant, &conflict_base, &conflict_reveal_write)
+        .await?;
+    let projection_sha256 = replicator.target_projection_sha256(tenant).await?;
+    append_replication_check(
+        replicator,
+        tenant,
+        source_signer,
+        ReplicationCheckSpec {
+            authority_epoch: 3,
+            through_sequence: 5,
+            projection_sha256: &projection_sha256,
+            source_authority: HostedMarketAuthority::Postgres,
+            checked_at: authority_now,
+        },
+    )
+    .await?;
+    let mut conflicting_body = conflict_base.body.clone();
+    conflicting_body.delivery_receipt_sha256 = "9".repeat(64);
+    let conflicting_result = SignedExportEnvelope::sign(conflicting_body, domain_signer)?;
+    let conflict_terminal_write =
+        HostedDomainWrite::new("recovery-terminal-conflict", 0, None, authority_now)?;
+    assert!(matches!(
+        store
+            .recover_purchase_result(
+                tenant,
+                &conflicting_result,
+                &conflict_reveal_write,
+                &conflict_terminal_write,
+            )
+            .await,
+        Err(HostedMarketStoreError::Conflict)
+    ));
+    assert!(store
+        .domain_projection(
+            tenant,
+            HostedMarketDomainEventKind::PurchaseSettled,
+            &conflicting_result.body.result_id,
+        )
+        .await?
+        .is_none());
+    assert_eq!(store.authority_state(tenant).await?.last_outbox_sequence, 5);
+    assert_eq!(
+        store
+            .monthly_spend_reservation(tenant, "purchase-spend-release")
+            .await?
+            .ok_or("released recovery reservation missing")?
+            .state,
+        chio_finding_market_store_postgres::HostedSpendState::Released
+    );
     Ok(())
 }

@@ -8,11 +8,18 @@
 
 #![forbid(unsafe_code)]
 
+pub use chio_finding_market_port::{
+    HostedApiKeyLifecyclePort, HostedApiKeyRecord, HostedAuthPort, HostedMarketPortError,
+    HostedPortWriteOutcome, HostedPrincipal, HostedPrincipalRole, HostedTenantId,
+};
+
 mod auth;
+mod contracts;
 mod error;
 mod lifecycle;
 mod operations;
 mod proxy;
+mod server;
 mod tls;
 
 pub use auth::{
@@ -20,7 +27,13 @@ pub use auth::{
     HostedAuthenticatedPrincipal, HostedAuthenticator, HostedAuthenticatorConfig,
     HostedTenantAuthPolicy, StaticApiKeyPepper,
 };
-pub use error::{HostedEdgeError, HostedErrorBody};
+pub use contracts::{
+    HostedDomainEventEnvelope, HostedHttpMethod, HostedMutationOutcome, HostedMutationResponse,
+    HostedRequestContract, HostedTenantBinding, HOSTED_DOMAIN_EVENT_SCHEMA,
+    HOSTED_MUTATION_RESPONSE_SCHEMA, HOSTED_REQUEST_CONTRACT_SCHEMA, HOSTED_TENANT_BINDING_SCHEMA,
+    HOSTED_TENANT_HEADER,
+};
+pub use error::{HostedEdgeError, HostedErrorBody, HOSTED_ERROR_SCHEMA};
 pub use lifecycle::{
     verify_signed_hosted_api_key_lifecycle_event, HostedApiKeyIssueRequest,
     HostedApiKeyLifecycleEvent, HostedApiKeyLifecycleOperation, HostedApiKeyLifecycleRepository,
@@ -34,5 +47,12 @@ pub use operations::{
 };
 pub use proxy::{
     HostedForwardingHeaders, HostedRequestContext, HostedTrustedProxy, HostedTrustedProxyConfig,
+};
+pub use server::{
+    hosted_market_router, serve_hosted_market_loopback, serve_hosted_market_loopback_with_shutdown,
+    HostedAuthenticatedFindingDelivery, HostedDomainMutation, HostedHttpBackend,
+    HostedHttpBackendError, HostedHttpBackendOutcome, HostedHttpPage, HostedHttpProjection,
+    HostedHttpServerConfig, HostedHttpServerState, HostedReleaseIdentity,
+    HOSTED_AUTHENTICATED_DELIVERY_SCHEMA, HOSTED_RELEASE_IDENTITY_SCHEMA,
 };
 pub use tls::{HostedTlsConfig, HostedTlsReload, HostedTlsState};

@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes, sha256_hex};
@@ -12,18 +11,18 @@ use chio_finding::{
 };
 use chio_finding_market_store_postgres::{
     HostedAggregateCheckpointBody, HostedAggregateKind, HostedArchiveManifestBody,
-    HostedAuthorityTransitionBody, HostedAuthorityTransitionOperation, HostedGcReceiptBody,
-    HostedJobState, HostedJobWriteOutcome, HostedJournalCheckpointBody, HostedLegalHoldAction,
-    HostedLegalHoldBody, HostedMarketAuthority, HostedMarketDomainArtifact,
-    HostedMarketDomainEvent, HostedMarketDomainEventKind, HostedMarketStoreError,
-    HostedPrincipalLifecycleBody, HostedPrincipalLifecycleOperation,
-    HostedPrincipalReplicationEventBody, HostedPrincipalRole, HostedReplicationCheckBody,
-    HostedReplicationEventBody, HostedRestoreVerificationBody, HostedRetentionResourceKind,
-    HostedRetentionTarget, HostedRollbackOutboxEntry, HostedTenantId, HostedTenantLimits,
-    PostgresFindingMarketMigrator, PostgresFindingMarketReplicator, PostgresFindingMarketRetention,
-    PostgresFindingMarketStore, HOSTED_AGGREGATE_CHECKPOINT_SCHEMA, HOSTED_ARCHIVE_MANIFEST_SCHEMA,
-    HOSTED_AUTHORITY_TRANSITION_SCHEMA, HOSTED_GC_RECEIPT_SCHEMA, HOSTED_JOURNAL_CHECKPOINT_SCHEMA,
-    HOSTED_LEGAL_HOLD_SCHEMA, HOSTED_PRINCIPAL_LIFECYCLE_SCHEMA,
+    HostedAuthorityTransitionBody, HostedAuthorityTransitionOperation,
+    HostedCapabilityAdmissionOutcome, HostedDomainWrite, HostedGcReceiptBody, HostedJobState,
+    HostedJobWriteOutcome, HostedJournalCheckpointBody, HostedLegalHoldAction, HostedLegalHoldBody,
+    HostedMarketAuthority, HostedMarketDomainArtifact, HostedMarketDomainEvent,
+    HostedMarketDomainEventKind, HostedMarketStoreError, HostedPrincipalLifecycleBody,
+    HostedPrincipalLifecycleOperation, HostedPrincipalReplicationEventBody, HostedPrincipalRole,
+    HostedReplicationCheckBody, HostedReplicationEventBody, HostedRestoreVerificationBody,
+    HostedRetentionResourceKind, HostedRetentionTarget, HostedRollbackOutboxEntry, HostedTenantId,
+    HostedTenantLimits, PostgresFindingMarketMigrator, PostgresFindingMarketReplicator,
+    PostgresFindingMarketRetention, PostgresFindingMarketStore, HOSTED_AGGREGATE_CHECKPOINT_SCHEMA,
+    HOSTED_ARCHIVE_MANIFEST_SCHEMA, HOSTED_AUTHORITY_TRANSITION_SCHEMA, HOSTED_GC_RECEIPT_SCHEMA,
+    HOSTED_JOURNAL_CHECKPOINT_SCHEMA, HOSTED_LEGAL_HOLD_SCHEMA, HOSTED_PRINCIPAL_LIFECYCLE_SCHEMA,
     HOSTED_PRINCIPAL_REPLICATION_EVENT_SCHEMA, HOSTED_REPLICATION_CHECK_SCHEMA,
     HOSTED_REPLICATION_EVENT_SCHEMA, HOSTED_RESTORE_VERIFICATION_SCHEMA,
 };
@@ -32,11 +31,12 @@ use sqlx::Row as _;
 mod support;
 
 use support::{
-    append_replication_check, apply_authority_transition,
-    assert_disabled_tenant_blocks_worker_transitions, assert_forged_job_digest_rejected,
+    append_replication_check, apply_authority_transition, assert_atomic_purchase_recovery,
+    assert_catalog_retractions, assert_disabled_tenant_blocks_worker_transitions,
+    assert_forged_job_digest_rejected, assert_legacy_delivery_upgrade_rejects,
     assert_multi_replica_leases_and_shutdown_refunds, assert_tenant_disablement_serializes,
-    assert_worker_job_boundary, migrate_legacy_fixture, signed_domain_payload,
-    signed_principal_replication_event, ReplicationCheckSpec,
+    assert_terminal_job_retention_gc, assert_worker_job_boundary, migrate_legacy_fixture,
+    signed_domain_payload, signed_principal_replication_event, ReplicationCheckSpec,
 };
 
 #[tokio::test]
@@ -453,6 +453,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             1_700_000_000,
         )
         .await?;
+    assert_legacy_delivery_upgrade_rejects(&admin_pool, &tenant_a).await?;
     assert_worker_job_boundary(&worker_pool, &tenant_a).await?;
     assert_tenant_disablement_serializes(&store, &runtime_pool, &tenant_a).await?;
     assert_disabled_tenant_blocks_worker_transitions(&store, &worker_pool, nonce).await?;
@@ -776,7 +777,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         },
         &source_signer,
     )?;
-    let unsupported_replication = SignedExportEnvelope::sign(
+    let mismatched_replication = SignedExportEnvelope::sign(
         HostedReplicationEventBody {
             schema: HOSTED_REPLICATION_EVENT_SCHEMA.to_owned(),
             tenant_id: tenant_a.as_str().to_owned(),
@@ -784,8 +785,8 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             authority_epoch: 1,
             sequence: 3,
             event_kind: HostedMarketDomainEventKind::PenaltyAssessed,
-            aggregate_id: "unsupported-penalty".to_owned(),
-            event_id: "unsupported-penalty-event".to_owned(),
+            aggregate_id: "mismatched-penalty".to_owned(),
+            event_id: "mismatched-penalty-event".to_owned(),
             expected_revision: 0,
             expected_event_sha256: None,
             artifact_signer_key: Some(domain_signer.public_key()),
@@ -799,12 +800,10 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             .apply_replication_event(
                 &tenant_a,
                 &source_signer.public_key(),
-                &unsupported_replication,
+                &mismatched_replication,
             )
             .await,
-        Err(HostedMarketStoreError::Invalid(
-            "unsupported hosted domain artifact"
-        ))
+        Err(HostedMarketStoreError::Invalid("market penalty authority"))
     ));
     assert_eq!(
         replicator
@@ -826,6 +825,19 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             .await?,
         HostedJobWriteOutcome::ExactReplay
     );
+    let catalog = store.catalog_findings(&tenant_a, None, 10).await?;
+    assert_eq!(catalog.items.len(), 1);
+    assert_eq!(catalog.items[0].aggregate_id, market_finding_id);
+    assert!(catalog.next_cursor.is_none());
+    assert!(store
+        .catalog_findings(&tenant_b, None, 10)
+        .await?
+        .items
+        .is_empty());
+    assert!(matches!(
+        store.catalog_findings(&tenant_a, None, 0).await,
+        Err(HostedMarketStoreError::Invalid("catalog limit"))
+    ));
     let authority_now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let projection_sha256 = replicator.target_projection_sha256(&tenant_a).await?;
     append_replication_check(
@@ -906,6 +918,16 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         .aggregate_head(&tenant_b, HostedAggregateKind::Finding, &market_finding_id,)
         .await?
         .is_none());
+    assert_eq!(
+        store
+            .publish_finding(
+                &tenant_a,
+                &market_finding,
+                &HostedDomainWrite::new("challenge-a-submitted", 0, None, 1_700_000_001,)?,
+            )
+            .await?,
+        HostedJobWriteOutcome::ExactReplay
+    );
     let advanced_event = HostedMarketDomainEvent::from_artifact(
         market_finding_id.clone(),
         "challenge-a-evaluating",
@@ -936,6 +958,39 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         HostedJobWriteOutcome::ExactReplay,
         "an exact response-loss retry must bypass the newly stale replication gate"
     );
+    assert_eq!(
+        store
+            .append_domain_event(
+                &tenant_a,
+                &advanced_event,
+                head.revision,
+                Some(&head.event_sha256),
+                1_900_000_001,
+            )
+            .await?,
+        HostedJobWriteOutcome::ExactReplay,
+        "server-owned retry time must not change the idempotent event identity"
+    );
+    let expired_payload = signed_domain_payload(
+        HostedMarketDomainEventKind::FindingPublished,
+        &domain_signer,
+        serde_json::json!({"findingId": "expired-fresh-publication"}),
+    )?;
+    let expired_finding: Finding = serde_json::from_slice(&expired_payload)?;
+    let expired_finding_id = expired_finding.finding_id.clone();
+    let expired_event = HostedMarketDomainEvent::from_artifact(
+        &expired_finding_id,
+        "expired-fresh-publication",
+        &HostedMarketDomainArtifact::Finding(expired_finding),
+    )?;
+    assert!(matches!(
+        store
+            .append_domain_event(&tenant_a, &expired_event, 0, None, 1_900_000_001)
+            .await,
+        Err(HostedMarketStoreError::Invalid(
+            "finding artifact freshness"
+        ))
+    ));
     let advanced_projection_revision: i64 = sqlx::query_scalar(
         "SELECT revision FROM chio_finding_market_domain_projections WHERE tenant_id = $1 AND aggregate_kind = 'finding' AND aggregate_id = $2",
     )
@@ -1042,18 +1097,25 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
                 && record.principal_id == "buyer-a"
                 && record.operation == HostedPrincipalLifecycleOperation::KeyRotation
     ));
-    let projection_sha256 = replicator.target_projection_sha256(&tenant_a).await?;
-    append_replication_check(
-        &replicator,
+    assert_atomic_purchase_recovery(
+        &store,
         &tenant_a,
+        &domain_signer,
+        &market_finding_id,
+        &replicator,
         &source_signer,
-        ReplicationCheckSpec {
-            authority_epoch: 3,
-            through_sequence: 2,
-            projection_sha256: &projection_sha256,
-            source_authority: HostedMarketAuthority::Postgres,
-            checked_at: authority_now,
-        },
+        authority_now,
+    )
+    .await?;
+    assert_catalog_retractions(
+        &store,
+        &tenant_a,
+        &tenant_b,
+        &domain_signer,
+        &market_finding_id,
+        &replicator,
+        &source_signer,
+        authority_now,
     )
     .await?;
     let history = store
@@ -1569,41 +1631,74 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     .execute(&admin_pool)
     .await;
     assert!(security_event_tamper.is_err());
-    assert!(
+    let first_nonce = "d".repeat(64);
+    let second_nonce = "e".repeat(64);
+    let (first_admission, second_admission) = tokio::join!(
+        store.consume_capability_dpop_admission(
+            &tenant_a,
+            "capability-atomic",
+            &first_nonce,
+            1_700_000_300,
+            2,
+            1_700_000_300,
+            1_700_000_001,
+            8,
+        ),
+        store.consume_capability_dpop_admission(
+            &tenant_a,
+            "capability-atomic",
+            &second_nonce,
+            1_700_000_300,
+            2,
+            1_700_000_300,
+            1_700_000_002,
+            8,
+        ),
+    );
+    assert_eq!(first_admission?, HostedCapabilityAdmissionOutcome::Admitted);
+    assert_eq!(
+        second_admission?,
+        HostedCapabilityAdmissionOutcome::Admitted
+    );
+    assert_eq!(
         store
-            .consume_dpop_nonce(
+            .consume_capability_dpop_admission(
                 &tenant_a,
-                "capability-a",
-                &"d".repeat(64),
+                "capability-atomic",
+                &"f".repeat(64),
                 1_700_000_300,
-                1_700_000_001,
+                2,
+                1_700_000_300,
+                1_700_000_003,
                 8,
             )
-            .await?
+            .await?,
+        HostedCapabilityAdmissionOutcome::BudgetExceeded
     );
-    assert!(
-        !store
-            .consume_dpop_nonce(
+    assert_eq!(
+        store
+            .consume_capability_dpop_admission(
                 &tenant_a,
-                "capability-a",
+                "capability-atomic",
                 &"d".repeat(64),
                 1_700_000_300,
-                1_700_000_001,
+                2,
+                1_700_000_300,
+                1_700_000_004,
                 8,
             )
-            .await?
+            .await?,
+        HostedCapabilityAdmissionOutcome::Replay
     );
-    let (first_capability_use, second_capability_use) = tokio::join!(
-        store.consume_capability_use(&tenant_a, "capability-a", 2, 1_700_000_300, 1_700_000_001,),
-        store.consume_capability_use(&tenant_a, "capability-a", 2, 1_700_000_300, 1_700_000_002,),
-    );
-    assert!(first_capability_use?);
-    assert!(second_capability_use?);
-    assert!(
-        !store
-            .consume_capability_use(&tenant_a, "capability-a", 2, 1_700_000_300, 1_700_000_003,)
-            .await?
-    );
+    let rejected_nonce_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM chio_finding_market_dpop_nonces WHERE tenant_id = $1 AND capability_id = $2 AND nonce_sha256 = $3",
+    )
+    .bind(tenant_a.as_str())
+    .bind("capability-atomic")
+    .bind("f".repeat(64))
+    .fetch_one(&admin_pool)
+    .await?;
+    assert_eq!(rejected_nonce_count, 0);
 
     let request = "a".repeat(64);
     let payload_a =
@@ -1858,135 +1953,18 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         .claim_due_jobs(&tenant_a, "worker-d", 10, 1)
         .await?
         .is_empty());
-    let terminal_commitment = retention.journal_commitment(&tenant_a).await?;
-    let terminal_checkpoint_body = HostedJournalCheckpointBody {
-        schema: HOSTED_JOURNAL_CHECKPOINT_SCHEMA.to_owned(),
-        tenant_id: tenant_a.as_str().to_owned(),
-        aggregate_heads_sha256: terminal_commitment.aggregate_heads_sha256,
-        terminal_jobs_sha256: terminal_commitment.terminal_jobs_sha256,
-        previous_checkpoint_sha256: terminal_commitment.previous_checkpoint_sha256,
-        migration_version: terminal_commitment.migration_version,
-        configuration_revision: "integration-revision-1".to_owned(),
-        created_at: authority_now + 20,
-    };
-    let terminal_checkpoint_a =
-        SignedExportEnvelope::sign(terminal_checkpoint_body.clone(), &retention_signer)?;
-    let terminal_checkpoint_b = SignedExportEnvelope::sign(
-        HostedJournalCheckpointBody {
-            created_at: authority_now + 21,
-            ..terminal_checkpoint_body
-        },
+    assert_terminal_job_retention_gc(
+        &retention,
+        &admin_pool,
+        &store,
+        &tenant_a,
         &retention_signer,
-    )?;
-    let (checkpoint_a_result, checkpoint_b_result) = tokio::join!(
-        retention.append_journal_checkpoint(
-            &tenant_a,
-            &retention_public_key,
-            &terminal_checkpoint_a,
-        ),
-        retention.append_journal_checkpoint(
-            &tenant_a,
-            &retention_public_key,
-            &terminal_checkpoint_b,
-        ),
-    );
-    let checkpoint_a_inserted = matches!(&checkpoint_a_result, Ok(HostedJobWriteOutcome::Inserted));
-    let checkpoint_b_inserted = matches!(&checkpoint_b_result, Ok(HostedJobWriteOutcome::Inserted));
-    assert!(
-        (checkpoint_a_inserted
-            && matches!(&checkpoint_b_result, Err(HostedMarketStoreError::Conflict)))
-            || (checkpoint_b_inserted
-                && matches!(&checkpoint_a_result, Err(HostedMarketStoreError::Conflict)))
-    );
-    let terminal_checkpoint = if checkpoint_a_inserted {
-        &terminal_checkpoint_a
-    } else {
-        &terminal_checkpoint_b
-    };
-    let terminal_checkpoint_sha256 = sha256_hex(&canonical_json_bytes(terminal_checkpoint)?);
-    let terminal_job_sha256: String = sqlx::query_scalar(
-        r#"SELECT member_sha256
-           FROM chio_finding_market_journal_checkpoint_members
-           WHERE tenant_id = $1 AND checkpoint_sha256 = $2
-             AND member_kind = 'job' AND member_family = $3
-             AND member_id = $4 AND member_revision = 0"#,
+        &retention_public_key,
+        authority_now,
+        &request,
+        payload_a,
     )
-    .bind(tenant_a.as_str())
-    .bind(&terminal_checkpoint_sha256)
-    .bind("finding.purchase")
-    .bind("job-1")
-    .fetch_one(&admin_pool)
     .await?;
-    let terminal_job_target = HostedRetentionTarget {
-        resource_kind: HostedRetentionResourceKind::Job,
-        resource_family: "finding.purchase".to_owned(),
-        resource_id: "job-1".to_owned(),
-        resource_revision: 0,
-        resource_sha256: terminal_job_sha256,
-    };
-    let terminal_job_manifest = SignedExportEnvelope::sign(
-        HostedArchiveManifestBody {
-            schema: HOSTED_ARCHIVE_MANIFEST_SCHEMA.to_owned(),
-            tenant_id: tenant_a.as_str().to_owned(),
-            target: terminal_job_target.clone(),
-            covered_checkpoint_sha256: terminal_checkpoint_sha256,
-            object_uri: "s3://chio-test/job-1.json".to_owned(),
-            object_sha256: "d".repeat(64),
-            object_size: 128,
-            configuration_revision: "integration-revision-1".to_owned(),
-            previous_archive_sha256: None,
-            created_at: authority_now + 22,
-        },
-        &retention_signer,
-    )?;
-    retention
-        .append_archive_manifest(&tenant_a, &retention_public_key, &terminal_job_manifest)
-        .await?;
-    let terminal_job_archive_sha256 = sha256_hex(&canonical_json_bytes(&terminal_job_manifest)?);
-    let terminal_job_restore = SignedExportEnvelope::sign(
-        HostedRestoreVerificationBody {
-            schema: HOSTED_RESTORE_VERIFICATION_SCHEMA.to_owned(),
-            tenant_id: tenant_a.as_str().to_owned(),
-            archive_sha256: terminal_job_archive_sha256.clone(),
-            restored_resource_sha256: terminal_job_target.resource_sha256.clone(),
-            verified_at: authority_now + 23,
-        },
-        &retention_signer,
-    )?;
-    retention
-        .append_restore_verification(&tenant_a, &retention_public_key, &terminal_job_restore)
-        .await?;
-    let terminal_job_gc = SignedExportEnvelope::sign(
-        HostedGcReceiptBody {
-            schema: HOSTED_GC_RECEIPT_SCHEMA.to_owned(),
-            tenant_id: tenant_a.as_str().to_owned(),
-            archive_sha256: terminal_job_archive_sha256,
-            target: terminal_job_target,
-            completed_at: authority_now + 24,
-        },
-        &retention_signer,
-    )?;
-    assert_eq!(
-        retention
-            .garbage_collect(&tenant_a, &retention_public_key, &terminal_job_gc)
-            .await?,
-        HostedJobWriteOutcome::Inserted
-    );
-    assert!(store.get_job(&tenant_a, "job-1").await?.is_none());
-    assert!(matches!(
-        store
-            .put_job(
-                &tenant_a,
-                "job-1",
-                "finding.purchase",
-                &request,
-                payload_a,
-                authority_now + 25,
-                authority_now + 25,
-            )
-            .await,
-        Err(HostedMarketStoreError::Conflict)
-    ));
     store.set_tenant_enabled(&tenant_a, false).await?;
     assert!(matches!(
         store.get_job(&tenant_a, "job-1").await,

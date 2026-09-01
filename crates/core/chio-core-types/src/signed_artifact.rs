@@ -113,6 +113,8 @@ pub const CHIO_FINDING_CHALLENGE_VERIFIER_PROFILE_V1_SCHEMA: &str =
     "chio.finding.challenge-verifier-profile.v1";
 /// Cognition-market challenge submission.
 pub const CHIO_FINDING_CHALLENGE_V1_SCHEMA: &str = "chio.finding.challenge.v1";
+/// Cognition-market signed claim allocation.
+pub const CHIO_FINDING_CLAIM_ALLOCATION_V1_SCHEMA: &str = "chio.finding.claim-allocation.v1";
 /// Cognition-market failed-delivery terminal.
 pub const CHIO_FINDING_FAILED_DELIVERY_V1_SCHEMA: &str = "chio.finding.failed-delivery.v1";
 /// Cognition-market finalized bond snapshot.
@@ -120,6 +122,8 @@ pub const CHIO_FINDING_FINALIZED_BOND_SNAPSHOT_V1_SCHEMA: &str =
     "chio.finding.finalized-bond-snapshot.v1";
 /// Cognition-market governance statement withdrawing a pinned authority key.
 pub const CHIO_FINDING_KEY_REVOCATION_V1_SCHEMA: &str = "chio.finding.key-revocation.v1";
+/// Cognition-market signed liability projection.
+pub const CHIO_FINDING_LIABILITY_V1_SCHEMA: &str = "chio.finding.liability.v1";
 /// Cognition-market signed sparse status-map root.
 pub const CHIO_FINDING_STATUS_EPOCH_V1_SCHEMA: &str = "chio.finding.status-epoch.v1";
 /// Cognition-market seller market terms.
@@ -128,11 +132,19 @@ pub const CHIO_FINDING_MARKET_TERMS_V1_SCHEMA: &str = "chio.finding.market-terms
 pub const CHIO_FINDING_POOL_ALLOCATION_V1_SCHEMA: &str = "chio.finding.pool-allocation.v1";
 /// Cognition-market settled purchase record.
 pub const CHIO_FINDING_PURCHASE_RECORD_V1_SCHEMA: &str = "chio.finding.purchase-record.v1";
+/// Cognition-market signed hosted purchase terminal.
+pub const CHIO_FINDING_PURCHASE_RESULT_V1_SCHEMA: &str = "chio.finding.purchase-result.v1";
 /// Cognition-market issuer-signed seller authorization.
 pub const CHIO_FINDING_SELLER_AUTHORIZATION_V1_SCHEMA: &str =
     "chio.finding.seller-authorization.v1";
+/// Cognition-market seller-signed verified-fix submission.
+pub const CHIO_FINDING_VERIFIED_FIX_SUBMISSION_V1_SCHEMA: &str =
+    "chio.finding.verified-fix-submission.v1";
 /// Cognition-market verifier facet report.
 pub const CHIO_FINDING_VERIFIER_REPORT_V1_SCHEMA: &str = "chio.finding.verifier-report.v1";
+/// Cognition-market seller-signed voluntary retraction.
+pub const CHIO_FINDING_VOLUNTARY_RETRACTION_V1_SCHEMA: &str =
+    "chio.finding.voluntary-retraction.v1";
 /// Open-market penalty artifact. Its body is frozen camelCase and tolerates
 /// unknown members; the registered schema mirrors that shape exactly.
 pub const CHIO_REGISTRY_MARKET_PENALTY_V1_SCHEMA: &str = "chio.registry.market-penalty.v1";
@@ -608,6 +620,13 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
         Some(("finding_challenge", "finding-market-v1")),
     ),
     (
+        CHIO_FINDING_CLAIM_ALLOCATION_V1_SCHEMA,
+        Some((
+            "finding_claim_allocation",
+            "cognition-market-hosted-completion",
+        )),
+    ),
+    (
         CHIO_FINDING_FAILED_DELIVERY_V1_SCHEMA,
         Some(("finding_failed_delivery", "finding-market-v1")),
     ),
@@ -618,6 +637,10 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
     (
         CHIO_FINDING_KEY_REVOCATION_V1_SCHEMA,
         Some(("finding_key_revocation", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_LIABILITY_V1_SCHEMA,
+        Some(("finding_liability", "cognition-market-hosted-completion")),
     ),
     (
         CHIO_FINDING_STATUS_EPOCH_V1_SCHEMA,
@@ -636,12 +659,33 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
         Some(("finding_purchase_record", "finding-market-v1")),
     ),
     (
+        CHIO_FINDING_PURCHASE_RESULT_V1_SCHEMA,
+        Some((
+            "finding_purchase_result",
+            "cognition-market-hosted-completion",
+        )),
+    ),
+    (
         CHIO_FINDING_SELLER_AUTHORIZATION_V1_SCHEMA,
         Some(("finding_seller_authorization", "finding-market-v1")),
     ),
     (
+        CHIO_FINDING_VERIFIED_FIX_SUBMISSION_V1_SCHEMA,
+        Some((
+            "finding_verified_fix_submission",
+            "cognition-market-hosted-completion",
+        )),
+    ),
+    (
         CHIO_FINDING_VERIFIER_REPORT_V1_SCHEMA,
         Some(("finding_verifier_report", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_VOLUNTARY_RETRACTION_V1_SCHEMA,
+        Some((
+            "finding_voluntary_retraction",
+            "cognition-market-hosted-completion",
+        )),
     ),
     (
         CHIO_REGISTRY_MARKET_PENALTY_V1_SCHEMA,
