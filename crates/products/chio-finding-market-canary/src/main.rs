@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::{Read as _, Write as _};
 use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
@@ -26,6 +27,8 @@ use zeroize::Zeroizing;
 const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
 const CANARY_SCHEMA: &str = "chio.finding.kvm-canary-job.v1";
 const MAX_NETWORK_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+const NETWORK_FINDING_POOL_SCHEMA: &str = "chio.finding.network-canary-pool.v1";
+const MAX_NETWORK_FINDING_POOL_SIZE: usize = 128;
 const GITHUB_RUN_ID_ENV: &str = "GITHUB_RUN_ID";
 const GITHUB_RUN_ATTEMPT_ENV: &str = "GITHUB_RUN_ATTEMPT";
 
@@ -49,7 +52,7 @@ enum Command {
     /// negative tenant-isolation probe through the deployed HTTPS listener.
     Network {
         #[arg(long)]
-        finding: PathBuf,
+        finding_pool: PathBuf,
         #[arg(long)]
         tenant_id: String,
         #[arg(long)]
@@ -131,6 +134,7 @@ struct NetworkCanaryReport {
     tenant_id: String,
     finding_id: String,
     finding_sha256: String,
+    finding_pool_sha256: String,
     run_nonce_sha256: String,
     event_id: String,
     first_outcome: String,
@@ -138,6 +142,24 @@ struct NetworkCanaryReport {
     buyer_payload_matched: bool,
     buyer_catalog_matched: bool,
     tenant_isolation_denied: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct NetworkFindingPool {
+    schema: String,
+    finding_paths: Vec<String>,
+}
+
+struct NetworkFindingCandidate {
+    bytes: Vec<u8>,
+    finding: chio_finding::Finding,
+}
+
+struct FreshNetworkPublication {
+    candidate: NetworkFindingCandidate,
+    event_id: String,
+    response: NetworkMutationResponse,
 }
 
 #[derive(Deserialize)]
@@ -178,7 +200,7 @@ async fn main() -> ExitCode {
 
 async fn network_canary(
     profile: &FindingHostedProfile,
-    finding_path: &Path,
+    finding_pool_path: &Path,
     tenant_id: &str,
     seller_key_id_env: &str,
     seller_key_secret_env: &str,
@@ -196,27 +218,15 @@ async fn network_canary(
     {
         return Err("network_canary_api_key_not_admitted");
     }
-    let (finding_bytes, finding): (Vec<u8>, chio_finding::Finding) =
-        read_canonical_private_bytes(finding_path)?;
-    chio_finding::verify_finding(&finding).map_err(|_| "network_canary_finding_invalid")?;
     let now = current_unix_secs()?;
-    if finding.issued_at > now || finding.expires_at <= now {
-        return Err("network_canary_finding_inactive");
-    }
     let candidate_sha = candidate_sha()?;
     if candidate_sha != profile.release.candidate_sha {
         return Err("network_canary_profile_candidate_mismatch");
     }
     let run_nonce = network_run_nonce()?;
     let run_nonce_sha256 = sha256_hex(run_nonce.as_bytes());
-    let event_id = network_event_id(
-        &candidate_sha,
-        &profile.release.configuration_revision,
-        tenant_id,
-        &finding.finding_id,
-        &run_nonce,
-    );
-    let finding_sha256 = sha256_hex(&finding_bytes);
+    let (finding_pool_sha256, finding_candidates) =
+        load_network_finding_pool(finding_pool_path, now, &run_nonce)?;
     let seller_key_id = read_canary_environment(seller_key_id_env)?;
     let seller_key_secret = Zeroizing::new(read_canary_environment(seller_key_secret_env)?);
     let buyer_key_id = read_canary_environment(buyer_key_id_env)?;
@@ -236,7 +246,7 @@ async fn network_canary(
         tenant_id,
         &buyer_key_id,
         &buyer_key_secret,
-        &sha256_hex(format!("{candidate_sha}:release").as_bytes()),
+        &sha256_hex(format!("{candidate_sha}:{run_nonce}:release").as_bytes()),
         "/v1/release",
     )
     .await?;
@@ -250,27 +260,26 @@ async fn network_canary(
     {
         return Err("network_canary_release_identity_mismatch");
     }
-    let first_request_id = sha256_hex(format!("{event_id}:first").as_bytes());
-    let first = publish_network_finding(
+    let FreshNetworkPublication {
+        candidate,
+        event_id,
+        response: first,
+    } = publish_fresh_network_finding(
         &client,
         profile,
         tenant_id,
         &seller_key_id,
         &seller_key_secret,
-        &first_request_id,
-        &event_id,
-        &finding_bytes,
+        &buyer_key_id,
+        &buyer_key_secret,
+        &candidate_sha,
+        &run_nonce,
+        finding_candidates,
     )
     .await?;
-    require_fresh_network_publish(&first.outcome)?;
-    validate_network_mutation(
-        &first,
-        tenant_id,
-        &finding.finding_id,
-        &event_id,
-        &first_request_id,
-        &finding_sha256,
-    )?;
+    let finding = candidate.finding;
+    let finding_bytes = candidate.bytes;
+    let finding_sha256 = sha256_hex(&finding_bytes);
     tokio::time::sleep(Duration::from_secs(2)).await;
     let retry_request_id = sha256_hex(format!("{event_id}:retry").as_bytes());
     let retry = publish_network_finding(
@@ -308,6 +317,7 @@ async fn network_canary(
     if resolved != finding_bytes {
         return Err("network_canary_payload_mismatch");
     }
+    let catalog_path = finding_catalog_path(&finding.finding_id)?;
     let catalog_bytes = network_get(
         &client,
         profile,
@@ -315,7 +325,7 @@ async fn network_canary(
         &buyer_key_id,
         &buyer_key_secret,
         &sha256_hex(format!("{event_id}:list").as_bytes()),
-        "/v1/findings?limit=100",
+        &catalog_path,
     )
     .await?;
     let catalog: serde_json::Value =
@@ -366,6 +376,7 @@ async fn network_canary(
         tenant_id: tenant_id.to_owned(),
         finding_id: finding.finding_id,
         finding_sha256,
+        finding_pool_sha256,
         run_nonce_sha256,
         event_id,
         first_outcome: first.outcome,
@@ -420,6 +431,182 @@ fn require_fresh_network_publish(outcome: &str) -> Result<(), &'static str> {
     }
 }
 
+fn load_network_finding_pool(
+    path: &Path,
+    now: u64,
+    run_nonce: &str,
+) -> Result<(String, Vec<NetworkFindingCandidate>), &'static str> {
+    let (pool_bytes, pool): (Vec<u8>, NetworkFindingPool) = read_canonical_private_bytes(path)?;
+    if pool.schema != NETWORK_FINDING_POOL_SCHEMA
+        || !(2..=MAX_NETWORK_FINDING_POOL_SIZE).contains(&pool.finding_paths.len())
+    {
+        return Err("network_canary_finding_pool_invalid");
+    }
+    let mut paths = BTreeSet::new();
+    let mut finding_ids = BTreeSet::new();
+    let mut issuer = None;
+    let mut candidates = Vec::with_capacity(pool.finding_paths.len());
+    for finding_path in pool.finding_paths {
+        if finding_path.is_empty()
+            || finding_path.len() > 4_096
+            || finding_path.trim() != finding_path
+            || !Path::new(&finding_path).is_absolute()
+            || !paths.insert(finding_path.clone())
+        {
+            return Err("network_canary_finding_pool_invalid");
+        }
+        let (bytes, finding): (Vec<u8>, chio_finding::Finding) =
+            read_canonical_private_bytes(Path::new(&finding_path))?;
+        chio_finding::verify_finding(&finding).map_err(|_| "network_canary_finding_invalid")?;
+        if finding.issued_at > now
+            || finding.expires_at <= now
+            || !finding_ids.insert(finding.finding_id.clone())
+            || issuer
+                .as_ref()
+                .is_some_and(|expected| expected != &finding.issuer)
+        {
+            return Err("network_canary_finding_pool_invalid");
+        }
+        issuer.get_or_insert_with(|| finding.issuer.clone());
+        candidates.push(NetworkFindingCandidate { bytes, finding });
+    }
+    candidates.sort_by_cached_key(|candidate| {
+        sha256_hex(
+            format!(
+                "chio.finding.network-canary-selection.v1\0{run_nonce}\0{}",
+                candidate.finding.finding_id
+            )
+            .as_bytes(),
+        )
+    });
+    Ok((sha256_hex(&pool_bytes), candidates))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn publish_fresh_network_finding(
+    client: &reqwest::Client,
+    profile: &FindingHostedProfile,
+    tenant_id: &str,
+    seller_key_id: &str,
+    seller_key_secret: &str,
+    buyer_key_id: &str,
+    buyer_key_secret: &str,
+    candidate_sha: &str,
+    run_nonce: &str,
+    candidates: Vec<NetworkFindingCandidate>,
+) -> Result<FreshNetworkPublication, &'static str> {
+    for candidate in candidates {
+        let finding_id = candidate.finding.finding_id.as_str();
+        let event_id = network_event_id(
+            candidate_sha,
+            &profile.release.configuration_revision,
+            tenant_id,
+            finding_id,
+            run_nonce,
+        );
+        let availability_request_id = sha256_hex(format!("{event_id}:availability").as_bytes());
+        let availability = network_request(
+            client,
+            profile,
+            tenant_id,
+            buyer_key_id,
+            buyer_key_secret,
+            &availability_request_id,
+            &format!("/v1/findings/{finding_id}"),
+        )
+        .await?;
+        let availability_status = availability.status();
+        let existing = bounded_response(availability).await?;
+        if availability_status == StatusCode::OK {
+            if existing != candidate.bytes {
+                return Err("network_canary_finding_identity_conflict");
+            }
+            continue;
+        }
+        if availability_status != StatusCode::NOT_FOUND {
+            return Err("network_canary_finding_availability_failed");
+        }
+        let request_id = sha256_hex(format!("{event_id}:first").as_bytes());
+        let Some(response) = try_publish_network_finding(
+            client,
+            profile,
+            tenant_id,
+            seller_key_id,
+            seller_key_secret,
+            &request_id,
+            &event_id,
+            &candidate.bytes,
+        )
+        .await?
+        else {
+            continue;
+        };
+        require_fresh_network_publish(&response.outcome)?;
+        validate_network_mutation(
+            &response,
+            tenant_id,
+            finding_id,
+            &event_id,
+            &request_id,
+            &sha256_hex(&candidate.bytes),
+        )?;
+        return Ok(FreshNetworkPublication {
+            candidate,
+            event_id,
+            response,
+        });
+    }
+    Err("network_canary_finding_pool_exhausted")
+}
+
+fn finding_catalog_path(finding_id: &str) -> Result<String, &'static str> {
+    if finding_id.len() != 64
+        || !finding_id
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err("network_canary_finding_invalid");
+    }
+    let mut predecessor = finding_id.as_bytes().to_vec();
+    for index in (0..predecessor.len()).rev() {
+        predecessor[index] = match predecessor[index] {
+            b'1'..=b'9' => predecessor[index] - 1,
+            b'a' => b'9',
+            b'b'..=b'f' => predecessor[index] - 1,
+            b'0' => {
+                predecessor[index] = b'f';
+                continue;
+            }
+            _ => return Err("network_canary_finding_invalid"),
+        };
+        let after = String::from_utf8(predecessor).map_err(|_| "network_canary_finding_invalid")?;
+        return Ok(format!("/v1/findings?after={after}&limit=1"));
+    }
+    Ok("/v1/findings?limit=1".to_owned())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn try_publish_network_finding(
+    client: &reqwest::Client,
+    profile: &FindingHostedProfile,
+    tenant_id: &str,
+    key_id: &str,
+    key_secret: &str,
+    request_id: &str,
+    event_id: &str,
+    finding: &[u8],
+) -> Result<Option<NetworkMutationResponse>, &'static str> {
+    let response = send_network_finding(
+        client, profile, tenant_id, key_id, key_secret, request_id, event_id, finding,
+    )
+    .await?;
+    if response.status() == StatusCode::CONFLICT {
+        bounded_response(response).await?;
+        return Ok(None);
+    }
+    parse_network_publish_response(response).await.map(Some)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn publish_network_finding(
     client: &reqwest::Client,
@@ -431,7 +618,25 @@ async fn publish_network_finding(
     event_id: &str,
     finding: &[u8],
 ) -> Result<NetworkMutationResponse, &'static str> {
-    let response = client
+    let response = send_network_finding(
+        client, profile, tenant_id, key_id, key_secret, request_id, event_id, finding,
+    )
+    .await?;
+    parse_network_publish_response(response).await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn send_network_finding(
+    client: &reqwest::Client,
+    profile: &FindingHostedProfile,
+    tenant_id: &str,
+    key_id: &str,
+    key_secret: &str,
+    request_id: &str,
+    event_id: &str,
+    finding: &[u8],
+) -> Result<reqwest::Response, &'static str> {
+    client
         .post(format!(
             "{}/v1/findings/publish",
             profile.public_endpoint.trim_end_matches('/')
@@ -445,7 +650,12 @@ async fn publish_network_finding(
         .body(finding.to_vec())
         .send()
         .await
-        .map_err(|_| "network_canary_request_failed")?;
+        .map_err(|_| "network_canary_request_failed")
+}
+
+async fn parse_network_publish_response(
+    response: reqwest::Response,
+) -> Result<NetworkMutationResponse, &'static str> {
     if response.status() != StatusCode::OK {
         return Err("network_canary_publish_failed");
     }
@@ -608,7 +818,7 @@ async fn run(args: Args) -> Result<CanaryOutput, &'static str> {
             Ok(CanaryOutput::Kvm(report))
         }
         Command::Network {
-            finding,
+            finding_pool,
             tenant_id,
             seller_key_id_env,
             seller_key_secret_env,
@@ -620,7 +830,7 @@ async fn run(args: Args) -> Result<CanaryOutput, &'static str> {
             }
             network_canary(
                 &profile,
-                &finding,
+                &finding_pool,
                 &tenant_id,
                 &seller_key_id_env,
                 &seller_key_secret_env,
@@ -913,8 +1123,14 @@ fn read_canonical_private_bytes<T: serde::de::DeserializeOwned>(
     }
     let capacity = usize::try_from(metadata.len()).map_err(|_| "canary_file_invalid")?;
     let mut bytes = Vec::with_capacity(capacity);
-    file.read_to_end(&mut bytes)
+    std::io::Read::by_ref(&mut file)
+        .take(MAX_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
         .map_err(|_| "canary_file_invalid")?;
+    let bytes_len = u64::try_from(bytes.len()).map_err(|_| "canary_file_invalid")?;
+    if bytes_len != metadata.len() || bytes_len > MAX_FILE_BYTES {
+        return Err("canary_file_invalid");
+    }
     let raw = std::str::from_utf8(&bytes).map_err(|_| "canary_file_invalid")?;
     if canonical_json_bytes_from_str(raw).map_err(|_| "canary_file_invalid")? != bytes {
         return Err("canary_file_invalid");
@@ -938,7 +1154,12 @@ fn open_private_regular(path: &Path) -> Result<(File, Metadata), &'static str> {
         .open(path)
         .map_err(|_| "canary_file_invalid")?;
     let after = file.metadata().map_err(|_| "canary_file_invalid")?;
-    if before.dev() != after.dev() || before.ino() != after.ino() || !after.is_file() {
+    if before.dev() != after.dev()
+        || before.ino() != after.ino()
+        || !after.is_file()
+        || after.mode() & 0o077 != 0
+        || after.uid() != nix::unistd::geteuid().as_raw()
+    {
         return Err("canary_file_invalid");
     }
     Ok((file, after))
@@ -961,7 +1182,68 @@ fn write_stdout(bytes: &[u8]) -> Result<(), ()> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+
+    use chio_core_types::capability::scope::MonetaryAmount;
+    use chio_core_types::crypto::Keypair;
+    use chio_finding::{
+        compute_finding_id, sign_finding, Finding, FindingDescriptor, FindingEvidenceClass,
+        FindingGuaranteeClass, FindingOutcomeClass, FINDING_SCHEMA_V1,
+    };
+
     use super::*;
+
+    fn signed_test_finding(seed: u8, marker: &str, now: u64) -> Finding {
+        let issuer = Keypair::from_seed(&[seed; 32]);
+        let mut finding = Finding {
+            schema: FINDING_SCHEMA_V1.to_owned(),
+            finding_id: String::new(),
+            descriptor: FindingDescriptor {
+                topic: format!("canary:{marker}"),
+                context_sha256: sha256_hex(marker.as_bytes()),
+                outcome_class: FindingOutcomeClass::PositiveResult,
+            },
+            guarantee_class: FindingGuaranteeClass::Asserted,
+            payload_sha256: sha256_hex(format!("payload:{marker}").as_bytes()),
+            payload_media_type: "application/json".to_owned(),
+            evidence_receipt_ids: Vec::new(),
+            evidence_checkpoint_ref: format!("checkpoint:{marker}"),
+            evidence_cost: MonetaryAmount {
+                units: 0,
+                currency: "USD".to_owned(),
+            },
+            runtime_assurance_tier: None,
+            evidence_class: FindingEvidenceClass::Asserted,
+            replay_recipe_sha256: None,
+            intent_commitment_receipt_id: None,
+            bond_ref: format!("bond:{marker}"),
+            status_feed_ref: format!("status:{marker}"),
+            license_ref: None,
+            price_hint_ref: None,
+            issuer: issuer.public_key(),
+            issued_at: now.saturating_sub(1),
+            expires_at: now.saturating_add(3_600),
+            signature: String::new(),
+        };
+        finding.finding_id = compute_finding_id(&finding)
+            .unwrap_or_else(|error| panic!("test finding id failed: {error}"));
+        sign_finding(finding, &issuer)
+            .unwrap_or_else(|error| panic!("test finding signing failed: {error}"))
+    }
+
+    fn write_private_json(path: &Path, value: &impl Serialize) {
+        let bytes = canonical_json_bytes(value)
+            .unwrap_or_else(|error| panic!("test canonical JSON failed: {error}"));
+        let mut file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o600)
+            .open(path)
+            .unwrap_or_else(|error| panic!("test private file failed: {error}"));
+        file.write_all(&bytes)
+            .unwrap_or_else(|error| panic!("test private write failed: {error}"));
+    }
 
     #[test]
     fn network_event_identity_is_bound_to_the_workflow_attempt() {
@@ -982,5 +1264,86 @@ mod tests {
             require_fresh_network_publish("exact_replay"),
             Err("network_canary_publish_outcome_invalid")
         );
+    }
+
+    #[test]
+    fn finding_pool_is_private_bounded_unique_and_single_issuer() {
+        let now = 2_000_000_000;
+        let directory =
+            tempfile::tempdir().unwrap_or_else(|error| panic!("test directory failed: {error}"));
+        let first_path = directory.path().join("first.json");
+        let second_path = directory.path().join("second.json");
+        let duplicate_path = directory.path().join("duplicate.json");
+        let pool_path = directory.path().join("pool.json");
+        let duplicate_pool_path = directory.path().join("duplicate-pool.json");
+        let first = signed_test_finding(61, "first", now);
+        let second = signed_test_finding(61, "second", now);
+        write_private_json(&first_path, &first);
+        write_private_json(&second_path, &second);
+        write_private_json(&duplicate_path, &first);
+        write_private_json(
+            &pool_path,
+            &serde_json::json!({
+                "schema": NETWORK_FINDING_POOL_SCHEMA,
+                "findingPaths": [
+                    first_path.to_string_lossy(),
+                    second_path.to_string_lossy()
+                ]
+            }),
+        );
+        let (digest, candidates) = load_network_finding_pool(&pool_path, now, "100:1")
+            .unwrap_or_else(|error| panic!("test pool failed: {error}"));
+        assert_eq!(digest.len(), 64);
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|candidate| candidate.finding.finding_id.clone())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([first.finding_id.clone(), second.finding_id])
+        );
+
+        write_private_json(
+            &duplicate_pool_path,
+            &serde_json::json!({
+                "schema": NETWORK_FINDING_POOL_SCHEMA,
+                "findingPaths": [
+                    first_path.to_string_lossy(),
+                    duplicate_path.to_string_lossy()
+                ]
+            }),
+        );
+        assert!(
+            load_network_finding_pool(&duplicate_pool_path, now, "100:2").is_err(),
+            "duplicate Finding identities must reject"
+        );
+    }
+
+    #[test]
+    fn catalog_probe_targets_the_finding_lexicographically() {
+        let id = format!("{}10", "0".repeat(62));
+        let expected_after = format!("{}0f", "0".repeat(62));
+        assert_eq!(
+            finding_catalog_path(&id),
+            Ok(format!("/v1/findings?after={expected_after}&limit=1"))
+        );
+
+        let carry_id = format!("1{}", "0".repeat(63));
+        let carry_after = format!("0{}", "f".repeat(63));
+        assert_eq!(
+            finding_catalog_path(&carry_id),
+            Ok(format!("/v1/findings?after={carry_after}&limit=1"))
+        );
+        let alpha_id = format!("{}a", "0".repeat(63));
+        let alpha_after = format!("{}9", "0".repeat(63));
+        assert_eq!(
+            finding_catalog_path(&alpha_id),
+            Ok(format!("/v1/findings?after={alpha_after}&limit=1"))
+        );
+        assert_eq!(
+            finding_catalog_path(&"0".repeat(64)),
+            Ok("/v1/findings?limit=1".to_owned())
+        );
+        assert!(finding_catalog_path(&"g".repeat(64)).is_err());
     }
 }

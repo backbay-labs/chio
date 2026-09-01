@@ -6,7 +6,7 @@ umask 077
 
 required_environment=(
   CHIO_FINDING_HOSTED_PROFILE
-  CHIO_FINDING_NETWORK_CANARY_ARTIFACT
+  CHIO_FINDING_NETWORK_CANARY_POOL
   CHIO_FINDING_NETWORK_TENANT_ID
   CHIO_FINDING_NETWORK_SELLER_KEY_ID
   CHIO_FINDING_NETWORK_SELLER_KEY_SECRET
@@ -60,7 +60,7 @@ PY
 
 env \
   -u CHIO_FINDING_HOSTED_PROFILE \
-  -u CHIO_FINDING_NETWORK_CANARY_ARTIFACT \
+  -u CHIO_FINDING_NETWORK_CANARY_POOL \
   -u CHIO_FINDING_NETWORK_TENANT_ID \
   -u CHIO_FINDING_NETWORK_SELLER_KEY_ID \
   -u CHIO_FINDING_NETWORK_SELLER_KEY_SECRET \
@@ -80,7 +80,7 @@ canary_environment=(
 env -i "${canary_environment[@]}" "${canary_bin}" \
   --profile "${CHIO_FINDING_HOSTED_PROFILE}" \
   network \
-  --finding "${CHIO_FINDING_NETWORK_CANARY_ARTIFACT}" \
+  --finding-pool "${CHIO_FINDING_NETWORK_CANARY_POOL}" \
   --tenant-id "${CHIO_FINDING_NETWORK_TENANT_ID}" \
   --seller-key-id-env CHIO_FINDING_NETWORK_SELLER_KEY_ID \
   --seller-key-secret-env CHIO_FINDING_NETWORK_SELLER_KEY_SECRET \
@@ -89,7 +89,7 @@ env -i "${canary_environment[@]}" "${canary_bin}" \
   >"${report_path}" 2>"${log_path}"
 unset \
   CHIO_FINDING_HOSTED_PROFILE \
-  CHIO_FINDING_NETWORK_CANARY_ARTIFACT \
+  CHIO_FINDING_NETWORK_CANARY_POOL \
   CHIO_FINDING_NETWORK_TENANT_ID \
   CHIO_FINDING_NETWORK_SELLER_KEY_ID \
   CHIO_FINDING_NETWORK_SELLER_KEY_SECRET \
@@ -124,6 +124,8 @@ if (
     or any(character not in "0123456789abcdef" for character in report.get("deployedArtifactSha256", ""))
     or len(report.get("runNonceSha256", "")) != 64
     or any(character not in "0123456789abcdef" for character in report.get("runNonceSha256", ""))
+    or len(report.get("findingPoolSha256", "")) != 64
+    or any(character not in "0123456789abcdef" for character in report.get("findingPoolSha256", ""))
     or report.get("firstOutcome") != "applied"
     or report.get("retryOutcome") != "exact_replay"
     or any(report.get(field) is not True for field in expected_true)

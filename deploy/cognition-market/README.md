@@ -50,12 +50,13 @@ Before applying the Deployment:
    previous ReplicaSet for rollback and never makes the canary a public-traffic
    claim.
 5. Dispatch `Cognition market dark network canary` on the exact default-branch
-   commit. The environment must point to private canonical profile and Finding
-   files on the attested ephemeral runner. Each workflow attempt requires a
-   freshly signed Finding with a never-published Finding ID. The run-bound
-   first publication must be applied, and only its immediate retry may be an
-   exact replay. Promote only through the signed qualification and
-   canary-decision process.
+   commit. The environment must point to a private canonical profile and a
+   private canonical canary-pool manifest on the attested ephemeral runner.
+   The pool contains 2 to 128 absolute paths to active signed Findings from
+   one issuer. Each attempt selects an unused Finding, requires its run-bound
+   first publication to be applied, and permits only its immediate retry to be
+   an exact replay. Replenish the pool before it is exhausted. Promote only
+   through the signed qualification and canary-decision process.
 
 Rollback changes the Deployment image digest back to the last qualified
 ReplicaSet and re-runs readiness and the dark network canary. Migrations are
@@ -70,6 +71,14 @@ fails closed unless both match the profile and serves the bound identity from
 the authenticated release endpoint. Buyer canary credentials must allow
 `finding.release.read` in addition to the catalog actions so the network
 canary can verify the deployed identity before publishing.
+
+`CHIO_FINDING_NETWORK_CANARY_POOL` names the manifest, not an individual
+Finding. It is canonical JSON with schema
+`chio.finding.network-canary-pool.v1` and a `findingPaths` array. The manifest
+and every referenced Finding must be absolute, private, regular files owned by
+the canary process. Duplicate paths, duplicate Finding IDs, mixed issuers,
+inactive Findings, symlinks, and pools outside the 2 to 128 entry bound reject
+before any network mutation.
 
 Every principal admitted to submit signed artifacts must carry its signer key
 in `capabilityPublicKeyHex`, including principals that authenticate by API key.
