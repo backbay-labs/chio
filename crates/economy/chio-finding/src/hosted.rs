@@ -18,12 +18,15 @@ use crate::validate::{
     require_max_items, require_nonzero, FindingError,
 };
 
-pub const FINDING_CLAIM_ALLOCATION_SCHEMA_V1: &str = "chio.finding.claim-allocation.v1";
-pub const FINDING_PURCHASE_RESULT_SCHEMA_V1: &str = "chio.finding.purchase-result.v1";
+pub const FINDING_CLAIM_ALLOCATION_SCHEMA_V1: &str =
+    chio_core_types::CHIO_FINDING_CLAIM_ALLOCATION_V1_SCHEMA;
+pub const FINDING_PURCHASE_RESULT_SCHEMA_V1: &str =
+    chio_core_types::CHIO_FINDING_PURCHASE_RESULT_V1_SCHEMA;
 pub const FINDING_VERIFIED_FIX_SUBMISSION_SCHEMA_V1: &str =
-    "chio.finding.verified-fix-submission.v1";
-pub const FINDING_VOLUNTARY_RETRACTION_SCHEMA_V1: &str = "chio.finding.voluntary-retraction.v1";
-pub const FINDING_LIABILITY_SCHEMA_V1: &str = "chio.finding.liability.v1";
+    chio_core_types::CHIO_FINDING_VERIFIED_FIX_SUBMISSION_V1_SCHEMA;
+pub const FINDING_VOLUNTARY_RETRACTION_SCHEMA_V1: &str =
+    chio_core_types::CHIO_FINDING_VOLUNTARY_RETRACTION_V1_SCHEMA;
+pub const FINDING_LIABILITY_SCHEMA_V1: &str = chio_core_types::CHIO_FINDING_LIABILITY_V1_SCHEMA;
 
 const MAX_ALLOCATION_ENTRIES: usize = 16;
 
