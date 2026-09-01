@@ -210,6 +210,7 @@ chio-credit = { path = "crates/economy/chio-credit" }
 chio-fincred = { path = "crates/economy/chio-fincred" }
 chio-finding = { path = "crates/economy/chio-finding" }
 chio-finding-hosted-edge = { path = "crates/platform/chio-finding-hosted-edge" }
+chio-finding-market-port = { path = "crates/platform/chio-finding-market-port" }
 chio-finding-market-migrations = { path = "crates/platform/chio-finding-market-migrations" }
 chio-finding-market-store-postgres = { path = "crates/platform/chio-finding-market-store-postgres" }
 chio-finding-worker = { path = "crates/platform/chio-finding-worker" }
