@@ -10,6 +10,7 @@ use chio_control_plane::trust_control::finding_hosted_profile::{
     FindingHostedAuthMethod, FindingHostedProfile, FindingHostedSigningRole,
 };
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str, sha256_hex, PublicKey};
+use chio_egress_contract::{ContractResponse, HttpEgressContract};
 use chio_finding_market_store_postgres::{
     HostedJobState, HostedPostgresConfig, HostedTenantId, PostgresFindingMarketStore,
 };
@@ -165,6 +166,75 @@ struct NetworkCanaryReport {
     tenant_isolation_denied: bool,
 }
 
+struct NetworkHttpClient {
+    client: reqwest::Client,
+    egress_contract: HttpEgressContract,
+}
+
+impl NetworkHttpClient {
+    fn new(public_endpoint: &str, tenant_id: &str) -> Result<Self, &'static str> {
+        let egress_contract = network_egress_contract(public_endpoint, tenant_id)?;
+        let client = chio_egress_contract::client_builder_with_contract(&egress_contract)
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|_| "network_canary_client_invalid")?;
+        Ok(Self {
+            client,
+            egress_contract,
+        })
+    }
+
+    async fn send(&self, request: reqwest::Request) -> Result<ContractResponse, &'static str> {
+        chio_egress_contract::send_with_contract(&self.egress_contract, &self.client, request)
+            .await
+            .map_err(|_| "network_canary_request_failed")
+    }
+}
+
+fn network_egress_contract(
+    public_endpoint: &str,
+    tenant_id: &str,
+) -> Result<HttpEgressContract, &'static str> {
+    let endpoint = reqwest::Url::parse(public_endpoint)
+        .map_err(|_| "network_canary_egress_contract_invalid")?;
+    if endpoint.scheme() != "https"
+        || endpoint.path() != "/"
+        || endpoint.query().is_some()
+        || endpoint.fragment().is_some()
+        || !endpoint.username().is_empty()
+        || endpoint.password().is_some()
+    {
+        return Err("network_canary_egress_contract_invalid");
+    }
+    let host = endpoint
+        .host_str()
+        .ok_or("network_canary_egress_contract_invalid")?;
+    let normalized_host = if host.contains(':') && !host.starts_with('[') {
+        format!("[{}]", host.to_ascii_lowercase())
+    } else {
+        host.trim_end_matches('.').to_ascii_lowercase()
+    };
+    let authority = match endpoint.port() {
+        Some(port) => format!("{normalized_host}:{port}"),
+        None => normalized_host,
+    };
+    let contract = HttpEgressContract {
+        tenant_egress_namespace: format!("cognition-market.network-canary:{tenant_id}"),
+        allowed_schemes: BTreeSet::from(["https".to_owned()]),
+        allowed_authority_set: BTreeSet::from([authority]),
+        deny_loopback: true,
+        deny_link_local: true,
+        deny_ipv6_ula: true,
+        max_redirect_chain: 0,
+        max_response_bytes: MAX_NETWORK_RESPONSE_BYTES as u64,
+    };
+    contract
+        .validate_dispatchable_with_pinned_dns()
+        .and_then(|()| contract.enforce_url(endpoint.as_str(), 0).map(|_| ()))
+        .map_err(|_| "network_canary_egress_contract_invalid")?;
+    Ok(contract)
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct NetworkFindingPool {
@@ -278,17 +348,10 @@ async fn network_canary(
     {
         return Err("network_canary_isolation_credential_reused");
     }
-    let client = reqwest::Client::builder()
-        .https_only(true)
-        .redirect(reqwest::redirect::Policy::none())
-        .no_proxy()
-        .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(30))
-        .user_agent("chio-finding-market-network-canary/1")
-        .build()
-        .map_err(|_| "network_canary_client_invalid")?;
+    let http = NetworkHttpClient::new(&profile.public_endpoint, tenant_id)?;
+    let isolation_http = NetworkHttpClient::new(&profile.public_endpoint, isolation_tenant_id)?;
     let release_bytes = network_get(
-        &client,
+        &http,
         profile,
         tenant_id,
         &buyer_key_id,
@@ -312,7 +375,7 @@ async fn network_canary(
         event_id,
         response: first,
     } = publish_fresh_network_finding(
-        &client,
+        &http,
         profile,
         tenant_id,
         &seller_key_id,
@@ -330,7 +393,7 @@ async fn network_canary(
     tokio::time::sleep(Duration::from_secs(2)).await;
     let retry_request_id = sha256_hex(format!("{event_id}:retry").as_bytes());
     let retry = publish_network_finding(
-        &client,
+        &http,
         profile,
         tenant_id,
         &seller_key_id,
@@ -352,7 +415,7 @@ async fn network_canary(
         return Err("network_canary_retry_not_exact");
     }
     let resolved = network_get(
-        &client,
+        &http,
         profile,
         tenant_id,
         &buyer_key_id,
@@ -366,7 +429,7 @@ async fn network_canary(
     }
     let catalog_path = finding_catalog_path(&finding.finding_id)?;
     let catalog_bytes = network_get(
-        &client,
+        &http,
         profile,
         tenant_id,
         &buyer_key_id,
@@ -393,7 +456,7 @@ async fn network_canary(
         return Err("network_canary_catalog_mismatch");
     }
     let isolation_denied = network_get_status(
-        &client,
+        &isolation_http,
         profile,
         isolation_tenant_id,
         &isolation_buyer_key_id,
@@ -523,7 +586,7 @@ fn load_network_finding_pool(
 
 #[allow(clippy::too_many_arguments)]
 async fn publish_fresh_network_finding(
-    client: &reqwest::Client,
+    http: &NetworkHttpClient,
     profile: &FindingHostedProfile,
     tenant_id: &str,
     seller_key_id: &str,
@@ -545,7 +608,7 @@ async fn publish_fresh_network_finding(
         );
         let availability_request_id = sha256_hex(format!("{event_id}:availability").as_bytes());
         let availability = network_request(
-            client,
+            http,
             profile,
             tenant_id,
             buyer_key_id,
@@ -555,7 +618,7 @@ async fn publish_fresh_network_finding(
         )
         .await?;
         let availability_status = availability.status();
-        let existing = bounded_response(availability).await?;
+        let existing = bounded_response(&availability)?;
         if availability_status == StatusCode::OK {
             if existing != candidate.bytes {
                 return Err("network_canary_finding_identity_conflict");
@@ -567,7 +630,7 @@ async fn publish_fresh_network_finding(
         }
         let request_id = sha256_hex(format!("{event_id}:first").as_bytes());
         let Some(response) = try_publish_network_finding(
-            client,
+            http,
             profile,
             tenant_id,
             seller_key_id,
@@ -626,7 +689,7 @@ fn finding_catalog_path(finding_id: &str) -> Result<String, &'static str> {
 
 #[allow(clippy::too_many_arguments)]
 async fn try_publish_network_finding(
-    client: &reqwest::Client,
+    http: &NetworkHttpClient,
     profile: &FindingHostedProfile,
     tenant_id: &str,
     key_id: &str,
@@ -636,19 +699,19 @@ async fn try_publish_network_finding(
     finding: &[u8],
 ) -> Result<Option<NetworkMutationResponse>, &'static str> {
     let response = send_network_finding(
-        client, profile, tenant_id, key_id, key_secret, request_id, event_id, finding,
+        http, profile, tenant_id, key_id, key_secret, request_id, event_id, finding,
     )
     .await?;
     if response.status() == StatusCode::CONFLICT {
-        bounded_response(response).await?;
+        bounded_response(&response)?;
         return Ok(None);
     }
-    parse_network_publish_response(response).await.map(Some)
+    parse_network_publish_response(response).map(Some)
 }
 
 #[allow(clippy::too_many_arguments)]
 async fn publish_network_finding(
-    client: &reqwest::Client,
+    http: &NetworkHttpClient,
     profile: &FindingHostedProfile,
     tenant_id: &str,
     key_id: &str,
@@ -658,15 +721,15 @@ async fn publish_network_finding(
     finding: &[u8],
 ) -> Result<NetworkMutationResponse, &'static str> {
     let response = send_network_finding(
-        client, profile, tenant_id, key_id, key_secret, request_id, event_id, finding,
+        http, profile, tenant_id, key_id, key_secret, request_id, event_id, finding,
     )
     .await?;
-    parse_network_publish_response(response).await
+    parse_network_publish_response(response)
 }
 
 #[allow(clippy::too_many_arguments)]
 async fn send_network_finding(
-    client: &reqwest::Client,
+    http: &NetworkHttpClient,
     profile: &FindingHostedProfile,
     tenant_id: &str,
     key_id: &str,
@@ -674,8 +737,9 @@ async fn send_network_finding(
     request_id: &str,
     event_id: &str,
     finding: &[u8],
-) -> Result<reqwest::Response, &'static str> {
-    client
+) -> Result<ContractResponse, &'static str> {
+    let request = http
+        .client
         .post(format!(
             "{}/v1/findings/publish",
             profile.public_endpoint.trim_end_matches('/')
@@ -685,20 +749,24 @@ async fn send_network_finding(
         .header("Chio-API-Key-ID", key_id)
         .header("Chio-API-Key-Secret", key_secret)
         .header("Idempotency-Key", event_id)
+        .header(
+            reqwest::header::USER_AGENT,
+            "chio-finding-market-network-canary/1",
+        )
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .body(finding.to_vec())
-        .send()
-        .await
-        .map_err(|_| "network_canary_request_failed")
+        .build()
+        .map_err(|_| "network_canary_request_invalid")?;
+    http.send(request).await
 }
 
-async fn parse_network_publish_response(
-    response: reqwest::Response,
+fn parse_network_publish_response(
+    response: ContractResponse,
 ) -> Result<NetworkMutationResponse, &'static str> {
     if response.status() != StatusCode::OK {
         return Err("network_canary_publish_failed");
     }
-    let bytes = bounded_response(response).await?;
+    let bytes = bounded_response(&response)?;
     serde_json::from_slice(&bytes).map_err(|_| "network_canary_publish_response_invalid")
 }
 
@@ -724,7 +792,7 @@ fn validate_network_mutation(
 
 #[allow(clippy::too_many_arguments)]
 async fn network_get(
-    client: &reqwest::Client,
+    http: &NetworkHttpClient,
     profile: &FindingHostedProfile,
     tenant_id: &str,
     key_id: &str,
@@ -733,18 +801,18 @@ async fn network_get(
     path: &str,
 ) -> Result<Vec<u8>, &'static str> {
     let response = network_request(
-        client, profile, tenant_id, key_id, key_secret, request_id, path,
+        http, profile, tenant_id, key_id, key_secret, request_id, path,
     )
     .await?;
     if response.status() != StatusCode::OK {
         return Err("network_canary_read_failed");
     }
-    bounded_response(response).await
+    bounded_response(&response)
 }
 
 #[allow(clippy::too_many_arguments)]
 async fn network_get_status(
-    client: &reqwest::Client,
+    http: &NetworkHttpClient,
     profile: &FindingHostedProfile,
     tenant_id: &str,
     key_id: &str,
@@ -753,25 +821,26 @@ async fn network_get_status(
     path: &str,
 ) -> Result<StatusCode, &'static str> {
     let response = network_request(
-        client, profile, tenant_id, key_id, key_secret, request_id, path,
+        http, profile, tenant_id, key_id, key_secret, request_id, path,
     )
     .await?;
     let status = response.status();
-    bounded_response(response).await?;
+    bounded_response(&response)?;
     Ok(status)
 }
 
 #[allow(clippy::too_many_arguments)]
 async fn network_request(
-    client: &reqwest::Client,
+    http: &NetworkHttpClient,
     profile: &FindingHostedProfile,
     tenant_id: &str,
     key_id: &str,
     key_secret: &str,
     request_id: &str,
     path: &str,
-) -> Result<reqwest::Response, &'static str> {
-    client
+) -> Result<ContractResponse, &'static str> {
+    let request = http
+        .client
         .get(format!(
             "{}{}",
             profile.public_endpoint.trim_end_matches('/'),
@@ -781,30 +850,20 @@ async fn network_request(
         .header("Chio-Request-ID", request_id)
         .header("Chio-API-Key-ID", key_id)
         .header("Chio-API-Key-Secret", key_secret)
-        .send()
-        .await
-        .map_err(|_| "network_canary_request_failed")
+        .header(
+            reqwest::header::USER_AGENT,
+            "chio-finding-market-network-canary/1",
+        )
+        .build()
+        .map_err(|_| "network_canary_request_invalid")?;
+    http.send(request).await
 }
 
-async fn bounded_response(mut response: reqwest::Response) -> Result<Vec<u8>, &'static str> {
-    if response
-        .content_length()
-        .is_some_and(|length| length > MAX_NETWORK_RESPONSE_BYTES as u64)
-    {
+fn bounded_response(response: &ContractResponse) -> Result<Vec<u8>, &'static str> {
+    if response.body().len() > MAX_NETWORK_RESPONSE_BYTES {
         return Err("network_canary_response_oversized");
     }
-    let mut body = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|_| "network_canary_response_failed")?
-    {
-        if body.len().saturating_add(chunk.len()) > MAX_NETWORK_RESPONSE_BYTES {
-            return Err("network_canary_response_oversized");
-        }
-        body.extend_from_slice(&chunk);
-    }
-    Ok(body)
+    Ok(response.body().to_vec())
 }
 
 fn candidate_sha() -> Result<String, &'static str> {
@@ -1375,6 +1434,27 @@ mod tests {
             require_fresh_network_publish("exact_replay"),
             Err("network_canary_publish_outcome_invalid")
         );
+    }
+
+    #[test]
+    fn network_http_egress_is_exact_tenant_scoped_and_fail_closed() {
+        let contract = network_egress_contract("https://market.example", "tenant:primary")
+            .unwrap_or_else(|error| panic!("egress contract failed: {error}"));
+        assert_eq!(
+            contract.tenant_egress_namespace,
+            "cognition-market.network-canary:tenant:primary"
+        );
+        assert!(contract
+            .enforce_url("https://market.example/v1/release", 0)
+            .is_ok());
+        assert!(contract
+            .enforce_url("https://other.example/v1/release", 0)
+            .is_err());
+        assert!(contract
+            .enforce_url("http://market.example/v1/release", 0)
+            .is_err());
+        assert!(network_egress_contract("https://127.0.0.1", "tenant:primary").is_err());
+        assert!(network_egress_contract("https://market.example/api", "tenant:primary").is_err());
     }
 
     #[test]

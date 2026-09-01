@@ -3683,6 +3683,7 @@ version = "0.1.0"
 dependencies = [
  "chio-control-plane",
  "chio-core-types",
+ "chio-egress-contract",
  "chio-finding",
  "chio-finding-market-store-postgres",
  "chio-finding-worker",
