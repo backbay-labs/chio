@@ -94,7 +94,7 @@ BEGIN
                       SELECT COUNT(*)
                       FROM public.chio_finding_market_replication_outbox AS current_batch
                       WHERE current_batch.tenant_id = requested_tenant_id
-                        AND current_batch.xmin::text = pg_current_xact_id()::text
+                        AND current_batch.xmin = pg_current_xact_id()::xid
                   ) = authority_row.last_outbox_sequence
               AND replication_check.lag_seconds <= 30
               AND replication_check.checked_at <= floor(extract(epoch from clock_timestamp()))::bigint + 30

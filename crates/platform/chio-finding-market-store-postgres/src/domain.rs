@@ -491,6 +491,7 @@ impl PostgresFindingMarketStore {
     ) -> Result<HostedJobWriteOutcome, HostedMarketStoreError> {
         event.validate()?;
         validate_domain_tenant_binding(event, tenant)?;
+        validate_retraction_finding_binding(transaction, tenant, event).await?;
         if expected_revision == 0 {
             if expected_event_sha256.is_some() {
                 return Err(HostedMarketStoreError::Invalid("expected domain head"));
@@ -615,62 +616,123 @@ impl PostgresFindingMarketStore {
         .await
         .map_err(unavailable)?;
         transaction.commit().await.map_err(unavailable)?;
-        row.map(|row| {
-            let stored_event_kind: String = row.try_get(2).map_err(unavailable)?;
-            let stored_schema: String = row.try_get(3).map_err(unavailable)?;
-            let payload_sha256: String = row.try_get(4).map_err(unavailable)?;
-            let payload_json: Vec<u8> = row.try_get(5).map_err(unavailable)?;
-            let revision = stored_u64(row.try_get(0).map_err(unavailable)?)?;
-            let event_sha256: String = row.try_get(1).map_err(unavailable)?;
-            let event_id: String = row.try_get(7).map_err(unavailable)?;
-            let previous_event_sha256: Option<String> = row.try_get(8).map_err(unavailable)?;
-            let committed_at = stored_u64(row.try_get(9).map_err(unavailable)?)?;
-            if stored_event_kind != event_kind.event_kind()
-                || stored_schema != event_kind.artifact_schema()
-                || sha256_hex(&payload_json) != payload_sha256
-                || revision == 0
-            {
-                return Err(HostedMarketStoreError::DigestMismatch);
-            }
-            validate_digest(&event_sha256, "domain projection event")
-                .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
-            validate_identifier(&event_id, MAX_EVENT_ID_BYTES)
-                .map_err(|()| HostedMarketStoreError::DigestMismatch)?;
-            if let Some(previous) = previous_event_sha256.as_deref() {
-                validate_digest(previous, "domain projection predecessor")
-                    .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
-            }
-            let expected_event_sha256 = aggregate_event_digest(
-                tenant,
-                event_kind.aggregate_kind(),
-                aggregate_id,
-                revision,
-                &event_id,
-                event_kind.event_kind(),
-                previous_event_sha256.as_deref(),
-                &payload_sha256,
-                committed_at,
-            )?;
-            if expected_event_sha256 != event_sha256 {
-                return Err(HostedMarketStoreError::DigestMismatch);
-            }
-            validate_persisted_domain_payload(event_kind, aggregate_id, &payload_json)?;
-            Ok(HostedMarketDomainProjection {
-                tenant_id: tenant.clone(),
-                event_kind,
-                aggregate_id: aggregate_id.to_owned(),
-                revision,
-                event_id,
-                previous_event_sha256,
-                event_sha256,
-                payload_sha256,
-                payload_json,
-                committed_at,
-                updated_at: stored_u64(row.try_get(6).map_err(unavailable)?)?,
-            })
-        })
-        .transpose()
+        row.map(|row| domain_projection_from_row(tenant, event_kind, aggregate_id, &row))
+            .transpose()
     }
+}
+
+async fn validate_retraction_finding_binding(
+    transaction: &mut Transaction<'_, Postgres>,
+    tenant: &HostedTenantId,
+    event: &HostedMarketDomainEvent,
+) -> Result<(), HostedMarketStoreError> {
+    let (finding_id, seller, status_feed_ref) = match event.event_kind {
+        HostedMarketDomainEventKind::RetractionVoluntary => {
+            let artifact: SignedFindingVoluntaryRetraction =
+                parse_canonical(&event.payload_json, "voluntary retraction artifact")?;
+            (
+                artifact.body.finding_id,
+                artifact.body.seller,
+                artifact.body.status_feed_ref,
+            )
+        }
+        _ => return Ok(()),
+    };
+    let row = sqlx::query(
+        r#"SELECT projection.revision, projection.event_sha256,
+                  projection.event_kind, projection.artifact_schema,
+                  projection.payload_sha256, projection.payload_json,
+                  projection.updated_at, event.event_id,
+                  event.previous_event_sha256, event.committed_at
+           FROM chio_finding_market_domain_projections AS projection
+           JOIN chio_finding_market_aggregate_events AS event
+             ON event.tenant_id = projection.tenant_id
+            AND event.aggregate_kind = projection.aggregate_kind
+            AND event.aggregate_id = projection.aggregate_id
+            AND event.revision = projection.revision
+            AND event.event_sha256 = projection.event_sha256
+           WHERE projection.tenant_id = $1
+             AND projection.aggregate_kind = 'finding'
+             AND projection.aggregate_id = $2"#,
+    )
+    .bind(tenant.as_str())
+    .bind(&finding_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(unavailable)?;
+    let row = row.ok_or(HostedMarketStoreError::Invalid("subject finding binding"))?;
+    let projection = domain_projection_from_row(
+        tenant,
+        HostedMarketDomainEventKind::FindingPublished,
+        &finding_id,
+        &row,
+    )?;
+    let finding: Finding = serde_json::from_slice(&projection.payload_json)
+        .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+    if finding.issuer != seller || finding.status_feed_ref != status_feed_ref {
+        return Err(HostedMarketStoreError::Invalid("subject finding binding"));
+    }
+    Ok(())
+}
+
+fn domain_projection_from_row(
+    tenant: &HostedTenantId,
+    event_kind: HostedMarketDomainEventKind,
+    aggregate_id: &str,
+    row: &sqlx::postgres::PgRow,
+) -> Result<HostedMarketDomainProjection, HostedMarketStoreError> {
+    let stored_event_kind: String = row.try_get(2).map_err(unavailable)?;
+    let stored_schema: String = row.try_get(3).map_err(unavailable)?;
+    let payload_sha256: String = row.try_get(4).map_err(unavailable)?;
+    let payload_json: Vec<u8> = row.try_get(5).map_err(unavailable)?;
+    let revision = stored_u64(row.try_get(0).map_err(unavailable)?)?;
+    let event_sha256: String = row.try_get(1).map_err(unavailable)?;
+    let event_id: String = row.try_get(7).map_err(unavailable)?;
+    let previous_event_sha256: Option<String> = row.try_get(8).map_err(unavailable)?;
+    let committed_at = stored_u64(row.try_get(9).map_err(unavailable)?)?;
+    if stored_event_kind != event_kind.event_kind()
+        || stored_schema != event_kind.artifact_schema()
+        || sha256_hex(&payload_json) != payload_sha256
+        || revision == 0
+    {
+        return Err(HostedMarketStoreError::DigestMismatch);
+    }
+    validate_digest(&event_sha256, "domain projection event")
+        .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+    validate_identifier(&event_id, MAX_EVENT_ID_BYTES)
+        .map_err(|()| HostedMarketStoreError::DigestMismatch)?;
+    if let Some(previous) = previous_event_sha256.as_deref() {
+        validate_digest(previous, "domain projection predecessor")
+            .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+    }
+    let expected_event_sha256 = aggregate_event_digest(
+        tenant,
+        event_kind.aggregate_kind(),
+        aggregate_id,
+        revision,
+        &event_id,
+        event_kind.event_kind(),
+        previous_event_sha256.as_deref(),
+        &payload_sha256,
+        committed_at,
+    )?;
+    if expected_event_sha256 != event_sha256 {
+        return Err(HostedMarketStoreError::DigestMismatch);
+    }
+    validate_persisted_domain_payload(event_kind, aggregate_id, &payload_json)?;
+    Ok(HostedMarketDomainProjection {
+        tenant_id: tenant.clone(),
+        event_kind,
+        aggregate_id: aggregate_id.to_owned(),
+        revision,
+        event_id,
+        previous_event_sha256,
+        event_sha256,
+        payload_sha256,
+        payload_json,
+        committed_at,
+        updated_at: stored_u64(row.try_get(6).map_err(unavailable)?)?,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]

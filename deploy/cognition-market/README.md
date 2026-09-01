@@ -106,6 +106,12 @@ records, including admission, purchase, purchase-terminal, adjudication,
 enforcement, settlement, status, and audit records, are internal-only. Catalog
 reads hide sticky retractions. If a status epoch exists without a retained
 per-Finding sparse proof, the requested catalog page is quarantined fail closed.
+The public challenge ingress accepts only the buyer-submission authorization
+branch; venue audits remain internal to the audit coordinator. A voluntary
+retraction must match both the retained Finding issuer and its status feed.
+Signed replication freshness continues through rollback-window,
+authoritative, and retired PostgreSQL modes so every writable mode can pass
+the database append fence.
 
 The proxy token, remote-signer tokens, API-key pepper, database URLs, TLS
 private key, and network canary credentials are secret values. They must never

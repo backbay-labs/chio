@@ -329,7 +329,7 @@ async fn write_replication_check(
             .await
             .map_err(|_| ServerError::Replication)?;
         if state.authority != HostedMarketAuthority::Postgres
-            || state.mode != HostedAuthorityMode::Authoritative
+            || !accepts_postgres_mutations(state.mode)
             || !state.mutations_enabled
             || state.configuration_revision != configuration_revision
         {
@@ -373,6 +373,15 @@ async fn write_replication_check(
             Err(_) => return Err(ServerError::Replication),
         }
     }
+}
+
+fn accepts_postgres_mutations(mode: HostedAuthorityMode) -> bool {
+    matches!(
+        mode,
+        HostedAuthorityMode::RollbackWindow
+            | HostedAuthorityMode::Authoritative
+            | HostedAuthorityMode::Retired
+    )
 }
 
 #[cfg(unix)]
@@ -499,6 +508,20 @@ mod tests {
         assert!(
             validate_deployed_binding(&candidate, &artifact, &candidate, &"d".repeat(64)).is_err()
         );
+    }
+
+    #[test]
+    fn replication_freshness_covers_every_writable_postgres_mode() {
+        for mode in [
+            HostedAuthorityMode::RollbackWindow,
+            HostedAuthorityMode::Authoritative,
+            HostedAuthorityMode::Retired,
+        ] {
+            assert!(accepts_postgres_mutations(mode));
+        }
+        for mode in [HostedAuthorityMode::Shadow, HostedAuthorityMode::Frozen] {
+            assert!(!accepts_postgres_mutations(mode));
+        }
     }
 
     #[tokio::test]

@@ -21,6 +21,53 @@ pub(super) async fn assert_catalog_retractions(
     source_signer: &Keypair,
     authority_now: u64,
 ) -> Result<(), Box<dyn Error>> {
+    let foreign_signer = Keypair::from_seed(&[93_u8; 32]);
+    let cross_seller_retraction = SignedExportEnvelope::sign(
+        FindingVoluntaryRetraction {
+            schema: FINDING_VOLUNTARY_RETRACTION_SCHEMA_V1.to_owned(),
+            intent_id: "b".repeat(64),
+            finding_id: finding_id.to_owned(),
+            seller: foreign_signer.public_key(),
+            status_feed_ref: "integration-status".to_owned(),
+            reason: FindingVoluntaryRetractionReason::SellerVoluntaryRetraction,
+            issued_at: authority_now,
+            inclusion_deadline: authority_now + 300,
+        },
+        &foreign_signer,
+    )?;
+    assert!(matches!(
+        store
+            .record_voluntary_retraction(
+                tenant,
+                &cross_seller_retraction,
+                &HostedDomainWrite::new("cross-seller-retraction", 0, None, authority_now)?,
+            )
+            .await,
+        Err(HostedMarketStoreError::Invalid("subject finding binding"))
+    ));
+    let wrong_feed_retraction = SignedExportEnvelope::sign(
+        FindingVoluntaryRetraction {
+            schema: FINDING_VOLUNTARY_RETRACTION_SCHEMA_V1.to_owned(),
+            intent_id: "a".repeat(64),
+            finding_id: finding_id.to_owned(),
+            seller: signer.public_key(),
+            status_feed_ref: "wrong-status-feed".to_owned(),
+            reason: FindingVoluntaryRetractionReason::SellerVoluntaryRetraction,
+            issued_at: authority_now,
+            inclusion_deadline: authority_now + 300,
+        },
+        signer,
+    )?;
+    assert!(matches!(
+        store
+            .record_voluntary_retraction(
+                tenant,
+                &wrong_feed_retraction,
+                &HostedDomainWrite::new("wrong-feed-retraction", 0, None, authority_now)?,
+            )
+            .await,
+        Err(HostedMarketStoreError::Invalid("subject finding binding"))
+    ));
     let retraction = SignedExportEnvelope::sign(
         FindingVoluntaryRetraction {
             schema: FINDING_VOLUNTARY_RETRACTION_SCHEMA_V1.to_owned(),

@@ -348,6 +348,16 @@ fn authenticated_artifact_authority(
     payload: &serde_json::Value,
     penalty_authority_id: &str,
 ) -> Result<Option<String>, HostedEdgeError> {
+    if operation.event_kind == "challenge.submitted" {
+        let authorization = payload
+            .pointer("/body/authorization")
+            .and_then(serde_json::Value::as_object)
+            .ok_or(HostedEdgeError::InvalidRequest)?;
+        if authorization.len() != 1 || !authorization.contains_key("buyer_submission") {
+            return Err(HostedEdgeError::AuthorizationFailed);
+        }
+        return Ok(None);
+    }
     if operation.event_kind != "penalty.assessed" {
         return Ok(None);
     }
@@ -1291,6 +1301,49 @@ mod tests {
             authenticated_artifact_authority(operation, &principal, &substituted, "market-penalty"),
             Err(HostedEdgeError::AuthorizationFailed)
         ));
+    }
+
+    #[test]
+    fn public_challenge_route_rejects_venue_audit_authorization() {
+        let principal = crate::HostedAuthenticatedPrincipal {
+            tenant_id: HostedTenantId::new("tenant:test")
+                .unwrap_or_else(|error| panic!("test tenant failed: {error}")),
+            principal_id: "buyer:test".to_owned(),
+            role: HostedPrincipalRole::Buyer,
+            method: HostedAuthMethod::ApiKey,
+            credential_id: "key:test".to_owned(),
+            artifact_signer_key: Some(Keypair::from_seed(&[49_u8; 32]).public_key()),
+        };
+        let operation = HostedOperation::parse("challenge")
+            .unwrap_or_else(|| panic!("test challenge operation missing"));
+        let buyer = serde_json::json!({
+            "body": {"authorization": {"buyer_submission": {}}}
+        });
+        assert_eq!(
+            authenticated_artifact_authority(operation, &principal, &buyer, "market-penalty"),
+            Ok(None)
+        );
+        for forbidden in [
+            serde_json::json!({
+                "body": {"authorization": {"venue_audit": {}}}
+            }),
+            serde_json::json!({
+                "body": {"authorization": {
+                    "buyer_submission": {},
+                    "venue_audit": {}
+                }}
+            }),
+        ] {
+            assert_eq!(
+                authenticated_artifact_authority(
+                    operation,
+                    &principal,
+                    &forbidden,
+                    "market-penalty"
+                ),
+                Err(HostedEdgeError::AuthorizationFailed)
+            );
+        }
     }
 
     #[test]

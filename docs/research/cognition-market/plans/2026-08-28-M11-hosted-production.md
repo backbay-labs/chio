@@ -238,6 +238,10 @@ the HTTP boundary from bypassing authority checks, payment journaling, recovery,
 or multi-record state transitions.
 
 Catalog reads suppress sticky voluntary and enforcement-pending retractions.
+A public voluntary retraction is accepted only when its verified signer and
+status feed match the retained tenant-scoped Finding. The public challenge
+ingress accepts only buyer submissions; venue-audit challenges remain behind
+the audit coordinator and its retained authority resolution.
 A status epoch stores a signed sparse-map root but the hosted PostgreSQL profile
 does not yet retain per-Finding sparse proofs. Once an epoch exists, catalog
 reads therefore quarantine the requested page instead of guessing liveness.
