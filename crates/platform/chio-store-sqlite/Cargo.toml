@@ -36,7 +36,7 @@ chio-federation = { workspace = true }
 chio-federation-authority = { workspace = true }
 chio-finding = { workspace = true }
 chio-fiscal = { workspace = true }
-chio-kernel = { workspace = true }
+chio-kernel = { workspace = true, features = ["finding-market"] }
 chio-kernel-core = { workspace = true }
 chio-settle = { workspace = true }
 chio-sqlite-file-identity = { path = "../chio-sqlite-file-identity" }

@@ -1,16 +1,55 @@
 //! Production finding-recovery verifier backed by durable SQLite quota and
 //! lineage state.
 
+use chio_kernel::finding_denial::{FindingDenial, FindingDenialCode};
 use chio_kernel::finding_recovery::{
     FindingRecoveryContextView, FindingRecoveryVerifier, VerifiedFindingRecovery,
 };
 use chio_open_market::recovery::{
     mint_verified_finding_recovery_grant, verify_finding_recovery_context,
-    RecoveryVerificationAuthorities, RecoveryVerificationInputs, RecoveryVerificationOutcome,
+    RecoveryVerificationAuthorities, RecoveryVerificationError, RecoveryVerificationInputs,
+    RecoveryVerificationOutcome,
 };
 use chio_store_sqlite::{
-    FindingRecoveryIssuanceInput, FindingRecoveryReceiptLineageInput, SqliteFindingRecoveryStore,
+    FindingRecoveryIssuanceInput, FindingRecoveryReceiptLineageInput, FindingRecoveryStoreError,
+    SqliteFindingRecoveryStore,
 };
+
+/// Classify a pure recovery-verification rejection into the seam's closed
+/// denial vocabulary, preserving the exact prose.
+fn recovery_denial(error: RecoveryVerificationError) -> FindingDenial {
+    use RecoveryVerificationError as E;
+    let code = match &error {
+        E::Carrier | E::Member(_) => FindingDenialCode::CarrierInvalid,
+        E::CapabilitySignature
+        | E::PurchaseRecord
+        | E::DeliveryReceiptSignature
+        | E::RecoveryIssuer => FindingDenialCode::AuthorityInvalid,
+        E::CapabilityBinding
+        | E::CapabilityProfile
+        | E::PurchaseContext
+        | E::PurchaseRecordBinding
+        | E::DeliveryReceiptBinding
+        | E::RecoveryIdentity
+        | E::SubjectMismatch => FindingDenialCode::BindingMismatch,
+    };
+    FindingDenial::new(code, error.to_string())
+}
+
+/// Classify a durable quota/lineage store failure, preserving the exact
+/// prose.
+fn recovery_store_denial(error: FindingRecoveryStoreError) -> FindingDenial {
+    use FindingRecoveryStoreError as E;
+    let code = match &error {
+        E::QuotaExhausted => FindingDenialCode::QuotaExhausted,
+        E::Fenced => FindingDenialCode::AuthorityInvalid,
+        E::NotFound | E::Conflict(_) => FindingDenialCode::BindingMismatch,
+        E::Unavailable(_) | E::Invariant(_) | E::OutcomeUnknown(_) => {
+            FindingDenialCode::Unavailable
+        }
+    };
+    FindingDenial::new(code, error.to_string())
+}
 
 pub struct MarketFindingRecoveryVerifier {
     authorities: RecoveryVerificationAuthorities,
@@ -29,7 +68,7 @@ impl MarketFindingRecoveryVerifier {
     fn verify(
         &self,
         view: &FindingRecoveryContextView<'_>,
-    ) -> Result<RecoveryVerificationOutcome, String> {
+    ) -> Result<RecoveryVerificationOutcome, FindingDenial> {
         verify_finding_recovery_context(
             &RecoveryVerificationInputs {
                 marker: view.marker,
@@ -43,7 +82,7 @@ impl MarketFindingRecoveryVerifier {
             },
             &self.authorities,
         )
-        .map_err(|error| error.to_string())
+        .map_err(recovery_denial)
     }
 
     /// Persist the deterministic issuance before returning a newly minted
@@ -103,7 +142,7 @@ impl FindingRecoveryVerifier for MarketFindingRecoveryVerifier {
     fn verify_recovery(
         &self,
         view: &FindingRecoveryContextView<'_>,
-    ) -> Result<VerifiedFindingRecovery, String> {
+    ) -> Result<VerifiedFindingRecovery, FindingDenial> {
         let verified = self.verify(view)?;
         Ok(VerifiedFindingRecovery {
             recovery_id: verified.recovery_id().to_owned(),
@@ -124,7 +163,7 @@ impl FindingRecoveryVerifier for MarketFindingRecoveryVerifier {
         request_id: &str,
         max_recoveries: u32,
         now_unix_secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), FindingDenial> {
         self.store
             .reserve_attempt(
                 &verified.recovery_id,
@@ -133,7 +172,7 @@ impl FindingRecoveryVerifier for MarketFindingRecoveryVerifier {
                 now_unix_secs,
             )
             .map(|_| ())
-            .map_err(|error| error.to_string())
+            .map_err(recovery_store_denial)
     }
 
     fn record_recovery_receipt(
@@ -141,7 +180,7 @@ impl FindingRecoveryVerifier for MarketFindingRecoveryVerifier {
         verified: &VerifiedFindingRecovery,
         recovery_receipt_id: &str,
         recorded_at: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), FindingDenial> {
         self.store
             .record_receipt_lineage(&FindingRecoveryReceiptLineageInput {
                 recovery_receipt_id,
@@ -151,6 +190,6 @@ impl FindingRecoveryVerifier for MarketFindingRecoveryVerifier {
                 recorded_at,
             })
             .map(|_| ())
-            .map_err(|error| error.to_string())
+            .map_err(recovery_store_denial)
     }
 }

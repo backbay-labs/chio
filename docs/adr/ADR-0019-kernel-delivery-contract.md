@@ -2,7 +2,7 @@
 
 - Status: Accepted (2026-08-21; implemented in M3 and cumulatively qualified in M9)
 - Decision owner: kernel and spend control-plane lane
-- Related: ADR-0016 (authoritative spend contract), ADR-0017 (cognition-market finding artifacts), `spec/PROTOCOL.md` 6.4 (receipt-metadata blocks), the cognition-market program plan (`docs/research/cognition-market/PLAN.md`, milestone M3)
+- Related: ADR-0016 (authoritative spend contract), ADR-0017 (cognition-market finding artifacts), `spec/PROTOCOL.md` 6.4 (receipt-metadata blocks), `docs/market/ARCHITECTURE.md` section 6
 - Supersedes the ADR-A and ADR-E placeholders in the cognition-market decision backlog.
 
 ## Context
@@ -106,7 +106,7 @@ Required FV hooks: exactly one Kani harness, reached by factoring the comparison
 
 ## Corrections to the milestone text
 
-The milestone definition (`docs/research/cognition-market/PLAN.md`) and `ARCHITECTURE.md` are corrected as follows; the plan authored from this ADR carries these, not the originals.
+The market architecture (`docs/market/ARCHITECTURE.md`) is corrected as follows; the implementation carries these, not the originals.
 
 - "Legacy lane: evaluate before `reconcile_budget_charge`" is not implementable; the charged legacy branch runs no post-invocation pipeline and the value to hash does not exist at that point. Adopt predispatch rejection (item 4).
 - The legacy reject is unconditional on `durable_admission.is_none()`, not scoped to "unsafe legacy financial dispatch active": a flagless `InvocationHold` capture and the absence of a transform seam make the non-financial legacy path equally unable to enforce.

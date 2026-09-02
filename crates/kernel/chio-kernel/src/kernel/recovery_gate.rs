@@ -3,6 +3,7 @@
 use base64::Engine as _;
 use chio_core::capability::scope::{Constraint, FindingRecoveryMarkerV1, ToolGrant};
 
+use crate::finding_denial::FindingDenial;
 use crate::finding_purchase::{
     FindingCurrentStatusContextView, FindingStatusProofContextView, VerifiedFindingStatusProof,
     FINDING_STATUS_PROOF_CONTEXT_KEY, MAX_FINDING_STATUS_PROOF_B64_BYTES,
@@ -21,21 +22,7 @@ pub(crate) struct RecoveryMarkedGrant<'a> {
     expected_output_digest: &'a str,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct VerifiedFindingRecoveryAdmission {
-    pub(crate) recovery: VerifiedFindingRecovery,
-    pub(crate) status: VerifiedFindingStatusProof,
-}
-
-impl crate::kernel::dispatch::VerifiedFindingDispatchAdmission {
-    pub(crate) fn recovery_binding(&self) -> Option<&VerifiedFindingRecovery> {
-        self.recovery.as_ref().map(|admission| &admission.recovery)
-    }
-
-    pub(crate) fn recovery_status(&self) -> Option<&VerifiedFindingStatusProof> {
-        self.recovery.as_ref().map(|admission| &admission.status)
-    }
-}
+pub(crate) use super::delivery_contract::VerifiedFindingRecoveryAdmission;
 
 #[derive(serde::Serialize)]
 struct FindingRecoveryRequestBinding<'a> {
@@ -56,7 +43,7 @@ fn is_lower_hex64(value: &str) -> bool {
 fn recovery_status_proof_view<'a>(
     request: &'a ToolCallRequest,
     verified: &'a VerifiedFindingRecovery,
-) -> Result<FindingStatusProofContextView<'a>, String> {
+) -> Result<FindingStatusProofContextView<'a>, FindingDenial> {
     let proof_b64 = request
         .governed_intent
         .as_ref()
@@ -64,9 +51,13 @@ fn recovery_status_proof_view<'a>(
         .and_then(serde_json::Value::as_object)
         .and_then(|context| context.get(FINDING_STATUS_PROOF_CONTEXT_KEY))
         .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| "finding recovery requires a portable status proof".to_owned())?;
+        .ok_or_else(|| {
+            FindingDenial::carrier_invalid("finding recovery requires a portable status proof")
+        })?;
     if proof_b64.is_empty() || proof_b64.len() > MAX_FINDING_STATUS_PROOF_B64_BYTES {
-        return Err("finding status proof carrier exceeds the kernel size bound".to_owned());
+        return Err(FindingDenial::carrier_invalid(
+            "finding status proof carrier exceeds the kernel size bound",
+        ));
     }
     Ok(FindingStatusProofContextView {
         proof_b64,
@@ -78,15 +69,14 @@ fn recovery_status_proof_view<'a>(
 /// Recover and validate the closed recovery grant profile.
 pub(crate) fn recovery_marked_grant(
     grant: &ToolGrant,
-) -> Result<Option<RecoveryMarkedGrant<'_>>, String> {
+) -> Result<Option<RecoveryMarkedGrant<'_>>, FindingDenial> {
     if grant.constraints.iter().any(|constraint| {
         matches!(constraint, Constraint::Custom(key, _)
             if matches!(key.as_str(), "recovery_of_receipt_id" | "recovery_of_capability_id"))
     }) {
-        return Err(
-            "legacy Custom-only recovery authority is forbidden; use RequireFindingRecovery"
-                .to_owned(),
-        );
+        return Err(FindingDenial::carrier_invalid(
+            "legacy Custom-only recovery authority is forbidden; use RequireFindingRecovery",
+        ));
     }
     let mut markers = grant.constraints.iter().filter_map(|constraint| {
         if let Constraint::RequireFindingRecovery(marker) = constraint {
@@ -99,22 +89,28 @@ pub(crate) fn recovery_marked_grant(
         return Ok(None);
     };
     if markers.next().is_some() {
-        return Err("recovery grant carries more than one recovery marker".to_owned());
+        return Err(FindingDenial::carrier_invalid(
+            "recovery grant carries more than one recovery marker",
+        ));
     }
     if grant.operations.as_slice() != [chio_core::capability::scope::Operation::Invoke] {
-        return Err("recovery grant permits only the Invoke operation".to_owned());
+        return Err(FindingDenial::carrier_invalid(
+            "recovery grant permits only the Invoke operation",
+        ));
     }
     if grant.constraints.len() != 2 {
-        return Err(
-            "recovery grant requires exactly its recovery marker and output digest".to_owned(),
-        );
+        return Err(FindingDenial::carrier_invalid(
+            "recovery grant requires exactly its recovery marker and output digest",
+        ));
     }
     if grant
         .constraints
         .iter()
         .any(|constraint| matches!(constraint, Constraint::RequireFindingPurchase(_)))
     {
-        return Err("recovery grant must not carry a purchase marker".to_owned());
+        return Err(FindingDenial::carrier_invalid(
+            "recovery grant must not carry a purchase marker",
+        ));
     }
     let mut digests = grant.constraints.iter().filter_map(|constraint| {
         if let Constraint::OutputDigestSha256(digest) = constraint {
@@ -124,21 +120,29 @@ pub(crate) fn recovery_marked_grant(
         }
     });
     let (Some(expected_output_digest), None) = (digests.next(), digests.next()) else {
-        return Err("recovery grant requires exactly one committed output digest".to_owned());
+        return Err(FindingDenial::carrier_invalid(
+            "recovery grant requires exactly one committed output digest",
+        ));
     };
     if marker.max_recoveries == 0 || marker.max_recoveries > 8 {
-        return Err("recovery grant retry budget must be between 1 and 8".to_owned());
+        return Err(FindingDenial::carrier_invalid(
+            "recovery grant retry budget must be between 1 and 8",
+        ));
     }
     if grant.max_invocations != Some(marker.max_recoveries) {
-        return Err(
-            "recovery grant invocation budget must equal its durable retry budget".to_owned(),
-        );
+        return Err(FindingDenial::carrier_invalid(
+            "recovery grant invocation budget must equal its durable retry budget",
+        ));
     }
     if grant.max_cost_per_invocation.is_some() || grant.max_total_cost.is_some() {
-        return Err("recovery grant must not carry monetary ceilings".to_owned());
+        return Err(FindingDenial::carrier_invalid(
+            "recovery grant must not carry monetary ceilings",
+        ));
     }
     if grant.dpop_required != Some(true) {
-        return Err("recovery grant requires mandatory proof of possession".to_owned());
+        return Err(FindingDenial::carrier_invalid(
+            "recovery grant requires mandatory proof of possession",
+        ));
     }
     Ok(Some(RecoveryMarkedGrant {
         marker,
@@ -148,7 +152,7 @@ pub(crate) fn recovery_marked_grant(
 
 fn validate_recovery_capability_profile(
     capability: &chio_core::capability::token::CapabilityToken,
-) -> Result<(), String> {
+) -> Result<(), FindingDenial> {
     let carries_recovery_authority = capability.scope.grants.iter().any(|grant| {
         grant.constraints.iter().any(|constraint| {
             matches!(constraint, Constraint::RequireFindingRecovery(_))
@@ -165,7 +169,9 @@ fn validate_recovery_capability_profile(
         || capability.aggregate_invocation_budget.is_some()
         || !capability.delegation_chain.is_empty()
     {
-        return Err("finding recovery requires an undelegated, single-grant capability".to_owned());
+        return Err(FindingDenial::carrier_invalid(
+            "finding recovery requires an undelegated, single-grant capability",
+        ));
     }
     Ok(())
 }
@@ -173,13 +179,17 @@ fn validate_recovery_capability_profile(
 fn recovery_request_binding_sha256(
     grant: &ToolGrant,
     request: &ToolCallRequest,
-) -> Result<String, String> {
+) -> Result<String, FindingDenial> {
     let bytes = crate::canonical_json_bytes(&FindingRecoveryRequestBinding {
         schema: FINDING_RECOVERY_REQUEST_BINDING_SCHEMA,
         selected_grant: grant,
         request,
     })
-    .map_err(|error| format!("finding recovery request binding is not canonical: {error}"))?;
+    .map_err(|error| {
+        FindingDenial::carrier_invalid(format!(
+            "finding recovery request binding is not canonical: {error}"
+        ))
+    })?;
     Ok(chio_core::crypto::sha256_hex(&bytes))
 }
 
@@ -187,28 +197,37 @@ fn validate_frozen_recovery_binding(
     grant: &ToolGrant,
     request: &ToolCallRequest,
     expected: &VerifiedFindingRecovery,
-) -> Result<(), String> {
+) -> Result<(), FindingDenial> {
     validate_recovery_capability_profile(&request.capability)?;
     let Some(marked) = recovery_marked_grant(grant)? else {
-        return Err("durable recovery snapshot has no marked grant".to_owned());
+        return Err(FindingDenial::carrier_invalid(
+            "durable recovery snapshot has no marked grant",
+        ));
     };
-    let arguments = request
-        .arguments
-        .as_object()
-        .ok_or_else(|| "finding recovery requires a top-level argument object".to_owned())?;
+    let arguments = request.arguments.as_object().ok_or_else(|| {
+        FindingDenial::carrier_invalid("finding recovery requires a top-level argument object")
+    })?;
     let finding_id = arguments
         .get("finding_id")
         .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| "finding recovery requires a top-level finding_id".to_owned())?;
+        .ok_or_else(|| {
+            FindingDenial::carrier_invalid("finding recovery requires a top-level finding_id")
+        })?;
     if finding_id != marked.marker.finding_id {
-        return Err("finding recovery targets a different finding".to_owned());
+        return Err(FindingDenial::binding_mismatch(
+            "finding recovery targets a different finding",
+        ));
     }
     let context_b64 = arguments
         .get(FINDING_RECOVERY_CONTEXT_ARGUMENT)
         .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| "finding recovery requires its evidence carrier".to_owned())?;
+        .ok_or_else(|| {
+            FindingDenial::carrier_invalid("finding recovery requires its evidence carrier")
+        })?;
     if context_b64.is_empty() {
-        return Err("finding recovery evidence carrier is empty".to_owned());
+        return Err(FindingDenial::carrier_invalid(
+            "finding recovery evidence carrier is empty",
+        ));
     }
     if expected.recovery_id != marked.marker.recovery_id
         || expected.finding_id != marked.marker.finding_id
@@ -217,13 +236,19 @@ fn validate_frozen_recovery_binding(
         || expected.original_delivery_receipt_id != marked.marker.original_delivery_receipt_id
         || expected.purchase_key != marked.marker.purchase_key
     {
-        return Err("durable recovery snapshot does not match its signed marker".to_owned());
+        return Err(FindingDenial::binding_mismatch(
+            "durable recovery snapshot does not match its signed marker",
+        ));
     }
     if expected.payload_sha256 != marked.expected_output_digest {
-        return Err("durable recovery snapshot commits a different payload digest".to_owned());
+        return Err(FindingDenial::binding_mismatch(
+            "durable recovery snapshot commits a different payload digest",
+        ));
     }
     if expected.original_subject_key_hex != request.capability.subject.to_hex() {
-        return Err("durable recovery snapshot binds a different original subject".to_owned());
+        return Err(FindingDenial::binding_mismatch(
+            "durable recovery snapshot binds a different original subject",
+        ));
     }
     Ok(())
 }
@@ -234,31 +259,40 @@ impl ChioKernel {
         &self,
         grant: &ToolGrant,
         request: &ToolCallRequest,
-    ) -> Result<Option<VerifiedFindingRecovery>, String> {
+    ) -> Result<Option<VerifiedFindingRecovery>, FindingDenial> {
         validate_recovery_capability_profile(&request.capability)?;
         let Some(marked) = recovery_marked_grant(grant)? else {
             return Ok(None);
         };
         if !self.post_invocation_pipeline.is_empty() {
-            return Err("finding recovery requires an empty post-invocation pipeline".to_owned());
+            return Err(FindingDenial::carrier_invalid(
+                "finding recovery requires an empty post-invocation pipeline",
+            ));
         }
-        let arguments = request
-            .arguments
-            .as_object()
-            .ok_or_else(|| "finding recovery requires a top-level argument object".to_owned())?;
+        let arguments = request.arguments.as_object().ok_or_else(|| {
+            FindingDenial::carrier_invalid("finding recovery requires a top-level argument object")
+        })?;
         let finding_id = arguments
             .get("finding_id")
             .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| "finding recovery requires a top-level finding_id".to_owned())?;
+            .ok_or_else(|| {
+                FindingDenial::carrier_invalid("finding recovery requires a top-level finding_id")
+            })?;
         if finding_id != marked.marker.finding_id {
-            return Err("finding recovery targets a different finding".to_owned());
+            return Err(FindingDenial::binding_mismatch(
+                "finding recovery targets a different finding",
+            ));
         }
         let context_b64 = arguments
             .get(FINDING_RECOVERY_CONTEXT_ARGUMENT)
             .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| "finding recovery requires its evidence carrier".to_owned())?;
+            .ok_or_else(|| {
+                FindingDenial::carrier_invalid("finding recovery requires its evidence carrier")
+            })?;
         let Some(verifier) = self.finding_recovery_verifier.as_ref() else {
-            return Err("finding recovery requires a configured recovery verifier".to_owned());
+            return Err(FindingDenial::unavailable(
+                "finding recovery requires a configured recovery verifier",
+            ));
         };
         let verified = verifier
             .verify_recovery(&FindingRecoveryContextView {
@@ -270,7 +304,7 @@ impl ChioKernel {
                 arguments: &request.arguments,
                 expected_output_digest: marked.expected_output_digest,
             })
-            .map_err(|error| format!("finding recovery context rejected: {error}"))?;
+            .map_err(|denial| denial.prefixed("finding recovery context rejected"))?;
         if verified.recovery_id != marked.marker.recovery_id
             || verified.finding_id != marked.marker.finding_id
             || verified.listing_id != marked.marker.listing_id
@@ -278,13 +312,19 @@ impl ChioKernel {
             || verified.original_delivery_receipt_id != marked.marker.original_delivery_receipt_id
             || verified.purchase_key != marked.marker.purchase_key
         {
-            return Err("finding recovery carrier does not match its signed marker".to_owned());
+            return Err(FindingDenial::binding_mismatch(
+                "finding recovery carrier does not match its signed marker",
+            ));
         }
         if verified.payload_sha256 != marked.expected_output_digest {
-            return Err("finding recovery commits a different payload digest".to_owned());
+            return Err(FindingDenial::binding_mismatch(
+                "finding recovery commits a different payload digest",
+            ));
         }
         if verified.original_subject_key_hex != request.capability.subject.to_hex() {
-            return Err("finding recovery binds a different original subject".to_owned());
+            return Err(FindingDenial::binding_mismatch(
+                "finding recovery binds a different original subject",
+            ));
         }
         Ok(Some(verified))
     }
@@ -296,7 +336,7 @@ impl ChioKernel {
         grant: &ToolGrant,
         request: &ToolCallRequest,
         now_unix_secs: u64,
-    ) -> Result<Option<VerifiedFindingRecovery>, String> {
+    ) -> Result<Option<VerifiedFindingRecovery>, FindingDenial> {
         let Some(admission) =
             self.verify_recovery_status_admission(grant, request, now_unix_secs)?
         else {
@@ -304,10 +344,14 @@ impl ChioKernel {
         };
         let verified = admission.recovery;
         let Some(marked) = recovery_marked_grant(grant)? else {
-            return Err("finding recovery marker disappeared during admission".to_owned());
+            return Err(FindingDenial::unavailable(
+                "finding recovery marker disappeared during admission",
+            ));
         };
         let Some(verifier) = self.finding_recovery_verifier.as_ref() else {
-            return Err("finding recovery requires a configured recovery verifier".to_owned());
+            return Err(FindingDenial::unavailable(
+                "finding recovery requires a configured recovery verifier",
+            ));
         };
         verifier
             .reserve_recovery_attempt(
@@ -316,7 +360,7 @@ impl ChioKernel {
                 marked.marker.max_recoveries,
                 now_unix_secs,
             )
-            .map_err(|error| format!("finding recovery quota rejected: {error}"))?;
+            .map_err(|denial| denial.prefixed("finding recovery quota rejected"))?;
         Ok(Some(verified))
     }
 
@@ -330,24 +374,24 @@ impl ChioKernel {
         grant: &ToolGrant,
         request: &ToolCallRequest,
         now_unix_secs: u64,
-    ) -> Result<Option<VerifiedFindingRecoveryAdmission>, String> {
+    ) -> Result<Option<VerifiedFindingRecoveryAdmission>, FindingDenial> {
         let Some(verified) = self.verify_recovery_context(grant, request)? else {
             return Ok(None);
         };
         // Recovery is another delivery of the purchased bytes, so it must
         // cross the same current status floor before consuming retry quota.
         let Some(status_verifier) = self.finding_status_proof_verifier.as_ref() else {
-            return Err(
-                "finding recovery requires a configured finding status verifier".to_owned(),
-            );
+            return Err(FindingDenial::unavailable(
+                "finding recovery requires a configured finding status verifier",
+            ));
         };
         let status_view = recovery_status_proof_view(request, &verified)?;
         let status = status_verifier
             .verify_status_proof(&status_view)
-            .map_err(|error| format!("finding recovery status proof rejected: {error}"))?;
+            .map_err(|denial| denial.prefixed("finding recovery status proof rejected"))?;
         status_verifier
             .verify_status_admission(&status_view, &status, now_unix_secs)
-            .map_err(|error| format!("finding recovery status admission rejected: {error}"))?;
+            .map_err(|denial| denial.prefixed("finding recovery status admission rejected"))?;
         Ok(Some(VerifiedFindingRecoveryAdmission {
             recovery: verified,
             status,
@@ -359,17 +403,23 @@ impl ChioKernel {
         grant: &ToolGrant,
         request: &ToolCallRequest,
         snapshot: FindingRecoveryReplaySnapshotV1,
-    ) -> Result<Option<VerifiedFindingRecoveryAdmission>, String> {
+    ) -> Result<Option<VerifiedFindingRecoveryAdmission>, FindingDenial> {
         if snapshot.schema != FINDING_RECOVERY_REPLAY_SNAPSHOT_SCHEMA {
-            return Err("durable recovery snapshot schema is unsupported".to_owned());
+            return Err(FindingDenial::carrier_invalid(
+                "durable recovery snapshot schema is unsupported",
+            ));
         }
         if !self.post_invocation_pipeline.is_empty() {
-            return Err("finding recovery requires an empty post-invocation pipeline".to_owned());
+            return Err(FindingDenial::carrier_invalid(
+                "finding recovery requires an empty post-invocation pipeline",
+            ));
         }
         if !is_lower_hex64(&snapshot.request_binding_sha256)
             || snapshot.request_binding_sha256 != recovery_request_binding_sha256(grant, request)?
         {
-            return Err("durable recovery snapshot binds a different request or grant".to_owned());
+            return Err(FindingDenial::binding_mismatch(
+                "durable recovery snapshot binds a different request or grant",
+            ));
         }
         validate_frozen_recovery_binding(grant, request, &snapshot.recovery)?;
         let status = &snapshot.status;
@@ -383,7 +433,9 @@ impl ChioKernel {
             || !is_lower_hex64(&status.operator_authorization_sha256)
             || !is_lower_hex64(&status.service_bond_evidence_sha256)
         {
-            return Err("durable recovery status snapshot is malformed".to_owned());
+            return Err(FindingDenial::carrier_invalid(
+                "durable recovery status snapshot is malformed",
+            ));
         }
         let proof_b64 = request
             .governed_intent
@@ -392,15 +444,23 @@ impl ChioKernel {
             .and_then(serde_json::Value::as_object)
             .and_then(|context| context.get(FINDING_STATUS_PROOF_CONTEXT_KEY))
             .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| "durable recovery request lost its status proof".to_owned())?;
+            .ok_or_else(|| {
+                FindingDenial::carrier_invalid("durable recovery request lost its status proof")
+            })?;
         if proof_b64.is_empty() || proof_b64.len() > MAX_FINDING_STATUS_PROOF_B64_BYTES {
-            return Err("durable recovery status proof exceeds the kernel size bound".to_owned());
+            return Err(FindingDenial::carrier_invalid(
+                "durable recovery status proof exceeds the kernel size bound",
+            ));
         }
         let proof_bytes = base64::engine::general_purpose::STANDARD
             .decode(proof_b64)
-            .map_err(|_| "durable recovery status proof is not valid base64".to_owned())?;
+            .map_err(|_| {
+                FindingDenial::carrier_invalid("durable recovery status proof is not valid base64")
+            })?;
         if chio_core::crypto::sha256_hex(&proof_bytes) != status.proof_sha256 {
-            return Err("durable recovery snapshot binds a different status proof".to_owned());
+            return Err(FindingDenial::binding_mismatch(
+                "durable recovery snapshot binds a different status proof",
+            ));
         }
         Ok(Some(VerifiedFindingRecoveryAdmission {
             recovery: snapshot.recovery,
@@ -426,18 +486,18 @@ impl ChioKernel {
             .iter()
             .find(|matching| matching.index == matched_grant_index)
             .ok_or_else(|| {
-                super::KernelError::DurableAdmission(
-                    "durable tool return lost its matched grant".to_owned(),
-                )
+                super::KernelError::FindingDenied(FindingDenial::unavailable(
+                    "durable tool return lost its matched grant",
+                ))
             })?;
         let is_recovery = recovery_marked_grant(selected_grant.grant)
-            .map_err(super::KernelError::DurableAdmission)?
+            .map_err(super::KernelError::FindingDenied)?
             .is_some();
         match (is_recovery, verified_recovery) {
             (true, Some(admission)) => {
                 let snapshot = FindingRecoveryReplaySnapshotV1::new(
                     recovery_request_binding_sha256(selected_grant.grant, request)
-                        .map_err(super::KernelError::DurableAdmission)?,
+                        .map_err(super::KernelError::FindingDenied)?,
                     admission.recovery.clone(),
                     admission.status.clone(),
                 );
@@ -460,11 +520,15 @@ impl ChioKernel {
                     })
                     .map_err(|error| super::KernelError::DurableAdmission(error.to_string()))
             }
-            (true, None) => Err(super::KernelError::DurableAdmission(
-                "M6 durable recovery return has no frozen dispatch snapshot".to_owned(),
+            (true, None) => Err(super::KernelError::FindingDenied(
+                FindingDenial::unavailable(
+                    "durable recovery return has no frozen dispatch snapshot",
+                ),
             )),
-            (false, Some(_)) => Err(super::KernelError::DurableAdmission(
-                "unmarked durable return carries a frozen recovery snapshot".to_owned(),
+            (false, Some(_)) => Err(super::KernelError::FindingDenied(
+                FindingDenial::binding_mismatch(
+                    "unmarked durable return carries a frozen recovery snapshot",
+                ),
             )),
             (false, None) => Ok(None),
         }
@@ -483,7 +547,7 @@ impl ChioKernel {
             })
             .cloned();
         let is_recovery = recovery_marked_grant(grant)
-            .map_err(super::KernelError::DurableAdmission)?
+            .map_err(super::KernelError::FindingDenied)?
             .is_some();
         match (is_recovery, snapshot) {
             (true, Some(snapshot)) => {
@@ -500,11 +564,13 @@ impl ChioKernel {
                         ))
                     })
             }
-            (true, None) => Err(super::KernelError::DurableAdmission(
-                "M6 durable recovery return has no frozen status snapshot".to_owned(),
+            (true, None) => Err(super::KernelError::FindingDenied(
+                FindingDenial::unavailable("durable recovery return has no frozen status snapshot"),
             )),
-            (false, Some(_)) => Err(super::KernelError::DurableAdmission(
-                "unmarked durable return carries a recovery snapshot".to_owned(),
+            (false, Some(_)) => Err(super::KernelError::FindingDenied(
+                FindingDenial::binding_mismatch(
+                    "unmarked durable return carries a recovery snapshot",
+                ),
             )),
             (false, None) => Ok(None),
         }
@@ -519,12 +585,14 @@ impl ChioKernel {
         expected: Option<&VerifiedFindingRecovery>,
         admitted_status: Option<&VerifiedFindingStatusProof>,
         now_unix_secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), FindingDenial> {
         let (Some(expected), Some(admitted_status)) = (expected, admitted_status) else {
             return if expected.is_none() && admitted_status.is_none() {
                 Ok(())
             } else {
-                Err("completed recovery lost its dispatch-frozen status baseline".to_owned())
+                Err(FindingDenial::unavailable(
+                    "completed recovery lost its dispatch-frozen status baseline",
+                ))
             };
         };
         let grant = request
@@ -532,18 +600,24 @@ impl ChioKernel {
             .scope
             .grants
             .get(matched_grant_index)
-            .ok_or_else(|| "completed recovery grant index is out of bounds".to_owned())?;
+            .ok_or_else(|| {
+                FindingDenial::unavailable("completed recovery grant index is out of bounds")
+            })?;
         if !self.post_invocation_pipeline.is_empty() {
-            return Err("finding recovery requires an empty post-invocation pipeline".to_owned());
+            return Err(FindingDenial::carrier_invalid(
+                "finding recovery requires an empty post-invocation pipeline",
+            ));
         }
         validate_frozen_recovery_binding(grant, request, expected)?;
         let Some(status_verifier) = self.finding_status_proof_verifier.as_ref() else {
-            return Err(
-                "finding recovery requires a configured finding status verifier".to_owned(),
-            );
+            return Err(FindingDenial::unavailable(
+                "finding recovery requires a configured finding status verifier",
+            ));
         };
         if admitted_status.feed_id != expected.expected_status_feed_id {
-            return Err("completed recovery status feed changed after dispatch".to_owned());
+            return Err(FindingDenial::stale_or_superseded(
+                "completed recovery status feed changed after dispatch",
+            ));
         }
         status_verifier
             .verify_current_status_admission(
@@ -555,45 +629,17 @@ impl ChioKernel {
                 },
                 now_unix_secs,
             )
-            .map_err(|error| {
-                format!("finding recovery current status admission rejected: {error}")
+            .map_err(|denial| {
+                denial.prefixed("finding recovery current status admission rejected")
             })?;
         Ok(())
-    }
-}
-
-pub(crate) fn attach_finding_recovery_metadata(
-    metadata: Option<serde_json::Value>,
-    recovery: Option<&VerifiedFindingRecovery>,
-) -> Option<serde_json::Value> {
-    let Some(recovery) = recovery else {
-        return metadata;
-    };
-    crate::receipt_support::merge_metadata_objects(
-        metadata,
-        Some(serde_json::json!({
-            chio_core::receipt::metadata::FINDING_RECOVERY_METADATA_KEY:
-                finding_recovery_block(recovery)
-        })),
-    )
-}
-
-pub(crate) fn finding_recovery_block(
-    binding: &VerifiedFindingRecovery,
-) -> chio_core::receipt::metadata::FindingRecovery {
-    chio_core::receipt::metadata::FindingRecovery {
-        schema: chio_core::receipt::metadata::FINDING_RECOVERY_SCHEMA.to_owned(),
-        recovery_id: binding.recovery_id.clone(),
-        finding_id: binding.finding_id.clone(),
-        original_capability_id: binding.original_capability_id.clone(),
-        original_delivery_receipt_id: binding.original_delivery_receipt_id.clone(),
-        purchase_key: binding.purchase_key.clone(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::finding_denial::FindingDenialCode;
     use crate::finding_purchase::{FindingStatusProofVerifier, VerifiedFindingStatusProof};
     use crate::finding_recovery::{FindingRecoveryVerifier, VerifiedFindingRecovery};
     use crate::{HotPathDeadlineConfig, KernelConfig, MemoryBudgetConfig};
@@ -618,9 +664,11 @@ mod tests {
         fn verify_recovery(
             &self,
             view: &FindingRecoveryContextView<'_>,
-        ) -> Result<VerifiedFindingRecovery, String> {
+        ) -> Result<VerifiedFindingRecovery, crate::finding_denial::FindingDenial> {
             if self.deny_verification.load(Ordering::SeqCst) {
-                return Err("historical recovery authority has rotated".to_owned());
+                return Err(crate::finding_denial::FindingDenial::authority_invalid(
+                    "historical recovery authority has rotated",
+                ));
             }
             Ok(VerifiedFindingRecovery {
                 recovery_id: view.marker.recovery_id.clone(),
@@ -641,7 +689,7 @@ mod tests {
             _request_id: &str,
             _max_recoveries: u32,
             _now_unix_secs: u64,
-        ) -> Result<(), String> {
+        ) -> Result<(), crate::finding_denial::FindingDenial> {
             self.reservations.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
@@ -651,10 +699,12 @@ mod tests {
             _verified: &VerifiedFindingRecovery,
             _recovery_receipt_id: &str,
             _recorded_at: u64,
-        ) -> Result<(), String> {
+        ) -> Result<(), crate::finding_denial::FindingDenial> {
             self.receipts.fetch_add(1, Ordering::SeqCst);
             if self.fail_receipts.load(Ordering::SeqCst) {
-                Err("recovery lineage backend unavailable".to_owned())
+                Err(crate::finding_denial::FindingDenial::unavailable(
+                    "recovery lineage backend unavailable",
+                ))
             } else {
                 Ok(())
             }
@@ -671,9 +721,11 @@ mod tests {
         fn verify_status_proof(
             &self,
             _view: &FindingStatusProofContextView<'_>,
-        ) -> Result<VerifiedFindingStatusProof, String> {
+        ) -> Result<VerifiedFindingStatusProof, crate::finding_denial::FindingDenial> {
             if self.portable_deny.load(Ordering::SeqCst) {
-                return Err("finding is pending retraction under the old operator".to_owned());
+                return Err(crate::finding_denial::FindingDenial::status_denied(
+                    "finding is pending retraction under the old operator",
+                ));
             }
             Ok(VerifiedFindingStatusProof {
                 feed_id: "feed-1".to_owned(),
@@ -694,9 +746,11 @@ mod tests {
             _view: &FindingStatusProofContextView<'_>,
             _verified: &VerifiedFindingStatusProof,
             _now_unix_secs: u64,
-        ) -> Result<(), String> {
+        ) -> Result<(), crate::finding_denial::FindingDenial> {
             if self.portable_deny.load(Ordering::SeqCst) {
-                Err("finding is pending retraction".to_owned())
+                Err(crate::finding_denial::FindingDenial::status_denied(
+                    "finding is pending retraction",
+                ))
             } else {
                 Ok(())
             }
@@ -706,10 +760,12 @@ mod tests {
             &self,
             _view: &FindingCurrentStatusContextView<'_>,
             _now_unix_secs: u64,
-        ) -> Result<(), String> {
+        ) -> Result<(), crate::finding_denial::FindingDenial> {
             self.current_checks.fetch_add(1, Ordering::SeqCst);
             if self.current_deny.load(Ordering::SeqCst) {
-                Err("finding is pending retraction".to_owned())
+                Err(crate::finding_denial::FindingDenial::status_denied(
+                    "finding is pending retraction",
+                ))
             } else {
                 Ok(())
             }
@@ -866,7 +922,8 @@ mod tests {
         let error = kernel
             .verify_recovery_status_admission(grant, &request, 1)
             .expect_err("dispatch boundary must observe pending retraction");
-        assert!(error.contains("pending retraction"));
+        assert!(error.detail().contains("pending retraction"));
+        assert_eq!(error.code(), FindingDenialCode::StatusDenied);
         assert_eq!(reservations.load(Ordering::SeqCst), 1);
 
         let expected = kernel
@@ -883,7 +940,8 @@ mod tests {
                 1,
             )
             .expect_err("a durable completed replay must recheck mutable status");
-        assert!(terminal_error.contains("pending retraction"));
+        assert!(terminal_error.detail().contains("pending retraction"));
+        assert_eq!(terminal_error.code(), FindingDenialCode::StatusDenied);
         assert_eq!(current_checks.load(Ordering::SeqCst), 1);
         assert_eq!(reservations.load(Ordering::SeqCst), 1);
     }
@@ -1014,7 +1072,7 @@ mod tests {
             purchase_key: "c".repeat(64),
             original_subject_key_hex: "e".repeat(64),
         };
-        let block = finding_recovery_block(&verified);
+        let block = crate::kernel::delivery_contract::finding_recovery_block(&verified);
         block.validate().expect("valid recovery block");
         assert_eq!(block.recovery_id, verified.recovery_id);
         assert_eq!(
@@ -1037,7 +1095,7 @@ mod tests {
             purchase_key: "c".repeat(64),
             original_subject_key_hex: "e".repeat(64),
         };
-        let metadata = attach_finding_recovery_metadata(
+        let metadata = crate::kernel::delivery_contract::attach_finding_recovery_metadata(
             Some(serde_json::json!({"existing": true})),
             Some(&verified),
         )

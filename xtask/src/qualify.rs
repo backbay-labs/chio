@@ -33,7 +33,11 @@ pub(crate) const BOUNDED_ENTRYPOINT: &str = "cargo xtask qualify bounded-chio";
 /// longer describes the ship-facing bounded release boundary.
 const BOUNDED_SCOPE: &str = "bounded_chio_release_qualification";
 
-const REQUIRED_COGNITION_MARKET_GATES: [&str; 3] = ["COGM9-01", "COGM9-02", "COGM9-03"];
+const REQUIRED_COGNITION_MARKET_GATES: [&str; 3] = [
+    "cognition-market-flow",
+    "cognition-market-proof-bundle",
+    "cognition-market-audited-assumptions",
+];
 
 /// The implemented qualification profiles. Compile-time fail-closed
 /// enumeration: the CLI rejects anything not listed here.
@@ -336,12 +340,12 @@ mod tests {
             "scope": BOUNDED_SCOPE,
             "entrypoint": BOUNDED_ENTRYPOINT,
             "gateConditions": [
-                { "id": "COGM9-01", "summary": "flow" },
-                { "id": "COGM9-02", "summary": "proof bundle" }
+                { "id": "cognition-market-flow", "summary": "flow" },
+                { "id": "cognition-market-proof-bundle", "summary": "proof bundle" }
             ],
         });
         match assert_bounded_matrix(&matrix) {
-            Ok(()) => panic!("matrix missing COGM9-03 passed"),
+            Ok(()) => panic!("matrix missing the audited-assumptions gate passed"),
             Err(XtaskError::Validation(_)) => {}
             Err(other) => panic!("expected Validation, got {other}"),
         }

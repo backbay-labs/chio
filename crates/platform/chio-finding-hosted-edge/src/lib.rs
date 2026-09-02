@@ -27,6 +27,11 @@ pub use auth::{
     HostedAuthenticatedPrincipal, HostedAuthenticator, HostedAuthenticatorConfig,
     HostedTenantAuthPolicy, StaticApiKeyPepper,
 };
+pub use chio_finding_market_port::{
+    HostedAuthenticatedFindingDelivery, HostedDomainMutation, HostedHttpPage, HostedHttpProjection,
+    HostedMarketBackend, HostedMarketBackendError, HostedMarketBackendOutcome,
+    HOSTED_AUTHENTICATED_DELIVERY_SCHEMA,
+};
 pub use contracts::{
     HostedDomainEventEnvelope, HostedHttpMethod, HostedMutationOutcome, HostedMutationResponse,
     HostedRequestContract, HostedTenantBinding, HOSTED_DOMAIN_EVENT_SCHEMA,
@@ -50,9 +55,7 @@ pub use proxy::{
 };
 pub use server::{
     hosted_market_router, serve_hosted_market_loopback, serve_hosted_market_loopback_with_shutdown,
-    HostedAuthenticatedFindingDelivery, HostedDomainMutation, HostedHttpBackend,
-    HostedHttpBackendError, HostedHttpBackendOutcome, HostedHttpPage, HostedHttpProjection,
     HostedHttpServerConfig, HostedHttpServerState, HostedReleaseIdentity,
-    HOSTED_AUTHENTICATED_DELIVERY_SCHEMA, HOSTED_RELEASE_IDENTITY_SCHEMA,
+    HOSTED_RELEASE_IDENTITY_SCHEMA,
 };
 pub use tls::{HostedTlsConfig, HostedTlsReload, HostedTlsState};

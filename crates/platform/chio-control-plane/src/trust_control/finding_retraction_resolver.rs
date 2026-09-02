@@ -50,7 +50,7 @@ impl FindingRetractionClock for SystemFindingRetractionClock {
     }
 }
 
-/// Resolve only the signed M6-specific child-write -> parent-delivery edge.
+/// Resolve only the signed child-memory-write -> parent-delivery lineage edge.
 pub struct ReceiptStoreFindingDeliveryLineageResolver {
     receipts: Arc<dyn ReceiptStore>,
 }
@@ -226,7 +226,7 @@ impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolv
             .map(|proof| proof.feed_id.clone())
             .ok_or_else(|| {
                 FindingRetractionResolveError::InvalidLineage(
-                    "M6 Finding delivery lineage has no authenticated status feed".to_owned(),
+                    "Finding delivery lineage has no authenticated status feed".to_owned(),
                 )
             })?;
         let memory_content = child.action.parameters.get("content").ok_or_else(|| {
@@ -247,7 +247,7 @@ impl FindingDeliveryLineageResolver for ReceiptStoreFindingDeliveryLineageResolv
     }
 }
 
-/// Authenticated status cache backed by the durable M6 rollback floor.
+/// Authenticated status cache backed by the durable status rollback floor.
 pub struct SqliteFindingStatusCache {
     feed_id: String,
     operator: FindingStatusOperatorPin,
@@ -318,7 +318,7 @@ impl FindingStatusCache for SqliteFindingStatusCache {
             &proof,
             verified_at,
         )
-        .map_err(FindingRetractionResolveError::InvalidStatus)?;
+        .map_err(|denial| FindingRetractionResolveError::InvalidStatus(denial.to_string()))?;
         if proof.kind != expected_kind {
             return Err(FindingRetractionResolveError::InvalidStatus(
                 "durable status decision and portable proof kind differ".to_owned(),
@@ -332,7 +332,7 @@ impl FindingStatusCache for SqliteFindingStatusCache {
             &proof,
             final_now,
         )
-        .map_err(FindingRetractionResolveError::InvalidStatus)?;
+        .map_err(|denial| FindingRetractionResolveError::InvalidStatus(denial.to_string()))?;
         let final_decision = self
             .store
             .status_for_purchase(

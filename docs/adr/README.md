@@ -32,3 +32,4 @@ Current ADR set:
 18. [ADR-0018 Radicle Is A Carrier, Never An Authority (Adoption Deferred)](ADR-0018-radicle-carrier-not-authority.md)
 19. [ADR-0019 Kernel Delivery Contract](ADR-0019-kernel-delivery-contract.md)
 20. [ADR-0020 Finding Status Feed Governance](ADR-0020-finding-status-feed-governance.md)
+21. [ADR-0021 Hosted Market Storage Authority And Transition-Rule Ownership](ADR-0021-hosted-market-storage-authority.md)

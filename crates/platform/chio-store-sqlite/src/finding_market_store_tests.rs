@@ -1972,3 +1972,6 @@ fn corrupted_content_is_caught_on_the_serve_path_and_by_the_explicit_sweep() {
         "the explicit sweep must detect corruption in a retained row"
     );
 }
+
+#[path = "finding_market_store_companion_tests.rs"]
+mod companion;

@@ -1,14 +1,12 @@
 # Cognition Market Architecture
 
-- Status: research architecture merged through PR #1025. This execution
-  branch implements only M0/M1: `chio.finding.v1`, its pure crate,
-  registration, normative text, golden, and test-only market spec.
-  Operational market surfaces remain proposed.
-- Basis: [spike memo](../agent-cognition-market.md) gap analysis (Q1-Q8) and
-  [ADR-0017](../../adr/ADR-0017-cognition-market-finding-artifacts.md)
+- Status: implemented architecture for the qualified bounded
+  single-operator market and the tenant-isolated hosted profile.
+  Cross-organization escrow remains conditional and unbuilt.
+- Basis: [spike memo](../research/agent-cognition-market.md) gap analysis (Q1-Q8) and
+  [ADR-0017](../adr/ADR-0017-cognition-market-finding-artifacts.md)
   decisions D1-D5, both grounded in file-level evidence
-- Companions: [THREAT-MODEL.md](THREAT-MODEL.md), [MECHANISMS.md](MECHANISMS.md),
-  [PLAN.md](PLAN.md)
+- Companions: [THREAT-MODEL.md](THREAT-MODEL.md), [MECHANISMS.md](MECHANISMS.md)
 - Discipline: paths cited for every claim about existing code; new surfaces
   are sketches and say so; sections 6-8 record the integration facts that
   determine the final shape, with the chosen option and its rationale
@@ -80,14 +78,14 @@ New principles this design adds:
    capability verify            |     escrow + rails (chio-settle,               |
    budget reservation           +---    ChioEscrow/ChioBondVault,            delivery receipt
    reveal-time rail hold
-   guard pipeline                       x402/ACP adapters)                       |
+   guard pipeline                       x402/ACP-Client adapters)                       |
    digest-gated delivery check                                               governed memory write
    receipt signing (content_hash)                                            (provenance chain)
 ```
 
 Every value move targets an existing rail backend. The authoritative
 budget/liability reservation before pure bid acceptance, and the reveal-time
-authorize/capture orchestration, are proposed M4 work, not shipped behavior.
+authorize/capture orchestration, ship with the purchase chain.
 The principal new boxes are the finding artifact family, the finding tool
 server contract, and the status backend.
 
@@ -97,35 +95,35 @@ Schema ids in the program (registration path in section 7):
 
 | Schema | Kind | New/reuse |
 |---|---|---|
-| `chio.finding.v1` | signed information-good artifact | implemented and registered at M0/M1 |
-| `chio.finding.replay-recipe-input.v1` | strict canonical verifier input committed by `replay_recipe_sha256` | new at M2 |
-| `chio.finding.market-terms.v1` | seller-signed decision rules, liability windows, audit eligibility, backing, and payout policy | new at M2 |
-| `chio.finding.seller-authorization.v1` | Finding-issuer-signed authorization for the exact seller, listing, provider, and payment beneficiary | new at M2 |
-| `chio.finding.challenge-verifier-profile.v1` | reusable governance-signed role keys, projection trust, runner/predicate allowlist, bounds, and resolver policy; must predate recipe/Finding | new at M2 |
-| `chio.finding.verifier-report.v1` | verifier-authority-signed per-facet evidence report bound to one Finding, profile, trust snapshot, and evidence bundle | new at M2 |
-| `chio.finding.bond-backing.v1` | authority-signed exclusive seller collateral allocation and exposure policy | new at M2 |
-| `chio.finding.admission.v1` | venue-signed Finding/listing/hint/evidence/fee/backing admission bundle | new at M2 |
-| `chio.delivery-contract.v1` | generic terminal-receipt metadata for a concrete output digest check (M3) | new |
-| `chio.finding.delivery.v1` | finding overlay metadata block (M4 purchase binding; optional `status_proof` sub-block added at M6) | new |
-| `chio.finding.purchase-context.v1` | bounded strict verifier input carrying the signed M4 purchase chain | new at M4 |
-| `chio.finding.purchase-record.v1` | signed authoritative terminal purchase/rail state, realized spend, liability, delivery, and immutable destination record | new at M4 |
-| `chio.finding.failed-delivery.v1` | signed payout-ineligible M4 mismatch terminal binding the accepted bid, hold release, and checkpointed Deny | new at M4 |
+| `chio.finding.v1` | signed information-good artifact | implemented and registered |
+| `chio.finding.replay-recipe-input.v1` | strict canonical verifier input committed by `replay_recipe_sha256` | implemented and registered |
+| `chio.finding.market-terms.v1` | seller-signed decision rules, liability windows, audit eligibility, backing, and payout policy | implemented and registered |
+| `chio.finding.seller-authorization.v1` | Finding-issuer-signed authorization for the exact seller, listing, provider, and payment beneficiary | implemented and registered |
+| `chio.finding.challenge-verifier-profile.v1` | reusable governance-signed role keys, projection trust, runner/predicate allowlist, bounds, and resolver policy; must predate recipe/Finding | implemented and registered |
+| `chio.finding.verifier-report.v1` | verifier-authority-signed per-facet evidence report bound to one Finding, profile, trust snapshot, and evidence bundle | implemented and registered |
+| `chio.finding.bond-backing.v1` | authority-signed exclusive seller collateral allocation and exposure policy | implemented and registered |
+| `chio.finding.admission.v1` | venue-signed Finding/listing/hint/evidence/fee/backing admission bundle | implemented and registered |
+| `chio.delivery-contract.v1` | generic terminal-receipt metadata for a concrete output digest check | implemented and registered |
+| `chio.finding.delivery.v1` | finding overlay metadata block binding the purchase, with an optional additive `status_proof` sub-block | implemented and registered |
+| `chio.finding.purchase-context.v1` | bounded strict verifier input carrying the signed purchase chain | implemented and registered |
+| `chio.finding.purchase-record.v1` | signed authoritative terminal purchase/rail state, realized spend, liability, delivery, and immutable destination record | implemented and registered |
+| `chio.finding.failed-delivery.v1` | signed payout-ineligible mismatch terminal binding the accepted bid, hold release, and checkpointed Deny | implemented and registered |
 | `chio.finding.challenge.v1` | signed origin-and-class-gated buyer challenge or bondless venue-audit submission | new |
-| `chio.finding.replay-observation.v1` | strict receipt-bound replay phase and verdict preimage | new at M5 |
-| `chio.finding.challenge-outcome.v1` | signed finding-specific evaluation and exact evidence digests mapped to the existing penalty lane | new at M5 |
-| `chio.finding.challenge-enforcement.v1` | final liability, purchase snapshot, allocation, vault, penalty, and sequence-independent semantic-effect authorization | new at M5 |
-| `chio.finding.finalized-bond-snapshot.v1` | observer-signed finalized chain/vault/allocation state consumed by enforcement | new at M5 |
-| `chio.finding.audit-epoch.v1` | signed pre-execution eligible snapshot, randomness commitment, selection rule, rate, budget, and authorization | new at M5 |
-| `chio.finding.audit-report.v1` | signed post-execution seed reveal, selected set, attempt evidence, and outcomes linked to one audit epoch | new at M5 |
-| `chio.registry.market-penalty.v1` | generic enforced penalty; Rust v1 type/enums reused unchanged with `fraudulent_listing` and one exact `external` outcome ref, but public strict schema registration is missing and lands at M5 | register existing v1 wire shape at M5 |
-| `chio.finding.status-epoch.v1` | domain-separated signed sparse status-map root | new at M6 |
-| `chio.finding.status-proof-input.v1` | strict tagged portable inclusion/non-inclusion verifier input carrying the signed status epoch | new at M6 |
-| `chio.finding.settlement-profile.v1` | governance-signed M7 operator, token, bridge, deadline, terminal, and SLA policy | new at M7 |
-| `chio.finding.mediator-backing.v1` | bond-authority-signed non-reusable M7 mediator allocation and liability horizon | new at M7 |
-| `chio.finding.escrow-witness.v1` | settlement-authority attestation of exact funded/final escrow state | new at M7 |
-| `chio.finding.settlement-release.v1` | settlement-authority receipt binding delivery inclusion to one escrow release | new at M7 |
-| `chio.finding.pool-allocation.v1` | authority-signed M8 companion binding one exact unsigned pool digest, qualified-ledger domain and concrete store binding, purchaser, currency, amount, nonce, and validity window | new at M8 |
-| `chio.finding.rederivation-quote.v1` | optional signed producer estimate for an exact context/recipe and currency | not shipped at M8; future only if authenticated quotes ship |
+| `chio.finding.replay-observation.v1` | strict receipt-bound replay phase and verdict preimage | implemented and registered |
+| `chio.finding.challenge-outcome.v1` | signed finding-specific evaluation and exact evidence digests mapped to the existing penalty lane | implemented and registered |
+| `chio.finding.challenge-enforcement.v1` | final liability, purchase snapshot, allocation, vault, penalty, and sequence-independent semantic-effect authorization | implemented and registered |
+| `chio.finding.finalized-bond-snapshot.v1` | observer-signed finalized chain/vault/allocation state consumed by enforcement | implemented and registered |
+| `chio.finding.audit-epoch.v1` | signed pre-execution eligible snapshot, randomness commitment, selection rule, rate, budget, and authorization | implemented and registered |
+| `chio.finding.audit-report.v1` | signed post-execution seed reveal, selected set, attempt evidence, and outcomes linked to one audit epoch | implemented and registered |
+| `chio.registry.market-penalty.v1` | generic enforced penalty; Rust v1 type/enums reused unchanged with `fraudulent_listing` and one exact `external` outcome ref, with its public strict schema registered by the challenge lane | implemented and registered |
+| `chio.finding.status-epoch.v1` | domain-separated signed sparse status-map root | implemented and registered |
+| `chio.finding.status-proof-input.v1` | strict tagged portable inclusion/non-inclusion verifier input carrying the signed status epoch | implemented and registered |
+| `chio.finding.settlement-profile.v1` | governance-signed escrow operator, token, bridge, deadline, terminal, and SLA policy | conditional; ships only with cross-organization escrow |
+| `chio.finding.mediator-backing.v1` | bond-authority-signed non-reusable mediator allocation and liability horizon | conditional; ships only with cross-organization escrow |
+| `chio.finding.escrow-witness.v1` | settlement-authority attestation of exact funded/final escrow state | conditional; ships only with cross-organization escrow |
+| `chio.finding.settlement-release.v1` | settlement-authority receipt binding delivery inclusion to one escrow release | conditional; ships only with cross-organization escrow |
+| `chio.finding.pool-allocation.v1` | authority-signed pool companion binding one exact unsigned pool digest, qualified-ledger domain and concrete store binding, purchaser, currency, amount, nonce, and validity window | implemented and registered |
+| `chio.finding.rederivation-quote.v1` | optional signed producer estimate for an exact context/recipe and currency | not shipped; future only if authenticated quotes ship |
 | `chio.marketplace.bid-request.v1` etc. | purchase handshake | reuse unchanged (`crates/economy/chio-open-market/src/bidding.rs:33-42`) |
 
 ### 4.1 `chio.finding.v1`
@@ -146,15 +144,15 @@ issuer-bound Ed25519 verification):
 | `payload_media_type` | string | e.g. `application/json`, `text/x-diff` |
 | `evidence_receipt_ids` | [string] | unique producing-receipt ids (must verify fail-closed) |
 | `evidence_checkpoint_ref` | string | checkpoint containing the evidence receipts |
-| `evidence_cost` | {units, currency} | issuer-declared production-cost rollup; M2 can establish only a semantically bound kernel-accounted floor in full-receipt mode or after audit. Projected mode remains a seller assertion (MECHANISMS 1) |
+| `evidence_cost` | {units, currency} | issuer-declared production-cost rollup; admission can establish only a semantically bound kernel-accounted floor in full-receipt mode or after audit. Projected mode remains a seller assertion (MECHANISMS 1) |
 | `runtime_assurance_tier` | enum? | tier from appraisal if the producing runtime was attested; `basic`/`attested`/`verified`, with omission as the only encoding for no assurance |
 | `evidence_class` | enum | `asserted` / `observed` / `verified` linkage class of claim-to-evidence |
-| `replay_recipe_sha256` | hex64? | REQUIRED for `deterministic_replay`: digest of the strict canonical `chio.finding.replay-recipe-input.v1` verifier input. M2 publication requires the preimage to be retrievable and hash-valid; M5 challenges carry it inline and re-check the digest |
-| `intent_commitment_receipt_id` | string? | receipt id of a pre-outcome intent commitment. M1 checks only non-empty syntax. It earns an uplift only after M2 resolves the receipt, proves it predates every producing receipt, and verifies its parameter hash over a cycle-free pre-run descriptor/protocol template. The final recipe must commit that template digest. Outcome-derived fields such as the final payload digest, producing receipts, selected outcome class, and claimed verdict are excluded from the pre-run template. This resists protocol hindsight for the published Finding but does not prove completeness: a seller can precommit many trials and publish only favorable ones |
-| `bond_ref` | string | opaque collateral reference at M1; it is not a requirement id or verified backing. M2 resolves it through the signed exclusive allocation and canonical fee-schedule requirement digest described in F1 |
+| `replay_recipe_sha256` | hex64? | REQUIRED for `deterministic_replay`: digest of the strict canonical `chio.finding.replay-recipe-input.v1` verifier input. publication requires the preimage to be retrievable and hash-valid; challenges carry it inline and re-check the digest |
+| `intent_commitment_receipt_id` | string? | receipt id of a pre-outcome intent commitment. base verification checks only non-empty syntax. It earns an uplift only after admission resolves the receipt, proves it predates every producing receipt, and verifies its parameter hash over a cycle-free pre-run descriptor/protocol template. The final recipe must commit that template digest. Outcome-derived fields such as the final payload digest, producing receipts, selected outcome class, and claimed verdict are excluded from the pre-run template. This resists protocol hindsight for the published Finding but does not prove completeness: a seller can precommit many trials and publish only favorable ones |
+| `bond_ref` | string | opaque collateral reference at publication; it is not a requirement id or verified backing. Admission resolves it through the signed exclusive allocation and canonical fee-schedule requirement digest described in F1 |
 | `status_feed_ref` | string | oracle feed id where retraction state is published |
 | `license_ref` | string? | out-of-protocol license terms digest (B2 in threat model) |
-| `price_hint_ref` | string? | optional cycle-free pre-Finding pricing-policy reference. M2 requires it absent for the Finding-scoped `ListingPricingHint`, because that hint signs `finding:<finding_id>` and its envelope digest therefore cannot also participate in the Finding-id preimage. The venue admission binds the final Finding and hint instead |
+| `price_hint_ref` | string? | optional cycle-free pre-Finding pricing-policy reference. Admission requires it absent for the Finding-scoped `ListingPricingHint`, because that hint signs `finding:<finding_id>` and its envelope digest therefore cannot also participate in the Finding-id preimage. The venue admission binds the final Finding and hint instead |
 | `issuer` | pubkey | producing agent subject (must be consistent with evidence lineage) |
 | `issued_at` / `expires_at` | u64 | validity window |
 | `signature` | sig | over canonical body |
@@ -197,15 +195,15 @@ V1 has no hidden-predicate carrier. `descriptor.outcome_class` is public and
 the current receipt projection does not turn it into a hidden proof claim.
 `ChioProofClaims` support for other proof families is not evidence that a
 Finding can carry a hidden range or outcome predicate. Such a profile would
-need a versioned carrier and an explicit trusted-signer-to-claim mapping; M2
-rejects any attempted hidden-predicate upgrade.
+need a versioned carrier and an explicit trusted-signer-to-claim mapping;
+admission rejects any attempted hidden-predicate upgrade.
 
-#### 4.1.1 M2 offline evidence-verifier profile
+#### 4.1.1 Offline evidence-verifier profile
 
-M1's `verify_finding` proves artifact integrity only. It does not turn receipt
+`verify_finding` proves artifact integrity only. It does not turn receipt
 references, cost, intent, bond, status, or a guarantee label into verified
-claims. M2 adds a named `FindingEvidenceVerifier` profile at the buyer
-boundary. Its input is a size-bounded raw `chio.finding.v1` byte string plus
+claims. The named `FindingEvidenceVerifier` profile supplies that at the
+buyer boundary. Its input is a size-bounded raw `chio.finding.v1` byte string plus
 explicitly configured trust roots, resolver policy, trusted time, and the
 resolved evidence bundle. Its order is normative:
 
@@ -280,9 +278,9 @@ resolved evidence bundle. Its order is normative:
    allocation snapshot. A stale bundle reports bond liveness as unavailable,
    not verified.
 8. Evaluate guarantee and evidence-class consistency without upgrading one
-   facet from another. At M2 the verifier can report an authenticated online
+   facet from another. The verifier can report an authenticated online
    status observation if configured, but it cannot report portable
-   `status_fresh`; that facet requires the M6 sparse proof.
+   `status_fresh`; that facet requires the portable sparse status proof.
 9. When `runtime_assurance_tier` is present, resolve the exact appraisal and
    runtime-attestation inputs, verify their signatures, measurements,
    freshness, trust roots, producing-receipt linkage, and tier mapping under
@@ -307,7 +305,7 @@ and contradicted its evidence.
 
 The verifier profile and its report do not bootstrap their own authorities.
 Deployment configuration pins distinct governance-root, venue-admission,
-verifier-report, M4 purchase/failed-delivery, collateral,
+verifier-report, purchase/failed-delivery, collateral,
 seller-authorization, appraisal/runtime-attestation, and BBS projection roles,
 including authority identity, key/fingerprint and epoch, validity, rotation,
 revocation/status source, trusted registry, and resolver policy. The reusable
@@ -330,24 +328,24 @@ cross-binds the exact report id and envelope digest. A buyer may rerun the
 same verifier locally, but an unsigned local result is buyer policy and
 cannot substitute for the admitted report or authorize value movement.
 
-### 4.2 Delivery receipt metadata (two blocks, two milestones)
+### 4.2 Delivery receipt metadata (two blocks)
 
-Review finding: the kernel must not attach fields it cannot source from
-verified inputs. `OutputDigestSha256` carries only the digest, so at M3
-the kernel can truthfully attest exactly that - the finding-specific
-context arrives at M4, when the bid-mint extension gives it a SIGNED
-carrier. Two blocks, following the typed-metadata-block pattern
+The kernel must not attach fields it cannot source from verified inputs.
+`OutputDigestSha256` carries only the digest, so the generic block can
+truthfully attest exactly that - the finding-specific context arrives with
+the purchase chain, whose bid-mint extension gives it a SIGNED carrier.
+Two blocks, following the typed-metadata-block pattern
 (`governed_transaction`, `economic_authorization`;
 `spec/PROTOCOL.md:906-988`):
 
-**M3, generic: `chio.delivery-contract.v1`** - sourced from values the kernel
+**Generic: `chio.delivery-contract.v1`** - sourced from values the kernel
 can verify: `expected_output_sha256` (from the externally authored,
 provider-signed token constraint), `observed_output_sha256` (the
 kernel-derived digest of the final post-transform output preimage), and
 `digest_check: matched | mismatched` (the kernel's comparison). A concrete
 matched output may appear only on Allow; a concrete
 mismatch produces a signed Deny carrying the expected and observed digests
-without disclosing the payload. For the M4 v1 finding profile, the final
+without disclosing the payload. For the v1 finding profile, the final
 output MUST also be the unchanged seller-origin envelope under the identity
 pipeline rule in 4.5/6.2. An operator-policy transform never becomes a
 seller-attributed `mismatched` result. Pre-dispatch portable rejection and
@@ -355,13 +353,14 @@ output kinds with no defined digest representation deny without fabricating
 an observed digest block. This generic block is usable by any
 output-committed tool call, not only findings.
 
-**M4, finding overlay: `chio.finding.delivery.v1`** - the fields below,
+**Finding overlay: `chio.finding.delivery.v1`** - the fields below,
 attached only when the grant carries a provider-signed
 `Constraint::RequireFindingPurchase` marker with exact `finding_id`,
 `listing_id`, and a closed settlement selector. The selector is either
 `LocalReversibleHold` with no settlement-profile digest or
-`CrossOrgEscrow { settlement_profile_sha256 }`. M4 defines both shapes even
-though the second remains disabled until M7. This signed selector prevents an
+`CrossOrgEscrow { settlement_profile_sha256 }`. Both shapes are defined even
+though the second stays disabled until cross-organization escrow ships. This
+signed selector prevents an
 escrow purchase from downgrading into the local hold/capture path by omitting
 its companion witness. The fields below are attached only when
 the purchase context arrives through verifiable artifacts. The marker is
@@ -370,7 +369,7 @@ the downgrade-resistant discriminator that the current bid token lacks:
 generic, so neither can tell the kernel that omitted finding context must
 deny.
 
-The M4 purchase chain uses one exact transport. Governed-intent context key
+The purchase chain uses one exact transport. Governed-intent context key
 `context.chio_finding_purchase_context_b64` contains base64 of at most 256 KiB of
    strict canonical `chio.finding.purchase-context.v1` JSON. The encoded-length
 bound is checked before allocation or decoding; the decoded bound is checked
@@ -379,7 +378,7 @@ again before strict raw parsing. The context contains the signed Finding,
    report, issuer-signed seller authorization, seller backing, listing,
    pricing hint, original `SignedBidRequest`, `SignedAskResponse`,
 `SignedAcceptedBid`, exact token offer, and reservation reference or witness.
-M7 does not insert its later escrow witness into this object. F6 carries that
+Escrow settlement does not insert its later witness into this object. F6 carries that
 signed witness through one separate bounded context key and binds it to the
 SHA-256 digest of these already complete canonical purchase-context bytes,
 which avoids a self-hash cycle.
@@ -438,7 +437,7 @@ cross-bindings:
    and expiry all cross-bind. An opaque `agent_id` alone never establishes
    payer identity.
 5. **Reservation.** `bid_receipt_id` is buyer-supplied text until resolved
-   against authoritative state. In the M4 single-operator profile, the
+   against authoritative state. In the single-operator profile, the
    durable reservation record binds its id to the payer public key, canonical
    original signed bid, ask digest, exact venue-admission envelope digest,
    listing, currency, amount, preallocated `purchase_intent_id`, and stable
@@ -448,7 +447,7 @@ cross-bindings:
    changed, canceled, expired, or already-consumed operation. The
    qualified profile requires exact equality, not merely "at least," across
    the listing price, ask and accepted bid, both capability ceilings, governed
-   quote, budget reservation, payment authorization, and capture. M7
+   quote, budget reservation, payment authorization, and capture. Escrow
    additionally verifies the settlement authority's signed
    cross-org witness with those same fields. The reservation is a budget and
    seller-exposure reservation only, not evidence that external payment was
@@ -464,10 +463,11 @@ whose grants lack that marker. The kernel never infers the profile from a
 listing or pricing scope that the token does not retain.
 Caller-asserted copies without those signed artifacts are never promoted
 into this block (P10 discipline). The `status_proof` sub-block is NOT
-part of M4: it is a signature-safe addition completed at M6, which breaks
-the former M4-to-M6 dependency cycle. The field remains optional on the wire
-so M4 receipts decode after the additive change, but every M6-qualified
-purchase/reveal requires it and an absent block cannot support
+part of the original purchase profile: it is a signature-safe addition
+completed with the status feed, which breaks the former dependency cycle
+between purchase receipts and status proofs. The field remains optional on
+the wire so earlier receipts decode after the additive change, but every
+status-gated purchase/reveal requires it and an absent block cannot support
 `claim.finding.status_fresh`:
 
 | Field | Semantics |
@@ -478,13 +478,13 @@ purchase/reveal requires it and an absent block cannot support
 | `expected_media_type`, `observed_media_type`, `media_type_check` | strict reveal-envelope media binding; only `matched` may appear on an Allow |
 | `transform_profile` | `identity` in v1, asserted only after the kernel proves the applicable post-invocation pipeline was empty and the seller-origin envelope was not mutated |
 | `purchase.bid_digest`, `purchase.ask_digest`, `purchase.accepted_bid_ref` | handshake binding |
-| `status_proof.feed_id`, `status_proof.key_domain_nonce`, `status_proof.map_epoch` | (M6, optional-additive) kernel-verified fixed key domain and advancing signed sparse-map epoch |
-| `status_proof.status_epoch_artifact_sha256`, `status_proof.proof_sha256`, `status_proof.root_hash` | (M6, optional-additive) digests of the verified epoch artifact, strict portable proof input, and signed root |
-| `status_proof.non_inclusion_checked_at` | (M6, optional-additive) kernel-verified freshness time |
+| `status_proof.feed_id`, `status_proof.key_domain_nonce`, `status_proof.map_epoch` | (optional-additive) kernel-verified fixed key domain and advancing signed sparse-map epoch |
+| `status_proof.status_epoch_artifact_sha256`, `status_proof.proof_sha256`, `status_proof.root_hash` | (optional-additive) digests of the verified epoch artifact, strict portable proof input, and signed root |
+| `status_proof.non_inclusion_checked_at` | (optional-additive) kernel-verified freshness time |
 
 The Allow receipt for `read_finding` carrying these blocks, under the
 `chio.mediated_spend.v1` conjunction (`receipt/authoritative_spend.rs`), is
-the **reveal proof**: disputes anchor on it (F4), and the M7 settlement
+the **reveal proof**: disputes anchor on it (F4), and the escrow settlement
 authority consumes it with checkpoint inclusion to issue the release receipt
 the escrow adapter accepts (F6). It is not itself settlement-anchor material.
 Note `content_hash` on the receipt body already
@@ -493,7 +493,7 @@ equals the served bytes' digest by WYSIWYS construction
 required to equal. Per the C2 boundary above, this proves a
 kernel-attested reveal, not buyer retention.
 
-### 4.3 Challenge and signed outcome (M5)
+### 4.3 Challenge and signed outcome
 
 `chio.finding.challenge.v1` is a signed, origin- and class-gated submission.
 Its outer JSON Schema `oneOf` and Rust validator require exactly one origin:
@@ -509,7 +509,7 @@ Its outer JSON Schema `oneOf` and Rust validator require exactly one origin:
 
 Cross-origin fields reject. Common fields bind challenge, Finding, listing,
 admitted market terms, governance verifier profile, seller backing, and filing
-time. For `evidence_invalid` and `replay_contradiction`, buyer-supplied M4
+time. For `evidence_invalid` and `replay_contradiction`, buyer-supplied
 purchase refs establish standing only. For `digest_mismatch`, standing comes
 from a signed `chio.finding.failed-delivery.v1` record, because the
 pre-capture Deny correctly creates no purchase record. The failed-delivery
@@ -533,7 +533,7 @@ The guarantee/evidence compatibility matrix is closed and normative:
 
 | Challenge class | Admissible Finding class | Required standing |
 |---|---|---|
-| `digest_mismatch` | any guarantee/evidence class, but only the marked identity-output M4 profile | exact signed failed-delivery record |
+| `digest_mismatch` | any guarantee/evidence class, but only the marked identity-output purchase profile | exact signed failed-delivery record |
 | `evidence_invalid` | `evidence_class` is `observed` or `verified`, and the contested evidence was required by admission | exact signed finalized purchase record |
 | `replay_contradiction` | `guarantee_class = deterministic_replay`, `evidence_class = verified`, and a committed recipe | exact signed finalized purchase record |
 
@@ -641,7 +641,7 @@ indeterminate reaches `IndeterminateClosed`. Liability state is
 `ReversedBeforeImpairment` as the successful-appeal terminal. The first
 upheld challenge linearizes its `Open -> UpheldPendingClaims` CAS, listing
 sales block, and authoritative purchase cutoff in the same listing-scoped
-store used by M4 purchase finalization. M4 reserves a monotonically ordered
+store used by purchase finalization, which reserves a monotonically ordered
 pending-purchase slot before capture; once the block commits, no later slot
 can capture. The claim snapshot waits for every pre-cutoff pending slot to
 reach its signed Allow/purchase-record or Deny terminal, so a concurrent
@@ -651,13 +651,13 @@ authoritative realized spend.
 `Finalizing -> Settled` is a separate durable CAS, not shorthand for
 impairment submission. It requires confirmed final seller
 impairment/distribution, every required challenge-lock and fee terminal, and
-the post-impairment M6 status insertion evidenced by the exact signed epoch
+the post-impairment status insertion evidenced by the exact signed epoch
 and inclusion proof. Until all required effects reconcile, the liability
 remains `Finalizing`, `publication_pending` remains set, and purchases stay
 blocked across restart.
 
 Challenge-carried purchases are standing hints, not the payout set. During
-the signed nonzero claim window, the venue enumerates the M4 purchase records
+the signed nonzero claim window, the venue enumerates the purchase records
 at the frozen cutoff, commits the snapshot, accepts omission proofs, and
 seals one allocation. A deployment without this index discloses
 first-come/omitted-victim risk. The predeclared formula is:
@@ -672,26 +672,26 @@ buyer_pool = min(slash, total_uncompensated_realized_spend)
 community_fund = slash - buyer_pool
 ```
 
-M2 admission binds exactly one `Listing` requirement, requires it to be
+Admission binds exactly one `Listing` requirement, requires it to be
 slashable, and enforces exact currency equality plus
 `base_finding_stake + maximum_sale_exposure <= required_amount` with checked
 arithmetic. Duplicate Listing requirements reject. This is necessary because
 the shipped evaluator selects the first matching requirement and treats
 `required_amount` only as a per-penalty ceiling; it is not live collateral or
-a cumulative exposure bound. M5 repeats the ceiling and currency checks
+a cumulative exposure bound. The challenge lane repeats the ceiling and currency checks
 against a fresh, finalized bond snapshot. A computed exposure above the
 signed requirement rejects as inconsistent state; it is never silently
 clamped to that requirement. High-sale concurrency cannot raise the computed
 penalty past that ceiling.
 
 The buyer pool is pro rata by realized spend with deterministic remainder
-order by `purchase_key`; destinations come from immutable M4 rail-tagged
+order by `purchase_key`; destinations come from immutable rail-tagged
 payment records. Exact-sum checking alone does not enforce harmed-party
 destinations, so the finding-specific settlement choke point also enforces
 the ADR-0015 policy allowlist in its signed operator-mediated authorization.
 Current on-chain exact-sum validation does not structurally enforce that
 allowlist; ADR-0015 follow-up A remains required for that stronger claim.
-Qualified `digest_mismatch` releases the M4 hold and has zero realized
+Qualified `digest_mismatch` releases the purchase hold and has zero realized
 monetary harm. Finalized `evidence_invalid` and
 `replay_contradiction` purchases may qualify.
 
@@ -709,7 +709,7 @@ inline, or is a profile-allowed immutable content-addressed URI resolving to
 that same digest; a mutable or unresolved URI rejects.
 
 The finding-specific wrapper registers the current
-`chio.registry.market-penalty.v1` body/envelope at M5 without changing its
+`chio.registry.market-penalty.v1` body/envelope without changing its
 frozen fields or enums, then narrows all three shipped branches. Every branch
 requires exactly one Listing requirement, exact computed amount/currency,
 live allocation, the External outcome binding above, a clean
@@ -812,7 +812,7 @@ current root semantics. Retraction inserts come from the seller (voluntary)
 or final finding enforcement with confirmed impairment (F4), never from a
 bare outcome or reversible hold.
 
-The standalone `chio.finding.status-epoch.v1` artifact, registered at M6,
+The standalone `chio.finding.status-epoch.v1` artifact
 signs a new domain-separated sparse-map root body. It canonically binds
 `status_map_version: sparse_map_v1`, a fixed finding-status signature domain,
 `feed_id`, numeric `key_domain_nonce`, monotonically advancing `map_epoch`,
@@ -824,7 +824,7 @@ envelope. Its outer signature covers the version and domain together with
 the root. An ordinary revocation-oracle signed root, a root from another
 feed, or a sparse root with a different version/domain must fail strict
 parsing or signature verification, even if the numeric nonce and root bytes
-match. `EpochNonce` is a `u64`; M6 selects one numeric value for
+match. `EpochNonce` is a `u64`; the status protocol selects one numeric value for
 `key_domain_nonce` in the `chio.finding.status.v1` domain, and every insert
 and proof uses exactly `(finding_id, that numeric nonce)`. A label is not a
 wire nonce. `map_epoch` is a separate root-generation counter and advances
@@ -835,13 +835,13 @@ append-only ordinary Merkle tree plus a local `HashMap`; its
 `NonInclusionProof { key, epoch_root, checked_at }` carries no path, and
 `verify_non_inclusion` consults local state
 (`api.rs:110-114`, `sparse_merkle.rs:1-79`). A path cannot retrofit portable
-absence against that root. M6 therefore adds a durable, transactional,
+absence against that root. The status feed therefore adds a durable, transactional,
 domain-separated, versioned true sparse authenticated-map backend for finding
 status. Leaves, epochs, and monotonic feed state survive restart. It reuses
 signer infrastructure, anchoring transport, and broadcast plumbing, but uses
 the new signed body above and enforces cross-backend rejection.
 
-M6 registers one unsigned strict `chio.finding.status-proof-input.v1` with a
+The status feed registers one unsigned strict `chio.finding.status-proof-input.v1` with a
 closed tagged `oneOf`. Both `non_inclusion` and `inclusion` carry the exact
 signed canonical `chio.finding.status-epoch.v1` envelope bytes, feed id,
 fixed key-domain nonce, advancing map epoch, finding id, artifact id/digest,
@@ -873,7 +873,7 @@ key rotation preserves the feed identity, fixed key-domain nonce, and
 monotonic map-epoch floor under a signed rotation policy. An unknown key or
 attempted epoch reset fails closed.
 
-Signed fresh roots prove consistency, not insert completeness. At M5 appeal
+Signed fresh roots prove consistency, not insert completeness. At appeal
 finality, the single-operator profile atomically persists final enforcement,
 `publication_pending`, and the idempotent retraction intent before external
 impairment; pending denies new purchases. The status publisher may execute
@@ -910,7 +910,7 @@ over raw payload bytes. Normative definitions for the family:
   It is the digest of the canonical envelope, NOT of the decoded payload
   bytes. Buyers recover raw bytes by base64-decoding `payload_b64` after
   independently recomputing the envelope digest.
-- The v1 finding-delivery profile, selected by M4's
+- The v1 finding-delivery profile, selected by the purchase chain's
   `RequireFindingPurchase` marker and its exact settlement mode, is
   identity-only: the committed envelope is the
   seller-origin tool output and MUST equal the final receipt content preimage
@@ -934,19 +934,19 @@ over raw payload bytes. Normative definitions for the family:
   the exact transform pipeline and version in the finding and grant,
   preserve authenticated seller-origin and final digests plus the transform
   trace, and assign transform-induced mismatch to operator policy rather
-  than the seller. M3 does not claim or implement that profile.
+  than the seller. The delivery contract does not claim or implement that profile.
 - The envelope's `media_type` MUST equal the signed artifact's
   `payload_media_type` (review finding: the digest gate only checks the
   envelope hash, so without this rule a seller could advertise
   `text/x-diff` while committing to some other type, and a buyer that
-  auto-applies on the advertised type is misled). Under the marked M4
+  auto-applies on the advertised type is misled). Under the marked purchase
   profile, the kernel strict-parses the final value as the exact two-field
   reveal envelope, validates bounded base64, and checks
   `envelope.media_type == finding.payload_media_type` after the digest check
   but before capture or any other financial finalization. A mismatch emits a
   signed Deny with `media_type_check: mismatched`; it can never produce an
   Allow or charge the reveal price. The buyer repeats the check before
-  interpreting the bytes. M5 does not make this mismatch slashable:
+  interpreting the bytes. The challenge lane does not make this mismatch slashable:
   `evidence_invalid` remains limited to the Finding's production-evidence
   receipts/checkpoint. A future delivery-semantics challenge class would need
   its own checkpointed reveal evidence and explicit seller-fault rule.
@@ -989,7 +989,7 @@ Finding-scoped profile would recreate a hash cycle and is invalid in v1.
    predicate/outcome vocabulary, while excluding the final payload digest,
    producing receipts, selected outcome class, and claimed verdict. Its
    receipt is the pre-outcome intent commitment later referenced as
-   `intent_commitment_receipt_id` (4.1). M2 authenticates its semantics and
+   `intent_commitment_receipt_id` (4.1). Admission authenticates its semantics and
    ordering, and the final replay recipe commits the exact template digest
    before adding outcome-derived fields. A generic non-empty receipt id or a
    parameter hash over context alone earns no priced uplift.
@@ -998,15 +998,15 @@ Finding-scoped profile would recreate a hash cycle and is invalid in v1.
 2. Assemble `chio.finding.v1`: seal the payload (seller-side storage), digest
    it, reference the evidence receipts + checkpoint, commit the replay recipe
    (wedge), sign.
-3. M2 stores the strict canonical Finding and retained recipe/dependencies
+3. The venue stores the strict canonical Finding and retained recipe/dependencies
    content-addressed, exposes immutable resolution by `finding_id`, and builds
    a bounded paginated descriptor index. It projects a generic listing and a
-   signed pricing hint whose scope is `finding:<finding_id>`. M2 requires
+   signed pricing hint whose scope is `finding:<finding_id>`. Publication requires
    `price_hint_ref` to be absent for this Finding-scoped projection, avoiding
    the Finding-id/hint-digest cycle; the venue admission binds both exact
    signed envelopes. Existing generic listing search does not load Finding
-   descriptors or liveness, so this projection and index are new M2 wiring,
-   not shipped query behavior.
+   descriptors or liveness, so this projection and index are dedicated
+   market wiring, not generic query behavior.
 4. The Finding issuer signs `chio.finding.seller-authorization.v1` for the
    exact Finding, listing, seller/delegate, provider server/tool, payment
    beneficiary or provider-signed payee mapping, validity window, and
@@ -1027,7 +1027,7 @@ Finding-scoped profile would recreate a hash cycle and is invalid in v1.
    transient `BondBacked` result is not live collateral. Stale, wrong-party,
    wrong-currency, duplicate-class, underfunded, already-encumbered, or reused
    allocations reject.
-6. The M2 verifier now evaluates every evidence and live-backing facet and
+6. The evidence verifier now evaluates every evidence and live-backing facet and
    signs `chio.finding.verifier-report.v1`. This ordering prevents a report
    from claiming bond verification before the backing exists. The configured
    report, governance, venue, collateral, and Finding-issuer roles are
@@ -1046,7 +1046,7 @@ Finding-scoped profile would recreate a hash cycle and is invalid in v1.
    issuer-signed seller authorization, listing, hint, exact verifier-report
    id/digest, terms/profile, fee terminals with exact rail beneficiaries,
    backing, both pool identities/destinations and authority epochs, the
-   registered community-fund destination, status-feed operator profile, the exact M4
+   registered community-fund destination, status-feed operator profile, the exact
    purchase/failed-delivery authority identity plus key epoch and
    validity/revocation snapshot, and liveness.
    Its body venue identity and envelope signer equal the externally configured
@@ -1069,31 +1069,31 @@ Finding-scoped profile would recreate a hash cycle and is invalid in v1.
    an existing destination do not consume another slot. A broader profile
    needs a globally committed replay-safe batched allocation and may not
    truncate victims.
-9. M8 may publish a fully admitted pheromone hint. Indicator JSON alone is
+9. The seller may publish a fully admitted pheromone hint. Indicator JSON alone is
    not a deposit: its subject/namespace, listing scope, signer/passport,
    severity, confidence, decay, nonce, subject-class policy, and cost must
    verify, and a buyer always re-resolves the current admission before buying.
 
-The M8 convention fixes subject `finding_listing_hint`, namespace
+The hint convention fixes subject `finding_listing_hint`, namespace
 `dev.chio.cognition-market`, severity `medium`, confidence `0.75`, a 3,600
 second half-life, evaporation floor `0.01`, one configured treaty, and a
 non-empty nonce. Its strict indicator binds the Finding id, listing id,
-current signed listing-envelope digest, current M2 admission-envelope digest,
+current signed listing-envelope digest, current admission-envelope digest,
 and `finding:<finding_id>` capability scope. Receiver policy requires the
 exact non-destructive `SubjectClassPolicy`, a signed passport/deposit, real
 scarcity and replay admission, and an observation-cost commitment in the
 protocol unit below the configured cap. A positive deposit remains a
 discovery hint: the buyer re-verifies the current namespace-owned listing,
-pricing signature, and full M2 admission bundle, and the hint grants no
+pricing signature, and full venue admission bundle, and the hint grants no
 purchase authority.
 
 ### F2. Discover and verify (buyer, pre-purchase, no payment yet)
 
 1. Buyer hits the same failing context; computes `context_sha256`; searches
-   M2's bounded descriptor index by topic prefix plus exact digest, resolves
+   the venue's bounded descriptor index by topic prefix plus exact digest, resolves
    the immutable Finding by id, and revalidates its current venue admission.
    The shipped generic `ListingQuery` does not perform this descriptor match.
-2. Run the M2 `FindingEvidenceVerifier` profile in 4.1.1. The current buyer
+2. Run the `FindingEvidenceVerifier` profile in 4.1.1. The current buyer
    boundary (`crates/trust/chio-attest-buyer/src/api.rs`) supplies useful
    receipt-verification primitives, but it does not ship this aggregate
    profile. Buyers consume its per-facet report and apply listing policy;
@@ -1121,17 +1121,17 @@ purchase authority.
    material only when the challenge supplies the authenticated cost receipts
    and the predeclared evidence-mode rule establishes enough coverage to make
    the contradiction mechanical.
-3. At M2, apply the configured authenticated online status observation and
-   report its trust mode. At M6, require the portable sparse non-inclusion
+3. Apply the configured authenticated online status observation and
+   report its trust mode. Status-gated purchases require the portable sparse non-inclusion
    proof in 4.4 inside the freshness window. The current local-state
    `verify_non_inclusion` path (`api.rs:116`) is not a portable proof.
 4. Buyer computes its local elicitation ceiling (MECHANISMS section 2); if
    posted price is above it, walk away. The shipped `MeteredBillingQuote` is
    caller-supplied and does not authenticate how a re-derivation estimate was
    produced, so neither kernel nor venue may report the bid basis as true.
-   M8 does not add a signed quote producer. The estimate remains private buyer
+   Pool purchasing does not add a signed quote producer. The estimate remains private buyer
    policy.
-5. The M8 Rust, TypeScript, and Python helpers bind the caller-carried
+5. The pool-purchasing Rust, TypeScript, and Python helpers bind the caller-carried
    estimate to the expected source, context, replay-recipe digest, exact
    currency, and validity window. Amount and basis-point arithmetic uses
    canonical decimal strings, `u64` bounds, checked wide intermediates, and
@@ -1157,16 +1157,16 @@ purchase authority.
    to the pool id. Advisory remote budget views cannot make this hard-ceiling
    claim.
 
-### F3. Purchase and reveal (single-operator / wedge path)
+### F3. Purchase and reveal (single-operator path)
 
-This is the target M3/M4 flow, not current M1 behavior:
+The purchase-and-reveal flow:
 
 1. `BidRequest` uses the exact request profile in 4.2. The provider
    `AskResponse` mints one DPoP `read_finding` grant with
    `max_invocations: 1`, `max_cost_per_invocation: price`,
    `max_total_cost: price`, expiry, exactly one digest constraint, and exactly
    one purchase marker. `bid()` currently hardcodes
-   `constraints: Vec::new()` (`bidding.rs:396`), so M4 extends
+   `constraints: Vec::new()` (`bidding.rs:396`), so the purchase chain extends
    `BidMintContext` and rejects any provider mint that is missing, duplicate,
    conflicting, or outside the authorized seller profile.
 2. Before `accept()`, an authoritative buyer/kernel coordinator verifies the
@@ -1180,7 +1180,7 @@ This is the target M3/M4 flow, not current M1 behavior:
    that record. The existing
    pure `accept()` does not create that reservation: it verifies the supplied
    `VerifiedReservationReceipt` and signed ask, then copies the receipt id
-   into `SignedAcceptedBid`. The M4 wrapper additionally requires exact amount
+   into `SignedAcceptedBid`. The purchase wrapper additionally requires exact amount
    equality and every Finding cross-binding before calling it. Re-resolving
    the accepted bid's receipt id recovers the same preallocated
    purchase/payment identities; no post-effect caller value can choose them.
@@ -1194,7 +1194,7 @@ This is the target M3/M4 flow, not current M1 behavior:
 3. Buyer invokes `read_finding`. Before any nonce, budget, payment, or
    dispatch mutation, the kernel performs the strict purchase-context,
    request, selected-grant, seller/payee, buyer-key, and reservation checks
-   in 4.2 and proves the identity output pipeline. ADR-A adds a distinct
+   in 4.2 and proves the identity output pipeline. ADR-0019 adds a distinct
    reveal-time rail transition: after guards pass but before dispatch,
    authorize the quoted price as a reversible `Held` payment without
    capturing it. Dispatch, apply the frozen empty post-invocation plan, then
@@ -1204,7 +1204,7 @@ This is the target M3/M4 flow, not current M1 behavior:
    `matched_pending_capture` terminal plan, receipt nonce and timestamp,
    receipt signer/key epoch, policy-result digest, complete metadata template,
    and a monotonically ordered pending-purchase slot under the same
-   listing-scoped fence used by M5's sales block and cutoff. It then captures
+   listing-scoped fence used by the challenge lane's sales block and cutoff. It then captures
    idempotently, records the rail transaction, signs/persists the one frozen
    Allow with both delivery blocks and
    `chio.finding.purchase-record.v1`, closes that slot, and only then releases
@@ -1214,7 +1214,7 @@ This is the target M3/M4 flow, not current M1 behavior:
    rail-tagged refund/compensation destination. Its signer must be the purchase
    authority pinned by the venue
    admission and verifier profile; validity, rotation, and revocation are
-   checked at purchase and again before any M5 payout.
+   checked at purchase and again before any challenge payout.
 4. Every other terminal is explicit and replay-stable. Authentication,
    policy, or preauthorization failure creates no new debit, capture, fee,
    nonce, or invocation mutation. Because the pre-accept budget and seller
@@ -1222,7 +1222,7 @@ This is the target M3/M4 flow, not current M1 behavior:
    cancels/releases both under the signed failure terminal, or their explicit
    expiry transition does so; it never describes them as nonexistent.
    Server abort, digest mismatch, media mismatch, or persistence failure
-   before capture releases the rail hold and applies the ADR-A-selected
+   before capture releases the rail hold and applies the ADR-0019-selected
    budget/exposure transition before a signed Deny is returned. A marked
    identity-profile digest mismatch first signs and persists the Deny, then
    closes the pending-purchase slot to that signed Deny terminal. It then
@@ -1231,10 +1231,10 @@ This is the target M3/M4 flow, not current M1 behavior:
    bid, authoritative reservation and preallocated payment operation, hold
    attempt and release, exact Deny/checkpoint binding, zero realized spend,
    and payout-ineligible state. Until phase two completes, the failure is
-   pending and grants no M5 standing. The final artifact creates no purchase
-   record and is the only buyer-standing carrier for an M5
+   pending and grants no challenge standing. The final artifact creates no
+   purchase record and is the only buyer-standing carrier for a
    `digest_mismatch` challenge. Checkpoint outage therefore delays standing
-   without leaving an M5 cutoff slot open.
+   without leaving a challenge cutoff slot open.
    A crash after capture resumes
    from the staged output and capture journal to the same signed Allow and
    recovery authorization; it neither captures again nor pretends the final
@@ -1246,11 +1246,11 @@ This is the target M3/M4 flow, not current M1 behavior:
    exact-once compensation rather than a fictional refund.
 5. Buyer ingests via a governed memory write; provenance chain binds
    store/key to the purchase capability and write receipt
-   (`memory_provenance.rs:63`), and M4 records a typed lineage edge from that
-   write receipt to the verified finding-delivery receipt. M6 uses this edge
+   (`memory_provenance.rs:63`), and delivery records a typed lineage edge from that
+   write receipt to the verified finding-delivery receipt. Retraction uses this edge
    for quarantine resolution; current `MemoryProvenanceEntry` alone does not
    carry a finding id.
-6. Paid-but-lost-payload edge (fine detail, M4): with `max_invocations: 1`,
+6. Paid-but-lost-payload edge (fine detail): with `max_invocations: 1`,
    a buyer that crashes between the Allow receipt and persisting the
    payload has paid for bytes it no longer holds. Correction (review
    finding): the `Operation::ReadResult`-on-the-grant option does NOT
@@ -1258,7 +1258,7 @@ This is the target M3/M4 flow, not current M1 behavior:
    `Operation::Invoke` (`request_matching.rs:337-347`) and there is no
    kernel `ReadResult` request path, so such a grant authorizes no re-read.
    The original one-shot grant is consumed by the successful reveal, and a
-   receipt is evidence rather than invocation authority. M4 therefore
+   receipt is evidence rather than invocation authority. The purchase chain therefore
    chooses an explicit recovery authorization. The provider's recovery
    service verifies the checkpointed original Allow plus buyer DPoP, then
    mints a no-charge grant to the original delivery-token subject. Its
@@ -1270,7 +1270,7 @@ This is the target M3/M4 flow, not current M1 behavior:
    subject/capability/finding binding before serving, and records a
    recovery-to-original-delivery lineage edge. Checkpoint visibility alone
    cannot authorize a third party. A kernel-native receipt-keyed result store
-   remains a future alternative, not the M4 design.
+   remains a future alternative, not the shipped design.
 
 ### F4. Challenge, audit, and slash
 
@@ -1298,7 +1298,7 @@ This is the target M3/M4 flow, not current M1 behavior:
    wrong-media, and output-policy denials cannot trigger seller sanction.
 4. An upheld outcome atomically creates a reversible `HoldBond`, changes the
    listing-scoped liability head, blocks new purchase slots, and freezes the
-   purchase cutoff in the same authoritative store used by M4 finalization.
+   purchase cutoff in the same authoritative store used by purchase finalization.
    It waits for all already-issued slots at or below that cutoff to close,
    then completes the signed claim/omission window and seals the authoritative
    purchase snapshot and deterministic allocation before entering
@@ -1320,7 +1320,7 @@ This is the target M3/M4 flow, not current M1 behavior:
    then the impairment worker broadcasts and confirms the exact prepared call.
    Challenge-lock disposition and fee reimbursement use their separate effect
    keys. Only confirmed impairment unblocks the already-durable retraction
-   intent for M6 publication. Every intent precedes dispatch, identical retry
+   intent for status publication. Every intent precedes dispatch, identical retry
    reconciles, and ambiguous external state quarantines. Purchases remain
    denied while publication is pending. Post-impairment correction requires a
    future funded restitution and correction-status design.
@@ -1337,7 +1337,7 @@ This is the target M3/M4 flow, not current M1 behavior:
    `Finalizing -> Settled` CAS. Missing status inclusion or any ambiguous
    effect leaves the incident in `Finalizing` and purchases blocked.
 2. Buyers' subscription (or next purchase attempt) observes the root;
-   holders of the finding use an opt-in quarantine profile. M6 injects a
+   holders of the finding use an opt-in quarantine profile. Retraction injects a
    synchronous `FindingRetractionResolver` into `MemoryGovernanceGuard`,
    backed by verified memory provenance, the typed write-to-delivery lineage
    edge, receipt/capability lineage, and an authenticated local status-root
@@ -1345,7 +1345,7 @@ This is the target M3/M4 flow, not current M1 behavior:
    Missing/tampered lineage, unavailable provenance/status stores, stale
    roots, pending publication, and retracted status deny fail-closed; the
    default non-market memory profile is unchanged.
-3. M6 adds a typed dependency edge directed
+3. The status feed adds a typed dependency edge directed
    `dependent_memory_write_receipt -> source_finding_delivery_receipt`, plus a
    reverse query from the source delivery to all dependent writes for
    blast-radius inspection. Existing lineage query primitives
@@ -1358,20 +1358,22 @@ This is the target M3/M4 flow, not current M1 behavior:
 
 ### F6. Cross-org purchase (escrow path)
 
-M7 depends on M4 purchase binding, M5 dispute terminals, and M6 portable
-status. It is blocked on ADR-C, which must choose between a contract-gated
+Cross-organization escrow depends on purchase binding, dispute terminals,
+and portable status. It stays conditional and unbuilt, blocked on a future
+escrow-settlement ADR that must choose between a contract-gated
 Finding escrow profile and an explicitly trusted off-chain profile around the
 current contract. The current `ChioEscrow` does not inspect Finding artifacts,
 disable `releaseWithSignature`, or disable partial proof release, so a
 no-contract-change deployment cannot claim cryptographic full-only or
-settlement-authority enforcement. M7 retains M4's budget, request, grant,
+settlement-authority enforcement. The escrow profile retains the purchase
+chain's budget, request, grant,
 identity, output, and media checks, but replaces the single-operator
 reveal-time rail hold/capture with funded escrow and proof-gated release.
 The provider-minted grant must select
 `CrossOrgEscrow { settlement_profile_sha256 }` and that digest must equal the
 verified settlement-profile envelope. A local selector, missing or extra
 escrow-witness context, or any profile mismatch denies before mutation; the
-kernel never falls back to M4 local capture.
+kernel never falls back to local capture.
 
 0. Before escrow creation or funding, resolve and verify the exact
    governance-signed settlement profile and live, non-reusable
@@ -1418,7 +1420,7 @@ kernel never falls back to M4 local capture.
    decoded bounds and strict-parses both context keys before any nonce, budget,
    payment, or invocation mutation. It recomputes the purchase-context digest
    and requires the witness binding to match. The witness is never nested in
-   the purchase context, so this two-key M7 carrier is cycle-free.
+   the purchase context, so this two-key escrow carrier is cycle-free.
 3. The existing settlement helper expects a standard anchored Chio receipt,
    not an arbitrary Finding delivery or
    `chio.finding.settlement-release.v1` envelope. After the matched delivery
@@ -1490,10 +1492,11 @@ kernel never falls back to M4 local capture.
    terminal replay. These are internal durable coordinator states, not a new
    signed artifact family. The workspace currently has verifier artifacts for
    watchdogs but no job scheduler, so the operator must run this worker under
-   the M7 runbook.
+   a dedicated escrow runbook.
 6. A matched delivery first opens a durable
    `matched_pending_escrow_settlement` purchase slot under the same
-   listing-scoped fence and liability cutoff used by M4/M5. It is not yet a
+   listing-scoped fence and liability cutoff used by purchase finalization
+   and the challenge lane. It is not yet a
    finalized purchase record and carries no realized spend. A confirmed
    `FullReleased` terminal closes the slot and signs
    `chio.finding.purchase-record.v1` with the exact settlement profile,
@@ -1501,8 +1504,8 @@ kernel never falls back to M4 local capture.
    finalized transaction, beneficiary balance delta, realized spend equal to
    the accepted amount, immutable buyer destination, and `payout_eligible:
    true`. A confirmed `FullRefunded` terminal closes it with zero realized
-   spend, refund transaction/evidence, and `payout_eligible: false`. M5
-   standing and compensation accept only finalized captured or
+   spend, refund transaction/evidence, and `payout_eligible: false`.
+   Challenge standing and compensation accept only finalized captured or
    `FullReleased` branches with positive authoritative realized spend. Crash,
    reorg, and retry cannot create both terminals or count pending/refunded
    value as seller-fraud loss.
@@ -1513,7 +1516,7 @@ a registered, buyer-allowlisted neutral or mutually trusted mediating kernel.
 Under the current contract, the settlement authority must be that exact
 operator: a distinct authority has no cryptographic release gate. Moreover,
 the operator and beneficiary can bypass the off-chain Finding profile through
-other shipped release methods. ADR-C must either add a contract-level
+other shipped release methods. That ADR must either add a contract-level
 full-only/authority discriminator or classify this as an audited TTP profile
 that remains Experimental and makes no non-discretionary claim.
 The same operator key must appear in the listing deployment record, escrow
@@ -1522,13 +1525,13 @@ A seller-aligned mediator and a non-mediating checkpoint signer are both
 disallowed.
 
 `EscrowTerms.operatorKeyHash` is fixed at creation, while release checks the
-current operator key. M7 therefore forbids in-place key substitution for a
+current operator key. The escrow profile therefore forbids in-place key substitution for a
 funded escrow: planned rotation drains qualified escrows by full release
 before rotation, and any escrow that cannot do so reaches full refund after
 its deadline. A new key requires a new escrow witness. Emergency rotation may
 force that refund path and must not be described as seamless release.
 
-M7 registers governance-signed `chio.finding.settlement-profile.v1` and
+The escrow profile registers governance-signed `chio.finding.settlement-profile.v1` and
 bond-authority-signed `chio.finding.mediator-backing.v1`. The profile pins the
 operator and role keys, exact contract path, token/currency/decimal/config
 mapping, release-receipt producer, all deadline stages, full-only terminal
@@ -1549,7 +1552,7 @@ the response, and release escrow. Neutral-mediator operation is therefore an
 explicit trusted-third-party assumption. With a seller-aligned mediator the
 residual is high and the profile is prohibited. Buyer acknowledgments invert
 the theft direction and remain out of v1 absent a predeclared
-acknowledgment-versus-refund rule. M7 tests both root withholding and response
+acknowledgment-versus-refund rule. The escrow profile tests both root withholding and response
 withholding and states which event is mechanically compensable.
 
 Evidence and passport exchange ride the bilateral evidence-share surfaces
@@ -1566,9 +1569,9 @@ The digest gate is the one genuinely new output-enforcement obligation:
 **no Allow receipt for `read_finding` unless the served bytes hash to the
 committed `payload_sha256`.** Current main has separate durable and legacy
 terminal lanes, and no single Allow builder covers both. The carrier remains
-a viable candidate, but enforcement placement now requires ADR-A and kernel
-owner review. M4 separately adds the purchase-context, reservation, and
-identity-output admission obligations.
+a viable candidate; enforcement placement is fixed by ADR-0019 under kernel
+owner review. The purchase chain separately adds the purchase-context,
+reservation, and identity-output admission obligations.
 
 ### 6.1 The facts that constrain the design
 
@@ -1608,9 +1611,9 @@ is superseded by these facts, verified against post-#974 main:
 - **F-E. The legacy charged lane still reconciles before its Allow
   builder.** `reconcile_budget_charge` runs at
   `kernel/validation.rs:2196`, while the legacy Allow builder is called at
-  line 2369. M3 must enforce the digest before legacy reconciliation or
-  reject digest-constrained reveals from the unsafe legacy lane before
-  dispatch.
+  line 2369. The delivery contract must enforce the digest before legacy
+  reconciliation or reject digest-constrained reveals from the unsafe legacy
+  lane before dispatch.
 - **F-F. `PrepaidFinal` can move funds before the output exists.**
   Authorization occurs before dispatch and may advance the durable payment
   journal directly to `PrepaymentSettled`
@@ -1618,17 +1621,17 @@ is superseded by these facts, verified against post-#974 main:
   recognizes the already-settled fixed-price journal
   (`kernel/admission_coordinator/terminal.rs:1133-1139`). A post-return
   mismatch cannot be described as a release or reversal on this rail.
-  ADR-A must forbid `PrepaidFinal` for digest-constrained reveals or define a
+  ADR-0019 forbids `PrepaidFinal` for digest-constrained reveals rather than define a
   durable, evidenced, replay-safe compensation transition whose product
   claim names compensation rather than release.
 - **F-G. Reserve-for-caller `MustPrepay` is capture, not a reversible
   reservation.** `ensure_reserved_mustprepay_prepaid` authorizes and then
   calls `capture` when an adapter returns `Held` before it returns the
   execution reservation (`kernel/validation.rs:2700-2793`). The returned
-  reservation is already funded by settled external value. M4 cannot use
-  that path as a pre-reveal hold. ADR-A must introduce a separate budget-only
-  accept state plus reveal-time reversible authorization/capture, or name and
-  implement compensation for every post-capture failure.
+  reservation is already funded by settled external value. The purchase
+  chain cannot use that path as a pre-reveal hold; ADR-0019 introduces the
+  separate budget-only accept state plus reveal-time reversible
+  authorization/capture instead.
 
 ### 6.2 Candidate carrier and ADR-required enforcement contract
 
@@ -1637,7 +1640,7 @@ the provider/token issuer into the `read_finding` grant of the
 `AskResponse.token_offer`.**
 Rationale: the Finding issuer commits the digest in its signed artifact, and
 the provider/token issuer must copy that commitment into its signed grant.
-The M2 seller authorization proves when those roles may differ. A
+The seller authorization proves when those roles may differ. A
 buyer-supplied carrier like
 `governed_intent.context` is the wrong trust direction. The constraint
 mechanism is the established per-grant extension point (recent precedent:
@@ -1659,8 +1662,8 @@ an old kernel would parse a Custom-carrying token and dispatch WITHOUT any
 digest gate. For a payment-bearing delivery contract that is fail-OPEN
 across version skew, the one failure direction this design refuses. A
 capability `.v2` schema is the heavyweight fallback if the v1 constraint
-vocabulary is declared frozen at M3 time; the formal call is ADR-A
-(PLAN section 4), and the addition ships with its PROTOCOL.md update and
+vocabulary is declared frozen; the formal call is ADR-0019, and the
+addition ships with its PROTOCOL.md update and
 verdict-matrix rotation either way. Precedent since this was written:
 PR #974 itself adds `Constraint::RequireCumulativeApprovalAbove` in
 place, so in-v1 vocabulary extension is the repo's demonstrated practice,
@@ -1668,8 +1671,8 @@ not a novelty this program introduces.
 
 **Enforcement topology is not yet chosen.** The pre-#974 two-layer design,
 including the claim that one common Allow builder covers every path, must not
-be implemented literally. ADR-A must define the following contract and
-receive kernel-owner review before an M3 implementation plan is written:
+be implemented literally. ADR-0019 defines the following contract under
+kernel-owner review:
 
 - After token verification, output-contract admission resolves exactly one
   matching grant. That grant contains exactly one
@@ -1678,7 +1681,8 @@ receive kernel-owner review before an M3 implementation plan is written:
   persisted durable selection deny before budget, nonce, payment, or
   dispatch mutation. Durable state freezes
   `(grant_index, expected_digest)` and terminal replay checks it.
-- M3 enables the constraint only for authenticated read-only tool profiles
+- The delivery contract enables the constraint only for authenticated
+  read-only tool profiles
   whose effect classification is pinned in operator policy. The kernel does
   not enforce advisory manifests, so an untrusted manifest label is not
   enough. Side-effecting, unknown-effect, stream-only, preauthorization-only,
@@ -1688,10 +1692,10 @@ receive kernel-owner review before an M3 implementation plan is written:
 - A shared, pure digest checker compares `OutputDigestSha256(expected)` with
   the same post-transform `receipt_content_for_output` preimage used by
   receipt signing. A `Stream` output under this constraint denies fail-closed
-  unless ADR-A defines and commits a stream digest representation. This M3
-  primitive is generic: its mismatch evidence alone says nothing about a
+  unless a later ADR defines and commits a stream digest representation.
+  This primitive is generic: its mismatch evidence alone says nothing about a
   Finding or seller fault.
-- M4's `RequireFindingPurchase` marker and exact settlement selector select
+- The `RequireFindingPurchase` marker and exact settlement selector select
   the v1 identity-output and rail profile. Because hooks expose no static
   effect classification, admission
   requires the applicable `PostInvocationPipeline::is_empty()` before
@@ -1719,14 +1723,15 @@ receive kernel-owner review before an M3 implementation plan is written:
   with the existing Allow builder used only as a lane-local backstop.
   Alternatively, digest-constrained requests are rejected before dispatch
   whenever unsafe legacy financial dispatch is enabled.
-- ADR-A rejects `PrepaidFinal` for v1. M4 accepts a budget-only reservation,
+- ADR-0019 rejects `PrepaidFinal` for v1. The purchase chain accepts a
+  budget-only reservation,
   performs all hard purchase checks, then creates a distinct reveal-time
   reversible rail hold that captures only after digest, envelope, and media
   checks match. Current `MustPrepay` reserve-for-caller cannot implement this
   because it captures a `Held` authorization before returning. If a future
   version permits final prepayment, it must specify durable, evidenced,
   replay-safe compensation and must not call it a release.
-- The M4 journal makes the external boundary explicit:
+- The purchase journal makes the external boundary explicit:
   `budget_reserved -> rail_held -> matched_pending_capture`, followed by
   `captured_pending_allow -> allow_final`. The validated output and
   deterministic Allow inputs are durable before capture. Authorization,
@@ -1737,13 +1742,13 @@ receive kernel-owner review before an M3 implementation plan is written:
   path, not issue a second capture or call the captured transfer reversible.
 - Both terminal lanes attach the generic `chio.delivery-contract.v1`
   metadata from kernel-verified values on concrete matched and mismatched
-  checks. The finding-specific `chio.finding.delivery.v1` overlay remains
-  M4 work, after the signed purchase artifacts and provider-minted grant
+  checks. The finding-specific `chio.finding.delivery.v1` overlay attaches
+  only after the signed purchase artifacts and provider-minted grant
   bind a finding id to the expected digest. Once that binding verifies,
-  an identity-profile seller-origin mismatch Deny carries both blocks so M5
-  can prove which finding was delivered incorrectly without revealing its
-  payload. Generic M3 mismatches and transform-policy denials never acquire
-  that seller-fraud meaning.
+  an identity-profile seller-origin mismatch Deny carries both blocks so
+  the challenge lane can prove which finding was delivered incorrectly
+  without revealing its payload. Generic digest mismatches and
+  transform-policy denials never acquire that seller-fraud meaning.
 - Adding the constraint requires exhaustive handling in
   `chio-core-types/src/capability/scope.rs`,
   `chio-kernel/src/kernel/governed_validation.rs`,
@@ -1751,14 +1756,14 @@ receive kernel-owner review before an M3 implementation plan is written:
   `chio-kernel-core/src/normalized.rs`, in addition to the production
   request matcher and terminal lanes.
 - The portable core and browser/mobile adapters are pre-dispatch admission
-  evaluators, not output-aware terminal finalizers. M3 must reject
+  evaluators, not output-aware terminal finalizers. Those surfaces must reject
   `OutputDigestSha256` before Allow on those surfaces unless an atomic
   output-aware finalizer is added. A later caller-supplied receipt body and
   content preimage prove WYSIWYS for that body, but the signer does not hold
   the capability constraint and cannot establish the delivery contract.
-  Such receipts are excluded from the M3 invariant.
+  Such receipts are excluded from the reveal-soundness invariant.
 
-M3 must test the durable reversible-hold lane, `PrepaidFinal` rejection,
+The delivery contract tests the durable reversible-hold lane, `PrepaidFinal` rejection,
 transformed output, stream rejection, unpaid durable Allow, and
 legacy coverage or fail-closed rejection. Browser, mobile, and direct
 portable-core regressions must prove digest-constrained requests reject
@@ -1768,8 +1773,8 @@ constraints, multiple matching grants, changed durable grant selection,
 unknown or side-effecting tools, and a positive matched Allow carrying the
 provider-authored expected digest plus kernel-derived observed/check fields.
 Every mismatch test must assert
-the signed terminal decision and the exact budget and payment state. M4
-separately tests the marked identity profile,
+the signed terminal decision and the exact budget and payment state. The
+purchase chain separately tests the marked identity profile,
 pre-dispatch rejection of every non-empty hook pipeline (including a
 redactor), restart/replay rejection when the frozen hook plan differs, a
 final no-mutation assertion, and proof that none of those policy paths can
@@ -1780,19 +1785,19 @@ payee/destination, stale or reused reservation, malformed/oversized purchase
 context, and media-type mismatch. Each pre-dispatch case proves no budget,
 exposure, fee, payment, nonce, or invocation mutation; each post-return
 failure before capture proves exact-once hold release and no reveal-price
-capture. Crash/restart tests at every M4 journal boundary prove that
+capture. Crash/restart tests at every purchase journal boundary prove that
 post-capture recovery emits the staged Allow without a second capture.
 
-Invariant this creates (formalization candidate, see PLAN):
+Invariant this creates (formalization candidate):
 **kernel-attested reveal soundness** - on every output-enforcement-qualified
 terminal profile, a grant carrying `OutputDigestSha256(d)` can produce an
 Allow receipt only if the kernel accepted an output preimage with
 `content_hash == d`; pre-dispatch-only profiles reject the constraint. The
 digest is over the final post-transform output used by receipt signing. This
-invariant makes no payment-refund claim unless ADR-A also fixes the rail
-policy, and it does not prove that the buyer process received or durably
-retained the bytes. The post-Allow crash window remains an M4
-delivery-idempotency concern.
+invariant makes no payment-refund claim beyond the ADR-0019 rail policy,
+and it does not prove that the buyer process received or durably retained
+the bytes. The post-Allow crash window remains a delivery-idempotency
+concern.
 
 ### 6.3 Facts that simplify the rest
 
@@ -1822,20 +1827,21 @@ delivery-idempotency concern.
 Section 4 contains several governance classes. They share the public schema
 registry but not the signed-artifact allowlist.
 
-Standalone signed artifacts (`chio.finding.v1`; M2 market terms, seller
+Standalone signed artifacts (`chio.finding.v1`; market terms, seller
 authorization, verifier profile, verifier report, bond backing, and
-admission; the M4 purchase and failed-delivery records; M5 challenge,
+admission; the purchase and failed-delivery records; challenge,
 outcome, enforcement, finalized bond snapshot, audit epoch/report, and the
-existing Rust market-penalty v1 envelope; the M6 status epoch; the M7
+existing Rust market-penalty v1 envelope; the status epoch; the conditional
 settlement profile, mediator backing, escrow witness, and settlement release;
-plus an optional M8 re-derivation quote) land in four places:
+plus an optional re-derivation quote) land in four places:
 
 1. A JSON validation schema at the family-appropriate path:
    finding/challenge/outcome/status/settlement under
    `spec/schemas/chio-finding/v1/*.schema.json` (validated by
    `chio-spec-validate`; the family types are hand-written Rust). The
    `chio.registry.market-penalty.v1` Rust wire type exists, but its public
-   strict body/envelope schema is not registered today. M5 registers that
+   strict body/envelope schema predated public registration. The challenge
+   lane registers that
    exact v1 shape without changing its fields or enums.
 2. A row in `spec/schemas/registry.json` (`{schema, artifactKind,
    introducedBy, schemaFile}`) plus `spec/schemas/MANIFEST.sha256`.
@@ -1862,7 +1868,7 @@ canonical bytes hashing to the signed Finding's `replay_recipe_sha256`;
 purchase-context integrity comes from verifying and cross-binding every
 enclosed signed artifact; status-proof integrity comes from its
 strict-canonical digest plus the verified status-epoch artifact, signature,
-and sparse path. Their M2/M4/M5/M6 ingress paths apply the size-bound,
+and sparse path. Every ingress path applies the size-bound,
 strict-raw-first invariant before trusting them.
 
 The two receipt-metadata blocks are not independently signed artifacts.
@@ -1912,14 +1918,14 @@ a frozen wire enum is normally BREAKING** (no `non_exhaustive`, no
 `serde(other)`; the sanctioned route is a new `.v2` schema). The deliberate
 exception is the capability `Constraint` vocabulary: its adjacent tag and
 hard rejection of unknown variants make the two planned additions
-fail-closed for old kernels. `OutputDigestSha256` therefore requires the M3
-ADR-A decision, PROTOCOL.md update, exhaustive matcher handling, and
+fail-closed for old kernels. `OutputDigestSha256` therefore requires the
+ADR-0019 decision, PROTOCOL.md update, exhaustive matcher handling, and
 `delivery_contract` corpus rotation. `RequireFindingPurchase` with exact
 finding/listing ids and the closed local-or-cross-org settlement selector
-requires the corresponding M4 provider-mint design,
+requires the corresponding provider-mint design,
 PROTOCOL.md update, exhaustive matcher handling, and `finding_purchase`
 corpus rotation. No other frozen enum receives this exception. In particular,
-`OpenMarketAbuseClass` stays frozen: M5 maps a verified finding violation to
+`OpenMarketAbuseClass` stays frozen: the challenge lane maps a verified finding violation to
 its existing `FraudulentListing` variant and carries the precise
 finding class in `chio.finding.challenge-outcome.v1`.
 
@@ -1945,15 +1951,15 @@ Consequently the listing integration does NOT extend
   surface (8.1), not a listing-schema change.
 
 This revises ADR-0017 D1's "new subject kind" phrasing; the ADR gets a
-one-line amendment rather than the wire a breaking change (PLAN, M0).
+one-line amendment rather than the wire a breaking change.
 
 One admission seam is real and must be built: `BondBacked` evaluation is
 transient, `Listing` carries no activation proof, and `bid()` does not consult
 that result. `require_bond_backing` currently pushes
 `BondBackingRequired` and returns `admitted = false`
-(`chio-listing/src/trust_activation.rs:558-572`). M2 therefore persists the
+(`chio-listing/src/trust_activation.rs:558-572`). Admission therefore persists the
 venue-signed admission bundle from F1 and makes trusted discovery, bid, and
-M4 accept reverify it. Merely clearing a Boolean or presenting a signed bond
+purchase accept reverify it. Merely clearing a Boolean or presenting a signed bond
 string would leave the marketplace bypass intact.
 
 ### 7.4 Conformance obligations
@@ -1969,11 +1975,11 @@ The conformance layers have different costs:
   `delivery_contract` class), recomputed `scenario_index_hash` +
   `corpus_sha256` in `manifest.toml`, an update to
   `docs/conformance/verdict-matrix.md`, and all required drivers
-  re-emitting the tuples. This lands with the kernel change (PLAN M3), not
+  re-emitting the tuples. This lands with the kernel change, not
   before.
 - **Finding-purchase corpus rotation** (expensive, gated): the
   `RequireFindingPurchase` marker with exact ids and settlement selector changes
-  admission again at M4. Add a `finding_purchase` scenario class covering
+  admission again at purchase. Add a `finding_purchase` scenario class covering
   provider mint rejection when the marker is required but absent,
   malformed and unknown variants, exact request mismatch, alternate token,
   selected-grant ambiguity, buyer/payer-key mismatch, unauthorized seller or
@@ -1983,13 +1989,14 @@ The conformance layers have different costs:
   artifacts under a marked grant, an unmarked generic digest call, and
   fail-closed portable behavior. Recompute
   the same manifest hashes, update the conformance documentation, and require
-  every driver to emit the new tuples with the M4 change.
-- **Economics/status/settlement corpora** (milestone-owned): M5 covers bond
+  every driver to emit the new tuples with the kernel change.
+- **Economics/status/settlement corpora** (lane-owned): the challenge lane
+  covers bond
   allocation reuse and concurrent exposure, buyer-challenge bond disposition,
   bondless venue-audit authorization, liability and purchase idempotency,
   beneficiary injection, pre-impairment appeal, committed audit selection,
-  and separated fee-funded reimbursements. M6 covers
-  cross-domain and ordinary-root rejection plus stale/omitted status. M7
+  and separated fee-funded reimbursements. The status lane covers
+  cross-domain and ordinary-root rejection plus stale/omitted status. Escrow
   covers wrong or reorged escrow witnesses, settlement-release
   cross-binding, deadline bounds, release/refund replay, authority key
   rotation, root withholding, and response withholding.
@@ -1998,15 +2005,15 @@ The conformance layers have different costs:
 
 Both blocks follow the typed-block pattern: structs in
 `crates/core/chio-core-types/src/receipt/` (fields additive per 7.3),
-kernel inserts under the string keys `"delivery_contract"` (M3, generic)
-and `"finding_delivery"` (M4, overlay) (insertion sites pattern:
+kernel inserts under the string keys `"delivery_contract"` (generic)
+and `"finding_delivery"` (overlay) (insertion sites pattern:
 `receipt_support/receipt_metadata.rs:433,543`), read via the generic
 `typed_metadata::<T>(key)` accessor (`receipt/body.rs:563`).
 There is no central metadata-key registry today (only the signing nonce key
 is formally reserved, `receipt/signing.rs:106`); we add a named const
-beside it and document the key in PROTOCOL.md 6.4 - and PLAN flags the
-missing registry as a repo-wide hygiene item worth fixing while we are
-there. Their JSON schemas and registry rows use
+beside it and document the key in PROTOCOL.md 6.4; the missing registry
+is a repo-wide hygiene item worth fixing while we are there. Their JSON
+schemas and registry rows use
 `spec/schemas/chio-wire/v1/receipt/`; tests validate typed round trips and
 prove the enclosing `ChioReceipt` signature covers each block. They do not
 enter the standalone signed-artifact allowlist.
@@ -2058,9 +2065,9 @@ nothing in the workspace schedules them
 scheduler dependency exists). Status-feed epoch ticking
 (`tick_and_broadcast`, `chio-revocation-oracle/src/epoch.rs:116`) and
 root anchoring therefore run under operator cron per runbook, exactly like
-anchoring does today. M7's settlement watchdog is likewise an external
-restart-safe worker. PLAN carries these as documented operational
-dependencies, not hidden in-process scheduling.
+anchoring does today. The escrow settlement watchdog is likewise an external
+restart-safe worker. These are documented operational dependencies, not
+hidden in-process scheduling.
 
 ### 8.3 CLI surface
 
@@ -2070,7 +2077,7 @@ in `cli/types/`, dispatch module registered in `cli/dispatch/mod.rs:1-60`,
 `chio trust liability-market` from `cli/types/trust.rs:1099` through
 `cli/dispatch/trust.rs:897` to `cli/trust/liability.rs:178`):
 
-`chio finding publish` (F1), `search` (F2), `verify` (the M2
+`chio finding publish` (F1), `search` (F2), `verify` (the
 `FindingEvidenceVerifier` facet report), `buy` (F3 handshake + reveal),
 `challenge` (F4), `status` (F5 proof fetch).
 
@@ -2078,7 +2085,7 @@ in `cli/types/`, dispatch module registered in `cli/dispatch/mod.rs:1-60`,
 
 The bounded-release machinery gave the wedge a dark-ship path: one
 default-off gate on each owning crate kept the surfaces out of the bounded
-operational profile until qualification. M9 removes that gate after the
+operational profile until qualification. Release qualification removes that gate after the
 entries land in the bounded qualification matrix
 (`cargo xtask qualify bounded-chio`,
 `docs/standards/CHIO_BOUNDED_QUALIFICATION_MATRIX.json`;
@@ -2086,7 +2093,7 @@ entries land in the bounded qualification matrix
 
 - CLAIM_REGISTRY rows: approved claims for the market wording plus
   `audited_assumption` rows for the finding-status operator, seller tool
-  server, bond/reservation/settlement authorities, and M7 neutral mediator -
+  server, bond/reservation/settlement authorities, and escrow neutral mediator -
   `docs/reference/CLAIM_REGISTRY.md`.
 - RELEASE_CANDIDATE Supported-Guarantee or Explicit-Non-Goal entries.
 - A `docs/release/CHIO_FINDING_MARKET_RUNBOOK.md` for the hosted surfaces
@@ -2103,10 +2110,10 @@ none of them.
 
 | Crate | Change class | What |
 |---|---|---|
-| `crates/economy/chio-finding` (NEW) | implemented at M1 | 4.1 artifact types, strict integrity verification, and pure validation; terms/profile/backing/admission, recipe/purchase inputs and records, replay/challenge/outcome/enforcement/audit, status, and M7 settlement types follow by owning milestone |
+| `crates/economy/chio-finding` | implemented | 4.1 artifact types, strict integrity verification, and pure validation; terms/profile/backing/admission, recipe/purchase inputs and records, replay/challenge/outcome/enforcement/audit, and status types; the escrow settlement types stay conditional |
 | `crates/economy/chio-listing` | extend | finding listing integration per 7.3; descriptor search; live collateral activation |
 | `crates/economy/chio-open-market` | extend | provider constraint minting and exact handshake checks; live bond allocation/exposure; challenge evaluation and signed outcome; mapping into unchanged market-penalty v1; participation fees and audit selection |
-| `crates/core/chio-core-types` | extend | additive `chio.delivery-contract.v1` (M3) and `chio.finding.delivery.v1` (M4) receipt metadata structs and key constants; two fail-closed `Constraint` vocabulary extensions under 7.3 |
+| `crates/core/chio-core-types` | extend | additive `chio.delivery-contract.v1` and `chio.finding.delivery.v1` receipt metadata structs and key constants; two fail-closed `Constraint` vocabulary extensions under 7.3 |
 | `crates/kernel/chio-kernel` | extend | single-grant digest enforcement; strict purchase/request/seller/payee/reservation binding; authoritative budget/liability reservation before pure accept and reveal-time hold/capture; delivery/status metadata; typed memory-write-to-delivery lineage |
 | `crates/guards/chio-guards` | extend | injected synchronous `FindingRetractionResolver` and opt-in fail-closed quarantine rule in `MemoryGovernanceGuard` |
 | `crates/platform/chio-store-sqlite` | extend | durable reservation/payer, purchase index, collateral exposure, challenge/liability/effect/appeal state, status outbox, settlement watchdog, and provenance/lineage state |
@@ -2115,9 +2122,9 @@ none of them.
 | `crates/platform/chio-control-plane` | extend | finding publish/by-id/search/admission and status-feed surfaces per 8.1 |
 | `crates/products/chio-cli` | extend | `chio finding publish/search/verify/buy/challenge/status` per 8.3 |
 | `crates/economy/chio-settle` | extend (thin) | verify finding escrow/release authority receipts and adapt them to the existing settlement-anchor release input (F6) |
-| `crates/trust/chio-attest-buyer` | extend (thin) | M2 `FindingEvidenceVerifier` facet profile |
-| `crates/platform/chio-transaction-passport` | integration owner | M9 ClaimSet and proof-passport verification consuming signed Finding-verifier reports; unsigned verifier inputs remain content-addressed non-authority attachments |
-| `crates/tooling/chio-conformance` | extend | scenarios per 7.2/PLAN |
+| `crates/trust/chio-attest-buyer` | extend (thin) | `FindingEvidenceVerifier` facet profile |
+| `crates/platform/chio-transaction-passport` | integration owner | ClaimSet and proof-passport verification consuming signed Finding-verifier reports; unsigned verifier inputs remain content-addressed non-authority attachments |
+| `crates/tooling/chio-conformance` | extend | scenarios per 7.2 |
 | `spec/PROTOCOL.md` | extend | finding family section under 6.4.x; explicit-gaps update |
 
 ## 10. Instance profiles
@@ -2127,7 +2134,7 @@ none of them.
 | `outcome_class` | `verified_fix` | `null_result` |
 | Guarantee class | `deterministic_replay` (replay recipe mandatory) | mostly `metered_attested`; replay only when re-runnable |
 | Challenge lane | mechanical only for the committed deterministic recipe and verdict | `evidence_invalid` only; replication protocols are future work (open problem 2) |
-| Buyer's ceiling input | buyer-local estimate for running the failing suite; authenticated quote is M8 | buyer-local experiment estimate, if available; else planner prior dominates |
+| Buyer's ceiling input | buyer-local estimate for running the failing suite; no authenticated quote ships | buyer-local experiment estimate, if available; else planner prior dominates |
 | Descriptor privacy | low sensitivity (org-internal contexts) | high (existence of a dead end is signal); coarse topics + leakage budgets |
 | Trust span | one operator or bilateral | cross-org from day one; separately qualified measured-runtime pressure (threat model O1) |
 | Residual risk driver | challenge griefing tuning | honest-cost fabrication (S2) |

@@ -17,6 +17,8 @@ use crate::HostedEdgeError;
 
 const MAX_TLS_FILE_BYTES: u64 = 4 * 1024 * 1024;
 
+/// Paths and policy for the public TLS endpoint: certificate chain,
+/// key, optional client CA, and the rotation window.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostedTlsConfig {
     pub public_endpoint: String,
@@ -55,6 +57,7 @@ impl HostedTlsConfig {
     }
 }
 
+/// Outcome of a reload attempt: swapped or unchanged.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HostedTlsReload {
     Applied,
@@ -81,6 +84,8 @@ pub struct HostedTlsState {
 }
 
 impl HostedTlsState {
+    /// Fail closed unless the certificate chain, key, and permissions
+    /// validate and the certificate covers the configured host at `now`.
     pub fn load(config: HostedTlsConfig, now: u64) -> Result<Self, HostedEdgeError> {
         config.validate()?;
         let loaded = load_material(&config, now)?;
@@ -91,11 +96,14 @@ impl HostedTlsState {
         })
     }
 
+    /// The current rustls server configuration.
     #[must_use]
     pub fn server_config(&self) -> Arc<ServerConfig> {
         self.server_config.load_full()
     }
 
+    /// Re-read the certificate material and swap it in atomically when it
+    /// changed and validates.
     pub fn reload(&self, now: u64) -> Result<HostedTlsReload, HostedEdgeError> {
         let loaded = load_material(&self.config, now)?;
         let mut metadata = self
@@ -110,6 +118,7 @@ impl HostedTlsState {
         Ok(HostedTlsReload::Applied)
     }
 
+    /// Whether the loaded certificate is valid at `now`.
     #[must_use]
     pub fn ready(&self, now: u64) -> bool {
         self.metadata.lock().is_ok_and(|metadata| {
@@ -119,6 +128,7 @@ impl HostedTlsState {
         })
     }
 
+    /// Expiry instant of the active certificate.
     pub fn certificate_not_after(&self) -> Result<u64, HostedEdgeError> {
         self.metadata
             .lock()

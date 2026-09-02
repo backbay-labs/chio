@@ -10,6 +10,8 @@
 use chio_core::capability::scope::FindingRecoveryMarkerV1;
 use chio_core::capability::token::CapabilityToken;
 
+use crate::finding_denial::FindingDenial;
+
 /// Top-level argument carrying the base64 canonical recovery context.
 pub const FINDING_RECOVERY_CONTEXT_ARGUMENT: &str = "chio_finding_recovery_context_b64";
 
@@ -43,12 +45,14 @@ pub struct VerifiedFindingRecovery {
 /// live-status floor admitted immediately before dispatch.
 pub(crate) const FINDING_RECOVERY_REPLAY_SNAPSHOT_METADATA_KEY: &str =
     "finding_recovery_replay_snapshot";
+#[cfg(feature = "finding-market")]
 pub(crate) const FINDING_RECOVERY_REPLAY_SNAPSHOT_SCHEMA: &str =
     "chio.finding.recovery-replay-snapshot.v1";
 
 /// Dispatch-frozen recovery facts used only as minima for a new current-floor
 /// lookup. Terminal replay never re-authenticates this old proof under a newly
 /// rotated operator key.
+#[cfg(feature = "finding-market")]
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct FindingRecoveryReplaySnapshotV1 {
@@ -61,6 +65,7 @@ pub(crate) struct FindingRecoveryReplaySnapshotV1 {
     pub(crate) status: crate::finding_purchase::VerifiedFindingStatusProof,
 }
 
+#[cfg(feature = "finding-market")]
 impl FindingRecoveryReplaySnapshotV1 {
     #[must_use]
     pub(crate) fn new(
@@ -84,7 +89,7 @@ pub trait FindingRecoveryVerifier: Send + Sync {
     fn verify_recovery(
         &self,
         view: &FindingRecoveryContextView<'_>,
-    ) -> Result<VerifiedFindingRecovery, String>;
+    ) -> Result<VerifiedFindingRecovery, FindingDenial>;
 
     /// Atomically reserve one durable attempt. Implementations must be
     /// idempotent on `(recovery_id, request_id)` and enforce one shared count
@@ -95,7 +100,7 @@ pub trait FindingRecoveryVerifier: Send + Sync {
         request_id: &str,
         max_recoveries: u32,
         now_unix_secs: u64,
-    ) -> Result<(), String>;
+    ) -> Result<(), FindingDenial>;
 
     /// Persist the authenticated lineage from a recovery receipt back to the
     /// original paid delivery. Replays of the same receipt must be no-ops;
@@ -105,5 +110,5 @@ pub trait FindingRecoveryVerifier: Send + Sync {
         verified: &VerifiedFindingRecovery,
         recovery_receipt_id: &str,
         recorded_at: u64,
-    ) -> Result<(), String>;
+    ) -> Result<(), FindingDenial>;
 }

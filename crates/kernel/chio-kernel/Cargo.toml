@@ -22,6 +22,12 @@ name = "chio_kernel"
 # recursive-delegation oracle consultation runs on every dispatch out of
 # the box.
 default = ["delegation"]
+# Compiles the finding-market enforcement lane (purchase and recovery
+# gates, the pool ledger, and the swarm-authority dependency) into the
+# kernel. Off by default: a deployment that never trades findings does
+# not ship or trust this code, and a purchase- or recovery-marked grant
+# denies with a configuration error instead.
+finding-market = ["dep:chio-swarm-authority"]
 dhat-heap = []
 admission-test-support = []
 otel = ["dep:opentelemetry-semantic-conventions"]
@@ -95,7 +101,7 @@ tracing = { workspace = true }
 opentelemetry-semantic-conventions = { workspace = true, optional = true }
 rusqlite = { workspace = true }
 chio-underwriting = { workspace = true }
-chio-swarm-authority = { workspace = true }
+chio-swarm-authority = { workspace = true, optional = true }
 uuid = { workspace = true, features = ["v7"] }
 ureq = { version = "2.10", features = ["json"] }
 url = { workspace = true }

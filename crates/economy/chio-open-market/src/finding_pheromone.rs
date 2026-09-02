@@ -3,7 +3,7 @@
 //! A deposit is only a hint. Success means the deposit passed the real
 //! pheromone passport, scarcity, replay, signer, and cost admission, and that
 //! the buyer independently supplied a fresh signed listing plus the complete
-//! M2 admission bundle. The hint never mints a token or grants purchase
+//! venue admission bundle. The hint never mints a token or grants purchase
 //! authority.
 
 use crate::receipt::lineage::SignedExportEnvelope;
@@ -102,7 +102,7 @@ pub struct FindingPheromoneConvention {
     pub registry_key: PublicKey,
 }
 
-/// Discovery result whose authority comes from the separately verified M2
+/// Discovery result whose authority comes from the separately verified venue
 /// admission, never from the pheromone.
 pub struct ResolvedFindingPheromoneHint {
     pub indicator: FindingPheromoneIndicator,
@@ -152,7 +152,7 @@ pub fn finding_pheromone_subject_policy(treaty_id: &str) -> SubjectClassPolicy {
     }
 }
 
-/// Admit one hint and re-resolve its current listing and M2 admission bundle.
+/// Admit one hint and re-resolve its current listing and venue admission bundle.
 pub fn admit_and_resolve_finding_pheromone_hint<S: PheromoneSubstrate + ?Sized>(
     substrate: &S,
     deposit: PheromoneDeposit,

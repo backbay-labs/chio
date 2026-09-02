@@ -42,7 +42,9 @@ chio-external-guards = { workspace = true }
 chio-federation = { workspace = true }
 chio-fiscal = { workspace = true }
 chio-http-serve = { workspace = true }
-chio-kernel = { workspace = true }
+# The market verifiers this crate installs are kernel seams that only
+# exist with the kernel's finding-market lane compiled in.
+chio-kernel = { workspace = true, features = ["finding-market"] }
 chio-log-redact = { workspace = true }
 chio-open-market = { workspace = true }
 chio-metrics-spec = { workspace = true }

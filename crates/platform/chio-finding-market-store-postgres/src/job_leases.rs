@@ -37,11 +37,8 @@ impl PostgresFindingMarketStore {
         .bind(i64::from(limit))
         .fetch_all(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         rows.iter().map(|row| job_from_row(tenant, row)).collect()
     }
 
@@ -70,12 +67,9 @@ impl PostgresFindingMarketStore {
                 .bind(lease_duration)
                 .fetch_one(&mut *transaction)
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(unavailable)?;
         let expires_at = expires_at.ok_or(HostedMarketStoreError::LeaseLost)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(HostedLeaseRenewal {
             expires_at: stored_u64(expires_at)?,
         })
@@ -104,19 +98,18 @@ impl PostgresFindingMarketStore {
                 .bind(result_json)
                 .fetch_one(&mut *transaction)
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(unavailable)?;
         let outcome = match outcome {
             0 => Ok(HostedJobWriteOutcome::Inserted),
             1 => Ok(HostedJobWriteOutcome::ExactReplay),
             2 => Err(HostedMarketStoreError::Conflict),
             3 => Err(HostedMarketStoreError::NotFound),
             4 => Err(HostedMarketStoreError::LeaseLost),
-            _ => Err(HostedMarketStoreError::DigestMismatch),
+            _ => Err(HostedMarketStoreError::Decode(
+                "job transition outcome code",
+            )),
         }?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(outcome)
     }
 
@@ -148,14 +141,11 @@ impl PostgresFindingMarketStore {
                 .bind(retry_delay)
                 .fetch_one(&mut *transaction)
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(unavailable)?;
         if !updated {
             return Err(HostedMarketStoreError::LeaseLost);
         }
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(())
     }
 
@@ -187,14 +177,11 @@ impl PostgresFindingMarketStore {
                 .bind(lease_fence)
                 .fetch_one(&mut *transaction)
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(unavailable)?;
         if !updated {
             return Err(HostedMarketStoreError::LeaseLost);
         }
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(())
     }
 
@@ -221,14 +208,11 @@ impl PostgresFindingMarketStore {
                 .bind(error_code)
                 .fetch_one(&mut *transaction)
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(unavailable)?;
         if !updated {
             return Err(HostedMarketStoreError::LeaseLost);
         }
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(())
     }
 }

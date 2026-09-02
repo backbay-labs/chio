@@ -8,12 +8,38 @@
 
 use std::sync::Arc;
 
+use chio_kernel::finding_denial::{FindingDenial, FindingDenialCode};
 use chio_kernel::finding_purchase::{
     FindingPurchaseContextView, FindingPurchaseVerifier, VerifiedFindingPurchase,
 };
 use chio_open_market::purchase_verification::{
-    verify_purchase_context_pure, PurchaseVerificationAuthorities, PurchaseVerificationInputs,
+    verify_purchase_context_pure, PurchaseVerificationAuthorities, PurchaseVerificationError,
+    PurchaseVerificationInputs,
 };
+
+/// Classify a pure-verification rejection into the seam's closed denial
+/// vocabulary, preserving the exact prose.
+fn purchase_denial(error: PurchaseVerificationError) -> FindingDenial {
+    use PurchaseVerificationError as E;
+    let code = match &error {
+        E::Carrier(_) | E::Member(_) | E::MediaTypeMissing => FindingDenialCode::CarrierInvalid,
+        E::Finding(_)
+        | E::EnvelopeSignature(_)
+        | E::Admission(_)
+        | E::SellerAuthorization(_)
+        | E::UnauthorizedIssuer
+        | E::ReservationReceipt => FindingDenialCode::AuthorityInvalid,
+        E::MarkerMismatch
+        | E::PayloadDigestMismatch
+        | E::AdmissionBindingMismatch(_)
+        | E::SellerAuthorizationScope
+        | E::HandshakeBinding(_)
+        | E::TokenByteMismatch
+        | E::ReservationBinding(_)
+        | E::ArgumentMismatch => FindingDenialCode::BindingMismatch,
+    };
+    FindingDenial::new(code, error.to_string())
+}
 
 /// The exact reservation facts the admission-time check requires the
 /// authoritative store to confirm.
@@ -41,14 +67,14 @@ pub trait PurchaseReservationReader: Send + Sync {
         &self,
         expectation: &ReservationExpectation<'_>,
         now_unix_secs: u64,
-    ) -> Result<(), String>;
+    ) -> Result<(), FindingDenial>;
 
     fn mark_capture_pending(
         &self,
         reservation_id: &str,
         authoritative_payment_operation_id: &str,
         now_unix_secs: u64,
-    ) -> Result<(), String>;
+    ) -> Result<(), FindingDenial>;
 }
 
 /// Production purchase verifier: pure market verification plus the
@@ -88,9 +114,9 @@ impl FindingPurchaseVerifier for MarketFindingPurchaseVerifier {
     fn verify_purchase(
         &self,
         view: &FindingPurchaseContextView<'_>,
-    ) -> Result<VerifiedFindingPurchase, String> {
+    ) -> Result<VerifiedFindingPurchase, FindingDenial> {
         let outcome = verify_purchase_context_pure(&Self::inputs(view), &self.authorities)
-            .map_err(|error| error.to_string())?;
+            .map_err(purchase_denial)?;
         Ok(VerifiedFindingPurchase {
             finding_id: outcome.finding.finding_id.clone(),
             listing_id: view.marker.listing_id.clone(),
@@ -113,29 +139,40 @@ impl FindingPurchaseVerifier for MarketFindingPurchaseVerifier {
         view: &FindingPurchaseContextView<'_>,
         verified: &VerifiedFindingPurchase,
         now_unix_secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), FindingDenial> {
         // The pure half already proved the carrier; re-derive it here for
         // the clocked bounds so the admission check reads the same signed
         // facts, never caller-supplied ones.
         let outcome = verify_purchase_context_pure(&Self::inputs(view), &self.authorities)
-            .map_err(|error| error.to_string())?;
-        if now_unix_secs < outcome.finding.issued_at {
-            return Err("finding is not yet live at the purchase clock".to_owned());
-        }
-        if now_unix_secs >= outcome.finding.expires_at {
-            return Err("finding has expired at the purchase clock".to_owned());
-        }
-        if now_unix_secs < outcome.admission.body.issued_at {
-            return Err("venue admission is not yet live at the purchase clock".to_owned());
-        }
-        if now_unix_secs >= outcome.admission.body.expires_at {
-            return Err("venue admission has expired at the purchase clock".to_owned());
-        }
-        if now_unix_secs < outcome.seller_authorization.body.issued_at {
-            return Err("seller authorization is not yet live at the purchase clock".to_owned());
-        }
-        if now_unix_secs >= outcome.seller_authorization.body.expires_at {
-            return Err("seller authorization has expired at the purchase clock".to_owned());
+            .map_err(purchase_denial)?;
+        let clock_bounds = [
+            (
+                outcome.finding.issued_at,
+                outcome.finding.expires_at,
+                "finding",
+            ),
+            (
+                outcome.admission.body.issued_at,
+                outcome.admission.body.expires_at,
+                "venue admission",
+            ),
+            (
+                outcome.seller_authorization.body.issued_at,
+                outcome.seller_authorization.body.expires_at,
+                "seller authorization",
+            ),
+        ];
+        for (issued_at, expires_at, subject) in clock_bounds {
+            if now_unix_secs < issued_at {
+                return Err(FindingDenial::stale_or_superseded(format!(
+                    "{subject} is not yet live at the purchase clock"
+                )));
+            }
+            if now_unix_secs >= expires_at {
+                return Err(FindingDenial::stale_or_superseded(format!(
+                    "{subject} has expired at the purchase clock"
+                )));
+            }
         }
         self.reservations.verify_slot_reserved(
             &ReservationExpectation {
@@ -158,7 +195,7 @@ impl FindingPurchaseVerifier for MarketFindingPurchaseVerifier {
         &self,
         verified: &VerifiedFindingPurchase,
         now_unix_secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), FindingDenial> {
         self.reservations.mark_capture_pending(
             &verified.reservation_id,
             &verified.authoritative_payment_operation_id,

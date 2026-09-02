@@ -4,8 +4,8 @@
 //!
 //! The harness calls the production
 //! [`crate::finding_slash_amount::compute_slash_allocation`] function used by
-//! the destination-bearing slash allocator. It proves the M5
-//! challenge-outcome envelope over three verified harmed buyers in the fixed
+//! the destination-bearing slash allocator. It proves the challenge-outcome
+//! envelope over three verified harmed buyers in the fixed
 //! realized-harm ratio `1:2:3`, with symbolic full-range `u64` bond inputs:
 //!
 //! - candidate and harm accumulation overflow fail closed;
@@ -29,7 +29,7 @@
 //! `u64::MAX`, checked candidate overflow, live-collateral caps, and
 //! signed-requirement cap failures. There are no `kani::assume` restrictions.
 //! The production wrapper maps these ordered slots only to distinct, admitted
-//! destinations reverified and aggregated from the M4 purchase index.
+//! destinations reverified and aggregated from the admitted purchase index.
 //! Signature, storage, ordering, destination aggregation, and
 //! authoritative-index validity remain covered by the runtime challenge
 //! enforcement tests.
@@ -42,7 +42,7 @@ use crate::finding_slash_amount::{
 ///
 /// This is not a model of the allocator. The harness invokes the production
 /// arithmetic core, independently classifies every checked-arithmetic
-/// rejection branch, and constrains every successful output by the M5 money
+/// rejection branch, and constrains every successful output by the money
 /// invariants.
 #[kani::proof]
 #[kani::unwind(17)]

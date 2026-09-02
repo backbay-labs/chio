@@ -162,7 +162,7 @@ impl ChioKernel {
         &self,
         finalization: OrdinaryRecoveryFinalization<'_>,
     ) -> Result<ToolCallResponse, KernelError> {
-        let metadata = crate::kernel::recovery_gate::attach_finding_recovery_metadata(
+        let metadata = crate::kernel::delivery_contract::attach_finding_recovery_metadata(
             finalization.metadata,
             finalization.recovery,
         );

@@ -809,7 +809,8 @@ mod finding_wedge_purchase_e2e_tests;
 mod finding_challenge_enforcement_e2e_tests;
 
 /// The bounded single-operator cognition-market qualification composes the
-/// milestone exits through their production-facing SQLite and router seams.
+/// market lifecycle exits through their production-facing SQLite and router
+/// seams.
 /// Each leg provisions an independent deployment so authority state from one
 /// security boundary cannot make a later boundary pass accidentally.
 #[cfg(all(test, unix))]

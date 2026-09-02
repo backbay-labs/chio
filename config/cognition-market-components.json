@@ -43,7 +43,7 @@
     "crates/trust/chio-signing-remote/**",
     "deny.toml",
     "deploy/cognition-market/**",
-    "docs/research/cognition-market/**",
+    "docs/market/**",
     "formal/**",
     "fuzz/**",
     "rust-toolchain.toml",

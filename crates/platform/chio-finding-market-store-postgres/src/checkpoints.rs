@@ -66,7 +66,7 @@ impl PostgresFindingMarketStore {
             .bind(lock_key)
             .execute(&mut *transaction)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
 
         let replay: Option<Vec<u8>> = sqlx::query_scalar(
             "SELECT checkpoint_envelope_json FROM chio_finding_market_aggregate_checkpoints WHERE tenant_id = $1 AND checkpoint_sha256 = $2",
@@ -75,15 +75,12 @@ impl PostgresFindingMarketStore {
         .bind(&checkpoint_sha256)
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         if let Some(retained) = replay {
             if retained != envelope_json {
                 return Err(HostedMarketStoreError::Conflict);
             }
-            transaction
-                .commit()
-                .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            transaction.commit().await.map_err(unavailable)?;
             return Ok(HostedJobWriteOutcome::ExactReplay);
         }
 
@@ -98,7 +95,7 @@ impl PostgresFindingMarketStore {
         .bind(&body.aggregate_id)
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         match previous {
             Some(row) => {
                 let previous_revision = stored_u64(row.try_get(0).map_err(unavailable)?)?;
@@ -126,7 +123,7 @@ impl PostgresFindingMarketStore {
         .bind(&body.event_sha256)
         .fetch_one(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         if !event_matches {
             return Err(HostedMarketStoreError::Conflict);
         }
@@ -149,11 +146,8 @@ impl PostgresFindingMarketStore {
         .bind(created_at)
         .execute(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(HostedJobWriteOutcome::Inserted)
     }
 
@@ -178,11 +172,8 @@ impl PostgresFindingMarketStore {
         .bind(aggregate_id)
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         row.map(|row| {
             let checkpoint_sha256: String = row.try_get(0).map_err(unavailable)?;
             let envelope_json: Vec<u8> = row.try_get(1).map_err(unavailable)?;

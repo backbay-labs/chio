@@ -368,13 +368,3 @@ fn finding_bid_ceiling_at_ceiling_clears_and_above_ceiling_rejects_real_marketpl
         "0"
     );
 }
-
-/// M7 remains deliberately unbuilt until a real bilateral seller and buyer
-/// select the cross-organization profile and ADR-C fixes its contract-level
-/// authority boundary. Keeping the named fail-first exit here prevents the
-/// conditional milestone from being mistaken for a qualified surface.
-#[test]
-#[ignore = "M7 requires bilateral demand and an accepted ADR-C"]
-fn cognition_market_cross_org_escrow() {
-    panic!("M7 cross-organization escrow is conditional and unimplemented");
-}

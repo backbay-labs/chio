@@ -21,6 +21,8 @@
 use chio_core::capability::scope::{FindingPurchaseMarkerV1, MonetaryAmount};
 use chio_core::capability::token::CapabilityToken;
 
+use crate::finding_denial::FindingDenial;
+
 /// Governed-intent context key carrying the base64 canonical purchase
 /// context for a marked reveal.
 pub const FINDING_PURCHASE_CONTEXT_KEY: &str = "chio_finding_purchase_context_b64";
@@ -44,6 +46,7 @@ pub const FINDING_ESCROW_WITNESS_CONTEXT_KEY: &str = "chio_finding_escrow_witnes
 /// binding used by terminal replay after authority rotation.
 pub(crate) const FINDING_PURCHASE_REPLAY_SNAPSHOT_METADATA_KEY: &str =
     "finding_purchase_replay_snapshot";
+#[cfg(feature = "finding-market")]
 pub(crate) const FINDING_PURCHASE_REPLAY_SNAPSHOT_SCHEMA: &str =
     "chio.finding.purchase-replay-snapshot.v1";
 
@@ -130,6 +133,7 @@ pub struct VerifiedFindingStatusProof {
 /// outcome and immutable request hash bind this verified result to the exact
 /// request that crossed dispatch, so terminal replay does not consult a newly
 /// rotated authority configuration.
+#[cfg(feature = "finding-market")]
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct FindingPurchaseReplaySnapshotV1 {
@@ -137,6 +141,7 @@ pub(crate) struct FindingPurchaseReplaySnapshotV1 {
     pub purchase: VerifiedFindingPurchase,
 }
 
+#[cfg(feature = "finding-market")]
 impl FindingPurchaseReplaySnapshotV1 {
     #[must_use]
     pub(crate) fn new(purchase: VerifiedFindingPurchase) -> Self {
@@ -170,7 +175,7 @@ pub struct FindingCurrentStatusContextView<'a> {
     pub minimum_non_inclusion_checked_at: u64,
 }
 
-/// Injected status verifier for M6-qualified finding purchases.
+/// Injected status verifier for finding purchases.
 ///
 /// The deterministic half validates exact bytes, signatures, domains,
 /// cross-bindings, and the sparse path. The admission half rechecks clocked
@@ -182,7 +187,7 @@ pub trait FindingStatusProofVerifier: Send + Sync {
     fn verify_status_proof(
         &self,
         view: &FindingStatusProofContextView<'_>,
-    ) -> Result<VerifiedFindingStatusProof, String>;
+    ) -> Result<VerifiedFindingStatusProof, FindingDenial>;
 
     /// Enforce freshness and the durable monotonic/sticky admission policy.
     fn verify_status_admission(
@@ -190,7 +195,7 @@ pub trait FindingStatusProofVerifier: Send + Sync {
         view: &FindingStatusProofContextView<'_>,
         verified: &VerifiedFindingStatusProof,
         now_unix_secs: u64,
-    ) -> Result<(), String>;
+    ) -> Result<(), FindingDenial>;
 
     /// Recheck a previously delivered Finding against the verifier's current
     /// authenticated floor. Implementations without a durable current-status
@@ -199,8 +204,10 @@ pub trait FindingStatusProofVerifier: Send + Sync {
         &self,
         _view: &FindingCurrentStatusContextView<'_>,
         _now_unix_secs: u64,
-    ) -> Result<(), String> {
-        Err("current finding status admission is not supported by this verifier".to_owned())
+    ) -> Result<(), FindingDenial> {
+        Err(FindingDenial::unavailable(
+            "current finding status admission is not supported by this verifier",
+        ))
     }
 }
 
@@ -218,7 +225,7 @@ pub trait FindingPurchaseVerifier: Send + Sync {
     fn verify_purchase(
         &self,
         view: &FindingPurchaseContextView<'_>,
-    ) -> Result<VerifiedFindingPurchase, String>;
+    ) -> Result<VerifiedFindingPurchase, FindingDenial>;
 
     /// Admission-time checks that may consult clocks and authoritative
     /// state: finding liveness bounds and the reservation being open and
@@ -228,7 +235,7 @@ pub trait FindingPurchaseVerifier: Send + Sync {
         view: &FindingPurchaseContextView<'_>,
         verified: &VerifiedFindingPurchase,
         now_unix_secs: u64,
-    ) -> Result<(), String>;
+    ) -> Result<(), FindingDenial>;
 
     /// Persist the exact purchase's capture fence before the kernel calls a
     /// payment rail. Implementations must be idempotent: durable recovery can
@@ -238,5 +245,5 @@ pub trait FindingPurchaseVerifier: Send + Sync {
         &self,
         verified: &VerifiedFindingPurchase,
         now_unix_secs: u64,
-    ) -> Result<(), String>;
+    ) -> Result<(), FindingDenial>;
 }

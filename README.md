@@ -132,7 +132,7 @@ writes the audit log. Chio is that layer for agents, and each part has a direct 
 | **Process isolation** | The kernel is the only trusted component. Agents and tool servers run as untrusted, sandboxed processes, isolated from each other and from the agent. |
 | **Permissions** | Capability tokens: signed, expiring, budgeted, and only ever narrowable. |
 | **Syscall filters** | A guard pipeline screens every request and every result. Custom guards run as fuel-metered WASM with no host access. |
-| **Drivers** | MCP, A2A, ACP, AG-UI, OpenAPI, and eight provider tool-call formats each lift to the same kernel verdict and lower back to their own wire format. |
+| **Drivers** | MCP, A2A, ACP-Client, AG-UI, OpenAPI, and eight provider tool-call formats each lift to the same kernel verdict and lower back to their own wire format. |
 | **Audit log** | An append-only, content-addressed receipt log with Merkle checkpoints. A receipt signed in Rust verifies byte-for-byte in TypeScript, Python, or Go. |
 | **Resource accounting** | Per-call metering, with a budget hold taken before the call runs and sealed into the receipt. |
 | **Portable core** | `chio-kernel-core` is `no_std` and takes its clock and RNG as traits. The same verify, evaluate, and sign code ships as a native sidecar, in the browser over wasm, and on iOS and Android over UniFFI. |
@@ -149,7 +149,7 @@ writes the audit log. Chio is that layer for agents, and each part has a direct 
 
 - **You do not write permissions, delegation, audit, metering, or billing for your agent system.** The kernel does them, and they behave the same over every protocol and provider it speaks.
 - **Sub-agents cannot escalate.** A swarm holds at most the authority of the agent that spawned it, because every delegation proves it is a subset of its parent.
-- **Every action leaves a receipt that verifies offline.** Anyone with the public key can check what an agent did without access to your runtime.
+- **Actions leave a receipt that verifies offline.** Anyone with the public key can check what an agent did without access to your runtime.
 - **Agents can pay each other.** Metering, budgets, markets, credit, and insurance clear on receipts the kernel already writes.
 - **The model, the framework, and the tool servers are all swappable.** The kernel and the receipts do not change when you change any of them.
 - **Deny is the default.** A token that does not verify, a budget that cannot be held, or a result that cannot be signed is a call that does not run.

@@ -27,12 +27,14 @@ const MAX_API_KEY_SECRET_BYTES: usize = 256;
 const MIN_PEPPER_BYTES: usize = 32;
 const MAX_PEPPER_BYTES: usize = 4_096;
 
+/// Credential families the edge accepts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum HostedAuthMethod {
     CapabilityDpop,
     ApiKey,
 }
 
+/// Which credential families one tenant may authenticate with.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostedTenantAuthPolicy {
     pub tenant_id: HostedTenantId,
@@ -40,6 +42,7 @@ pub struct HostedTenantAuthPolicy {
 }
 
 impl HostedTenantAuthPolicy {
+    /// Fail closed unless at least one method is allowed.
     pub fn validate(&self) -> Result<(), HostedEdgeError> {
         if self.allowed_methods.is_empty() || self.allowed_methods.len() > 2 {
             return Err(HostedEdgeError::Configuration);
@@ -48,6 +51,9 @@ impl HostedTenantAuthPolicy {
     }
 }
 
+/// Authenticator configuration: pinned capability authorities, DPoP
+/// freshness bounds, per-tenant nonce capacity, and the per-tenant
+/// method policies. Validated in full at construction.
 #[derive(Clone, Debug)]
 pub struct HostedAuthenticatorConfig {
     pub deployment_id: String,
@@ -92,6 +98,7 @@ impl HostedAuthenticatorConfig {
     }
 }
 
+/// One presented credential; secrets never appear in Debug output.
 pub enum HostedAuthCredential {
     CapabilityDpop {
         capability: Box<CapabilityToken>,
@@ -125,6 +132,9 @@ impl fmt::Debug for HostedAuthCredential {
     }
 }
 
+/// Everything one authentication decision consumes: the tenant, the
+/// governed action, the exact method/target/body digest the proof must
+/// bind, the required role, and the credential.
 #[derive(Debug)]
 pub struct HostedAuthRequest {
     pub tenant_id: HostedTenantId,
@@ -138,6 +148,9 @@ pub struct HostedAuthRequest {
     pub now_unix_secs: u64,
 }
 
+/// The authenticated identity a request acts as, including the
+/// credential that proved it and the artifact signer key the principal
+/// may bind, if any.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostedAuthenticatedPrincipal {
     pub tenant_id: HostedTenantId,
@@ -148,6 +161,8 @@ pub struct HostedAuthenticatedPrincipal {
     pub artifact_signer_key: Option<PublicKey>,
 }
 
+/// Derives the stored HMAC verifier for an API-key secret; the pepper
+/// never leaves the implementation.
 pub trait ApiKeyPepper: Send + Sync {
     fn hmac_verifier(
         &self,
@@ -157,11 +172,13 @@ pub trait ApiKeyPepper: Send + Sync {
     ) -> Result<String, HostedEdgeError>;
 }
 
+/// In-process pepper over one fixed byte string of bounded length.
 pub struct StaticApiKeyPepper {
     bytes: Vec<u8>,
 }
 
 impl StaticApiKeyPepper {
+    /// Fail closed unless the pepper length is inside the accepted bound.
     pub fn new(bytes: Vec<u8>) -> Result<Self, HostedEdgeError> {
         if !(MIN_PEPPER_BYTES..=MAX_PEPPER_BYTES).contains(&bytes.len()) {
             return Err(HostedEdgeError::Configuration);
@@ -206,6 +223,8 @@ impl ApiKeyPepper for StaticApiKeyPepper {
 
 pub use chio_finding_market_port::HostedAuthPort as HostedAuthRepository;
 
+/// Authenticates hosted requests against the tenant method policies,
+/// the pinned capability authorities, and the durable auth port.
 pub struct HostedAuthenticator {
     config: HostedAuthenticatorConfig,
     public_endpoint: Url,
@@ -216,6 +235,7 @@ pub struct HostedAuthenticator {
 }
 
 impl HostedAuthenticator {
+    /// Fail closed unless the pepper length is inside the accepted bound.
     pub fn new(
         config: HostedAuthenticatorConfig,
         repository: Arc<dyn HostedAuthRepository>,
@@ -248,6 +268,10 @@ impl HostedAuthenticator {
         })
     }
 
+    /// Authenticate one request. Every failure maps to a uniform
+    /// AuthenticationFailed so a caller cannot probe which check denied;
+    /// DPoP admission consults the durable nonce store so replays fail
+    /// across replicas.
     pub async fn authenticate(
         &self,
         request: HostedAuthRequest,
@@ -427,6 +451,13 @@ impl HostedAuthenticator {
                 &request.tenant_id,
                 &capability.id,
                 &nonce_sha256,
+                // Only a mutation with a durable idempotency key may be
+                // resumed from its request binding. A read carries none, so
+                // reusing its proof stays a rejected replay.
+                request
+                    .idempotency_key
+                    .as_deref()
+                    .map(|_| action_hash.as_str()),
                 valid_through,
                 max_invocations,
                 capability.expires_at,
@@ -436,7 +467,12 @@ impl HostedAuthenticator {
             .await
             .map_err(map_store)?;
         match admission {
-            HostedCapabilityAdmissionOutcome::Admitted => {}
+            // A retry of the exact request this proof authorized resumes
+            // rather than replays: its nonce and budget were already spent
+            // on an effect that may have been cut short before it
+            // committed, and the write it authorizes is idempotent.
+            HostedCapabilityAdmissionOutcome::Admitted
+            | HostedCapabilityAdmissionOutcome::RetriedSameRequest => {}
             HostedCapabilityAdmissionOutcome::Replay => {
                 return Err(HostedEdgeError::ReplayRejected);
             }
@@ -666,6 +702,7 @@ mod tests {
             _tenant: &HostedTenantId,
             _capability_id: &str,
             _nonce_sha256: &str,
+            _request_sha256: Option<&str>,
             _valid_through: u64,
             _max_invocations: u32,
             _expires_at: u64,

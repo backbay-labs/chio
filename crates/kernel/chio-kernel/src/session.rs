@@ -1318,6 +1318,7 @@ impl Session {
 
     /// Capture authentication under an allowed lifecycle state and keep that
     /// state stable until the caller's effect boundary returns.
+    #[cfg(feature = "finding-market")]
     pub(crate) fn with_operation_boundary<R>(
         &self,
         context: &OperationContext,

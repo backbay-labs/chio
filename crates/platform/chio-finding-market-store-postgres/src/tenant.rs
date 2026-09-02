@@ -79,7 +79,7 @@ impl PostgresFindingMarketStore {
         .bind(tenant.as_str())
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         if let Some(row) = existing {
             let matches = row.try_get::<i32, _>(0).map_err(unavailable)?
                 == i32::try_from(limits.max_concurrent_jobs)
@@ -102,10 +102,7 @@ impl PostgresFindingMarketStore {
             if !authority_matches {
                 return Err(HostedMarketStoreError::Conflict);
             }
-            transaction
-                .commit()
-                .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            transaction.commit().await.map_err(unavailable)?;
             return Ok(HostedJobWriteOutcome::ExactReplay);
         }
         sqlx::query(
@@ -121,11 +118,8 @@ impl PostgresFindingMarketStore {
         .bind(&limits.configuration_revision)
         .execute(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(HostedJobWriteOutcome::Inserted)
     }
 
@@ -142,12 +136,9 @@ impl PostgresFindingMarketStore {
         .bind(tenant.as_str())
         .fetch_one(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         let stored = tenant_limits_from_row(&row)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         if stored != *expected {
             return Err(HostedMarketStoreError::Configuration);
         }
@@ -168,15 +159,12 @@ impl PostgresFindingMarketStore {
                 .bind(enabled)
                 .execute(&mut *transaction)
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?
+                .map_err(unavailable)?
                 .rows_affected();
         if updated != 1 {
             return Err(HostedMarketStoreError::NotFound);
         }
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(())
     }
 }

@@ -73,6 +73,21 @@ pub(crate) fn stored_u64(value: i64) -> Result<u64, HostedMarketStoreError> {
     u64::try_from(value).map_err(|_| HostedMarketStoreError::DigestMismatch)
 }
 
-pub(crate) fn unavailable(_error: sqlx::Error) -> HostedMarketStoreError {
+/// Map a sqlx failure to the opaque wire error after logging its class.
+/// The wire variant stays `Unavailable` so caller and replay semantics are
+/// unchanged; the log carries what actually failed so operators can tell
+/// pool exhaustion from a constraint rejection or a network fault.
+pub(crate) fn unavailable(error: sqlx::Error) -> HostedMarketStoreError {
+    let class = match &error {
+        sqlx::Error::PoolTimedOut => "pool_timeout",
+        sqlx::Error::PoolClosed => "pool_closed",
+        sqlx::Error::Io(_) => "io",
+        sqlx::Error::Tls(_) => "tls",
+        sqlx::Error::Database(_) => "database",
+        sqlx::Error::RowNotFound => "row_not_found",
+        sqlx::Error::ColumnDecode { .. } | sqlx::Error::Decode(_) => "decode",
+        _ => "other",
+    };
+    tracing::warn!(class, error = %error, "hosted market store operation failed");
     HostedMarketStoreError::Unavailable
 }

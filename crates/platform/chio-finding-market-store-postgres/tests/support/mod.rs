@@ -1134,3 +1134,702 @@ pub(super) async fn assert_atomic_purchase_recovery(
     );
     Ok(())
 }
+
+/// A concurrent duplicate of an in-flight admission or reservation must
+/// answer as a replay. Both paths probe before taking their per-tenant
+/// serialization lock, so the loser observes a full tenant while its own
+/// exact request is already durable; reporting capacity there would turn a
+/// replay into a retryable error.
+pub(super) async fn assert_concurrent_duplicates_replay(
+    store: &PostgresFindingMarketStore,
+    nonce: u128,
+) -> Result<(), Box<dyn Error>> {
+    // Two concurrent admissions of one proof race the capacity check. The
+    // loser's exact request is durable by the time it observes a full
+    // tenant, so it resumes that request rather than reporting a retryable
+    // capacity error.
+    let race_tenant = HostedTenantId::new(format!("integration-nonce-race-{nonce}"))?;
+    store
+        .register_tenant(
+            &race_tenant,
+            &HostedTenantLimits::new(1, 8, 10_000, "integration-revision-1")?,
+            1_700_000_000,
+        )
+        .await?;
+    let race_nonce = "1".repeat(64);
+    let race_binding = "6".repeat(64);
+    let (first_race, second_race) = tokio::join!(
+        store.consume_capability_dpop_admission(
+            &race_tenant,
+            "capability-race",
+            &race_nonce,
+            Some(&race_binding),
+            1_700_000_300,
+            4,
+            1_700_000_300,
+            1_700_000_001,
+            1,
+        ),
+        store.consume_capability_dpop_admission(
+            &race_tenant,
+            "capability-race",
+            &race_nonce,
+            Some(&race_binding),
+            1_700_000_300,
+            4,
+            1_700_000_300,
+            1_700_000_001,
+            1,
+        ),
+    );
+    let mut race_outcomes = vec![first_race?, second_race?];
+    race_outcomes.sort_by_key(|outcome| format!("{outcome:?}"));
+    assert_eq!(
+        race_outcomes,
+        vec![
+            HostedCapabilityAdmissionOutcome::Admitted,
+            HostedCapabilityAdmissionOutcome::RetriedSameRequest
+        ],
+        "a concurrent duplicate proof must resume its own request, never report capacity"
+    );
+
+    // The same invariant on the monthly spend period: the loser's identical
+    // reservation is already durable and already charged, so it replays
+    // instead of reporting the period as exhausted.
+    let spend_race_tenant = HostedTenantId::new(format!("integration-spend-race-{nonce}"))?;
+    store
+        .register_tenant(
+            &spend_race_tenant,
+            &HostedTenantLimits::new(1, 8, 5_000, "integration-revision-1")?,
+            1_700_000_000,
+        )
+        .await?;
+    let (first_spend, second_spend) = tokio::join!(
+        store.reserve_monthly_spend(&spend_race_tenant, "purchase-spend-race", 5_000),
+        store.reserve_monthly_spend(&spend_race_tenant, "purchase-spend-race", 5_000),
+    );
+    let mut spend_outcomes = vec![first_spend?, second_spend?];
+    spend_outcomes.sort_by_key(|outcome| format!("{outcome:?}"));
+    assert_eq!(
+        spend_outcomes,
+        vec![
+            HostedJobWriteOutcome::ExactReplay,
+            HostedJobWriteOutcome::Inserted
+        ],
+        "a concurrent identical reservation must replay, not exhaust"
+    );
+    Ok(())
+}
+
+/// The admission and accounting invariants a hosted tenant depends on:
+/// one invocation per request however many proofs carry it, a reissued
+/// capability able to record its own admissions, a bound on what those
+/// admissions retain, and accounting that denies rather than drifting.
+pub(super) async fn assert_admission_and_accounting_invariants(
+    store: &PostgresFindingMarketStore,
+    runtime_pool: &sqlx::PgPool,
+    admin_pool: &sqlx::PgPool,
+    nonce: u128,
+) -> Result<(), Box<dyn Error>> {
+    assert_concurrent_fresh_proofs_spend_one_invocation(store, runtime_pool, nonce).await?;
+    assert_reissued_capability_records_its_admission(store, nonce).await?;
+    assert_retained_request_bindings_are_bounded(store, nonce).await?;
+    assert_charged_reservations_are_immutable(store, runtime_pool, nonce).await?;
+    assert_spend_accumulator_underflow_denies(store, admin_pool, nonce).await
+}
+
+/// Concurrent retries of one request spend one invocation. Two fresh proofs
+/// race with capacity and budget to spare, so no exhaustion check stops
+/// either: only the admission record itself separates the retry from a
+/// second request, and the invocation belongs to the request rather than to
+/// the proof that carried it.
+pub(super) async fn assert_concurrent_fresh_proofs_spend_one_invocation(
+    store: &PostgresFindingMarketStore,
+    runtime_pool: &sqlx::PgPool,
+    nonce: u128,
+) -> Result<(), Box<dyn Error>> {
+    let tenant = &HostedTenantId::new(format!("integration-fresh-proof-race-{nonce}"))?;
+    store
+        .register_tenant(
+            tenant,
+            &HostedTenantLimits::new(1, 8, 10_000, "integration-revision-1")?,
+            1_700_000_000,
+        )
+        .await?;
+    let capability = "capability-fresh-proof-race";
+    let binding = "5".repeat(64);
+    let first_nonce = "a".repeat(64);
+    let second_nonce = "b".repeat(64);
+    let (first, second) = tokio::join!(
+        store.consume_capability_dpop_admission(
+            tenant,
+            capability,
+            &first_nonce,
+            Some(&binding),
+            1_700_000_300,
+            4,
+            1_700_000_300,
+            1_700_000_001,
+            8,
+        ),
+        store.consume_capability_dpop_admission(
+            tenant,
+            capability,
+            &second_nonce,
+            Some(&binding),
+            1_700_000_300,
+            4,
+            1_700_000_300,
+            1_700_000_001,
+            8,
+        ),
+    );
+    let mut outcomes = vec![first?, second?];
+    outcomes.sort_by_key(|outcome| format!("{outcome:?}"));
+    assert_eq!(
+        outcomes,
+        vec![
+            HostedCapabilityAdmissionOutcome::Admitted,
+            HostedCapabilityAdmissionOutcome::RetriedSameRequest
+        ],
+        "concurrent fresh proofs for one request must resolve to a single admission"
+    );
+
+    let mut reader = runtime_pool.begin().await?;
+    sqlx::query("SELECT set_config('chio.tenant_id', $1, TRUE)")
+        .bind(tenant.as_str())
+        .execute(&mut *reader)
+        .await?;
+    let used: i64 = sqlx::query_scalar(
+        "SELECT used_count FROM chio_finding_market_capability_uses WHERE tenant_id = $1 AND capability_id = $2",
+    )
+    .bind(tenant.as_str())
+    .bind(capability)
+    .fetch_one(&mut *reader)
+    .await?;
+    assert_eq!(
+        used, 1,
+        "one request must spend one invocation however many proofs carried it"
+    );
+    let live_nonces: i64 = sqlx::query_scalar(
+        "SELECT live_nonces FROM chio_finding_market_dpop_admission_state WHERE tenant_id = $1",
+    )
+    .bind(tenant.as_str())
+    .fetch_one(&mut *reader)
+    .await?;
+    assert_eq!(
+        live_nonces, 1,
+        "the losing proof must not consume a nonce slot of its own"
+    );
+    reader.commit().await?;
+    Ok(())
+}
+
+/// A capability id reissued after its predecessor expired must be able to
+/// record its own admissions. The expired record still holds the key until
+/// a sweep removes it, and leaving its expiry in place would deny the very
+/// retry the new admission is recording itself for.
+pub(super) async fn assert_reissued_capability_records_its_admission(
+    store: &PostgresFindingMarketStore,
+    nonce: u128,
+) -> Result<(), Box<dyn Error>> {
+    let tenant = &HostedTenantId::new(format!("integration-reissued-capability-{nonce}"))?;
+    store
+        .register_tenant(
+            tenant,
+            &HostedTenantLimits::new(1, 8, 10_000, "integration-revision-1")?,
+            1_700_000_000,
+        )
+        .await?;
+    let capability = "capability-reissued";
+    let binding = "4".repeat(64);
+    assert_eq!(
+        store
+            .consume_capability_dpop_admission(
+                tenant,
+                capability,
+                &"c".repeat(64),
+                Some(&binding),
+                1_700_000_100,
+                1,
+                1_700_000_100,
+                1_700_000_001,
+                8,
+            )
+            .await?,
+        HostedCapabilityAdmissionOutcome::Admitted
+    );
+
+    // The authority reissues the same capability id past that expiry and
+    // the same request arrives against it.
+    assert_eq!(
+        store
+            .consume_capability_dpop_admission(
+                tenant,
+                capability,
+                &"d".repeat(64),
+                Some(&binding),
+                1_700_000_600,
+                1,
+                1_700_000_600,
+                1_700_000_200,
+                8,
+            )
+            .await?,
+        HostedCapabilityAdmissionOutcome::Admitted
+    );
+
+    // A retry of that request resumes it. Against the stale record it would
+    // report the reissued capability's single invocation as exhausted.
+    assert_eq!(
+        store
+            .consume_capability_dpop_admission(
+                tenant,
+                capability,
+                &"e".repeat(64),
+                Some(&binding),
+                1_700_000_600,
+                1,
+                1_700_000_600,
+                1_700_000_300,
+                8,
+            )
+            .await?,
+        HostedCapabilityAdmissionOutcome::RetriedSameRequest
+    );
+    Ok(())
+}
+
+/// A charged reservation records what it charged. Enlarging one in place
+/// would leave the accumulator, and the ceiling enforced against it,
+/// holding the original amount, so the write is refused outright.
+pub(super) async fn assert_charged_reservations_are_immutable(
+    store: &PostgresFindingMarketStore,
+    runtime_pool: &sqlx::PgPool,
+    nonce: u128,
+) -> Result<(), Box<dyn Error>> {
+    let tenant = &HostedTenantId::new(format!("integration-reservation-immutable-{nonce}"))?;
+    store
+        .register_tenant(
+            tenant,
+            &HostedTenantLimits::new(1, 8, 10_000, "integration-revision-1")?,
+            1_700_000_000,
+        )
+        .await?;
+    store
+        .reserve_monthly_spend(tenant, "purchase-immutable", 1_000)
+        .await?;
+
+    let mut writer = runtime_pool.begin().await?;
+    sqlx::query("SELECT set_config('chio.tenant_id', $1, TRUE)")
+        .bind(tenant.as_str())
+        .execute(&mut *writer)
+        .await?;
+    let enlarged = sqlx::query(
+        "UPDATE chio_finding_market_spend_reservations SET units = 9000 WHERE tenant_id = $1 AND reservation_id = $2",
+    )
+    .bind(tenant.as_str())
+    .bind("purchase-immutable")
+    .execute(&mut *writer)
+    .await;
+    assert!(
+        enlarged.is_err(),
+        "a charged reservation must not be enlarged in place"
+    );
+    drop(writer);
+
+    // The ceiling still reflects what was actually reserved.
+    assert!(matches!(
+        store
+            .reserve_monthly_spend(tenant, "purchase-immutable-rest", 9_500)
+            .await,
+        Err(HostedMarketStoreError::Capacity)
+    ));
+    Ok(())
+}
+
+/// Retained request admissions are bounded. They outlive the proofs that
+/// recorded them, so the live-proof ceiling does not bound them, and a
+/// credential holder could otherwise rotate idempotency keys as its proof
+/// slots expire and retain a row per admitted request.
+pub(super) async fn assert_retained_request_bindings_are_bounded(
+    store: &PostgresFindingMarketStore,
+    nonce: u128,
+) -> Result<(), Box<dyn Error>> {
+    let tenant = &HostedTenantId::new(format!("integration-binding-ceiling-{nonce}"))?;
+    store
+        .register_tenant(
+            tenant,
+            &HostedTenantLimits::new(1, 8, 10_000, "integration-revision-1")?,
+            1_700_000_000,
+        )
+        .await?;
+    let capability = "capability-binding-ceiling";
+    let expires_at = 1_700_100_000;
+    // One live proof slot, so each admission's proof expires before the
+    // next one and only the retained bindings accumulate.
+    let capacity = 1;
+    let ceiling = 64;
+    let mut admitted = 0_u32;
+    let mut refused = None;
+    for index in 0..=ceiling {
+        let at = 1_700_000_001 + i64::from(index) * 10;
+        let outcome = store
+            .consume_capability_dpop_admission(
+                tenant,
+                capability,
+                &format!("{index:064x}"),
+                Some(&format!("{:0>64}", format!("{index:x}b"))),
+                u64::try_from(at + 5)?,
+                200,
+                expires_at,
+                u64::try_from(at)?,
+                capacity,
+            )
+            .await;
+        match outcome {
+            Ok(HostedCapabilityAdmissionOutcome::Admitted) => admitted += 1,
+            Err(HostedMarketStoreError::Capacity) => {
+                refused = Some(index);
+                break;
+            }
+            other => panic!("unexpected admission outcome: {other:?}"),
+        }
+    }
+    assert_eq!(
+        refused,
+        Some(ceiling),
+        "the tenant must retain exactly its ceiling of request admissions"
+    );
+    assert_eq!(admitted, u32::try_from(ceiling)?);
+
+    // The ceiling refuses new bindings rather than evicting recorded ones,
+    // so every request already admitted stays recoverable.
+    assert_eq!(
+        store
+            .consume_capability_dpop_admission(
+                tenant,
+                capability,
+                &format!("{:064x}", 4_096),
+                Some(&format!("{:0>64}", "0b")),
+                1_700_000_800,
+                200,
+                expires_at,
+                1_700_000_700,
+                capacity,
+            )
+            .await?,
+        HostedCapabilityAdmissionOutcome::RetriedSameRequest
+    );
+    Ok(())
+}
+
+/// Accounting that cannot be trusted denies rather than becoming
+/// authoritative. Nothing re-derives the spend accumulator at runtime, so
+/// clamping an underflow at zero would leave it undercounting the
+/// reservations still charged and let later spend pass the ceiling.
+pub(super) async fn assert_spend_accumulator_underflow_denies(
+    store: &PostgresFindingMarketStore,
+    admin_pool: &sqlx::PgPool,
+    nonce: u128,
+) -> Result<(), Box<dyn Error>> {
+    let tenant = &HostedTenantId::new(format!("integration-spend-underflow-{nonce}"))?;
+    store
+        .register_tenant(
+            tenant,
+            &HostedTenantLimits::new(1, 8, 10_000, "integration-revision-1")?,
+            1_700_000_000,
+        )
+        .await?;
+    store
+        .reserve_monthly_spend(tenant, "purchase-underflow-kept", 4_000)
+        .await?;
+    store
+        .reserve_monthly_spend(tenant, "purchase-underflow-released", 4_000)
+        .await?;
+
+    // Only the owning role can write this accumulator now, so the skew a
+    // partial repair would leave behind is injected with that role.
+    let mut skew = admin_pool.begin().await?;
+    let billing_period: String =
+        sqlx::query_scalar("SELECT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM')")
+            .fetch_one(&mut *skew)
+            .await?;
+    sqlx::query(
+        "UPDATE chio_finding_market_spend_periods SET consumed_units = 1000 WHERE tenant_id = $1 AND billing_period = $2",
+    )
+    .bind(tenant.as_str())
+    .bind(&billing_period)
+    .execute(&mut *skew)
+    .await?;
+    skew.commit().await?;
+
+    assert!(
+        store
+            .release_monthly_spend(tenant, "purchase-underflow-released")
+            .await
+            .is_err(),
+        "a release that would drive the accumulator negative must deny"
+    );
+
+    let mut reader = admin_pool.begin().await?;
+    let consumed: i64 = sqlx::query_scalar(
+        "SELECT consumed_units FROM chio_finding_market_spend_periods WHERE tenant_id = $1 AND billing_period = $2",
+    )
+    .bind(tenant.as_str())
+    .bind(&billing_period)
+    .fetch_one(&mut *reader)
+    .await?;
+    assert_eq!(
+        consumed, 1_000,
+        "the denied release must leave the accumulator untouched rather than zeroed"
+    );
+    reader.commit().await?;
+    Ok(())
+}
+
+/// Paging an aggregate's history must chain each page onto the caller's
+/// anchor, end exactly at the durable head, and reject an anchor the chain
+/// does not bind.
+pub(super) async fn assert_paged_aggregate_history(
+    store: &PostgresFindingMarketStore,
+    tenant_a: &HostedTenantId,
+    market_finding_id: &str,
+) -> Result<(), Box<dyn Error>> {
+    let first_page = store
+        .aggregate_history_page(
+            tenant_a,
+            HostedAggregateKind::Finding,
+            market_finding_id,
+            0,
+            None,
+            1,
+        )
+        .await?;
+    assert_eq!(first_page.events.len(), 1);
+    assert_eq!(first_page.next_after_revision, Some(1));
+    let second_page = store
+        .aggregate_history_page(
+            tenant_a,
+            HostedAggregateKind::Finding,
+            market_finding_id,
+            1,
+            Some(&first_page.events[0].event_sha256),
+            1,
+        )
+        .await?;
+    assert_eq!(second_page.events.len(), 1);
+    assert_eq!(
+        second_page.events[0].previous_event_sha256.as_deref(),
+        Some(first_page.events[0].event_sha256.as_str()),
+        "a page must chain onto its anchor"
+    );
+    assert_eq!(
+        second_page.next_after_revision, None,
+        "the page that reaches the head must end the walk"
+    );
+    assert!(
+        matches!(
+            store
+                .aggregate_history_page(
+                    tenant_a,
+                    HostedAggregateKind::Finding,
+                    market_finding_id,
+                    1,
+                    Some(&"0".repeat(64)),
+                    1,
+                )
+                .await,
+            Err(HostedMarketStoreError::DigestMismatch)
+        ),
+        "a page that does not chain onto the caller's anchor must fail closed"
+    );
+    Ok(())
+}
+
+/// A writer that predates the derived accumulators still keeps them
+/// correct. The rollout applies migrations before the previous release is
+/// replaced, so during that window a replica writes only the reservation
+/// and nonce tables; both accumulators are trigger-maintained so the new
+/// binary's capacity decisions still see those writes.
+pub(super) async fn assert_prior_release_writes_keep_accumulators(
+    store: &PostgresFindingMarketStore,
+    runtime_pool: &sqlx::PgPool,
+    nonce: u128,
+) -> Result<(), Box<dyn Error>> {
+    let tenant = &HostedTenantId::new(format!("integration-prior-release-{nonce}"))?;
+    store
+        .register_tenant(
+            tenant,
+            &HostedTenantLimits::new(1, 8, 5_000, "integration-revision-1")?,
+            1_700_000_000,
+        )
+        .await?;
+    let mut legacy = runtime_pool.begin().await?;
+    sqlx::query("SELECT set_config('chio.tenant_id', $1, TRUE)")
+        .bind(tenant.as_str())
+        .execute(&mut *legacy)
+        .await?;
+    let billing_period: String =
+        sqlx::query_scalar("SELECT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM')")
+            .fetch_one(&mut *legacy)
+            .await?;
+    sqlx::query(
+        "INSERT INTO chio_finding_market_spend_reservations (tenant_id, reservation_id, billing_period, units, state, created_at, updated_at) VALUES ($1, $2, $3, $4, 'reserved', $5, $5)",
+    )
+    .bind(tenant.as_str())
+    .bind("purchase-spend-prior-release")
+    .bind(&billing_period)
+    .bind(3_000_i64)
+    .bind(1_700_000_000_i64)
+    .execute(&mut *legacy)
+    .await?;
+    sqlx::query(
+        "INSERT INTO chio_finding_market_dpop_nonces (tenant_id, capability_id, nonce_sha256, valid_through, created_at) VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(tenant.as_str())
+    .bind("capability-prior-release")
+    .bind("2".repeat(64))
+    .bind(1_900_000_000_i64)
+    .bind(1_700_000_000_i64)
+    .execute(&mut *legacy)
+    .await?;
+    let consumed: i64 = sqlx::query_scalar(
+        "SELECT consumed_units FROM chio_finding_market_spend_periods WHERE tenant_id = $1 AND billing_period = $2",
+    )
+    .bind(tenant.as_str())
+    .bind(&billing_period)
+    .fetch_one(&mut *legacy)
+    .await?;
+    assert_eq!(
+        consumed, 3_000,
+        "a reservation written by the previous release must charge the period"
+    );
+    let live_nonces: i64 = sqlx::query_scalar(
+        "SELECT live_nonces FROM chio_finding_market_dpop_admission_state WHERE tenant_id = $1",
+    )
+    .bind(tenant.as_str())
+    .fetch_one(&mut *legacy)
+    .await?;
+    assert_eq!(
+        live_nonces, 1,
+        "a nonce written by the previous release must count against the tenant"
+    );
+    legacy.commit().await?;
+
+    assert!(
+        matches!(
+            store
+                .reserve_monthly_spend(tenant, "purchase-spend-over-prior", 3_000)
+                .await,
+            Err(HostedMarketStoreError::Capacity)
+        ),
+        "the ceiling must account for the previous release's reservation"
+    );
+    assert!(
+        matches!(
+            store
+                .consume_capability_dpop_admission(
+                    tenant,
+                    "capability-after-prior-release",
+                    &"3".repeat(64),
+                    Some(&"9".repeat(64)),
+                    1_900_000_000,
+                    4,
+                    1_900_000_000,
+                    1_700_000_001,
+                    1,
+                )
+                .await,
+            Err(HostedMarketStoreError::Capacity)
+        ),
+        "the nonce ceiling must account for the previous release's nonce"
+    );
+    Ok(())
+}
+
+/// A proof is bound to the exact request it authorized. An identical retry
+/// resumes that request, which is what lets a mutation cut short after
+/// admission complete; the same nonce presented for any other request is a
+/// replay and denies.
+pub(super) async fn assert_admission_binds_its_request(
+    store: &PostgresFindingMarketStore,
+    tenant: &HostedTenantId,
+    nonce: &str,
+    binding: &str,
+) -> Result<(), Box<dyn Error>> {
+    // A mutation cut short after admission resumes on an identical retry,
+    // including one carrying a fresh proof: the record of the admitted
+    // request outlives the nonce that created it, so recovery is not
+    // bounded by proof freshness. It costs no further invocation.
+    assert_eq!(
+        store
+            .consume_capability_dpop_admission(
+                tenant,
+                "capability-atomic",
+                &"b".repeat(64),
+                Some(binding),
+                1_700_000_300,
+                2,
+                1_700_000_300,
+                1_700_000_005,
+                8,
+            )
+            .await?,
+        HostedCapabilityAdmissionOutcome::RetriedSameRequest
+    );
+    // The same nonce presented for any other request is still a replay.
+    assert_eq!(
+        store
+            .consume_capability_dpop_admission(
+                tenant,
+                "capability-atomic",
+                nonce,
+                Some(&"9".repeat(64)),
+                1_700_000_300,
+                2,
+                1_700_000_300,
+                1_700_000_006,
+                8,
+            )
+            .await?,
+        HostedCapabilityAdmissionOutcome::Replay
+    );
+    // A request with no idempotency key records nothing, so reusing its
+    // proof stays a rejected replay rather than a free repeat.
+    let read_capability = "capability-read-only";
+    let read_nonce = "7".repeat(64);
+    assert_eq!(
+        store
+            .consume_capability_dpop_admission(
+                tenant,
+                read_capability,
+                &read_nonce,
+                None,
+                1_700_000_300,
+                4,
+                1_700_000_300,
+                1_700_000_007,
+                8,
+            )
+            .await?,
+        HostedCapabilityAdmissionOutcome::Admitted
+    );
+    assert_eq!(
+        store
+            .consume_capability_dpop_admission(
+                tenant,
+                read_capability,
+                &read_nonce,
+                None,
+                1_700_000_300,
+                4,
+                1_700_000_300,
+                1_700_000_008,
+                8,
+            )
+            .await?,
+        HostedCapabilityAdmissionOutcome::Replay
+    );
+    Ok(())
+}

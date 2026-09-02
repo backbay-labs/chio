@@ -43,7 +43,7 @@ pub(crate) use validation::{
     validate_digest, validate_identifier, verify_payload,
 };
 
-pub use aggregates::{HostedAggregateEvent, HostedAggregateHead, HostedAggregateKind};
+pub use aggregates::{HostedAggregateEvent, HostedAggregateHead, HostedAggregateHistoryPage};
 pub use auth::{
     HostedPrincipalLifecycleBody, HostedPrincipalLifecycleOperation, HostedSecurityEventOutcome,
     SignedHostedPrincipalLifecycleEvent, HOSTED_PRINCIPAL_LIFECYCLE_SCHEMA,
@@ -53,9 +53,10 @@ pub use checkpoints::{
     HostedAggregateCheckpointBody, HostedAggregateCheckpointRecord,
     SignedHostedAggregateCheckpoint, HOSTED_AGGREGATE_CHECKPOINT_SCHEMA,
 };
+pub use chio_finding_market_port::{HostedAggregateKind, HostedMarketDomainEventKind};
 pub use domain::{
     HostedCommerceSettlementPacket, HostedCommerceSettlementStatus, HostedMarketDomainArtifact,
-    HostedMarketDomainEvent, HostedMarketDomainEventKind, HostedMarketDomainProjection,
+    HostedMarketDomainEvent, HostedMarketDomainProjection,
 };
 pub use import::{
     HostedSqliteImportBatchBody, HostedSqliteImportEntry, HostedSqliteImportOutcome,
@@ -165,6 +166,8 @@ pub enum HostedMarketStoreError {
     LeaseLost,
     #[error("hosted market durable state failed its digest check")]
     DigestMismatch,
+    #[error("hosted market durable state failed to decode: {0}")]
+    Decode(&'static str),
     #[error("hosted market retention target is protected by an active hold")]
     RetentionHeld,
     #[error("hosted market PostgreSQL migration ledger drifted")]
@@ -475,7 +478,7 @@ impl PostgresFindingMarketStore {
             .acquire_timeout(config.acquire_timeout)
             .connect_with(config.connect_options()?)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
         runtime_boundary::verify_runtime_role(&pool).await?;
         verify_schema_current(&pool).await?;
         Ok(Self {
@@ -493,7 +496,7 @@ impl PostgresFindingMarketStore {
             .acquire_timeout(config.acquire_timeout)
             .connect_with(config.connect_options()?)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
         runtime_boundary::verify_worker_role(&pool).await?;
         verify_schema_current(&pool).await?;
         Ok(Self {
@@ -546,7 +549,7 @@ impl PostgresFindingMarketMigrator {
             .acquire_timeout(config.acquire_timeout)
             .connect_with(config.connect_options()?)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
         runtime_boundary::verify_migrator_role(&pool).await?;
         Ok(Self { pool })
     }
@@ -559,16 +562,12 @@ impl PostgresFindingMarketMigrator {
     }
 
     pub async fn migrate(&self) -> Result<(), HostedMarketStoreError> {
-        let mut connection = self
-            .pool
-            .acquire()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let mut connection = self.pool.acquire().await.map_err(unavailable)?;
         sqlx::query("SELECT pg_advisory_lock(hashtextextended($1, 0))")
             .bind(MIGRATION_LOCK_NAME)
             .execute(&mut *connection)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
         let migrated = match bridge_legacy_migration_ledger(&mut connection).await {
             Ok(()) => chio_finding_market_migrations::MIGRATOR
                 .run_direct(&mut *connection)
@@ -580,7 +579,7 @@ impl PostgresFindingMarketMigrator {
             .bind(MIGRATION_LOCK_NAME)
             .execute(&mut *connection)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable);
+            .map_err(unavailable);
         match (migrated, unlocked) {
             (Ok(()), Ok(_)) => Ok(()),
             (Err(error), _) | (Ok(()), Err(error)) => Err(error),
@@ -610,11 +609,16 @@ impl PostgresFindingMarketStore {
         let available_at = checked_i64(available_at, "available_at")?;
         let now = checked_i64(now, "now")?;
         let mut transaction = self.begin_tenant(tenant).await?;
+        // Tenant-wide lock guarding the queued-job quota check below: the
+        // count-then-insert pair must not interleave. This serializes job
+        // inserts per tenant, so a tenant's insert throughput is bounded by
+        // one quota-check transaction at a time; admission (DPoP) and spend
+        // reservations are row-scoped and do not share this ceiling.
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
             .bind(tenant.as_str())
             .execute(&mut *transaction)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
 
         if let Some(row) = sqlx::query(
             "SELECT job_kind, request_sha256, payload_sha256, payload_json FROM chio_finding_market_jobs WHERE tenant_id = $1 AND job_id = $2 FOR UPDATE",
@@ -623,7 +627,7 @@ impl PostgresFindingMarketStore {
         .bind(job_id)
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?
+        .map_err(unavailable)?
         {
             let stored_kind: String = row.try_get(0).map_err(unavailable)?;
             let stored_request: String = row.try_get(1).map_err(unavailable)?;
@@ -640,7 +644,7 @@ impl PostgresFindingMarketStore {
             transaction
                 .commit()
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(unavailable)?;
             return Ok(HostedJobWriteOutcome::ExactReplay);
         }
 
@@ -650,14 +654,14 @@ impl PostgresFindingMarketStore {
         .bind(tenant.as_str())
         .fetch_one(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         let counts = sqlx::query(
             "SELECT COUNT(*), COUNT(*) FILTER (WHERE state IN ('pending', 'leased', 'failed')) FROM chio_finding_market_jobs WHERE tenant_id = $1",
         )
         .bind(tenant.as_str())
         .fetch_one(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         let retained_count: i64 = counts.try_get(0).map_err(unavailable)?;
         let queued_count: i64 = counts.try_get(1).map_err(unavailable)?;
         if retained_count >= self.max_jobs_per_tenant || queued_count >= quota {
@@ -677,10 +681,7 @@ impl PostgresFindingMarketStore {
         .execute(&mut *transaction)
         .await
         .map_err(map_job_insert_error)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(HostedJobWriteOutcome::Inserted)
     }
 
@@ -697,11 +698,8 @@ impl PostgresFindingMarketStore {
             .bind(job_id)
             .fetch_optional(&mut *transaction)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         row.map(|row| job_from_row(tenant, &row)).transpose()
     }
 
@@ -719,11 +717,8 @@ impl PostgresFindingMarketStore {
         .bind(tenant.as_str())
         .fetch_one(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         stored_u64(count)
     }
 
@@ -737,11 +732,8 @@ impl PostgresFindingMarketStore {
         .bind(tenant.as_str())
         .fetch_one(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         stored_u64(count)
     }
 
@@ -752,10 +744,7 @@ impl PostgresFindingMarketStore {
         tenant: &HostedTenantId,
     ) -> Result<(), HostedMarketStoreError> {
         let transaction = self.begin_tenant(tenant).await?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)
+        transaction.commit().await.map_err(unavailable)
     }
 
     pub(crate) async fn begin_tenant(
@@ -772,20 +761,16 @@ impl PostgresFindingMarketStore {
         &self,
         tenant: &HostedTenantId,
     ) -> Result<Transaction<'_, Postgres>, HostedMarketStoreError> {
-        let mut transaction = self
-            .pool
-            .begin()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
             .execute(&mut *transaction)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
         sqlx::query("SELECT set_config('chio.tenant_id', $1, TRUE)")
             .bind(tenant.as_str())
             .execute(&mut *transaction)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
         self.require_enabled_tenant(&mut transaction, tenant, false)
             .await?;
         Ok(transaction)
@@ -806,7 +791,7 @@ impl PostgresFindingMarketStore {
             .bind(tenant.as_str())
             .fetch_optional(&mut **transaction)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?
+            .map_err(unavailable)?
             .ok_or(HostedMarketStoreError::TenantNotFound)?;
         if !enabled {
             return Err(HostedMarketStoreError::TenantDisabled);
@@ -818,16 +803,12 @@ impl PostgresFindingMarketStore {
         &self,
         tenant: &HostedTenantId,
     ) -> Result<Transaction<'_, Postgres>, HostedMarketStoreError> {
-        let mut transaction = self
-            .pool
-            .begin()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
         sqlx::query("SELECT set_config('chio.tenant_id', $1, TRUE)")
             .bind(tenant.as_str())
             .execute(&mut *transaction)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
         Ok(transaction)
     }
 }

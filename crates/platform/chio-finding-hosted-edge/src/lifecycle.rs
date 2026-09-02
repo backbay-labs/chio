@@ -15,6 +15,7 @@ use zeroize::{Zeroize as _, Zeroizing};
 
 use crate::{ApiKeyPepper, HostedEdgeError};
 
+/// Schema identifier pinned by every API-key lifecycle event.
 pub const HOSTED_API_KEY_LIFECYCLE_SCHEMA: &str = "chio.finding.hosted-api-key-lifecycle.v1";
 const MAX_IDENTIFIER_BYTES: usize = 256;
 const MAX_KEY_ID_BYTES: usize = 128;
@@ -22,6 +23,8 @@ const MAX_ACTION_BYTES: usize = 96;
 const MAX_ACTIONS: usize = 64;
 const API_KEY_SECRET_BYTES: usize = 32;
 
+/// Signed record of one API-key issue or revoke, chained to the
+/// previous event for the same key.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostedApiKeyLifecycleEvent {
@@ -33,6 +36,7 @@ pub struct HostedApiKeyLifecycleEvent {
     pub occurred_at: u64,
 }
 
+/// Lifecycle operations a signed event can record.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(
     tag = "kind",
@@ -51,8 +55,11 @@ pub enum HostedApiKeyLifecycleOperation {
     Revoked,
 }
 
+/// Signed lifecycle event envelope.
 pub type SignedHostedApiKeyLifecycleEvent = SignedExportEnvelope<HostedApiKeyLifecycleEvent>;
 
+/// Fail closed unless the envelope verifies under the expected signer
+/// and carries the pinned schema.
 pub fn verify_signed_hosted_api_key_lifecycle_event(
     receipt: &SignedHostedApiKeyLifecycleEvent,
     pinned_signer: &PublicKey,
@@ -70,6 +77,8 @@ pub fn verify_signed_hosted_api_key_lifecycle_event(
     }
 }
 
+/// Everything one key issuance fixes: tenant, principal, allowed
+/// actions, and the validity window.
 #[derive(Debug)]
 pub struct HostedApiKeyIssueRequest {
     pub tenant_id: HostedTenantId,
@@ -85,6 +94,8 @@ pub struct HostedApiKeyIssueRequest {
     pub secret: HostedApiKeySecret,
 }
 
+/// A freshly generated or parsed API-key secret; exposure is explicit
+/// and Debug output is redacted.
 pub struct HostedApiKeySecret(String);
 
 impl HostedApiKeySecret {
@@ -136,6 +147,7 @@ impl Drop for HostedApiKeySecret {
     }
 }
 
+/// The stored record and one-time secret returned by an issuance.
 #[derive(Debug)]
 pub struct HostedIssuedApiKey {
     pub secret: HostedApiKeySecret,
@@ -144,6 +156,8 @@ pub struct HostedIssuedApiKey {
 
 pub use chio_finding_market_port::HostedApiKeyLifecyclePort as HostedApiKeyLifecycleRepository;
 
+/// Issues and revokes API keys through the durable lifecycle port,
+/// signing a lifecycle event for every mutation.
 pub struct HostedApiKeyManager {
     repository: Arc<dyn HostedApiKeyLifecycleRepository>,
     pepper: Arc<dyn ApiKeyPepper>,
@@ -151,6 +165,7 @@ pub struct HostedApiKeyManager {
 }
 
 impl HostedApiKeyManager {
+    /// Fail closed unless the manager configuration and signer validate.
     pub fn new(
         repository: Arc<dyn HostedApiKeyLifecycleRepository>,
         pepper: Arc<dyn ApiKeyPepper>,
@@ -170,6 +185,8 @@ impl HostedApiKeyManager {
         })
     }
 
+    /// Issue one key: persist the record, then sign and store its
+    /// lifecycle event.
     pub async fn issue(
         &self,
         request: HostedApiKeyIssueRequest,
@@ -226,6 +243,7 @@ impl HostedApiKeyManager {
         })
     }
 
+    /// Revoke one key and sign the revocation event.
     pub async fn revoke(
         &self,
         tenant_id: HostedTenantId,

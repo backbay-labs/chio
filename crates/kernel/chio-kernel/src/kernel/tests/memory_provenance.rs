@@ -304,8 +304,13 @@ impl crate::finding_purchase::FindingStatusProofVerifier for RetractedFindingSta
     fn verify_status_proof(
         &self,
         _view: &crate::finding_purchase::FindingStatusProofContextView<'_>,
-    ) -> Result<crate::finding_purchase::VerifiedFindingStatusProof, String> {
-        Err("portable proof verification is not used by this test".to_owned())
+    ) -> Result<
+        crate::finding_purchase::VerifiedFindingStatusProof,
+        crate::finding_denial::FindingDenial,
+    > {
+        Err(crate::finding_denial::FindingDenial::unavailable(
+            "portable proof verification is not used by this test",
+        ))
     }
 
     fn verify_status_admission(
@@ -313,16 +318,20 @@ impl crate::finding_purchase::FindingStatusProofVerifier for RetractedFindingSta
         _view: &crate::finding_purchase::FindingStatusProofContextView<'_>,
         _verified: &crate::finding_purchase::VerifiedFindingStatusProof,
         _now_unix_secs: u64,
-    ) -> Result<(), String> {
-        Err("portable proof admission is not used by this test".to_owned())
+    ) -> Result<(), crate::finding_denial::FindingDenial> {
+        Err(crate::finding_denial::FindingDenial::unavailable(
+            "portable proof admission is not used by this test",
+        ))
     }
 
     fn verify_current_status_admission(
         &self,
         _view: &crate::finding_purchase::FindingCurrentStatusContextView<'_>,
         _now_unix_secs: u64,
-    ) -> Result<(), String> {
-        Err("finding is retracted".to_owned())
+    ) -> Result<(), crate::finding_denial::FindingDenial> {
+        Err(crate::finding_denial::FindingDenial::status_denied(
+            "finding is retracted",
+        ))
     }
 }
 
@@ -334,8 +343,13 @@ impl crate::finding_purchase::FindingStatusProofVerifier for CheckpointRaceStatu
     fn verify_status_proof(
         &self,
         _view: &crate::finding_purchase::FindingStatusProofContextView<'_>,
-    ) -> Result<crate::finding_purchase::VerifiedFindingStatusProof, String> {
-        Err("portable proof verification is not used by this test".to_owned())
+    ) -> Result<
+        crate::finding_purchase::VerifiedFindingStatusProof,
+        crate::finding_denial::FindingDenial,
+    > {
+        Err(crate::finding_denial::FindingDenial::unavailable(
+            "portable proof verification is not used by this test",
+        ))
     }
 
     fn verify_status_admission(
@@ -343,17 +357,21 @@ impl crate::finding_purchase::FindingStatusProofVerifier for CheckpointRaceStatu
         _view: &crate::finding_purchase::FindingStatusProofContextView<'_>,
         _verified: &crate::finding_purchase::VerifiedFindingStatusProof,
         _now_unix_secs: u64,
-    ) -> Result<(), String> {
-        Err("portable proof admission is not used by this test".to_owned())
+    ) -> Result<(), crate::finding_denial::FindingDenial> {
+        Err(crate::finding_denial::FindingDenial::unavailable(
+            "portable proof admission is not used by this test",
+        ))
     }
 
     fn verify_current_status_admission(
         &self,
         _view: &crate::finding_purchase::FindingCurrentStatusContextView<'_>,
         _now_unix_secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), crate::finding_denial::FindingDenial> {
         if self.retracted.load(std::sync::atomic::Ordering::SeqCst) {
-            Err("finding retracted during checkpoint preflight".to_owned())
+            Err(crate::finding_denial::FindingDenial::status_denied(
+                "finding retracted during checkpoint preflight",
+            ))
         } else {
             Ok(())
         }

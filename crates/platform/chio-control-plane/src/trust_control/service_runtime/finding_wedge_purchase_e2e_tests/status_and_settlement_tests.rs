@@ -206,7 +206,10 @@ impl chio_kernel::finding_purchase::FindingStatusProofVerifier
     fn verify_status_proof(
         &self,
         view: &chio_kernel::finding_purchase::FindingStatusProofContextView<'_>,
-    ) -> Result<chio_kernel::finding_purchase::VerifiedFindingStatusProof, String> {
+    ) -> Result<
+        chio_kernel::finding_purchase::VerifiedFindingStatusProof,
+        chio_kernel::finding_denial::FindingDenial,
+    > {
         chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_status_proof(
             &self.inner,
             view,
@@ -218,7 +221,7 @@ impl chio_kernel::finding_purchase::FindingStatusProofVerifier
         view: &chio_kernel::finding_purchase::FindingStatusProofContextView<'_>,
         verified: &chio_kernel::finding_purchase::VerifiedFindingStatusProof,
         now_unix_secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), chio_kernel::finding_denial::FindingDenial> {
         chio_kernel::finding_purchase::FindingStatusProofVerifier::verify_status_admission(
             &self.inner,
             view,
@@ -231,8 +234,10 @@ impl chio_kernel::finding_purchase::FindingStatusProofVerifier
         &self,
         _view: &chio_kernel::finding_purchase::FindingCurrentStatusContextView<'_>,
         _now_unix_secs: u64,
-    ) -> Result<(), String> {
-        Err("finding recovery became ineligible after dispatch".to_owned())
+    ) -> Result<(), chio_kernel::finding_denial::FindingDenial> {
+        Err(chio_kernel::finding_denial::FindingDenial::status_denied(
+            "finding recovery became ineligible after dispatch",
+        ))
     }
 }
 
@@ -711,7 +716,7 @@ pub(super) async fn run_finding_status_retraction() -> TestResult {
         Ok(()) => return Err(missing("retracted Finding memory-write denial")),
         Err(error) => error,
     };
-    assert!(write_status_error.contains("retracted"));
+    assert!(write_status_error.detail().contains("retracted"));
     let resolved = resolver.resolve(chio_guards::finding_retraction::FindingRetractionQuery {
         store: "purchased-findings",
         key: &lane.deployment.web.finding_id,
@@ -783,7 +788,7 @@ async fn finding_status_freshness_rechecks_at_final_clock_samples() -> TestResul
         .err()
         .ok_or("final status admission clock accepted an expired epoch")?;
     assert!(
-        stale_admission.contains("stale") || stale_admission.contains("freshness"),
+        stale_admission.detail().contains("stale") || stale_admission.detail().contains("freshness"),
         "unexpected refreshed-time rejection: {stale_admission}"
     );
 
@@ -946,7 +951,7 @@ async fn finding_status_admission_rechecks_sticky_state_after_proof_verification
     )
     .err()
     .ok_or("concurrent retraction was accepted after final proof verification")?;
-    assert!(error.contains("pending"), "unexpected rejection: {error}");
+    assert!(error.detail().contains("pending"), "unexpected rejection: {error}");
     Ok(())
 }
 
@@ -1010,7 +1015,7 @@ async fn finding_status_admission_makes_sticky_read_final_after_record_verificat
     )
     .err()
     .ok_or("retraction after record verification was accepted")?;
-    assert!(error.contains("pending"), "unexpected rejection: {error}");
+    assert!(error.detail().contains("pending"), "unexpected rejection: {error}");
     Ok(())
 }
 
@@ -1059,7 +1064,7 @@ async fn finding_status_admission_rejects_clock_rollback() -> TestResult {
     )
     .err()
     .ok_or("a refreshed wall clock below the durable high-water was accepted")?;
-    assert!(error.contains("clock rollback"), "unexpected rejection: {error}");
+    assert!(error.detail().contains("clock rollback"), "unexpected rejection: {error}");
     Ok(())
 }
 

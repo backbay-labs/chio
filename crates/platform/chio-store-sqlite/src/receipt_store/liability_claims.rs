@@ -39,7 +39,10 @@ impl SqliteReceiptStore {
                 "liability claim package signature verification failed".to_string(),
             ));
         }
-        claim.body.validate().map_err(ReceiptStoreError::Conflict)?;
+        claim
+            .body
+            .validate()
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let claim_owned = claim.clone();
         self.writer_handle().run_write(move |connection| {
@@ -216,7 +219,7 @@ impl SqliteReceiptStore {
         response
             .body
             .validate()
-            .map_err(ReceiptStoreError::Conflict)?;
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let response_owned = response.clone();
         self.writer_handle().run_write(move |connection| {
@@ -314,7 +317,7 @@ impl SqliteReceiptStore {
         dispute
             .body
             .validate()
-            .map_err(ReceiptStoreError::Conflict)?;
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let dispute_owned = dispute.clone();
         self.writer_handle().run_write(move |connection| {
@@ -412,7 +415,7 @@ impl SqliteReceiptStore {
         adjudication
             .body
             .validate()
-            .map_err(ReceiptStoreError::Conflict)?;
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let adjudication_owned = adjudication.clone();
         self.writer_handle().run_write(move |connection| {
@@ -505,7 +508,7 @@ impl SqliteReceiptStore {
         payout_instruction
             .body
             .validate()
-            .map_err(ReceiptStoreError::Conflict)?;
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let payout_instruction_owned = payout_instruction.clone();
         self.writer_handle().run_write(move |connection| {
@@ -605,7 +608,7 @@ impl SqliteReceiptStore {
         payout_receipt
             .body
             .validate()
-            .map_err(ReceiptStoreError::Conflict)?;
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let payout_receipt_owned = payout_receipt.clone();
         self.writer_handle().run_write(move |connection| {
@@ -705,7 +708,7 @@ impl SqliteReceiptStore {
         settlement_instruction
             .body
             .validate()
-            .map_err(ReceiptStoreError::Conflict)?;
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let settlement_instruction_owned = settlement_instruction.clone();
         self.writer_handle().run_write(move |connection| {
@@ -815,7 +818,7 @@ impl SqliteReceiptStore {
         settlement_receipt
             .body
             .validate()
-            .map_err(ReceiptStoreError::Conflict)?;
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let settlement_receipt_owned = settlement_receipt.clone();
         self.writer_handle().run_write(move |connection| {

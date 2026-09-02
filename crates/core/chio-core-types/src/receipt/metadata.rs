@@ -237,8 +237,9 @@ pub enum DeliveryResult {
 /// its own: it feeds the receipt id and the signing body. It is present only on
 /// a digest-constrained request (its presence would otherwise change every
 /// receipt id): `matched` on an Allow, `mismatched` on the persisted zero-charge
-/// Deny. The typed struct lives here rather than in `chio-kernel` so that M4/M5
-/// evidence consumers and portable verifiers outside the kernel can read it.
+/// Deny. The typed struct lives here rather than in `chio-kernel` so that
+/// delivery and challenge evidence consumers and portable verifiers outside
+/// the kernel can read it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct DeliveryContract {
@@ -320,9 +321,9 @@ pub enum FindingDeliverySettlementMode {
     LocalReversibleHold,
 }
 
-/// Kernel-verified live-status evidence attached to an M6-qualified finding
-/// delivery. All digest and root fields derive from the exact canonical
-/// portable proof and its embedded signed epoch, never from caller metadata.
+/// Kernel-verified live-status evidence attached to a finding delivery. All
+/// digest and root fields derive from the exact canonical portable proof and
+/// its embedded signed epoch, never from caller metadata.
 pub const FINDING_STATUS_KEY_DOMAIN_NONCE: u64 = 3_318_287_169_837_494;
 const I_JSON_MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
 
@@ -423,8 +424,9 @@ pub struct FindingDelivery {
     pub purchase_intent_id: String,
     /// Coordinator-preallocated payment operation identity.
     pub authoritative_payment_operation_id: String,
-    /// Portable non-inclusion evidence for M6-qualified receipts. Optional
-    /// only so previously issued M4 receipts continue to decode.
+    /// Portable non-inclusion evidence for the delivered finding. Optional
+    /// only so delivery receipts issued before this block existed continue
+    /// to decode.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_proof: Option<FindingStatusProofMetadata>,
 }

@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Decision owner: cognition-market venue and trust-control lane
-- Related: ADR-0017, ADR-0018, `docs/research/cognition-market/ARCHITECTURE.md` section 4.4
+- Related: ADR-0017, ADR-0018, `docs/market/ARCHITECTURE.md` section 4.4
 - Implements: cognition-market roadmap decision ADR-B
 
 ## Context

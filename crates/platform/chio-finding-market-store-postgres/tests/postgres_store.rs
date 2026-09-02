@@ -31,10 +31,13 @@ use sqlx::Row as _;
 mod support;
 
 use support::{
-    append_replication_check, apply_authority_transition, assert_atomic_purchase_recovery,
-    assert_catalog_retractions, assert_disabled_tenant_blocks_worker_transitions,
+    append_replication_check, apply_authority_transition,
+    assert_admission_and_accounting_invariants, assert_admission_binds_its_request,
+    assert_atomic_purchase_recovery, assert_catalog_retractions,
+    assert_concurrent_duplicates_replay, assert_disabled_tenant_blocks_worker_transitions,
     assert_forged_job_digest_rejected, assert_legacy_delivery_upgrade_rejects,
-    assert_multi_replica_leases_and_shutdown_refunds, assert_tenant_disablement_serializes,
+    assert_multi_replica_leases_and_shutdown_refunds, assert_paged_aggregate_history,
+    assert_prior_release_writes_keep_accumulators, assert_tenant_disablement_serializes,
     assert_terminal_job_retention_gc, assert_worker_job_boundary, migrate_legacy_fixture,
     signed_domain_payload, signed_principal_replication_event, ReplicationCheckSpec,
 };
@@ -115,11 +118,14 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         GRANT SELECT ON _sqlx_migrations TO chio_market_runtime_test;
         REVOKE ALL ON chio_finding_market_tenants, chio_finding_market_jobs,
             chio_finding_market_principals, chio_finding_market_api_keys,
-            chio_finding_market_dpop_nonces, chio_finding_market_capability_uses,
+            chio_finding_market_dpop_nonces, chio_finding_market_dpop_admission_state,
+            chio_finding_market_capability_uses,
+            chio_finding_market_capability_request_admissions,
             chio_finding_market_security_events, chio_finding_market_aggregate_events,
             chio_finding_market_aggregate_heads,
             chio_finding_market_aggregate_checkpoints,
             chio_finding_market_spend_reservations,
+            chio_finding_market_spend_periods,
             chio_finding_market_journal_checkpoints,
             chio_finding_market_journal_checkpoint_members,
             chio_finding_market_archive_manifests,
@@ -144,12 +150,15 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
         GRANT SELECT ON chio_finding_market_principals TO chio_market_runtime_test;
         GRANT SELECT, INSERT, UPDATE ON chio_finding_market_api_keys TO chio_market_runtime_test;
         GRANT SELECT, INSERT, DELETE ON chio_finding_market_dpop_nonces TO chio_market_runtime_test;
+        GRANT SELECT, INSERT, UPDATE ON chio_finding_market_dpop_admission_state TO chio_market_runtime_test;
         GRANT SELECT, INSERT, UPDATE, DELETE ON chio_finding_market_capability_uses TO chio_market_runtime_test;
+        GRANT SELECT, INSERT, DELETE ON chio_finding_market_capability_request_admissions TO chio_market_runtime_test;
         GRANT SELECT, INSERT ON chio_finding_market_security_events TO chio_market_runtime_test;
         GRANT SELECT ON chio_finding_market_aggregate_events TO chio_market_runtime_test;
         GRANT SELECT ON chio_finding_market_aggregate_heads TO chio_market_runtime_test;
         GRANT SELECT, INSERT ON chio_finding_market_aggregate_checkpoints TO chio_market_runtime_test;
         GRANT SELECT, INSERT, UPDATE ON chio_finding_market_spend_reservations TO chio_market_runtime_test;
+        GRANT SELECT ON chio_finding_market_spend_periods TO chio_market_runtime_test;
         GRANT SELECT ON chio_finding_market_domain_event_contracts,
             chio_finding_market_domain_projections,
             chio_finding_market_principal_events,
@@ -1142,6 +1151,8 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             .await,
         Err(HostedMarketStoreError::Capacity)
     ));
+    assert_paged_aggregate_history(&store, &tenant_a, &market_finding_id).await?;
+
     assert!(matches!(
         store
             .append_domain_event(
@@ -1633,11 +1644,14 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     assert!(security_event_tamper.is_err());
     let first_nonce = "d".repeat(64);
     let second_nonce = "e".repeat(64);
+    let first_binding = "4".repeat(64);
+    let second_binding = "5".repeat(64);
     let (first_admission, second_admission) = tokio::join!(
         store.consume_capability_dpop_admission(
             &tenant_a,
             "capability-atomic",
             &first_nonce,
+            Some(&first_binding),
             1_700_000_300,
             2,
             1_700_000_300,
@@ -1648,6 +1662,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             &tenant_a,
             "capability-atomic",
             &second_nonce,
+            Some(&second_binding),
             1_700_000_300,
             2,
             1_700_000_300,
@@ -1666,6 +1681,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
                 &tenant_a,
                 "capability-atomic",
                 &"f".repeat(64),
+                Some(&"c".repeat(64)),
                 1_700_000_300,
                 2,
                 1_700_000_300,
@@ -1681,6 +1697,7 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
                 &tenant_a,
                 "capability-atomic",
                 &"d".repeat(64),
+                Some(&"a".repeat(64)),
                 1_700_000_300,
                 2,
                 1_700_000_300,
@@ -1690,6 +1707,8 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
             .await?,
         HostedCapabilityAdmissionOutcome::Replay
     );
+    assert_admission_binds_its_request(&store, &tenant_a, &first_nonce, &first_binding).await?;
+
     let rejected_nonce_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM chio_finding_market_dpop_nonces WHERE tenant_id = $1 AND capability_id = $2 AND nonce_sha256 = $3",
     )
@@ -1699,6 +1718,10 @@ async fn tenant_isolation_exact_replay_and_lease_recovery() -> Result<(), Box<dy
     .fetch_one(&admin_pool)
     .await?;
     assert_eq!(rejected_nonce_count, 0);
+
+    assert_concurrent_duplicates_replay(&store, nonce).await?;
+    assert_prior_release_writes_keep_accumulators(&store, &runtime_pool, nonce).await?;
+    assert_admission_and_accounting_invariants(&store, &runtime_pool, &admin_pool, nonce).await?;
 
     let request = "a".repeat(64);
     let payload_a =

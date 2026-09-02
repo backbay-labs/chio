@@ -1290,7 +1290,7 @@ pub enum AdmissionReceiptOrIncident {
 }
 
 /// Why a delivery was denied after the output was produced. Closed and
-/// extended additively by later milestones (for example a finding
+/// extended additively by later revisions (for example a finding
 /// media-type or operator-policy denial), so downstream evidence can key
 /// on the reason without re-deriving it from prose.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

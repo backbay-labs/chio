@@ -11,6 +11,7 @@ use crate::credit::{
 };
 use crate::receipt::lineage::SignedExportEnvelope;
 
+use crate::error::MarketError;
 use crate::{
     bounded_market_query_limit, liability_claim_adjudication_payable_amount,
     validate_positive_money, verify_signed_artifact, SignedLiabilityClaimAdjudication,
@@ -18,6 +19,7 @@ use crate::{
     MAX_LIABILITY_CLAIM_WORKFLOW_LIMIT,
 };
 
+/// Whether a payout receipt reconciles against its instruction amount.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum LiabilityClaimPayoutReconciliationState {
@@ -25,6 +27,7 @@ pub enum LiabilityClaimPayoutReconciliationState {
     AmountMismatch,
 }
 
+/// Which inter-party settlement flow a settlement instruction drives.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum LiabilityClaimSettlementKind {
@@ -33,6 +36,8 @@ pub enum LiabilityClaimSettlementKind {
     FacilityReimbursement,
 }
 
+/// Whether a settlement receipt reconciles against its instruction
+/// amount and counterparties.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum LiabilityClaimSettlementReconciliationState {
@@ -41,6 +46,7 @@ pub enum LiabilityClaimSettlementReconciliationState {
     CounterpartyMismatch,
 }
 
+/// One settlement party bound to a capital-execution role.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LiabilityClaimSettlementRoleBinding {
@@ -53,14 +59,19 @@ pub struct LiabilityClaimSettlementRoleBinding {
 }
 
 impl LiabilityClaimSettlementRoleBinding {
-    fn validate(&self, field_name: &str) -> Result<(), String> {
+    fn validate(&self, field_name: &str) -> Result<(), MarketError> {
         if self.party_id.trim().is_empty() {
-            return Err(format!("{field_name} requires a non-empty party_id"));
+            return Err(MarketError::field_invalid(format!(
+                "{field_name} requires a non-empty party_id"
+            )));
         }
         Ok(())
     }
 }
 
+/// The payer/payee (and optional beneficiary) topology of one
+/// settlement; payer and payee must not be the same party in the
+/// same role.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LiabilityClaimSettlementRoleTopology {
@@ -71,11 +82,13 @@ pub struct LiabilityClaimSettlementRoleTopology {
 }
 
 impl LiabilityClaimSettlementRoleTopology {
-    fn validate(&self) -> Result<(), String> {
+    fn validate(&self) -> Result<(), MarketError> {
         self.payer.validate("settlement topology payer")?;
         self.payee.validate("settlement topology payee")?;
         if self.payer.role == self.payee.role && self.payer.party_id == self.payee.party_id {
-            return Err("settlement topology payer and payee must not be identical".to_string());
+            return Err(MarketError::binding_mismatch(
+                "settlement topology payer and payee must not be identical",
+            ));
         }
         if let Some(beneficiary) = self.beneficiary.as_ref() {
             beneficiary.validate("settlement topology beneficiary")?;
@@ -84,6 +97,8 @@ impl LiabilityClaimSettlementRoleTopology {
     }
 }
 
+/// Adjudicator-signed order to pay an awarded claim through one
+/// capital-execution instruction.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct LiabilityClaimPayoutInstructionArtifact {
@@ -98,48 +113,48 @@ pub struct LiabilityClaimPayoutInstructionArtifact {
 }
 
 impl LiabilityClaimPayoutInstructionArtifact {
-    pub fn validate(&self) -> Result<(), String> {
+    /// Fail closed on the instruction shape: the embedded adjudication
+    /// and capital instruction must verify and the payout amount must
+    /// equal the adjudicated award in its currency.
+    pub fn validate(&self) -> Result<(), MarketError> {
         verify_signed_artifact(&self.adjudication, "claim payout instruction adjudication")?;
         self.adjudication.body.validate()?;
         if !self
             .capital_instruction
             .verify_signature()
-            .map_err(|error| error.to_string())?
+            .map_err(|error| MarketError::signature_invalid(error.to_string()))?
         {
-            return Err(
-                "claim payout instruction capital_instruction signature verification failed"
-                    .to_string(),
-            );
+            return Err(MarketError::signature_invalid(
+                "claim payout instruction capital_instruction signature verification failed",
+            ));
         }
         validate_positive_money(&self.payout_amount, "payout_amount")?;
         let awarded_amount = liability_claim_adjudication_payable_amount(&self.adjudication.body)?;
         if &self.payout_amount != awarded_amount {
-            return Err(
-                "claim payout instruction payout_amount must match adjudication awarded_amount"
-                    .to_string(),
-            );
+            return Err(MarketError::binding_mismatch(
+                "claim payout instruction payout_amount must match adjudication awarded_amount",
+            ));
         }
         let capital_instruction = &self.capital_instruction.body;
         if capital_instruction.action != CapitalExecutionInstructionAction::TransferFunds {
-            return Err(
-                "claim payout instructions require capital_instruction action transfer_funds"
-                    .to_string(),
-            );
+            return Err(MarketError::field_invalid(
+                "claim payout instructions require capital_instruction action transfer_funds",
+            ));
         }
         if capital_instruction.source_kind != CapitalBookSourceKind::FacilityCommitment {
-            return Err(
-                "claim payout instructions require capital_instruction source_kind facility_commitment"
-                    .to_string(),
-            );
+            return Err(MarketError::field_invalid(
+"claim payout instructions require capital_instruction source_kind facility_commitment",
+));
         }
         let intended_amount = capital_instruction.amount.as_ref().ok_or_else(|| {
-            "claim payout instructions require capital_instruction amount".to_string()
+            MarketError::field_invalid(
+                "claim payout instructions require capital_instruction amount",
+            )
         })?;
         if intended_amount != &self.payout_amount {
-            return Err(
-                "claim payout instruction capital_instruction amount must match payout_amount"
-                    .to_string(),
-            );
+            return Err(MarketError::binding_mismatch(
+                "claim payout instruction capital_instruction amount must match payout_amount",
+            ));
         }
         let subject_key = &self
             .adjudication
@@ -162,32 +177,32 @@ impl LiabilityClaimPayoutInstructionArtifact {
             .body
             .subject_key;
         if &capital_instruction.subject_key != subject_key {
-            return Err(
-                "claim payout instruction capital_instruction subject_key must match the claim subject"
-                    .to_string(),
-            );
+            return Err(MarketError::binding_mismatch(
+"claim payout instruction capital_instruction subject_key must match the claim subject",
+));
         }
         if capital_instruction.execution_window.not_after <= self.issued_at {
-            return Err(
-                "claim payout instructions require a non-stale capital_instruction execution window"
-                    .to_string(),
-            );
+            return Err(MarketError::window_invalid(
+"claim payout instructions require a non-stale capital_instruction execution window",
+));
         }
         if capital_instruction.reconciled_state != CapitalExecutionReconciledState::NotObserved
             || capital_instruction.observed_execution.is_some()
         {
-            return Err(
-                "claim payout instructions require an unreconciled capital_instruction so payout receipts stay explicit"
-                    .to_string(),
-            );
+            return Err(MarketError::state_invalid(
+"claim payout instructions require an unreconciled capital_instruction so payout receipts stay explicit",
+));
         }
         Ok(())
     }
 }
 
+/// Signed payout instruction envelope.
 pub type SignedLiabilityClaimPayoutInstruction =
     SignedExportEnvelope<LiabilityClaimPayoutInstructionArtifact>;
 
+/// Receipt that a payout instruction executed, carrying the observed
+/// amount and its reconciliation state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct LiabilityClaimPayoutReceiptArtifact {
@@ -203,14 +218,19 @@ pub struct LiabilityClaimPayoutReceiptArtifact {
 }
 
 impl LiabilityClaimPayoutReceiptArtifact {
-    pub fn validate(&self) -> Result<(), String> {
+    /// Fail closed on the receipt shape: the embedded instruction must
+    /// verify and the reconciliation state must agree with whether the
+    /// observed amount matches the instructed one.
+    pub fn validate(&self) -> Result<(), MarketError> {
         verify_signed_artifact(
             &self.payout_instruction,
             "claim payout receipt payout_instruction",
         )?;
         self.payout_instruction.body.validate()?;
         if self.payout_receipt_ref.trim().is_empty() {
-            return Err("claim payout receipts require a non-empty payout_receipt_ref".to_string());
+            return Err(MarketError::field_invalid(
+                "claim payout receipts require a non-empty payout_receipt_ref",
+            ));
         }
         if self
             .observed_execution
@@ -218,10 +238,9 @@ impl LiabilityClaimPayoutReceiptArtifact {
             .trim()
             .is_empty()
         {
-            return Err(
-                "claim payout receipts require a non-empty observed_execution external_reference_id"
-                    .to_string(),
-            );
+            return Err(MarketError::field_invalid(
+"claim payout receipts require a non-empty observed_execution external_reference_id",
+));
         }
         validate_positive_money(
             &self.observed_execution.amount,
@@ -230,10 +249,9 @@ impl LiabilityClaimPayoutReceiptArtifact {
         if self.observed_execution.amount.currency
             != self.payout_instruction.body.payout_amount.currency
         {
-            return Err(
-                "claim payout receipt observed_execution amount currency must match payout_amount"
-                    .to_string(),
-            );
+            return Err(MarketError::currency_mismatch(
+                "claim payout receipt observed_execution amount currency must match payout_amount",
+            ));
         }
         let execution_window = &self
             .payout_instruction
@@ -244,26 +262,23 @@ impl LiabilityClaimPayoutReceiptArtifact {
         if self.observed_execution.observed_at < execution_window.not_before
             || self.observed_execution.observed_at > execution_window.not_after
         {
-            return Err(
-                "claim payout receipt observed_execution timestamp falls outside the payout instruction execution window"
-                    .to_string(),
-            );
+            return Err(MarketError::window_invalid(
+"claim payout receipt observed_execution timestamp falls outside the payout instruction execution window",
+));
         }
         match self.reconciliation_state {
             LiabilityClaimPayoutReconciliationState::Matched => {
                 if self.observed_execution.amount != self.payout_instruction.body.payout_amount {
-                    return Err(
-                        "matched claim payout receipts require observed_execution amount to match payout_amount"
-                            .to_string(),
-                    );
+                    return Err(MarketError::state_invalid(
+"matched claim payout receipts require observed_execution amount to match payout_amount",
+));
                 }
             }
             LiabilityClaimPayoutReconciliationState::AmountMismatch => {
                 if self.observed_execution.amount == self.payout_instruction.body.payout_amount {
-                    return Err(
-                        "amount_mismatch claim payout receipts require observed_execution amount to differ from payout_amount"
-                            .to_string(),
-                    );
+                    return Err(MarketError::state_invalid(
+"amount_mismatch claim payout receipts require observed_execution amount to differ from payout_amount",
+));
                 }
             }
         }
@@ -271,9 +286,13 @@ impl LiabilityClaimPayoutReceiptArtifact {
     }
 }
 
+/// Signed payout receipt envelope.
 pub type SignedLiabilityClaimPayoutReceipt =
     SignedExportEnvelope<LiabilityClaimPayoutReceiptArtifact>;
 
+/// Order to settle a claim between market parties (recovery,
+/// reinsurance, or facility reimbursement) under an explicit role
+/// topology.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct LiabilityClaimSettlementInstructionArtifact {
@@ -295,7 +314,10 @@ pub struct LiabilityClaimSettlementInstructionArtifact {
 }
 
 impl LiabilityClaimSettlementInstructionArtifact {
-    pub fn validate(&self) -> Result<(), String> {
+    /// Fail closed on the instruction shape: the embedded payout receipt
+    /// must verify, the topology must validate, and the settlement
+    /// amount must be positive in the payout currency.
+    pub fn validate(&self) -> Result<(), MarketError> {
         verify_signed_artifact(
             &self.payout_receipt,
             "claim settlement instruction payout_receipt",
@@ -304,21 +326,20 @@ impl LiabilityClaimSettlementInstructionArtifact {
         if !self
             .capital_book
             .verify_signature()
-            .map_err(|error| error.to_string())?
+            .map_err(|error| MarketError::signature_invalid(error.to_string()))?
         {
-            return Err(
-                "claim settlement instruction capital_book signature verification failed"
-                    .to_string(),
-            );
+            return Err(MarketError::signature_invalid(
+                "claim settlement instruction capital_book signature verification failed",
+            ));
         }
         validate_positive_money(&self.settlement_amount, "settlement_amount")?;
         self.topology.validate()?;
         if self.payout_receipt.body.reconciliation_state
             != LiabilityClaimPayoutReconciliationState::Matched
         {
-            return Err(
-                "claim settlement instructions require a matched payout_receipt".to_string(),
-            );
+            return Err(MarketError::state_invalid(
+                "claim settlement instructions require a matched payout_receipt",
+            ));
         }
         if self.settlement_amount.currency
             != self
@@ -329,10 +350,9 @@ impl LiabilityClaimSettlementInstructionArtifact {
                 .payout_amount
                 .currency
         {
-            return Err(
-                "claim settlement instruction settlement_amount currency must match payout_amount"
-                    .to_string(),
-            );
+            return Err(MarketError::currency_mismatch(
+                "claim settlement instruction settlement_amount currency must match payout_amount",
+            ));
         }
         if self.settlement_amount.units
             > self
@@ -343,10 +363,9 @@ impl LiabilityClaimSettlementInstructionArtifact {
                 .payout_amount
                 .units
         {
-            return Err(
-                "claim settlement instruction settlement_amount cannot exceed payout_amount"
-                    .to_string(),
-            );
+            return Err(MarketError::amount_out_of_bounds(
+                "claim settlement instruction settlement_amount cannot exceed payout_amount",
+            ));
         }
         let subject_key = &self
             .payout_receipt
@@ -373,68 +392,64 @@ impl LiabilityClaimSettlementInstructionArtifact {
             .body
             .subject_key;
         if self.capital_book.body.subject_key != *subject_key {
-            return Err(
-                "claim settlement instruction capital_book subject_key must match the claim subject"
-                    .to_string(),
-            );
+            return Err(MarketError::binding_mismatch(
+"claim settlement instruction capital_book subject_key must match the claim subject",
+));
         }
         if self.capital_book.body.summary.mixed_currency_book {
-            return Err(
-                "claim settlement instructions require a capital_book without mixed-currency ambiguity"
-                    .to_string(),
-            );
+            return Err(MarketError::state_invalid(
+"claim settlement instructions require a capital_book without mixed-currency ambiguity",
+));
         }
         if self.authority_chain.is_empty() {
-            return Err(
-                "claim settlement instructions require at least one authority_chain step"
-                    .to_string(),
-            );
+            return Err(MarketError::field_invalid(
+                "claim settlement instructions require at least one authority_chain step",
+            ));
         }
         if self.rail.rail_id.trim().is_empty() {
-            return Err("claim settlement instructions require rail.rail_id".to_string());
+            return Err(MarketError::field_invalid(
+                "claim settlement instructions require rail.rail_id",
+            ));
         }
         if self.rail.custody_provider_id.trim().is_empty() {
-            return Err(
-                "claim settlement instructions require rail.custody_provider_id".to_string(),
-            );
+            return Err(MarketError::field_invalid(
+                "claim settlement instructions require rail.custody_provider_id",
+            ));
         }
         if self.execution_window.not_before > self.execution_window.not_after {
-            return Err(
-                "claim settlement instructions require execution_window.not_before <= not_after"
-                    .to_string(),
-            );
+            return Err(MarketError::window_invalid(
+                "claim settlement instructions require execution_window.not_before <= not_after",
+            ));
         }
         if self.execution_window.not_after <= self.issued_at {
-            return Err(
-                "claim settlement instructions require a non-stale execution_window".to_string(),
-            );
+            return Err(MarketError::window_invalid(
+                "claim settlement instructions require a non-stale execution_window",
+            ));
         }
         let mut payer_role_present = false;
         let mut custodian_present = false;
         for step in &self.authority_chain {
             if step.principal_id.trim().is_empty() {
-                return Err(
-                    "claim settlement authority_chain principal_id cannot be empty".to_string(),
-                );
+                return Err(MarketError::field_invalid(
+                    "claim settlement authority_chain principal_id cannot be empty",
+                ));
             }
-            validate_capital_execution_authority_step_proof(step)?;
+            validate_capital_execution_authority_step_proof(step)
+                .map_err(MarketError::signature_invalid)?;
             if step.approved_at > step.expires_at {
-                return Err(
-                    "claim settlement authority_chain requires approved_at <= expires_at"
-                        .to_string(),
-                );
+                return Err(MarketError::window_invalid(
+                    "claim settlement authority_chain requires approved_at <= expires_at",
+                ));
             }
             if step.expires_at < self.issued_at {
-                return Err(format!(
+                return Err(MarketError::window_invalid(format!(
                     "claim settlement authority step `{}` is stale at issuance time",
                     step.principal_id
-                ));
+                )));
             }
             if step.expires_at < self.execution_window.not_after {
-                return Err(format!(
-                    "claim settlement authority step `{}` expires before the execution window closes",
-                    step.principal_id
-                ));
+                return Err(MarketError::window_invalid(format!("claim settlement authority step `{}` expires before the execution window closes",
+                    step.principal_id)));
             }
             if step.role == self.topology.payer.role {
                 payer_role_present = true;
@@ -446,23 +461,25 @@ impl LiabilityClaimSettlementInstructionArtifact {
             }
         }
         if !payer_role_present {
-            return Err(
-                "claim settlement authority_chain is missing payer-role approval".to_string(),
-            );
+            return Err(MarketError::binding_mismatch(
+                "claim settlement authority_chain is missing payer-role approval",
+            ));
         }
         if !custodian_present {
-            return Err(
-                "claim settlement authority_chain is missing the custody-provider execution step"
-                    .to_string(),
-            );
+            return Err(MarketError::binding_mismatch(
+                "claim settlement authority_chain is missing the custody-provider execution step",
+            ));
         }
         Ok(())
     }
 }
 
+/// Signed settlement instruction envelope.
 pub type SignedLiabilityClaimSettlementInstruction =
     SignedExportEnvelope<LiabilityClaimSettlementInstructionArtifact>;
 
+/// Receipt that a settlement instruction executed, carrying the
+/// observed amount, counterparties, and reconciliation state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct LiabilityClaimSettlementReceiptArtifact {
@@ -480,26 +497,29 @@ pub struct LiabilityClaimSettlementReceiptArtifact {
 }
 
 impl LiabilityClaimSettlementReceiptArtifact {
-    pub fn validate(&self) -> Result<(), String> {
+    /// Fail closed on the receipt shape: the embedded instruction must
+    /// verify and the reconciliation state must agree with the observed
+    /// amount and counterparties.
+    pub fn validate(&self) -> Result<(), MarketError> {
         verify_signed_artifact(
             &self.settlement_instruction,
             "claim settlement receipt settlement_instruction",
         )?;
         self.settlement_instruction.body.validate()?;
         if self.settlement_receipt_ref.trim().is_empty() {
-            return Err(
-                "claim settlement receipts require a non-empty settlement_receipt_ref".to_string(),
-            );
+            return Err(MarketError::field_invalid(
+                "claim settlement receipts require a non-empty settlement_receipt_ref",
+            ));
         }
         if self.observed_payer_id.trim().is_empty() {
-            return Err(
-                "claim settlement receipts require a non-empty observed_payer_id".to_string(),
-            );
+            return Err(MarketError::field_invalid(
+                "claim settlement receipts require a non-empty observed_payer_id",
+            ));
         }
         if self.observed_payee_id.trim().is_empty() {
-            return Err(
-                "claim settlement receipts require a non-empty observed_payee_id".to_string(),
-            );
+            return Err(MarketError::field_invalid(
+                "claim settlement receipts require a non-empty observed_payee_id",
+            ));
         }
         if self
             .observed_execution
@@ -507,10 +527,9 @@ impl LiabilityClaimSettlementReceiptArtifact {
             .trim()
             .is_empty()
         {
-            return Err(
-                "claim settlement receipts require a non-empty observed_execution external_reference_id"
-                    .to_string(),
-            );
+            return Err(MarketError::field_invalid(
+"claim settlement receipts require a non-empty observed_execution external_reference_id",
+));
         }
         validate_positive_money(
             &self.observed_execution.amount,
@@ -519,19 +538,17 @@ impl LiabilityClaimSettlementReceiptArtifact {
         if self.observed_execution.amount.currency
             != self.settlement_instruction.body.settlement_amount.currency
         {
-            return Err(
-                "claim settlement receipt observed_execution amount currency must match settlement_amount"
-                    .to_string(),
-            );
+            return Err(MarketError::currency_mismatch(
+"claim settlement receipt observed_execution amount currency must match settlement_amount",
+));
         }
         let execution_window = &self.settlement_instruction.body.execution_window;
         if self.observed_execution.observed_at < execution_window.not_before
             || self.observed_execution.observed_at > execution_window.not_after
         {
-            return Err(
-                "claim settlement receipt observed_execution timestamp falls outside the settlement execution window"
-                    .to_string(),
-            );
+            return Err(MarketError::window_invalid(
+"claim settlement receipt observed_execution timestamp falls outside the settlement execution window",
+));
         }
         let expected_payer = &self.settlement_instruction.body.topology.payer.party_id;
         let expected_payee = &self.settlement_instruction.body.topology.payee.party_id;
@@ -540,46 +557,41 @@ impl LiabilityClaimSettlementReceiptArtifact {
                 if self.observed_execution.amount
                     != self.settlement_instruction.body.settlement_amount
                 {
-                    return Err(
-                        "matched claim settlement receipts require observed_execution amount to match settlement_amount"
-                            .to_string(),
-                    );
+                    return Err(MarketError::state_invalid(
+"matched claim settlement receipts require observed_execution amount to match settlement_amount",
+));
                 }
                 if &self.observed_payer_id != expected_payer
                     || &self.observed_payee_id != expected_payee
                 {
-                    return Err(
-                        "matched claim settlement receipts require observed payer/payee to match the settlement topology"
-                            .to_string(),
-                    );
+                    return Err(MarketError::state_invalid(
+"matched claim settlement receipts require observed payer/payee to match the settlement topology",
+));
                 }
             }
             LiabilityClaimSettlementReconciliationState::AmountMismatch => {
                 if self.observed_execution.amount
                     == self.settlement_instruction.body.settlement_amount
                 {
-                    return Err(
-                        "amount_mismatch claim settlement receipts require observed_execution amount to differ from settlement_amount"
-                            .to_string(),
-                    );
+                    return Err(MarketError::state_invalid(
+"amount_mismatch claim settlement receipts require observed_execution amount to differ from settlement_amount",
+));
                 }
                 if &self.observed_payer_id != expected_payer
                     || &self.observed_payee_id != expected_payee
                 {
-                    return Err(
-                        "amount_mismatch claim settlement receipts still require observed payer/payee to match the settlement topology"
-                            .to_string(),
-                    );
+                    return Err(MarketError::state_invalid(
+"amount_mismatch claim settlement receipts still require observed payer/payee to match the settlement topology",
+));
                 }
             }
             LiabilityClaimSettlementReconciliationState::CounterpartyMismatch => {
                 if &self.observed_payer_id == expected_payer
                     && &self.observed_payee_id == expected_payee
                 {
-                    return Err(
-                        "counterparty_mismatch claim settlement receipts require at least one observed counterparty to differ from the settlement topology"
-                            .to_string(),
-                    );
+                    return Err(MarketError::state_invalid(
+"counterparty_mismatch claim settlement receipts require at least one observed counterparty to differ from the settlement topology",
+));
                 }
             }
         }
@@ -587,9 +599,12 @@ impl LiabilityClaimSettlementReceiptArtifact {
     }
 }
 
+/// Signed settlement receipt envelope.
 pub type SignedLiabilityClaimSettlementReceipt =
     SignedExportEnvelope<LiabilityClaimSettlementReceiptArtifact>;
 
+/// Filter set for claim workflow reports; unset fields match
+/// everything.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LiabilityClaimWorkflowQuery {
@@ -621,11 +636,15 @@ impl Default for LiabilityClaimWorkflowQuery {
 }
 
 impl LiabilityClaimWorkflowQuery {
+    /// The effective limit: the requested one clamped to the workflow
+    /// cap.
     #[must_use]
     pub fn limit_or_default(&self) -> usize {
         bounded_market_query_limit(self.limit, MAX_LIABILITY_CLAIM_WORKFLOW_LIMIT)
     }
 
+    /// The query with its limit clamped and identity fields
+    /// case-normalized.
     #[must_use]
     pub fn normalized(&self) -> Self {
         let mut normalized = self.clone();
@@ -651,6 +670,8 @@ impl LiabilityClaimWorkflowQuery {
     }
 }
 
+/// One claim with every downstream artifact observed for it, in
+/// lifecycle order.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct LiabilityClaimWorkflowRow {
@@ -671,6 +692,7 @@ pub struct LiabilityClaimWorkflowRow {
     pub settlement_receipt: Option<SignedLiabilityClaimSettlementReceipt>,
 }
 
+/// Aggregate counts for one claim workflow report.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LiabilityClaimWorkflowSummary {
@@ -692,6 +714,7 @@ pub struct LiabilityClaimWorkflowSummary {
     pub counterparty_mismatch_settlement_receipts: u64,
 }
 
+/// Query echo, summary, and rows for one claim workflow report.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct LiabilityClaimWorkflowReport {

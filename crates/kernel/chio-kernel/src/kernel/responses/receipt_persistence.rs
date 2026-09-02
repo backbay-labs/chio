@@ -26,6 +26,7 @@ impl ChioKernel {
     /// about to commit. The backend stores this receipt in its transaction,
     /// then the kernel copies the durable outbox entry into the ordinary
     /// receipt log.
+    #[cfg(feature = "finding-market")]
     pub(crate) fn build_finding_pool_mutation_receipt(
         &self,
         mutation: &crate::finding_pool::FindingPoolMutation,
@@ -317,6 +318,7 @@ impl ChioKernel {
     /// as the replay authority. Exact replay after an outbox worker stops
     /// between append and acknowledgement must not duplicate the local mirror
     /// or runtime trace.
+    #[cfg(feature = "finding-market")]
     pub(crate) fn record_chio_receipt_without_settlement_once(
         &self,
         receipt: &ChioReceipt,

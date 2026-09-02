@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use super::*;
+use crate::kernel::delivery_contract;
 
 pub(crate) struct DurableToolReturn {
     raw: RawInvocationOutcomeV1,
@@ -23,8 +24,7 @@ pub(crate) struct DurableToolReturnInput<'a> {
     pub(crate) pre_invocation_guard_evidence: &'a [chio_core::receipt::metadata::GuardEvidence],
     pub(crate) verified_payee_binding: Option<&'a VerifiedGovernedPayeeBinding>,
     pub(crate) verified_purchase: Option<&'a crate::finding_purchase::VerifiedFindingPurchase>,
-    pub(crate) verified_recovery:
-        Option<&'a crate::kernel::recovery_gate::VerifiedFindingRecoveryAdmission>,
+    pub(crate) verified_recovery: Option<&'a delivery_contract::VerifiedFindingRecoveryAdmission>,
     pub(crate) trusted_now_unix_ms: u64,
 }
 
@@ -670,7 +670,7 @@ impl ChioKernel {
             .ok_or_else(|| {
                 KernelError::DurableAdmission("projected receipt disappeared".to_owned())
             })?;
-        let mut delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
+        let mut delivery_evaluation = delivery_contract::evaluate_delivery(
             expected_output_digest.as_deref(),
             &receipt_content.content_hash,
             matches!(output, ToolCallOutput::Value(_)),
@@ -811,8 +811,7 @@ impl ChioKernel {
                 expected_non_admission_metadata
             };
         let expected_non_admission_metadata = if let Some(binding) = purchase.as_ref() {
-            let block =
-                crate::kernel::purchase_gate::finding_delivery_block(binding, &delivery_evaluation);
+            let block = delivery_contract::finding_delivery_block(binding, &delivery_evaluation);
             merge_metadata_objects(
                 expected_non_admission_metadata,
                 Some(serde_json::json!({
@@ -823,7 +822,7 @@ impl ChioKernel {
             expected_non_admission_metadata
         };
         let expected_non_admission_metadata = if let Some(binding) = recovery.as_ref() {
-            let block = crate::kernel::recovery_gate::finding_recovery_block(binding);
+            let block = delivery_contract::finding_recovery_block(binding);
             merge_metadata_objects(
                 expected_non_admission_metadata,
                 Some(serde_json::json!({
@@ -1600,7 +1599,7 @@ impl ChioKernel {
                 "purchase-marked delivery requires the frozen identity output plan".to_owned(),
             ));
         }
-        let mut delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
+        let mut delivery_evaluation = delivery_contract::evaluate_delivery(
             expected_output_digest.as_deref(),
             resolved_output_digest.as_str(),
             matches!(output, ToolCallOutput::Value(_)),
@@ -1614,7 +1613,7 @@ impl ChioKernel {
             ) {
                 warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase terminal output withheld");
                 delivery_evaluation.denial =
-                    Some(crate::kernel::purchase_gate::finding_status_delivery_denial());
+                    Some(delivery_contract::finding_status_delivery_denial());
             }
         }
         let stored_outcome = runtime
@@ -1690,7 +1689,7 @@ impl ChioKernel {
             ) {
                 warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase final terminal output withheld");
                 delivery_evaluation.denial =
-                    Some(crate::kernel::purchase_gate::finding_status_delivery_denial());
+                    Some(delivery_contract::finding_status_delivery_denial());
             }
         }
         if delivery_evaluation.denial.is_none() {
@@ -1703,7 +1702,7 @@ impl ChioKernel {
             ) {
                 warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding recovery final terminal output withheld");
                 delivery_evaluation.denial =
-                    Some(crate::kernel::purchase_gate::finding_status_delivery_denial());
+                    Some(delivery_contract::finding_status_delivery_denial());
             }
         }
         let delivery_denied = delivery_evaluation.denial.is_some();
@@ -2080,8 +2079,7 @@ impl ChioKernel {
                     "receipt metadata already carries a finding_delivery block".to_owned(),
                 ));
             }
-            let block =
-                crate::kernel::purchase_gate::finding_delivery_block(binding, &delivery_evaluation);
+            let block = delivery_contract::finding_delivery_block(binding, &delivery_evaluation);
             merge_metadata_objects(
                 metadata,
                 Some(
@@ -2103,7 +2101,7 @@ impl ChioKernel {
                     "receipt metadata already carries a finding_recovery block".to_owned(),
                 ));
             }
-            let block = crate::kernel::recovery_gate::finding_recovery_block(binding);
+            let block = delivery_contract::finding_recovery_block(binding);
             merge_metadata_objects(
                 metadata,
                 Some(serde_json::json!({

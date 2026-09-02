@@ -1,6 +1,6 @@
 //! Artifact shapes for the cognition market.
 //!
-//! Field semantics: docs/research/cognition-market/ARCHITECTURE.md section 4.
+//! Field semantics: docs/market/ARCHITECTURE.md section 4.
 
 use chio_core_types::capability::runtime_attestation::RuntimeAssuranceTier;
 use chio_core_types::capability::scope::MonetaryAmount;

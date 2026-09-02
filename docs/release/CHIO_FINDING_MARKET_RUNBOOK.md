@@ -24,7 +24,7 @@ nonce or backend version is another protocol and must reject.
 
 ## Operator preflight
 
-Before enabling an M6-qualified admission, verify all of the following:
+Before enabling a status-gated admission, verify all of the following:
 
 1. Governance authorization names the exact stable feed id, operator key, key
    epoch, role, validity interval, rotation predecessor, and revocation state.
@@ -238,7 +238,7 @@ inclusion proof and reconcile without another map update.
 
 Equivocation is any second epoch id or root for an already observed map epoch.
 
-1. Freeze status publication and M6-qualified purchases for the feed.
+1. Freeze status publication and status-gated purchases for the feed.
 2. Preserve both exact signed byte sequences, authorization snapshots, anchor
    references, and observation times.
 3. Open the objective service-bond penalty path for equivocation.
@@ -274,7 +274,7 @@ state.
 On restart, load and verify the durable feed floor, exact current signed epoch,
 sparse leaves, sticky status rows, and outbox before serving proofs or allowing
 purchases. If any required state is missing or inconsistent, keep the feed
-unavailable and deny M6-qualified reads and purchases.
+unavailable and deny status-gated reads and purchases.
 
 Restore from a backup only when it contains at least the last externally
 observed map epoch. Replay retained signed epochs and inclusion evidence into

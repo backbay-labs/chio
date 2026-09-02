@@ -255,6 +255,13 @@ pub enum KernelError {
     #[error("durable admission failed: {0}")]
     DurableAdmission(String),
 
+    /// A finding purchase, status, or recovery gate denied, carrying the
+    /// family the deciding seam chose. Reads identically to
+    /// [`Self::DurableAdmission`]; the code is what evidence and telemetry
+    /// consumers match on.
+    #[error("durable admission failed: {0}")]
+    FindingDenied(crate::finding_denial::FindingDenial),
+
     #[error(
         "cross-currency budget enforcement failed: no price oracle configured for {base}/{quote}"
     )]
@@ -589,6 +596,11 @@ impl KernelError {
                 "CHIO-KERNEL-BUDGET-STORE",
                 serde_json::json!({ "source": error.to_string() }),
                 "Check the configured budget store connectivity, permissions, and schema health before retrying.",
+            ),
+            Self::FindingDenied(denial) => self.report_with_context(
+                "CHIO-KERNEL-DURABLE-ADMISSION",
+                serde_json::json!({ "reason": denial.detail(), "denial": denial.code().as_str() }),
+                "Repair the fenced admission authority and reconcile the retained operation before retrying this request ID.",
             ),
             Self::DurableAdmission(reason) => self.report_with_context(
                 "CHIO-KERNEL-DURABLE-ADMISSION",

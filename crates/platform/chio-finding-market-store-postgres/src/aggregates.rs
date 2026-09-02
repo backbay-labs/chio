@@ -1,10 +1,11 @@
 use chio_core_types::{canonical_json_bytes, sha256_hex};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sqlx::Row as _;
 
 use super::{
-    stored_u64, unavailable, validate_digest, validate_identifier, verify_payload,
-    HostedMarketStoreError, HostedTenantId, PostgresFindingMarketStore,
+    checked_nonnegative_i64, stored_u64, unavailable, validate_digest, validate_identifier,
+    verify_payload, HostedAggregateKind, HostedMarketStoreError, HostedTenantId,
+    PostgresFindingMarketStore,
 };
 
 const MAX_AGGREGATE_ID_BYTES: usize = 256;
@@ -13,92 +14,11 @@ const MAX_EVENT_KIND_BYTES: usize = 96;
 const MAX_AGGREGATE_HISTORY: u32 = 10_000;
 const EVENT_DIGEST_DOMAIN: &str = "chio.finding.hosted.aggregate-event.v1";
 
-/// Closed set of durable cognition-market aggregate families.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(rename_all = "snake_case")]
-pub enum HostedAggregateKind {
-    Finding,
-    Recipe,
-    Profile,
-    Collateral,
-    Listing,
-    Admission,
-    Participation,
-    Purchase,
-    Reveal,
-    Delivery,
-    PurchaseTerminal,
-    FailedDelivery,
-    Challenge,
-    ChallengeOutcome,
-    VerifiedFix,
-    Retraction,
-    Liability,
-    Appeal,
-    Penalty,
-    Enforcement,
-    Settlement,
-    StatusEpoch,
-    AuditRound,
-}
-
-impl HostedAggregateKind {
-    pub(crate) const fn label(self) -> &'static str {
-        match self {
-            Self::Finding => "finding",
-            Self::Recipe => "recipe",
-            Self::Profile => "profile",
-            Self::Collateral => "collateral",
-            Self::Listing => "listing",
-            Self::Admission => "admission",
-            Self::Participation => "participation",
-            Self::Purchase => "purchase",
-            Self::Reveal => "reveal",
-            Self::Delivery => "delivery",
-            Self::PurchaseTerminal => "purchase_terminal",
-            Self::FailedDelivery => "failed_delivery",
-            Self::Challenge => "challenge",
-            Self::ChallengeOutcome => "challenge_outcome",
-            Self::VerifiedFix => "verified_fix",
-            Self::Retraction => "retraction",
-            Self::Liability => "liability",
-            Self::Appeal => "appeal",
-            Self::Penalty => "penalty",
-            Self::Enforcement => "enforcement",
-            Self::Settlement => "settlement",
-            Self::StatusEpoch => "status_epoch",
-            Self::AuditRound => "audit_round",
-        }
-    }
-
-    pub(crate) fn parse(value: &str) -> Result<Self, HostedMarketStoreError> {
-        match value {
-            "finding" => Ok(Self::Finding),
-            "recipe" => Ok(Self::Recipe),
-            "profile" => Ok(Self::Profile),
-            "collateral" => Ok(Self::Collateral),
-            "listing" => Ok(Self::Listing),
-            "admission" => Ok(Self::Admission),
-            "participation" => Ok(Self::Participation),
-            "purchase" => Ok(Self::Purchase),
-            "reveal" => Ok(Self::Reveal),
-            "delivery" => Ok(Self::Delivery),
-            "purchase_terminal" => Ok(Self::PurchaseTerminal),
-            "failed_delivery" => Ok(Self::FailedDelivery),
-            "challenge" => Ok(Self::Challenge),
-            "challenge_outcome" => Ok(Self::ChallengeOutcome),
-            "verified_fix" => Ok(Self::VerifiedFix),
-            "retraction" => Ok(Self::Retraction),
-            "liability" => Ok(Self::Liability),
-            "appeal" => Ok(Self::Appeal),
-            "penalty" => Ok(Self::Penalty),
-            "enforcement" => Ok(Self::Enforcement),
-            "settlement" => Ok(Self::Settlement),
-            "status_epoch" => Ok(Self::StatusEpoch),
-            "audit_round" => Ok(Self::AuditRound),
-            _ => Err(HostedMarketStoreError::DigestMismatch),
-        }
-    }
+/// Parse a stored aggregate label, failing closed on unknown values.
+pub(crate) fn parse_aggregate_kind(
+    value: &str,
+) -> Result<HostedAggregateKind, HostedMarketStoreError> {
+    HostedAggregateKind::parse(value).ok_or(HostedMarketStoreError::Decode("aggregate kind label"))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -162,11 +82,8 @@ impl PostgresFindingMarketStore {
         .bind(aggregate_id)
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         row.map(|row| aggregate_head_from_row(tenant, &row))
             .transpose()
     }
@@ -194,12 +111,9 @@ impl PostgresFindingMarketStore {
         .bind(aggregate_id)
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         let Some(head) = head else {
-            transaction
-                .commit()
-                .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            transaction.commit().await.map_err(unavailable)?;
             return Ok(Vec::new());
         };
         let head_revision = stored_u64(head.try_get(0).map_err(unavailable)?)?;
@@ -223,11 +137,8 @@ impl PostgresFindingMarketStore {
         .bind(i64::from(limit))
         .fetch_all(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         let events = rows
             .iter()
             .map(|row| aggregate_event_from_row(tenant, row))
@@ -271,8 +182,7 @@ fn aggregate_head_from_row(
     row: &sqlx::postgres::PgRow,
 ) -> Result<HostedAggregateHead, HostedMarketStoreError> {
     let stored_tenant: String = row.try_get(0).map_err(unavailable)?;
-    let aggregate_kind =
-        HostedAggregateKind::parse(&row.try_get::<String, _>(1).map_err(unavailable)?)?;
+    let aggregate_kind = parse_aggregate_kind(&row.try_get::<String, _>(1).map_err(unavailable)?)?;
     let aggregate_id: String = row.try_get(2).map_err(unavailable)?;
     let event_sha256: String = row.try_get(4).map_err(unavailable)?;
     if stored_tenant != tenant.as_str() {
@@ -297,8 +207,7 @@ fn aggregate_event_from_row(
     row: &sqlx::postgres::PgRow,
 ) -> Result<HostedAggregateEvent, HostedMarketStoreError> {
     let stored_tenant: String = row.try_get(0).map_err(unavailable)?;
-    let aggregate_kind =
-        HostedAggregateKind::parse(&row.try_get::<String, _>(1).map_err(unavailable)?)?;
+    let aggregate_kind = parse_aggregate_kind(&row.try_get::<String, _>(1).map_err(unavailable)?)?;
     let aggregate_id: String = row.try_get(2).map_err(unavailable)?;
     let revision = stored_u64(row.try_get(3).map_err(unavailable)?)?;
     let event_id: String = row.try_get(4).map_err(unavailable)?;
@@ -351,6 +260,141 @@ fn aggregate_event_from_row(
     })
 }
 
+/// One verified page of an aggregate's event history.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostedAggregateHistoryPage {
+    pub events: Vec<HostedAggregateEvent>,
+    /// Cursor for the next page, absent once the page reaches the current
+    /// head. Pass it back as `after_revision` with the last returned
+    /// event's digest as the anchor.
+    pub next_after_revision: Option<u64>,
+}
+
+impl PostgresFindingMarketStore {
+    /// Read one hash-chained page of an aggregate's history.
+    ///
+    /// `after_revision` is the last revision the caller already holds
+    /// (zero for the start) and `expected_anchor_sha256` that revision's
+    /// event digest (`None` at the start). The page verifies its internal
+    /// chain and its binding to the anchor, and the final page must land
+    /// exactly on the durable head, so a busy aggregate stays readable at
+    /// any length without ever trusting an unverified prefix.
+    pub async fn aggregate_history_page(
+        &self,
+        tenant: &HostedTenantId,
+        aggregate_kind: HostedAggregateKind,
+        aggregate_id: &str,
+        after_revision: u64,
+        expected_anchor_sha256: Option<&str>,
+        limit: u32,
+    ) -> Result<HostedAggregateHistoryPage, HostedMarketStoreError> {
+        validate_identifier(aggregate_id, MAX_AGGREGATE_ID_BYTES)
+            .map_err(|()| HostedMarketStoreError::Invalid("aggregate_id"))?;
+        if limit == 0 || limit > MAX_AGGREGATE_HISTORY {
+            return Err(HostedMarketStoreError::Invalid("aggregate history limit"));
+        }
+        if after_revision == 0 && expected_anchor_sha256.is_some()
+            || after_revision > 0 && expected_anchor_sha256.is_none()
+        {
+            return Err(HostedMarketStoreError::Invalid("aggregate history anchor"));
+        }
+        if let Some(anchor) = expected_anchor_sha256 {
+            validate_digest(anchor, "aggregate history anchor")
+                .map_err(|_| HostedMarketStoreError::Invalid("aggregate history anchor"))?;
+        }
+        let mut transaction = self.begin_tenant_snapshot(tenant).await?;
+        let head = sqlx::query(
+            r#"SELECT revision, event_sha256
+               FROM chio_finding_market_aggregate_heads
+               WHERE tenant_id = $1 AND aggregate_kind = $2 AND aggregate_id = $3"#,
+        )
+        .bind(tenant.as_str())
+        .bind(aggregate_kind.label())
+        .bind(aggregate_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        let Some(head) = head else {
+            transaction.commit().await.map_err(unavailable)?;
+            if after_revision != 0 {
+                return Err(HostedMarketStoreError::NotFound);
+            }
+            return Ok(HostedAggregateHistoryPage {
+                events: Vec::new(),
+                next_after_revision: None,
+            });
+        };
+        let head_revision = stored_u64(head.try_get(0).map_err(unavailable)?)?;
+        let head_digest: String = head.try_get(1).map_err(unavailable)?;
+        validate_digest(&head_digest, "durable aggregate head")
+            .map_err(|_| HostedMarketStoreError::DigestMismatch)?;
+        if after_revision > head_revision {
+            return Err(HostedMarketStoreError::NotFound);
+        }
+        let after = checked_nonnegative_i64(after_revision, "aggregate history cursor")?;
+        let rows = sqlx::query(
+            r#"SELECT tenant_id, aggregate_kind, aggregate_id, revision,
+                      event_id, event_kind, previous_event_sha256, payload_sha256,
+                      payload_json, event_sha256, committed_at
+               FROM chio_finding_market_aggregate_events
+               WHERE tenant_id = $1 AND aggregate_kind = $2 AND aggregate_id = $3
+                 AND revision > $4
+               ORDER BY revision ASC LIMIT $5"#,
+        )
+        .bind(tenant.as_str())
+        .bind(aggregate_kind.label())
+        .bind(aggregate_id)
+        .bind(after)
+        .bind(i64::from(limit))
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
+        let events = rows
+            .iter()
+            .map(|row| aggregate_event_from_row(tenant, row))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut expected_previous = expected_anchor_sha256.map(str::to_owned);
+        let mut expected_revision = after_revision;
+        for event in &events {
+            expected_revision = expected_revision
+                .checked_add(1)
+                .ok_or(HostedMarketStoreError::DigestMismatch)?;
+            if event.revision != expected_revision
+                || event.previous_event_sha256 != expected_previous
+            {
+                return Err(HostedMarketStoreError::DigestMismatch);
+            }
+            expected_previous = Some(event.event_sha256.clone());
+        }
+        if events.is_empty() && after_revision < head_revision {
+            // The head claims revisions this page could not read. Returning
+            // an empty page would hand the caller its own cursor back and
+            // loop forever; missing history fails closed instead.
+            return Err(HostedMarketStoreError::DigestMismatch);
+        }
+        let last_revision = events.last().map_or(after_revision, |event| event.revision);
+        if last_revision >= head_revision {
+            let reached_head = events
+                .last()
+                .map(|event| event.event_sha256.as_str())
+                .or(expected_anchor_sha256)
+                == Some(head_digest.as_str());
+            if !reached_head || last_revision != head_revision {
+                return Err(HostedMarketStoreError::DigestMismatch);
+            }
+            return Ok(HostedAggregateHistoryPage {
+                events,
+                next_after_revision: None,
+            });
+        }
+        Ok(HostedAggregateHistoryPage {
+            events,
+            next_after_revision: Some(last_revision),
+        })
+    }
+}
+
 fn verify_aggregate_history(
     events: &[HostedAggregateEvent],
     head_revision: u64,
@@ -395,11 +439,11 @@ mod tests {
             HostedAggregateKind::StatusEpoch,
         ] {
             assert!(matches!(
-                HostedAggregateKind::parse(kind.label()),
+                parse_aggregate_kind(kind.label()),
                 Ok(parsed) if parsed == kind
             ));
         }
-        assert!(HostedAggregateKind::parse("custom").is_err());
+        assert!(parse_aggregate_kind("custom").is_err());
     }
 
     #[test]

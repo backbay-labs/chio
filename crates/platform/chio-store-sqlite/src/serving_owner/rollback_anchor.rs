@@ -1,5 +1,6 @@
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::sha256_hex;
@@ -29,7 +30,7 @@ const MAX_PAYLOAD_BYTES: usize = SLOT_SIZE - PAYLOAD_OFFSET;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-struct AnchorRecord {
+pub(crate) struct AnchorRecord {
     format: String,
     generation: u64,
     store_uuid: String,
@@ -61,6 +62,13 @@ pub(crate) struct RollbackAnchor {
     lock_path: PathBuf,
     expected_device: u64,
     expected_inode: u64,
+    /// Held across every slot read and the whole rotation that clears a
+    /// marker, rewrites the slot, and restores it. The serving owner is one
+    /// process by construction, so this is the whole population of anchor
+    /// readers and writers: a reader never observes the rotation, which
+    /// leaves damage as the only explanation for a slot that does not
+    /// decode.
+    rotation: Mutex<()>,
 }
 
 impl RollbackAnchor {
@@ -77,6 +85,7 @@ impl RollbackAnchor {
             lock_path: lock_root.join(format!("{store_uuid}.lock")),
             expected_device,
             expected_inode,
+            rotation: Mutex::new(()),
         };
         anchor.validate_identity()?;
         Ok(anchor)
@@ -86,6 +95,7 @@ impl RollbackAnchor {
         &self,
         connection: &Connection,
     ) -> Result<(), SqliteServingOwnerError> {
+        let _rotation = self.hold_rotation()?;
         self.validate_identity()?;
         let database = DatabaseState::load_verified(connection)?;
         match self.load_record()? {
@@ -111,6 +121,7 @@ impl RollbackAnchor {
         &self,
         connection: &Connection,
     ) -> Result<(), SqliteServingOwnerError> {
+        let _rotation = self.hold_rotation()?;
         self.validate_identity()?;
         let database = DatabaseState::load_verified(connection)?;
         match self.load_record()? {
@@ -135,6 +146,7 @@ impl RollbackAnchor {
     }
 
     pub(crate) fn seed_new(&self, connection: &Connection) -> Result<(), SqliteServingOwnerError> {
+        let _rotation = self.hold_rotation()?;
         self.validate_identity()?;
         if self.load_record()?.is_some() {
             return Err(invalid("new authority rollback anchor is not empty"));
@@ -147,6 +159,7 @@ impl RollbackAnchor {
         &self,
         connection: &Connection,
     ) -> Result<(), SqliteServingOwnerError> {
+        let _rotation = self.hold_rotation()?;
         self.validate_identity()?;
         let database = DatabaseState::load_current(connection)?;
         let loaded = self
@@ -163,10 +176,53 @@ impl RollbackAnchor {
         Ok(())
     }
 
+    /// Verify the authority database still extends its anchor.
+    ///
+    /// A serving-owner commit legitimately puts the database ahead of the
+    /// anchor until the writer syncs it, so a reader on another connection
+    /// cannot require equality. It requires the same proof the writer runs:
+    /// a matching store, no counter behind the anchored one, and the
+    /// anchored digests present in both commit chains. A restored database
+    /// fails the bounds, and one whose history diverged fails the suffix
+    /// proof even when its reported head sits above the anchor. The caller
+    /// establishes that this process still owns the serving lease.
+    ///
+    /// The anchor must be read before the caller pins the database
+    /// snapshot it will prove. The writer syncs the anchor after its
+    /// commit lands, so an anchor read afterwards can carry a head the
+    /// pinned snapshot has not reached, which is indistinguishable here
+    /// from a database that fell behind.
+    pub(crate) fn verify_extends(
+        &self,
+        connection: &Connection,
+        anchored: &AnchorRecord,
+    ) -> Result<(), SqliteServingOwnerError> {
+        self.validate_identity()?;
+        let database = DatabaseState::load_current(connection)?;
+        prove_extension(connection, anchored, &database)
+    }
+
+    /// The record the anchor last committed.
+    ///
+    /// Anchor reads exclude the rotation, so no slot this observes is
+    /// mid-write: a slot that does not decode was damaged, and denies.
+    pub(crate) fn committed_record(&self) -> Result<AnchorRecord, SqliteServingOwnerError> {
+        let _rotation = self.hold_rotation()?;
+        self.validate_identity()?;
+        let loaded = self
+            .load_record()?
+            .ok_or_else(|| invalid("serving rollback anchor is absent"))?;
+        if loaded.corrupt_slot {
+            return Err(invalid("serving rollback anchor contains a corrupt slot"));
+        }
+        Ok(loaded.record)
+    }
+
     pub(crate) fn sync_after_commit(
         &self,
         connection: &Connection,
     ) -> Result<(), SqliteServingOwnerError> {
+        let _rotation = self.hold_rotation()?;
         self.validate_identity()?;
         let database = DatabaseState::load_current(connection)?;
         let loaded = self
@@ -225,6 +281,16 @@ impl RollbackAnchor {
             return Err(invalid("serving rollback anchor write did not round trip"));
         }
         Ok(())
+    }
+
+    /// Exclude the rotation from anchor reads for the caller's whole
+    /// operation. A rotation clears a slot marker before installing the
+    /// next record, and a reader that saw that interval could not tell it
+    /// from a slot the storage damaged.
+    fn hold_rotation(&self) -> Result<std::sync::MutexGuard<'_, ()>, SqliteServingOwnerError> {
+        self.rotation
+            .lock()
+            .map_err(|_| invalid("serving rollback anchor rotation lock is poisoned"))
     }
 
     fn load_record(&self) -> Result<Option<LoadedAnchor>, SqliteServingOwnerError> {
@@ -652,6 +718,7 @@ mod tests {
     use std::fs::{self, File, OpenOptions};
     use std::io::{Seek, SeekFrom, Write};
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use chio_core::canonical::canonical_json_bytes;
@@ -668,7 +735,9 @@ mod tests {
 
     use crate::{SqliteAuthorityStore, SqliteServingOwnerError};
 
-    use super::{decode_slot, COMMIT_MARKER, GENESIS_CHAIN_DIGEST, SLOT_COUNT, SLOT_SIZE};
+    use super::{
+        decode_slot, COMMIT_MARKER, GENESIS_CHAIN_DIGEST, PAYLOAD_OFFSET, SLOT_COUNT, SLOT_SIZE,
+    };
 
     struct Fixture {
         _temp: TempDir,
@@ -801,6 +870,179 @@ mod tests {
             .max_by_key(|(generation, _)| *generation)
             .map(|(_, offset)| u64::try_from(offset).expect("anchor slot offset"))
             .expect("committed anchor slot")
+    }
+
+    /// Rotation is excluded from anchor reads, so a slot a reader finds
+    /// cleared was not caught mid-write. An external rollback that clears
+    /// the newest slot to strand the companion on the prior record denies.
+    #[test]
+    fn companion_reads_reject_a_cleared_slot_marker() {
+        let fixture = fixture();
+        begin(&fixture.authority, "request-rotation-a", now_ms());
+        begin(&fixture.authority, "request-rotation-b", now_ms());
+        let anchor = lock_path(&fixture.lock_root, &fixture.authority);
+        overwrite_at(
+            &anchor,
+            newest_slot_offset(&anchor),
+            &[0_u8; COMMIT_MARKER.len()],
+        );
+
+        assert!(
+            matches!(
+                fixture.authority.owner.companion_anchor(),
+                Err(SqliteServingOwnerError::Invalid(_))
+            ),
+            "a companion read denies a slot whose commit marker was cleared"
+        );
+    }
+
+    /// The anchor advances after the commit it records, so an anchor read
+    /// once a snapshot is pinned can carry a head that snapshot never sees.
+    /// The read path captures the anchor first for exactly this reason.
+    #[test]
+    fn a_companion_snapshot_proves_against_the_anchor_it_captured() {
+        let fixture = fixture();
+        begin(&fixture.authority, "request-order-a", now_ms());
+        let owner = &fixture.authority.owner;
+
+        let captured = owner.companion_anchor().expect("companion anchor");
+        let mut companion = Connection::open(&fixture.database).expect("companion connection");
+        let snapshot = companion
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Deferred)
+            .expect("companion snapshot");
+        owner
+            .verify_companion_custody(&snapshot, &captured)
+            .expect("the captured anchor admits its own snapshot");
+
+        begin(&fixture.authority, "request-order-b", now_ms());
+
+        owner
+            .verify_companion_custody(&snapshot, &captured)
+            .expect("a commit after the snapshot does not invalidate it");
+        let advanced = owner.companion_anchor().expect("companion anchor");
+        assert!(
+            matches!(
+                owner.verify_companion_custody(&snapshot, &advanced),
+                Err(SqliteServingOwnerError::Invalid(_))
+            ),
+            "an anchor read after the snapshot outruns what it can prove"
+        );
+        snapshot.commit().expect("release companion snapshot");
+    }
+
+    /// The exclusion must not be bought by failing reads that race a
+    /// commit: discovery runs on this path while the writer works.
+    #[test]
+    fn companion_reads_survive_concurrent_commits() {
+        let fixture = fixture();
+        let authority = Arc::new(fixture.authority);
+        let writer = Arc::clone(&authority);
+        let commits = std::thread::spawn(move || {
+            for index in 0..48 {
+                begin(&writer, &format!("request-concurrent-{index}"), now_ms());
+            }
+        });
+
+        let mut companion = Connection::open(&fixture.database).expect("companion connection");
+        let mut reads = 0_u32;
+        while !commits.is_finished() {
+            // The read protocol discovery uses: one deferred transaction
+            // pins the snapshot the head and its chain are read from.
+            let anchored = authority
+                .owner
+                .companion_anchor()
+                .expect("companion anchor");
+            let snapshot = companion
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Deferred)
+                .expect("companion snapshot");
+            authority
+                .owner
+                .verify_companion_custody(&snapshot, &anchored)
+                .expect("a companion read admits while the writer commits");
+            snapshot.commit().expect("release companion snapshot");
+            reads += 1;
+        }
+        commits.join().expect("writer thread");
+        assert!(reads > 0, "the reader must observe the writer working");
+    }
+
+    /// Tolerating the rotation window must not extend to a slot that claims
+    /// to be committed and does not decode, which no interleaving produces.
+    #[test]
+    fn companion_reads_reject_a_slot_that_claims_a_corrupt_commit() {
+        let fixture = fixture();
+        begin(&fixture.authority, "request-corrupt-a", now_ms());
+        begin(&fixture.authority, "request-corrupt-b", now_ms());
+        let anchor = lock_path(&fixture.lock_root, &fixture.authority);
+        overwrite_at(
+            &anchor,
+            newest_slot_offset(&anchor) + u64::try_from(PAYLOAD_OFFSET).expect("payload offset"),
+            b"not-canonical-json",
+        );
+
+        assert!(
+            matches!(
+                fixture.authority.owner.companion_anchor(),
+                Err(SqliteServingOwnerError::Invalid(_))
+            ),
+            "a companion read denies a slot that claims a commit it cannot decode"
+        );
+    }
+
+    /// A companion read runs on its own connection and legitimately observes
+    /// the database one commit ahead of the anchor, so it cannot demand an
+    /// equal head. Comparing heads alone would let a database restored behind
+    /// the anchor pass by claiming a head above it, which is what a rolled
+    /// back status database serving stale live rows looks like.
+    #[test]
+    fn companion_reads_reject_a_restored_database_claiming_a_higher_head() {
+        let fixture = fixture();
+        begin(&fixture.authority, "request-companion-a", now_ms());
+        let snapshot = fixture._temp.path().join("companion-snapshot.db");
+        database_snapshot(&fixture.authority, &fixture.database, &snapshot);
+        begin(&fixture.authority, "request-companion-b", now_ms());
+
+        let companion = Connection::open(&fixture.database).expect("companion connection");
+        let anchored = fixture
+            .authority
+            .owner
+            .companion_anchor()
+            .expect("companion anchor");
+        fixture
+            .authority
+            .owner
+            .verify_companion_custody(&companion, &anchored)
+            .expect("an untampered companion read is admitted");
+        drop(companion);
+
+        // The owner outlives the store the way it outlives an in-flight
+        // read, so the anchor still holds the head this database committed.
+        let owner = Arc::clone(&fixture.authority.owner);
+        drop(fixture.authority);
+
+        let forged = Connection::open(&snapshot).expect("snapshot connection");
+        forged
+            .execute(
+                r#"
+                UPDATE admission_operation_commit_meta
+                SET head_sequence = head_sequence + 8,
+                    head_chain_digest = ?1,
+                    trusted_time_high_water_unix_ms =
+                        trusted_time_high_water_unix_ms + 60000
+                WHERE singleton = 1
+                "#,
+                ["f".repeat(64)],
+            )
+            .expect("forge a head above the anchored one");
+        drop(forged);
+        restore_file_in_place(&fixture.database, &snapshot);
+
+        let restored = Connection::open(&fixture.database).expect("restored connection");
+        let anchored = owner.companion_anchor().expect("companion anchor");
+        assert!(matches!(
+            owner.verify_companion_custody(&restored, &anchored),
+            Err(SqliteServingOwnerError::Invalid(_))
+        ));
     }
 
     #[test]

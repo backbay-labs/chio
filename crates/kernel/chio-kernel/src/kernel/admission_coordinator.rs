@@ -5,6 +5,7 @@ use chio_log_redact::redacted;
 use serde::Serialize;
 use tracing::warn;
 
+#[cfg(feature = "finding-market")]
 #[path = "admission_coordinator/finding_pool_recovery.rs"]
 mod finding_pool_recovery;
 #[path = "admission_coordinator/terminal.rs"]
@@ -146,6 +147,7 @@ impl DurableAdmissionRuntime {
     }
 }
 
+#[cfg(feature = "finding-market")]
 impl ChioKernel {
     pub(super) fn ensure_finding_pool_configuration_precedes_startup_reconciliation(
         &self,

@@ -326,7 +326,7 @@ pub(crate) struct PreDispatchMonetaryUnwindFailure {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct VerifiedFindingDispatchAdmission {
     pub(crate) purchase: Option<crate::finding_purchase::VerifiedFindingPurchase>,
-    pub(crate) recovery: Option<crate::kernel::recovery_gate::VerifiedFindingRecoveryAdmission>,
+    pub(crate) recovery: Option<crate::kernel::delivery_contract::VerifiedFindingRecoveryAdmission>,
 }
 
 impl From<KernelError> for PreDispatchMonetaryUnwindFailure {
