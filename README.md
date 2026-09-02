@@ -66,8 +66,11 @@ signed receipt of what happened. **If the token does not check out, the call doe
 </p>
 
 An agent can hand a token to a sub-agent, but only a narrower one. It can drop tools,
-shrink the budget, or shorten the expiry. **It cannot add anything back.** A swarm of
-sub-agents never holds more authority than the agent that spawned it.
+shrink the budget, or shorten the expiry. **It cannot add anything back.** Each hop is a signed
+delegation link carrying an attenuation proof, a basis-point budget split, and caveats, and the
+kernel rechecks the whole chain against a Merkle revocation oracle on every call. A swarm of
+sub-agents never holds more authority than the agent that spawned it, and
+[one hop is shown in full below](#delegation-and-swarms).
 
 Every receipt records what the call cost and who paid. That is enough to give an agent a
 balance, bill it per call, and let agents pay each other for work. Markets, credit, and
