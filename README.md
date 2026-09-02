@@ -33,7 +33,7 @@
   <a href="#architecture">Architecture</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
   <a href="#integrations-and-sdks">Integrations</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
   <a href="#security-and-trust">Security</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
-  <a href="#roadmap">Roadmap</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
+  <a href="#formal-verification">Proofs</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
   <a href="docs/README.md">Docs</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
   <a href="spec/PROTOCOL.md">Spec</a>
 </p>
@@ -401,6 +401,14 @@ For a full market with buyers, providers, budgets, and settlement, run
 reverse proxy for any OpenAPI service) &middot; `chio federation` (cross-kernel treaties and
 quorum) &middot; `chio trust` (revocation and trust-plane state).
 
+More ways in: [migrate a coding agent from MCP](docs/guides/MIGRATING-FROM-MCP.md),
+[add Chio to LangChain, LangGraph, CrewAI, or AutoGen](sdks/python),
+[protect a web backend](docs/guides/WEB_BACKEND_QUICKSTART.md),
+[author a native tool server](docs/start-here/NATIVE_ADOPTION_GUIDE.md),
+[deploy to Kubernetes, Lambda, or Envoy](sdks/k8s),
+[write a custom WASM guard](sdks/guard), or follow the
+[progressive tutorial](docs/start-here/PROGRESSIVE_TUTORIAL.md).
+
 ## Architecture
 
 Chio is layered around a single trusted core. External ecosystems enter through protocol
@@ -641,93 +649,101 @@ The kernel is the entire trusted base. Around it, five layers of defense, each o
 - **Signed evidence.** Every decision is sealed into a canonical-JSON (RFC 8785),
   post-quantum-ready receipt, so receipts and attestations verify byte-for-byte across languages.
 
-Chio names 20 threats in [spec/SECURITY.md](spec/SECURITY.md), each with shipped controls,
-required mitigations, and residual risk, tracked at
-[docs/security/threat-coverage.md](docs/security/threat-coverage.md). Report vulnerabilities
-privately per [SECURITY.md](SECURITY.md).
+### The threat model
 
-## Roadmap
+[spec/SECURITY.md](spec/SECURITY.md) names twenty threats, each with its shipped controls,
+required mitigations, and residual risk. Eight of them:
 
-<p align="center">
-  <picture>
-    <source media="(max-width: 500px)" srcset="docs/assets/roadmap-mobile.svg" />
-    <img src="docs/assets/roadmap.svg" alt="Chio roadmap timeline: a monthly sprint from August 2026 to March 2027 (Q1 2027), culminating in Chiodos: sovereign agent economies" width="900" />
-  </picture>
-</p>
+| Threat | What stops it |
+| --- | --- |
+| [Capability token theft](spec/SECURITY.md#21-capability-token-theft) | Tokens are bound to a subject key, expire, and can require DPoP proof of possession. Revocation is an epoch-rooted Merkle oracle every ancestor is checked against. |
+| [Kernel impersonation](spec/SECURITY.md#22-kernel-impersonation) | Receipts verify against a pinned kernel key, and the kernel recomputes a receipt's content hash inside its trust boundary before signing. |
+| [Tool server escape](spec/SECURITY.md#23-tool-server-escape) | Tool servers run as sandboxed processes with no handle to the kernel or to each other. Only the kernel dispatches. |
+| [Delegation chain abuse](spec/SECURITY.md#26-delegation-chain-abuse) | Scope-hash chain binding, the sibling-sum budget registry, and ancestor revocation checks, covered in [Delegation and swarms](#delegation-and-swarms). |
+| [SSRF via the HTTP substrate](spec/SECURITY.md#27-ssrf-via-http-substrate) | Every outbound target passes a declared [egress contract](crates/protocol/chio-egress-contract). A missing or invalid contract fails closed. |
+| [PII and PHI in responses](spec/SECURITY.md#28-piiphi-exposure-in-responses) | Response sanitization guards redact secrets, PII, and internal data from tool results before they reach the agent. |
+| [WASM guard resource exhaustion](spec/SECURITY.md#212-wasm-guard-resource-exhaustion) | Custom guards run [fuel-metered with no host access](crates/guards/chio-wasm-guards). |
+| [Post-quantum signature downgrade](spec/SECURITY.md#213-post-quantum-signature-downgrade) | Hybrid Ed25519 and ML-DSA-65 signatures, with verifiers dispatching from the signature prefix and rejecting a mismatched algorithm hint. |
 
-The protocol is in place. What follows is the frontier it opens: an agent economy that is
-sovereign, provable, and self-governing. We are shipping the whole arc on a monthly cadence,
-targeting completion by Q1 2027; the windows below are indicative.
+Coverage state per threat is generated into
+[docs/security/threat-coverage.md](docs/security/threat-coverage.md), with a conformance test
+and an adversarial corpus case behind each row.
 
-- **Aug 2026 &middot; The open authority standard.** A neutral, published protocol and a public
-  certification program for third-party runtimes: the interoperable trust layer for the whole
-  agent internet, owned by no one.
-- **Sep 2026 &middot; A machine-checked kernel, end to end.** Extend the Lean 4 proof boundary
-  from the decision core to the entire kernel and wire protocol: a trust base that is proven
-  correct, not merely tested.
-- **Oct 2026 &middot; The global receipt commons.** A federated, anti-equivocation transparency
-  log for agent action: a public, searchable commons of proofs with independent monitors, so any
-  claim about any agent can be checked by anyone.
-- **Nov 2026 &middot; Proof-carrying money.** A universal settlement fabric where value itself
-  carries provenance: one receipt standard that clears across every chain and rail, so a payment
-  always knows where it came from and what it was authorized to do.
-- **Dec 2026 &middot; Zero-knowledge compliance.** Prove KYC/AML, jurisdiction, data-residency,
-  and policy adherence about an agent's actions without revealing the underlying data. Regulation
-  anyone can verify; privacy no one has to surrender.
-- **Jan 2027 &middot; Autonomous risk markets.** Live underwriting where an agent's signed history
-  prices its own credit and insurance in real time. Reputation becomes collateral and premiums
-  self-tune, so trust can be bought, sold, and hedged like any other asset.
-- **Feb 2027 &middot; Swarm immunity.** Decoys, information-flow control, and quarantine composed
-  into a fleet-wide immune system that shares threat intelligence across federated operators and
-  adapts to new attacks in real time.
-- **Mar 2027 &middot; Chiodos: sovereign agent economies.** Chartered digital nation-states of
-  agents, each with its own treasury, constitution, and monetary policy, transacting across
-  borders under signed treaties. Economic sovereignty as a first-class protocol primitive.
+### How it is attacked on purpose
 
-## Choose your path
+- **A guard pipeline of 26 named guards** in [`chio-guards`](crates/guards/chio-guards): forbidden
+  paths, shell commands, egress allowlists, internal networks, secret leaks, prompt injection,
+  jailbreaks, data flow, velocity, behavioral sequences, patch integrity, computer use, and browser
+  automation among them. Any deny denies the call.
+- **An adversarial corpus.** [`chio-adversarial-suite`](crates/core/chio-adversarial-suite) is a
+  curated set of malicious but well-formed cases, grouped by attack class, that downstream test
+  suites use as a deny answer key.
+- **A coliseum.** [`chio-arena`](crates/core/chio-arena) runs scenarios against a real kernel,
+  mutates and co-evolves adversary populations against the guard pipeline, and promotes the
+  failures into the corpus.
+- **Fuzzing.** 28 fuzz targets run under ClusterFuzzLite on every pull request and in batch, with
+  crash triage and corpus sync as separate workflows. See [`fuzz`](fuzz).
+- **Timing leaks.** dudect harnesses check constant-time behavior for signature-byte equality
+  and scope subset checks. See [`tests/dudect`](crates/kernel/chio-kernel-core/tests/dudect).
+- **Replay.** `chio replay` re-evaluates a captured receipt log against the current build, and a
+  replay gate runs in CI.
+- **Supply chain.** cargo-vet audits and cargo-deny bans, advisories, and licenses are required
+  checks on `main`. See [`supply-chain`](supply-chain) and [`deny.toml`](deny.toml).
 
-<p align="center">
-  <picture>
-    <source media="(max-width: 500px)" srcset="docs/assets/paths-mobile.svg" />
-    <img src="docs/assets/paths.svg" alt="Seven ways in: migrate from MCP, add to an agent framework, protect a web backend, author a native server, deploy to production, write a custom guard, or run the agent economy" width="900" />
-  </picture>
-</p>
-
-- **Migrate a coding agent from MCP** - [docs/guides/MIGRATING-FROM-MCP.md](docs/guides/MIGRATING-FROM-MCP.md)
-- **Add Chio to your agent framework** (LangChain, LangGraph, CrewAI, AutoGen) - [sdks/python](sdks/python)
-- **Protect a web backend** - [docs/guides/WEB_BACKEND_QUICKSTART.md](docs/guides/WEB_BACKEND_QUICKSTART.md)
-- **Author a native Chio tool server** - [docs/start-here/NATIVE_ADOPTION_GUIDE.md](docs/start-here/NATIVE_ADOPTION_GUIDE.md)
-- **Deploy to production** (Kubernetes, Lambda, Envoy/Istio) - [sdks/k8s](sdks/k8s)
-- **Write a custom guard** (fuel-metered WASM, any language) - [sdks/guard](sdks/guard)
-- **Run the agent economy** (metering, budgets, settlement) - [examples/agent-commerce-network](examples/agent-commerce-network)
-
-For a guided local walkthrough, start with the
-[progressive tutorial](docs/start-here/PROGRESSIVE_TUTORIAL.md).
+Report vulnerabilities privately per [SECURITY.md](SECURITY.md).
 
 ## Formal verification
 
-The formal model behind Chio is written up in
-[**Programmable Sovereignty**](docs/papers/programmable-sovereignty), a machine-checked account
-of how agents and organizations govern themselves through capability-bounded, federated receipts.
+Chio has an implementation-linked verified core, defined in
+[`formal/proof-manifest.toml`](formal/proof-manifest.toml). The admission path the kernel runs
+on every call, verify, resolve, evaluate, sign, is modeled in Lean 4, and the model is tied to
+the production Rust instead of sitting beside it. Every explicit axiom in the Lean tree is a
+named cryptographic idealization in [`formal/assumptions.toml`](formal/assumptions.toml). No
+serializer, protocol, or kernel behavior is axiomatized.
 
-The formal verification roadmap was executed through its local acceptance
-gates on 2026-07-15 against implementation commit
-`d292f14df1c493873199f4f9d969ade00472ff28`. Retained full-cycle proof-mutation
-evidence was refreshed on 2026-07-16 against prerequisite commit
-`a871396bffd010500f680c035e7b52c1867f38e2`. The repository now binds
-production Rust decisions to Lean, authenticated Aeneas extraction, Creusot
-contracts, Kani harnesses, TLA+/Apalache models, differential tests,
-concurrency exploration, and mutation evidence. The generated
-[proof coverage matrix](docs/formal/COVERAGE.md) is the authoritative map from
-properties to models, production symbols, assumptions, and gates.
+<p align="center">
+  <picture>
+    <source media="(max-width: 500px)" srcset="docs/assets/proofs-mobile.svg" />
+    <img src="docs/assets/proofs.svg" alt="The verified core: a Lean 4 model of the kernel admission path is tied to the production Rust by Aeneas extraction and hashed mirrors; Creusot contracts and Kani harnesses constrain the Rust directly; TLA+ models checked by Apalache and Loom schedules cover state machines and concurrency; every axiom is a named cryptographic assumption in the registry." width="900" />
+  </picture>
+</p>
 
-All hygiene items and 22 of the 23 planned work items are implemented. The
-remaining economy collection proof is blocked on the unmerged netting surface;
-its scalar conservation predicates and Kani groundwork are present, but no
-collection-level claim is made. Hosted CI streaks remain advisory evidence and
-are not represented as local proof results. See the
-[current-state snapshot](docs/formal/CURRENT_STATE.md) and the
-[executed roadmap](docs/formal/ROADMAP.md) for exact scope and limitations.
+### What is proved
+
+Each property has bounded Lean proofs over the verified-core model. The bounds and the
+assumptions each one relies on are in the [claim registry](docs/reference/CLAIM_REGISTRY.md).
+
+| | Property | What the proofs say |
+| --- | --- | --- |
+| **P1** | [Capability attenuation](formal/lean4/Chio/Chio/Proofs/Monotonicity.lean) | A delegated scope is a subset of its parent, the attenuation witness is sound under chain binding, and sibling shares cannot sum past the parent's share. |
+| **P2** | [Revocation](formal/lean4/Chio/Chio/Proofs/Revocation.lean) | A revoked token, or a revoked presented ancestor, cannot pass the pure revocation and evaluation model. Runtime revocation stores are qualified separately. |
+| **P3** | [Fail-closed evaluation](formal/lean4/Chio/Chio/Proofs/Evaluation.lean) | The pure evaluator is total and fails closed on an invalid signature, an expired window, a revocation, or an out-of-scope request. |
+| **P4** | [Receipt integrity](formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean) | Within the published eight-leaf bound, the inclusion-proof walk Rust relying parties execute refines the proved model, with collision resistance under ASSUME-SHA256. Concrete hashing and signing are runtime-qualified. |
+| **P5** | [Delegation chains](formal/lean4/Chio/Chio/Proofs) | Structural theorems for the presented-chain model. |
+| **P6** | [Parent links](formal/lean4/Chio/Chio/Proofs) | An observed local parent edge implies a parent request existed in the same authenticated session. |
+| **P7** | [Receipt lineage](formal/lean4/Chio/Chio/Proofs/Receipt.lean) | Verified lineage requires verified receipts, a trusted kernel signature, and signed linkage. |
+| **P8** | [Session continuity](formal/lean4/Chio/Chio/Proofs) | Verified continuity requires a valid session anchor and a continuation artifact. |
+| **P9** | [Call-chain consistency](formal/lean4/Chio/Chio/Proofs) | Verified call chains require consistent subjects and parent capability references. |
+| **P10** | [Report truthfulness](formal/lean4/Chio/Chio/Proofs/FindingStatusFreshness.lean) | Report and export labels cannot upgrade asserted or observed evidence to verified evidence. |
+
+### How the model is tied to the code
+
+| Lane | What it does | Where |
+| --- | --- | --- |
+| **Lean 4** | 149 catalogued declarations, one cryptographic axiom, thirteen registered assumptions, and no placeholders. `lake build` and `sorry` hygiene run on every pull request. | [`formal/lean4`](formal/lean4) |
+| **Aeneas extraction** | Safe Rust from the kernel core and the economy is extracted through Charon and Aeneas into Lean, and every generated decision helper is proved equivalent to the handwritten model before the model theorems apply. | [`formal/aeneas`](formal/aeneas), [`formal_aeneas.rs`](crates/kernel/chio-kernel-core/src/formal_aeneas.rs) |
+| **Hashed mirrors** | 57 registered mirrors over 171 bindings hash the named Rust items and the Lean and TLA+ modules they correspond to. Drift on either side fails the gate. | [`formal/MAPPING.md`](formal/MAPPING.md) |
+| **Creusot contracts** | Contracts on the core verify, resolve, evaluate, subset, and sign symbols, required for strict CI. | [`creusot-contracts.toml`](formal/rust-verification/creusot-contracts.toml) |
+| **Kani harnesses** | 41 public harnesses on the pull-request tier: an untrusted issuer is rejected before any signature check, a widened child scope is rejected, a receipt is refused on a kernel-key or content-hash mismatch, revocation predicates are idempotent. | [`kani_public_harnesses.rs`](crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs) |
+| **TLA+ and Apalache** | Bounded state-machine invariants: a call joins an allowed set only after its receipt exists, an interrupted kernel transition rolls back budget and receipts, revocation cuts are complete, and every admitted resource reaches exactly one terminal disposition. Sixteen negative models are the falsifiability gate. | [`formal/apalache`](formal/apalache) |
+| **Loom** | Ten concurrency models of the kernel and its stores, under three preemptions and 10,000 deterministic schedules. | [`chio-kernel`](crates/kernel/chio-kernel), [`chio-store-sqlite`](crates/platform/chio-store-sqlite) |
+| **Mutation** | The retained Rust proof campaign killed 160 of 166 mutants and the specification campaign 32 of 33. Every survivor is an open issue. | [current state](docs/formal/CURRENT_STATE.md) |
+
+Counts are from the [current-state snapshot](docs/formal/CURRENT_STATE.md); the generated
+[proof coverage matrix](docs/formal/COVERAGE.md) maps every artifact to the Rust surface it
+constrains. The economy's collection-level conservation proof is the one planned item still
+open, blocked on the netting surface. The model itself is written up in
+[**Programmable Sovereignty**](docs/papers/programmable-sovereignty).
 
 ## Examples
 
