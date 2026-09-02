@@ -27,6 +27,7 @@
   <a href="#what-is-chio">What</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
   <a href="#see-it-run">See it run</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
   <a href="#why-it-is-a-kernel">Why a kernel</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
+  <a href="#delegation-and-swarms">Delegation</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
   <a href="#the-three-pillars">Pillars</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
   <a href="#quickstart">Quickstart</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
   <a href="#architecture">Architecture</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
@@ -67,26 +68,6 @@ signed receipt of what happened. **If the token does not check out, the call doe
 An agent can hand a token to a sub-agent, but only a narrower one. It can drop tools,
 shrink the budget, or shorten the expiry. **It cannot add anything back.** A swarm of
 sub-agents never holds more authority than the agent that spawned it.
-
-<p align="center">
-  <picture>
-    <source media="(max-width: 500px)" srcset="docs/assets/attenuation-mobile.svg" />
-    <img src="docs/assets/attenuation.svg" alt="Delegation in Chio only narrows: an orchestrator delegates to a planner, which delegates to a worker, and each token has fewer tools, a smaller budget, and a shorter expiry than its parent. A sub-worker token that tries to add the shell tool back is refused." width="900" />
-  </picture>
-</p>
-
-Each hop is a signed link in the token's delegation chain, and the kernel rechecks the whole
-chain on every call.
-
-| | |
-| --- | --- |
-| **Attenuation proof** | Parent and child scope hashes plus a normalized subset witness. The parent hash must match the last link in the chain, so a delegate cannot claim a bigger parent than it was given. |
-| **Budget splits** | Shares are in basis points. A per-parent registry rejects siblings whose shares add up to more than the parent holds, at every level of the tree. |
-| **Caveats** | Bind a token to a session, an audience, a time window, or a region. |
-| **Revocation** | Every ancestor is checked against a Merkle revocation oracle with signed epoch roots. Revoking one token cuts off the subtree beneath it. |
-| **Signatures** | Ed25519, with a hybrid ML-DSA-65 mode for post-quantum deployments. |
-| **Proof** | The subset witness has a Lean 4 soundness theorem and a conformance fixture that rejects inflated parent scopes. |
-| **Swarms** | The swarm authority verifies the whole task graph before a child task runs: one root, acyclic, bounded depth and fan-out, a delegation witness on every edge. Continuation tokens bind to the graph hash, the witness chain, a route-plan receipt, a live budget allocation, and the current revocation epoch. Pooled budgets use checked arithmetic, so workers cannot spend more than the orchestrator was given. |
 
 Every receipt records what the call cost and who paid. That is enough to give an agent a
 balance, bill it per call, and let agents pay each other for work. Markets, credit, and
@@ -194,6 +175,43 @@ writes the audit log. Chio is that layer for agents, and each part has a direct 
 - **Agents can pay each other.** Metering, budgets, markets, credit, and insurance clear on receipts the kernel already writes.
 - **The model, the framework, and the tool servers are all swappable.** The kernel and the receipts do not change when you change any of them.
 - **Deny is the default.** A token that does not verify, a budget that cannot be held, or a result that cannot be signed is a call that does not run.
+
+## Delegation and swarms
+
+Every sub-agent in a swarm runs on a token derived from its parent's. The derivation can drop
+tools, shrink the budget, or shorten the expiry, and nothing can be added back.
+
+<p align="center">
+  <picture>
+    <source media="(max-width: 500px)" srcset="docs/assets/attenuation-mobile.svg" />
+    <img src="docs/assets/attenuation.svg" alt="Delegation in Chio only narrows: an orchestrator delegates to a planner, which delegates to a worker, and each token has fewer tools, a smaller budget, and a shorter expiry than its parent. A sub-worker token that tries to add the shell tool back is refused." width="900" />
+  </picture>
+</p>
+
+Each hop is a signed link that the kernel rechecks on every call the child makes.
+
+<p align="center">
+  <picture>
+    <source media="(max-width: 500px)" srcset="docs/assets/hop-mobile.svg" />
+    <img src="docs/assets/hop.svg" alt="Inside one delegation hop from planner to worker: the signed delegation link, the attenuation proof whose parent scope hash must equal the last chain link, the basis-point budget split checked against siblings, the caveats, and the revocation epoch. The kernel rechecks all of it on every call." width="900" />
+  </picture>
+</p>
+
+| The attack | What stops it |
+| --- | --- |
+| Claiming a bigger parent scope than the delegate was given | The parent scope hash must equal the last link in the chain. The subset witness has a Lean 4 soundness theorem and a conformance fixture for this exact case. |
+| Two children together outspending their parent | Budgets split in basis points, and a per-parent registry rejects oversubscribed siblings at every level of the tree. |
+| A revoked ancestor's workers carrying on | Every ancestor is checked against a Merkle revocation oracle with signed epoch roots. One revocation cuts off the whole subtree beneath it. |
+| A leaked token replayed somewhere else | Caveats bind the token to a session, an audience, a region, or a time window. |
+| A broken signature scheme | Ed25519 today, with a hybrid ML-DSA-65 mode where post-quantum is required. |
+
+For recursive swarms, the swarm authority verifies the whole task graph before a child task runs.
+
+| | |
+| --- | --- |
+| **Task graph** | One root, acyclic, bounded depth and fan-out, and a delegation witness covering every edge exactly once. |
+| **Continuation tokens** | Each is bound to the graph's canonical hash, its witness chain, a route-plan receipt, a live budget allocation, and the current revocation epoch. |
+| **Pooled budgets** | Allocations roll up against a shared pool with checked arithmetic, so the workers cannot spend more than the orchestrator was given. |
 
 ## The three pillars
 
