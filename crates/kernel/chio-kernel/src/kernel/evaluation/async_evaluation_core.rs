@@ -1267,14 +1267,14 @@ impl ChioKernel {
             // or payment mutation. The verification result is discarded
             // here and re-derived deterministically at the durable
             // terminal from the frozen request.
-            if let Err(reason) = self.verify_purchase_admission(selected.grant, request, now) {
-                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase denied");
+            if let Err(denial) = self.verify_purchase_admission(selected.grant, request, now) {
+                warn!(request_id = %request.request_id, denial = %denial.code(), reason = %redacted!(denial.detail()), "finding purchase denied");
                 return self.with_pre_invocation_guard_evidence(
                     &pre_invocation_guard_evidence,
                     || {
                         self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
                             request,
-                            reason: &reason,
+                            reason: denial.detail(),
                             timestamp: now,
                             matched_grant_index,
                             cap,
@@ -1293,14 +1293,14 @@ impl ChioKernel {
             // Recovery is a separate no-charge admission profile. Its
             // verifier atomically reserves the durable recovery-id quota
             // here, before dispatch, and never invokes payment handling.
-            if let Err(reason) = self.verify_recovery_admission(selected.grant, request, now) {
-                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding recovery denied");
+            if let Err(denial) = self.verify_recovery_admission(selected.grant, request, now) {
+                warn!(request_id = %request.request_id, denial = %denial.code(), reason = %redacted!(denial.detail()), "finding recovery denied");
                 return self.with_pre_invocation_guard_evidence(
                     &pre_invocation_guard_evidence,
                     || {
                         self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
                             request,
-                            reason: &reason,
+                            reason: denial.detail(),
                             timestamp: now,
                             matched_grant_index,
                             cap,

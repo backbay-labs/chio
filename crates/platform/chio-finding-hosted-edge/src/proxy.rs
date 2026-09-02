@@ -10,6 +10,8 @@ use crate::HostedEdgeError;
 
 const MAX_FORWARDED_BYTES: usize = 1_024;
 
+/// The raw forwarding headers as received, kept separate so parsing
+/// happens under the trusted-proxy rules only.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct HostedForwardingHeaders {
     pub forwarded: Vec<String>,
@@ -18,6 +20,8 @@ pub struct HostedForwardingHeaders {
     pub x_forwarded_proto: Vec<String>,
 }
 
+/// The client identity the trusted proxy attests: originating IP and
+/// the external scheme and host.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostedRequestContext {
     pub client_ip: IpAddr,
@@ -25,6 +29,9 @@ pub struct HostedRequestContext {
     pub external_host: String,
 }
 
+/// Trusted-proxy contract: the loopback listen address, the exact
+/// peer IPs allowed to speak for clients, and the shared
+/// proxy-authentication secret.
 pub struct HostedTrustedProxyConfig {
     pub listen: SocketAddr,
     pub trusted_peer_ips: BTreeSet<IpAddr>,
@@ -44,6 +51,9 @@ impl fmt::Debug for HostedTrustedProxyConfig {
     }
 }
 
+/// Reconstructs the client context from forwarding headers, but only
+/// for authenticated peers on the trusted list; everything else is
+/// rejected before routing.
 pub struct HostedTrustedProxy {
     trusted_peer_ips: BTreeSet<IpAddr>,
     endpoint: Url,
@@ -51,6 +61,8 @@ pub struct HostedTrustedProxy {
 }
 
 impl HostedTrustedProxy {
+    /// Fail closed on an invalid listen address, empty peer list, or
+    /// weak shared secret.
     pub fn new(mut config: HostedTrustedProxyConfig) -> Result<Self, HostedEdgeError> {
         let endpoint =
             Url::parse(&config.public_endpoint).map_err(|_| HostedEdgeError::Configuration)?;

@@ -34,7 +34,7 @@ use global_commit_chain::{
     seed_global_baseline, verify_global_commit_schema, verify_pristine_authority_tables,
 };
 use lease_history::{initialize_serving_lease_schema, verify_serving_lease_history};
-use rollback_anchor::RollbackAnchor;
+use rollback_anchor::{AnchorRecord, RollbackAnchor};
 
 #[cfg(test)]
 pub(crate) fn verify_finding_market_projection_for_tests(
@@ -180,6 +180,43 @@ impl SqliteServingOwner {
         self.rollback_anchor.verify_current(connection)
     }
 
+    /// Verify custody from the read-only companion connection.
+    ///
+    /// `PRAGMA data_version` is connection-local and advances here for
+    /// every serving-owner commit, so the writer's baseline cannot hold on
+    /// this connection and stays with the writer. The rollback anchor is
+    /// synced only after a commit lands, so this connection can legitimately
+    /// observe state ahead of it; the companion therefore requires
+    /// a proved extension of the anchored chain rather than equality,
+    /// which rejects a database restored behind its anchor and one whose
+    /// chain diverged at or above the anchored height.
+    pub(crate) fn verify_companion_custody(
+        &self,
+        connection: &Connection,
+        anchored: &AnchorRecord,
+    ) -> Result<(), SqliteServingOwnerError> {
+        self.require_unpoisoned()?;
+        self.rollback_anchor.verify_extends(connection, anchored)
+    }
+
+    /// Read the anchor a companion read will prove against. Callers take
+    /// this before pinning their snapshot, since the anchor advances after
+    /// the commit it records and would otherwise outrun the snapshot.
+    pub(crate) fn companion_anchor(&self) -> Result<AnchorRecord, SqliteServingOwnerError> {
+        self.require_unpoisoned()?;
+        self.rollback_anchor.committed_record()
+    }
+
+    fn require_unpoisoned(&self) -> Result<(), SqliteServingOwnerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(SqliteServingOwnerError::OutcomeUnknown(
+                "sqlite authority owner is poisoned after an outcome-unknown anchor sync"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) fn append_global_commit(
         &self,
         transaction: &Transaction<'_>,
@@ -239,6 +276,7 @@ impl SqliteServingOwner {
 
 pub struct SqliteAuthorityStore {
     connection: Arc<Mutex<Connection>>,
+    read_connection: Arc<Mutex<Connection>>,
     owner: Arc<SqliteServingOwner>,
 }
 
@@ -747,8 +785,10 @@ impl SqliteAuthorityStore {
             &mut connection,
             &owner,
         )?;
+        let read_connection = open_read_companion(&database_path)?;
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
+            read_connection: Arc::new(Mutex::new(read_connection)),
             owner,
         })
     }
@@ -809,6 +849,7 @@ impl SqliteAuthorityStore {
     pub fn finding_market_store(&self) -> crate::finding_market_store::SqliteFindingMarketStore {
         crate::finding_market_store::SqliteFindingMarketStore::open_alongside(
             self.connection.clone(),
+            self.read_connection.clone(),
             self.owner.clone(),
         )
     }
@@ -1380,6 +1421,22 @@ fn open_existing_database(path: &Path) -> Result<Connection, SqliteServingOwnerE
     // Provisioning writes before `open_serving` sets its own pragmas, so the busy
     // timeout has to be in place here or a transient lock aborts it instantly.
     connection.execute_batch("PRAGMA busy_timeout = 5000;")?;
+    Ok(connection)
+}
+
+/// Open the discovery read companion: a read-only WAL connection serving
+/// lag-tolerant projection reads without queueing behind the single
+/// authority writer. `query_only` makes writes impossible, and a read-only
+/// connection never advances `PRAGMA data_version`, so the serving owner's
+/// single-writer custody checks are unaffected. Reads on this connection
+/// may trail the writer by an in-flight transaction; only surfaces that
+/// re-verify or deliberately under-advertise may use it.
+fn open_read_companion(path: &Path) -> Result<Connection, SqliteServingOwnerError> {
+    let connection = Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    connection.execute_batch("PRAGMA query_only = ON; PRAGMA busy_timeout = 5000;")?;
     Ok(connection)
 }
 

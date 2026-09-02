@@ -2,9 +2,9 @@ use std::collections::BTreeSet;
 
 use async_trait::async_trait;
 use chio_core_types::canonical_json_bytes;
-use chio_finding_hosted_edge::{
-    HostedDomainMutation, HostedHttpBackend, HostedHttpBackendError, HostedHttpBackendOutcome,
-    HostedHttpPage, HostedHttpProjection,
+use chio_finding_market_port::{
+    HostedDomainMutation, HostedHttpPage, HostedHttpProjection, HostedMarketBackend,
+    HostedMarketBackendError, HostedMarketBackendOutcome,
 };
 
 use crate::{
@@ -14,13 +14,13 @@ use crate::{
 };
 
 #[async_trait]
-impl HostedHttpBackend for PostgresFindingMarketStore {
-    async fn ready(&self) -> Result<(), HostedHttpBackendError> {
+impl HostedMarketBackend for PostgresFindingMarketStore {
+    async fn ready(&self) -> Result<(), HostedMarketBackendError> {
         sqlx::query_scalar::<_, i32>("SELECT 1")
             .fetch_one(&self.pool)
             .await
             .map(|_| ())
-            .map_err(|_| HostedHttpBackendError::Unavailable)
+            .map_err(|_| HostedMarketBackendError::Unavailable)
     }
 
     async fn append(
@@ -30,14 +30,14 @@ impl HostedHttpBackend for PostgresFindingMarketStore {
         aggregate_kind: &str,
         mutation: &HostedDomainMutation,
         committed_at: u64,
-    ) -> Result<HostedHttpBackendOutcome, HostedHttpBackendError> {
+    ) -> Result<HostedMarketBackendOutcome, HostedMarketBackendError> {
         let event_kind = HostedMarketDomainEventKind::from_event_kind(event_kind)
-            .ok_or(HostedHttpBackendError::Invalid)?;
+            .ok_or(HostedMarketBackendError::Invalid)?;
         if event_kind.aggregate_kind().label() != aggregate_kind {
-            return Err(HostedHttpBackendError::Invalid);
+            return Err(HostedMarketBackendError::Invalid);
         }
-        let payload_json =
-            canonical_json_bytes(&mutation.payload).map_err(|_| HostedHttpBackendError::Invalid)?;
+        let payload_json = canonical_json_bytes(&mutation.payload)
+            .map_err(|_| HostedMarketBackendError::Invalid)?;
         let event = HostedMarketDomainEvent::from_canonical_payload(
             event_kind,
             &mutation.aggregate_id,
@@ -63,7 +63,7 @@ impl HostedHttpBackend for PostgresFindingMarketStore {
         &self,
         tenant: &HostedTenantId,
         finding_id: &str,
-    ) -> Result<Option<HostedHttpProjection>, HostedHttpBackendError> {
+    ) -> Result<Option<HostedHttpProjection>, HostedMarketBackendError> {
         self.domain_projection(
             tenant,
             HostedMarketDomainEventKind::FindingPublished,
@@ -80,7 +80,7 @@ impl HostedHttpBackend for PostgresFindingMarketStore {
         tenant: &HostedTenantId,
         after: Option<&str>,
         limit: u32,
-    ) -> Result<HostedHttpPage, HostedHttpBackendError> {
+    ) -> Result<HostedHttpPage, HostedMarketBackendError> {
         let page = self
             .catalog_findings(tenant, after, limit)
             .await
@@ -100,25 +100,25 @@ impl HostedHttpBackend for PostgresFindingMarketStore {
         &self,
         tenant: &HostedTenantId,
         finding_ids: &[String],
-    ) -> Result<BTreeSet<String>, HostedHttpBackendError> {
+    ) -> Result<BTreeSet<String>, HostedMarketBackendError> {
         self.catalog_non_live_finding_ids(tenant, finding_ids)
             .await
             .map_err(map_store_error)
     }
 }
 
-fn map_outcome(outcome: HostedJobWriteOutcome) -> HostedHttpBackendOutcome {
+fn map_outcome(outcome: HostedJobWriteOutcome) -> HostedMarketBackendOutcome {
     match outcome {
-        HostedJobWriteOutcome::Inserted => HostedHttpBackendOutcome::Inserted,
-        HostedJobWriteOutcome::ExactReplay => HostedHttpBackendOutcome::ExactReplay,
+        HostedJobWriteOutcome::Inserted => HostedMarketBackendOutcome::Inserted,
+        HostedJobWriteOutcome::ExactReplay => HostedMarketBackendOutcome::ExactReplay,
     }
 }
 
 fn http_projection(
     projection: HostedMarketDomainProjection,
-) -> Result<HostedHttpProjection, HostedHttpBackendError> {
+) -> Result<HostedHttpProjection, HostedMarketBackendError> {
     let payload = serde_json::from_slice(&projection.payload_json)
-        .map_err(|_| HostedHttpBackendError::Integrity)?;
+        .map_err(|_| HostedMarketBackendError::Integrity)?;
     Ok(HostedHttpProjection {
         event_kind: projection.event_kind.event_kind().to_owned(),
         aggregate_kind: projection.event_kind.aggregate_kind().label().to_owned(),
@@ -134,22 +134,23 @@ fn http_projection(
     })
 }
 
-fn map_store_error(error: HostedMarketStoreError) -> HostedHttpBackendError {
+fn map_store_error(error: HostedMarketStoreError) -> HostedMarketBackendError {
     match error {
         HostedMarketStoreError::Invalid(_)
         | HostedMarketStoreError::Tenant
         | HostedMarketStoreError::TenantNotFound
-        | HostedMarketStoreError::TenantDisabled => HostedHttpBackendError::Invalid,
-        HostedMarketStoreError::NotFound => HostedHttpBackendError::NotFound,
+        | HostedMarketStoreError::TenantDisabled => HostedMarketBackendError::Invalid,
+        HostedMarketStoreError::NotFound => HostedMarketBackendError::NotFound,
         HostedMarketStoreError::Conflict | HostedMarketStoreError::LeaseLost => {
-            HostedHttpBackendError::Conflict
+            HostedMarketBackendError::Conflict
         }
-        HostedMarketStoreError::Capacity => HostedHttpBackendError::Capacity,
+        HostedMarketStoreError::Capacity => HostedMarketBackendError::Capacity,
         HostedMarketStoreError::DigestMismatch
+        | HostedMarketStoreError::Decode(_)
         | HostedMarketStoreError::MigrationDrift
-        | HostedMarketStoreError::RetentionHeld => HostedHttpBackendError::Integrity,
+        | HostedMarketStoreError::RetentionHeld => HostedMarketBackendError::Integrity,
         HostedMarketStoreError::Configuration | HostedMarketStoreError::Unavailable => {
-            HostedHttpBackendError::Unavailable
+            HostedMarketBackendError::Unavailable
         }
     }
 }
@@ -162,11 +163,11 @@ mod tests {
     fn store_errors_never_leak_database_details() {
         assert_eq!(
             map_store_error(HostedMarketStoreError::MigrationDrift),
-            HostedHttpBackendError::Integrity
+            HostedMarketBackendError::Integrity
         );
         assert_eq!(
             map_store_error(HostedMarketStoreError::Unavailable),
-            HostedHttpBackendError::Unavailable
+            HostedMarketBackendError::Unavailable
         );
     }
 }

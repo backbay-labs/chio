@@ -95,7 +95,7 @@ The primary live release documents. Auditors and operators start here.
 - [Velocity Guards](reference/VELOCITY_GUARDS.md) - token-bucket rate limiting per capability and grant
 - [Agent Economy](reference/AGENT_ECONOMY.md) - technical design for governed transaction controls and payment interop
 - [Agent Reputation](reference/AGENT_REPUTATION.md) - local scoring, issuance gating, and reputation surfaces
-- [Cognition Market](research/cognition-market/README.md) - implemented and qualified bounded single-operator market, with cross-organization escrow kept conditional
+- [Cognition Market](market/README.md) - agents trading verified findings under kernel-governed delivery; qualified bounded single-operator market plus a hosted profile, with cross-organization escrow kept conditional
 - [Competitive Landscape](reference/COMPETITIVE_LANDSCAPE.md) - agent protocols, payment rails, and identity standards in the surrounding space
 
 ## Protocol and architecture

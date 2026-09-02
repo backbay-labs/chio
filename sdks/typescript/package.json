@@ -32,6 +32,7 @@
     "test": "node ./scripts/run-publishable-workspaces.mjs test"
   },
   "overrides": {
+    "browserslist": "4.28.8",
     "fast-uri": "3.1.5",
     "miniflare": {
       "undici": "7.29.0"

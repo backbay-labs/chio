@@ -25,7 +25,7 @@
   },
   "gateConditions": [
     {
-      "id": "TRUTH5-01",
+      "id": "docs-bounded-claim",
       "summary": "Ship-facing docs align on one bounded Chio claim and explicit non-claims.",
       "witnesses": [
         "README.md",
@@ -34,7 +34,7 @@
       ]
     },
     {
-      "id": "DELEG5-01",
+      "id": "delegated-authority-language",
       "summary": "Delegated-authority language matches the hot path actually shipped.",
       "witnesses": [
         "spec/PROTOCOL.md",
@@ -43,7 +43,7 @@
       ]
     },
     {
-      "id": "HOST5-01",
+      "id": "hosted-auth-profile",
       "summary": "One bounded hosted/auth profile is published and compatibility paths are explicitly demoted.",
       "witnesses": [
         "docs/release/OPERATIONS_RUNBOOK.md",
@@ -51,7 +51,7 @@
       ]
     },
     {
-      "id": "PROV5-01",
+      "id": "provenance-truth-classes",
       "summary": "Governed provenance surfaces distinguish asserted, observed, and verified truth or are explicitly narrowed.",
       "witnesses": [
         "spec/PROTOCOL.md",
@@ -60,7 +60,7 @@
       ]
     },
     {
-      "id": "BOUND5-01",
+      "id": "operational-surface-classes",
       "summary": "The bounded operational profile records which surfaces are local-only, leader-local, informational-only, or compatibility-only.",
       "witnesses": [
         "docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md",
@@ -68,16 +68,16 @@
       ]
     },
     {
-      "id": "BOUND5-03",
-      "summary": "The Track A P0 checklist maps blockers to evidence and sign-off expectations.",
+      "id": "release-blocker-checklist",
+      "summary": "The release-blocker checklist maps blockers to evidence and sign-off expectations.",
       "witnesses": [
         "docs/release/RELEASE_AUDIT.md",
         "docs/release/QUALIFICATION.md"
       ]
     },
     {
-      "id": "COGM9-01",
-      "summary": "The named single-operator cognition-market profile traverses the qualified M0-M6 and M8 wedge without cross-org escrow overclaiming.",
+      "id": "cognition-market-flow",
+      "summary": "The named single-operator cognition-market profile traverses the qualified publish, discovery, purchase, delivery, challenge, status, and pool lanes without cross-org escrow overclaiming.",
       "witnesses": [
         "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs",
         "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_challenge_enforcement_e2e_tests.rs",
@@ -86,7 +86,7 @@
       ]
     },
     {
-      "id": "COGM9-02",
+      "id": "cognition-market-proof-bundle",
       "summary": "The cognition-market ClaimSet and transaction passport bind four registered claims to a signed verifier report and independently checked non-authority attachments.",
       "witnesses": [
         "crates/platform/chio-transaction-passport/tests/cognition_market.rs",
@@ -96,7 +96,7 @@
       ]
     },
     {
-      "id": "COGM9-03",
+      "id": "cognition-market-audited-assumptions",
       "summary": "Status-operator completeness and seller tool-server behavior remain explicit audited assumptions rather than upgraded runtime facts.",
       "witnesses": [
         "formal/assumptions.toml",

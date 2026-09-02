@@ -248,6 +248,30 @@ jobs:
           fi
           echo "OK: iroh is not linked into the default chio-cli binary"
 
+      - name: chio-kernel default build excludes the finding-market lane
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: |
+          if cargo tree -p chio-kernel -e normal 2>/dev/null | grep -qE '[[:space:]]chio-swarm-authority v'; then
+            echo "ERROR: the finding-market lane is present in the default chio-kernel tree" >&2
+            echo "A kernel that never trades findings must not link the market lane; use --features finding-market to opt in." >&2
+            exit 1
+          fi
+          echo "OK: the finding-market lane is not linked into the default chio-kernel"
+
+      - name: chio-kernel compiles and lints in both market modes
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: |
+          # The no-market mode must be linted library-only. The kernel's
+          # dev-dependency on chio-store-sqlite enables finding-market, so
+          # any target set that builds dev-dependencies unifies the lane
+          # back on and would leave the fail-closed stand-ins unchecked.
+          cargo clippy -p chio-kernel --lib -- -D warnings
+          cargo clippy -p chio-kernel --features finding-market --all-targets -- -D warnings
+
       - name: chio-cli iroh feature build and clippy
         env:
           CARGO_BUILD_JOBS: "1"

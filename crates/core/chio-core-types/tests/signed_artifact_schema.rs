@@ -763,7 +763,7 @@ fn built_in_signed_artifact_registry_matches_public_metadata() {
 /// allowlist registration (or vice versa) would pass it. This table is the
 /// lane's explicit row list: standalone signed schemas carry their exact
 /// registration metadata, and registry-only unsigned schemas are enumerated
-/// separately. Each milestone that registers a schema in this lane extends
+/// separately. Each change that registers a schema in this lane extends
 /// the matching table.
 #[test]
 fn finding_family_schema_registry_parity_is_bidirectional() {

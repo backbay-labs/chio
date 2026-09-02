@@ -35,6 +35,8 @@ use chio_finding::{
     FINDING_FAILED_DELIVERY_SCHEMA_V1, FINDING_PURCHASE_RECORD_SCHEMA_V1,
     FINDING_SELLER_AUTHORIZATION_KEY_EPOCH_V1,
 };
+use chio_kernel::finding_denial::FindingDenial;
+
 use chio_kernel::admission_operation::{
     AdmissionOperationState, AdmissionOperationStore, AdmissionReceiptMetadataV1,
     AdmissionTerminalReplay, ADMISSION_RECEIPT_METADATA_KEY,
@@ -1800,17 +1802,21 @@ impl PurchaseReservationReader for CoordinatorReservationReader {
         &self,
         expectation: &ReservationExpectation<'_>,
         now_unix_secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), FindingDenial> {
         let record = self
             .store
             .get_reservation(expectation.reservation_id)
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| "reservation is not resolvable".to_owned())?;
+            .map_err(|error| FindingDenial::unavailable(error.to_string()))?
+            .ok_or_else(|| FindingDenial::binding_mismatch("reservation is not resolvable"))?;
         if record.state != FindingPurchaseReservationState::SlotReserved {
-            return Err("reservation is not slot-reserved for this purchase".to_owned());
+            return Err(FindingDenial::stale_or_superseded(
+                "reservation is not slot-reserved for this purchase",
+            ));
         }
         if now_unix_secs >= record.expires_at {
-            return Err("reservation has expired at the purchase clock".to_owned());
+            return Err(FindingDenial::stale_or_superseded(
+                "reservation has expired at the purchase clock",
+            ));
         }
         if record.purchase_intent_id != expectation.purchase_intent_id
             || record.authoritative_payment_operation_id
@@ -1823,7 +1829,9 @@ impl PurchaseReservationReader for CoordinatorReservationReader {
             || record.amount_units != expectation.amount_units
             || record.currency != expectation.currency
         {
-            return Err("reservation does not bind this purchase".to_owned());
+            return Err(FindingDenial::binding_mismatch(
+                "reservation does not bind this purchase",
+            ));
         }
         // The reservation was opened under one exact admission envelope.
         // Activation of a newer admission retires that envelope's terms
@@ -1833,10 +1841,16 @@ impl PurchaseReservationReader for CoordinatorReservationReader {
         let current = self
             .admissions
             .get_current_admission(&record.finding_id)
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| "no current admission covers the reserved finding".to_owned())?;
+            .map_err(|error| FindingDenial::unavailable(error.to_string()))?
+            .ok_or_else(|| {
+                FindingDenial::stale_or_superseded(
+                    "no current admission covers the reserved finding",
+                )
+            })?;
         if current.envelope_sha256 != record.admission_envelope_sha256 {
-            return Err("reservation admission is superseded or retired".to_owned());
+            return Err(FindingDenial::stale_or_superseded(
+                "reservation admission is superseded or retired",
+            ));
         }
         Ok(())
     }
@@ -1846,7 +1860,7 @@ impl PurchaseReservationReader for CoordinatorReservationReader {
         reservation_id: &str,
         authoritative_payment_operation_id: &str,
         now_unix_secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), FindingDenial> {
         self.store
             .mark_capture_pending(
                 reservation_id,
@@ -1854,7 +1868,7 @@ impl PurchaseReservationReader for CoordinatorReservationReader {
                 now_unix_secs,
             )
             .map(|_| ())
-            .map_err(|error| error.to_string())
+            .map_err(|error| FindingDenial::unavailable(error.to_string()))
     }
 }
 

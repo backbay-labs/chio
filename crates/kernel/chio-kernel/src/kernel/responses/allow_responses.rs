@@ -493,7 +493,7 @@ impl ChioKernel {
             })?;
             let status_proof = delivery.status_proof.as_ref().ok_or_else(|| {
                 KernelError::Internal(
-                    "Finding memory write requires an M6 delivery status proof".to_owned(),
+                    "Finding memory write requires a delivery status proof".to_owned(),
                 )
             })?;
             if required_status_feed
@@ -658,7 +658,7 @@ impl ChioKernel {
             }
             let status_proof = delivery.status_proof.ok_or_else(|| {
                 KernelError::Internal(
-                    "Finding memory write requires an M6 delivery status proof".to_owned(),
+                    "Finding memory write requires a delivery status proof".to_owned(),
                 )
             })?;
             Ok((delivery.finding_id, status_proof))
@@ -834,7 +834,7 @@ impl ChioKernel {
             })?;
             if delivery.status_proof.is_none() {
                 return Err(KernelError::Internal(
-                    "Finding memory lineage requires an M6 delivery status proof".to_owned(),
+                    "Finding memory lineage requires a delivery status proof".to_owned(),
                 ));
             }
             if delivery.finding_id != memory_key

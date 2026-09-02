@@ -3,9 +3,9 @@ use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::Mutex;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use async_trait::async_trait;
 #[cfg(test)]
 use axum::body::to_bytes;
 use axum::body::{Body, Bytes};
@@ -18,9 +18,13 @@ use axum::{Json, Router};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use chio_core_types::crypto::PublicKey;
-use chio_core_types::receipt::body::ChioReceipt;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str, sha256_hex};
+use chio_finding_market_port::{
+    HostedDomainMutation, HostedHttpProjection, HostedMarketBackend, HostedMarketBackendError,
+    HostedMarketBackendOutcome, HOSTED_AUTHENTICATED_DELIVERY_SCHEMA,
+};
 use serde::{Deserialize, Serialize};
+use tokio::sync::Semaphore;
 
 use crate::{
     HostedAuthCredential, HostedAuthRequest, HostedAuthenticator, HostedEdgeError,
@@ -36,11 +40,13 @@ const CAPABILITY_HEADER: &str = "Chio-Capability";
 const DPOP_HEADER: &str = "Chio-DPoP";
 const PROXY_AUTHENTICATION_HEADER: &str = "Chio-Proxy-Authentication";
 const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
+const MAX_CONCURRENT_REQUESTS: usize = 100_000;
 const MAX_CREDENTIAL_BYTES: usize = 64 * 1024;
+/// Schema identifier pinned by the release identity document.
 pub const HOSTED_RELEASE_IDENTITY_SCHEMA: &str = "chio.finding.hosted-release-identity.v1";
-pub const HOSTED_AUTHENTICATED_DELIVERY_SCHEMA: &str =
-    "chio.finding.hosted-authenticated-delivery.v1";
-
+/// The exact release the server claims to run: deployment id,
+/// candidate commit, artifact digest, and configuration revision, all
+/// shape-validated at construction.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostedReleaseIdentity {
@@ -75,10 +81,16 @@ impl HostedReleaseIdentity {
     }
 }
 
+/// Server contract: the https public endpoint, the request body cap,
+/// the penalty authority identity and key, and the kernel receipt key.
+/// Validated in full before serving.
 #[derive(Clone, Debug)]
 pub struct HostedHttpServerConfig {
     pub public_endpoint: String,
     pub maximum_body_bytes: usize,
+    /// In-flight request ceiling; excess load sheds with 503 instead of
+    /// queueing without bound.
+    pub maximum_concurrent_requests: usize,
     pub penalty_authority_id: String,
     pub penalty_authority_key: PublicKey,
     pub kernel_receipt_key: PublicKey,
@@ -99,6 +111,7 @@ impl HostedHttpServerConfig {
             || endpoint.as_str().trim_end_matches('/') != self.public_endpoint
             || self.maximum_body_bytes == 0
             || self.maximum_body_bytes > MAX_BODY_BYTES
+            || !(1..=MAX_CONCURRENT_REQUESTS).contains(&self.maximum_concurrent_requests)
             || self.penalty_authority_id.is_empty()
             || self.penalty_authority_id.len() > 256
             || self.penalty_authority_id.trim() != self.penalty_authority_id
@@ -113,119 +126,22 @@ impl HostedHttpServerConfig {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HostedDomainMutation {
-    pub aggregate_id: String,
-    pub event_id: String,
-    pub expected_revision: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expected_event_sha256: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub artifact_signer_key: Option<PublicKey>,
-    #[serde(skip)]
-    pub artifact_authority_id: Option<String>,
-    pub payload: serde_json::Value,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HostedAuthenticatedFindingDelivery {
-    pub schema: String,
-    pub receipt: ChioReceipt,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum HostedHttpBackendOutcome {
-    Inserted,
-    ExactReplay,
-}
-
-#[derive(Clone, Debug, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HostedHttpProjection {
-    pub event_kind: String,
-    pub aggregate_kind: String,
-    pub aggregate_id: String,
-    pub event_id: String,
-    pub revision: u64,
-    pub previous_event_sha256: Option<String>,
-    pub event_sha256: String,
-    pub artifact_schema: String,
-    pub artifact_sha256: String,
-    pub payload: serde_json::Value,
-    pub committed_at: u64,
-}
-
-#[derive(Clone, Debug, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HostedHttpPage {
-    pub items: Vec<HostedHttpProjection>,
-    pub next_cursor: Option<String>,
-}
-
-#[derive(Clone, Copy, Debug, thiserror::Error, PartialEq, Eq)]
-pub enum HostedHttpBackendError {
-    #[error("hosted backend input is invalid")]
-    Invalid,
-    #[error("hosted backend resource was not found")]
-    NotFound,
-    #[error("hosted backend mutation conflicts")]
-    Conflict,
-    #[error("hosted backend capacity is exhausted")]
-    Capacity,
-    #[error("hosted backend integrity check failed")]
-    Integrity,
-    #[error("hosted backend is unavailable")]
-    Unavailable,
-}
-
-#[async_trait]
-pub trait HostedHttpBackend: Send + Sync {
-    async fn ready(&self) -> Result<(), HostedHttpBackendError>;
-
-    async fn append(
-        &self,
-        tenant: &crate::HostedTenantId,
-        event_kind: &str,
-        aggregate_kind: &str,
-        mutation: &HostedDomainMutation,
-        committed_at: u64,
-    ) -> Result<HostedHttpBackendOutcome, HostedHttpBackendError>;
-
-    async fn finding(
-        &self,
-        tenant: &crate::HostedTenantId,
-        finding_id: &str,
-    ) -> Result<Option<HostedHttpProjection>, HostedHttpBackendError>;
-
-    async fn findings(
-        &self,
-        tenant: &crate::HostedTenantId,
-        after: Option<&str>,
-        limit: u32,
-    ) -> Result<HostedHttpPage, HostedHttpBackendError>;
-
-    async fn non_live_findings(
-        &self,
-        tenant: &crate::HostedTenantId,
-        finding_ids: &[String],
-    ) -> Result<BTreeSet<String>, HostedHttpBackendError>;
-}
-
+/// Shared router state: configuration, authenticator, storage
+/// backend, and the trusted proxy.
 #[derive(Clone)]
 pub struct HostedHttpServerState {
     config: HostedHttpServerConfig,
     authenticator: Arc<HostedAuthenticator>,
-    backend: Arc<dyn HostedHttpBackend>,
+    backend: Arc<dyn HostedMarketBackend>,
     trusted_proxy: Arc<crate::HostedTrustedProxy>,
 }
 
 impl HostedHttpServerState {
+    /// Fail closed unless the configuration validates.
     pub fn new(
         config: HostedHttpServerConfig,
         authenticator: Arc<HostedAuthenticator>,
-        backend: Arc<dyn HostedHttpBackend>,
+        backend: Arc<dyn HostedMarketBackend>,
         trusted_proxy: Arc<crate::HostedTrustedProxy>,
     ) -> Result<Self, HostedEdgeError> {
         config.validate()?;
@@ -248,66 +164,63 @@ struct HostedOperation {
 }
 
 const PUBLISH_OPERATION: HostedOperation = HostedOperation {
-    event_kind: "finding.published",
-    aggregate_kind: "finding",
-    artifact_schema: "chio.finding.v1",
+    event_kind: chio_finding_market_port::HostedMarketDomainEventKind::FindingPublished
+        .event_kind(),
+    aggregate_kind: chio_finding_market_port::HostedMarketDomainEventKind::FindingPublished
+        .aggregate_kind()
+        .label(),
+    artifact_schema: chio_finding_market_port::HostedMarketDomainEventKind::FindingPublished
+        .artifact_schema(),
     action: "finding.publish",
     role: HostedPrincipalRole::Seller,
 };
 
 impl HostedOperation {
+    /// Resolve one HTTP write route to its domain event. The event kind,
+    /// aggregate family, and artifact schema come from the canonical
+    /// grammar; only the governed action name and the writing role are
+    /// edge-owned.
     fn parse(value: &str) -> Option<Self> {
-        let operation = match value {
+        use chio_finding_market_port::HostedMarketDomainEventKind as EventKind;
+        let (event, action, role) = match value {
             "listing" => (
-                "listing.activated",
-                "listing",
-                "chio.finding.market-terms.v1",
+                EventKind::ListingActivated,
                 "finding.listing.activate",
                 HostedPrincipalRole::Seller,
             ),
             "delivery" => (
-                "delivery.accepted",
-                "delivery",
-                HOSTED_AUTHENTICATED_DELIVERY_SCHEMA,
+                EventKind::DeliveryAccepted,
                 "finding.delivery.accept",
                 HostedPrincipalRole::Operator,
             ),
             "challenge" => (
-                "challenge.submitted",
-                "challenge",
-                "chio.finding.challenge.v1",
+                EventKind::ChallengeSubmitted,
                 "finding.challenge.submit",
                 HostedPrincipalRole::Buyer,
             ),
             "verified-fix" => (
-                "verified_fix.submitted",
-                "verified_fix",
-                "chio.finding.verified-fix-submission.v1",
+                EventKind::VerifiedFixSubmitted,
                 "finding.verified_fix.submit",
                 HostedPrincipalRole::Seller,
             ),
             "retraction" => (
-                "retraction.voluntary",
-                "retraction",
-                "chio.finding.voluntary-retraction.v1",
+                EventKind::RetractionVoluntary,
                 "finding.retraction.submit",
                 HostedPrincipalRole::Seller,
             ),
             "penalty" => (
-                "penalty.assessed",
-                "penalty",
-                "chio.registry.market-penalty.v1",
+                EventKind::PenaltyAssessed,
                 "finding.penalty.assess",
                 HostedPrincipalRole::Operator,
             ),
             _ => return None,
         };
         Some(Self {
-            event_kind: operation.0,
-            aggregate_kind: operation.1,
-            artifact_schema: operation.2,
-            action: operation.3,
-            role: operation.4,
+            event_kind: event.event_kind(),
+            aggregate_kind: event.aggregate_kind().label(),
+            artifact_schema: event.artifact_schema(),
+            action,
+            role,
         })
     }
 
@@ -382,23 +295,63 @@ struct FindingQuery {
     limit: Option<u32>,
 }
 
+/// The authenticated hosted market router: health, release identity,
+/// finding reads, and the governed write routes, behind the
+/// trusted-proxy middleware and the configured body limit. Every write
+/// authenticates against the tenant method policy before touching the
+/// backend.
 pub fn hosted_market_router(state: HostedHttpServerState) -> Router {
-    Router::new()
+    // Liveness and readiness answer outside the limiter. The trusted proxy
+    // probes them on this same pod, so shedding a probe would restart a
+    // live sidecar exactly while the edge is saturated, dropping its
+    // connections and removing capacity during the overload.
+    //
+    // Being outside the limiter, readiness carries its own bound: it is the
+    // one probe that reaches the backend, and the proxy forwards every
+    // public path, so an unauthenticated flood would otherwise become
+    // arbitrarily many pooled database round trips.
+    let health = Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
+        .with_state(HealthState {
+            server: state.clone(),
+            probe: ReadinessProbe::new(),
+        });
+
+    // Everything that reaches the backend is bounded. Shedding answers
+    // before the request reaches a handler, in the same error envelope as
+    // every other failure, so the trusted proxy reads the retryable flag
+    // and retries against a healthy replica.
+    //
+    // These routes deliberately carry no request deadline. Authentication
+    // durably consumes the DPoP nonce and the capability's invocation
+    // budget before the domain write commits, so cancelling a request after
+    // that point would burn a single-use capability on a mutation that
+    // never landed. The trusted proxy owns the request deadline, where a
+    // timeout cannot land between those two commits.
+    let guarded = Router::new()
         .route("/v1/release", get(release_identity))
         .route("/v1/findings", get(list_findings))
         .route("/v1/findings/{finding_id}", get(get_finding))
         .route("/v1/findings/events/{operation}", post(mutate))
         .route("/v1/findings/publish", post(publish))
         .fallback(not_found)
-        .layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            enforce_trusted_proxy,
-        ))
         .with_state(state.clone())
         .layer(axum::extract::DefaultBodyLimit::max(
             state.config.maximum_body_bytes,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            RequestAdmissions {
+                permits: Arc::new(Semaphore::new(state.config.maximum_concurrent_requests)),
+            },
+            shed_when_saturated,
+        ));
+
+    health
+        .merge(guarded)
+        .layer(axum::middleware::from_fn_with_state(
+            state,
+            enforce_trusted_proxy,
         ))
 }
 
@@ -411,6 +364,9 @@ pub async fn serve_hosted_market_loopback(
     serve_hosted_market_loopback_with_shutdown(listener, state, std::future::pending()).await
 }
 
+/// Serve the router with graceful shutdown; refuses any non-loopback
+/// listener because the public endpoint must terminate at the
+/// separately authenticated trusted proxy.
 pub async fn serve_hosted_market_loopback_with_shutdown<F>(
     listener: tokio::net::TcpListener,
     state: HostedHttpServerState,
@@ -492,15 +448,98 @@ async fn live() -> impl IntoResponse {
     (StatusCode::OK, Json(serde_json::json!({"status": "live"})))
 }
 
-async fn ready(State(state): State<HostedHttpServerState>) -> Response {
-    match state.backend.ready().await {
-        Ok(()) => (StatusCode::OK, Json(serde_json::json!({"status": "ready"}))).into_response(),
-        Err(_) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({"status": "not_ready"})),
-        )
-            .into_response(),
+async fn ready(State(health): State<HealthState>) -> Response {
+    if let Some(ready) = health.probe.fresh_answer() {
+        return readiness_response(ready);
     }
+    let Ok(_check) = Arc::clone(&health.probe.checking).try_acquire_owned() else {
+        // The answer has aged out and another probe is already taking a new
+        // one, so this probe has nothing current to report and does not
+        // open a connection of its own to find out. Reporting the aged
+        // answer instead would leave a backend that stopped responding
+        // looking ready for as long as its check takes to fail.
+        return readiness_response(false);
+    };
+    let ready = health.server.backend.ready().await.is_ok();
+    health.probe.record(ready);
+    readiness_response(ready)
+}
+
+fn readiness_response(ready: bool) -> Response {
+    if ready {
+        return (StatusCode::OK, Json(serde_json::json!({"status": "ready"}))).into_response();
+    }
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(serde_json::json!({"status": "not_ready"})),
+    )
+        .into_response()
+}
+
+/// How long one readiness answer is reused.
+///
+/// Kubernetes probes on an interval measured in seconds, so a real probe
+/// still gets an answer taken for it, while a flood between two probes
+/// costs the backend one round trip rather than one per request.
+const READINESS_ANSWER_LIFETIME: Duration = Duration::from_secs(1);
+
+/// The state the health routes carry: the server, and the bound on the one
+/// probe that reaches the backend.
+#[derive(Clone)]
+struct HealthState {
+    server: HostedHttpServerState,
+    probe: ReadinessProbe,
+}
+
+/// Bounds the backend work public readiness probes can cause.
+#[derive(Clone)]
+struct ReadinessProbe {
+    answer: Arc<Mutex<Option<(Instant, bool)>>>,
+    checking: Arc<Semaphore>,
+}
+
+impl ReadinessProbe {
+    fn new() -> Self {
+        Self {
+            answer: Arc::new(Mutex::new(None)),
+            checking: Arc::new(Semaphore::new(1)),
+        }
+    }
+
+    /// The last answer, if it is young enough to stand for this probe.
+    fn fresh_answer(&self) -> Option<bool> {
+        let answer = self.answer.lock().ok()?;
+        answer.and_then(|(taken_at, ready)| {
+            (taken_at.elapsed() < READINESS_ANSWER_LIFETIME).then_some(ready)
+        })
+    }
+
+    fn record(&self, ready: bool) {
+        if let Ok(mut answer) = self.answer.lock() {
+            *answer = Some((Instant::now(), ready));
+        }
+    }
+}
+
+/// The permits that bound how much work the backend carries at once.
+#[derive(Clone)]
+struct RequestAdmissions {
+    permits: Arc<Semaphore>,
+}
+
+/// Refuse a request that would exceed the configured concurrency rather
+/// than queueing it behind the work already in flight.
+async fn shed_when_saturated(
+    State(admissions): State<RequestAdmissions>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let Ok(_permit) = Arc::clone(&admissions.permits).try_acquire_owned() else {
+        let request_id =
+            single_header(request.headers(), REQUEST_ID_HEADER).unwrap_or("invalid-request-id");
+        return error_response(HostedEdgeError::CapacityUnavailable, request_id);
+    };
+    next.run(request).await
 }
 
 async fn not_found() -> Response {
@@ -853,14 +892,14 @@ fn mutation_response(
     contract: HostedRequestContract,
     binding: HostedTenantBinding,
     mutation: HostedDomainMutation,
-    outcome: HostedHttpBackendOutcome,
+    outcome: HostedMarketBackendOutcome,
 ) -> Result<HostedMutationResponse, HostedEdgeError> {
     let payload_sha256 = canonical_json_bytes(&mutation.payload)
         .map(|bytes| sha256_hex(&bytes))
         .map_err(|_| HostedEdgeError::InvalidRequest)?;
     let outcome = match outcome {
-        HostedHttpBackendOutcome::Inserted => HostedMutationOutcome::Applied,
-        HostedHttpBackendOutcome::ExactReplay => HostedMutationOutcome::ExactReplay,
+        HostedMarketBackendOutcome::Inserted => HostedMutationOutcome::Applied,
+        HostedMarketBackendOutcome::ExactReplay => HostedMutationOutcome::ExactReplay,
     };
     HostedMutationResponse::new(
         contract.request_id(),
@@ -1038,14 +1077,14 @@ fn unix_now() -> Result<u64, HostedEdgeError> {
         .map_err(|_| HostedEdgeError::DependencyUnavailable)
 }
 
-fn map_backend(error: HostedHttpBackendError) -> HostedEdgeError {
+fn map_backend(error: HostedMarketBackendError) -> HostedEdgeError {
     match error {
-        HostedHttpBackendError::Invalid => HostedEdgeError::InvalidRequest,
-        HostedHttpBackendError::NotFound => HostedEdgeError::NotFound,
-        HostedHttpBackendError::Conflict => HostedEdgeError::Conflict,
-        HostedHttpBackendError::Integrity => HostedEdgeError::IntegrityFailure,
-        HostedHttpBackendError::Capacity => HostedEdgeError::CapacityUnavailable,
-        HostedHttpBackendError::Unavailable => HostedEdgeError::DependencyUnavailable,
+        HostedMarketBackendError::Invalid => HostedEdgeError::InvalidRequest,
+        HostedMarketBackendError::NotFound => HostedEdgeError::NotFound,
+        HostedMarketBackendError::Conflict => HostedEdgeError::Conflict,
+        HostedMarketBackendError::Integrity => HostedEdgeError::IntegrityFailure,
+        HostedMarketBackendError::Capacity => HostedEdgeError::CapacityUnavailable,
+        HostedMarketBackendError::Unavailable => HostedEdgeError::DependencyUnavailable,
     }
 }
 
@@ -1057,9 +1096,10 @@ fn error_response(error: HostedEdgeError, request_id: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
     use chio_core_types::crypto::Keypair;
     use chio_finding_market_port::{
-        HostedApiKeyRecord, HostedAuthPort, HostedCapabilityAdmissionOutcome,
+        HostedApiKeyRecord, HostedAuthPort, HostedCapabilityAdmissionOutcome, HostedHttpPage,
         HostedMarketPortError, HostedPrincipal, HostedTenantId,
     };
     use tower::ServiceExt as _;
@@ -1104,6 +1144,7 @@ mod tests {
             _tenant: &HostedTenantId,
             _capability_id: &str,
             _nonce_sha256: &str,
+            _request_sha256: Option<&str>,
             _valid_through: u64,
             _max_invocations: u32,
             _expires_at: u64,
@@ -1114,12 +1155,18 @@ mod tests {
         }
     }
 
-    struct ClosedBackend;
+    /// A backend that refuses everything, counting what readiness costs it.
+    #[derive(Default)]
+    struct ClosedBackend {
+        readiness_checks: Arc<std::sync::atomic::AtomicUsize>,
+    }
 
     #[async_trait]
-    impl HostedHttpBackend for ClosedBackend {
-        async fn ready(&self) -> Result<(), HostedHttpBackendError> {
-            Err(HostedHttpBackendError::Unavailable)
+    impl HostedMarketBackend for ClosedBackend {
+        async fn ready(&self) -> Result<(), HostedMarketBackendError> {
+            self.readiness_checks
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Err(HostedMarketBackendError::Unavailable)
         }
 
         async fn append(
@@ -1129,16 +1176,16 @@ mod tests {
             _aggregate_kind: &str,
             _mutation: &HostedDomainMutation,
             _committed_at: u64,
-        ) -> Result<HostedHttpBackendOutcome, HostedHttpBackendError> {
-            Err(HostedHttpBackendError::Unavailable)
+        ) -> Result<HostedMarketBackendOutcome, HostedMarketBackendError> {
+            Err(HostedMarketBackendError::Unavailable)
         }
 
         async fn finding(
             &self,
             _tenant: &HostedTenantId,
             _finding_id: &str,
-        ) -> Result<Option<HostedHttpProjection>, HostedHttpBackendError> {
-            Err(HostedHttpBackendError::Unavailable)
+        ) -> Result<Option<HostedHttpProjection>, HostedMarketBackendError> {
+            Err(HostedMarketBackendError::Unavailable)
         }
 
         async fn findings(
@@ -1146,20 +1193,28 @@ mod tests {
             _tenant: &HostedTenantId,
             _after: Option<&str>,
             _limit: u32,
-        ) -> Result<HostedHttpPage, HostedHttpBackendError> {
-            Err(HostedHttpBackendError::Unavailable)
+        ) -> Result<HostedHttpPage, HostedMarketBackendError> {
+            Err(HostedMarketBackendError::Unavailable)
         }
 
         async fn non_live_findings(
             &self,
             _tenant: &HostedTenantId,
             _finding_ids: &[String],
-        ) -> Result<BTreeSet<String>, HostedHttpBackendError> {
-            Err(HostedHttpBackendError::Unavailable)
+        ) -> Result<BTreeSet<String>, HostedMarketBackendError> {
+            Err(HostedMarketBackendError::Unavailable)
         }
     }
 
     fn server_state() -> Result<HostedHttpServerState, HostedEdgeError> {
+        server_state_counting_readiness().map(|(state, _)| state)
+    }
+
+    fn server_state_counting_readiness(
+    ) -> Result<(HostedHttpServerState, Arc<std::sync::atomic::AtomicUsize>), HostedEdgeError> {
+        let auth_port: Arc<dyn HostedAuthPort> = Arc::new(ClosedAuthPort);
+        let backend = ClosedBackend::default();
+        let readiness_checks = Arc::clone(&backend.readiness_checks);
         let tenant =
             HostedTenantId::new("tenant:test").map_err(|_| HostedEdgeError::Configuration)?;
         let authority = Keypair::from_seed(&[47_u8; 32]);
@@ -1177,13 +1232,14 @@ mod tests {
                     allowed_methods: [HostedAuthMethod::ApiKey].into_iter().collect(),
                 }],
             },
-            Arc::new(ClosedAuthPort),
+            auth_port,
             Arc::new(StaticApiKeyPepper::new(vec![9_u8; 32])?),
         )?;
         let state = HostedHttpServerState::new(
             HostedHttpServerConfig {
                 public_endpoint: "https://market.example".to_owned(),
                 maximum_body_bytes: 1024 * 1024,
+                maximum_concurrent_requests: 64,
                 penalty_authority_id: "market-penalty".to_owned(),
                 penalty_authority_key: authority.public_key(),
                 kernel_receipt_key: authority.public_key(),
@@ -1196,14 +1252,135 @@ mod tests {
                 },
             },
             Arc::new(authenticator),
-            Arc::new(ClosedBackend),
+            Arc::new(backend),
             Arc::new(trusted_proxy()?),
         )?;
-        Ok(state)
+        Ok((state, readiness_checks))
     }
 
     fn router() -> Result<Router, HostedEdgeError> {
         server_state().map(hosted_market_router)
+    }
+
+    /// A shed request is the one failure a client cannot parse from the
+    /// handler's own vocabulary, so it carries the same envelope: the
+    /// retryable flag tells the proxy to try another replica, and the
+    /// request id correlates the shed with the caller's log.
+    #[tokio::test]
+    async fn a_shed_request_carries_the_hosted_error_envelope() {
+        let mut state = server_state().unwrap_or_else(|error| panic!("test state failed: {error}"));
+        // No permit exists, so the limiter is saturated for every request.
+        state.config.maximum_concurrent_requests = 0;
+        let router = hosted_market_router(state);
+
+        let shed = router
+            .clone()
+            .oneshot(proxied_request(
+                Request::builder()
+                    .uri("/v1/findings")
+                    .header(REQUEST_ID_HEADER, "request-shed"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap_or_else(|error| panic!("test response failed: {error}"));
+        assert_eq!(shed.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = to_bytes(shed.into_body(), 16 * 1024)
+            .await
+            .unwrap_or_else(|error| panic!("test body failed: {error}"));
+        let error: serde_json::Value = serde_json::from_slice(&body)
+            .unwrap_or_else(|error| panic!("test JSON failed: {error}"));
+        assert_eq!(error["schema"], crate::HOSTED_ERROR_SCHEMA);
+        assert_eq!(error["requestId"], "request-shed");
+        assert_eq!(error["retryable"], true);
+
+        // The probes answer from outside the limiter that just shed a
+        // request, which is the whole point of mounting them there.
+        let live = router
+            .oneshot(proxied_request(
+                Request::builder()
+                    .uri("/health/live")
+                    .header(REQUEST_ID_HEADER, "request-live-saturated"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap_or_else(|error| panic!("test response failed: {error}"));
+        assert_eq!(live.status(), StatusCode::OK);
+        assert_eq!(probe_status(live).await, "live");
+    }
+
+    /// The proxy forwards every public path, so readiness is reachable
+    /// without a tenant credential, and it is the one probe that reaches the
+    /// backend. A flood of it must cost the pool one round trip rather than
+    /// one per request.
+    #[tokio::test]
+    async fn a_readiness_flood_costs_one_backend_round_trip() {
+        let (state, readiness_checks) = server_state_counting_readiness()
+            .unwrap_or_else(|error| panic!("test state failed: {error}"));
+        let router = hosted_market_router(state);
+        for probe in 0..8 {
+            let response = router
+                .clone()
+                .oneshot(proxied_request(
+                    Request::builder()
+                        .uri("/health/ready")
+                        .header(REQUEST_ID_HEADER, format!("request-ready-{probe}")),
+                    Body::empty(),
+                ))
+                .await
+                .unwrap_or_else(|error| panic!("test response failed: {error}"));
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+            assert_eq!(probe_status(response).await, "not_ready");
+        }
+        assert_eq!(
+            readiness_checks.load(std::sync::atomic::Ordering::Relaxed),
+            1,
+            "probes within one answer's lifetime must share its round trip"
+        );
+    }
+
+    /// Kubernetes probes this pod through the same listener that serves
+    /// traffic. Both probes are mounted outside the guarded surface so an
+    /// overload sheds requests instead of failing liveness and restarting a
+    /// sidecar during the overload it is meant to ride out.
+    #[tokio::test]
+    async fn health_probes_answer_outside_the_guarded_surface() {
+        let service = router().unwrap_or_else(|error| panic!("test router failed: {error}"));
+        let live = service
+            .oneshot(proxied_request(
+                Request::builder()
+                    .uri("/health/live")
+                    .header(REQUEST_ID_HEADER, "request-live"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap_or_else(|error| panic!("test response failed: {error}"));
+        assert_eq!(live.status(), StatusCode::OK);
+        assert_eq!(probe_status(live).await, "live");
+
+        let ready = router()
+            .unwrap_or_else(|error| panic!("test router failed: {error}"))
+            .oneshot(proxied_request(
+                Request::builder()
+                    .uri("/health/ready")
+                    .header(REQUEST_ID_HEADER, "request-ready"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap_or_else(|error| panic!("test response failed: {error}"));
+        // The test backend is closed, so readiness reports that rather than
+        // claiming the pod can serve. The body separates a handler answer
+        // from a shed response, which carries the same status and no body.
+        assert_eq!(ready.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(probe_status(ready).await, "not_ready");
+    }
+
+    async fn probe_status(response: Response) -> String {
+        let body = to_bytes(response.into_body(), 16 * 1024)
+            .await
+            .unwrap_or_else(|error| panic!("test body failed: {error}"));
+        let probe: serde_json::Value = serde_json::from_slice(&body)
+            .unwrap_or_else(|error| panic!("test JSON failed: {error}"));
+        probe["status"].as_str().unwrap_or_default().to_owned()
     }
 
     fn trusted_proxy() -> Result<crate::HostedTrustedProxy, HostedEdgeError> {
@@ -1464,6 +1641,7 @@ mod tests {
         let mut config = HostedHttpServerConfig {
             public_endpoint: "https://market.example/api".to_owned(),
             maximum_body_bytes: 1024,
+            maximum_concurrent_requests: 64,
             penalty_authority_id: "market-penalty".to_owned(),
             penalty_authority_key: Keypair::from_seed(&[47_u8; 32]).public_key(),
             kernel_receipt_key: Keypair::from_seed(&[48_u8; 32]).public_key(),

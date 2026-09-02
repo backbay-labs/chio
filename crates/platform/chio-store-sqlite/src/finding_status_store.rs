@@ -599,7 +599,8 @@ impl SqliteFindingStatusStore {
     /// for the same feed and finding is retained as the satisfying outbox
     /// item instead of being replaced.
     ///
-    /// This is the M5/M6 transaction boundary. An evaluation or reversible
+    /// This is the challenge-finality/status-feed transaction boundary. An
+    /// evaluation or reversible
     /// hold cannot call it because the liability must still be in the durable
     /// `pending_appeal` state. Exact replay accepts an already-finalizing head
     /// only when the outbox and sticky row remain consistent.

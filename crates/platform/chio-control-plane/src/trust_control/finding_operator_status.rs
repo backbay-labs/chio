@@ -14,8 +14,9 @@ use super::finding_challenge_coordinator::FindingAuthorityStatusResolver;
 use super::FindingAuthorityPin;
 
 /// Signs current non-revoked role readings under the profile's independent
-/// authority-status key. Key revocation administration is outside the M10
-/// single-operator pilot; a pin outside its configured window fails closed.
+/// authority-status key. Key revocation administration is outside the
+/// single-operator pilot scope; a pin outside its configured window fails
+/// closed.
 pub struct FindingOperatorAuthorityStatusResolver {
     authority_status_pin: FindingAuthorityPin,
     signer: Keypair,

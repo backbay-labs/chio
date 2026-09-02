@@ -3720,7 +3720,9 @@ name = "chio-finding-market-port"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chio-core-types",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -3749,7 +3751,6 @@ dependencies = [
  "async-trait",
  "chio-core-types",
  "chio-finding",
- "chio-finding-hosted-edge",
  "chio-finding-market-migrations",
  "chio-finding-market-port",
  "chio-open-market",
@@ -3760,6 +3761,7 @@ dependencies = [
  "sqlx",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
  "zeroize",
 ]
 

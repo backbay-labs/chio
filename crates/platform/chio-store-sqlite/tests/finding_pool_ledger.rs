@@ -14,6 +14,7 @@ use chio_core::session::{
     OAuthBearerFederatedClaims, OAuthBearerSessionAuthInput, OperationContext, RequestId,
     SessionAuthContext,
 };
+use chio_kernel::finding_denial::FindingDenial;
 use chio_kernel::finding_pool::{
     FindingPoolDebitAuthorization, FindingPoolDebitError, FindingPoolDebitRequest,
     FindingPoolDebitState, FindingPoolLedger, FindingPoolLedgerError, QualifiedFindingPoolLedger,
@@ -202,9 +203,11 @@ impl FindingPurchaseVerifier for StaticPurchaseVerifier {
     fn verify_purchase(
         &self,
         _view: &FindingPurchaseContextView<'_>,
-    ) -> Result<VerifiedFindingPurchase, String> {
+    ) -> Result<VerifiedFindingPurchase, FindingDenial> {
         if self.reject_verification {
-            Err("purchase verifier key is retired".to_owned())
+            Err(FindingDenial::authority_invalid(
+                "purchase verifier key is retired",
+            ))
         } else {
             Ok(self.purchase.clone())
         }
@@ -215,10 +218,12 @@ impl FindingPurchaseVerifier for StaticPurchaseVerifier {
         _view: &FindingPurchaseContextView<'_>,
         _verified: &VerifiedFindingPurchase,
         _now_unix_secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), FindingDenial> {
         self.admissions.fetch_add(1, Ordering::SeqCst);
         if self.reject_admission {
-            Err("purchase admission is no longer live".to_owned())
+            Err(FindingDenial::stale_or_superseded(
+                "purchase admission is no longer live",
+            ))
         } else {
             Ok(())
         }
@@ -228,7 +233,7 @@ impl FindingPurchaseVerifier for StaticPurchaseVerifier {
         &self,
         _verified: &VerifiedFindingPurchase,
         _marked_at_unix_secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), FindingDenial> {
         Ok(())
     }
 }
@@ -563,12 +568,12 @@ impl FindingStatusProofVerifier for StaticStatusVerifier {
     fn verify_status_proof(
         &self,
         view: &FindingStatusProofContextView<'_>,
-    ) -> Result<VerifiedFindingStatusProof, String> {
+    ) -> Result<VerifiedFindingStatusProof, FindingDenial> {
         if view.proof_b64 != "live-status-proof"
             || view.expected_finding_id != "a".repeat(64)
             || view.expected_feed_id != "status-feed/test"
         {
-            return Err("status proof mismatch".to_owned());
+            return Err(FindingDenial::binding_mismatch("status proof mismatch"));
         }
         Ok(VerifiedFindingStatusProof {
             feed_id: "status-feed/test".to_owned(),
@@ -589,7 +594,7 @@ impl FindingStatusProofVerifier for StaticStatusVerifier {
         _view: &FindingStatusProofContextView<'_>,
         _verified: &VerifiedFindingStatusProof,
         _now_unix_secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), FindingDenial> {
         self.admissions.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -1343,8 +1348,8 @@ fn cognition_market_pool_replays_after_purchase_verifier_rotation() {
             fixture.authority.public_key(),
             true,
         ),
-        Err(FindingPoolDebitError::Allocation(error))
-            if error.contains("purchase verifier key is retired")
+        Err(FindingPoolDebitError::Allocation(denial))
+            if denial.detail().contains("purchase verifier key is retired")
     ));
 }
 

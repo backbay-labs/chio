@@ -2,18 +2,21 @@ use sqlx::{PgPool, Row as _};
 
 use crate::HostedMarketStoreError;
 
-const TENANT_SCOPED_TABLES: [&str; 28] = [
+const TENANT_SCOPED_TABLES: [&str; 31] = [
     "chio_finding_market_tenants",
     "chio_finding_market_jobs",
     "chio_finding_market_principals",
     "chio_finding_market_api_keys",
     "chio_finding_market_dpop_nonces",
+    "chio_finding_market_dpop_admission_state",
     "chio_finding_market_capability_uses",
+    "chio_finding_market_capability_request_admissions",
     "chio_finding_market_security_events",
     "chio_finding_market_aggregate_events",
     "chio_finding_market_aggregate_heads",
     "chio_finding_market_aggregate_checkpoints",
     "chio_finding_market_spend_reservations",
+    "chio_finding_market_spend_periods",
     "chio_finding_market_journal_checkpoints",
     "chio_finding_market_journal_checkpoint_members",
     "chio_finding_market_archive_manifests",
@@ -110,7 +113,7 @@ struct RuntimeTablePrivileges {
     delete: bool,
 }
 
-const RUNTIME_TABLE_PRIVILEGES: [RuntimeTablePrivileges; 30] = [
+const RUNTIME_TABLE_PRIVILEGES: [RuntimeTablePrivileges; 33] = [
     RuntimeTablePrivileges {
         name: "_sqlx_migrations",
         select: true,
@@ -154,10 +157,24 @@ const RUNTIME_TABLE_PRIVILEGES: [RuntimeTablePrivileges; 30] = [
         delete: true,
     },
     RuntimeTablePrivileges {
+        name: "chio_finding_market_dpop_admission_state",
+        select: true,
+        insert: true,
+        update: true,
+        delete: false,
+    },
+    RuntimeTablePrivileges {
         name: "chio_finding_market_capability_uses",
         select: true,
         insert: true,
         update: true,
+        delete: true,
+    },
+    RuntimeTablePrivileges {
+        name: "chio_finding_market_capability_request_admissions",
+        select: true,
+        insert: true,
+        update: false,
         delete: true,
     },
     RuntimeTablePrivileges {
@@ -193,6 +210,17 @@ const RUNTIME_TABLE_PRIVILEGES: [RuntimeTablePrivileges; 30] = [
         select: true,
         insert: true,
         update: true,
+        delete: false,
+    },
+    // The accumulator is maintained only by the security-definer trigger on
+    // the reservation table, so the runtime never writes it. Leaving those
+    // writes granted would let a compromised runtime role forge a low total
+    // for its own tenant and pass the ceiling the trigger enforces.
+    RuntimeTablePrivileges {
+        name: "chio_finding_market_spend_periods",
+        select: true,
+        insert: false,
+        update: false,
         delete: false,
     },
     no_runtime_privilege("chio_finding_market_journal_checkpoints"),
@@ -261,7 +289,7 @@ pub(crate) async fn verify_runtime_role(pool: &PgPool) -> Result<(), HostedMarke
     )
     .fetch_optional(pool)
     .await
-    .map_err(|_| HostedMarketStoreError::Unavailable)?
+    .map_err(unavailable)?
     .ok_or(HostedMarketStoreError::Configuration)?;
     let is_superuser: bool = row.try_get(0).map_err(unavailable)?;
     let bypasses_rls: bool = row.try_get(1).map_err(unavailable)?;
@@ -293,7 +321,7 @@ pub(crate) async fn verify_migrator_role(pool: &PgPool) -> Result<(), HostedMark
     )
     .fetch_optional(pool)
     .await
-    .map_err(|_| HostedMarketStoreError::Unavailable)?
+    .map_err(unavailable)?
     .ok_or(HostedMarketStoreError::Configuration)?;
     for index in [0_usize, 2, 3, 4, 5, 6, 7, 8] {
         let forbidden: bool = row.try_get(index).map_err(unavailable)?;
@@ -306,7 +334,7 @@ pub(crate) async fn verify_migrator_role(pool: &PgPool) -> Result<(), HostedMark
     let schemas: Vec<String> = sqlx::query_scalar("SELECT current_schemas(FALSE)")
         .fetch_one(pool)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
     if !bypasses_rls
         || !can_create_schema_objects
         || schemas.len() != 1
@@ -328,14 +356,14 @@ pub(crate) async fn verify_retention_role(pool: &PgPool) -> Result<(), HostedMar
             .bind(GC_RETAINED_RESOURCE_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     for function in RETENTION_APPEND_FUNCTIONS {
         let can_append: bool =
             sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
                 .bind(function)
                 .fetch_one(pool)
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(unavailable)?;
         if !can_append {
             return Err(HostedMarketStoreError::Configuration);
         }
@@ -345,43 +373,43 @@ pub(crate) async fn verify_retention_role(pool: &PgPool) -> Result<(), HostedMar
             .bind(APPEND_AGGREGATE_EVENT_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     let can_append_domain: bool =
         sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
             .bind(APPEND_DOMAIN_EVENT_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     let can_apply_principal: bool =
         sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
             .bind(APPLY_PRINCIPAL_EVENT_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     let can_replicate: bool =
         sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
             .bind(APPLY_REPLICATION_EVENT_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     let can_replicate_principal: bool =
         sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
             .bind(APPLY_PRINCIPAL_REPLICATION_EVENT_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     let can_append_replication_check: bool =
         sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
             .bind(APPEND_REPLICATION_CHECK_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     let can_transition: bool =
         sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
             .bind(APPLY_AUTHORITY_TRANSITION_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     if !can_gc
         || can_append_raw
         || can_append_domain
@@ -435,7 +463,7 @@ pub(crate) async fn verify_worker_role(pool: &PgPool) -> Result<(), HostedMarket
                 .bind(function)
                 .fetch_one(pool)
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(unavailable)?;
         if can_execute {
             return Err(HostedMarketStoreError::Configuration);
         }
@@ -446,7 +474,7 @@ pub(crate) async fn verify_worker_role(pool: &PgPool) -> Result<(), HostedMarket
                 .bind(function)
                 .fetch_one(pool)
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(unavailable)?;
         if can_execute {
             return Err(HostedMarketStoreError::Configuration);
         }
@@ -505,7 +533,7 @@ pub(crate) async fn verify_replicator_role(pool: &PgPool) -> Result<(), HostedMa
                 .bind(function)
                 .fetch_one(pool)
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(unavailable)?;
         if can_execute != expected {
             return Err(HostedMarketStoreError::Configuration);
         }
@@ -516,7 +544,7 @@ pub(crate) async fn verify_replicator_role(pool: &PgPool) -> Result<(), HostedMa
                 .bind(function)
                 .fetch_one(pool)
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(unavailable)?;
         if can_execute {
             return Err(HostedMarketStoreError::Configuration);
         }
@@ -536,7 +564,7 @@ async fn verify_function_privileges(
                 .bind(function)
                 .fetch_one(pool)
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(unavailable)?;
         if actual != expected {
             return Err(HostedMarketStoreError::Configuration);
         }
@@ -550,7 +578,7 @@ async fn verify_unprivileged_login_role(pool: &PgPool) -> Result<(), HostedMarke
     )
     .fetch_optional(pool)
     .await
-    .map_err(|_| HostedMarketStoreError::Unavailable)?
+    .map_err(unavailable)?
     .ok_or(HostedMarketStoreError::Configuration)?;
     for index in 0..7 {
         if row.try_get::<bool, _>(index).map_err(unavailable)? {
@@ -597,7 +625,7 @@ async fn verify_runtime_database_privileges(pool: &PgPool) -> Result<(), HostedM
     )
     .fetch_one(pool)
     .await
-    .map_err(|_| HostedMarketStoreError::Unavailable)?;
+    .map_err(unavailable)?;
     let can_create_database_objects: bool = row.try_get(0).map_err(unavailable)?;
     let can_create_temporary_objects: bool = row.try_get(1).map_err(unavailable)?;
     let can_create_schema_objects: bool = row.try_get(2).map_err(unavailable)?;
@@ -612,7 +640,7 @@ async fn verify_runtime_database_privileges(pool: &PgPool) -> Result<(), HostedM
     let schemas: Vec<String> = sqlx::query_scalar("SELECT current_schemas(FALSE)")
         .fetch_one(pool)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
     if schemas.len() != 1 || schemas.first().map(String::as_str) != Some("public") {
         return Err(HostedMarketStoreError::Configuration);
     }
@@ -628,56 +656,56 @@ async fn verify_runtime_table_privileges(pool: &PgPool) -> Result<(), HostedMark
             .bind(APPEND_AGGREGATE_EVENT_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     let can_append_domain: bool =
         sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
             .bind(APPEND_DOMAIN_EVENT_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     let can_apply_principal: bool =
         sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
             .bind(APPLY_PRINCIPAL_EVENT_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     let can_gc: bool =
         sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
             .bind(GC_RETAINED_RESOURCE_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     let can_replicate: bool =
         sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
             .bind(APPLY_REPLICATION_EVENT_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     let can_replicate_principal: bool =
         sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
             .bind(APPLY_PRINCIPAL_REPLICATION_EVENT_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     let can_append_replication_check: bool =
         sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
             .bind(APPEND_REPLICATION_CHECK_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     let can_transition: bool =
         sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
             .bind(APPLY_AUTHORITY_TRANSITION_FUNCTION)
             .fetch_one(pool)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
     for function in RETENTION_APPEND_FUNCTIONS {
         let can_execute: bool =
             sqlx::query_scalar("SELECT has_function_privilege(current_user, $1, 'EXECUTE')")
                 .bind(function)
                 .fetch_one(pool)
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(unavailable)?;
         if can_execute {
             return Err(HostedMarketStoreError::Configuration);
         }
@@ -715,7 +743,7 @@ async fn verify_one_table_privilege(
     .bind(expected.name)
     .fetch_one(pool)
     .await
-    .map_err(|_| HostedMarketStoreError::Unavailable)?;
+    .map_err(unavailable)?;
     let select: bool = row.try_get(0).map_err(unavailable)?;
     let insert: bool = row.try_get(1).map_err(unavailable)?;
     let update: bool = row.try_get(2).map_err(unavailable)?;
@@ -768,7 +796,7 @@ async fn verify_runtime_rls_surface(pool: &PgPool) -> Result<(), HostedMarketSto
     .bind(TENANT_POLICY_EXPRESSION)
     .fetch_all(pool)
     .await
-    .map_err(|_| HostedMarketStoreError::Unavailable)?;
+    .map_err(unavailable)?;
     if rows.len() != TENANT_SCOPED_TABLES.len() {
         return Err(HostedMarketStoreError::Configuration);
     }

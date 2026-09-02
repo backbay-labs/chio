@@ -40,7 +40,7 @@ impl HostedMarketAuthority {
         match value {
             "sqlite" => Ok(Self::Sqlite),
             "postgres" => Ok(Self::Postgres),
-            _ => Err(HostedMarketStoreError::DigestMismatch),
+            _ => Err(HostedMarketStoreError::Decode("authority label")),
         }
     }
 }
@@ -63,7 +63,7 @@ impl HostedAuthorityMode {
             "rollback_window" => Ok(Self::RollbackWindow),
             "authoritative" => Ok(Self::Authoritative),
             "retired" => Ok(Self::Retired),
-            _ => Err(HostedMarketStoreError::DigestMismatch),
+            _ => Err(HostedMarketStoreError::Decode("authority mode label")),
         }
     }
 }
@@ -284,7 +284,7 @@ impl PostgresFindingMarketReplicator {
             .acquire_timeout(config.acquire_timeout)
             .connect_with(config.connect_options()?)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
         runtime_boundary::verify_replicator_role(&pool).await?;
         super::verify_schema_current(&pool).await?;
         Ok(Self { pool })

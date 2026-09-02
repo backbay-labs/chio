@@ -4,10 +4,15 @@ use url::Url;
 
 use crate::{HostedAuthenticatedPrincipal, HostedEdgeError};
 
+/// Header carrying the tenant identity on every hosted request.
 pub const HOSTED_TENANT_HEADER: &str = "Chio-Tenant-ID";
+/// Schema identifier for the tenant binding contract.
 pub const HOSTED_TENANT_BINDING_SCHEMA: &str = "chio.finding.hosted-tenant-binding.v1";
+/// Schema identifier for the canonical request context.
 pub const HOSTED_REQUEST_CONTRACT_SCHEMA: &str = "chio.finding.hosted-request-context.v1";
+/// Schema identifier pinned by every mutation response.
 pub const HOSTED_MUTATION_RESPONSE_SCHEMA: &str = "chio.finding.hosted-mutation-response.v1";
+/// Schema identifier for the wire domain-event envelope.
 pub const HOSTED_DOMAIN_EVENT_SCHEMA: &str = "chio.finding.hosted-domain-event.v1";
 
 const MAX_REQUEST_ID_BYTES: usize = 128;
@@ -24,6 +29,8 @@ const MAX_EVENT_ID_BYTES: usize = 256;
 const MAX_ARTIFACT_SCHEMA_BYTES: usize = 256;
 const MAX_I_JSON_INTEGER: u64 = (1_u64 << 53) - 1;
 
+/// A validated tenant identity taken from the tenant header before
+/// any credential is inspected.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostedTenantBinding {
@@ -48,6 +55,7 @@ impl HostedTenantBinding {
         })
     }
 
+    /// The bound tenant.
     #[must_use]
     pub const fn tenant_id(&self) -> &HostedTenantId {
         &self.tenant_id
@@ -65,6 +73,7 @@ impl HostedTenantBinding {
     }
 }
 
+/// The HTTP methods the hosted contract signs over.
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum HostedHttpMethod {
@@ -75,6 +84,7 @@ pub enum HostedHttpMethod {
 }
 
 impl HostedHttpMethod {
+    /// Stable wire name.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -111,6 +121,7 @@ pub struct HostedRequestContract {
 }
 
 impl HostedRequestContract {
+    /// Fail closed on any malformed, oversized, or unbindable field.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         binding: &HostedTenantBinding,
@@ -159,52 +170,62 @@ impl HostedRequestContract {
         Ok(())
     }
 
+    /// The bound tenant.
     #[must_use]
     pub const fn tenant_id(&self) -> &HostedTenantId {
         &self.tenant_id
     }
 
+    /// The caller-supplied request id, already validated.
     #[must_use]
     pub fn request_id(&self) -> &str {
         &self.request_id
     }
 
+    /// The authenticated principal id.
     #[must_use]
     pub fn principal_id(&self) -> &str {
         &self.principal_id
     }
 
+    /// The governed action name.
     #[must_use]
     pub fn action(&self) -> &str {
         &self.action
     }
 
+    /// The bound HTTP method.
     #[must_use]
     pub const fn method(&self) -> HostedHttpMethod {
         self.method
     }
 
+    /// The exact target path the credential proof signed over.
     #[must_use]
     pub fn canonical_target(&self) -> &str {
         &self.canonical_target
     }
 
+    /// Digest of the exact request body bytes.
     #[must_use]
     pub fn body_sha256(&self) -> &str {
         &self.body_sha256
     }
 
+    /// The idempotency key, when the operation carries one.
     #[must_use]
     pub fn idempotency_key(&self) -> Option<&str> {
         self.idempotency_key.as_deref()
     }
 
+    /// Unix seconds the edge accepted the request.
     #[must_use]
     pub const fn received_at(&self) -> u64 {
         self.received_at
     }
 }
 
+/// Whether a mutation applied or was an exact replay.
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum HostedMutationOutcome {
@@ -213,6 +234,7 @@ pub enum HostedMutationOutcome {
     Accepted,
 }
 
+/// The wire response for one accepted mutation.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostedMutationResponse {
@@ -226,6 +248,7 @@ pub struct HostedMutationResponse {
 }
 
 impl HostedMutationResponse {
+    /// Fail closed on any malformed, oversized, or unbindable field.
     pub fn new(
         request_id: impl Into<String>,
         tenant_id: HostedTenantId,
@@ -254,6 +277,7 @@ impl HostedMutationResponse {
     }
 }
 
+/// The wire envelope of one committed domain event projection.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostedDomainEventEnvelope {
@@ -271,6 +295,7 @@ pub struct HostedDomainEventEnvelope {
 }
 
 impl HostedDomainEventEnvelope {
+    /// Fail closed on any malformed, oversized, or unbindable field.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         tenant_id: HostedTenantId,

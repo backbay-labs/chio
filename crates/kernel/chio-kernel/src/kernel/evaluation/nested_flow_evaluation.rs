@@ -879,14 +879,14 @@ impl ChioKernel {
             // root tool call: a purchase-marked grant requires the
             // verified signed purchase context and an open slot-reserved
             // reservation before any mutation.
-            if let Err(reason) = self.verify_purchase_admission(selected.grant, request, now) {
-                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase denied");
+            if let Err(denial) = self.verify_purchase_admission(selected.grant, request, now) {
+                warn!(request_id = %request.request_id, denial = %denial.code(), reason = %redacted!(denial.detail()), "finding purchase denied");
                 return self.with_pre_invocation_guard_evidence(
                     &pre_invocation_guard_evidence,
                     || {
                         self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
                             request,
-                            reason: &reason,
+                            reason: denial.detail(),
                             timestamp: now,
                             matched_grant_index,
                             cap,
@@ -902,14 +902,14 @@ impl ChioKernel {
                     },
                 );
             }
-            if let Err(reason) = self.verify_recovery_admission(selected.grant, request, now) {
-                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding recovery denied");
+            if let Err(denial) = self.verify_recovery_admission(selected.grant, request, now) {
+                warn!(request_id = %request.request_id, denial = %denial.code(), reason = %redacted!(denial.detail()), "finding recovery denied");
                 return self.with_pre_invocation_guard_evidence(
                     &pre_invocation_guard_evidence,
                     || {
                         self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
                             request,
-                            reason: &reason,
+                            reason: denial.detail(),
                             timestamp: now,
                             matched_grant_index,
                             cap,

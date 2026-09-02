@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the M10 single-operator coding-agent pilot and emit aggregate evidence."""
+"""Run the single-operator coding-agent pilot and emit aggregate evidence."""
 
 from __future__ import annotations
 

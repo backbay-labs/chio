@@ -1,10 +1,10 @@
 # Cognition Market Threat Model
 
-- Status: research design merged through PR #1025. This execution branch's
-  M0/M1 supplies only finding schema, content-address, and strict
-  issuer-signature integrity.
+- Status: threat model for the implemented single-operator market and
+  hosted profile. Cross-organization escrow remains conditional and
+  unbuilt; its sections analyze the conditional design.
 - Scope: the finding market designed in [ARCHITECTURE.md](ARCHITECTURE.md) and
-  [ADR-0017](../../adr/ADR-0017-cognition-market-finding-artifacts.md), both
+  [ADR-0017](../adr/ADR-0017-cognition-market-finding-artifacts.md), both
   instances (coding-agent verified fixes; R&D negative results)
 - Method: assets -> trust assumptions -> adversaries -> attack catalog with
   mitigations mapped to shipped primitives (paths cited) -> residual-risk
@@ -18,11 +18,12 @@
 - A2. Buyer funds - target invariant: no capture without a kernel-attested
   reveal of the finding's committed digest (an Allow proves kernel
   acceptance of the preimage, not buyer receipt/retention - ARCHITECTURE
-  6.2; the post-Allow crash window is F3 step 6). M1 does not enforce this
-  invariant. M3 can establish only generic constraint-digest equality; M4
-  must bind that constraint and provider grant to the verified signed
-  `Finding`. ADR-A must exclude both reserve-for-caller `MustPrepay` and
-  `PrepaidFinal` from the M4 profile. Any later compensated prepaid profile
+  6.2; the post-Allow crash window is F3 step 6). Artifact integrity alone
+  does not enforce this invariant. The generic delivery contract establishes
+  constraint-digest equality; the purchase chain binds that constraint and
+  provider grant to the verified signed `Finding`. ADR-0019 excludes both
+  reserve-for-caller `MustPrepay` and `PrepaidFinal` from the purchase
+  profile. Any later compensated prepaid profile
   is a separate version and cannot weaken the v1 no-capture-on-mismatch rule.
 - A3. Seller bond - no slash without a predeclared, evidence-gated rule.
 - A4. Market truthfulness - listings, evidence bundles, and status feeds mean
@@ -71,7 +72,8 @@ New trust roles the market introduces, stated explicitly:
   prove the operator included every authenticated intent
   (`crates/trust/chio-revocation-oracle/src/api.rs:86,116`,
   `src/freshness.rs`). The single-operator enforced-challenge path narrows
-  this trust with a durable outbox and purchase-pending gate. M6 also requires
+  this trust with a durable outbox and purchase-pending gate. The status
+  feed also requires
   a live operator bond, signed inclusion SLA, monitoring, and a
   latest-observed `(map_epoch, epoch_id, root_hash)` floor; these make
   omission, rollback, and same-epoch equivocation punishable or detectable,
@@ -84,14 +86,15 @@ New trust roles the market introduces, stated explicitly:
   (`crates/trust/chio-disclosure-lineage/src/types.rs:93`). The finding
   profile does not currently define a canonical predicate carrier or bind a
   capsule/report digest into `chio.finding.v1`, and the buyer proof boundary
-  rejects hidden range predicates. Therefore M1 and M2 treat descriptor
+  rejects hidden range predicates. Therefore integrity and admission treat
+  descriptor
   fields such as `outcome_class` as public assertions backed only by the
   declared evidence class. No hidden-predicate claim is admissible until a
   future version defines the canonical predicate and capsule digest, pins
   the trusted signer and proof profile, and the buyer verifier resolves and
   validates that exact proof without upgrading its guarantee.
-- T5. The M5 settlement operator is trusted to derive and enforce the
-  harmed-party destination allowlist from frozen M4 purchase records. Its
+- T5. The challenge settlement operator is trusted to derive and enforce
+  the harmed-party destination allowlist from frozen purchase records. Its
   signed Finding enforcement authorization makes the decision attributable
   and replay-stable, but the current bond-vault contract checks only
   distribution shape, at most 16 nonzero beneficiary addresses, amount
@@ -119,13 +122,14 @@ Format: attack -> mitigation (mechanism, path) -> residual.
 
 Implementation boundary: cited Chio primitives may already ship, but their
 cognition-market compositions below are proposed unless explicitly marked.
-M1 does not authenticate evidence or liveness, validate bond or status
+Artifact integrity does not authenticate evidence or liveness, validate
+bond or status
 references, enforce reveal delivery or settlement, run challenges, or close
 the seller, buyer, collusion, operator, or observer attacks cataloged here.
 Its `verify_finding` boundary proves only strict artifact structure,
 content-address integrity, and the inline issuer signature.
 
-M2 must introduce one explicit `FindingEvidenceVerifier` profile before any
+One explicit `FindingEvidenceVerifier` profile is required before any
 listing is advertised as verified. Its raw-byte-first ingress rejects
 duplicate-key/non-I-JSON input and schema/typed-model divergence, and rejects
 noncanonical spelling only when the endpoint compares raw bytes with its
@@ -166,8 +170,9 @@ upgraded.
 ### Seller-side
 
 - **S1. Fabricated evidence bundle** (invented receipts, wrong checkpoint).
-  M1 has no evidence verifier, so this remains HIGH and an M1 signature must
-  not be described as evidence verification. M2 target: the explicit
+  Without the evidence verifier this remains HIGH, and an integrity
+  signature must not be described as evidence verification. Mitigation: the
+  explicit
   `FindingEvidenceVerifier` above re-verifies receipt bodies and signatures,
   checkpoint inclusion, trusted-kernel and revocation state, receipt
   attribution against authenticated signed capability snapshots and validated
@@ -175,7 +180,8 @@ upgraded.
   authorization, guarantee class, and liveness fail-closed, following the
   existing claim-verification pattern
   (`crates/economy/chio-market/src/insurance_flow.rs:390-414`; buyer boundary
-  `crates/trust/chio-attest-buyer/src/api.rs`). At M5, an enforced finding
+  `crates/trust/chio-attest-buyer/src/api.rs`). Under the challenge lane,
+  an enforced finding
   fraud outcome maps to the frozen v1 `FraudulentListing` class and carries
   exactly one `External` evidence reference to the signed
   `chio.finding.challenge-outcome.v1`. Its reference id equals the
@@ -188,10 +194,11 @@ upgraded.
   penalty evaluator
   (`crates/economy/chio-open-market/src/evaluation.rs:356-451`). Missing,
   duplicate, wrong-kind, wrong-signer, or unrelated evidence references deny.
-  Residual after M2/M5: audited trust in the kernel/checkpoint/issuer key set
+  Residual after verification and challenge: audited trust in the
+  kernel/checkpoint/issuer key set
   and the evidence resolver. An authentic receipt proves a kernel-observed
   event, not that it semantically establishes the Finding's context or
-  outcome; the M2
+  outcome; the evidence
   facet is positive only when the versioned recipe/context mapping binds the
   receipt action, inputs, and output evidence. Resolver unavailability is an
   availability-SLA failure, not seller fraud. Later key revocation or a later
@@ -200,7 +207,8 @@ upgraded.
   cryptographic invalidity or proof that the referenced evidence was already
   invalid at publication. Current residual: high.
 - **S2. Honest-cost fabrication** (seller really burns the compute, claims a
-  wrong result). The M1 `evidence_cost` field is an issuer assertion. At M2,
+  wrong result). The unverified `evidence_cost` field is an issuer
+  assertion. In full-receipt mode,
   a full-receipt listing can establish `metered_exposure_backing` after strict
   receipt-signature and checkpoint verification, semantic context/recipe
   binding, the complete authoritative-spend predicate, and verification of
@@ -218,7 +226,8 @@ upgraded.
   the cited run; it does not prove publication completeness, stop many
   parallel commitments, or show that unfavorable results were published.
 
-  For `deterministic_replay`, M5 targets bonded challenge re-execution plus
+  For `deterministic_replay`, the challenge lane provides bonded challenge
+  re-execution plus
   published-rate probabilistic audits sized so
   `audit_rate x slash >= expected fabrication profit` (MECHANISMS section 5).
   The canonical recipe must bind the purchased reveal-envelope digest and
@@ -232,14 +241,15 @@ upgraded.
   receipts; otherwise the advertised rate is an operator assertion. Residual
   for `metered_attested` findings remains real and accepted, carried by
   bonds, guarantee-class discounts, and reputation rather than proof.
-  Severity: medium for the deterministic wedge after M5, high for the R&D
-  instance and before M5.
+  Severity: medium for the deterministic instance under the challenge
+  lane, high for the R&D instance and without it.
 - **S3. Bait-and-switch payload** (serve bytes not matching the commitment).
-  Target mitigation: M3's generic delivery contract refuses an Allow receipt
+  Mitigation: the generic delivery contract refuses an Allow receipt
   unless the final output hash equals its token constraint. Admission selects
   exactly one grant with exactly one `OutputDigestSha256` value, persists the
   `(grant_index, digest)` selection across restart, and rejects duplicate,
-  conflicting, or multi-grant ambiguity. M4 binds that provider-minted
+  conflicting, or multi-grant ambiguity. The purchase chain binds that
+  provider-minted
   constraint to the strictly verified finding's `payload_sha256` and requires
   the marked v1 identity-output profile. It also checks that the canonical
   reveal envelope's `media_type` equals the Finding's
@@ -258,29 +268,29 @@ upgraded.
   exact expected/observed digest metadata and exact-once reservation/hold
   release, never an Allow, capture, refund, or compensation.
   Only a kernel-authenticated seller-origin mismatch under that identity
-  profile is `digest_mismatch` sanction evidence (ADR-A and ARCHITECTURE
-  4.3/6 define the still-unimplemented terminal transition). M1 provides the
-  signed commitment only. Current residual: high. No lane emits that signed
-  Deny and exact-once hold release for a finding digest mismatch yet;
+  profile is `digest_mismatch` sanction evidence (ADR-0019 and
+  ARCHITECTURE 4.3/6 define the terminal transition). The failed-delivery
+  lane emits that signed Deny and exact-once hold release;
   `MustPrepay` and `PrepaidFinal` are therefore excluded from the v1 profile.
-- **S4. Selling stale/retracted findings.** M6 target: artifact expiry plus
+- **S4. Selling stale/retracted findings.** Mitigation: artifact expiry plus
   a registered portable non-inclusion proof whose bounded raw bytes the
   kernel verifies against the signed epoch, feed, nonce, finding, path, and
   freshness before reveal. Today's `NonInclusionProof` is checked against
   local oracle state and is not that portable proof
-  (`crates/trust/chio-revocation-oracle/src/api.rs:110-116`). M1 has only
-  artifact expiry/status references. M6 pins the outer and embedded root
+  (`crates/trust/chio-revocation-oracle/src/api.rs:110-116`). Artifact
+  integrity has only expiry/status references. The status feed pins the
+  outer and embedded root
   signers plus authenticated resolver to the same feed deployment and retains
   a per-feed/operator latest-observed
   `(map_epoch, epoch_id, root_hash)` floor, rejecting an older valid proof or
   an equal-epoch proof with a different id/root even inside its nominal
-  freshness window. Residual after M6:
+  freshness window. Residual with the status feed:
   retraction between proof and reveal (window-bounded), plus selective
   omission/completeness risk for external operators under O2; locally
   enforced outcomes remain purchase-blocked while their durable outbox is
   pending.
 - **S5. Plagiarized finding** (listing someone else's payload). Target:
-  M2 verifies receipt attribution metadata against authenticated signed
+  Admission verifies receipt attribution metadata against authenticated signed
   capability snapshots and the validated transport/provider identity at the
   producing boundary. `ReceiptLineageStatementBody` carries receipt/request
   endpoints and session anchors, not a producing subject, capability
@@ -289,7 +299,7 @@ upgraded.
   activation records a separate issuer-signed seller authorization carrier
   that either names the exact Finding issuer as seller or delegates the exact
   finding, listing, delegate, scope, validity interval, and revocation domain.
-  M4 resolves current revocation state, re-checks that carrier, and requires
+  Purchase resolves current revocation state, re-checks that carrier, and requires
   the reveal provider, listing seller, and capability issuer to be the
   authorized issuer or delegate. The payment beneficiary must either be that
   same seller under `SellerExact` or exactly match an authenticated
@@ -304,14 +314,15 @@ upgraded.
   publication fee collection plus the live publication/listing allocation in
   S8. Fee and bond requirements already exist declaratively
   (`crates/economy/chio-fiscal/src/fee_schedule.rs:69`), but a declared
-  fee has no spam cost until M2 settles it and records the receipt. Existing
+  fee has no spam cost until collection settles it and records the receipt. Existing
   `SpamPublication` penalties (`src/penalty.rs:21`) and namespace-owned
   listings (`crates/economy/chio-listing/src/listing.rs:103`) add enforcement.
   Current residual: high; after collection and allocation: low-medium,
   depending on fee and collateral sizing.
-- **S7. Non-delivery after payment.** Target single-operator profile:
-  M4 must use a fresh ADR-A budget-reservation plus durable direct-evaluation
-  `HoldCapture` / `ReversibleHold` profile. The shipped reserve-for-caller
+- **S7. Non-delivery after payment.** Single-operator profile: the
+  purchase chain uses the ADR-0019 budget-reservation plus durable
+  direct-evaluation `HoldCapture` / `ReversibleHold` profile. The
+  reserve-for-caller
   `MustPrepay` path can capture a held payment before it returns the
   reservation, and `PrepaidFinal` is final; neither is a no-loss reveal rail.
   Reveal-time authorization/capture happens only after the final digest and
@@ -320,9 +331,8 @@ upgraded.
   on any Deny, or exact-once capture after a durably staged matched Allow.
   A mismatch cannot capture and its hold release is not a refund or
   compensation. A crash after capture resumes the staged Allow and recovery
-  authorization rather than reversing the transfer. ACP's local synthetic
-  terminal success and x402 final prepayment do not qualify. M1 has not wired
-  this profile. Cross-org, the pre-accept authoritative reservation state
+  authorization rather than reversing the transfer. ACP-Client's local synthetic and x402 final prepayment do not qualify. Cross-org,
+  the pre-accept authoritative reservation state
   binds the exact signed bid/ask, buyer, depositor or authorized sponsor,
   seller beneficiary, finding, listing, capability offer, preallocated
   purchase/payment ids, admission, settlement profile, consumed mediator
@@ -337,11 +347,11 @@ upgraded.
   With a seller-aligned
   mediating operator the attest-and-withhold attack (O5) remains HIGH, so the
   profile requires a neutral/mutually trusted mediator and operator bond or
-  is disallowed (ARCHITECTURE F6). M7 accepts only an unreleased escrow funded
+  is disallowed (ARCHITECTURE F6). Escrow accepts only an unreleased escrow funded
   for the exact price and one full monetary terminal: release the full price
   or refund the full price after deadline. Partial or mixed terminals reject.
 - **S8. Reused or undercollateralized listing bond.** A signed bond
-  requirement or opaque `bond_ref` is not collateral. M2 activation must
+  requirement or opaque `bond_ref` is not collateral. Activation must
   atomically create a live encumbrance bound to seller, listing, finding,
   requirement/class, currency, amount, and expiry, persist its allocation id,
   and reject stale, wrong-party, wrong-currency, or already-allocated
@@ -365,7 +375,7 @@ upgraded.
 - **S9. Unsupported proof-profile upgrade.** A seller labels a public
   `outcome_class` or a disclosure capsule as a hidden, verified predicate even
   though the Finding commits to no canonical predicate/capsule digest and the
-  buyer proof boundary does not support the claim. M2 rejects every such
+  buyer proof boundary does not support the claim. Admission rejects every such
   upgrade and reports only the facet it can verify. A future hidden-predicate
   profile must version the Finding schema, bind the canonical predicate and
   capsule/report digest, resolve the exact proof and signer policy, and reject
@@ -408,23 +418,24 @@ upgraded.
   single-use state, and funding evidence. The signed generic receipt is only
   one input to that witness, not proof of the omitted facts.
   The grant has `dpop_required: Some(true)` and is one-shot. The current
-  generic bid path leaves DPoP unset, so M4 must add and require that mint
-  binding. A bounded recovery grant is separately
+  generic bid path leaves DPoP unset, so the purchase mint adds and
+  requires that binding. A bounded recovery grant is separately
   bound to that buyer, purchase, delivery receipt, capability, and finding,
   has zero monetary ceiling and no capture authority, and permits only the
   predeclared retry count. Missing, wrong, alternate-token, duplicate-grant,
   replayed-reservation, or cross-purchase inputs deny before financial
   mutation. Today `bid()` mints a usable token before `accept()` verifies a
   reservation (`crates/economy/chio-open-market/src/bidding.rs:387-489`), so
-  the current token alone proves none of these facts. Current residual: high
-  until M4.
+  the current token alone proves none of these facts; the purchase
+  profile supplies them.
 
   Cross-org fairness additionally requires the stronger authoritative
   reservation state, a configured settlement authority, a funded escrow
   witness, and the neutral mediating-operator profile in S7/O5. The generic
   reservation body is insufficient. A buyer-side operator can otherwise
-  observe the reveal and withhold the checkpoint into a refund. M7 remains
-  blocked on ADR-C; even after a profile is selected, the residual is the
+  observe the reveal and withhold the checkpoint into a refund. Escrow
+  remains blocked on its settlement ADR; even after a profile is selected,
+  the residual is the
   mutually trusted mediator and settlement-authority model.
 - **B2. Resale/republication after reveal.** NOT cryptographically
   preventable (information is copyable). Mitigations are economic and
@@ -443,7 +454,7 @@ upgraded.
   information); sellers choose topic granularity accordingly. Medium.
 - **B4. Malicious challenge to slash an honest seller.** Challenge admission
   is an exclusive `oneOf`. A buyer branch is signed by the buyer subject with
-  class-specific M4 standing, locks a live Dispute-class allocation, and
+  class-specific purchase standing, locks a live Dispute-class allocation, and
   supplies the collected `dispute_fee` receipt. `evidence_invalid` and
   `replay_contradiction` require an authoritative finalized purchase record.
   `digest_mismatch` instead requires the purchase-authority-signed
@@ -490,13 +501,13 @@ upgraded.
   guarantee at most one seller impairment across classes while keeping
   challenge-bond disposition and external effects separately idempotent
   across duplicates, concurrency, and restart. The first Upheld transition
-  linearizes, in the same authoritative transaction or CAS domain as M4
+  linearizes, in the same authoritative transaction or CAS domain as purchase
   purchase finalization, the sales block, frozen purchase cutoff, and
   `Open -> UpheldPendingClaims` incident-head advance. Thus a concurrent
   purchase either finalizes before the cutoff and is included, or observes the
   sales block and cannot capture after the frozen snapshot.
 
-  Buyer destinations and verified harm come only from the authoritative M4
+  Buyer destinations and verified harm come only from the authoritative
   purchase records signed by the pinned purchase-record authority at the
   frozen cutoff, each cross-bound to delivery, original payment, realized
   spend, seller backing, and its immutable rail-tagged destination, never a
@@ -554,9 +565,9 @@ upgraded.
   poisoned it). Target mitigation: the delivery receipt binds exactly what
   bytes were delivered (digest); ingestion is the buyer's own governed write
   under its own guards
-  (`crates/guards/chio-guards/src/memory_governance.rs:60`). M4
+  (`crates/guards/chio-guards/src/memory_governance.rs:60`). Delivery
   records a typed lineage edge from that memory-write receipt to the verified
-  finding-delivery receipt. At M6 the quarantine resolver follows store/key
+  finding-delivery receipt. The quarantine resolver follows store/key
   to write receipt/capability, delivery receipt, Finding, and authenticated
   status, denying on broken lineage, stale/unavailable status, pending
   publication, or retraction
@@ -577,12 +588,12 @@ upgraded.
   self-referential lineage (same root budget holder,
   `delegation_depth`/`root_budget_holder` on financial metadata). Residual:
   a patient adversary can still buy reputation at the collected fee and trade
-  cost. M1 projected `evidence_cost` and uncollected fees provide no floor,
+  cost. Projected `evidence_cost` and uncollected fees provide no floor,
   and even a verified full-receipt profile proves only kernel-accounted spend,
   not paid work, economic burn, or useful output. Medium-high until collection,
   medium afterward.
 - **C2. Collusive challenge rings** (challenger and seller split slash
-  proceeds). Target mitigation: M5's settlement coordinator derives slash
+  proceeds). Mitigation: the challenge settlement coordinator derives slash
   destinations from verified harmed purchases or the registered community
   fund, never caller-selected payees (ADR-0015 D4; comptroller
   `market_slash` payee-check precedent,
@@ -590,7 +601,7 @@ upgraded.
   alone does not enforce this allowlist, so a signed Finding-specific operator
   authorization must apply it before impairment. The community-fund address
   and governing registry/root are pinned in pre-sale terms, and buyer
-  destinations are frozen in signed M4 purchase records. Challenge rewards
+  destinations are frozen in signed purchase records. Challenge rewards
   come from a separate collected-fee pool under fixed destinations; venue
   audits earn no reward. The liability key prevents another seller
   impairment, and `purchase_key` caps each purchase payout.
@@ -598,7 +609,7 @@ upgraded.
   impairment by chain/vault/liability/allocation, challenge-bond effect by
   challenge/lock with disposition in a separately compared intent digest,
   fee challenge-or-audit-run/operation, and the pre-publication retraction
-  intent by Finding/feed/`retraction_intent_id`. M6 epoch/root publication has
+  intent by Finding/feed/`retraction_intent_id`. Epoch/root publication has
   a separate later publisher-attempt identity; one generic
   chain/vault/liability/effect-kind key is not reused across those domains.
   Residual: until ADR-0015 follow-up A, a compromised settlement operator can
@@ -606,16 +617,17 @@ upgraded.
   vault does not structurally recognize harmed parties. Even with an honest
   operator, rings can manufacture apparent activity to capture fee-funded
   buyer replay reimbursements if audit selection or eligible purchase
-  snapshots are operator-chosen; C4 closes that surface only after M5.
+  snapshots are operator-chosen; C4 closes that surface only under the
+  challenge lane.
 - **C3. Sybil seller farms** (many identities listing junk). Mitigated:
   per-identity live collateral allocations and collected publication fees;
   `BondBacked` admission class keeps unbacked listings review-only
   (`crates/economy/chio-listing/src/trust_activation.rs:565`). Residual:
   bounded by allocated bond capital only after S8's anti-double-pledge and
-  exposure cap. Before M2 those properties do not exist.
+  exposure cap. Without admission those properties do not exist.
 - **C4. Audit-selection gaming or subsidy extraction.** A venue can omit
   friendly listings, target rivals, claim a published rate it did not run, or
-  use synthetic audits to drain a nominal fee pool. M5 requires an
+  use synthetic audits to drain a nominal fee pool. The audit lane requires an
   authenticated eligible-set snapshot, committed randomness, deterministic
   selection, and signed attempt/success/missed-deadline receipts. Audit
   spending is capped by a restricted pool of seller participation fees
@@ -641,7 +653,7 @@ upgraded.
   TEE-tier boundaries. Severity: medium (high for R&D instance with
   commercially explosive findings).
 - **O2. Status-feed censorship or stall** (suppressing a retraction).
-  M6's status-epoch artifact outer signature binds the feed, numeric nonce,
+  The status-epoch artifact outer signature binds the feed, numeric nonce,
   operator, validity, anchors, `status_map_version`, and domain-separated root
   semantics. It reuses the existing signed-root envelope and signer type only,
   not the append-only tree's root meaning. Verification also pins the embedded
@@ -691,12 +703,13 @@ upgraded.
   requires a neutral/mutually trusted mediator selected by the escrow's
   allowlist, plus the mediator's buyer allowlist, both cross-bound to
   `EscrowTerms`; with a seller-aligned mediator severity stays HIGH and the
-  profile is rejected. M7 is blocked on ADR-C. The current contract's
-  alternative release methods can bypass an off-chain full-only and
-  settlement-authority profile, so ADR-C must choose a contract-gated profile
+  profile is rejected. Escrow is blocked on its settlement ADR. The
+  current contract's alternative release methods can bypass an off-chain
+  full-only and settlement-authority profile, so that ADR must choose a
+  contract-gated profile
   or label the current path an audited, Experimental TTP profile without a
   non-discretionary guarantee. Neutrality alone gives the mediator no economic
-  loss for withholding. M7 therefore requires a governance-signed settlement
+  loss for withholding. The escrow profile therefore requires a governance-signed settlement
   profile and a bond-authority-signed, non-reusable mediator-backing
   allocation. They pin the mediator, contract path, token mapping, full-only
   terminal, objective checkpoint/root SLA, liability horizon, and penalty
@@ -720,7 +733,7 @@ upgraded.
   The deadline lower bound covers grant validity and all three
   proof stages: delivery inclusion, settlement-authority receipt inclusion,
   and typed escrow-root publication, each through required finality, plus a
-  safety margin. The M7 profile rejects `partialRelease*`, prior partial
+  safety margin. The escrow profile rejects `partialRelease*`, prior partial
   release, mixed or fractional terminal states, and amount drift: only full
   accepted-price release or full timeout refund qualifies. A separately
   operated timeout watchdog consumes trusted chain/time state and coordinates
@@ -747,9 +760,9 @@ upgraded.
   observers keep `released == deposited` as `FullReleased`, record the drift,
   and never authorize a second monetary terminal. Residual: the admin,
   mediator, settlement authority, chain finality, watchdog liveness, and
-  operator-bond adequacy are explicit trust/economic assumptions; M7 must
-  test pause-through-deadline, key rotation, zero-refund drift, withhold-root,
-  and withhold-response.
+  operator-bond adequacy are explicit trust/economic assumptions; the
+  escrow profile must test pause-through-deadline, key rotation,
+  zero-refund drift, withhold-root, and withhold-response.
 - **O4. Adjudicator compromise** (T3). Mitigated: predeclared rosters +
   decision-rule refs are validated fail-closed
   (`crates/economy/chio-market/src/claim.rs:38-50`), outcome sets and amount
@@ -793,21 +806,21 @@ upgraded.
 
 | Risk | Instance | Severity | Owner of residual |
 |---|---|---|---|
-| Fabricated evidence accepted before the M2 verifier exists (S1) | both | high | M2 verifier profile; listing policy must not advertise M1 integrity as evidence verification |
+| Fabricated evidence accepted without the evidence verifier (S1) | both | high | evidence-verifier profile; listing policy must not advertise integrity as evidence verification |
 | Honest-cost fabrication of `metered_attested` nulls (S2) | R&D | high | pricing (guarantee-class discounts) + bonds; open research |
 | Post-reveal resale/leakage (B2) | both | high-by-nature | pricing assumption; license terms out-of-protocol |
 | Operator sees revealed content cross-org (O1/T1) | both | medium-high | deployment policy (TEE tier, trusted-operator scoping) |
-| Purchase/token/reservation/payee bindings absent before M4 (B1/S5) | both | high | M4 strict purchase profile and ADR-A financial terminal |
-| Listing collateral can be reused or outrun by exposure before M2/M4 (S8) | both | high | live allocation and atomic sales-exposure cap |
+| Purchase/token/reservation/payee bindings absent outside the purchase profile (B1/S5) | both | high | strict purchase profile and the ADR-0019 financial terminal |
+| Listing collateral can be reused or outrun by exposure without admission (S8) | both | high | live allocation and atomic sales-exposure cap |
 | Reputation purchasable at collected fee and trade cost (C1) | both | medium | economics tuning; Sybil gates |
 | Descriptor metadata leakage (B3/X1) | R&D | medium | seller topic granularity; leakage budgets |
 | Fresh status root selectively omits an external retraction (S4/O2) | cross-org | high | audited completeness, operator bond, inclusion SLA |
 | Retraction race window after valid proof (S4) | both | low-medium | freshness-window tuning |
 | No revenue clawback in v1 (fraud revenue finalizes; MECHANISMS 4) | both | medium | bonds sized for finalized exposure; capture-delay custody is a post-wedge design decision |
-| `MustPrepay` or `PrepaidFinal` can settle before digest verification | both | high until ADR-A | reject both rails from the v1 constrained-reveal profile; any compensated prepaid profile is a separate version |
-| Paid non-delivery under a seller-aligned cross-org mediator (S7/O5 attest-and-withhold) | cross-org | high | M7 blocked on ADR-C; require contract-gated profile or disclose Experimental TTP; seller-aligned profile prohibited |
+| `MustPrepay` or `PrepaidFinal` can settle before digest verification | both | high without the ADR-0019 rail rule | reject both rails from the v1 constrained-reveal profile; any compensated prepaid profile is a separate version |
+| Paid non-delivery under a seller-aligned cross-org mediator (S7/O5 attest-and-withhold) | cross-org | high | escrow blocked on its settlement ADR; require contract-gated profile or disclose Experimental TTP; seller-aligned profile prohibited |
 | Neutral mediator, escrow admin, or timeout watchdog defeats its SLA (O5) | cross-org | medium-high | mandatory settlement profile and mediator backing, full funded witness, beneficiary-authorized release, three-stage proof and pause/rotation tests |
-| Compromised M5 operator signs policy-wrong payout destinations (T5/C2) | both | high | pre-sale pinned fund and frozen buyer destinations; ADR-0015 follow-up A for structural enforcement |
+| Compromised settlement operator signs policy-wrong payout destinations (T5/C2) | both | high | pre-sale pinned fund and frozen buyer destinations; ADR-0015 structural enforcement remains open |
 | Post-distribution appeal cannot claw back funds or retract an append-only status entry (B4/O4) | both | medium | reject in v1; future funded idempotent restitution and correction-status design |
 | Challenge griefing asymmetry (B4) | wedge | low-medium | bond-size tuning (MECHANISMS) |
 | Authorized republication of revealed information (S5/B2) | both | medium | forensic + reputational only |
@@ -819,9 +832,9 @@ never to insiders; no discretionary settlement - ADR-0015), P1 attenuation
 (purchase capabilities are narrow single-use grants), P4 receipt integrity
 (delivery proofs), P10 truthfulness (evidence classes never upgraded, which
 is what keeps `asserted` findings from masquerading as verified). New
-invariant candidates the implementation should formalize are listed in
-[PLAN.md](PLAN.md) (delivery-contract soundness; status-feed freshness
-monotonicity; challenge-outcome envelope). This threat pass adds the
+invariant candidates the implementation should formalize are
+delivery-contract soundness, status-feed freshness monotonicity, and the
+challenge-outcome envelope. This threat pass adds the
 load-bearing refinements: one strict evidence-verifier facet report; exact
 Finding/ask/bid/token/request/reservation/payee binding before financial
 mutation; one live collateral allocation with exposure bounded by remaining

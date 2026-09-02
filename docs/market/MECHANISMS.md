@@ -1,9 +1,8 @@
 # Cognition Market Mechanisms: Pricing, Elicitation, Bonds, Fees
 
-- Status: research design merged through PR #1025; this execution branch
-  implements only the M0/M1 finding-artifact foundation. Pricing, fee
-  collection, custody, revenue vesting, challenges, and audits remain
-  proposed.
+- Status: implemented economic design for the qualified single-operator
+  market. Cross-organization escrow settlement remains conditional and
+  unbuilt.
 - Scope: the economic design layered on [ARCHITECTURE.md](ARCHITECTURE.md);
   what is deterministic policy vs. tunable parameter vs. open research
 - Section 8 carries the external prior-art survey with citations; sections
@@ -29,9 +28,10 @@ local estimate of its outside option:
   (`crates/kernel/chio-kernel/src/kernel/governed_validation.rs:595`).
   Therefore that type cannot, by itself, establish a market-wide or
   operator-verifiable substitute price.
-- At M1, `evidence_cost` is an issuer assertion in every evidence mode. The
+- Without the evidence verifier, `evidence_cost` is an issuer assertion in
+  every evidence mode. The
   artifact validator checks its shape, not the receipts or their semantic
-  relationship to the finding. At M2, full-receipt mode (mode A in
+  relationship to the finding. With the evidence verifier, full-receipt mode (mode A in
   ARCHITECTURE F2) can establish typed lower bounds only after the offline
   verifier strictly validates canonical receipt
   signatures and complete checkpoint bindings, proves the receipt actions,
@@ -51,7 +51,7 @@ local estimate of its outside option:
   two cost facets remain unavailable until an audit supplies and verifies
   the full authority inputs. A dedicated authenticated cost projection is
   future engineering.
-- M2 admission consumes a signed, registered
+- Venue admission consumes a signed, registered
   `chio.finding.verifier-report.v1`, not an unsigned local rendering. The
   report authority is independently pinned by deployment governance and
   narrowed by the admitted verifier profile. The report binds the Finding,
@@ -72,7 +72,7 @@ this is stated plainly rather than engineered away.
 
 ## 2. Buyer-side elicitation (deterministic policy)
 
-The M8 ceiling function is implemented by the Rust reference helper in
+The bid-ceiling function is implemented by the Rust reference helper in
 `crates/economy/chio-open-market/src/finding_bid_policy.rs` and mirrored by
 the TypeScript and Python SDKs:
 
@@ -94,7 +94,7 @@ decimal-string `u64` domain. Shared golden vectors and negative vectors fix
 the cross-language behavior. The real marketplace fixture separately proves
 that an at-ceiling bid clears and an above-ceiling bid rejects.
 
-This M8 profile intentionally does not add a production quote source or an
+This profile intentionally does not add a production quote source or an
 authenticated bid-basis artifact. The existing signed `BidRequest` carries
 only `max_price_per_call`; it does not carry the estimate or the three
 multipliers. Consequently an operator can audit enforcement of the submitted
@@ -129,15 +129,15 @@ Sellers price against demand signals already on the hint (receipt volume,
 provider-advertised rather than independently proved. No negotiation, no
 auction in v1: the launch hypothesis is that buyer-local walkaway ceilings
 and near-zero marginal delivery cost make posted prices adequate at wedge
-scale. Efficiency remains empirical. Auction machinery is deferred to the
-decision backlog in [PLAN.md](PLAN.md).
+scale. Efficiency remains empirical. Auction machinery stays deferred
+pending market evidence.
 
 Three pricing structures adopted from the prior art (8.2, 8.5):
 
 - **Anchored ordering, without an exclusivity claim.** Receipt timestamps
   are NOT a cross-operator total order (each kernel's clock is an audited
   assumption, and nothing tie-breaks across seller operators), so no
-  listing slot is awarded by timestamp. At M2, listings with the same
+  listing slot is awarded by timestamp. Under admission, listings with the same
   context may coexist and a UI may show an informational order from one
   named anchor's inclusion order. That is not global priority or proof of
   independent discovery. A context digest is a match key, not duplicate or
@@ -166,13 +166,14 @@ does not enforce custody through them. `ChioEscrow.releaseWithProofDetailed`
 transfers funds immediately on proof; `chio-settle`'s finality inspection
 can label a transaction `AwaitingDisputeWindow` but cannot reverse it; the
 kernel MustPrepay path settles and reconciles before any later challenge;
-and M4/M5 do not retain seller revenue through the post-sale dispute window.
-M4 proposes only a short-lived pre-delivery reversible hold that captures
+and the purchase and challenge lanes do not retain seller revenue through
+the post-sale dispute window.
+The purchase chain uses only a short-lived pre-delivery reversible hold that captures
 immediately after a matched delivery. It is not dispute-window custody or a
 clawback. So the current system has NO revenue clawback, and the target must
 not pretend otherwise:
 
-M4 also separates budget reservation from acceptance and payment. An
+The purchase chain also separates budget reservation from acceptance and payment. An
 authoritative buyer/kernel coordinator persists a rich durable budget and
 seller-exposure reservation with preallocated purchase/payment ids before
 calling the existing pure `accept()`. The shipped
@@ -184,11 +185,11 @@ Reveal-time hold and capture remain separate kernel finalizer transitions.
 - **A bond requirement is not live collateral.** The shipped fee schedule
   declares a class, amount, currency, and `slashable` bit, and trust
   activation can label a listing `BondBacked`. It does not create an
-  exclusive collateral allocation bound to one finding. M2 must resolve a
+  exclusive collateral allocation bound to one finding. Admission resolves a
   live, unspent seller-collateral allocation from a trusted bond authority
   and bind it to seller key, listing id, finding id, schedule requirement
   and version, class, currency, amount, and expiry. The allocation reference
-  persists through activation, every purchase, and M5 impairment; stale,
+  persists through activation, every purchase, and challenge impairment; stale,
   wrong-owner, wrong-currency, and already-allocated collateral reject.
 - **Collateral caps finalized exposure.** Because revenue can finalize
   before a challenge, admission and purchase must atomically reserve
@@ -210,15 +211,15 @@ Reveal-time hold and capture remain separate kernel finalizer transitions.
 - **Post-sale capture-delay is a future custody option, not a v1 claim.**
   Holding seller revenue through a dispute window after successful delivery
   would need
-  new escrow semantics or a custody profile - a decision-backlog ADR if
-  wedge data shows bonds alone underprice fraud (PLAN section 4).
+  new escrow semantics or a custody profile - a future ADR if market
+  data shows bonds alone underprice fraud.
 - **Slash distribution** goes to harmed buyers pro rata by purchase amount,
   with any remainder going to the registered community fund. Existing
   `validate_bond_impair_distribution` enforces exact sum
   (`crates/economy/chio-settle/src/evm/prepare.rs:1082-1113`, applied again in
   `prepare_bond_impair` at 1418-1521; the contract repeats the cap and
   exact-sum check at `contracts/src/ChioBondVault.sol:292-323`), but does not
-  by itself enforce ADR-0015 D4's beneficiary allowlist. M5 must derive and
+  by itself enforce ADR-0015 D4's beneficiary allowlist. The challenge lane derives and
   enforce immutable destinations from authoritative purchase evidence and
   the community-fund destination pinned before sale. Challenger
   rewards, audit costs, operator fees, and adjudicator fees never come from
@@ -243,7 +244,7 @@ Reveal-time hold and capture remain separate kernel finalizer transitions.
 - A buyer challenge names the Dispute-class bond
   (`OpenMarketBondClass::Dispute`,
   `crates/economy/chio-fiscal/src/fee_schedule.rs:12`) and the
-  `dispute_fee`, but those shipped fields are declarative. M5 must resolve
+  `dispute_fee`, but those shipped fields are declarative. The challenge lane resolves
   and atomically lock live collateral from a trusted bond authority. The
   allocation binds the challenger key, active schedule id and version,
   Dispute class, amount, currency, expiry, and unspent state to this
@@ -285,7 +286,7 @@ Reveal-time hold and capture remain separate kernel finalizer transitions.
   seller response required. This lowers, but does not prove zero, seller
   cost.
 
-Compatibility boundary: M5 keeps the frozen v1 penalty and evidence enums
+Compatibility boundary: the challenge lane keeps the frozen v1 penalty and evidence enums
 unchanged. An affirmatively `Upheld` mechanical evaluation produces
 `chio.finding.challenge-outcome.v1`, signed by the outcome authority pinned in
 the active governance profile after validity, rotation, and revocation
@@ -338,7 +339,7 @@ required settlement checkpoint. It still cannot prove that response bytes
 reached buyer memory, so mediator neutrality and response delivery remain
 audited assumptions rather than cryptographic guarantees.
 
-The M7 Finding escrow profile is full-only: the finalized deposit must equal
+The conditional Finding escrow profile is full-only: the finalized deposit must equal
 the accepted price, and the only economic terminals are a beneficiary-called
 full release for that amount or a permissionless full refund of the entire
 unreleased deposit after the deadline. `partialReleaseWithProof*`, mixed or
@@ -360,15 +361,15 @@ defined in `crates/economy/chio-fiscal/src/fee_schedule.rs`; the
 `chio-open-market` module is a consumer/re-export):
 
 - Publication fee: the declared amount that becomes a spam floor only after
-  M2 collection (threat model S6).
+  evidenced collection (threat model S6).
 - Dispute fee: the declared buyer-challenge administration charge that becomes
-  authoritative only after M5 exact-rail collection.
+  authoritative only after exact-rail collection.
 - Listing bond, `slashable: true`: the declared fraud-stake requirement.
   `BondBackingRequired` keeps unbacked listings review-only
   (`crates/economy/chio-listing/src/trust_activation.rs:565`), while section
   4 specifies the missing live exclusive allocation.
 - Participation fee: a recurring seller-paid amount per active listing per
-  audit epoch. M2 collects the first epoch at activation and later renewals
+  audit epoch. Activation collects the first epoch and later renewals
   are required for admission. In v1, 100 percent enters a segregated audit
   pool and may fund only verified selected-audit execution. Scheduler and
   operator overhead cannot be charged to that pool in v1.
@@ -382,9 +383,9 @@ collects a publication fee at
 publish time or a dispute fee at challenge time (confirmed again against
 post-#974 main). Fee COLLECTION is engineering the plan must carry: settle
 the publication fee and first `market_participation_fee` epoch as part of
-listing admission (M2), renew that participation fee before each later active
+listing admission, renew that participation fee before each later active
 audit epoch, and collect the dispute fee as part of buyer challenge
-submission (M5). Each collection must produce a signed payment/settlement
+submission. Each collection must produce a signed payment/settlement
 receipt bound to the active schedule version, payer, event, amount, and
 currency. A durable domain/event idempotency key fences intent before rail
 dispatch; the authority-authenticated terminal receipt and reconciliation are
@@ -404,7 +405,7 @@ the venue cannot claim that audits or reimbursements are fee funded.
 
 Metering is a mode-bound evidence signal, not a spam proof or filter. Merely
 referencing receipts or declaring `evidence_cost` does not prove burn, because
-expensive unrelated receipts can be attached. At M2, mode-A full-receipt
+expensive unrelated receipts can be attached. Mode-A full-receipt
 evidence can establish a lower bound on kernel-accounted metered exposure
 only after the verifier strictly authenticates every receipt and complete
 checkpoint binding, verifies issuer attribution and context/replay-recipe
@@ -419,7 +420,7 @@ policies must not treat a metered-cost facet as burned-work or truth proof.
 
 ## 7. Pool purchasing and redundancy
 
-M8 retains `SwarmBudgetPool` as an unsigned planning object and adds
+Pool purchasing retains `SwarmBudgetPool` as an unsigned planning object and adds
 `chio.finding.pool-allocation.v1`, an authority-signed companion that binds
 its canonical digest, graph and pool ids, one authority-selected qualified
 ledger domain, one concrete ledger-store binding, one purchaser id and key,
@@ -537,17 +538,18 @@ singleton claims without re-execution remains an open research question
   packaging negatives (JNRBM closed 2017; ~20% of null studies published,
   ~65% never written up). The design hypothesis is that tooling can derive
   much of a Finding from already-produced receipts and a replay recipe,
-  reducing marginal packaging work. M1 does not automatically export runs,
+  reducing marginal packaging work. The market does not automatically export runs,
   publish negatives, or pay at production.
 - Registered Reports: hypothesis-support rates drop from ~96% (standard) to
   ~44% (pre-registered) in the cited comparison. The narrower protocol
-  lesson is hindsight resistance: at M2, an optional
+  lesson is hindsight resistance: an optional
   `intent_commitment_receipt_id` earns a buyer-policy uplift only if its
   authenticated receipt and complete checkpoint proof predate all producing
   evidence through a pinned log sequence or admitted anchored cross-log
   relation, and its parameter hash binds the versioned descriptor, canonical
-  context, replay-recipe digest, and protocol digest. M1 checks only that the
-  string is non-empty. Even after M2 verification, the commitment says
+  context, replay-recipe digest, and protocol digest. Base verification
+  checks only that the string is non-empty. Even after admission
+  verification, the commitment says
   nothing about completeness: a seller can precommit many runs, abandon
   unfavorable ones, and publish only favorable findings. Chio has no
   registry of all initiated experiments, so it must not inherit
@@ -569,17 +571,17 @@ singleton claims without re-execution remains an open research question
   does not establish that the unshipped mechanism will solve triage.
 - Agent payment rails are commodity: x402 (100M+ transactions on Base
   independently confirmed by Chainalysis by Q1 2026; sub-$0.50 median),
-  Google AP2 mandates, Stripe/OpenAI ACP. None verifies delivery. Position
+  Google AP2 mandates, Stripe/OpenAI ACP-Commerce. None verifies delivery. Position
   Chio receipts as the delivery-verification layer over those rails (the
   x402 adapter already exists, `crates/kernel/chio-kernel/src/payment.rs`).
   Sub-dollar medians confirm: dispute machinery must amortize off the hot
   path. Pure challenge evaluation, audit batching, and a detection horizon
   are targets; current dispute windows do not provide custody.
-- Virtuals ACP self-reports 1.77M agent jobs with escrow lifecycle
+- Virtuals' agent commerce protocol self-reports 1.77M agent jobs with escrow lifecycle
   (PR figures, unverified) - but its evaluation step is an LLM opinion.
   The proposed wedge differentiator is a strict deterministic replay
-  recipe and mediated re-execution receipts. That evaluator arrives at M5,
-  not M1.
+  recipe and mediated re-execution receipts. That evaluator is the
+  challenge lane's, not artifact integrity.
 - Erlei-Meub (arXiv 2603.08853, 2026): LLM-agent credence-goods markets
   collapse in one-shot settings without liability institutions; reputation
   alone is empirically insufficient. Live, exclusively allocated
@@ -595,7 +597,7 @@ singleton claims without re-execution remains an open research question
   (COALESCE, ZEBRA) re-derives the same make-vs-buy-per-node conclusion.
   Section 7 proposes this purchasing convention on the shipped unsigned pool
   accounting structures; the kernel does not yet enforce one purchase per
-  pool. M8 requires a signed or digest-bound pool companion plus coupling to
+  pool. Pool purchasing requires a signed or digest-bound pool companion plus coupling to
   an authoritative kernel ledger before calling it a budget tree.
 - Side channel adopted into the threat model (X2): the ZKCP episode
   generalizes - metered cost, step counts, and timing in the EVIDENCE can
@@ -653,7 +655,7 @@ re-execution stays open as problem 7 below.
    receipt projection version.
 9. Whether an authenticated re-derivation quote producer is worth its trust
    and privacy cost. The launch mechanism can keep bid formation local; if
-   M8 adds a producer, it needs the context/recipe binding and normative
+   a quote producer ever ships, it needs the context/recipe binding and normative
    checked arithmetic in section 2; product research plus engineering.
 10. Operator collateral and restitution sizing: price observable missed
     audit/status/settlement SLAs and fund post-distribution appeal

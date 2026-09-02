@@ -202,7 +202,7 @@ impl PostgresFindingMarketRetention {
             .acquire_timeout(config.acquire_timeout)
             .connect_with(config.connect_options()?)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
         runtime_boundary::verify_retention_role(&pool).await?;
         super::verify_schema_current(&pool).await?;
         Ok(Self { pool })
@@ -267,7 +267,7 @@ impl PostgresFindingMarketRetention {
             .bind(&checkpoint_lock)
             .execute(&mut *connection)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
         let result = async {
             let mut transaction = Self::begin_snapshot_on(&mut connection, tenant).await?;
             if let Some(retained) = sqlx::query_scalar::<_, Vec<u8>>(
@@ -277,7 +277,7 @@ impl PostgresFindingMarketRetention {
             .bind(&checkpoint_sha256)
             .fetch_optional(&mut *transaction)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?
+            .map_err(unavailable)?
             {
                 if retained != envelope {
                     return Err(HostedMarketStoreError::Conflict);
@@ -285,7 +285,7 @@ impl PostgresFindingMarketRetention {
                 transaction
                     .commit()
                     .await
-                    .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                    .map_err(unavailable)?;
                 return Ok(HostedJobWriteOutcome::ExactReplay);
             }
             let previous = sqlx::query(
@@ -294,7 +294,7 @@ impl PostgresFindingMarketRetention {
             .bind(tenant.as_str())
             .fetch_optional(&mut *transaction)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
             match previous {
                 Some(row) => {
                     let previous_sha256: String = row.try_get(0).map_err(unavailable)?;
@@ -314,7 +314,7 @@ impl PostgresFindingMarketRetention {
             )
             .fetch_one(&mut *transaction)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
             if stored_u64(migration_version)? != checkpoint.body.migration_version {
                 return Err(HostedMarketStoreError::MigrationDrift);
             }
@@ -385,12 +385,12 @@ impl PostgresFindingMarketRetention {
             .bind(members_json)
             .fetch_one(&mut *transaction)
             .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            .map_err(unavailable)?;
             let outcome = retention_write_outcome(outcome)?;
             transaction
                 .commit()
                 .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+                .map_err(unavailable)?;
             Ok(outcome)
         }
         .await;
@@ -433,10 +433,7 @@ impl PostgresFindingMarketRetention {
             previous_checkpoint_sha256,
             migration_version: stored_u64(migration_version)?,
         };
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(commitment)
     }
 
@@ -484,15 +481,12 @@ impl PostgresFindingMarketRetention {
         .bind(&archive_sha256)
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         if let Some(retained) = replay {
             if retained != envelope {
                 return Err(HostedMarketStoreError::Conflict);
             }
-            transaction
-                .commit()
-                .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            transaction.commit().await.map_err(unavailable)?;
             return Ok(HostedJobWriteOutcome::ExactReplay);
         }
         require_checkpoint_member(
@@ -527,7 +521,7 @@ impl PostgresFindingMarketRetention {
         .bind(&manifest.body.target.resource_id)
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         match previous {
             Some(row) => {
                 let previous_sha256: String = row.try_get(0).map_err(unavailable)?;
@@ -569,12 +563,9 @@ impl PostgresFindingMarketRetention {
         .bind(checked_i64(manifest.body.created_at, "archive time")?)
         .fetch_one(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         let outcome = retention_write_outcome(outcome)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(outcome)
     }
 
@@ -610,15 +601,12 @@ impl PostgresFindingMarketRetention {
         .bind(&event_sha256)
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         if let Some(retained) = replay {
             if retained != envelope {
                 return Err(HostedMarketStoreError::Conflict);
             }
-            transaction
-                .commit()
-                .await
-                .map_err(|_| HostedMarketStoreError::Unavailable)?;
+            transaction.commit().await.map_err(unavailable)?;
             return Ok(HostedJobWriteOutcome::ExactReplay);
         }
         let previous = sqlx::query(
@@ -628,7 +616,7 @@ impl PostgresFindingMarketRetention {
         .bind(&hold.body.hold_id)
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         match previous {
             Some(row) => {
                 let previous_sha: String = row.try_get(0).map_err(unavailable)?;
@@ -669,12 +657,9 @@ impl PostgresFindingMarketRetention {
         .bind(checked_i64(hold.body.created_at, "legal hold time")?)
         .fetch_one(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         let outcome = retention_write_outcome(outcome)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(outcome)
     }
 
@@ -709,7 +694,7 @@ impl PostgresFindingMarketRetention {
         .bind(&verification.body.archive_sha256)
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         let Some(archive) = archive else {
             return Err(HostedMarketStoreError::Conflict);
         };
@@ -734,12 +719,9 @@ impl PostgresFindingMarketRetention {
         .bind(checked_i64(verification.body.verified_at, "restore time")?)
         .fetch_one(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         let outcome = retention_write_outcome(outcome)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(outcome)
     }
 
@@ -782,12 +764,9 @@ impl PostgresFindingMarketRetention {
         .bind(checked_i64(alert.body.created_at, "quota alert time")?)
         .fetch_one(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         let outcome = retention_write_outcome(outcome)?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(outcome)
     }
 
@@ -833,7 +812,7 @@ impl PostgresFindingMarketRetention {
         .bind(checked_i64(receipt.body.completed_at, "GC time")?)
         .fetch_one(&mut *transaction)
         .await
-        .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        .map_err(unavailable)?;
         let outcome = match outcome {
             0 => HostedJobWriteOutcome::Inserted,
             1 => HostedJobWriteOutcome::ExactReplay,
@@ -841,10 +820,7 @@ impl PostgresFindingMarketRetention {
             3 => return Err(HostedMarketStoreError::RetentionHeld),
             _ => return Err(HostedMarketStoreError::Unavailable),
         };
-        transaction
-            .commit()
-            .await
-            .map_err(|_| HostedMarketStoreError::Unavailable)?;
+        transaction.commit().await.map_err(unavailable)?;
         Ok(outcome)
     }
 
@@ -943,7 +919,7 @@ async fn load_aggregate_members(
     rows.into_iter()
         .map(|row| {
             Ok(AggregateCheckpointMember {
-                aggregate_kind: HostedAggregateKind::parse(
+                aggregate_kind: crate::aggregates::parse_aggregate_kind(
                     &row.try_get::<String, _>(0).map_err(unavailable)?,
                 )?,
                 aggregate_id: row.try_get(1).map_err(unavailable)?,

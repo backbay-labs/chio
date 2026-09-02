@@ -47,6 +47,7 @@ impl HostedAuthPort for PostgresFindingMarketStore {
         tenant: &HostedTenantId,
         capability_id: &str,
         nonce_sha256: &str,
+        request_sha256: Option<&str>,
         valid_through: u64,
         max_invocations: u32,
         expires_at: u64,
@@ -58,6 +59,7 @@ impl HostedAuthPort for PostgresFindingMarketStore {
             tenant,
             capability_id,
             nonce_sha256,
+            request_sha256,
             valid_through,
             max_invocations,
             expires_at,
@@ -146,7 +148,9 @@ const fn map_error(error: HostedMarketStoreError) -> HostedMarketPortError {
         HostedMarketStoreError::Capacity => HostedMarketPortError::Capacity,
         HostedMarketStoreError::NotFound => HostedMarketPortError::NotFound,
         HostedMarketStoreError::LeaseLost => HostedMarketPortError::LeaseLost,
-        HostedMarketStoreError::DigestMismatch => HostedMarketPortError::Integrity,
+        HostedMarketStoreError::DigestMismatch | HostedMarketStoreError::Decode(_) => {
+            HostedMarketPortError::Integrity
+        }
         HostedMarketStoreError::RetentionHeld => HostedMarketPortError::RetentionHeld,
     }
 }

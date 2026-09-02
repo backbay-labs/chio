@@ -490,7 +490,7 @@ impl ClaimEvidence {
         validate_clean_required(&self.claim_id, "claim evidence claim_id")?;
         validate_clean_required(&self.policy_id, "claim evidence policy_id")?;
         validate_positive_money(&self.requested_amount, "claim evidence requested_amount")
-            .map_err(InsuranceFlowError::InvalidInput)?;
+            .map_err(|error| InsuranceFlowError::InvalidInput(String::from(error)))?;
         if self.incident_description.trim().is_empty() {
             return Err(InsuranceFlowError::InvalidInput(
                 "claim evidence incident_description must be non-empty".to_string(),
@@ -624,7 +624,7 @@ impl ClaimSettlementRequest {
             &self.settlement_amount,
             "claim settlement request settlement_amount",
         )
-        .map_err(InsuranceFlowError::InvalidInput)
+        .map_err(|error| InsuranceFlowError::InvalidInput(String::from(error)))
     }
 }
 

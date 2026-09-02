@@ -1,4 +1,4 @@
-//! Operator-side status epoch publisher used by the external M6 cron.
+//! Operator-side status epoch publisher driven by an external scheduler.
 //!
 //! The workspace has no job daemon. Deployments invoke this component from
 //! their scheduler after the durable outbox reports an eligible intent, or to
@@ -25,9 +25,9 @@ use chio_revocation_oracle::{
 };
 use chio_store_sqlite::{
     FindingRetractionIntentRecord, FindingRetractionIntentState, FindingStatusEpochAdvance,
-    FindingStatusProofKind, FindingStatusProofRecord, FindingStatusStoreError,
-    SqliteFindingStatusStore, VerifiedFindingStatusEpochInput, VerifiedFindingStatusLeafInput,
-    VerifiedFindingStatusProofInput,
+    FindingStatusLeafRecord, FindingStatusProofKind, FindingStatusProofRecord,
+    FindingStatusStoreError, SqliteFindingStatusStore, VerifiedFindingStatusEpochInput,
+    VerifiedFindingStatusLeafInput, VerifiedFindingStatusProofInput,
 };
 
 use super::finding_status_verifier::authorization;
@@ -118,18 +118,32 @@ impl FindingStatusEpochPublisher {
         Ok(valid_until)
     }
 
-    fn rebuild_map(&self) -> Result<FindingStatusSparseMap, String> {
+    fn load_leaves(&self) -> Result<Vec<FindingStatusLeafRecord>, String> {
+        match self.store.list_leaves(&self.operator.feed_id) {
+            Ok(leaves) => Ok(leaves),
+            Err(FindingStatusStoreError::MissingFloor { .. }) => Ok(Vec::new()),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    /// The map is always rebuilt from the durable leaves before signing.
+    /// A persisted tree cache that drifted from the leaf table would sign
+    /// an equivocating root, so the linear rebuild is the safety
+    /// construction; callers that also need the leaves load them once and
+    /// share the listing.
+    fn map_from_leaves(
+        leaves: &[FindingStatusLeafRecord],
+    ) -> Result<FindingStatusSparseMap, String> {
         let mut map = FindingStatusSparseMap::new();
-        let leaves = match self.store.list_leaves(&self.operator.feed_id) {
-            Ok(leaves) => leaves,
-            Err(FindingStatusStoreError::MissingFloor { .. }) => Vec::new(),
-            Err(error) => return Err(error.to_string()),
-        };
         for leaf in leaves {
             map.insert(&leaf.finding_id, &leaf.retraction_intent_sha256)
                 .map_err(|error| error.to_string())?;
         }
         Ok(map)
+    }
+
+    fn rebuild_map(&self) -> Result<FindingStatusSparseMap, String> {
+        Self::map_from_leaves(&self.load_leaves()?)
     }
 
     fn next_map_epoch(&self) -> Result<u64, String> {
@@ -385,12 +399,8 @@ impl FindingStatusEpochPublisher {
         requested_finding_id: &str,
         anchor_refs: &[String],
         now: u64,
+        existing: Vec<FindingStatusLeafRecord>,
     ) -> Result<FindingStatusProofRecord, String> {
-        let existing = match self.store.list_leaves(&self.operator.feed_id) {
-            Ok(leaves) => leaves,
-            Err(FindingStatusStoreError::MissingFloor { .. }) => Vec::new(),
-            Err(error) => return Err(error.to_string()),
-        };
         let mut leaves = existing
             .into_iter()
             .map(|leaf| {
@@ -530,7 +540,8 @@ impl FindingStatusEpochPublisher {
         {
             return Err("finding retraction is not eligible for this publisher".to_owned());
         }
-        let mut map = self.rebuild_map()?;
+        let existing_leaves = self.load_leaves()?;
+        let mut map = Self::map_from_leaves(&existing_leaves)?;
         let mut new_intents = self
             .store
             .list_publication_candidates(
@@ -578,6 +589,7 @@ impl FindingStatusEpochPublisher {
                 &intent.finding_id,
                 anchor_refs,
                 now,
+                existing_leaves,
             );
         }
         if let Some(proof) = self.current_proof(

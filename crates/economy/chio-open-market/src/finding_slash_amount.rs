@@ -230,7 +230,7 @@ pub fn compute_slash_allocation(
 /// one unit at a time in purchase-key order so the result is identical on
 /// every replay. `harms` must contain one aggregate entry per distinct,
 /// authoritatively verified destination; the production challenge coordinator
-/// folds admitted M4 purchase records into that shape before calling this API.
+/// folds admitted purchase records into that shape before calling this API.
 pub fn compute_slash_distribution(
     inputs: &SlashInputs<'_>,
     harms: &[VerifiedHarm],

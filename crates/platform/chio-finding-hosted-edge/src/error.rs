@@ -1,9 +1,12 @@
 use serde::Serialize;
 
+/// Schema identifier pinned by every hosted error body.
 pub const HOSTED_ERROR_SCHEMA: &str = "chio.finding.hosted-error.v1";
 const MAX_REQUEST_ID_BYTES: usize = 128;
 const FALLBACK_REQUEST_ID: &str = "invalid-request-id";
 
+/// The uniform wire error body: stable code, fixed message, request id,
+/// and whether retrying can help.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostedErrorBody {
@@ -14,6 +17,8 @@ pub struct HostedErrorBody {
     pub retryable: bool,
 }
 
+/// Closed edge failure vocabulary; every variant maps to one stable
+/// wire code and HTTP status.
 #[derive(Clone, Copy, Debug, thiserror::Error, PartialEq, Eq)]
 pub enum HostedEdgeError {
     #[error("hosted request is invalid")]
@@ -41,6 +46,7 @@ pub enum HostedEdgeError {
 }
 
 impl HostedEdgeError {
+    /// Stable machine-readable wire code.
     #[must_use]
     pub const fn code(self) -> &'static str {
         match self {
@@ -58,6 +64,7 @@ impl HostedEdgeError {
         }
     }
 
+    /// Whether a retry can succeed without operator action.
     #[must_use]
     pub const fn retryable(self) -> bool {
         matches!(
@@ -66,6 +73,8 @@ impl HostedEdgeError {
         )
     }
 
+    /// The wire body for this error, with an invalid request id replaced
+    /// by a fixed fallback so the response never echoes hostile bytes.
     #[must_use]
     pub fn body(self, request_id: impl Into<String>) -> HostedErrorBody {
         let request_id = request_id.into();
@@ -86,9 +95,10 @@ impl HostedEdgeError {
                 Self::NotFound => "The requested resource was not found.",
                 Self::Conflict => "The request conflicts with durable state.",
                 Self::IntegrityFailure => "Durable state failed validation.",
-                Self::CapacityUnavailable | Self::DependencyUnavailable => {
-                    "Authentication is temporarily unavailable."
+                Self::CapacityUnavailable => {
+                    "The service is temporarily unable to accept this request."
                 }
+                Self::DependencyUnavailable => "Authentication is temporarily unavailable.",
                 Self::Configuration => "The hosted edge is not ready.",
             },
             request_id,
@@ -96,6 +106,7 @@ impl HostedEdgeError {
         }
     }
 
+    /// The HTTP status this error maps to.
     #[must_use]
     pub const fn http_status(self) -> u16 {
         match self {

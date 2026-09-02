@@ -26,6 +26,8 @@ use nix::libc;
 use zeroize::Zeroizing;
 
 const MAX_PROFILE_BYTES: u64 = 4 * 1024 * 1024;
+/// In-flight ceiling per edge replica; excess sheds to the proxy's retry.
+const MAX_CONCURRENT_REQUESTS: usize = 1_024;
 const MAX_HTTP_BODY_BYTES: usize = 4 * 1024 * 1024;
 const DEPLOYED_CANDIDATE_SHA_ENV: &str = "CHIO_FINDING_DEPLOYED_CANDIDATE_SHA";
 const DEPLOYED_ARTIFACT_SHA256_ENV: &str = "CHIO_FINDING_DEPLOYED_ARTIFACT_SHA256";
@@ -42,20 +44,21 @@ struct Args {
     replication_check_interval_secs: Option<u64>,
 }
 
-#[derive(Clone, Copy, Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 enum ServerError {
-    #[error("hosted server profile is invalid")]
-    Profile,
-    #[error("hosted server secret is unavailable")]
-    Secret,
-    #[error("hosted server database is unavailable")]
-    Database,
-    #[error("hosted server authentication boundary is invalid")]
-    Authentication,
-    #[error("hosted server listener is unavailable")]
-    Listener,
-    #[error("hosted server replication freshness is unavailable")]
-    Replication,
+    #[error("hosted server profile is invalid: {0}")]
+    Profile(String),
+    /// Carries the environment variable name, never its value.
+    #[error("hosted server secret is unavailable: {0}")]
+    Secret(String),
+    #[error("hosted server database is unavailable: {0}")]
+    Database(String),
+    #[error("hosted server authentication boundary is invalid: {0}")]
+    Authentication(String),
+    #[error("hosted server listener is unavailable: {0}")]
+    Listener(std::io::Error),
+    #[error("hosted server replication freshness is unavailable: {0}")]
+    Replication(String),
 }
 
 #[tokio::main]
@@ -71,22 +74,27 @@ async fn main() -> ExitCode {
 
 async fn run(args: Args) -> Result<(), ServerError> {
     let profile: FindingHostedProfile = read_profile(&args.profile)?;
-    profile.validate().map_err(|_| ServerError::Profile)?;
+    profile
+        .validate()
+        .map_err(|error| ServerError::Profile(error.to_string()))?;
     if args.replication_check_once || args.replication_check_interval_secs.is_some() {
         return run_replication_checks(&profile, args.replication_check_interval_secs).await;
     }
     if !profile.listen.ip().is_loopback() {
-        return Err(ServerError::Profile);
+        return Err(ServerError::Profile(
+            "listen address must be loopback".to_owned(),
+        ));
     }
     let trusted_proxy = profile
         .load_trusted_proxy()
-        .map_err(|_| ServerError::Authentication)?
-        .ok_or(ServerError::Authentication)?;
+        .map_err(|error| ServerError::Authentication(error.to_string()))?
+        .ok_or_else(|| ServerError::Authentication("profile names no trusted proxy".to_owned()))?;
     let database_url = Zeroizing::new(
-        std::env::var(&profile.database.runtime_url_env).map_err(|_| ServerError::Secret)?,
+        std::env::var(&profile.database.runtime_url_env)
+            .map_err(|_| ServerError::Secret(profile.database.runtime_url_env.clone()))?,
     );
-    let max_jobs =
-        i64::try_from(profile.database.max_jobs_per_tenant).map_err(|_| ServerError::Profile)?;
+    let max_jobs = i64::try_from(profile.database.max_jobs_per_tenant)
+        .map_err(|_| ServerError::Profile("max_jobs_per_tenant exceeds i64".to_owned()))?;
     let database_config = HostedPostgresConfig::new(database_url.to_string())
         .and_then(|config| config.with_ca_certificate(&profile.database.ca_certificate_path))
         .and_then(|config| config.with_max_connections(profile.database.max_connections))
@@ -96,35 +104,36 @@ async fn run(args: Args) -> Result<(), ServerError> {
             ))
         })
         .and_then(|config| config.with_max_jobs_per_tenant(max_jobs))
-        .map_err(|_| ServerError::Profile)?;
+        .map_err(|error| ServerError::Profile(error.to_string()))?;
     let store = Arc::new(
         PostgresFindingMarketStore::connect(&database_config)
             .await
-            .map_err(|_| ServerError::Database)?,
+            .map_err(|error| ServerError::Database(error.to_string()))?,
     );
     let authenticator = Arc::new(
         HostedAuthenticator::new(
             profile
                 .authenticator_config()
-                .map_err(|_| ServerError::Authentication)?,
+                .map_err(|error| ServerError::Authentication(error.to_string()))?,
             store.clone(),
             Arc::new(
                 profile
                     .load_api_key_pepper()
-                    .map_err(|_| ServerError::Authentication)?,
+                    .map_err(|error| ServerError::Authentication(error.to_string()))?,
             ),
         )
-        .map_err(|_| ServerError::Authentication)?,
+        .map_err(|error| ServerError::Authentication(error.to_string()))?,
     );
     let release_identity = deployed_release_identity(&profile)?;
-    let kernel_receipt_key =
-        PublicKey::from_hex(&profile.kernel_public_key_hex).map_err(|_| ServerError::Profile)?;
+    let kernel_receipt_key = PublicKey::from_hex(&profile.kernel_public_key_hex)
+        .map_err(|_| ServerError::Profile("kernel_public_key_hex is invalid".to_owned()))?;
     let penalty_authority_key = PublicKey::from_hex(&profile.market.market_penalty.key_hex)
-        .map_err(|_| ServerError::Profile)?;
+        .map_err(|_| ServerError::Profile("market penalty key_hex is invalid".to_owned()))?;
     let state = HostedHttpServerState::new(
         HostedHttpServerConfig {
             public_endpoint: profile.public_endpoint.clone(),
             maximum_body_bytes: MAX_HTTP_BODY_BYTES,
+            maximum_concurrent_requests: MAX_CONCURRENT_REQUESTS,
             penalty_authority_id: profile.market.market_penalty.authority_id.clone(),
             penalty_authority_key,
             kernel_receipt_key,
@@ -134,22 +143,22 @@ async fn run(args: Args) -> Result<(), ServerError> {
         store,
         Arc::new(trusted_proxy),
     )
-    .map_err(|_| ServerError::Authentication)?;
+    .map_err(|error| ServerError::Authentication(error.to_string()))?;
     let listener = tokio::net::TcpListener::bind(profile.listen)
         .await
-        .map_err(|_| ServerError::Listener)?;
+        .map_err(ServerError::Listener)?;
     serve_hosted_market_loopback_with_shutdown(listener, state, shutdown_signal())
         .await
-        .map_err(|_| ServerError::Listener)
+        .map_err(ServerError::Listener)
 }
 
 fn deployed_release_identity(
     profile: &FindingHostedProfile,
 ) -> Result<HostedReleaseIdentity, ServerError> {
-    let candidate_sha =
-        std::env::var(DEPLOYED_CANDIDATE_SHA_ENV).map_err(|_| ServerError::Secret)?;
-    let artifact_sha256 =
-        std::env::var(DEPLOYED_ARTIFACT_SHA256_ENV).map_err(|_| ServerError::Secret)?;
+    let candidate_sha = std::env::var(DEPLOYED_CANDIDATE_SHA_ENV)
+        .map_err(|_| ServerError::Secret(DEPLOYED_CANDIDATE_SHA_ENV.to_owned()))?;
+    let artifact_sha256 = std::env::var(DEPLOYED_ARTIFACT_SHA256_ENV)
+        .map_err(|_| ServerError::Secret(DEPLOYED_ARTIFACT_SHA256_ENV.to_owned()))?;
     validate_deployed_binding(
         &profile.release.candidate_sha,
         &profile.release.artifact_sha256,
@@ -174,7 +183,9 @@ fn validate_deployed_binding(
     if deployed_candidate_sha != expected_candidate_sha
         || deployed_artifact_sha256 != expected_artifact_sha256
     {
-        return Err(ServerError::Profile);
+        return Err(ServerError::Profile(
+            "deployed candidate or artifact digest differs from the profile release".to_owned(),
+        ));
     }
     Ok(())
 }
@@ -184,7 +195,8 @@ async fn run_replication_checks(
     interval_secs: Option<u64>,
 ) -> Result<(), ServerError> {
     let database_url = Zeroizing::new(
-        std::env::var(&profile.database.replicator_url_env).map_err(|_| ServerError::Secret)?,
+        std::env::var(&profile.database.replicator_url_env)
+            .map_err(|_| ServerError::Secret(profile.database.replicator_url_env.clone()))?,
     );
     let database_config = HostedPostgresConfig::new(database_url.to_string())
         .and_then(|config| config.with_ca_certificate(&profile.database.ca_certificate_path))
@@ -194,22 +206,27 @@ async fn run_replication_checks(
                 profile.database.acquire_timeout_millis,
             ))
         })
-        .map_err(|_| ServerError::Profile)?;
+        .map_err(|error| ServerError::Profile(error.to_string()))?;
     let replicator = PostgresFindingMarketReplicator::connect(&database_config)
         .await
-        .map_err(|_| ServerError::Replication)?;
+        .map_err(|error| ServerError::Replication(error.to_string()))?;
     let signer = profile
         .load_signer(FindingHostedSigningRole::AuthorityStatus)
-        .map_err(|_| ServerError::Replication)?;
+        .map_err(ServerError::Replication)?;
     let initial = write_replication_checks(profile, &replicator, signer.clone()).await?;
     let Some(interval_secs) = interval_secs else {
         return initial.require_complete();
     };
     if initial.all_failed() {
-        return Err(ServerError::Replication);
+        return Err(ServerError::Replication(
+            "every tenant check failed in the initial round".to_owned(),
+        ));
     }
     if initial.has_failures() {
-        eprintln!("{}", ServerError::Replication);
+        eprintln!(
+            "{}",
+            ServerError::Replication("a tenant check failed in the initial round".to_owned())
+        );
     }
     let mut consecutive_all_failed_rounds = 0_u8;
     let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
@@ -222,13 +239,18 @@ async fn run_replication_checks(
                 if round.all_failed() {
                     consecutive_all_failed_rounds = consecutive_all_failed_rounds.saturating_add(1);
                     if consecutive_all_failed_rounds >= 3 {
-                        return Err(ServerError::Replication);
+                        return Err(ServerError::Replication(
+                            "every tenant check failed for three consecutive rounds".to_owned(),
+                        ));
                     }
                 } else {
                     consecutive_all_failed_rounds = 0;
                 }
                 if round.has_failures() {
-                    eprintln!("{}", ServerError::Replication);
+                    eprintln!(
+                        "{}",
+                        ServerError::Replication("a tenant check failed this round".to_owned())
+                    );
                 }
             }
             _ = shutdown_signal() => return Ok(()),
@@ -247,7 +269,7 @@ async fn write_replication_checks(
         .filter(|tenant| tenant.enabled)
         .map(|tenant| HostedTenantId::new(tenant.tenant_id.clone()))
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| ServerError::Profile)?;
+        .map_err(|error| ServerError::Profile(error.to_string()))?;
     let configuration_revision = profile.release.configuration_revision.clone();
     let replicator = replicator.clone();
     Ok(run_replication_round(tenant_ids, move |tenant_id| {
@@ -284,7 +306,10 @@ impl ReplicationRoundOutcome {
 
     fn require_complete(self) -> Result<(), ServerError> {
         if self.has_failures() {
-            Err(ServerError::Replication)
+            Err(ServerError::Replication(format!(
+                "{} of {} tenant checks succeeded",
+                self.succeeded, self.attempted
+            )))
         } else {
             Ok(())
         }
@@ -327,21 +352,23 @@ async fn write_replication_check(
         let state = replicator
             .authority_state(tenant_id)
             .await
-            .map_err(|_| ServerError::Replication)?;
+            .map_err(|error| ServerError::Replication(error.to_string()))?;
         if state.authority != HostedMarketAuthority::Postgres
             || !accepts_postgres_mutations(state.mode)
             || !state.mutations_enabled
             || state.configuration_revision != configuration_revision
         {
-            return Err(ServerError::Replication);
+            return Err(ServerError::Replication(
+                "tenant authority state does not accept postgres mutations".to_owned(),
+            ));
         }
         let projection_sha256 = replicator
             .target_projection_sha256(tenant_id)
             .await
-            .map_err(|_| ServerError::Replication)?;
+            .map_err(|error| ServerError::Replication(error.to_string()))?;
         let checked_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|_| ServerError::Replication)?
+            .map_err(|error| ServerError::Replication(error.to_string()))?
             .as_secs();
         let check = SignedExportEnvelope::sign_with_backend(
             HostedReplicationCheckBody {
@@ -359,7 +386,7 @@ async fn write_replication_check(
             },
             signer,
         )
-        .map_err(|_| ServerError::Replication)?;
+        .map_err(|error| ServerError::Replication(error.to_string()))?;
         match replicator
             .append_replication_check(tenant_id, &signer.public_key(), &check)
             .await
@@ -370,7 +397,7 @@ async fn write_replication_check(
             {
                 tokio::time::sleep(Duration::from_millis(25)).await;
             }
-            Err(_) => return Err(ServerError::Replication),
+            Err(error) => return Err(ServerError::Replication(error.to_string())),
         }
     }
 }
@@ -412,51 +439,72 @@ async fn shutdown_signal() {
 
 fn read_profile<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, ServerError> {
     if !path.is_absolute() {
-        return Err(ServerError::Profile);
+        return Err(ServerError::Profile(
+            "profile path must be absolute".to_owned(),
+        ));
     }
     let (mut file, metadata) = open_private_regular(path)?;
     if metadata.len() == 0 || metadata.len() > MAX_PROFILE_BYTES {
-        return Err(ServerError::Profile);
+        return Err(ServerError::Profile(
+            "profile file is empty or exceeds the size bound".to_owned(),
+        ));
     }
-    let capacity = usize::try_from(metadata.len()).map_err(|_| ServerError::Profile)?;
+    let capacity = usize::try_from(metadata.len())
+        .map_err(|_| ServerError::Profile("profile bytes failed a read gate".to_owned()))?;
     let mut bytes = Vec::with_capacity(capacity);
     file.by_ref()
         .take(MAX_PROFILE_BYTES + 1)
         .read_to_end(&mut bytes)
-        .map_err(|_| ServerError::Profile)?;
-    let bytes_len = u64::try_from(bytes.len()).map_err(|_| ServerError::Profile)?;
+        .map_err(|_| ServerError::Profile("profile bytes failed a read gate".to_owned()))?;
+    let bytes_len = u64::try_from(bytes.len())
+        .map_err(|_| ServerError::Profile("profile bytes failed a read gate".to_owned()))?;
     if bytes_len != metadata.len() || bytes_len > MAX_PROFILE_BYTES {
-        return Err(ServerError::Profile);
+        return Err(ServerError::Profile(
+            "profile file failed a private-regular-file gate".to_owned(),
+        ));
     }
-    let raw = std::str::from_utf8(&bytes).map_err(|_| ServerError::Profile)?;
-    if canonical_json_bytes_from_str(raw).map_err(|_| ServerError::Profile)? != bytes {
-        return Err(ServerError::Profile);
+    let raw = std::str::from_utf8(&bytes)
+        .map_err(|_| ServerError::Profile("profile bytes failed a read gate".to_owned()))?;
+    if canonical_json_bytes_from_str(raw)
+        .map_err(|_| ServerError::Profile("profile bytes failed a read gate".to_owned()))?
+        != bytes
+    {
+        return Err(ServerError::Profile(
+            "profile file failed a private-regular-file gate".to_owned(),
+        ));
     }
-    serde_json::from_slice(&bytes).map_err(|_| ServerError::Profile)
+    serde_json::from_slice(&bytes).map_err(|error| ServerError::Profile(error.to_string()))
 }
 
 fn open_private_regular(path: &Path) -> Result<(File, Metadata), ServerError> {
-    let before = std::fs::symlink_metadata(path).map_err(|_| ServerError::Profile)?;
+    let before = std::fs::symlink_metadata(path)
+        .map_err(|_| ServerError::Profile("profile bytes failed a read gate".to_owned()))?;
     if before.file_type().is_symlink()
         || !before.is_file()
         || before.mode() & 0o077 != 0
         || before.uid() != nix::unistd::geteuid().as_raw()
     {
-        return Err(ServerError::Profile);
+        return Err(ServerError::Profile(
+            "profile file failed a private-regular-file gate".to_owned(),
+        ));
     }
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(path)
-        .map_err(|_| ServerError::Profile)?;
-    let after = file.metadata().map_err(|_| ServerError::Profile)?;
+        .map_err(|_| ServerError::Profile("profile bytes failed a read gate".to_owned()))?;
+    let after = file
+        .metadata()
+        .map_err(|_| ServerError::Profile("profile bytes failed a read gate".to_owned()))?;
     if before.dev() != after.dev()
         || before.ino() != after.ino()
         || !after.is_file()
         || after.mode() & 0o077 != 0
         || after.uid() != nix::unistd::geteuid().as_raw()
     {
-        return Err(ServerError::Profile);
+        return Err(ServerError::Profile(
+            "profile file failed a private-regular-file gate".to_owned(),
+        ));
     }
     Ok((file, after))
 }
@@ -484,17 +532,18 @@ mod tests {
     fn profile_reader_rejects_relative_paths_before_io() {
         assert!(matches!(
             read_profile::<serde_json::Value>(Path::new("profile.json")),
-            Err(ServerError::Profile)
+            Err(ServerError::Profile(_))
         ));
     }
 
     #[test]
-    fn public_errors_do_not_expose_dependency_details() {
+    fn public_errors_carry_causes_but_never_secret_values() {
         assert_eq!(
-            ServerError::Database.to_string(),
-            "hosted server database is unavailable"
+            ServerError::Database("pool timed out".to_owned()).to_string(),
+            "hosted server database is unavailable: pool timed out"
         );
-        assert!(!ServerError::Secret.to_string().contains("environment"));
+        let secret = ServerError::Secret("CHIO_TEST_URL_ENV".to_owned()).to_string();
+        assert!(secret.contains("CHIO_TEST_URL_ENV"));
     }
 
     #[test]
@@ -541,7 +590,7 @@ mod tests {
                 async move {
                     attempts.fetch_add(1, Ordering::SeqCst);
                     if tenant.as_str() == "tenant:frozen" {
-                        Err(ServerError::Replication)
+                        Err(ServerError::Replication("forced".to_owned()))
                     } else {
                         Ok(())
                     }
@@ -570,8 +619,10 @@ mod tests {
                     .unwrap_or_else(|error| panic!("test tenant failed: {error}"))
             })
             .collect();
-        let result =
-            run_replication_round(tenants, |_| async { Err(ServerError::Replication) }).await;
+        let result = run_replication_round(tenants, |_| async {
+            Err(ServerError::Replication("forced".to_owned()))
+        })
+        .await;
         assert_eq!(
             result,
             ReplicationRoundOutcome {
@@ -582,7 +633,7 @@ mod tests {
         assert!(result.all_failed());
         assert!(matches!(
             result.require_complete(),
-            Err(ServerError::Replication)
+            Err(ServerError::Replication(_))
         ));
     }
 
@@ -601,7 +652,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("test permissions failed: {error}"));
         assert!(matches!(
             read_profile::<serde_json::Value>(&profile),
-            Err(ServerError::Profile)
+            Err(ServerError::Profile(_))
         ));
     }
 
@@ -616,7 +667,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("test symlink failed: {error}"));
         assert!(matches!(
             read_profile::<serde_json::Value>(&link),
-            Err(ServerError::Profile)
+            Err(ServerError::Profile(_))
         ));
 
         let oversized = directory.path().join("oversized.json");
@@ -628,7 +679,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("test sparse file failed: {error}"));
         assert!(matches!(
             read_profile::<serde_json::Value>(&oversized),
-            Err(ServerError::Profile)
+            Err(ServerError::Profile(_))
         ));
     }
 }

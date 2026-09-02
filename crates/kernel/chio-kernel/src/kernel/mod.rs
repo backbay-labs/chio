@@ -1485,12 +1485,19 @@ mod governed_validation;
 #[path = "dispatch.rs"]
 mod dispatch;
 // Purchase-marked admission checks for delivery-committed reveals.
+#[path = "delivery_contract.rs"]
+pub(crate) mod delivery_contract;
 #[path = "evaluator.rs"]
 pub mod evaluator;
+#[cfg(not(feature = "finding-market"))]
+#[path = "market_disabled.rs"]
+mod market_disabled;
+#[cfg(feature = "finding-market")]
 #[path = "purchase_gate.rs"]
 mod purchase_gate;
-#[cfg(test)]
+#[cfg(all(test, feature = "finding-market"))]
 pub(crate) use purchase_gate::validate_finding_pool_receipt_authority;
+#[cfg(feature = "finding-market")]
 mod recovery_gate;
 mod responses;
 #[path = "session_ops.rs"]

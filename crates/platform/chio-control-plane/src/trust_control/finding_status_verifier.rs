@@ -14,6 +14,7 @@ use chio_finding::{
     FindingStatusOperatorAuthorization, FindingStatusOperatorRole, FindingStatusProofInput,
     SignedFindingStatusEpoch,
 };
+use chio_kernel::finding_denial::FindingDenial;
 use chio_kernel::finding_purchase::{
     FindingCurrentStatusContextView, FindingStatusProofContextView, FindingStatusProofVerifier,
     VerifiedFindingStatusProof,
@@ -124,15 +125,17 @@ fn require_live_operator_and_bond(
     bond: &FindingStatusServiceBond,
     feed_id: &str,
     now: u64,
-) -> Result<(), String> {
+) -> Result<(), FindingDenial> {
     operator
         .require_live(feed_id, now)
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| FindingDenial::authority_invalid(error.to_string()))?;
     if !bond.covers(now)
         || bond.feed_id != feed_id
         || bond.operator_id != operator.authority.authority_id
     {
-        return Err("finding status operator service bond is missing or expired".to_owned());
+        return Err(FindingDenial::authority_invalid(
+            "finding status operator service bond is missing or expired",
+        ));
     }
     Ok(())
 }
@@ -141,16 +144,20 @@ fn verify_epoch_freshness(
     epoch: &SignedFindingStatusEpoch,
     now: u64,
     max_epoch_age_secs: u64,
-) -> Result<(), String> {
+) -> Result<(), FindingDenial> {
     if now == 0 || max_epoch_age_secs == 0 {
-        return Err("finding status freshness policy is invalid".to_owned());
+        return Err(FindingDenial::unavailable(
+            "finding status freshness policy is invalid",
+        ));
     }
     if now < epoch.body.generated_at
         || now < epoch.body.valid_from
         || now >= epoch.body.valid_until
         || now.saturating_sub(epoch.body.generated_at) > max_epoch_age_secs
     {
-        return Err("finding status epoch is stale or not yet valid".to_owned());
+        return Err(FindingDenial::stale_or_superseded(
+            "finding status epoch is stale or not yet valid",
+        ));
     }
     Ok(())
 }
@@ -163,25 +170,32 @@ fn verify_portable_at(
     now: u64,
     require_non_inclusion: bool,
     require_current_liveness: bool,
-) -> Result<PortableStatusMaterial, String> {
+) -> Result<PortableStatusMaterial, FindingDenial> {
     if require_current_liveness {
         require_live_operator_and_bond(operator, bond, &operator.feed_id, now)?;
     }
-    let proof_bytes = STANDARD
-        .decode(view.proof_b64)
-        .map_err(|_| "finding status proof carrier is not valid base64".to_owned())?;
-    let proof = parse_status_proof_input(&proof_bytes).map_err(|error| error.to_string())?;
+    let proof_bytes = STANDARD.decode(view.proof_b64).map_err(|_| {
+        FindingDenial::carrier_invalid("finding status proof carrier is not valid base64")
+    })?;
+    let proof = parse_status_proof_input(&proof_bytes)
+        .map_err(|error| FindingDenial::carrier_invalid(error.to_string()))?;
     let fields = proof_fields(&proof);
     if fields.finding_id != view.expected_finding_id {
-        return Err("finding status proof binds a different finding".to_owned());
+        return Err(FindingDenial::binding_mismatch(
+            "finding status proof binds a different finding",
+        ));
     }
     if fields.feed_id != view.expected_feed_id {
-        return Err("finding status proof binds a different feed".to_owned());
+        return Err(FindingDenial::binding_mismatch(
+            "finding status proof binds a different feed",
+        ));
     }
     if fields.map_epoch == 0 {
-        return Err("finding status proof map epoch must be nonzero".to_owned());
+        return Err(FindingDenial::carrier_invalid(
+            "finding status proof map epoch must be nonzero",
+        ));
     }
-    let authorization = authorization(operator)?;
+    let authorization = authorization(operator).map_err(FindingDenial::authority_invalid)?;
     let signed_epoch = verify_status_proof_input(
         &proof,
         &authorization,
@@ -190,17 +204,23 @@ fn verify_portable_at(
             max_epoch_age_secs,
         },
     )
-    .map_err(|error| error.to_string())?;
+    .map_err(|error| FindingDenial::authority_invalid(error.to_string()))?;
     if require_non_inclusion && fields.kind != FindingStatusProofKind::NonInclusion {
-        return Err("finding is retracted by the verified status feed".to_owned());
+        return Err(FindingDenial::status_denied(
+            "finding is retracted by the verified status feed",
+        ));
     }
     let signed_epoch_bytes = STANDARD
         .decode(fields.signed_status_epoch_b64)
-        .map_err(|_| "embedded signed status epoch is not valid base64".to_owned())?;
-    let parsed_epoch =
-        parse_signed_status_epoch(&signed_epoch_bytes).map_err(|error| error.to_string())?;
+        .map_err(|_| {
+            FindingDenial::carrier_invalid("embedded signed status epoch is not valid base64")
+        })?;
+    let parsed_epoch = parse_signed_status_epoch(&signed_epoch_bytes)
+        .map_err(|error| FindingDenial::carrier_invalid(error.to_string()))?;
     if parsed_epoch != signed_epoch {
-        return Err("embedded signed status epoch changed after verification".to_owned());
+        return Err(FindingDenial::binding_mismatch(
+            "embedded signed status epoch changed after verification",
+        ));
     }
     let verified = VerifiedFindingStatusProof {
         feed_id: fields.feed_id.to_owned(),
@@ -234,8 +254,8 @@ pub struct MarketFindingStatusVerifier {
 }
 
 impl MarketFindingStatusVerifier {
-    /// Construct the M6 verifier. Invalid or missing freshness configuration
-    /// is rejected at installation rather than at first purchase.
+    /// Construct the live-status verifier. Invalid or missing freshness
+    /// configuration is rejected at installation rather than at first purchase.
     pub fn new(
         operator: FindingStatusOperatorPin,
         service_bond: FindingStatusServiceBond,
@@ -283,7 +303,7 @@ impl MarketFindingStatusVerifier {
         view: &FindingStatusProofContextView<'_>,
         now: u64,
         require_current_liveness: bool,
-    ) -> Result<PortableStatusMaterial, String> {
+    ) -> Result<PortableStatusMaterial, FindingDenial> {
         verify_portable_at(
             &self.operator,
             &self.service_bond,
@@ -295,10 +315,10 @@ impl MarketFindingStatusVerifier {
         )
     }
 
-    fn observe_trusted_now(&self, now: u64) -> Result<u64, String> {
+    fn observe_trusted_now(&self, now: u64) -> Result<u64, FindingDenial> {
         self.store
             .observe_trusted_time(&self.operator.feed_id, now)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| FindingDenial::unavailable(error.to_string()))?;
         Ok(now)
     }
 }
@@ -307,11 +327,12 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
     fn verify_status_proof(
         &self,
         view: &FindingStatusProofContextView<'_>,
-    ) -> Result<VerifiedFindingStatusProof, String> {
-        let proof_bytes = STANDARD
-            .decode(view.proof_b64)
-            .map_err(|_| "finding status proof carrier is not valid base64".to_owned())?;
-        let proof = parse_status_proof_input(&proof_bytes).map_err(|error| error.to_string())?;
+    ) -> Result<VerifiedFindingStatusProof, FindingDenial> {
+        let proof_bytes = STANDARD.decode(view.proof_b64).map_err(|_| {
+            FindingDenial::carrier_invalid("finding status proof carrier is not valid base64")
+        })?;
+        let proof = parse_status_proof_input(&proof_bytes)
+            .map_err(|error| FindingDenial::carrier_invalid(error.to_string()))?;
         let checked_at = proof_fields(&proof).checked_at;
         Ok(self.verify_at(view, checked_at, false)?.verified)
     }
@@ -321,11 +342,13 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
         view: &FindingStatusProofContextView<'_>,
         verified: &VerifiedFindingStatusProof,
         now_unix_secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), FindingDenial> {
         let now_unix_secs = self.observe_trusted_now(now_unix_secs)?;
         let material = self.verify_at(view, now_unix_secs, true)?;
         if &material.verified != verified {
-            return Err("finding status proof changed between verification phases".to_owned());
+            return Err(FindingDenial::binding_mismatch(
+                "finding status proof changed between verification phases",
+            ));
         }
         let fields = proof_fields(&material.proof);
         let epoch = &material.signed_epoch.body;
@@ -334,15 +357,17 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
             .get_finding_status(fields.feed_id, fields.finding_id)
         {
             Ok(Some(status)) if status.state == FindingStickyStatus::Pending => {
-                return Err("finding retraction publication is pending".to_owned());
+                return Err(FindingDenial::status_denied(
+                    "finding retraction publication is pending",
+                ));
             }
             Ok(_) | Err(FindingStatusStoreError::MissingFloor { .. }) => {}
-            Err(error) => return Err(error.to_string()),
+            Err(error) => return Err(FindingDenial::unavailable(error.to_string())),
         }
         let current_epoch = self
             .store
             .get_current_epoch(fields.feed_id)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| FindingDenial::unavailable(error.to_string()))?;
         verify_epoch_record(
             &self.operator,
             &self.service_bond,
@@ -351,20 +376,19 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
             now_unix_secs,
         )?;
         if current_epoch.map_epoch > fields.map_epoch {
-            return Err(
-                "finding status proof is a rollback from the authoritative publisher floor"
-                    .to_owned(),
-            );
+            return Err(FindingDenial::stale_or_superseded(
+                "finding status proof is a rollback from the authoritative publisher floor",
+            ));
         }
         if current_epoch.map_epoch < fields.map_epoch {
-            return Err(
-                "finding status proof does not bind the authoritative publisher floor".to_owned(),
-            );
+            return Err(FindingDenial::stale_or_superseded(
+                "finding status proof does not bind the authoritative publisher floor",
+            ));
         }
         if current_epoch.signed_epoch_bytes != material.signed_epoch_bytes {
-            return Err(
-                "finding status proof equivocates at the authoritative publisher floor".to_owned(),
-            );
+            return Err(FindingDenial::authority_invalid(
+                "finding status proof equivocates at the authoritative publisher floor",
+            ));
         }
         self.store
             .observe_verified_non_inclusion(&VerifiedFindingStatusProofInput {
@@ -383,11 +407,17 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
                 valid_until: epoch.valid_until,
                 recorded_at: now_unix_secs,
             })
-            .map_err(|error| error.to_string())?;
-        let refreshed_now = self.observe_trusted_now(self.clock.now_unix_secs()?)?;
+            .map_err(|error| FindingDenial::unavailable(error.to_string()))?;
+        let refreshed_now = self.observe_trusted_now(
+            self.clock
+                .now_unix_secs()
+                .map_err(FindingDenial::unavailable)?,
+        )?;
         let refreshed_material = self.verify_at(view, refreshed_now, true)?;
         if &refreshed_material.verified != verified {
-            return Err("finding status proof changed during final admission".to_owned());
+            return Err(FindingDenial::binding_mismatch(
+                "finding status proof changed during final admission",
+            ));
         }
         verify_epoch_record(
             &self.operator,
@@ -404,7 +434,7 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
                 refreshed_now,
                 self.max_epoch_age_secs,
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| FindingDenial::unavailable(error.to_string()))?;
         let record = match decision {
             FindingStatusDecision::VerifiedLive(record)
                 if record.proof_sha256 == verified.proof_sha256
@@ -415,15 +445,17 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
                 record
             }
             FindingStatusDecision::VerifiedLive(_) => {
-                return Err(
-                    "durable finding status evidence differs from the verified proof".to_owned(),
-                );
+                return Err(FindingDenial::binding_mismatch(
+                    "durable finding status evidence differs from the verified proof",
+                ));
             }
             FindingStatusDecision::Pending(_) => {
-                return Err("finding retraction publication is pending".to_owned());
+                return Err(FindingDenial::status_denied(
+                    "finding retraction publication is pending",
+                ));
             }
             FindingStatusDecision::Retracted(_) => {
-                return Err("finding is retracted".to_owned());
+                return Err(FindingDenial::status_denied("finding is retracted"));
             }
         };
         verify_proof_record(
@@ -438,7 +470,11 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
         // making the durable sticky-state decision. The proof window can
         // outlive the operator authorization, service bond, or configured
         // maximum epoch age, so `status_for_purchase` alone is not sufficient.
-        let final_now = self.observe_trusted_now(self.clock.now_unix_secs()?)?;
+        let final_now = self.observe_trusted_now(
+            self.clock
+                .now_unix_secs()
+                .map_err(FindingDenial::unavailable)?,
+        )?;
         verify_epoch_record(
             &self.operator,
             &self.service_bond,
@@ -461,16 +497,18 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
                 final_now,
                 self.max_epoch_age_secs,
             )
-            .map_err(|error| error.to_string())?
+            .map_err(|error| FindingDenial::unavailable(error.to_string()))?
         {
             FindingStatusDecision::VerifiedLive(final_record) if final_record == record => Ok(()),
-            FindingStatusDecision::VerifiedLive(_) => {
-                Err("durable finding status changed after proof verification".to_owned())
+            FindingStatusDecision::VerifiedLive(_) => Err(FindingDenial::stale_or_superseded(
+                "durable finding status changed after proof verification",
+            )),
+            FindingStatusDecision::Pending(_) => Err(FindingDenial::status_denied(
+                "finding retraction publication is pending",
+            )),
+            FindingStatusDecision::Retracted(_) => {
+                Err(FindingDenial::status_denied("finding is retracted"))
             }
-            FindingStatusDecision::Pending(_) => {
-                Err("finding retraction publication is pending".to_owned())
-            }
-            FindingStatusDecision::Retracted(_) => Err("finding is retracted".to_owned()),
         }
     }
 
@@ -478,13 +516,15 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
         &self,
         view: &FindingCurrentStatusContextView<'_>,
         now_unix_secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), FindingDenial> {
         let record = self
             .store
             .get_latest_proof(view.expected_feed_id, view.expected_finding_id)
-            .map_err(|error| error.to_string())?
+            .map_err(|error| FindingDenial::unavailable(error.to_string()))?
             .ok_or_else(|| {
-                "current finding status proof is unavailable at the authoritative floor".to_owned()
+                FindingDenial::unavailable(
+                    "current finding status proof is unavailable at the authoritative floor",
+                )
             })?;
         let proof_b64 = STANDARD.encode(&record.proof_bytes);
         let proof_view = FindingStatusProofContextView {
@@ -496,10 +536,9 @@ impl FindingStatusProofVerifier for MarketFindingStatusVerifier {
         if verified.map_epoch < view.minimum_map_epoch
             || verified.non_inclusion_checked_at < view.minimum_non_inclusion_checked_at
         {
-            return Err(
-                "current finding status proof regresses behind the authenticated delivery"
-                    .to_owned(),
-            );
+            return Err(FindingDenial::stale_or_superseded(
+                "current finding status proof regresses behind the authenticated delivery",
+            ));
         }
         self.verify_status_admission(&proof_view, &verified, now_unix_secs)
     }
@@ -512,12 +551,15 @@ pub(crate) fn verify_epoch_record(
     max_epoch_age_secs: u64,
     record: &FindingStatusEpochRecord,
     now: u64,
-) -> Result<(), String> {
+) -> Result<(), FindingDenial> {
     require_live_operator_and_bond(operator, service_bond, &record.feed_id, now)?;
-    let signed =
-        parse_signed_status_epoch(&record.signed_epoch_bytes).map_err(|error| error.to_string())?;
-    verify_signed_status_epoch(&signed, &authorization(operator)?)
-        .map_err(|error| error.to_string())?;
+    let signed = parse_signed_status_epoch(&record.signed_epoch_bytes)
+        .map_err(|error| FindingDenial::carrier_invalid(error.to_string()))?;
+    verify_signed_status_epoch(
+        &signed,
+        &authorization(operator).map_err(FindingDenial::authority_invalid)?,
+    )
+    .map_err(|error| FindingDenial::authority_invalid(error.to_string()))?;
     verify_epoch_freshness(&signed, now, max_epoch_age_secs)?;
     let body = &signed.body;
     if record.feed_id != body.feed_id
@@ -533,7 +575,9 @@ pub(crate) fn verify_epoch_record(
         || record.generated_at != body.generated_at
         || record.valid_until != body.valid_until
     {
-        return Err("durable finding status epoch fields do not match its signed bytes".to_owned());
+        return Err(FindingDenial::binding_mismatch(
+            "durable finding status epoch fields do not match its signed bytes",
+        ));
     }
     Ok(())
 }
@@ -545,7 +589,7 @@ pub(crate) fn verify_proof_record(
     max_epoch_age_secs: u64,
     record: &FindingStatusProofRecord,
     now: u64,
-) -> Result<(), String> {
+) -> Result<(), FindingDenial> {
     let proof_b64 = STANDARD.encode(&record.proof_bytes);
     let material = verify_portable_at(
         operator,
@@ -586,9 +630,9 @@ pub(crate) fn verify_proof_record(
         || record.signed_epoch_bytes != material.signed_epoch_bytes
         || !inclusion_fields_match
     {
-        return Err(
-            "durable finding status proof fields do not match its verified bytes".to_owned(),
-        );
+        return Err(FindingDenial::binding_mismatch(
+            "durable finding status proof fields do not match its verified bytes",
+        ));
     }
     Ok(())
 }

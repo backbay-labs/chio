@@ -59,8 +59,9 @@ pub fn reverse(graph: &LineageGraph, seeds: &[&str], bounds: QueryBounds) -> Que
 }
 
 /// Reverse-resolve governed memory writes that depend on one verified Finding
-/// delivery receipt. Only the typed M6 relation participates, so an unrelated
-/// generic receipt parent cannot be promoted into Finding provenance.
+/// delivery receipt. Only the typed delivery-lineage relation participates,
+/// so an unrelated generic receipt parent cannot be promoted into Finding
+/// provenance.
 pub fn finding_memory_dependents(
     graph: &LineageGraph,
     delivery_receipt_id: &str,

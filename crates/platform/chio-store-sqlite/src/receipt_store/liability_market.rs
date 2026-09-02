@@ -17,7 +17,7 @@ impl SqliteReceiptStore {
             .body
             .report
             .validate()
-            .map_err(ReceiptStoreError::Conflict)?;
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let provider_owned = provider.clone();
         self.writer_handle().run_write(move |connection| {
@@ -196,7 +196,9 @@ impl SqliteReceiptStore {
         &self,
         query: &LiabilityProviderResolutionQuery,
     ) -> Result<LiabilityProviderResolutionReport, ReceiptStoreError> {
-        query.validate().map_err(ReceiptStoreError::Conflict)?;
+        query
+            .validate()
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
         let normalized = query.normalized();
         let connection = self.connection()?;
         let mut statement = connection.prepare(
@@ -284,7 +286,7 @@ impl SqliteReceiptStore {
         request
             .body
             .validate()
-            .map_err(ReceiptStoreError::Conflict)?;
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let request_owned = request.clone();
         self.writer_handle().run_write(move |connection| {
@@ -391,7 +393,7 @@ impl SqliteReceiptStore {
         response
             .body
             .validate()
-            .map_err(ReceiptStoreError::Conflict)?;
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let response_owned = response.clone();
         self.writer_handle().run_write(move |connection| {
@@ -538,7 +540,7 @@ impl SqliteReceiptStore {
         placement
             .body
             .validate()
-            .map_err(ReceiptStoreError::Conflict)?;
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let placement_owned = placement.clone();
         self.writer_handle().run_write(move |connection| {
@@ -701,7 +703,7 @@ impl SqliteReceiptStore {
         authority
             .body
             .validate()
-            .map_err(ReceiptStoreError::Conflict)?;
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let authority_owned = authority.clone();
         self.writer_handle().run_write(move |connection| {
@@ -801,7 +803,7 @@ impl SqliteReceiptStore {
         coverage
             .body
             .validate()
-            .map_err(ReceiptStoreError::Conflict)?;
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let coverage_owned = coverage.clone();
         self.writer_handle().run_write(move |connection| {
@@ -920,7 +922,7 @@ impl SqliteReceiptStore {
         decision
             .body
             .validate()
-            .map_err(ReceiptStoreError::Conflict)?;
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         let decision_owned = decision.clone();
         self.writer_handle().run_write(move |connection| {
