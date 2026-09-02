@@ -81,62 +81,42 @@ token, the kernel, and the receipt.
 
 ## See it run
 
-```sh
-chio init my-agent && cd my-agent
-chio --receipt-db ./chio.db --session-db ./session.db \
-  check --policy policy.yaml --server hello --tool hello_world --params '{}'
-```
-
-The starter policy grants `hello_world` and nothing else, so the kernel allows the call and
-signs a receipt for it:
-
-```text
-verdict:    ALLOW
-tool:       hello_world
-server:     hello
-receipt_id: 356cab5605742b1bffd41eadbb8ebb269d50d3564a27ce3458efe063bcc64c5b
-policy:     69e943b96e9ce64d0264bb56bf8930e77bd4e68adf68fcf1395790dae03e6b55
-```
-
-Ask for a tool the token does not cover and the call never runs. The refusal is signed too:
+The bundled code-agent policy is the one Claude Code and Cursor run under. Point it at a
+force push:
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/backbay-labs/chio/main/crates/products/chio-cli/src/policies/code_agent.yaml -o code-agent.yaml
+echo '{"content":""}' > out.json
 chio --receipt-db ./chio.db --session-db ./session.db \
-  check --policy policy.yaml --server hello --tool drop_tables --params '{}'
+  check --policy code-agent.yaml --mode full --output-fixture out.json \
+  --server shell --tool run_command --params '{"command":"git push --force origin main"}'
 ```
 
 ```text
 verdict:    DENY
-tool:       drop_tables
-server:     hello
-reason:     requested tool drop_tables on server hello is not in capability scope
-receipt_id: 6c9f6043cdbb6d9c05f372d2f0842b039c3397a9f131f25d2edb635c00ee0a4c
+tool:       run_command
+server:     shell
+reason:     guard denied the request: guard "guard-pipeline" denied the request
+receipt_id: f81c17187c5e…
 ```
 
-Both receipts are in the store. Explain one, then export the lot and verify the package with
-no access to the kernel that wrote it:
+The command never ran, and the refusal is a signed receipt in the store. Export it and verify
+it on a machine that has never seen your kernel:
 
 ```sh
-chio --receipt-db ./chio.db receipt explain <receipt-id> --admin-all
 chio --receipt-db ./chio.db evidence export --output ./evidence --admin-all
 chio evidence verify --input ./evidence
 ```
 
 ```text
-decision: deny
-reason: requested tool drop_tables on server hello is not in capability scope
-guard: kernel
-repair_hint: inspect the guard and policy_hash, then mint or narrow a matching capability
-
 evidence package verified
-tool_receipts:          2
-capability_lineage:     2
-authorized_receipts:    1
+tool_receipts:          1
 verified_files:         12
 ```
 
-This is a dry run, with no agent or tool server involved. The kernel produced two signed
-decisions from a policy and a request, and anyone holding the package can check them offline.
+<sub>The preset carries output guards, so <code>check</code> runs in full mode against a fixture
+standing in for the tool's output. The same policy denies <code>.env</code> writes,
+<code>curl | sh</code>, and <code>sudo</code>, and allows <code>git push --force-with-lease</code>.</sub>
 
 ## Why it is a kernel
 
