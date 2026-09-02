@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 808" width="480" height="808" role="img" aria-label="Inside one delegation hop, stacked for small screens.">
+  <defs>
+    <linearGradient id="hpmbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#130d0a"/><stop offset="1" stop-color="#1b140d"/></linearGradient>
+    <radialGradient id="hpmglow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.32"/><stop offset="0.6" stop-color="#8f7ff2" stop-opacity="0.07"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
+    <radialGradient id="hpmkglow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.28"/><stop offset="0.65" stop-color="#8f7ff2" stop-opacity="0.06"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="480" height="808" fill="url(#hpmbg)"/>
+  <text x="240.0" y="38" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" letter-spacing="2.5" fill="#d8cfc0" fill-opacity="0.55">INSIDE ONE HOP</text>
+  <rect x="30" y="56" width="420" height="52" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="46" y="78" text-anchor="start" font-family="Georgia, 'Times New Roman', serif" font-size="15" fill="#e7ded0">Planner</text>
+  <text x="434" y="78" text-anchor="end" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#9a8f7e">delegator &#183; $1.00 &#183; 30m</text>
+  <text x="46" y="98" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">scope sha256:7e21&#8230;</text>
+  <path d="M240 110 V128" stroke="#b08d5b" stroke-opacity="0.5" stroke-width="1.3"/>
+  <rect x="30" y="130" width="420" height="100" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="46" y="154" text-anchor="start" font-family="Georgia, 'Times New Roman', serif" font-size="14.5" fill="#e7ded0">Delegation link</text>
+  <text x="434" y="154" text-anchor="end" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c3b6ff">ed25519 &#10003;</text>
+  <text x="46" y="174" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">delegator</text>
+  <text x="130" y="174" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="9.5" fill="#d3cabb">did:chio:4c1f&#8230;</text>
+  <text x="46" y="192" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">delegatee</text>
+  <text x="130" y="192" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="9.5" fill="#d3cabb">did:chio:9a07&#8230;</text>
+  <text x="46" y="210" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">attenuations</text>
+  <text x="130" y="210" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d3cabb">drop git.diff &#183; 2,000 bps &#183; 10m</text>
+  <rect x="30" y="240" width="420" height="100" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="46" y="264" text-anchor="start" font-family="Georgia, 'Times New Roman', serif" font-size="14.5" fill="#e7ded0">Attenuation proof</text>
+  <text x="434" y="264" text-anchor="end" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c3b6ff">recomputed</text>
+  <text x="46" y="284" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">parent hash</text>
+  <text x="130" y="284" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="9.5" fill="#d3cabb">sha256:7e21&#8230; = last link &#10003;</text>
+  <text x="46" y="302" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">child hash</text>
+  <text x="130" y="302" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="9.5" fill="#d3cabb">sha256:b09d&#8230;</text>
+  <text x="46" y="320" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">subset</text>
+  <text x="130" y="320" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d3cabb">tools &#8834; &#183; budget &#8804; &#183; expiry &#8804; &#10003;</text>
+  <rect x="30" y="350" width="420" height="82" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="46" y="374" text-anchor="start" font-family="Georgia, 'Times New Roman', serif" font-size="14.5" fill="#e7ded0">Budget split</text>
+  <text x="434" y="374" text-anchor="end" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c3b6ff">siblings summed</text>
+  <text x="46" y="394" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">worker</text>
+  <text x="130" y="394" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d3cabb">2,000 bps of the planner</text>
+  <text x="46" y="412" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">registry</text>
+  <text x="130" y="412" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d3cabb">3,500 of 10,000 bps &#10003;</text>
+  <rect x="30" y="442" width="420" height="92" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="46" y="466" text-anchor="start" font-family="Georgia, 'Times New Roman', serif" font-size="14.5" fill="#e7ded0">Caveats</text>
+  <text x="434" y="466" text-anchor="end" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c3b6ff">signed into the token</text>
+  <rect x="46" y="478" width="90.80000000000001" height="22" rx="11.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="91.4" y="492.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">bind_session</text>
+  <rect x="146.8" y="478" width="122.80000000000001" height="22" rx="11.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="208.20000000000002" y="492.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">restrict_audience</text>
+  <rect x="279.6" y="478" width="142.0" height="22" rx="11.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="350.6" y="492.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">restrict_time_window</text>
+  <rect x="46" y="506" width="90.80000000000001" height="22" rx="11.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="91.4" y="520.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">restrict_geo</text>
+  <rect x="30" y="544" width="420" height="82" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="46" y="568" text-anchor="start" font-family="Georgia, 'Times New Roman', serif" font-size="14.5" fill="#e7ded0">Revocation</text>
+  <text x="434" y="568" text-anchor="end" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c3b6ff">epoch #4812</text>
+  <text x="46" y="588" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">root</text>
+  <text x="130" y="588" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="9.5" fill="#d3cabb">sha256:c3a0&#8230;</text>
+  <text x="46" y="606" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">ancestors</text>
+  <text x="130" y="606" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d3cabb">none revoked &#10003;</text>
+  <path d="M240 636 V654" stroke="#b08d5b" stroke-opacity="0.5" stroke-width="1.3"/>
+  <path d="M240 658 l-4.5 -8 h9 z" fill="#b08d5b" fill-opacity="0.85"/>
+  <rect x="30" y="660" width="420" height="52" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="46" y="682" text-anchor="start" font-family="Georgia, 'Times New Roman', serif" font-size="15" fill="#e7ded0">Worker</text>
+  <text x="434" y="682" text-anchor="end" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#9a8f7e">delegatee &#183; $0.20 &#183; 10m</text>
+  <text x="46" y="702" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">scope sha256:b09d&#8230;</text>
+  <path d="M90.0 756 H390.0" stroke="#b08d5b" stroke-opacity="0.3" stroke-width="1"/>
+  <rect x="234.0" y="750" width="12" height="12" transform="rotate(45 240.0 756)" fill="#1b140d" stroke="#b08d5b" stroke-opacity="0.7"/>
+  <text x="240.0" y="786" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="14.5" font-style="italic" fill="#d8cfc0" fill-opacity="0.75">Rechecked on every call.</text>
+</svg>
