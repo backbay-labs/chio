@@ -1,36 +1,38 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 210" width="1000" height="210" role="img" aria-label="chio-kernel-core is no_std and takes its clock and RNG as traits. The same verify, evaluate, and sign code ships as the native chio-kernel sidecar, as chio-kernel-browser over wasm32, and as chio-kernel-mobile over UniFFI for iOS and Android.">
-<defs>
-    <linearGradient id="pc-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#130d0a"/><stop offset="1" stop-color="#1b140d"/></linearGradient>
-    <radialGradient id="pc-glow" cx="50%" cy="50%" r="55%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.16"/><stop offset="0.5" stop-color="#8f7ff2" stop-opacity="0.04"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
-    <pattern id="pc-field" width="34" height="34" patternUnits="userSpaceOnUse"><circle cx="6" cy="9" r="0.9" fill="#ab8a52" fill-opacity="0.16"/><circle cx="23" cy="24" r="0.6" fill="#ab8a52" fill-opacity="0.10"/></pattern>
-    <radialGradient id="pc-fade" cx="50%" cy="50%" r="60%"><stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
-    <mask id="pc-mask"><rect width="1000" height="210" fill="url(#pc-fade)"/></mask>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 324" width="1200" height="324" role="img" aria-label="chio-kernel-core is no_std and takes its clock and RNG as traits. The same verify, evaluate, and sign code ships as the native chio-kernel sidecar, as chio-kernel-browser over wasm32, and as chio-kernel-mobile over UniFFI for iOS and Android.">
+  <defs>
+    <linearGradient id="pcbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#130d0a"/><stop offset="1" stop-color="#1b140d"/></linearGradient>
+    <radialGradient id="pcglow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.32"/><stop offset="0.6" stop-color="#8f7ff2" stop-opacity="0.07"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
+    <radialGradient id="pckglow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.28"/><stop offset="0.65" stop-color="#8f7ff2" stop-opacity="0.06"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
   </defs>
-  <rect width="1000" height="210" rx="10" fill="url(#pc-bg)"/>
-  <rect width="1000" height="210" rx="10" fill="none" stroke="#ab8a52" stroke-opacity="0.14"/>
-  <text x="40" y="34" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="11" letter-spacing="1.7" fill="#8c8172">one core &#183; three hosts</text>
-  <text x="960" y="34" text-anchor="end" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10" letter-spacing="1.4" fill="#8c8172">same verify, evaluate, sign</text>
-  <rect x="350" y="50" width="300" height="58" rx="8" fill="#16101c" fill-opacity="0.8" stroke="#8f7ff2" stroke-opacity="0.9" stroke-width="1.4"/>
-  <text x="500" y="72" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="11" letter-spacing="1.5" fill="#c3b6ff">chio-kernel-core</text>
-  <text x="500" y="92" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">no_std + alloc &#183; Clock and Rng as traits</text>
-  <line x1="170" y1="140" x2="170" y2="118" stroke="#ab8a52" stroke-opacity="0.5" stroke-width="1"/>
-  <line x1="170" y1="118" x2="500" y2="118" stroke="#ab8a52" stroke-opacity="0.5" stroke-width="1"/>
-  <rect x="40" y="140" width="260" height="56" rx="6" fill="#16101c" fill-opacity="0.5" stroke="#ab8a52" stroke-opacity="0.6" stroke-width="1.2"/>
-  <text x="170" y="160" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10.5" letter-spacing="1" fill="#d4b06a">chio-kernel</text>
-  <text x="170" y="175" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9" fill="#d8cfc0">native sidecar</text>
-  <text x="170" y="189" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9" fill="#8c8172">servers, CLIs, desktop</text>
-  <line x1="500" y1="140" x2="500" y2="118" stroke="#ab8a52" stroke-opacity="0.5" stroke-width="1"/>
-  <line x1="500" y1="118" x2="500" y2="118" stroke="#ab8a52" stroke-opacity="0.5" stroke-width="1"/>
-  <rect x="370" y="140" width="260" height="56" rx="6" fill="#16101c" fill-opacity="0.5" stroke="#ab8a52" stroke-opacity="0.6" stroke-width="1.2"/>
-  <text x="500" y="160" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10.5" letter-spacing="1" fill="#d4b06a">chio-kernel-browser</text>
-  <text x="500" y="175" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9" fill="#d8cfc0">wasm32 &#183; wasm-bindgen</text>
-  <text x="500" y="189" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9" fill="#8c8172">browser JS and TS</text>
-  <line x1="830" y1="140" x2="830" y2="118" stroke="#ab8a52" stroke-opacity="0.5" stroke-width="1"/>
-  <line x1="830" y1="118" x2="500" y2="118" stroke="#ab8a52" stroke-opacity="0.5" stroke-width="1"/>
-  <rect x="700" y="140" width="260" height="56" rx="6" fill="#16101c" fill-opacity="0.5" stroke="#ab8a52" stroke-opacity="0.6" stroke-width="1.2"/>
-  <text x="830" y="160" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10.5" letter-spacing="1" fill="#d4b06a">chio-kernel-mobile</text>
-  <text x="830" y="175" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9" fill="#d8cfc0">UniFFI &#183; C ABI</text>
-  <text x="830" y="189" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9" fill="#8c8172">Swift on iOS, Kotlin on Android</text>
-  <line x1="500" y1="108" x2="500" y2="118" stroke="#ab8a52" stroke-opacity="0.5" stroke-width="1"/>
-
+  <rect width="1200" height="324" fill="url(#pcbg)"/>
+  <g stroke="#b08d5b" stroke-opacity="0.35" stroke-width="1">
+    <path d="M30 40 H42 M36 34 V46"/><path d="M1158 40 H1170 M1164 34 V46"/>
+    <path d="M30 284 H42 M36 278 V290"/><path d="M1158 284 H1170 M1164 278 V290"/>
+  </g>
+  <text x="600.0" y="48" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" letter-spacing="4" fill="#d8cfc0" fill-opacity="0.55">ONE CORE, THREE HOSTS</text>
+  <path d="M230 178 V150 H600 V132" stroke="#b08d5b" stroke-opacity="0.5" stroke-width="1.3" fill="none"/>
+  <path d="M230 178 l-4 -7 h8 z" fill="#b08d5b" fill-opacity="0.85"/>
+  <path d="M600 178 V150 H600 V132" stroke="#b08d5b" stroke-opacity="0.5" stroke-width="1.3" fill="none"/>
+  <path d="M600 178 l-4 -7 h8 z" fill="#b08d5b" fill-opacity="0.85"/>
+  <path d="M970 178 V150 H600 V132" stroke="#b08d5b" stroke-opacity="0.5" stroke-width="1.3" fill="none"/>
+  <path d="M970 178 l-4 -7 h8 z" fill="#b08d5b" fill-opacity="0.85"/>
+  <circle cx="600.0" cy="101.0" r="190" fill="url(#pckglow)"/>
+  <rect x="430" y="70" width="340" height="62" rx="12" fill="#191026" stroke="#8f7ff2" stroke-opacity="0.8" stroke-width="1.6"/>
+  <text x="600" y="96" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="17" fill="#f0eadd">chio-kernel-core</text>
+  <text x="600" y="116" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c3b6ff">no_std + alloc &#183; verify, evaluate, sign &#183; Clock and Rng as traits</text>
+  <rect x="100" y="180" width="260" height="64" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="230" y="204" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="14.5" fill="#e7ded0">chio-kernel</text>
+  <text x="230" y="221" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#d3cabb">native sidecar</text>
+  <text x="230" y="236" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">servers, CLIs, desktop</text>
+  <rect x="470" y="180" width="260" height="64" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="600" y="204" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="14.5" fill="#e7ded0">chio-kernel-browser</text>
+  <text x="600" y="221" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#d3cabb">wasm32 &#183; wasm-bindgen</text>
+  <text x="600" y="236" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">browser JavaScript and TypeScript</text>
+  <rect x="840" y="180" width="260" height="64" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="970" y="204" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="14.5" fill="#e7ded0">chio-kernel-mobile</text>
+  <text x="970" y="221" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#d3cabb">UniFFI &#183; C ABI</text>
+  <text x="970" y="236" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">Swift on iOS, Kotlin on Android</text>
+  <path d="M150.0 276 H1050.0" stroke="#b08d5b" stroke-opacity="0.3" stroke-width="1"/>
+  <rect x="594.0" y="270" width="12" height="12" transform="rotate(45 600.0 276)" fill="#1b140d" stroke="#b08d5b" stroke-opacity="0.7"/>
+  <text x="600.0" y="306" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="14.5" font-style="italic" fill="#d8cfc0" fill-opacity="0.75">The same verify, evaluate, and sign code, wherever the agent runs.</text>
 </svg>

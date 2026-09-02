@@ -1,68 +1,72 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 680" width="480" height="680" role="img" aria-label="One tool call through Chio, stacked for small screens.">
-<defs>
-    <linearGradient id="ocm-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#130d0a"/><stop offset="1" stop-color="#1b140d"/></linearGradient>
-    <radialGradient id="ocm-glow" cx="50%" cy="50%" r="55%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.16"/><stop offset="0.5" stop-color="#8f7ff2" stop-opacity="0.04"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
-    <pattern id="ocm-field" width="34" height="34" patternUnits="userSpaceOnUse"><circle cx="6" cy="9" r="0.9" fill="#ab8a52" fill-opacity="0.16"/><circle cx="23" cy="24" r="0.6" fill="#ab8a52" fill-opacity="0.10"/></pattern>
-    <radialGradient id="ocm-fade" cx="50%" cy="50%" r="60%"><stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
-    <mask id="ocm-mask"><rect width="480" height="680" fill="url(#ocm-fade)"/></mask>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 760" width="480" height="760" role="img" aria-label="One tool call through Chio, stacked for small screens.">
+  <defs>
+    <linearGradient id="ocmbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#130d0a"/><stop offset="1" stop-color="#1b140d"/></linearGradient>
+    <radialGradient id="ocmglow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.32"/><stop offset="0.6" stop-color="#8f7ff2" stop-opacity="0.07"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
+    <radialGradient id="ocmkglow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.28"/><stop offset="0.65" stop-color="#8f7ff2" stop-opacity="0.06"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
   </defs>
-  <rect width="480" height="680" rx="10" fill="url(#ocm-bg)"/>
-  <rect width="480" height="680" rx="10" fill="none" stroke="#ab8a52" stroke-opacity="0.14"/>
-  <text x="24" y="30" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10.5" letter-spacing="1.5" fill="#8c8172">one call &#183; fs.read</text>
-  <rect x="24" y="50" width="432" height="130" rx="8" fill="#16101c" fill-opacity="0.25" stroke="#d8cfc0" stroke-opacity="0.32" stroke-width="1.2" stroke-dasharray="5 4"/>
-  <text x="240" y="72" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10.5" letter-spacing="2" fill="#d8cfc0">AGENT &#183; untrusted</text>
-  <rect x="140" y="84" width="200" height="86" rx="6" fill="#16101c" fill-opacity="0.7" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.2"/>
-  <text x="152" y="102" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">who</text>
-  <text x="212" y="102" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">did:chio:7f3a&#8230;</text>
-  <text x="152" y="119" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">call</text>
-  <text x="212" y="119" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">fs.read</text>
-  <text x="152" y="136" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">budget</text>
-  <text x="212" y="136" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">$0.50</text>
-  <text x="152" y="153" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">expires</text>
-  <text x="212" y="153" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">15m</text>
-  <line x1="240" y1="182" x2="240" y2="206" stroke="#ab8a52" stroke-opacity="0.7" stroke-width="1.2"/><path d="M240 206 L237.4 200.6 L242.6 200.6 Z" fill="#ab8a52" fill-opacity="0.7"/>
-  <text x="254" y="198" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9" fill="#ab8a52">presents token</text>
-  <rect x="24" y="208" width="432" height="150" rx="8" fill="#16101c" fill-opacity="0.75" stroke="#8f7ff2" stroke-opacity="0.85" stroke-width="1.4"/>
-  <text x="240" y="230" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10" letter-spacing="1.5" fill="#c3b6ff">KERNEL &#183; the only trusted component</text>
-  <rect x="40" y="250" width="120" height="28" rx="14" fill="#8f7ff2" fill-opacity="0.10" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1"/>
-  <text x="100" y="268" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#c3b6ff">verify &#10003;</text>
-  <rect x="178" y="250" width="120" height="28" rx="14" fill="#8f7ff2" fill-opacity="0.10" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1"/>
-  <text x="238" y="268" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#c3b6ff">guard in &#10003;</text>
-  <rect x="316" y="250" width="120" height="28" rx="14" fill="#8f7ff2" fill-opacity="0.10" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1"/>
-  <text x="376" y="268" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#c3b6ff">dispatch &#8594;</text>
-  <rect x="40" y="288" width="120" height="28" rx="14" fill="#8f7ff2" fill-opacity="0.10" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1"/>
-  <text x="100" y="306" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#c3b6ff">guard out &#10003;</text>
-  <rect x="178" y="288" width="120" height="28" rx="14" fill="#8f7ff2" fill-opacity="0.10" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1"/>
-  <text x="238" y="306" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#c3b6ff">sign &#10003;</text>
-  <text x="240" y="340" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#ab8a52">budget hold $0.50 taken before dispatch</text>
-  <line x1="240" y1="360" x2="240" y2="384" stroke="#ab8a52" stroke-opacity="0.7" stroke-width="1.2"/><path d="M240 384 L237.4 378.6 L242.6 378.6 Z" fill="#ab8a52" fill-opacity="0.7"/>
-  <text x="254" y="376" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9" fill="#ab8a52">governed call</text>
-  <rect x="24" y="386" width="432" height="70" rx="8" fill="#16101c" fill-opacity="0.25" stroke="#d8cfc0" stroke-opacity="0.32" stroke-width="1.2" stroke-dasharray="5 4"/>
-  <text x="240" y="408" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10.5" letter-spacing="2" fill="#d8cfc0">TOOL SERVER &#183; fs &#183; sandboxed</text>
-  <text x="240" y="430" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">read src/main.rs &#183; 2.1 kB &#183; 14 ms</text>
-  <line x1="240" y1="458" x2="240" y2="484" stroke="#ab8a52" stroke-opacity="0.8" stroke-width="1.2"/><path d="M240 484 L237.4 478.6 L242.6 478.6 Z" fill="#ab8a52" fill-opacity="0.8"/>
-  <text x="254" y="476" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9" fill="#ab8a52">signs receipt</text>
-  <rect x="24" y="486" width="208" height="118" rx="6" fill="#1a140f" fill-opacity="0.9" stroke="#ab8a52" stroke-opacity="0.75" stroke-width="1.2"/>
-  <text x="36" y="506" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10" letter-spacing="1.2" fill="#d4b06a">receipt</text>
-  <text x="36" y="526" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">id</text>
-  <text x="96" y="526" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">sha256:9c1e&#8230;</text>
-  <text x="36" y="544" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">verdict</text>
-  <text x="96" y="544" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#c3b6ff">allow</text>
-  <text x="36" y="562" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">cost</text>
-  <text x="96" y="562" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">$0.03</text>
-  <text x="36" y="580" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">signed</text>
-  <text x="96" y="580" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">ed25519 &#10003;</text>
-  <rect x="248" y="486" width="208" height="118" rx="6" fill="#1a1010" fill-opacity="0.85" stroke="#c95a52" stroke-opacity="0.55" stroke-width="1.2"/>
-  <text x="260" y="506" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10" letter-spacing="1" fill="#d4b06a">receipt &#183; expired token</text>
-  <text x="260" y="526" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">id</text>
-  <text x="320" y="526" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">sha256:41d0&#8230;</text>
-  <text x="260" y="544" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">verdict</text>
-  <text x="320" y="544" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#c95a52">deny</text>
-  <text x="260" y="562" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">reason</text>
-  <text x="320" y="562" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">expired</text>
-  <text x="260" y="580" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">signed</text>
-  <text x="320" y="580" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">ed25519 &#10003;</text>
-  <text x="240" y="640" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10" fill="#8c8172">every outcome is a signed receipt</text>
-  <text x="240" y="658" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10" fill="#8c8172">allow &#183; deny &#183; cancelled &#183; incomplete</text>
-
+  <rect width="480" height="760" fill="url(#ocmbg)"/>
+  <text x="240.0" y="38" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" letter-spacing="2.5" fill="#d8cfc0" fill-opacity="0.55">ONE CALL</text>
+  <rect x="30" y="58" width="420" height="150" rx="8" fill="#17110d" stroke="#9a8b76" stroke-opacity="0.55" stroke-dasharray="4 4"/>
+  <text x="240" y="84" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="15" fill="#e7ded0">Agent</text>
+  <text x="240" y="101" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#9a8f7e">LLM process &#183; untrusted</text>
+  <rect x="120" y="112" width="240" height="84" rx="6" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.5"/>
+  <text x="134" y="132" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#9a8f7e">who</text>
+  <text x="192" y="132" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.0" fill="#d3cabb">did:chio:7f3a&#8230;</text>
+  <text x="134" y="150" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#9a8f7e">call</text>
+  <text x="192" y="150" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#d3cabb">fs.read</text>
+  <text x="134" y="168" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#9a8f7e">budget</text>
+  <text x="192" y="168" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#d3cabb">$0.50</text>
+  <text x="134" y="186" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#9a8f7e">expires</text>
+  <text x="192" y="186" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#d3cabb">15m</text>
+  <path d="M240 210 L240 244" stroke="#b08d5b" stroke-opacity="0.6" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+  <path d="M240 244 L236.6 237.9 L243.4 237.9 Z" fill="#b08d5b" fill-opacity="0.85"/>
+  <rect x="253.4" y="220" width="113.2" height="16" rx="3" fill="#130d0a" fill-opacity="0.85"/>
+  <text x="310" y="232" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c8a86f">capability token</text>
+  <circle cx="240.0" cy="324.0" r="200" fill="url(#ocmkglow)"/>
+  <rect x="30" y="246" width="420" height="156" rx="12" fill="#191026" stroke="#8f7ff2" stroke-opacity="0.8" stroke-width="1.6"/>
+  <text x="240" y="274" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="17" fill="#f0eadd">Runtime Kernel</text>
+  <text x="240" y="292" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c3b6ff">the only trusted component &#183; TCB</text>
+  <rect x="46" y="306" width="120" height="28" rx="14.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="106.0" y="323.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">Verify</text>
+  <rect x="178" y="306" width="120" height="28" rx="14.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="238.0" y="323.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">Guard in</text>
+  <rect x="310" y="306" width="120" height="28" rx="14.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="370.0" y="323.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">Dispatch</text>
+  <rect x="46" y="342" width="120" height="28" rx="14.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="106.0" y="359.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">Guard out</text>
+  <rect x="178" y="342" width="120" height="28" rx="14.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="238.0" y="359.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">Sign</text>
+  <text x="240" y="392" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c8a86f">budget hold $0.50 before dispatch</text>
+  <path d="M240 404 L240 438" stroke="#b08d5b" stroke-opacity="0.6" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+  <path d="M240 438 L236.6 431.9 L243.4 431.9 Z" fill="#b08d5b" fill-opacity="0.85"/>
+  <rect x="252.7" y="414" width="94.6" height="16" rx="3" fill="#130d0a" fill-opacity="0.85"/>
+  <text x="300" y="426" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c8a86f">governed call</text>
+  <rect x="30" y="440" width="420" height="78" rx="8" fill="#17110d" stroke="#9a8b76" stroke-opacity="0.55" stroke-dasharray="4 4"/>
+  <text x="240" y="466" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="15" fill="#e7ded0">Tool Server</text>
+  <text x="240" y="484" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#9a8f7e">fs &#183; sandboxed &#183; read src/main.rs &#183; 14 ms</text>
+  <path d="M240 520 L240 554" stroke="#b08d5b" stroke-opacity="0.6" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+  <path d="M240 554 L236.6 547.9 L243.4 547.9 Z" fill="#b08d5b" fill-opacity="0.85"/>
+  <rect x="248.7" y="530" width="94.6" height="16" rx="3" fill="#130d0a" fill-opacity="0.85"/>
+  <text x="296" y="542" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c8a86f">signs receipt</text>
+  <rect x="30" y="556" width="204" height="112" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="132" y="578" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="14" fill="#e7ded0">Receipt</text>
+  <text x="132" y="594" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#c3b6ff">allow &#183; signed</text>
+  <text x="44" y="616" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">id</text>
+  <text x="96" y="616" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="9.5" fill="#d3cabb">sha256:9c1e&#8230;</text>
+  <text x="44" y="634" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">cost</text>
+  <text x="96" y="634" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d3cabb">$0.03</text>
+  <text x="44" y="652" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">signed</text>
+  <text x="96" y="652" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d3cabb">ed25519 &#10003;</text>
+  <rect x="246" y="556" width="204" height="112" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.3"/>
+  <text x="348" y="578" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="14" fill="#e7ded0">Receipt</text>
+  <text x="348" y="594" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#c4685f">deny &#183; signed</text>
+  <text x="260" y="616" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">id</text>
+  <text x="312" y="616" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="9.5" fill="#d3cabb">sha256:41d0&#8230;</text>
+  <text x="260" y="634" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">reason</text>
+  <text x="312" y="634" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d3cabb">expired</text>
+  <text x="260" y="652" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">signed</text>
+  <text x="312" y="652" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d3cabb">ed25519 &#10003;</text>
+  <path d="M90.0 706 H390.0" stroke="#b08d5b" stroke-opacity="0.3" stroke-width="1"/>
+  <rect x="234.0" y="700" width="12" height="12" transform="rotate(45 240.0 706)" fill="#1b140d" stroke="#b08d5b" stroke-opacity="0.7"/>
+  <text x="240.0" y="736" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="14.5" font-style="italic" fill="#d8cfc0" fill-opacity="0.75">Every outcome becomes a signed receipt.</text>
 </svg>

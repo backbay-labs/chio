@@ -184,7 +184,15 @@ writes the audit log. Chio is that layer for agents, and each part has a direct 
 
 ## The three pillars
 
-Every capability, decision, and payment resolves to a signed receipt.
+<p align="center">
+  <picture>
+    <source media="(max-width: 500px)" srcset="docs/assets/pillars-mobile.svg" />
+    <img src="docs/assets/pillars.svg" alt="The three pillars of Chio: Proofs, Governance, and Economic Protocol, on a signed-receipt spine" width="900" />
+  </picture>
+</p>
+
+Three layers on one proof spine: every capability, decision, and payment resolves to a signed
+receipt.
 
 ### Proofs
 
