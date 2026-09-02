@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 680" width="480" height="680" role="img" aria-label="One tool call through Chio, stacked for small screens.">
+<defs>
+    <linearGradient id="ocm-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#130d0a"/><stop offset="1" stop-color="#1b140d"/></linearGradient>
+    <radialGradient id="ocm-glow" cx="50%" cy="50%" r="55%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.16"/><stop offset="0.5" stop-color="#8f7ff2" stop-opacity="0.04"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
+    <pattern id="ocm-field" width="34" height="34" patternUnits="userSpaceOnUse"><circle cx="6" cy="9" r="0.9" fill="#ab8a52" fill-opacity="0.16"/><circle cx="23" cy="24" r="0.6" fill="#ab8a52" fill-opacity="0.10"/></pattern>
+    <radialGradient id="ocm-fade" cx="50%" cy="50%" r="60%"><stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <mask id="ocm-mask"><rect width="480" height="680" fill="url(#ocm-fade)"/></mask>
+  </defs>
+  <rect width="480" height="680" rx="10" fill="url(#ocm-bg)"/>
+  <rect width="480" height="680" rx="10" fill="none" stroke="#ab8a52" stroke-opacity="0.14"/>
+  <text x="24" y="30" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10.5" letter-spacing="1.5" fill="#8c8172">one call &#183; fs.read</text>
+  <rect x="24" y="50" width="432" height="130" rx="8" fill="#16101c" fill-opacity="0.25" stroke="#d8cfc0" stroke-opacity="0.32" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="240" y="72" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10.5" letter-spacing="2" fill="#d8cfc0">AGENT &#183; untrusted</text>
+  <rect x="140" y="84" width="200" height="86" rx="6" fill="#16101c" fill-opacity="0.7" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.2"/>
+  <text x="152" y="102" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">who</text>
+  <text x="212" y="102" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">did:chio:7f3a&#8230;</text>
+  <text x="152" y="119" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">call</text>
+  <text x="212" y="119" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">fs.read</text>
+  <text x="152" y="136" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">budget</text>
+  <text x="212" y="136" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">$0.50</text>
+  <text x="152" y="153" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">expires</text>
+  <text x="212" y="153" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">15m</text>
+  <line x1="240" y1="182" x2="240" y2="206" stroke="#ab8a52" stroke-opacity="0.7" stroke-width="1.2"/><path d="M240 206 L237.4 200.6 L242.6 200.6 Z" fill="#ab8a52" fill-opacity="0.7"/>
+  <text x="254" y="198" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9" fill="#ab8a52">presents token</text>
+  <rect x="24" y="208" width="432" height="150" rx="8" fill="#16101c" fill-opacity="0.75" stroke="#8f7ff2" stroke-opacity="0.85" stroke-width="1.4"/>
+  <text x="240" y="230" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10" letter-spacing="1.5" fill="#c3b6ff">KERNEL &#183; the only trusted component</text>
+  <rect x="40" y="250" width="120" height="28" rx="14" fill="#8f7ff2" fill-opacity="0.10" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1"/>
+  <text x="100" y="268" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#c3b6ff">verify &#10003;</text>
+  <rect x="178" y="250" width="120" height="28" rx="14" fill="#8f7ff2" fill-opacity="0.10" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1"/>
+  <text x="238" y="268" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#c3b6ff">guard in &#10003;</text>
+  <rect x="316" y="250" width="120" height="28" rx="14" fill="#8f7ff2" fill-opacity="0.10" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1"/>
+  <text x="376" y="268" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#c3b6ff">dispatch &#8594;</text>
+  <rect x="40" y="288" width="120" height="28" rx="14" fill="#8f7ff2" fill-opacity="0.10" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1"/>
+  <text x="100" y="306" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#c3b6ff">guard out &#10003;</text>
+  <rect x="178" y="288" width="120" height="28" rx="14" fill="#8f7ff2" fill-opacity="0.10" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1"/>
+  <text x="238" y="306" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#c3b6ff">sign &#10003;</text>
+  <text x="240" y="340" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#ab8a52">budget hold $0.50 taken before dispatch</text>
+  <line x1="240" y1="360" x2="240" y2="384" stroke="#ab8a52" stroke-opacity="0.7" stroke-width="1.2"/><path d="M240 384 L237.4 378.6 L242.6 378.6 Z" fill="#ab8a52" fill-opacity="0.7"/>
+  <text x="254" y="376" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9" fill="#ab8a52">governed call</text>
+  <rect x="24" y="386" width="432" height="70" rx="8" fill="#16101c" fill-opacity="0.25" stroke="#d8cfc0" stroke-opacity="0.32" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="240" y="408" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10.5" letter-spacing="2" fill="#d8cfc0">TOOL SERVER &#183; fs &#183; sandboxed</text>
+  <text x="240" y="430" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">read src/main.rs &#183; 2.1 kB &#183; 14 ms</text>
+  <line x1="240" y1="458" x2="240" y2="484" stroke="#ab8a52" stroke-opacity="0.8" stroke-width="1.2"/><path d="M240 484 L237.4 478.6 L242.6 478.6 Z" fill="#ab8a52" fill-opacity="0.8"/>
+  <text x="254" y="476" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9" fill="#ab8a52">signs receipt</text>
+  <rect x="24" y="486" width="208" height="118" rx="6" fill="#1a140f" fill-opacity="0.9" stroke="#ab8a52" stroke-opacity="0.75" stroke-width="1.2"/>
+  <text x="36" y="506" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10" letter-spacing="1.2" fill="#d4b06a">receipt</text>
+  <text x="36" y="526" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">id</text>
+  <text x="96" y="526" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">sha256:9c1e&#8230;</text>
+  <text x="36" y="544" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">verdict</text>
+  <text x="96" y="544" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#c3b6ff">allow</text>
+  <text x="36" y="562" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">cost</text>
+  <text x="96" y="562" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">$0.03</text>
+  <text x="36" y="580" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">signed</text>
+  <text x="96" y="580" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">ed25519 &#10003;</text>
+  <rect x="248" y="486" width="208" height="118" rx="6" fill="#1a1010" fill-opacity="0.85" stroke="#c95a52" stroke-opacity="0.55" stroke-width="1.2"/>
+  <text x="260" y="506" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10" letter-spacing="1" fill="#d4b06a">receipt &#183; expired token</text>
+  <text x="260" y="526" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">id</text>
+  <text x="320" y="526" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">sha256:41d0&#8230;</text>
+  <text x="260" y="544" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">verdict</text>
+  <text x="320" y="544" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#c95a52">deny</text>
+  <text x="260" y="562" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">reason</text>
+  <text x="320" y="562" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">expired</text>
+  <text x="260" y="580" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#8c8172">signed</text>
+  <text x="320" y="580" text-anchor="start" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#d8cfc0">ed25519 &#10003;</text>
+  <text x="240" y="640" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10" fill="#8c8172">every outcome is a signed receipt</text>
+  <text x="240" y="658" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10" fill="#8c8172">allow &#183; deny &#183; cancelled &#183; incomplete</text>
+
+</svg>

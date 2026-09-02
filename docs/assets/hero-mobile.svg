@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" width="480" height="320" role="img" aria-label="Chio: a Rust kernel for agentic operating systems. Signed tokens in, signed receipts out.">
+<defs>
+    <linearGradient id="hm-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#130d0a"/><stop offset="1" stop-color="#1b140d"/></linearGradient>
+    <radialGradient id="hm-glow" cx="50%" cy="42%" r="55%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.16"/><stop offset="0.5" stop-color="#8f7ff2" stop-opacity="0.04"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
+    <pattern id="hm-field" width="34" height="34" patternUnits="userSpaceOnUse"><circle cx="6" cy="9" r="0.9" fill="#ab8a52" fill-opacity="0.16"/><circle cx="23" cy="24" r="0.6" fill="#ab8a52" fill-opacity="0.10"/></pattern>
+    <radialGradient id="hm-fade" cx="50%" cy="50%" r="60%"><stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <mask id="hm-mask"><rect width="480" height="320" fill="url(#hm-fade)"/></mask>
+  </defs>
+  <rect width="480" height="320" rx="0" fill="url(#hm-bg)"/>
+  <rect width="480" height="320" rx="0" fill="url(#hm-field)" mask="url(#hm-mask)"/>
+  <rect width="480" height="320" rx="0" fill="url(#hm-glow)"/>
+  <text x="240" y="40" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" letter-spacing="3.5" fill="#d8cfc0" fill-opacity="0.55">A RUST KERNEL FOR</text>
+  <text x="240" y="58" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" letter-spacing="3.5" fill="#d8cfc0" fill-opacity="0.55">AGENTIC OPERATING SYSTEMS</text>
+  <circle cx="240" cy="136" r="50" fill="#16101c" fill-opacity="0.35" stroke="#8f7ff2" stroke-opacity="0.22" stroke-width="1"/>
+  <g transform="translate(196.8,92.8) scale(3.6)" fill="none" stroke="#a97cf0" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M12 12C10 9 7 4 4 5c-3 1-3 5-1 8s6 5 9 6"/>
+<path d="M12 12C10 13 6 16 5 19c-1 2 1 3 3 2s5-4 4-9"/>
+<path d="M12 12c2-3 5-8 8-7 3 1 3 5 1 8s-6 5-9 6"/>
+<path d="M12 12c2 1 6 4 7 7 1 2-1 3-3 2s-5-4-4-9"/>
+<path d="M12 7v14"/>
+<path d="M12 7c-1-2-3-4-4-4"/>
+<path d="M12 7c1-2 3-4 4-4"/>
+  </g>
+  <text x="240" y="262" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="78" fill="#efe6d6">Chio</text>
+  <text x="240" y="296" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10" letter-spacing="2.5" fill="#ab8a52">SIGNED TOKENS IN</text>
+  <text x="240" y="311" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="10" letter-spacing="2.5" fill="#ab8a52">SIGNED RECEIPTS OUT</text>
+
+</svg>
