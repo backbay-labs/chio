@@ -54,9 +54,9 @@ Chio is a Rust kernel that sits between an AI agent and everything it touches. E
 call, file read, API request, and payment goes through it, the same way every syscall goes
 through an operating system kernel.
 
-Before an agent can do anything, it presents a signed token that says who it is, what it
+Before an agent can do anything, it presents a [signed token](spec/PROTOCOL.md#5-capability-contract) that says who it is, what it
 may call, and how much it may spend. Chio checks the token, runs the call, and writes a
-signed receipt of what happened. **If the token does not check out, the call does not run.**
+[signed receipt](spec/PROTOCOL.md#6-receipt-contract) of what happened. **If the token does not check out, the call does not run.**
 
 <p align="center">
   <picture>
@@ -67,14 +67,16 @@ signed receipt of what happened. **If the token does not check out, the call doe
 
 An agent can hand a token to a sub-agent, but only a narrower one. It can drop tools,
 shrink the budget, or shorten the expiry. **It cannot add anything back.** Each hop is a signed
-delegation link carrying an attenuation proof, a basis-point budget split, and caveats, and the
-kernel rechecks the whole chain against a Merkle revocation oracle on every call. A swarm of
+[delegation link](crates/core/chio-core-types/src/capability/attenuation.rs) carrying an
+[attenuation proof](spec/PROTOCOL.md#capability-attenuation), a basis-point budget split, and
+[caveats](crates/core/chio-core-types/src/capability/caveat.rs), and the kernel rechecks the whole
+chain against a [Merkle revocation oracle](crates/trust/chio-revocation-oracle) on every call. A swarm of
 sub-agents never holds more authority than the agent that spawned it, and
 [one hop is shown in full below](#delegation-and-swarms).
 
 Every receipt records what the call cost and who paid. That is enough to give an agent a
-balance, bill it per call, and let agents pay each other for work. Markets, credit, and
-insurance in Chio are built on those receipts.
+balance, [bill it per call](crates/economy/chio-metering), and let agents pay each other for work.
+[Markets, credit, and insurance](crates/economy) in Chio are built on those receipts.
 
 Agent swarms, security tooling, and cognition markets are built on those three things: the
 token, the kernel, and the receipt.
@@ -83,8 +85,8 @@ token, the kernel, and the receipt.
 
 An orchestrator fans out to a researcher and a writer. Each child gets a narrower scope, a
 route plan, a slice of the budget pool, and a continuation token bound to the signed task
-graph. The swarm authority verifies all of it before either child runs, then refuses four
-tampered versions of the same graph.
+graph. The [swarm authority](crates/kernel/chio-swarm-authority) verifies all of it before either
+child runs, then refuses four tampered versions of the same graph.
 
 ```sh
 cargo run -p chio-swarm-authority --example agent_os
@@ -109,8 +111,9 @@ then someone tries to
   run the researcher after its task was revoked        rejected: swarm task is revoked: task-researcher
 ```
 
-The example is one file of ordinary Rust against the public crate API, and the same verifier
-runs inside the kernel's admission path. Swap the two children for a hundred, or for agents
+The example is [one file of ordinary Rust](crates/kernel/chio-swarm-authority/examples/agent_os.rs)
+against the public crate API, and the same verifier runs inside the
+[kernel's admission path](spec/PROTOCOL.md#642-swarm-authority-runtime-admission). Swap the two children for a hundred, or for agents
 that spawn their own, and the checks do not change.
 
 ## Why it is a kernel
@@ -128,15 +131,15 @@ writes the audit log. Chio is that layer for agents, and each part has a direct 
 
 | In an operating system | In Chio |
 | --- | --- |
-| **Syscalls** | Every tool call, file read, API request, and payment is dispatched by the kernel. An agent never holds a direct handle to a tool. |
-| **Process isolation** | The kernel is the only trusted component. Agents and tool servers run as untrusted, sandboxed processes, isolated from each other and from the agent. |
-| **Permissions** | Capability tokens: signed, expiring, budgeted, and only ever narrowable. |
-| **Syscall filters** | A guard pipeline screens every request and every result. Custom guards run as fuel-metered WASM with no host access. |
-| **Drivers** | MCP, A2A, ACP, AG-UI, OpenAPI, and eight provider tool-call formats each lift to the same kernel verdict and lower back to their own wire format. |
-| **Audit log** | An append-only, content-addressed receipt log with Merkle checkpoints. A receipt signed in Rust verifies byte-for-byte in TypeScript, Python, or Go. |
-| **Resource accounting** | Per-call metering, with a budget hold taken before the call runs and sealed into the receipt. |
-| **Portable core** | `chio-kernel-core` is `no_std` and takes its clock and RNG as traits. The same verify, evaluate, and sign code ships as a native sidecar, in the browser over wasm, and on iOS and Android over UniFFI. |
-| **Verified core** | The admission path (verify, resolve, evaluate, sign) is modeled in Lean 4 with a published assumption boundary. |
+| **[Syscalls](crates/kernel/chio-kernel)** | Every tool call, file read, API request, and payment is dispatched by the kernel. An agent never holds a direct handle to a tool. |
+| **[Process isolation](spec/PROTOCOL.md#3-components-and-trust-boundaries)** | The kernel is the only trusted component. Agents and tool servers run as untrusted, sandboxed processes, isolated from each other and from the agent. |
+| **[Permissions](spec/PROTOCOL.md#5-capability-contract)** | Capability tokens: signed, expiring, budgeted, and only ever narrowable. |
+| **[Syscall filters](crates/guards)** | A guard pipeline screens every request and every result. Custom guards run as [fuel-metered WASM](crates/guards/chio-wasm-guards) with no host access. |
+| **[Drivers](crates/protocol)** | MCP, A2A, ACP, AG-UI, OpenAPI, and eight provider tool-call formats each lift to the same kernel verdict and lower back to their own wire format. |
+| **[Audit log](spec/PROTOCOL.md#6-receipt-contract)** | An append-only, content-addressed receipt log with [Merkle checkpoints](spec/PROTOCOL.md#65-checkpoints). A receipt signed in Rust verifies byte-for-byte in TypeScript, Python, or Go. |
+| **[Resource accounting](crates/economy/chio-metering)** | Per-call metering, with a budget hold taken before the call runs and sealed into the receipt. |
+| **[Portable core](crates/kernel/chio-kernel-core)** | [`chio-kernel-core`](crates/kernel/chio-kernel-core) is `no_std` and takes its clock and RNG as traits. The same verify, evaluate, and sign code ships as a native sidecar, in the [browser over wasm](crates/kernel/chio-kernel-browser), and on [iOS and Android over UniFFI](crates/kernel/chio-kernel-mobile). |
+| **[Verified core](formal/lean4)** | The admission path (verify, resolve, evaluate, sign) is modeled in Lean 4 with a [published assumption boundary](docs/formal/COVERAGE.md). |
 
 <p align="center">
   <picture>
@@ -148,10 +151,10 @@ writes the audit log. Chio is that layer for agents, and each part has a direct 
 ## Why build on it
 
 - **You do not write permissions, delegation, audit, metering, or billing for your agent system.** The kernel does them, and they behave the same over every protocol and provider it speaks.
-- **Sub-agents cannot escalate.** A swarm holds at most the authority of the agent that spawned it, because every delegation proves it is a subset of its parent.
-- **Every action leaves a receipt that verifies offline.** Anyone with the public key can check what an agent did without access to your runtime.
-- **Agents can pay each other.** Metering, budgets, markets, credit, and insurance clear on receipts the kernel already writes.
-- **The model, the framework, and the tool servers are all swappable.** The kernel and the receipts do not change when you change any of them.
+- **Sub-agents cannot escalate.** A swarm holds at most the authority of the agent that spawned it, because every [delegation proves it is a subset of its parent](spec/PROTOCOL.md#capability-attenuation).
+- **Every action leaves a receipt that verifies offline.** Anyone with the public key can [check what an agent did](examples/hello-receipt-verify) without access to your runtime.
+- **Agents can pay each other.** [Metering, budgets, markets, credit, and insurance](docs/guides/ECONOMIC-LAYER.md) clear on receipts the kernel already writes, and [two agents procuring a service](examples/agent-commerce-network) is a worked example.
+- **The model, the framework, and the tool servers are all swappable.** The kernel and the receipts do not change when you change any of them. See the [protocol adapters](crates/protocol) and [integrations](#integrations-and-sdks).
 - **Deny is the default.** A token that does not verify, a budget that cannot be held, or a result that cannot be signed is a call that does not run.
 
 ## Delegation and swarms
@@ -177,19 +180,19 @@ Each hop is a signed link that the kernel rechecks on every call the child makes
 
 | The attack | What stops it |
 | --- | --- |
-| Claiming a bigger parent scope than the delegate was given | The parent scope hash must equal the last link in the chain. The subset witness has a Lean 4 soundness theorem and a conformance fixture for this exact case. |
-| Two children together outspending their parent | Budgets split in basis points, and a per-parent registry rejects oversubscribed siblings at every level of the tree. |
-| A revoked ancestor's workers carrying on | Every ancestor is checked against a Merkle revocation oracle with signed epoch roots. One revocation cuts off the whole subtree beneath it. |
-| A leaked token replayed somewhere else | Caveats bind the token to a session, an audience, a region, or a time window. |
-| A broken signature scheme | Ed25519 today, with a hybrid ML-DSA-65 mode where post-quantum is required. |
+| Claiming a bigger parent scope than the delegate was given | The parent scope hash must equal the [last link in the chain](spec/PROTOCOL.md#capability-attenuation). The subset witness has a [Lean 4 soundness theorem](formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean) and a [conformance fixture](crates/tooling/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs) for this exact case. |
+| Two children together outspending their parent | Budgets split in basis points, and a [per-parent registry](spec/PROTOCOL.md#sibling-sum-budget-enforcement-w12) rejects oversubscribed siblings at every level of the tree. |
+| A revoked ancestor's workers carrying on | Every ancestor is checked against a [Merkle revocation oracle](crates/trust/chio-revocation-oracle) with signed epoch roots. One revocation cuts off the whole subtree beneath it. |
+| A leaked token replayed somewhere else | [Caveats](crates/core/chio-core-types/src/capability/caveat.rs) bind the token to a session, an audience, a region, or a time window. |
+| A broken signature scheme | Ed25519 today, with a [hybrid ML-DSA-65 mode](crates/core/chio-core-types/src/pq.rs) where post-quantum is required. |
 
-For recursive swarms, the swarm authority verifies the whole task graph before a child task runs.
+For recursive swarms, the [swarm authority](crates/kernel/chio-swarm-authority) verifies the whole task graph before a child task runs. The [example above](crates/kernel/chio-swarm-authority/examples/agent_os.rs) builds one end to end.
 
 | | |
 | --- | --- |
-| **Task graph** | One root, acyclic, bounded depth and fan-out, and a delegation witness covering every edge exactly once. |
-| **Continuation tokens** | Each is bound to the graph's canonical hash, its witness chain, a route-plan receipt, a live budget allocation, and the current revocation epoch. |
-| **Pooled budgets** | Allocations roll up against a shared pool with checked arithmetic, so the workers cannot spend more than the orchestrator was given. |
+| **[Task graph](crates/kernel/chio-swarm-authority/README.md)** | One root, acyclic, bounded depth and fan-out, and a delegation witness covering every edge exactly once. |
+| **[Continuation tokens](spec/PROTOCOL.md#642-swarm-authority-runtime-admission)** | Each is bound to the graph's canonical hash, its witness chain, a route-plan receipt, a live budget allocation, and the current revocation epoch. |
+| **[Pooled budgets](crates/kernel/chio-swarm-authority/README.md)** | Allocations roll up against a shared pool with checked arithmetic, so the workers cannot spend more than the orchestrator was given. |
 
 ## The three pillars
 
@@ -210,10 +213,10 @@ receipt.
 
 | Primitive | What it does |
 | --- | --- |
-| **Attenuated capabilities** | Ed25519-signed, time-bounded, budgeted tokens. Delegation proves it is a subset of its parent, so authority can only narrow, never widen. Post-quantum hybrid (ML-DSA-65) is supported. |
-| **Forgery-resistant receipts** | Receipt identity is the hash of its own canonical content; the kernel recomputes that hash before signing and refuses on mismatch. `allow`, `deny`, `cancelled`, and `incomplete` are each signed. |
-| **A verifiable log** | A content-addressed receipt DAG committed in RFC 6962 Merkle checkpoints. Canonical JSON (RFC 8785) makes a receipt signed in Rust verify byte-for-byte in TypeScript, Python, or Go. |
-| **A Lean-4 modeled core** | The pure admission core (verify, resolve, evaluate, sign) is mechanically modeled with a published assumption boundary. |
+| **[Attenuated capabilities](spec/PROTOCOL.md#capability-attenuation)** | Ed25519-signed, time-bounded, budgeted tokens. Delegation proves it is a subset of its parent, so authority can only narrow, never widen. Post-quantum hybrid (ML-DSA-65) is supported. |
+| **[Forgery-resistant receipts](spec/PROTOCOL.md#wysiwys-signing-invariant)** | Receipt identity is the hash of its own canonical content; the kernel recomputes that hash before signing and refuses on mismatch. `allow`, `deny`, `cancelled`, and `incomplete` are each signed. |
+| **[A verifiable log](spec/PROTOCOL.md#65-checkpoints)** | A content-addressed receipt DAG committed in RFC 6962 Merkle checkpoints. Canonical JSON (RFC 8785) makes a receipt signed in Rust verify byte-for-byte in TypeScript, Python, or Go. |
+| **[A Lean-4 modeled core](formal/lean4)** | The pure admission core (verify, resolve, evaluate, sign) is mechanically modeled with a published assumption boundary. |
 
 ### Governance
 
@@ -221,11 +224,11 @@ receipt.
 
 | Primitive | What it does |
 | --- | --- |
-| **Policy that compiles to guards** | HushSpec YAML (allow / warn / deny, with inheritance) compiles directly into native guards. No external policy engine. |
-| **A guard pipeline you can sandbox** | Forbidden-path, egress/SSRF, secret and PII/PHI, velocity, data-flow, jailbreak, and semantic SQL/vector checks. Custom guards run as fuel-metered WASM with no host access; cloud guardrails attach behind circuit breakers. |
-| **Self-certifying identity** | A `did:chio` is the agent's Ed25519 key: no registry, no CA. Agent Passports and BBS+ selective disclosure travel with the agent and verify with no storage dependency. |
-| **Authority without a central issuer** | Federation shares trust evidence while each operator activates locally. Governance charters, capability leases, and threshold multi-party approvals bind who may do what, to which request, for how long. |
-| **One verifier for provenance** | A single fail-closed Sigstore verifier gates guard artifacts, signed model cards, and attestations; revocation is a signed sparse-Merkle oracle. |
+| **[Policy that compiles to guards](crates/guards/chio-policy)** | HushSpec YAML (allow / warn / deny, with inheritance) compiles directly into native guards. No external policy engine. |
+| **[A guard pipeline you can sandbox](crates/guards/chio-guards)** | Forbidden-path, egress/SSRF, secret and PII/PHI, velocity, data-flow, jailbreak, and semantic SQL/vector checks. Custom guards run as fuel-metered WASM with no host access; cloud guardrails attach behind circuit breakers. |
+| **[Self-certifying identity](crates/trust/chio-did)** | A `did:chio` is the agent's Ed25519 key: no registry, no CA. Agent Passports and BBS+ selective disclosure travel with the agent and verify with no storage dependency. |
+| **[Authority without a central issuer](crates/trust/chio-federation)** | Federation shares trust evidence while each operator activates locally. Governance charters, capability leases, and threshold multi-party approvals bind who may do what, to which request, for how long. |
+| **[One verifier for provenance](crates/trust/chio-attest-verify)** | A single fail-closed Sigstore verifier gates guard artifacts, signed model cards, and attestations; revocation is a signed sparse-Merkle oracle. |
 
 ### Economic protocol
 
@@ -233,10 +236,10 @@ receipt.
 
 | Capability | What it does |
 | --- | --- |
-| **Metering and budgets** | Per-call compute, data, and API cost, with durable pre-execution budget holds against a capability's caps, sealed into signed economic receipt metadata. |
-| **Proof-carrying commerce** | One signed receipt binds what was authorized, how it was priced, what it metered, and how it settled, so credit and insurance decisions cite prior signed truth. |
-| **Markets, credit, and insurance** | Discoverable service markets with open bidding and reputation-tiered pricing, credit lines and bonded execution, and liability underwriting and insurance. |
-| **Settlement and anchoring** | On-chain settlement with cross-chain checkpoint anchoring across EVM, Bitcoin, and Solana, backed by the Chio settlement contracts. |
+| **[Metering and budgets](crates/economy/chio-metering)** | Per-call compute, data, and API cost, with durable pre-execution budget holds against a capability's caps, sealed into signed economic receipt metadata. |
+| **[Proof-carrying commerce](docs/guides/ECONOMIC-LAYER.md)** | One signed receipt binds what was authorized, how it was priced, what it metered, and how it settled, so credit and insurance decisions cite prior signed truth. |
+| **[Markets, credit, and insurance](crates/economy/chio-market)** | Discoverable service markets with open bidding and reputation-tiered pricing, credit lines and bonded execution, and liability underwriting and insurance. |
+| **[Settlement and anchoring](crates/economy/chio-settle)** | On-chain settlement with cross-chain checkpoint anchoring across EVM, Bitcoin, and Solana, backed by the Chio settlement contracts. |
 
 ## Quickstart
 
