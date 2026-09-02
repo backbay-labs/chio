@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/assets/hero.png" alt="Chio" width="900" />
+  <picture>
+    <source media="(max-width: 500px)" srcset="docs/assets/hero-mobile.svg" />
+    <img src="docs/assets/hero.svg" alt="Chio: a Rust kernel for agentic operating systems. Signed tokens in, signed receipts out." width="900" />
+  </picture>
 </p>
 
 <p align="center">
@@ -10,18 +13,20 @@
 </p>
 
 <p align="center">
-  <strong>The Clearinghouse for Agentic Commerce</strong>
+  <strong>The kernel your agents answer to.</strong>
 </p>
 
 <p align="center">
   <picture>
     <source media="(max-width: 500px)" srcset="docs/assets/subhead-mobile.svg" />
-    <img src="docs/assets/subhead.svg" alt="Proof-carrying autonomous commerce &middot; Decentralized agentic authority and security &middot; A substrate for agentic economic sovereignty" width="880" />
+    <img src="docs/assets/subhead.svg" alt="A signed receipt for every call &middot; Authority that can only narrow &middot; Agents that pay each other" width="880" />
   </picture>
 </p>
 
 <p align="center">
   <a href="#what-is-chio">What</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
+  <a href="#see-it-run">See it run</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
+  <a href="#why-it-is-a-kernel">Why a kernel</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
   <a href="#the-three-pillars">Pillars</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
   <a href="#quickstart">Quickstart</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
   <a href="#architecture">Architecture</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;
@@ -40,49 +45,146 @@ curl -fsSL https://www.chio.computer/install.sh | sh
 
 ## What is Chio
 
-Chio is a Rust kernel that puts every exchange between an AI agent and the resources it reaches
-for under one governance protocol. Tools, budgets, chain of command, and authority all reduce
-to a single policy that crosses protocol boundaries, travels with the agent, and is enforced
-wherever it acts. The security-critical semantics of that protocol are formally verified and
-implementation-linked, subject to a published assumption boundary.
+> MCP tells an agent *how* to call a tool.<br>
+> A2A tells agents how to talk to each other.<br>
+> **Chio proves what an agent was allowed to do, what it cost, and what happened.**
 
-To act, the agent must present a capability: a signed, expiring grant that says who is acting
-and what they may do, and that can be narrowed as it is handed off but never widened. The
-kernel verifies the grant, screens the request and the result, runs the tool, and signs a
-receipt of what happened that cannot be forged or backdated. It refuses any call it cannot
-authorize and any result it cannot sign.
+Chio is a Rust kernel that sits between an AI agent and everything it touches. Every tool
+call, file read, API request, and payment goes through it, the same way every syscall goes
+through an operating system kernel.
 
-> MCP tells an agent *how* to call a tool.
-> Chio proves *what it was allowed to do, what it cost, and what happened.*
-
-Because the receipt records what a call cost and how it was paid, an agent can hold a balance
-and be billed for what it spends, like any other economic actor. Each capability carries a
-spending limit. The kernel meters the real cost of a call, holds the funds before it runs,
-settles the bill afterward, and writes the price into the receipt beside the authority and the
-outcome. A service sets its own price, and an agent with a long record of clean receipts pays
-less for the same work.
-
-The same receipts support a full financial layer. Agents bid for one another's work in open
-markets, draw credit, and post bonds to take on jobs they cannot yet cover. Underwriters price
-the risk of an agent or a task and sell insurance against it, and claims pay out against the
-receipts that recorded what happened. Payments settle on-chain, anchored across EVM, Bitcoin,
-and Solana. Each of these clears against receipts the kernel signed when the calls ran.
-
-The formal model behind Chio is written up in [**Programmable Sovereignty**](docs/papers/programmable-sovereignty):
-Lean-attestable constitutions over capability-bounded, federated receipts, a machine-checked
-account of how agents and organizations govern themselves.
-
-## The three pillars
+Before an agent can do anything, it presents a signed token that says who it is, what it
+may call, and how much it may spend. Chio checks the token, runs the call, and writes a
+signed receipt of what happened. **If the token does not check out, the call does not run.**
 
 <p align="center">
   <picture>
-    <source media="(max-width: 500px)" srcset="docs/assets/pillars-mobile.svg" />
-    <img src="docs/assets/pillars.svg" alt="The three pillars of Chio: Proofs, Governance, and Economic Protocol, on a signed-receipt spine" width="900" />
+    <source media="(max-width: 500px)" srcset="docs/assets/one-call-mobile.svg" />
+    <img src="docs/assets/one-call.svg" alt="One tool call through Chio: the agent presents a signed token, the kernel verifies it, screens the request and result, dispatches to a sandboxed tool server, and signs a receipt. An expired token stops at verify and still produces a signed deny receipt." width="900" />
   </picture>
 </p>
 
-Three layers on one proof spine: every capability, decision, and payment resolves to a signed
-receipt.
+An agent can hand a token to a sub-agent, but only a narrower one. It can drop tools,
+shrink the budget, or shorten the expiry. **It cannot add anything back.** A swarm of
+sub-agents never holds more authority than the agent that spawned it.
+
+<p align="center">
+  <picture>
+    <source media="(max-width: 500px)" srcset="docs/assets/attenuation-mobile.svg" />
+    <img src="docs/assets/attenuation.svg" alt="Delegation in Chio only narrows: an orchestrator delegates to a planner, which delegates to a worker, and each token has fewer tools, a smaller budget, and a shorter expiry than its parent. A sub-worker token that tries to add the shell tool back is refused." width="900" />
+  </picture>
+</p>
+
+Every receipt records what the call cost and who paid. That is enough to give an agent a
+balance, bill it per call, and let agents pay each other for work. Markets, credit, and
+insurance in Chio are built on those receipts.
+
+That is the whole kernel. Agent swarms, security tooling, and cognition markets are built
+on top of it.
+
+## See it run
+
+```sh
+chio init my-agent && cd my-agent
+chio --receipt-db ./chio.db --session-db ./session.db \
+  check --policy policy.yaml --server hello --tool hello_world --params '{}'
+```
+
+The starter policy grants `hello_world` and nothing else, so the kernel allows the call and
+signs a receipt for it:
+
+```text
+verdict:    ALLOW
+tool:       hello_world
+server:     hello
+receipt_id: 356cab5605742b1bffd41eadbb8ebb269d50d3564a27ce3458efe063bcc64c5b
+policy:     69e943b96e9ce64d0264bb56bf8930e77bd4e68adf68fcf1395790dae03e6b55
+```
+
+Ask for a tool the token does not cover and the call never runs. The refusal is signed too:
+
+```sh
+chio --receipt-db ./chio.db --session-db ./session.db \
+  check --policy policy.yaml --server hello --tool drop_tables --params '{}'
+```
+
+```text
+verdict:    DENY
+tool:       drop_tables
+server:     hello
+reason:     requested tool drop_tables on server hello is not in capability scope
+receipt_id: 6c9f6043cdbb6d9c05f372d2f0842b039c3397a9f131f25d2edb635c00ee0a4c
+```
+
+Both receipts are in the store. Explain one, then export the lot and verify the package with
+no access to the kernel that wrote it:
+
+```sh
+chio --receipt-db ./chio.db receipt explain <receipt-id> --admin-all
+chio --receipt-db ./chio.db evidence export --output ./evidence --admin-all
+chio evidence verify --input ./evidence
+```
+
+```text
+decision: deny
+reason: requested tool drop_tables on server hello is not in capability scope
+guard: kernel
+repair_hint: inspect the guard and policy_hash, then mint or narrow a matching capability
+
+evidence package verified
+tool_receipts:          2
+capability_lineage:     2
+authorized_receipts:    1
+verified_files:         12
+```
+
+This is a dry run, with no agent or tool server involved. The kernel produced two signed
+decisions from a policy and a request, and anyone holding the package can check them offline.
+
+## Why it is a kernel
+
+An OS kernel is the one piece of code every program has to go through to reach the
+hardware. It decides what a process may open, keeps processes away from each other, and
+writes the audit log. Chio is that layer for agents, and each part has a direct counterpart.
+
+<p align="center">
+  <picture>
+    <source media="(max-width: 500px)" srcset="docs/assets/kernel-boundary-mobile.svg" />
+    <img src="docs/assets/kernel-boundary.svg" alt="The Chio kernel boundary: agents, sub-agents, and tool servers run untrusted in user space; every call crosses into the kernel, which verifies, budgets, guards, dispatches, meters, and signs; protocol and provider adapters sit beneath it as drivers; every decision lands in an append-only receipt log." width="900" />
+  </picture>
+</p>
+
+| In an operating system | In Chio |
+| --- | --- |
+| **Syscalls** | Every tool call, file read, API request, and payment is dispatched by the kernel. An agent never holds a direct handle to a tool. |
+| **Process isolation** | The kernel is the only trusted component. Agents and tool servers run as untrusted, sandboxed processes, isolated from each other and from the agent. |
+| **Permissions** | Capability tokens: signed, expiring, budgeted, and only ever narrowable. |
+| **Syscall filters** | A guard pipeline screens every request and every result. Custom guards run as fuel-metered WASM with no host access. |
+| **Drivers** | MCP, A2A, ACP, AG-UI, OpenAPI, and eight provider tool-call formats each lift to the same kernel verdict and lower back to their own wire format. |
+| **Audit log** | An append-only, content-addressed receipt log with Merkle checkpoints. A receipt signed in Rust verifies byte-for-byte in TypeScript, Python, or Go. |
+| **Resource accounting** | Per-call metering, with a budget hold taken before the call runs and sealed into the receipt. |
+| **Portable core** | `chio-kernel-core` is `no_std` and takes its clock and RNG as traits. The same verify, evaluate, and sign code ships as a native sidecar, in the browser over wasm, and on iOS and Android over UniFFI. |
+| **Verified core** | The admission path (verify, resolve, evaluate, sign) is modeled in Lean 4 with a published assumption boundary. |
+
+<p align="center">
+  <picture>
+    <source media="(max-width: 500px)" srcset="docs/assets/portable-core-mobile.svg" />
+    <img src="docs/assets/portable-core.svg" alt="chio-kernel-core is no_std and takes its clock and RNG as traits. The same verify, evaluate, and sign code ships as the native chio-kernel sidecar, as chio-kernel-browser over wasm32, and as chio-kernel-mobile over UniFFI for iOS and Android." width="900" />
+  </picture>
+</p>
+
+## Why build on it
+
+- **You do not write permissions, delegation, audit, metering, or billing for your agent system.** The kernel does them, and they behave the same over every protocol and provider it speaks.
+- **Sub-agents cannot escalate.** A swarm holds at most the authority of the agent that spawned it, because every delegation proves it is a subset of its parent.
+- **Every action leaves a receipt that verifies offline.** Anyone with the public key can check what an agent did without access to your runtime.
+- **Agents can pay each other.** Metering, budgets, markets, credit, and insurance clear on receipts the kernel already writes.
+- **The model, the framework, and the tool servers are all swappable.** The kernel and the receipts do not change when you change any of them.
+- **Deny is the default.** A token that does not verify, a budget that cannot be held, or a result that cannot be signed is a call that does not run.
+
+## The three pillars
+
+Every capability, decision, and payment resolves to a signed receipt.
 
 ### Proofs
 
@@ -223,11 +325,16 @@ can verify offline.
 chio init my-agent && cd my-agent
 
 # allowed by the starter policy
-chio check --policy policy.yaml --server hello --tool hello_world --params '{}'
+chio --receipt-db ./chio.db --session-db ./session.db \
+  check --policy policy.yaml --server hello --tool hello_world --params '{}'
 
 # anything out of scope is denied, fail-closed
-chio check --policy policy.yaml --server hello --tool drop_tables --params '{}'
+chio --receipt-db ./chio.db --session-db ./session.db \
+  check --policy policy.yaml --server hello --tool drop_tables --params '{}'
 ```
+
+The session database backs durable admission, which is on by default in the scaffold policy;
+without it the kernel refuses to evaluate.
 
 `chio init` scaffolds a project with an editable HushSpec `policy.yaml`; `chio check` evaluates
 one tool call against it and prints the verdict.
@@ -298,7 +405,7 @@ any registry or artifact mismatch fails closed.
 <p align="center">
   <picture>
     <source media="(max-width: 500px)" srcset="docs/assets/lifecycle-mobile.svg" />
-    <img src="docs/assets/lifecycle.svg" alt="Life of a tool call: present, verify, budget, guard in, dispatch, guard out, meter and sign, commit - every outcome becomes a signed receipt" width="900" />
+    <img src="docs/assets/lifecycle.svg" alt="Life of a tool call: present the token, verify it, hold the budget, guard the input, dispatch, guard the output, meter and sign, then commit the receipt to the Merkle log. A deny at verify, budget, or either guard stops the call and still produces a signed receipt." width="900" />
   </picture>
 </p>
 
@@ -578,6 +685,10 @@ For a guided local walkthrough, start with the
 [progressive tutorial](docs/start-here/PROGRESSIVE_TUTORIAL.md).
 
 ## Formal verification
+
+The formal model behind Chio is written up in
+[**Programmable Sovereignty**](docs/papers/programmable-sovereignty), a machine-checked account
+of how agents and organizations govern themselves through capability-bounded, federated receipts.
 
 The formal verification roadmap was executed through its local acceptance
 gates on 2026-07-15 against implementation commit
