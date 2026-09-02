@@ -81,42 +81,37 @@ token, the kernel, and the receipt.
 
 ## See it run
 
-The bundled code-agent policy is the one Claude Code and Cursor run under. Point it at a
-force push:
+An orchestrator fans out to a researcher and a writer. Each child gets a narrower scope, a
+route plan, a slice of the budget pool, and a continuation token bound to the signed task
+graph. The swarm authority verifies all of it before either child runs, then refuses four
+tampered versions of the same graph.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/backbay-labs/chio/main/crates/products/chio-cli/src/policies/code_agent.yaml -o code-agent.yaml
-echo '{"content":""}' > out.json
-chio --receipt-db ./chio.db --session-db ./session.db \
-  check --policy code-agent.yaml --mode full --output-fixture out.json \
-  --server shell --tool run_command --params '{"command":"git push --force origin main"}'
+cargo run -p chio-swarm-authority --example agent_os
 ```
+
+<p align="center">
+  <picture>
+    <source media="(max-width: 500px)" srcset="docs/assets/swarm-mobile.svg" />
+    <img src="docs/assets/swarm.svg" alt="One swarm verified before any child runs: an orchestrator delegates to a researcher and a writer, each with a narrower scope, a route plan, a budget allocation, and a continuation token bound to the signed task graph. The swarm authority verifies the bundle, then rejects a cycle, a hidden hop, an oversubscribed budget pool, and a revoked task." width="900" />
+  </picture>
+</p>
 
 ```text
-verdict:    DENY
-tool:       run_command
-server:     shell
-reason:     guard denied the request: guard "guard-pipeline" denied the request
-receipt_id: f81c17187c5e…
+verdict  verified  (3 tasks, 2 continuations, 1 joins, 2 routes)
+  researcher   continuation continuation-researcher    witness witness-researcher (1 hop)
+  writer       continuation continuation-writer        witness witness-writer (1 hop)
+
+then someone tries to
+  add an edge from the writer back to the orchestrator rejected: swarm task graph cycle at task-orchestrator
+  hide a hop by understating the writer's depth        rejected: swarm task depth mismatch: task-researcher -> task-writer
+  allocate 5,000 units out of a 100 unit pool          rejected: swarm budget allocations exceed pool total
+  run the researcher after its task was revoked        rejected: swarm task is revoked: task-researcher
 ```
 
-The command never ran, and the refusal is a signed receipt in the store. Export it and verify
-it on a machine that has never seen your kernel:
-
-```sh
-chio --receipt-db ./chio.db evidence export --output ./evidence --admin-all
-chio evidence verify --input ./evidence
-```
-
-```text
-evidence package verified
-tool_receipts:          1
-verified_files:         12
-```
-
-<sub>The preset carries output guards, so <code>check</code> runs in full mode against a fixture
-standing in for the tool's output. The same policy denies <code>.env</code> writes,
-<code>curl | sh</code>, and <code>sudo</code>, and allows <code>git push --force-with-lease</code>.</sub>
+The example is one file of ordinary Rust against the public crate API, and the same verifier
+runs inside the kernel's admission path. Swap the two children for a hundred, or for agents
+that spawn their own, and the checks do not change.
 
 ## Why it is a kernel
 

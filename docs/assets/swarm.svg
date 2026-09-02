@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" width="1200" height="640" role="img" aria-label="One swarm verified before any child runs: an orchestrator delegates to a researcher and a writer, each with a narrower scope, a route plan, a budget allocation, and a continuation token bound to the signed task graph. The swarm authority verifies the bundle, then rejects a cycle, a hidden hop, an oversubscribed budget pool, and a revoked task.">
+  <defs>
+    <linearGradient id="swbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#130d0a"/><stop offset="1" stop-color="#1b140d"/></linearGradient>
+    <radialGradient id="swglow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.32"/><stop offset="0.6" stop-color="#8f7ff2" stop-opacity="0.07"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
+    <radialGradient id="swkglow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.28"/><stop offset="0.65" stop-color="#8f7ff2" stop-opacity="0.06"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1200" height="640" fill="url(#swbg)"/>
+  <g stroke="#b08d5b" stroke-opacity="0.35" stroke-width="1">
+    <path d="M30 40 H42 M36 34 V46"/><path d="M1158 40 H1170 M1164 34 V46"/>
+    <path d="M30 600 H42 M36 594 V606"/><path d="M1158 600 H1170 M1164 594 V606"/>
+  </g>
+  <text x="600.0" y="48" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" letter-spacing="4" fill="#d8cfc0" fill-opacity="0.55">ONE SWARM, VERIFIED BEFORE ANY CHILD RUNS</text>
+  <text x="80" y="90" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" letter-spacing="2.5" fill="#b08d5b">TASK GRAPH &#183; swarm-incident-42</text>
+  <path d="M230 176 L150 236" stroke="#b08d5b" stroke-opacity="0.6" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+  <path d="M150 236 L152.9 229.6 L156.9 235.0 Z" fill="#b08d5b" fill-opacity="0.85"/>
+  <rect x="115.1" y="202" width="69.8" height="16" rx="3" fill="#130d0a" fill-opacity="0.85"/>
+  <text x="150" y="214" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c8a86f">delegates</text>
+  <path d="M310 176 L390 236" stroke="#b08d5b" stroke-opacity="0.6" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+  <path d="M390 236 L383.1 235.0 L387.1 229.6 Z" fill="#b08d5b" fill-opacity="0.85"/>
+  <rect x="357.1" y="202" width="69.8" height="16" rx="3" fill="#130d0a" fill-opacity="0.85"/>
+  <text x="392" y="214" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c8a86f">delegates</text>
+  <text x="138" y="230" text-anchor="end" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c3b6ff">&#8834; parent &#10003;</text>
+  <text x="402" y="230" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c3b6ff">&#8834; parent &#10003;</text>
+  <path d="M150 356 V386 H390 V356" stroke="#b08d5b" stroke-opacity="0.45" stroke-width="1.2" fill="none" stroke-dasharray="1.5 5"/>
+  <path d="M270 386 V176" stroke="#b08d5b" stroke-opacity="0.45" stroke-width="1.2" fill="none" stroke-dasharray="1.5 5"/>
+  <path d="M270 172 l-4 7 h8 z" fill="#b08d5b" fill-opacity="0.85"/>
+  <rect x="191.7" y="398" width="156.6" height="16" rx="3" fill="#130d0a" fill-opacity="0.85"/>
+  <text x="270" y="410" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c8a86f">join &#183; all_success</text>
+  <circle cx="270.0" cy="140.0" r="150" fill="url(#swkglow)"/>
+  <rect x="160" y="104" width="220" height="72" rx="12" fill="#191026" stroke="#8f7ff2" stroke-opacity="0.8" stroke-width="1.6"/>
+  <text x="270" y="133" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="16" fill="#f0eadd">Orchestrator</text>
+  <text x="270" y="153" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c3b6ff">depth 0 &#183; fetch_report &#215;3 &#183; holds the pool</text>
+  <rect x="45" y="240" width="210" height="116" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="150" y="266" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="15" fill="#e7ded0">Researcher</text>
+  <text x="150" y="284" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#9a8f7e">depth 1 &#183; fetch_report &#215;1</text>
+  <rect x="57" y="296" width="84" height="22" rx="11.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="99.0" y="310.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="9.5" fill="#d7ccf5">2,500 units</text>
+  <rect x="147" y="296" width="96" height="22" rx="11.0" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.5"/>
+  <text x="195.0" y="310.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="9.5" fill="#d3cabb">mcp://provider-a</text>
+  <text x="150" y="340" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="9.5" fill="#9a8f7e">continuation-researcher &#183; witness-researcher</text>
+  <rect x="285" y="240" width="210" height="116" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="390" y="266" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="15" fill="#e7ded0">Writer</text>
+  <text x="390" y="284" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#9a8f7e">depth 1 &#183; fetch_report &#215;1</text>
+  <rect x="297" y="296" width="84" height="22" rx="11.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="339.0" y="310.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="9.5" fill="#d7ccf5">2,500 units</text>
+  <rect x="387" y="296" width="96" height="22" rx="11.0" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.5"/>
+  <text x="435.0" y="310.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="9.5" fill="#d3cabb">a2a://provider-b</text>
+  <text x="390" y="340" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="9.5" fill="#9a8f7e">continuation-writer &#183; witness-writer</text>
+  <text x="270" y="448" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#9a8f7e">budget pool 10,000 units &#183; revocation epoch signed &#183; graph sha256 bound into every token</text>
+  <text x="560" y="90" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" letter-spacing="2.5" fill="#b08d5b">SWARM AUTHORITY</text>
+  <rect x="560" y="104" width="560" height="150" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="578" y="132" text-anchor="start" font-family="Georgia, 'Times New Roman', serif" font-size="15" fill="#e7ded0">verdict</text>
+  <text x="1102" y="132" text-anchor="end" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#9a8f7e">3 tasks &#183; 2 continuations &#183; 1 join &#183; 2 routes</text>
+  <text x="670" y="134" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" fill="#c3b6ff">verified</text>
+  <rect x="578" y="150" width="80.0" height="24" rx="12.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="618.0" y="165.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">task graph</text>
+  <rect x="666.0" y="150" width="99.2" height="24" rx="12.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="715.6" y="165.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">witness chain</text>
+  <rect x="773.2" y="150" width="131.2" height="24" rx="12.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="838.8000000000001" y="165.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">continuation fresh</text>
+  <rect x="912.4000000000001" y="150" width="80.0" height="24" rx="12.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="952.4000000000001" y="165.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">route plan</text>
+  <rect x="1000.4000000000001" y="150" width="86.4" height="24" rx="12.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="1043.6000000000001" y="165.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">budget pool</text>
+  <rect x="578" y="180" width="92.80000000000001" height="24" rx="12.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="624.4" y="195.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">join receipt</text>
+  <rect x="678.8" y="180" width="118.4" height="24" rx="12.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="738.0" y="195.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">revocation epoch</text>
+  <rect x="805.1999999999999" y="180" width="118.4" height="24" rx="12.0" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/>
+  <text x="864.4" y="195.8" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#d7ccf5">terminal receipt</text>
+  <text x="578" y="236" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#9a8f7e">every claim checked against Ed25519 signatures from the pinned witness key</text>
+  <text x="560" y="296" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" letter-spacing="2.5" fill="#b08d5b">THEN SOMEONE TRIES TO</text>
+  <rect x="560" y="312" width="560" height="32" rx="6" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.3"/>
+  <text x="574" y="332" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#d3cabb">add an edge from the writer back to the orchestrator</text>
+  <text x="1106" y="332" text-anchor="end" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c4685f">rejected</text>
+  <rect x="560" y="352" width="560" height="32" rx="6" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.3"/>
+  <text x="574" y="372" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#d3cabb">hide a hop by understating the writer's depth</text>
+  <text x="1106" y="372" text-anchor="end" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c4685f">rejected</text>
+  <rect x="560" y="392" width="560" height="32" rx="6" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.3"/>
+  <text x="574" y="412" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#d3cabb">allocate 5,000 units out of a 100 unit pool</text>
+  <text x="1106" y="412" text-anchor="end" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c4685f">rejected</text>
+  <rect x="560" y="432" width="560" height="32" rx="6" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.3"/>
+  <text x="574" y="452" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#d3cabb">run the researcher after its task was revoked</text>
+  <text x="1106" y="452" text-anchor="end" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#c4685f">rejected</text>
+  <text x="560" y="486" text-anchor="start" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">reasons, verbatim from the verifier</text>
+  <text x="560" y="506" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#9a8f7e">swarm task graph cycle at task-orchestrator</text>
+  <text x="560" y="524" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#9a8f7e">swarm task depth mismatch: task-researcher &#8594; task-writer</text>
+  <text x="560" y="542" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#9a8f7e">swarm budget allocations exceed pool total</text>
+  <text x="560" y="560" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#9a8f7e">swarm task is revoked: task-researcher</text>
+  <path d="M150.0 592 H1050.0" stroke="#b08d5b" stroke-opacity="0.3" stroke-width="1"/>
+  <rect x="594.0" y="586" width="12" height="12" transform="rotate(45 600.0 592)" fill="#1b140d" stroke="#b08d5b" stroke-opacity="0.7"/>
+  <text x="600.0" y="622" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="14.5" font-style="italic" fill="#d8cfc0" fill-opacity="0.75">A child task runs only after the whole graph, its budgets, and its revocation epoch verify.</text>
+</svg>
