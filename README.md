@@ -75,6 +75,26 @@ sub-agents never holds more authority than the agent that spawned it.
   </picture>
 </p>
 
+Each hop is a signed delegation link in the token's delegation chain, and each child carries an
+attenuation proof: the parent and child scope hashes plus a normalized subset witness the kernel
+rechecks on every call. **The parent scope hash has to match the last link in the chain**, so a
+delegate cannot claim a bigger parent than it was given. Budgets split in basis points, and a
+per-parent budget registry rejects siblings whose shares add up to more than the parent holds,
+at every level of the tree. Caveats bind a token to a session, an audience, a time window, or a
+region. Every ancestor is checked against a Merkle revocation oracle that publishes a signed
+epoch root, so revoking one token near the top cuts off the subtree beneath it. Signatures are
+Ed25519, with a hybrid ML-DSA-65 mode for post-quantum deployments. The subset witness has a
+Lean 4 soundness theorem and a conformance fixture that rejects inflated parent scopes.
+
+For recursive swarms, **the swarm authority verifies the whole task graph before a child task
+runs**: one root, acyclic, bounded depth and fan-out, with a delegation witness covering every
+edge exactly once. Each continuation token is bound to the graph's canonical hash, its witness
+chain, a route-plan receipt, a live budget allocation, and the current revocation epoch. Budget
+allocations roll up against a shared pool with checked arithmetic, so the workers in a swarm
+cannot spend more than the orchestrator was given. Swarm members identify themselves with
+`did:chio` Passports, and the pheromone substrate lets them leave signed, passport-bound deposits
+that a receiving kernel admits under its own scarcity policy.
+
 Every receipt records what the call cost and who paid. That is enough to give an agent a
 balance, bill it per call, and let agents pay each other for work. Markets, credit, and
 insurance in Chio are built on those receipts.
