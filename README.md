@@ -79,8 +79,8 @@ Every receipt records what the call cost and who paid. That is enough to give an
 balance, bill it per call, and let agents pay each other for work. Markets, credit, and
 insurance in Chio are built on those receipts.
 
-That is the whole kernel. Agent swarms, security tooling, and cognition markets are built
-on top of it.
+Agent swarms, security tooling, and cognition markets are built on those three things: the
+token, the kernel, and the receipt.
 
 ## See it run
 
