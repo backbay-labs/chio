@@ -1,27 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 384" width="1200" height="384" role="img" aria-label="Chio: a Rust kernel for agentic operating systems. Signed tokens in, signed receipts out.">
-<defs>
-    <linearGradient id="h-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#130d0a"/><stop offset="1" stop-color="#1b140d"/></linearGradient>
-    <radialGradient id="h-glow" cx="42%" cy="50%" r="45%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.16"/><stop offset="0.5" stop-color="#8f7ff2" stop-opacity="0.04"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
-    <pattern id="h-field" width="34" height="34" patternUnits="userSpaceOnUse"><circle cx="6" cy="9" r="0.9" fill="#ab8a52" fill-opacity="0.16"/><circle cx="23" cy="24" r="0.6" fill="#ab8a52" fill-opacity="0.10"/></pattern>
-    <radialGradient id="h-fade" cx="50%" cy="50%" r="60%"><stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
-    <mask id="h-mask"><rect width="1200" height="384" fill="url(#h-fade)"/></mask>
+  <defs>
+    <linearGradient id="hbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#130d0a"/><stop offset="1" stop-color="#1b140d"/></linearGradient>
+    <radialGradient id="hglow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.32"/><stop offset="0.6" stop-color="#8f7ff2" stop-opacity="0.07"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
+    <radialGradient id="hkglow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#8f7ff2" stop-opacity="0.28"/><stop offset="0.65" stop-color="#8f7ff2" stop-opacity="0.06"/><stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/></radialGradient>
   </defs>
-  <rect width="1200" height="384" rx="0" fill="url(#h-bg)"/>
-  <rect width="1200" height="384" rx="0" fill="url(#h-field)" mask="url(#h-mask)"/>
-  <rect width="1200" height="384" rx="0" fill="url(#h-glow)"/>
-  <line x1="40" y1="192" x2="1160" y2="192" stroke="#ab8a52" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="1.5 9" stroke-linecap="round"/>
-  <text x="600" y="66" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" letter-spacing="5" fill="#d8cfc0" fill-opacity="0.55">A RUST KERNEL FOR AGENTIC OPERATING SYSTEMS</text>
-  <circle cx="455" cy="192" r="86" fill="#16101c" fill-opacity="0.35" stroke="#8f7ff2" stroke-opacity="0.22" stroke-width="1"/>
-  <g transform="translate(380.6,117.6) scale(6.2)" fill="none" stroke="#a97cf0" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
-<path d="M12 12C10 9 7 4 4 5c-3 1-3 5-1 8s6 5 9 6"/>
-<path d="M12 12C10 13 6 16 5 19c-1 2 1 3 3 2s5-4 4-9"/>
-<path d="M12 12c2-3 5-8 8-7 3 1 3 5 1 8s-6 5-9 6"/>
-<path d="M12 12c2 1 6 4 7 7 1 2-1 3-3 2s-5-4-4-9"/>
-<path d="M12 7v14"/>
-<path d="M12 7c-1-2-3-4-4-4"/>
-<path d="M12 7c1-2 3-4 4-4"/>
+  <rect width="1200" height="384" fill="url(#hbg)"/>
+  <g stroke="#b08d5b" stroke-opacity="0.35" stroke-width="1">
+    <path d="M30 40 H42 M36 34 V46"/><path d="M1158 40 H1170 M1164 34 V46"/>
+    <path d="M30 344 H42 M36 338 V350"/><path d="M1158 344 H1170 M1164 338 V350"/>
   </g>
+  <circle cx="455" cy="192" r="150" fill="url(#hkglow)"/>
+  <g stroke="#b08d5b" stroke-opacity="0.22" stroke-width="1" fill="none"><circle cx="455" cy="192" r="104"/><circle cx="455" cy="192" r="118" stroke-dasharray="1.5 6"/></g>
+  <path d="M60 192 H300 M610 192 H1140" stroke="#b08d5b" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="1.5 9" stroke-linecap="round"/>
+  <text x="600.0" y="58" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" letter-spacing="5" fill="#d8cfc0" fill-opacity="0.55">A RUST KERNEL FOR AGENTIC OPERATING SYSTEMS</text>
+  <circle cx="455" cy="192" r="86" fill="#16101c" fill-opacity="0.5" stroke="#8f7ff2" stroke-opacity="0.45" stroke-width="1.2"/>
+  <g transform="translate(380.6,117.6) scale(6.2)" fill="none" stroke="#a97cf0" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12C10 9 7 4 4 5c-3 1-3 5-1 8s6 5 9 6"/><path d="M12 12C10 13 6 16 5 19c-1 2 1 3 3 2s5-4 4-9"/><path d="M12 12c2-3 5-8 8-7 3 1 3 5 1 8s-6 5-9 6"/><path d="M12 12c2 1 6 4 7 7 1 2-1 3-3 2s-5-4-4-9"/><path d="M12 7v14"/><path d="M12 7c-1-2-3-4-4-4"/><path d="M12 7c1-2 3-4 4-4"/></g>
   <text x="570" y="246" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="152" fill="#efe6d6">Chio</text>
-  <text x="600" y="326" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" letter-spacing="3.5" fill="#ab8a52">SIGNED TOKENS IN &#183; SIGNED RECEIPTS OUT</text>
-
+  <text x="600" y="318" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" letter-spacing="3.5" fill="#b08d5b">SIGNED TOKENS IN &#183; SIGNED RECEIPTS OUT</text>
+  <path d="M120 348 H1080" stroke="#b08d5b" stroke-opacity="0.3" stroke-width="1"/>
+  <rect x="594" y="342" width="12" height="12" transform="rotate(45 600 348)" fill="#1b140d" stroke="#b08d5b" stroke-opacity="0.7"/>
 </svg>

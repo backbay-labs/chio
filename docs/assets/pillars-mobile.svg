@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 620" width="480" height="620" role="img" aria-label="Chio's three pillars: Proofs, Governance, and Economic Protocol, on a signed-receipt spine">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#130d0a"/>
+      <stop offset="1" stop-color="#1b140d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#8f7ff2" stop-opacity="0.34"/>
+      <stop offset="0.6" stop-color="#8f7ff2" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="480" height="620" fill="url(#bg)"/>
+
+  <g stroke="#b08d5b" stroke-opacity="0.35" stroke-width="1">
+    <path d="M22 28 H34 M28 22 V34"/>
+    <path d="M446 28 H458 M452 22 V34"/>
+    <path d="M22 592 H34 M28 586 V598"/>
+    <path d="M446 592 H458 M452 586 V598"/>
+  </g>
+
+  <text x="240" y="42" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" letter-spacing="2.5" fill="#d8cfc0" fill-opacity="0.55">PROOF-CARRYING AUTONOMY</text>
+
+  <g stroke="#b08d5b" stroke-opacity="0.12" stroke-width="1">
+    <path d="M40 224 H440"/>
+    <path d="M40 384 H440"/>
+  </g>
+
+  <!-- 01 Proofs -->
+  <circle cx="80" cy="150" r="48" fill="url(#glow)"/>
+  <circle cx="80" cy="150" r="34" fill="#16101c" fill-opacity="0.55" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.2"/>
+  <g transform="translate(80,150) scale(1.3)" fill="none" stroke="#c3b6ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M0 -14 L12 -9 L12 1 C12 9 6 14 0 16 C-6 14 -12 9 -12 1 L-12 -9 Z"/>
+    <path d="M-5 0 L-1 5 L6 -5" stroke="#f2eadc" stroke-width="2.2"/>
+  </g>
+  <text x="146" y="132" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" letter-spacing="2" fill="#b08d5b">01</text>
+  <text x="146" y="160" font-family="Georgia, 'Times New Roman', serif" font-size="27" fill="#efe7db">Proofs</text>
+  <text x="146" y="186" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" fill="#b3a99b">Capabilities in. Receipts out.</text>
+
+  <!-- 02 Governance -->
+  <circle cx="80" cy="310" r="48" fill="url(#glow)"/>
+  <circle cx="80" cy="310" r="34" fill="#16101c" fill-opacity="0.55" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.2"/>
+  <g transform="translate(80,310) scale(1.3)" fill="none" stroke="#c3b6ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-12 -6 H12"/>
+    <path d="M0 -6 V10"/>
+    <path d="M-7 10 H7"/>
+    <circle cx="0" cy="-9" r="2"/>
+    <path d="M-12 -6 V-1"/><circle cx="-12" cy="1.5" r="3.2"/>
+    <path d="M12 -6 V-1"/><circle cx="12" cy="1.5" r="3.2"/>
+  </g>
+  <text x="146" y="292" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" letter-spacing="2" fill="#b08d5b">02</text>
+  <text x="146" y="320" font-family="Georgia, 'Times New Roman', serif" font-size="27" fill="#efe7db">Governance</text>
+  <text x="146" y="346" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" fill="#b3a99b">Identity, policy, delegated authority.</text>
+
+  <!-- 03 Economic Protocol -->
+  <circle cx="80" cy="470" r="48" fill="url(#glow)"/>
+  <circle cx="80" cy="470" r="34" fill="#16101c" fill-opacity="0.55" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.2"/>
+  <g transform="translate(80,470) scale(1.3)" fill="none" stroke="#c3b6ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="0" cy="0" r="11"/>
+    <path d="M0 -5 L5 0 L0 5 L-5 0 Z" stroke="#f2eadc"/>
+  </g>
+  <text x="146" y="452" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" letter-spacing="2" fill="#b08d5b">03</text>
+  <text x="146" y="480" font-family="Georgia, 'Times New Roman', serif" font-size="27" fill="#efe7db">Economic Protocol</text>
+  <text x="146" y="506" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" fill="#b3a99b">Metered, budgeted, settled.</text>
+
+  <!-- spine -->
+  <path d="M60 562 H420" stroke="#b08d5b" stroke-opacity="0.3" stroke-width="1"/>
+  <rect x="234" y="556" width="12" height="12" transform="rotate(45 240 562)" fill="#1b140d" stroke="#b08d5b" stroke-opacity="0.7"/>
+  <text x="240" y="590" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="14.5" fill="#d8cfc0" fill-opacity="0.75">Every decision leaves one signed receipt.</text>
+</svg>
