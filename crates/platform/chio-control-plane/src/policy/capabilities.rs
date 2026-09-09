@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use chio_core::capability::scope::{ChioScope, PromptGrant, ResourceGrant, ToolGrant};
 
 use super::capability_config::CapabilityPolicyConfig;
-use super::tool_access::synthesize_tool_access_scope;
+use super::tool_access::{constrain_explicit_tool_access_scope, synthesize_tool_access_scope};
 use super::types::{ChioPolicy, DefaultCapability, PolicyError};
 use super::util::parse_operations;
 
@@ -19,7 +19,11 @@ pub fn build_runtime_default_capabilities(
         .default
         .as_ref()
         .is_some_and(|default| !default.tools.is_empty());
-    if !has_explicit_tool_caps {
+    if has_explicit_tool_caps {
+        for scope in grants_by_ttl.values_mut() {
+            constrain_explicit_tool_access_scope(scope, &policy.guards)?;
+        }
+    } else {
         if let Some(scope) = synthesize_tool_access_scope(&policy.guards)? {
             grants_by_ttl
                 .entry(policy.kernel.max_capability_ttl)

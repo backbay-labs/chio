@@ -794,6 +794,80 @@ guards:
 }
 
 #[test]
+fn explicit_capabilities_preserve_tool_access_approval_and_budget_constraints() {
+    let policy = parse_policy(
+        r#"
+kernel:
+  max_capability_ttl: 3600
+guards:
+  tool_access:
+    enabled: true
+    default_action: block
+    allow: [read_file, write_file]
+    max_args_size: 2048
+    require_confirmation: [write_file]
+capabilities:
+  default:
+    tools:
+      - {server: fs, tool: read_file, operations: [invoke], ttl: 3600, max_invocations: 2}
+      - {server: fs, tool: write_file, operations: [invoke], ttl: 3600, max_invocations: 2}
+"#,
+    )
+    .test_unwrap();
+    let capabilities = build_runtime_default_capabilities(&policy).test_unwrap();
+    let grants = &capabilities[0].scope.grants;
+    assert_eq!(grants.len(), 2);
+    assert_eq!(grants[0].max_invocations, Some(2));
+    assert_eq!(grants[1].max_invocations, Some(2));
+    assert_eq!(
+        grants[0].constraints,
+        vec![chio_core::capability::scope::Constraint::MaxArgsSize(2048)]
+    );
+    assert_eq!(
+        grants[1].constraints,
+        vec![
+            chio_core::capability::scope::Constraint::MaxArgsSize(2048),
+            chio_core::capability::scope::Constraint::RequireApprovalAbove { threshold_units: 0 },
+        ]
+    );
+}
+
+#[test]
+fn explicit_capabilities_reject_narrow_confirmation_on_wildcard_grant() {
+    let source = r#"
+kernel:
+  max_capability_ttl: 3600
+guards:
+  tool_access:
+    enabled: true
+    default_action: block
+    allow: [read_file, write_file]
+    require_confirmation: [write_file]
+capabilities:
+  default:
+    tools:
+      - {server: fs, tool: '*', operations: [invoke], ttl: 3600, max_invocations: 2}
+"#;
+    let policy = parse_policy(source).test_unwrap();
+    let error = build_runtime_default_capabilities(&policy)
+        .test_expect_err("wildcard grant cannot express a narrower confirmation constraint");
+    assert!(error
+        .to_string()
+        .contains("cannot narrow explicit wildcard capability '*'"));
+    let all_required = parse_policy(&source.replace(
+        "require_confirmation: [write_file]",
+        "require_confirmation: ['*']",
+    ))
+    .test_unwrap();
+    let capabilities = build_runtime_default_capabilities(&all_required).test_unwrap();
+    assert_eq!(capabilities[0].scope.grants[0].max_invocations, Some(2));
+    assert_eq!(
+        capabilities[0].scope.grants[0].constraints,
+        vec![chio_core::capability::scope::Constraint::RequireApprovalAbove { threshold_units: 0 }]
+    );
+}
+
+#[test]
 fn yaml_tool_access_default_allow_with_scoped_confirmation_is_rejected() {
     let policy = parse_policy(
         r#"

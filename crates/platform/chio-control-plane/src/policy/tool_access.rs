@@ -5,6 +5,33 @@ use chio_core::capability::scope::{ChioScope, Operation, ToolGrant};
 use super::guard_config::{GuardPolicyConfig, ToolAccessConfig, ToolAccessDefaultAction};
 use super::types::PolicyError;
 
+pub(super) fn constrain_explicit_tool_access_scope(
+    scope: &mut ChioScope,
+    config: &GuardPolicyConfig,
+) -> Result<(), PolicyError> {
+    let Some(tool_access) = config.tool_access.as_ref().filter(|config| config.enabled) else {
+        return Ok(());
+    };
+    for grant in &mut scope.grants {
+        if tool_pattern_has_wildcard(&grant.tool_name)
+            && confirmation_overlap(&grant.tool_name, &tool_access.require_confirmation)?
+            && !tool_access
+                .require_confirmation
+                .iter()
+                .any(|pattern| pattern == "*" || pattern == &grant.tool_name)
+        {
+            return Err(PolicyError::Invalid(format!(
+                "guards.tool_access.require_confirmation cannot narrow explicit wildcard capability '{}'; use an exact matching confirmation pattern or '*'",
+                grant.tool_name,
+            )));
+        }
+        grant
+            .constraints
+            .extend(compile_tool_constraints(tool_access, &grant.tool_name)?);
+    }
+    Ok(())
+}
+
 pub(super) fn synthesize_tool_access_scope(
     config: &GuardPolicyConfig,
 ) -> Result<Option<ChioScope>, PolicyError> {
