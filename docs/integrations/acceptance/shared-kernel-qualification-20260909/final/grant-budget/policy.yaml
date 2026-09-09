@@ -1,0 +1,17 @@
+kernel:
+  max_capability_ttl: 3600
+  delegation_depth_limit: 0
+  durable_admission_mode: all
+guards:
+  tool_access:
+    enabled: true
+    default_action: block
+    allow: [read_text_file, write_file, edit_file, list_directory]
+capabilities:
+  default:
+    tools:
+      - server: fs
+        tool: '*'
+        operations: [invoke]
+        ttl: 3600
+        max_invocations: 2

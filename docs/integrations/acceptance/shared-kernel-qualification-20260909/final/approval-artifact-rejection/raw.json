@@ -1,0 +1,456 @@
+[
+  {
+    "runtime": {
+      "volume": "chio-qualification-adf324af8c83",
+      "policySha256": "85235c1c04ce31f2b756d4d0d315c627a12c29081356fdd9d83e3ab20de11fcc"
+    }
+  },
+  {
+    "observer": "readable.txt",
+    "operatorReplacement": "legitimate-approved-scope",
+    "resource": {
+      "exists": true,
+      "content": "legitimate-approved-scope"
+    }
+  },
+  {
+    "path": "/admin/health",
+    "request": null,
+    "session": null,
+    "status": 200,
+    "response": {
+      "auth": {
+        "adminTokenConfigured": true,
+        "audienceConfigured": false,
+        "issuerConfigured": false,
+        "mode": "static_bearer",
+        "scopes": []
+      },
+      "authority": {
+        "appliesToFutureSessionsOnly": true,
+        "backend": "sqlite",
+        "configured": true,
+        "generation": 1,
+        "publicKey": "ed690edb28141b5187e5b5379d45375b5d4794f84eb79b1a1e769e2e569f5248",
+        "rotatedAt": 1788968659,
+        "trustedPublicKeys": [
+          "ed690edb28141b5187e5b5379d45375b5d4794f84eb79b1a1e769e2e569f5248"
+        ]
+      },
+      "controlPlane": {
+        "controlTokenConfigured": false,
+        "controlUrl": null,
+        "proxied": false
+      },
+      "federation": {
+        "enterpriseProviders": {
+          "configured": false,
+          "count": 0,
+          "invalidCount": 0,
+          "validatedCount": 0
+        },
+        "identityFederationConfigured": false
+      },
+      "oauth": {
+        "authorizationServerMetadata": false,
+        "localAuthorizationServer": false,
+        "protectedResourceMetadata": false
+      },
+      "ok": true,
+      "server": {
+        "serverId": "fs",
+        "serverName": "fs",
+        "serverVersion": "0.1.0",
+        "sharedHostedOwner": false,
+        "sharedHostedOwnerStats": null
+      },
+      "sessions": {
+        "activeCount": 0,
+        "drainGraceMillis": 5000,
+        "idleExpiryMillis": 900000,
+        "reaperIntervalMillis": 250,
+        "terminalCount": 0,
+        "tombstoneRetentionMillis": 1800000
+      },
+      "stores": {
+        "authorityDbConfigured": true,
+        "authoritySeedConfigured": false,
+        "budgetsConfigured": true,
+        "receiptsConfigured": true,
+        "revocationsConfigured": true,
+        "sessionTombstonesConfigured": true
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2025-11-25",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "shared-kernel-qualification",
+          "version": "1"
+        }
+      }
+    },
+    "session": null,
+    "status": 200,
+    "response": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilities": {
+          "experimental": {
+            "chioProtocol": {
+              "compatibility": "exact_match",
+              "downgradeBehavior": "reject",
+              "errorRegistry": {
+                "path": "spec/errors/chio-error-registry.v1.json",
+                "schema": "chio.error-registry.v1"
+              },
+              "requestIdentity": {
+                "requestBoundArtifactsRequireStableId": true,
+                "stableRequestIdMetaField": "chioRequestId"
+              },
+              "selectedProtocolVersion": "2025-11-25",
+              "supportedProtocolVersions": [
+                "2025-11-25"
+              ]
+            },
+            "chioToolStreaming": {
+              "toolCallChunkNotifications": true
+            },
+            "io.chio/execution-evidence": {
+              "contextMethod": "chio/execution-context",
+              "outputKinds": [
+                "value",
+                "none"
+              ],
+              "resultMetaField": "chioEvidence",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "version": "1"
+            }
+          },
+          "logging": {},
+          "tasks": {
+            "cancel": {},
+            "list": {},
+            "requests": {
+              "tools": {
+                "call": {}
+              }
+            }
+          },
+          "tools": {
+            "listChanged": true
+          }
+        },
+        "protocolVersion": "2025-11-25",
+        "serverInfo": {
+          "name": "Chio MCP Edge",
+          "version": "0.1.0"
+        }
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "notifications/initialized"
+    },
+    "session": "0b1b956e8997aaab94142aeb157f85201674724b28ef66fc3e3d3674df556184",
+    "status": 202,
+    "response": null
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "chio/execution-context",
+      "params": {}
+    },
+    "session": "0b1b956e8997aaab94142aeb157f85201674724b28ef66fc3e3d3674df556184",
+    "status": 200,
+    "response": {
+      "id": 2,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilityIds": [
+          "cap-01a086d7-6d9b-7743-99a1-48c139623bac"
+        ],
+        "evidenceVersion": "1",
+        "schema": "chio.mcp.execution-context.v1",
+        "subjectKey": "0bfa456a9258bb4f8ad0f8a8c272c2c7a284023124dc3dfa9c7893aba343496d"
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "tools/call",
+      "params": {
+        "name": "read_text_file",
+        "arguments": {
+          "path": "/workspace/readable.txt"
+        },
+        "_meta": {
+          "chioRequestId": "approval-read"
+        }
+      }
+    },
+    "session": "0b1b956e8997aaab94142aeb157f85201674724b28ef66fc3e3d3674df556184",
+    "status": 200,
+    "response": {
+      "id": 3,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": {
+              "content": [
+                {
+                  "text": "legitimate-approved-scope",
+                  "type": "text"
+                }
+              ],
+              "isError": false,
+              "structuredContent": {
+                "content": "legitimate-approved-scope"
+              }
+            },
+            "outputKind": "value",
+            "receipt": {
+              "action": {
+                "parameter_hash": "a11b5fc7e17d7acc4f9d7b35d3b433b504653569f2d6e0a0fd4c8f15a7304b6b",
+                "parameters": {
+                  "path": "/workspace/readable.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a086d7-6d9b-7743-99a1-48c139623bac",
+              "content_hash": "553e1a27756e102b613e0743cc293e91eac347badc8e4571a1e96bdb2624b9ce",
+              "decision": {
+                "verdict": "allow"
+              },
+              "id": "42db79f7da2779d75720ebe8a1c4614c8b272634a210c2e1e15e76812e153851",
+              "kernel_key": "9a50fe6f6f1246c1bcbbad33b1ec0b11e61b3878fa1af70d6cca45a9b574fa3d",
+              "metadata": {
+                "admission_operation": {
+                  "compensation_status": "not_compensated",
+                  "coordinator_lease_epoch": 1,
+                  "coordinator_lease_id": "01a086d7-69a1-71d2-a982-3a003ea0eebd",
+                  "operation_id": "c4428c103693ffc814969823c4e5fe6dc2ae13682936091443a859bba4f97ebb",
+                  "projected_dispatch_state": "terminal",
+                  "projected_operation_version": 8,
+                  "projected_state": "completed",
+                  "request_binding_hash": "72d076d59366f8c66c0c7b3f4eb23ae8b1fede18bdca1122edae375226a3d9fd",
+                  "request_id": "approval-read",
+                  "request_namespace_digest": "22ef182671b477aa652f636fca4c906a7f2937d188655c2d8855138bd9d15e61",
+                  "retained_dispatch_commit": {
+                    "committed_version": 6,
+                    "coordinator_lease_epoch": 1,
+                    "coordinator_lease_id": "01a086d7-69a1-71d2-a982-3a003ea0eebd",
+                    "provider_attempt": {
+                      "attempt_id": "attempt:c4428c103693ffc814969823c4e5fe6dc2ae13682936091443a859bba4f97ebb",
+                      "operation_id": "c4428c103693ffc814969823c4e5fe6dc2ae13682936091443a859bba4f97ebb",
+                      "transport_id": "kernel-tool-server:fs",
+                      "transport_key_epoch": 1
+                    },
+                    "store_fence": {
+                      "lease_id": "01a086d7-69a1-71d2-a982-3a003ea0eebd",
+                      "owner_epoch": 1,
+                      "store_uuid": "01a086d7-67b1-7cf0-99f2-ee8edce4c092"
+                    }
+                  },
+                  "schema": "chio.admission-receipt.v1",
+                  "store_fence": {
+                    "lease_id": "01a086d7-69a1-71d2-a982-3a003ea0eebd",
+                    "owner_epoch": 1,
+                    "store_uuid": "01a086d7-67b1-7cf0-99f2-ee8edce4c092"
+                  },
+                  "tool_outcome_id": "f95d7967ac4267478db1119cb137b3355285506213dc356a32cc548b6d0c1afe",
+                  "tool_outcome_version": 2,
+                  "trusted_time_unix_ms": 1788968661159
+                },
+                "attribution": {
+                  "delegation_depth": 0,
+                  "grant_index": 0,
+                  "issuer_key": "ed690edb28141b5187e5b5379d45375b5d4794f84eb79b1a1e769e2e569f5248",
+                  "subject_key": "0bfa456a9258bb4f8ad0f8a8c272c2c7a284023124dc3dfa9c7893aba343496d"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a086d7-7221-7d72-8fe8-8b3a6aecabfd",
+                "receipt_context": {
+                  "request_id": "approval-read"
+                }
+              },
+              "policy_hash": "e7d7cdd80b52a14d7a810edc148603b3d1f138e53c6161fff979cfea5d64c323",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "d513b16825788bca3a2724c6159b486f3c711bc54d4fd2c6f34c5cf77c0df2ad515d45830368a366d2ad8a243116615b981e0e7dbadece6410ea2ffec86d4109",
+              "timestamp": 1788968661,
+              "tool_name": "read_text_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "approval-read",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "legitimate-approved-scope",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "legitimate-approved-scope"
+        }
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "method": "tools/call",
+      "params": {
+        "name": "write_file",
+        "arguments": {
+          "path": "/workspace/approval-missing.txt",
+          "content": "must-not-write"
+        },
+        "_meta": {
+          "chioRequestId": "approval-missing"
+        }
+      }
+    },
+    "session": "0b1b956e8997aaab94142aeb157f85201674724b28ef66fc3e3d3674df556184",
+    "status": 200,
+    "response": {
+      "id": 4,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": null,
+            "outputKind": "none",
+            "receipt": {
+              "action": {
+                "parameter_hash": "244c846ce52f4aa6532e8b89a5e12dbdee91752caf2e76d22b8ef948708ea06f",
+                "parameters": {
+                  "content": "must-not-write",
+                  "path": "/workspace/approval-missing.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a086d7-6d9b-7743-99a1-48c139623bac",
+              "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+              "decision": {
+                "guard": "kernel",
+                "reason": "governed transaction denied: governed transaction intent required by grant or request",
+                "verdict": "deny"
+              },
+              "id": "9dd921174f44e17591e4edcdc53c1ee65b36470602860d4ce7ed280ff7724e1e",
+              "kernel_key": "9a50fe6f6f1246c1bcbbad33b1ec0b11e61b3878fa1af70d6cca45a9b574fa3d",
+              "metadata": {
+                "attribution": {
+                  "delegation_depth": 0,
+                  "issuer_key": "ed690edb28141b5187e5b5379d45375b5d4794f84eb79b1a1e769e2e569f5248",
+                  "subject_key": "0bfa456a9258bb4f8ad0f8a8c272c2c7a284023124dc3dfa9c7893aba343496d"
+                },
+                "budget_authority": {
+                  "authority_profile": "authoritative_hold_event",
+                  "guarantee_level": "single_node_atomic",
+                  "metering_profile": "max_cost_preauthorize_then_reconcile_actual"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a086d7-73cf-71c0-937d-d5b36ecaeff4",
+                "receipt_context": {
+                  "request_id": "approval-missing"
+                }
+              },
+              "policy_hash": "e7d7cdd80b52a14d7a810edc148603b3d1f138e53c6161fff979cfea5d64c323",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "2ccafb1b570023a0b0d668f5134d1f585a22c7fb81fa76b72cb63d2f621dd1adbc8c34abe5313e7ecdd62a14015da1f184808cae135e458dfffb39ca99a79904",
+              "timestamp": 1788968661,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "approval-missing",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "governed transaction denied: governed transaction intent required by grant or request",
+            "type": "text"
+          }
+        ],
+        "isError": true
+      }
+    }
+  },
+  {
+    "observer": "approval-missing.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": false
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "method": "tools/call",
+      "params": {
+        "name": "write_file",
+        "arguments": {
+          "path": "/workspace/approval-forged.txt",
+          "content": "must-not-write"
+        },
+        "_meta": {
+          "chioRequestId": "approval-forged",
+          "chioApprovalToken": {
+            "approved": true
+          }
+        }
+      }
+    },
+    "session": "0b1b956e8997aaab94142aeb157f85201674724b28ef66fc3e3d3674df556184",
+    "status": 200,
+    "response": {
+      "error": {
+        "code": -32602,
+        "message": "approvalToken must be a Chio governed approval token"
+      },
+      "id": 5,
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "observer": "approval-forged.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": false
+    }
+  },
+  {
+    "unresolved": "No real pending/rejected/approved operator workflow is exercised. This case proves only missing and malformed approval artifacts cannot authorize writes."
+  }
+]

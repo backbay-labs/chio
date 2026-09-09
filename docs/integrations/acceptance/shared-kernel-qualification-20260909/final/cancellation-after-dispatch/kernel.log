@@ -1,0 +1,9 @@
+remote MCP edge listening on http://127.0.0.1:62807/mcp
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio
+WARN chio_mcp_adapter::stderr message=No valid root directories provided by client
+WARN chio_kernel::kernel::evaluation::nested_flow_evaluation message=tool call cancelled request_id=cancelled-operation reason=cancelled by client: qualification cancellation retained_hold=false
+WARN chio_mcp_adapter::transport message=unexpected upstream message without an active request: {\"id\":3,\"jsonrpc\":\"2.0\",\"result\":{\"content\":[{\"text\":\"Successfully wrote to /workspace/uncertain.txt\",\"type\":\"text\"}],\"structuredContent\":{\"content\":\"Successfully wrote to /workspace/uncertain.txt\"}}}
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio
+WARN chio_mcp_adapter::stderr message=No valid root directories provided by client
+remote MCP edge listening on http://127.0.0.1:62807/mcp
+WARN chio_kernel::kernel::evaluation::nested_flow_evaluation message=durable admission denied (nested flow) request_id=cancelled-operation reason=durable admission failed: request replay is retained in state OutcomeUnknownAfterDispatch

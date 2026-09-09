@@ -1,0 +1,14 @@
+remote MCP edge listening on http://127.0.0.1:62660/mcp
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio
+WARN chio_mcp_adapter::stderr message=No valid root directories provided by client
+WARN chio_kernel::kernel::evaluation::nested_flow_evaluation message=guard denied (nested flow) request_id=denied-operation reason=guard denied the request: guard \"guard-pipeline\" denied the request
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio
+WARN chio_mcp_adapter::stderr message=No valid root directories provided by client
+remote MCP edge listening on http://127.0.0.1:62660/mcp
+WARN chio_kernel::kernel::evaluation::nested_flow_evaluation message=capability rejected request_id=revoked-operation reason=capability has been revoked: cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio
+WARN chio_mcp_adapter::stderr message=No valid root directories provided by client
+remote MCP edge listening on http://127.0.0.1:62660/mcp
+WARN chio_kernel::kernel::evaluation::nested_flow_evaluation message=capability rejected request_id=revoked-restarted-operation reason=capability has been revoked: cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio
+WARN chio_mcp_adapter::stderr message=No valid root directories provided by client

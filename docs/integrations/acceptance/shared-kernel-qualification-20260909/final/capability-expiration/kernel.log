@@ -1,0 +1,4 @@
+remote MCP edge listening on http://127.0.0.1:62719/mcp
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio
+WARN chio_mcp_adapter::stderr message=No valid root directories provided by client
+WARN chio_kernel::kernel::evaluation::nested_flow_evaluation message=capability rejected request_id=expired-operation msg=capability verification failed: capability has expired

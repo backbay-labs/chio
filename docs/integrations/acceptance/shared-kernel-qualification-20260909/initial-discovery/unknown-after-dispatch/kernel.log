@@ -1,0 +1,7 @@
+remote MCP edge listening on http://127.0.0.1:60606/mcp
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio
+WARN chio_mcp_adapter::stderr message=No valid root directories provided by client
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio
+WARN chio_mcp_adapter::stderr message=No valid root directories provided by client
+remote MCP edge listening on http://127.0.0.1:60606/mcp
+WARN chio_kernel::kernel::evaluation::nested_flow_evaluation message=durable admission denied (nested flow) request_id=uncertain-operation reason=durable admission failed: request replay is retained in state OutcomeUnknownAfterDispatch

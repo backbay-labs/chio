@@ -1,0 +1,26 @@
+{
+  "binary": "/Users/connor/Medica/backbay/standalone/arc/target/debug/chio",
+  "binarySha256": "dbc5283e17f02fab264f7cdc455ab7f2002e45eab65485d9b74188a11577e2b4",
+  "image": "sha256:0106edcb15a1c0d12d914ea0504f0e63ec85f5e6fdd3825b4d7a0d1367af3991",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.4\nBuildVersion:\t\t25E246",
+  "docker": "28.3.3",
+  "claim": "shared kernel qualification only, no host acceptance",
+  "cases": [
+    {
+      "case": "authority-replay",
+      "status": "failed",
+      "error": "KeyError: 'receipt'",
+      "cleanupError": "command failed (1): Error response from daemon: remove chio-qualification-48e7c212f9aa: volume is in use - [9f437642a3b1e8e1a2c0d2284844aa1277868e18e3f00e341d8382fb8c03890a]\n"
+    },
+    {
+      "case": "capability-expiration",
+      "status": "passed",
+      "cleanupError": "command failed (1): Error response from daemon: remove chio-qualification-bd26a9529214: volume is in use - [dad9d2e46db59aa2eb0a55170434264eb83c816f521f0b5e22a37a5628b411c6]\n"
+    },
+    {
+      "case": "unknown-after-dispatch",
+      "status": "passed",
+      "cleanupError": "command failed (1): Error response from daemon: remove chio-qualification-db1e26a700e8: volume is in use - [1172bb5880c314c13d85ee429ae84edc27e2665bae4d3bce0cee457a3b35601b]\n"
+    }
+  ]
+}

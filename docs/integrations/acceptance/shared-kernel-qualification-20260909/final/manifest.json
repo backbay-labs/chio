@@ -1,0 +1,44 @@
+{
+  "startedAt": "2026-09-09T15:43:45.699504+00:00",
+  "sourceRevision": "04b7d366d62c886c39bc202f58ef0d44e8f5aee7",
+  "runnerSha256": "4fad9bed83c4a29db4c9ed48f94fc79a14dff9477c81c3ded61627fa86be7133",
+  "barrierSha256": "a690f141d14fb3b9a18a8541e89bb5eabf76a18f71e504ad16cd2878bec398b6",
+  "binary": "/Users/connor/Medica/backbay/standalone/arc/target/debug/chio",
+  "binarySha256": "e7539855906bd5eb7b4eb2e5a12ca0533889cf61ced3bf4adf5850b792aa6447",
+  "kernelVersion": "chio-cli 0.1.0",
+  "image": "sha256:0106edcb15a1c0d12d914ea0504f0e63ec85f5e6fdd3825b4d7a0d1367af3991",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.4\nBuildVersion:\t\t25E246",
+  "docker": "28.3.3",
+  "claim": "shared kernel qualification only, no host acceptance",
+  "cases": [
+    {
+      "case": "authority-replay",
+      "status": "passed"
+    },
+    {
+      "case": "capability-expiration",
+      "status": "passed"
+    },
+    {
+      "case": "unknown-after-dispatch",
+      "status": "passed"
+    },
+    {
+      "case": "cancellation-after-dispatch",
+      "status": "passed"
+    },
+    {
+      "case": "approval-artifact-rejection",
+      "status": "passed"
+    },
+    {
+      "case": "grant-budget",
+      "status": "passed"
+    },
+    {
+      "case": "parallel-grant-budget",
+      "status": "passed"
+    }
+  ],
+  "binaryChangedDuringRun": false
+}

@@ -1,0 +1,1395 @@
+[
+  {
+    "runtime": {
+      "volume": "chio-qualification-38917319bf4e",
+      "policySha256": "3fbfd313858d8fab8fe0d9c92498ef1874139379aba4ca9607f662a0e7a7b9fd"
+    }
+  },
+  {
+    "path": "/admin/health",
+    "request": null,
+    "session": null,
+    "status": 200,
+    "response": {
+      "auth": {
+        "adminTokenConfigured": true,
+        "audienceConfigured": false,
+        "issuerConfigured": false,
+        "mode": "static_bearer",
+        "scopes": []
+      },
+      "authority": {
+        "appliesToFutureSessionsOnly": true,
+        "backend": "sqlite",
+        "configured": true,
+        "generation": 1,
+        "publicKey": "756ab1020ebad9ed4c7fe289280255f9b7101e0945cce314deeeea2d8fe29e55",
+        "rotatedAt": 1788968626,
+        "trustedPublicKeys": [
+          "756ab1020ebad9ed4c7fe289280255f9b7101e0945cce314deeeea2d8fe29e55"
+        ]
+      },
+      "controlPlane": {
+        "controlTokenConfigured": false,
+        "controlUrl": null,
+        "proxied": false
+      },
+      "federation": {
+        "enterpriseProviders": {
+          "configured": false,
+          "count": 0,
+          "invalidCount": 0,
+          "validatedCount": 0
+        },
+        "identityFederationConfigured": false
+      },
+      "oauth": {
+        "authorizationServerMetadata": false,
+        "localAuthorizationServer": false,
+        "protectedResourceMetadata": false
+      },
+      "ok": true,
+      "server": {
+        "serverId": "fs",
+        "serverName": "fs",
+        "serverVersion": "0.1.0",
+        "sharedHostedOwner": false,
+        "sharedHostedOwnerStats": null
+      },
+      "sessions": {
+        "activeCount": 0,
+        "drainGraceMillis": 5000,
+        "idleExpiryMillis": 900000,
+        "reaperIntervalMillis": 250,
+        "terminalCount": 0,
+        "tombstoneRetentionMillis": 1800000
+      },
+      "stores": {
+        "authorityDbConfigured": true,
+        "authoritySeedConfigured": false,
+        "budgetsConfigured": true,
+        "receiptsConfigured": true,
+        "revocationsConfigured": true,
+        "sessionTombstonesConfigured": true
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2025-11-25",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "shared-kernel-qualification",
+          "version": "1"
+        }
+      }
+    },
+    "session": null,
+    "status": 200,
+    "response": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilities": {
+          "experimental": {
+            "chioProtocol": {
+              "compatibility": "exact_match",
+              "downgradeBehavior": "reject",
+              "errorRegistry": {
+                "path": "spec/errors/chio-error-registry.v1.json",
+                "schema": "chio.error-registry.v1"
+              },
+              "requestIdentity": {
+                "requestBoundArtifactsRequireStableId": true,
+                "stableRequestIdMetaField": "chioRequestId"
+              },
+              "selectedProtocolVersion": "2025-11-25",
+              "supportedProtocolVersions": [
+                "2025-11-25"
+              ]
+            },
+            "chioToolStreaming": {
+              "toolCallChunkNotifications": true
+            },
+            "io.chio/execution-evidence": {
+              "contextMethod": "chio/execution-context",
+              "outputKinds": [
+                "value",
+                "none"
+              ],
+              "resultMetaField": "chioEvidence",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "version": "1"
+            }
+          },
+          "logging": {},
+          "tasks": {
+            "cancel": {},
+            "list": {},
+            "requests": {
+              "tools": {
+                "call": {}
+              }
+            }
+          },
+          "tools": {
+            "listChanged": true
+          }
+        },
+        "protocolVersion": "2025-11-25",
+        "serverInfo": {
+          "name": "Chio MCP Edge",
+          "version": "0.1.0"
+        }
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "notifications/initialized"
+    },
+    "session": "61a7528542729aba2322a787eaa6cc8d56e8acb917e511f3882b4af46e7ebb1e",
+    "status": 202,
+    "response": null
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "chio/execution-context",
+      "params": {}
+    },
+    "session": "61a7528542729aba2322a787eaa6cc8d56e8acb917e511f3882b4af46e7ebb1e",
+    "status": 200,
+    "response": {
+      "id": 2,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilityIds": [
+          "cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4"
+        ],
+        "evidenceVersion": "1",
+        "schema": "chio.mcp.execution-context.v1",
+        "subjectKey": "6b324cf1c7cc89446a7b08f14c28b43df3f7cb00487e025c1c8bd83de70b59c0"
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "tools/call",
+      "params": {
+        "name": "write_file",
+        "arguments": {
+          "path": "/workspace/useful.txt",
+          "content": "useful-work"
+        },
+        "_meta": {
+          "chioRequestId": "first-operation"
+        }
+      }
+    },
+    "session": "61a7528542729aba2322a787eaa6cc8d56e8acb917e511f3882b4af46e7ebb1e",
+    "status": 200,
+    "response": {
+      "id": 3,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": {
+              "content": [
+                {
+                  "text": "Successfully wrote to /workspace/useful.txt",
+                  "type": "text"
+                }
+              ],
+              "isError": false,
+              "structuredContent": {
+                "content": "Successfully wrote to /workspace/useful.txt"
+              }
+            },
+            "outputKind": "value",
+            "receipt": {
+              "action": {
+                "parameter_hash": "cf5146fed346734c638e1dc612f28940da2f6a63f3ede1cdf60b55e4a41805d3",
+                "parameters": {
+                  "content": "useful-work",
+                  "path": "/workspace/useful.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4",
+              "content_hash": "d0541823c2ea10b1247f99ee3e8304c876bd2f2ca5ac3cba81f0775d3252233f",
+              "decision": {
+                "verdict": "allow"
+              },
+              "id": "1429c5a5343edee55547b13be3e0d8c69d5f208d1636e7c081911de20830939e",
+              "kernel_key": "7ede28a370a2df04b803740395da909632885469b9dbd2ea9134786098c10154",
+              "metadata": {
+                "admission_operation": {
+                  "compensation_status": "not_compensated",
+                  "coordinator_lease_epoch": 1,
+                  "coordinator_lease_id": "01a086d6-ea17-74a3-8275-db73ca9f37c6",
+                  "operation_id": "cbcb174bffa884e01610d36dcf1db7acaa7eda40951171802023103af09da2ab",
+                  "projected_dispatch_state": "terminal",
+                  "projected_operation_version": 8,
+                  "projected_state": "completed",
+                  "request_binding_hash": "253920a2ea0d2c81a0b191ab81e053fd6eb13c0b1d9a1b693a0ebe316b63f132",
+                  "request_id": "first-operation",
+                  "request_namespace_digest": "ab146d7ecfcb48ebdf8b0db01cd30fa0407e8ab757fabd2464707896870d29ac",
+                  "retained_dispatch_commit": {
+                    "committed_version": 6,
+                    "coordinator_lease_epoch": 1,
+                    "coordinator_lease_id": "01a086d6-ea17-74a3-8275-db73ca9f37c6",
+                    "provider_attempt": {
+                      "attempt_id": "attempt:cbcb174bffa884e01610d36dcf1db7acaa7eda40951171802023103af09da2ab",
+                      "operation_id": "cbcb174bffa884e01610d36dcf1db7acaa7eda40951171802023103af09da2ab",
+                      "transport_id": "kernel-tool-server:fs",
+                      "transport_key_epoch": 1
+                    },
+                    "store_fence": {
+                      "lease_id": "01a086d6-ea17-74a3-8275-db73ca9f37c6",
+                      "owner_epoch": 1,
+                      "store_uuid": "01a086d6-e91e-7662-85b2-ea10ab117bb2"
+                    }
+                  },
+                  "schema": "chio.admission-receipt.v1",
+                  "store_fence": {
+                    "lease_id": "01a086d6-ea17-74a3-8275-db73ca9f37c6",
+                    "owner_epoch": 1,
+                    "store_uuid": "01a086d6-e91e-7662-85b2-ea10ab117bb2"
+                  },
+                  "tool_outcome_id": "ff4c8171389716f5bb70c48db36465bde7079786cc3f05ef6e4d8c583956fbe6",
+                  "tool_outcome_version": 2,
+                  "trusted_time_unix_ms": 1788968627696
+                },
+                "attribution": {
+                  "delegation_depth": 0,
+                  "grant_index": 1,
+                  "issuer_key": "756ab1020ebad9ed4c7fe289280255f9b7101e0945cce314deeeea2d8fe29e55",
+                  "subject_key": "6b324cf1c7cc89446a7b08f14c28b43df3f7cb00487e025c1c8bd83de70b59c0"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a086d6-ee68-7dc2-903a-048b55bf3658",
+                "receipt_context": {
+                  "request_id": "first-operation"
+                }
+              },
+              "policy_hash": "83eb7ea6aa17bdbde8d0d16c6c0fc128859450646e3689ea274ed0e98aff8668",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "782809469ac5122821fec145d5a56a7a5a22b8ed066970833a77a6f300a1eb46d901edcfe5d53faab9958f895f86fd74890fde905012547c792449525109490a",
+              "timestamp": 1788968627,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "first-operation",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "Successfully wrote to /workspace/useful.txt",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "Successfully wrote to /workspace/useful.txt"
+        }
+      }
+    }
+  },
+  {
+    "observer": "useful.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": true,
+      "content": "useful-work"
+    }
+  },
+  {
+    "observer": "useful.txt",
+    "operatorReplacement": "independent-sentinel",
+    "resource": {
+      "exists": true,
+      "content": "independent-sentinel"
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "method": "tools/call",
+      "params": {
+        "name": "write_file",
+        "arguments": {
+          "path": "/workspace/useful.txt",
+          "content": "useful-work"
+        },
+        "_meta": {
+          "chioRequestId": "first-operation"
+        }
+      }
+    },
+    "session": "61a7528542729aba2322a787eaa6cc8d56e8acb917e511f3882b4af46e7ebb1e",
+    "status": 200,
+    "response": {
+      "id": 4,
+      "jsonrpc": "2.0",
+      "result": {
+        "content": [
+          {
+            "text": "session error: request first-operation already has authoritative lineage in this session",
+            "type": "text"
+          }
+        ],
+        "isError": true
+      }
+    }
+  },
+  {
+    "limitation": "completed duplicate is rejected without replaying its receipt in the same live session"
+  },
+  {
+    "observer": "useful.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": true,
+      "content": "independent-sentinel"
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "method": "tools/call",
+      "params": {
+        "name": "write_file",
+        "arguments": {
+          "path": "/workspace/conflict.txt",
+          "content": "must-not-write"
+        },
+        "_meta": {
+          "chioRequestId": "first-operation"
+        }
+      }
+    },
+    "session": "61a7528542729aba2322a787eaa6cc8d56e8acb917e511f3882b4af46e7ebb1e",
+    "status": 200,
+    "response": {
+      "id": 5,
+      "jsonrpc": "2.0",
+      "result": {
+        "content": [
+          {
+            "text": "session error: request first-operation already has authoritative lineage in this session",
+            "type": "text"
+          }
+        ],
+        "isError": true
+      }
+    }
+  },
+  {
+    "observer": "conflict.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": false
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 6,
+      "method": "tools/call",
+      "params": {
+        "name": "write_file",
+        "arguments": {
+          "path": "/workspace/forbidden.txt",
+          "content": "must-not-write"
+        },
+        "_meta": {
+          "chioRequestId": "denied-operation"
+        }
+      }
+    },
+    "session": "61a7528542729aba2322a787eaa6cc8d56e8acb917e511f3882b4af46e7ebb1e",
+    "status": 200,
+    "response": {
+      "id": 6,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": null,
+            "outputKind": "none",
+            "receipt": {
+              "action": {
+                "parameter_hash": "f4ec82059ec19d68651dc941580d3fce0cd31628e0d90dac1fe40a81e2483e9d",
+                "parameters": {
+                  "content": "must-not-write",
+                  "path": "/workspace/forbidden.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4",
+              "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+              "decision": {
+                "guard": "kernel",
+                "reason": "guard denied the request: guard \"guard-pipeline\" denied the request",
+                "verdict": "deny"
+              },
+              "evidence": [
+                {
+                  "details": "action=deny; reason=guard denied request",
+                  "guard_name": "forbidden-path",
+                  "verdict": false
+                }
+              ],
+              "id": "1e977c2d31544217f78f1e11709896e91da9f7846269a245e2b1edd4fbbd4bb8",
+              "kernel_key": "7ede28a370a2df04b803740395da909632885469b9dbd2ea9134786098c10154",
+              "metadata": {
+                "attribution": {
+                  "delegation_depth": 0,
+                  "issuer_key": "756ab1020ebad9ed4c7fe289280255f9b7101e0945cce314deeeea2d8fe29e55",
+                  "subject_key": "6b324cf1c7cc89446a7b08f14c28b43df3f7cb00487e025c1c8bd83de70b59c0"
+                },
+                "budget_authority": {
+                  "authority_profile": "authoritative_hold_event",
+                  "guarantee_level": "single_node_atomic",
+                  "metering_profile": "max_cost_preauthorize_then_reconcile_actual"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a086d6-f2dd-70d0-ba29-eff85a9f96c9",
+                "receipt_context": {
+                  "request_id": "denied-operation"
+                }
+              },
+              "policy_hash": "83eb7ea6aa17bdbde8d0d16c6c0fc128859450646e3689ea274ed0e98aff8668",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "6f7eee84e095f92eff495779ceeeba4d4847920e1bd776d2a9dc9748c41a8871d50c91c8b1bc613dbc5f9132adcee80351b2fc9cab2be8b103f21cb7c97b9e08",
+              "timestamp": 1788968628,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "denied-operation",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "guard denied the request: guard \"guard-pipeline\" denied the request",
+            "type": "text"
+          }
+        ],
+        "isError": true
+      }
+    }
+  },
+  {
+    "observer": "forbidden.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": false
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 7,
+      "method": "tools/call",
+      "params": {
+        "name": "move_file",
+        "arguments": {
+          "source": "/workspace/useful.txt",
+          "destination": "/workspace/escalated.txt"
+        },
+        "_meta": {
+          "chioRequestId": "scope-escalation"
+        }
+      }
+    },
+    "session": "61a7528542729aba2322a787eaa6cc8d56e8acb917e511f3882b4af46e7ebb1e",
+    "status": 200,
+    "response": {
+      "id": 7,
+      "jsonrpc": "2.0",
+      "result": {
+        "content": [
+          {
+            "text": "tool is not authorized by the active capability set",
+            "type": "text"
+          }
+        ],
+        "isError": true
+      }
+    }
+  },
+  {
+    "observer": "escalated.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": false
+    }
+  },
+  {
+    "observer": "useful.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": true,
+      "content": "independent-sentinel"
+    }
+  },
+  {
+    "path": "/admin/authority",
+    "request": null,
+    "session": null,
+    "status": 401,
+    "response": {
+      "text": "missing or invalid admin bearer token"
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 91,
+      "method": "tools/list",
+      "params": {}
+    },
+    "session": "61a7528542729aba2322a787eaa6cc8d56e8acb917e511f3882b4af46e7ebb1e",
+    "status": 401,
+    "response": {
+      "text": "missing or invalid bearer token"
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 92,
+      "method": "tools/list",
+      "params": {}
+    },
+    "session": "invalid-session",
+    "status": 404,
+    "response": {
+      "text": "unknown MCP session"
+    }
+  },
+  {
+    "path": "/admin/health",
+    "request": null,
+    "session": null,
+    "status": 200,
+    "response": {
+      "auth": {
+        "adminTokenConfigured": true,
+        "audienceConfigured": false,
+        "issuerConfigured": false,
+        "mode": "static_bearer",
+        "scopes": []
+      },
+      "authority": {
+        "appliesToFutureSessionsOnly": true,
+        "backend": "sqlite",
+        "configured": true,
+        "generation": 1,
+        "publicKey": "756ab1020ebad9ed4c7fe289280255f9b7101e0945cce314deeeea2d8fe29e55",
+        "rotatedAt": 1788968626,
+        "trustedPublicKeys": [
+          "756ab1020ebad9ed4c7fe289280255f9b7101e0945cce314deeeea2d8fe29e55"
+        ]
+      },
+      "controlPlane": {
+        "controlTokenConfigured": false,
+        "controlUrl": null,
+        "proxied": false
+      },
+      "federation": {
+        "enterpriseProviders": {
+          "configured": false,
+          "count": 0,
+          "invalidCount": 0,
+          "validatedCount": 0
+        },
+        "identityFederationConfigured": false
+      },
+      "oauth": {
+        "authorizationServerMetadata": false,
+        "localAuthorizationServer": false,
+        "protectedResourceMetadata": false
+      },
+      "ok": true,
+      "server": {
+        "serverId": "fs",
+        "serverName": "fs",
+        "serverVersion": "0.1.0",
+        "sharedHostedOwner": false,
+        "sharedHostedOwnerStats": null
+      },
+      "sessions": {
+        "activeCount": 1,
+        "drainGraceMillis": 5000,
+        "idleExpiryMillis": 900000,
+        "reaperIntervalMillis": 250,
+        "terminalCount": 0,
+        "tombstoneRetentionMillis": 1800000
+      },
+      "stores": {
+        "authorityDbConfigured": true,
+        "authoritySeedConfigured": false,
+        "budgetsConfigured": true,
+        "receiptsConfigured": true,
+        "revocationsConfigured": true,
+        "sessionTombstonesConfigured": true
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 8,
+      "method": "chio/execution-context",
+      "params": {}
+    },
+    "session": "61a7528542729aba2322a787eaa6cc8d56e8acb917e511f3882b4af46e7ebb1e",
+    "status": 200,
+    "response": {
+      "id": 8,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilityIds": [
+          "cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4"
+        ],
+        "evidenceVersion": "1",
+        "schema": "chio.mcp.execution-context.v1",
+        "subjectKey": "6b324cf1c7cc89446a7b08f14c28b43df3f7cb00487e025c1c8bd83de70b59c0"
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 9,
+      "method": "tools/call",
+      "params": {
+        "name": "write_file",
+        "arguments": {
+          "path": "/workspace/useful.txt",
+          "content": "useful-work"
+        },
+        "_meta": {
+          "chioRequestId": "first-operation"
+        }
+      }
+    },
+    "session": "61a7528542729aba2322a787eaa6cc8d56e8acb917e511f3882b4af46e7ebb1e",
+    "status": 200,
+    "response": {
+      "id": 9,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": {
+              "content": [
+                {
+                  "text": "Successfully wrote to /workspace/useful.txt",
+                  "type": "text"
+                }
+              ],
+              "isError": false,
+              "structuredContent": {
+                "content": "Successfully wrote to /workspace/useful.txt"
+              }
+            },
+            "outputKind": "value",
+            "receipt": {
+              "action": {
+                "parameter_hash": "cf5146fed346734c638e1dc612f28940da2f6a63f3ede1cdf60b55e4a41805d3",
+                "parameters": {
+                  "content": "useful-work",
+                  "path": "/workspace/useful.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4",
+              "content_hash": "d0541823c2ea10b1247f99ee3e8304c876bd2f2ca5ac3cba81f0775d3252233f",
+              "decision": {
+                "verdict": "allow"
+              },
+              "id": "1429c5a5343edee55547b13be3e0d8c69d5f208d1636e7c081911de20830939e",
+              "kernel_key": "7ede28a370a2df04b803740395da909632885469b9dbd2ea9134786098c10154",
+              "metadata": {
+                "admission_operation": {
+                  "compensation_status": "not_compensated",
+                  "coordinator_lease_epoch": 1,
+                  "coordinator_lease_id": "01a086d6-ea17-74a3-8275-db73ca9f37c6",
+                  "operation_id": "cbcb174bffa884e01610d36dcf1db7acaa7eda40951171802023103af09da2ab",
+                  "projected_dispatch_state": "terminal",
+                  "projected_operation_version": 8,
+                  "projected_state": "completed",
+                  "request_binding_hash": "253920a2ea0d2c81a0b191ab81e053fd6eb13c0b1d9a1b693a0ebe316b63f132",
+                  "request_id": "first-operation",
+                  "request_namespace_digest": "ab146d7ecfcb48ebdf8b0db01cd30fa0407e8ab757fabd2464707896870d29ac",
+                  "retained_dispatch_commit": {
+                    "committed_version": 6,
+                    "coordinator_lease_epoch": 1,
+                    "coordinator_lease_id": "01a086d6-ea17-74a3-8275-db73ca9f37c6",
+                    "provider_attempt": {
+                      "attempt_id": "attempt:cbcb174bffa884e01610d36dcf1db7acaa7eda40951171802023103af09da2ab",
+                      "operation_id": "cbcb174bffa884e01610d36dcf1db7acaa7eda40951171802023103af09da2ab",
+                      "transport_id": "kernel-tool-server:fs",
+                      "transport_key_epoch": 1
+                    },
+                    "store_fence": {
+                      "lease_id": "01a086d6-ea17-74a3-8275-db73ca9f37c6",
+                      "owner_epoch": 1,
+                      "store_uuid": "01a086d6-e91e-7662-85b2-ea10ab117bb2"
+                    }
+                  },
+                  "schema": "chio.admission-receipt.v1",
+                  "store_fence": {
+                    "lease_id": "01a086d6-ea17-74a3-8275-db73ca9f37c6",
+                    "owner_epoch": 1,
+                    "store_uuid": "01a086d6-e91e-7662-85b2-ea10ab117bb2"
+                  },
+                  "tool_outcome_id": "ff4c8171389716f5bb70c48db36465bde7079786cc3f05ef6e4d8c583956fbe6",
+                  "tool_outcome_version": 2,
+                  "trusted_time_unix_ms": 1788968627696
+                },
+                "attribution": {
+                  "delegation_depth": 0,
+                  "grant_index": 1,
+                  "issuer_key": "756ab1020ebad9ed4c7fe289280255f9b7101e0945cce314deeeea2d8fe29e55",
+                  "subject_key": "6b324cf1c7cc89446a7b08f14c28b43df3f7cb00487e025c1c8bd83de70b59c0"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a086d6-ee68-7dc2-903a-048b55bf3658",
+                "receipt_context": {
+                  "request_id": "first-operation"
+                }
+              },
+              "policy_hash": "83eb7ea6aa17bdbde8d0d16c6c0fc128859450646e3689ea274ed0e98aff8668",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "782809469ac5122821fec145d5a56a7a5a22b8ed066970833a77a6f300a1eb46d901edcfe5d53faab9958f895f86fd74890fde905012547c792449525109490a",
+              "timestamp": 1788968627,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "first-operation",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "Successfully wrote to /workspace/useful.txt",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "Successfully wrote to /workspace/useful.txt"
+        }
+      }
+    }
+  },
+  {
+    "observer": "useful.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": true,
+      "content": "independent-sentinel"
+    }
+  },
+  {
+    "path": "/admin/sessions/61a7528542729aba2322a787eaa6cc8d56e8acb917e511f3882b4af46e7ebb1e/trust",
+    "request": null,
+    "session": null,
+    "status": 200,
+    "response": {
+      "authContext": {
+        "method": {
+          "kind": "static_bearer",
+          "principal": "static-bearer:0f1cdebb14e71d7d",
+          "token_fingerprint": "0f1cdebb14e71d7dd4bbe9b8d0c185863ff61b6e9ad99671601423beb2ec9313"
+        },
+        "transport": "streamable_http"
+      },
+      "capabilities": [
+        {
+          "capabilityId": "cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4",
+          "issuerPublicKey": "756ab1020ebad9ed4c7fe289280255f9b7101e0945cce314deeeea2d8fe29e55",
+          "revoked": false,
+          "subjectPublicKey": "6b324cf1c7cc89446a7b08f14c28b43df3f7cb00487e025c1c8bd83de70b59c0"
+        }
+      ],
+      "lifecycle": {
+        "createdAt": 1788968627261,
+        "drainDeadlineAt": null,
+        "idleExpiresAt": 1788969532876,
+        "lastSeenAt": 1788968632876,
+        "protocolVersion": null,
+        "reconnect": {
+          "mode": "post-session-reuse-only",
+          "requiresAuthContinuity": true,
+          "resumable": true,
+          "terminalStates": [
+            "draining",
+            "deleted",
+            "expired",
+            "closed"
+          ]
+        },
+        "state": "ready"
+      },
+      "ownership": {
+        "hostedIdentityProfile": "strong_dedicated_session",
+        "hostedIsolation": "dedicated_per_session",
+        "notificationDelivery": "post_response_fallback",
+        "notificationStreamAttached": false,
+        "notificationStreamOwner": "session_notification_stream",
+        "requestOwnership": {
+          "resultStreamOwner": "request_stream",
+          "terminalStateOwner": "request",
+          "workOwner": "request"
+        },
+        "requestStreamActive": false,
+        "requestStreamOwner": "exclusive_request_stream"
+      },
+      "sessionId": "61a7528542729aba2322a787eaa6cc8d56e8acb917e511f3882b4af46e7ebb1e"
+    }
+  },
+  {
+    "path": "/admin/revocations",
+    "request": {
+      "capability_id": "cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4"
+    },
+    "session": null,
+    "status": 200,
+    "response": {
+      "capabilityId": "cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4",
+      "newlyRevoked": true,
+      "revoked": true
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 10,
+      "method": "tools/call",
+      "params": {
+        "name": "write_file",
+        "arguments": {
+          "path": "/workspace/revoked.txt",
+          "content": "must-not-write"
+        },
+        "_meta": {
+          "chioRequestId": "revoked-operation"
+        }
+      }
+    },
+    "session": "61a7528542729aba2322a787eaa6cc8d56e8acb917e511f3882b4af46e7ebb1e",
+    "status": 200,
+    "response": {
+      "id": 10,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": null,
+            "outputKind": "none",
+            "receipt": {
+              "action": {
+                "parameter_hash": "bdb5142fb384b854f0cba010b54fad6458b0cb595187ce4253b0b24e3cb6155d",
+                "parameters": {
+                  "content": "must-not-write",
+                  "path": "/workspace/revoked.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4",
+              "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+              "decision": {
+                "guard": "kernel",
+                "reason": "capability has been revoked: cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4",
+                "verdict": "deny"
+              },
+              "id": "c3ef868547fb49c7f460f1fb86a9fe38652227e3a321b0a90dcb67086376336e",
+              "kernel_key": "7ede28a370a2df04b803740395da909632885469b9dbd2ea9134786098c10154",
+              "metadata": {
+                "attribution": {
+                  "delegation_depth": 0,
+                  "issuer_key": "756ab1020ebad9ed4c7fe289280255f9b7101e0945cce314deeeea2d8fe29e55",
+                  "subject_key": "6b324cf1c7cc89446a7b08f14c28b43df3f7cb00487e025c1c8bd83de70b59c0"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a086d7-05ad-7002-bb58-e5792f5dd217",
+                "receipt_context": {
+                  "request_id": "revoked-operation"
+                }
+              },
+              "policy_hash": "83eb7ea6aa17bdbde8d0d16c6c0fc128859450646e3689ea274ed0e98aff8668",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "ca6b7fcf9aa6b6df1f80b6370057294b407a71d1062b45e7d30f6f5ee4b7e25183ecafbdea131348c5aac25aca4616d876bfd46d42a943f2f466f508fdf2cb0e",
+              "timestamp": 1788968633,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "revoked-operation",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "capability has been revoked: cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4",
+            "type": "text"
+          }
+        ],
+        "isError": true
+      }
+    }
+  },
+  {
+    "observer": "revoked.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": false
+    }
+  },
+  {
+    "path": "/admin/health",
+    "request": null,
+    "session": null,
+    "status": 200,
+    "response": {
+      "auth": {
+        "adminTokenConfigured": true,
+        "audienceConfigured": false,
+        "issuerConfigured": false,
+        "mode": "static_bearer",
+        "scopes": []
+      },
+      "authority": {
+        "appliesToFutureSessionsOnly": true,
+        "backend": "sqlite",
+        "configured": true,
+        "generation": 1,
+        "publicKey": "756ab1020ebad9ed4c7fe289280255f9b7101e0945cce314deeeea2d8fe29e55",
+        "rotatedAt": 1788968626,
+        "trustedPublicKeys": [
+          "756ab1020ebad9ed4c7fe289280255f9b7101e0945cce314deeeea2d8fe29e55"
+        ]
+      },
+      "controlPlane": {
+        "controlTokenConfigured": false,
+        "controlUrl": null,
+        "proxied": false
+      },
+      "federation": {
+        "enterpriseProviders": {
+          "configured": false,
+          "count": 0,
+          "invalidCount": 0,
+          "validatedCount": 0
+        },
+        "identityFederationConfigured": false
+      },
+      "oauth": {
+        "authorizationServerMetadata": false,
+        "localAuthorizationServer": false,
+        "protectedResourceMetadata": false
+      },
+      "ok": true,
+      "server": {
+        "serverId": "fs",
+        "serverName": "fs",
+        "serverVersion": "0.1.0",
+        "sharedHostedOwner": false,
+        "sharedHostedOwnerStats": null
+      },
+      "sessions": {
+        "activeCount": 1,
+        "drainGraceMillis": 5000,
+        "idleExpiryMillis": 900000,
+        "reaperIntervalMillis": 250,
+        "terminalCount": 0,
+        "tombstoneRetentionMillis": 1800000
+      },
+      "stores": {
+        "authorityDbConfigured": true,
+        "authoritySeedConfigured": false,
+        "budgetsConfigured": true,
+        "receiptsConfigured": true,
+        "revocationsConfigured": true,
+        "sessionTombstonesConfigured": true
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 11,
+      "method": "tools/call",
+      "params": {
+        "name": "write_file",
+        "arguments": {
+          "path": "/workspace/revoked-after-restart.txt",
+          "content": "must-not-write"
+        },
+        "_meta": {
+          "chioRequestId": "revoked-restarted-operation"
+        }
+      }
+    },
+    "session": "61a7528542729aba2322a787eaa6cc8d56e8acb917e511f3882b4af46e7ebb1e",
+    "status": 200,
+    "response": {
+      "id": 11,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": null,
+            "outputKind": "none",
+            "receipt": {
+              "action": {
+                "parameter_hash": "f2a177e125d1c41bd7aae0f926d2a03297c9a6e98b442ad29e86aba3954dd5d2",
+                "parameters": {
+                  "content": "must-not-write",
+                  "path": "/workspace/revoked-after-restart.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4",
+              "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+              "decision": {
+                "guard": "kernel",
+                "reason": "capability has been revoked: cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4",
+                "verdict": "deny"
+              },
+              "id": "2cca5c485ac1c4ee74397a7c998f7379b0c1efc7c8484fbc727be47f15a9f6be",
+              "kernel_key": "7ede28a370a2df04b803740395da909632885469b9dbd2ea9134786098c10154",
+              "metadata": {
+                "attribution": {
+                  "delegation_depth": 0,
+                  "issuer_key": "756ab1020ebad9ed4c7fe289280255f9b7101e0945cce314deeeea2d8fe29e55",
+                  "subject_key": "6b324cf1c7cc89446a7b08f14c28b43df3f7cb00487e025c1c8bd83de70b59c0"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a086d7-118c-7c03-b865-6801c1af22e5",
+                "receipt_context": {
+                  "request_id": "revoked-restarted-operation"
+                }
+              },
+              "policy_hash": "83eb7ea6aa17bdbde8d0d16c6c0fc128859450646e3689ea274ed0e98aff8668",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "96e78ffe7f976f0d296d492b3a081d308b73971faffd0ccd5b5585eec8077a70304a5af4a3ed87a2972fceb7ef624cbdd6bb88f4d1f40eed81914daaaac0bc02",
+              "timestamp": 1788968636,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "revoked-restarted-operation",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "capability has been revoked: cap-01a086d6-ec14-73b1-b0c4-0341c2d0aaa4",
+            "type": "text"
+          }
+        ],
+        "isError": true
+      }
+    }
+  },
+  {
+    "observer": "revoked-after-restart.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": false
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 12,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2025-11-25",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "shared-kernel-qualification",
+          "version": "1"
+        }
+      }
+    },
+    "session": null,
+    "status": 200,
+    "response": {
+      "id": 12,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilities": {
+          "experimental": {
+            "chioProtocol": {
+              "compatibility": "exact_match",
+              "downgradeBehavior": "reject",
+              "errorRegistry": {
+                "path": "spec/errors/chio-error-registry.v1.json",
+                "schema": "chio.error-registry.v1"
+              },
+              "requestIdentity": {
+                "requestBoundArtifactsRequireStableId": true,
+                "stableRequestIdMetaField": "chioRequestId"
+              },
+              "selectedProtocolVersion": "2025-11-25",
+              "supportedProtocolVersions": [
+                "2025-11-25"
+              ]
+            },
+            "chioToolStreaming": {
+              "toolCallChunkNotifications": true
+            },
+            "io.chio/execution-evidence": {
+              "contextMethod": "chio/execution-context",
+              "outputKinds": [
+                "value",
+                "none"
+              ],
+              "resultMetaField": "chioEvidence",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "version": "1"
+            }
+          },
+          "logging": {},
+          "tasks": {
+            "cancel": {},
+            "list": {},
+            "requests": {
+              "tools": {
+                "call": {}
+              }
+            }
+          },
+          "tools": {
+            "listChanged": true
+          }
+        },
+        "protocolVersion": "2025-11-25",
+        "serverInfo": {
+          "name": "Chio MCP Edge",
+          "version": "0.1.0"
+        }
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "notifications/initialized"
+    },
+    "session": "50fafedbcf69279dc48d0ab0cb5b85d91d31e1f2087f8aa59ce22ff34064cdc8",
+    "status": 202,
+    "response": null
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 13,
+      "method": "chio/execution-context",
+      "params": {}
+    },
+    "session": "50fafedbcf69279dc48d0ab0cb5b85d91d31e1f2087f8aa59ce22ff34064cdc8",
+    "status": 200,
+    "response": {
+      "id": 13,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilityIds": [
+          "cap-01a086d7-15df-7342-9bc4-36e6bdba2f86"
+        ],
+        "evidenceVersion": "1",
+        "schema": "chio.mcp.execution-context.v1",
+        "subjectKey": "5493599126c7182bd343821003be4823c869f7a195ad3d071cfca649e43ea89a"
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 14,
+      "method": "tools/call",
+      "params": {
+        "name": "write_file",
+        "arguments": {
+          "path": "/workspace/fresh.txt",
+          "content": "fresh-authority"
+        },
+        "_meta": {
+          "chioRequestId": "fresh-operation"
+        }
+      }
+    },
+    "session": "50fafedbcf69279dc48d0ab0cb5b85d91d31e1f2087f8aa59ce22ff34064cdc8",
+    "status": 200,
+    "response": {
+      "id": 14,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": {
+              "content": [
+                {
+                  "text": "Successfully wrote to /workspace/fresh.txt",
+                  "type": "text"
+                }
+              ],
+              "isError": false,
+              "structuredContent": {
+                "content": "Successfully wrote to /workspace/fresh.txt"
+              }
+            },
+            "outputKind": "value",
+            "receipt": {
+              "action": {
+                "parameter_hash": "42b2481491443757ca4b3fc3c16c77c9336438d85f7474cd704ea24d287ac0a3",
+                "parameters": {
+                  "content": "fresh-authority",
+                  "path": "/workspace/fresh.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a086d7-15df-7342-9bc4-36e6bdba2f86",
+              "content_hash": "ddd3237536b6b93dcf9e9d7618d3e21ac214439f82be4e7a0bc28a10752801cb",
+              "decision": {
+                "verdict": "allow"
+              },
+              "id": "203c46659ca6e1f0fb4da0fa3178615f02899119f60ff5fed5e1c5cacc456cfa",
+              "kernel_key": "7ede28a370a2df04b803740395da909632885469b9dbd2ea9134786098c10154",
+              "metadata": {
+                "admission_operation": {
+                  "compensation_status": "not_compensated",
+                  "coordinator_lease_epoch": 3,
+                  "coordinator_lease_id": "01a086d7-0a39-7e23-8c9c-a745dbfe955b",
+                  "operation_id": "5fe400ee11c65972e929535e20949bd0b3c3c1c560fff24a4dada215f9fcbbf0",
+                  "projected_dispatch_state": "terminal",
+                  "projected_operation_version": 8,
+                  "projected_state": "completed",
+                  "request_binding_hash": "fb4adfaa4432bced639790291ca034b7fbeffeee5ad25491dcf7875cdc361e9a",
+                  "request_id": "fresh-operation",
+                  "request_namespace_digest": "ab146d7ecfcb48ebdf8b0db01cd30fa0407e8ab757fabd2464707896870d29ac",
+                  "retained_dispatch_commit": {
+                    "committed_version": 6,
+                    "coordinator_lease_epoch": 3,
+                    "coordinator_lease_id": "01a086d7-0a39-7e23-8c9c-a745dbfe955b",
+                    "provider_attempt": {
+                      "attempt_id": "attempt:5fe400ee11c65972e929535e20949bd0b3c3c1c560fff24a4dada215f9fcbbf0",
+                      "operation_id": "5fe400ee11c65972e929535e20949bd0b3c3c1c560fff24a4dada215f9fcbbf0",
+                      "transport_id": "kernel-tool-server:fs",
+                      "transport_key_epoch": 3
+                    },
+                    "store_fence": {
+                      "lease_id": "01a086d7-0a39-7e23-8c9c-a745dbfe955b",
+                      "owner_epoch": 3,
+                      "store_uuid": "01a086d6-e91e-7662-85b2-ea10ab117bb2"
+                    }
+                  },
+                  "schema": "chio.admission-receipt.v1",
+                  "store_fence": {
+                    "lease_id": "01a086d7-0a39-7e23-8c9c-a745dbfe955b",
+                    "owner_epoch": 3,
+                    "store_uuid": "01a086d6-e91e-7662-85b2-ea10ab117bb2"
+                  },
+                  "tool_outcome_id": "c10b08b6efdacd5f27efe2bb01d02902862e3240aefce4d1248ed048b886c7df",
+                  "tool_outcome_version": 2,
+                  "trusted_time_unix_ms": 1788968638522
+                },
+                "attribution": {
+                  "delegation_depth": 0,
+                  "grant_index": 1,
+                  "issuer_key": "756ab1020ebad9ed4c7fe289280255f9b7101e0945cce314deeeea2d8fe29e55",
+                  "subject_key": "5493599126c7182bd343821003be4823c869f7a195ad3d071cfca649e43ea89a"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a086d7-18ad-7f63-8790-efec75394244",
+                "receipt_context": {
+                  "request_id": "fresh-operation"
+                }
+              },
+              "policy_hash": "83eb7ea6aa17bdbde8d0d16c6c0fc128859450646e3689ea274ed0e98aff8668",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "f8915464c4bea14db3f672608f8a9cc3b50d66d10316fc00bc09b4614c985cc79ffcd28d60df5ff7e727255df6cd4a41bd1306afef6e93b5fc0e6761e2d1890d",
+              "timestamp": 1788968638,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "fresh-operation",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "Successfully wrote to /workspace/fresh.txt",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "Successfully wrote to /workspace/fresh.txt"
+        }
+      }
+    }
+  },
+  {
+    "observer": "fresh.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": true,
+      "content": "fresh-authority"
+    }
+  }
+]
