@@ -16,7 +16,11 @@ A tools/call result produced from a kernel response includes:
 The edge takes these identities from the evaluated response and operation
 context. Tool-returned metadata cannot override this association. The kernel
 request ID is distinct from the client's JSON-RPC ID. Existing execution-nonce
-metadata is preserved.
+metadata is preserved. Ordinary tool errors retain their original text and
+receipt association, including messages containing cancellation-related words.
+Only a typed kernel cancellation changes the operation to cancelled. Both direct
+JSON-RPC replies and deferred task results retain the receipt metadata when the
+kernel returned a receipt-bearing response.
 
 Use receiptId for an exact lookup with the same authorized receipt read boundary
 as the application. `chio receipt explain RECEIPT_ID --admin-all` supports a

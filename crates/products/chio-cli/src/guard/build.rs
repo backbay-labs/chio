@@ -103,11 +103,16 @@ pub(super) fn pack_from_dir(project_dir: &Path) -> Result<(), CliError> {
     let signature_bytes = match fs::read(&sidecar_path) {
         Ok(bytes) => Some(bytes),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => return Err(guard_io_error(format!("failed to read guard signature: {error}"))),
+        Err(error) => {
+            return Err(guard_io_error(format!(
+                "failed to read guard signature: {error}"
+            )))
+        }
     };
     if manifest.signer_public_key.is_some() {
-        verify_guard_signature(&wasm_abs_path.to_string_lossy(), &wasm_bytes, &manifest)
-            .map_err(|error| CliError::guard_error(format!("cannot package signed guard: {error}")))?;
+        verify_guard_signature(&wasm_abs_path.to_string_lossy(), &wasm_bytes, &manifest).map_err(
+            |error| CliError::guard_error(format!("cannot package signed guard: {error}")),
+        )?;
     }
 
     let archive_name = format!("{}-{}.arcguard", manifest.name, manifest.version);
@@ -142,8 +147,15 @@ pub(super) fn pack_from_dir(project_dir: &Path) -> Result<(), CliError> {
         header.set_size(bytes.len() as u64);
         header.set_mode(0o644);
         header.set_cksum();
-        tar_builder.append_data(&mut header, format!("{wasm_filename}.sig"), bytes.as_slice())
-            .map_err(|error| guard_io_error(format!("failed to add signature to archive: {error}")))?;
+        tar_builder
+            .append_data(
+                &mut header,
+                format!("{wasm_filename}.sig"),
+                bytes.as_slice(),
+            )
+            .map_err(|error| {
+                guard_io_error(format!("failed to add signature to archive: {error}"))
+            })?;
     }
 
     let enc = tar_builder
@@ -168,105 +180,179 @@ const GUARD_INSTALL_ARCHIVE_LIMITS: crate::archive::SafeArchiveLimits =
     };
 
 pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Result<(), CliError> {
-    // Extract to a temporary directory first, then determine guard name from
-    // manifest. The temp dir name carries a unique suffix derived from the
-    // archive filename.
-    let archive_stem = archive_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("chio-install");
-    let tmp_path = std::env::temp_dir().join(format!(
-        "chio-install-{}-{}",
-        archive_stem,
-        std::process::id()
-    ));
-    if tmp_path.exists() {
-        fs::remove_dir_all(&tmp_path).map_err(|e| {
-            guard_io_error(format!(
-                "failed to clean existing temp directory {}: {e}",
-                tmp_path.display()
-            ))
-        })?;
-    }
-    fs::create_dir_all(&tmp_path).map_err(|e| {
+    let prepared = prepare_guard_install(archive_path, target_dir)?;
+    publish_guard_directory(&prepared.candidate, &prepared.destination).map_err(|error| {
         guard_io_error(format!(
-            "failed to create temp directory {}: {e}",
-            tmp_path.display()
+            "could not publish guard update; existing installation was preserved: {error}"
         ))
     })?;
+    println!(
+        "installed: {} to {}/",
+        prepared.name,
+        prepared.destination.display()
+    );
+    // After an exchange the old, complete installation is in the staging
+    // directory. Cleanup is best effort and cannot turn a committed update
+    // into a reported failure.
+    Ok(())
+}
 
+pub(super) struct PreparedGuardInstall {
+    _staging: tempfile::TempDir,
+    pub(super) candidate: std::path::PathBuf,
+    pub(super) destination: std::path::PathBuf,
+    name: String,
+}
+
+pub(super) fn prepare_guard_install(
+    archive_path: &Path,
+    target_dir: &Path,
+) -> Result<PreparedGuardInstall, CliError> {
     let entries = crate::archive::read_tar_gz_file(
         archive_path,
         "Chio guard archive",
         GUARD_INSTALL_ARCHIVE_LIMITS,
     )?;
-    crate::archive::write_entries_to_existing_dir(&tmp_path, "Chio guard archive", &entries)?;
-
-    // Read the manifest from the temp directory to determine the guard name
-    let tmp_manifest_path = tmp_path.join("guard-manifest.yaml");
-    let manifest_content = fs::read_to_string(&tmp_manifest_path).map_err(|e| {
-        guard_io_error(format!("archive does not contain guard-manifest.yaml: {e}"))
+    fs::create_dir_all(target_dir)
+        .map_err(|error| guard_io_error(format!("failed to create install directory: {error}")))?;
+    // Same filesystem as the destination, with an exclusive random name and
+    // private permissions. Nothing below writes into the active installation.
+    let staging = tempfile::Builder::new()
+        .prefix(".chio-install-")
+        .tempdir_in(target_dir)
+        .map_err(|error| guard_io_error(format!("failed to stage guard: {error}")))?;
+    let extracted = staging.path().join("archive");
+    fs::create_dir(&extracted).map_err(|error| guard_io_error(error.to_string()))?;
+    crate::archive::write_entries_to_existing_dir(&extracted, "Chio guard archive", &entries)?;
+    let manifest_content =
+        fs::read_to_string(extracted.join("guard-manifest.yaml")).map_err(|error| {
+            guard_io_error(format!(
+                "archive does not contain guard-manifest.yaml: {error}"
+            ))
+        })?;
+    let manifest: GuardManifest = serde_yml::from_str(&manifest_content).map_err(|error| {
+        guard_yaml_error(format!("failed to parse manifest from archive: {error}"))
     })?;
-    let manifest: GuardManifest = serde_yml::from_str(&manifest_content)
-        .map_err(|e| guard_yaml_error(format!("failed to parse manifest from archive: {e}")))?;
-
-    let guard_name = &manifest.name;
-    let guard_dir = target_dir.join(guard_name);
-    fs::create_dir_all(&guard_dir).map_err(|e| {
-        guard_io_error(format!(
-            "failed to create directory {}: {e}",
-            guard_dir.display()
-        ))
-    })?;
-
-    // Select the module named by the manifest. A detached signature is a
-    // separate archive member and must never be mistaken for the module.
-    let wasm_filename = Path::new(&manifest.wasm_path).file_name()
+    if manifest.name.is_empty()
+        || !manifest
+            .name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(CliError::guard_error(
+            "guard name must contain only letters, digits, hyphens, or underscores".to_string(),
+        ));
+    }
+    let wasm_filename = Path::new(&manifest.wasm_path)
+        .file_name()
         .and_then(|name| name.to_str())
         .filter(|name| name.ends_with(".wasm"))
         .ok_or_else(|| CliError::guard_error("manifest must name a .wasm module".to_string()))?;
-    let src_signature = tmp_path.join(format!("{wasm_filename}.sig"));
-    if manifest.signer_public_key.is_some() {
-        let source = tmp_path.join(wasm_filename);
-        let bytes = fs::read(&source).map_err(|error| guard_io_error(format!("failed to read packaged module: {error}")))?;
-        verify_guard_signature(&source.to_string_lossy(), &bytes, &manifest)
-            .map_err(|error| CliError::guard_error(format!("cannot install signed guard: {error}")))?;
+    let candidate = staging.path().join("guard");
+    fs::create_dir(&candidate).map_err(|error| guard_io_error(error.to_string()))?;
+    fs::copy(extracted.join(wasm_filename), candidate.join(wasm_filename))
+        .map_err(|error| guard_io_error(format!("failed to stage wasm file: {error}")))?;
+    let signature = format!("{wasm_filename}.sig");
+    match fs::copy(extracted.join(&signature), candidate.join(&signature)) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(guard_io_error(format!(
+                "failed to stage signature: {error}"
+            )))
+        }
     }
-
-    // Copy the .wasm file
-    let src_wasm = tmp_path.join(&wasm_filename);
-    let dst_wasm = guard_dir.join(&wasm_filename);
-    fs::copy(&src_wasm, &dst_wasm)
-        .map_err(|e| guard_io_error(format!("failed to copy wasm file: {e}")))?;
-
-    let dst_signature = guard_dir.join(format!("{wasm_filename}.sig"));
-    match fs::copy(&src_signature, &dst_signature) {
-        Ok(_) => {},
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            // Replacing an unsigned module must not retain an older signature.
-            if let Err(error) = fs::remove_file(&dst_signature) {
-                if error.kind() != std::io::ErrorKind::NotFound {
-                    return Err(guard_io_error(format!("failed to remove old signature: {error}")));
-                }
-            }
-        },
-        Err(error) => return Err(guard_io_error(format!("failed to install signature: {error}"))),
-    }
-
-    // Update the manifest's wasm_path to point to the co-located filename and write it
-    let updated_manifest_content = update_manifest_wasm_path(&manifest_content, &wasm_filename)?;
     fs::write(
-        guard_dir.join("guard-manifest.yaml"),
-        updated_manifest_content,
+        candidate.join("guard-manifest.yaml"),
+        update_manifest_wasm_path(&manifest_content, wasm_filename)?,
     )
-    .map_err(|e| guard_io_error(format!("failed to write updated manifest: {e}")))?;
+    .map_err(|error| guard_io_error(format!("failed to stage manifest: {error}")))?;
+    if manifest.signer_public_key.is_some() {
+        let source = candidate.join(wasm_filename);
+        let bytes = fs::read(&source).map_err(|error| guard_io_error(error.to_string()))?;
+        verify_guard_signature(&source.to_string_lossy(), &bytes, &manifest).map_err(|error| {
+            CliError::guard_error(format!("cannot install signed guard: {error}"))
+        })?;
+    }
+    for entry in fs::read_dir(&candidate).map_err(|error| guard_io_error(error.to_string()))? {
+        let entry = entry.map_err(|error| guard_io_error(error.to_string()))?;
+        fs::File::open(entry.path())
+            .and_then(|file| file.sync_all())
+            .map_err(|error| guard_io_error(format!("failed to flush staged guard: {error}")))?;
+    }
+    Ok(PreparedGuardInstall {
+        _staging: staging,
+        candidate,
+        destination: target_dir.join(&manifest.name),
+        name: manifest.name,
+    })
+}
 
-    // Clean up temp directory (best-effort)
-    let _ = fs::remove_dir_all(&tmp_path);
+/// Publish a complete directory in one filesystem operation. An interrupted
+/// process leaves either complete version at the destination, never a mixture.
+/// Filesystems without atomic exchange support refuse updates without a
+/// remove/rename fallback that could lose the working installation.
+#[cfg(any(target_os = "linux", target_vendor = "apple"))]
+pub(super) fn publish_guard_directory(candidate: &Path, destination: &Path) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    let replace = match fs::symlink_metadata(destination) {
+        Ok(metadata) if metadata.is_dir() => true,
+        Ok(_) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "guard destination is not a directory",
+            ))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(error),
+    };
+    let from = CString::new(candidate.as_os_str().as_bytes())?;
+    let to = CString::new(destination.as_os_str().as_bytes())?;
+    // SAFETY: both C strings remain alive for the call. The OS performs an
+    // exclusive initial rename or atomic exchange of the two directory entries.
+    #[cfg(target_vendor = "apple")]
+    let result = unsafe {
+        libc::renamex_np(
+            from.as_ptr(),
+            to.as_ptr(),
+            if replace {
+                libc::RENAME_SWAP
+            } else {
+                libc::RENAME_EXCL
+            },
+        )
+    };
+    #[cfg(target_os = "linux")]
+    let result = unsafe {
+        libc::renameat2(
+            libc::AT_FDCWD,
+            from.as_ptr(),
+            libc::AT_FDCWD,
+            to.as_ptr(),
+            if replace {
+                libc::RENAME_EXCHANGE
+            } else {
+                libc::RENAME_NOREPLACE
+            },
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
 
-    println!("installed: {guard_name} to {}/", guard_dir.display());
-
-    Ok(())
+#[cfg(not(any(target_os = "linux", target_vendor = "apple")))]
+pub(super) fn publish_guard_directory(
+    _candidate: &Path,
+    _destination: &Path,
+) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "atomic guard installation requires Linux or macOS",
+    ))
 }
 
 /// Rewrite the `wasm_path` field in the manifest YAML to point to the given filename.

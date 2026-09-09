@@ -125,7 +125,7 @@ pub(in crate::runtime) fn tool_call_outcome_to_jsonrpc(
 ) -> Value {
     match outcome {
         ToolCallEdgeOutcome::Result(result) => jsonrpc_result(id, result),
-        ToolCallEdgeOutcome::Cancelled { reason } => jsonrpc_result(id, tool_error_result(&reason)),
+        ToolCallEdgeOutcome::Cancelled { result, .. } => jsonrpc_result(id, result),
         ToolCallEdgeOutcome::JsonRpcError {
             code,
             message,

@@ -647,8 +647,107 @@ fn signed_guard_archive_installs_without_local_sidecar() {
     assert!(crate::guards::sign::cmd_guard_verify(&installed).is_err());
     fs::write(&installed, bytes).unwrap();
     let sidecar_path = installed.with_extension("wasm.sig");
-    let mut sidecar: serde_json::Value = serde_json::from_slice(&fs::read(&sidecar_path).unwrap()).unwrap();
+    let mut sidecar: serde_json::Value =
+        serde_json::from_slice(&fs::read(&sidecar_path).unwrap()).unwrap();
     sidecar["signature"] = serde_json::Value::String("00".repeat(64));
     fs::write(&sidecar_path, serde_json::to_vec(&sidecar).unwrap()).unwrap();
     assert!(crate::guards::sign::cmd_guard_verify(&installed).is_err());
+}
+
+#[cfg(any(target_os = "linux", target_vendor = "apple"))]
+#[test]
+fn signed_guard_update_is_atomic_and_preserves_working_install_on_failure() {
+    use ed25519_dalek::SigningKey;
+    use sha2::{Digest, Sha256};
+    use std::os::unix::fs::PermissionsExt;
+    let project = tempfile::tempdir().unwrap();
+    let destination = tempfile::tempdir().unwrap();
+    let key = SigningKey::from_bytes(&[24; 32]);
+    let seed = project.path().join("seed");
+    fs::write(&seed, hex::encode(key.to_bytes())).unwrap();
+    let make_archive = |version: &str, bytes: &[u8]| {
+        let wasm = project.path().join("signed.wasm");
+        fs::write(&wasm, bytes).unwrap();
+        fs::write(project.path().join("guard-manifest.yaml"), format!(
+            "name: signed\nversion: '{version}'\nabi_version: '1'\nwit_world: 'chio:guard/guard@0.2.0'\nwasm_path: signed.wasm\nwasm_sha256: {}\nsigner_public_key: {}\n",
+            hex::encode(Sha256::digest(bytes)), hex::encode(key.verifying_key().to_bytes())
+        )).unwrap();
+        crate::guards::sign::cmd_guard_sign(&wasm, &seed, "signed", version).unwrap();
+        pack_from_dir(project.path()).unwrap();
+        project.path().join(format!("signed-{version}.arcguard"))
+    };
+    let old = b"\x00asm\x01\x00\x00\x00";
+    let new = b"\x00asm\x01\x00\x00\x00\x00\x02\x01x";
+    let old_archive = make_archive("0.1.0", old);
+    let new_archive = make_archive("0.1.1", new);
+    cmd_guard_install(&old_archive, destination.path()).unwrap();
+    let installed = destination.path().join("signed/signed.wasm");
+    let snapshot = || {
+        ["signed.wasm", "signed.wasm.sig", "guard-manifest.yaml"]
+            .map(|name| fs::read(destination.path().join("signed").join(name)).unwrap())
+    };
+    let original = snapshot();
+
+    // Interrupt preparation before its single publication step. The active
+    // version remains usable even while a complete candidate is staged.
+    let prepared = super::build::prepare_guard_install(&new_archive, destination.path()).unwrap();
+    assert_eq!(snapshot(), original);
+    crate::guards::sign::cmd_guard_verify(&installed).unwrap();
+    drop(prepared);
+    assert_eq!(snapshot(), original);
+
+    // A real filesystem publication failure must preserve all three files.
+    let prepared = super::build::prepare_guard_install(&new_archive, destination.path()).unwrap();
+    fs::set_permissions(destination.path(), fs::Permissions::from_mode(0o500)).unwrap();
+    let result = super::build::publish_guard_directory(&prepared.candidate, &prepared.destination);
+    fs::set_permissions(destination.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(
+        result.is_err(),
+        "non-writable install parent must refuse publication"
+    );
+    assert_eq!(snapshot(), original);
+    crate::guards::sign::cmd_guard_verify(&installed).unwrap();
+    drop(prepared);
+
+    // The reported reproduction: old sidecar and manifest are read-only.
+    // No installed member is opened for writing, so the whole update succeeds.
+    for name in ["signed.wasm.sig", "guard-manifest.yaml"] {
+        fs::set_permissions(
+            destination.path().join("signed").join(name),
+            fs::Permissions::from_mode(0o400),
+        )
+        .unwrap();
+    }
+    cmd_guard_install(&new_archive, destination.path()).unwrap();
+    assert_eq!(fs::read(&installed).unwrap(), new);
+    assert!(
+        fs::read_to_string(installed.parent().unwrap().join("guard-manifest.yaml"))
+            .unwrap()
+            .contains("0.1.1")
+    );
+    crate::guards::sign::cmd_guard_verify(&installed).unwrap();
+    let updated = snapshot();
+
+    // Missing signature and missing manifest fail during staging, without
+    // touching the installed module. Only these incomplete archives are given
+    // to the installer, never the original source directory.
+    for omit in ["signed.wasm.sig", "guard-manifest.yaml"] {
+        let archive = project.path().join("incomplete.arcguard");
+        let encoder = flate2::write::GzEncoder::new(
+            fs::File::create(&archive).unwrap(),
+            flate2::Compression::default(),
+        );
+        let mut builder = tar::Builder::new(encoder);
+        for name in ["signed.wasm", "signed.wasm.sig", "guard-manifest.yaml"] {
+            if name != omit {
+                builder
+                    .append_path_with_name(project.path().join(name), name)
+                    .unwrap();
+            }
+        }
+        builder.into_inner().unwrap().finish().unwrap();
+        assert!(cmd_guard_install(&archive, destination.path()).is_err());
+        assert_eq!(snapshot(), updated);
+        crate::guards::sign::cmd_guard_verify(&installed).unwrap();
+    }
 }
