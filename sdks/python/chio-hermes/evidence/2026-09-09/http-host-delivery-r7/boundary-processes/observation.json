@@ -1,0 +1,48 @@
+{
+  "positive_read_matches": true,
+  "positive_unix_connect": true,
+  "runs": [
+    {
+      "descendant": false,
+      "exit": 0,
+      "checks": {
+        "home_read": "denied",
+        "home_write": "denied",
+        "unix_connect": "denied",
+        "other_profile_read": "denied",
+        "other_profile_write": "denied",
+        "data_alias_read": "denied",
+        "symlink_read": "denied",
+        "hardlink": "denied",
+        "shell_spawn": "denied",
+        "unrelated_tcp": "denied",
+        "selected_tcp": "allowed"
+      }
+    },
+    {
+      "descendant": true,
+      "exit": 0,
+      "checks": {
+        "home_read": "denied",
+        "home_write": "denied",
+        "unix_connect": "denied",
+        "other_profile_read": "denied",
+        "other_profile_write": "denied",
+        "data_alias_read": "denied",
+        "symlink_read": "denied",
+        "hardlink": "denied",
+        "shell_spawn": "denied",
+        "unrelated_tcp": "denied",
+        "selected_tcp": "allowed"
+      }
+    }
+  ],
+  "forbidden_write_exists": false,
+  "forbidden_unix_observed": false,
+  "profileSha256": "3cd4cd71118bcd9ff0a3c503eff59fe11a5b6004cf2e4828f841e6ca334c5b21",
+  "positive_tcp_controls": true,
+  "unrelated_tcp_observed": 0,
+  "selected_tcp_observed": 2,
+  "other_write_exists": false,
+  "hardlink_exists": false
+}

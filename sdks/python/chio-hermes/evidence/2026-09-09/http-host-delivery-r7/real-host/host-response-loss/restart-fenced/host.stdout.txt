@@ -1,0 +1,3 @@
+The request to replace /workspace/hermes-qualified-0fbc2fed52ae.txt was refused. The operation was blocked by an unresolved gateway fence and requires operator reconciliation.
+
+No changes were made. Stopping as instructed.

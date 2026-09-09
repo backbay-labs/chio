@@ -1,0 +1,24 @@
+{
+  "positive_read_matches": true,
+  "positive_unix_connect": true,
+  "runs": [
+    {
+      "descendant": false,
+      "exit": 1,
+      "checks": null
+    },
+    {
+      "descendant": true,
+      "exit": 1,
+      "checks": null
+    }
+  ],
+  "forbidden_write_exists": false,
+  "forbidden_unix_observed": false,
+  "profileSha256": "d798eadf90a51f760069aaf3717293de8ea7349fc984263c7c6bcc3e024b8a93",
+  "positive_tcp_controls": true,
+  "unrelated_tcp_observed": 0,
+  "selected_tcp_observed": 0,
+  "other_write_exists": false,
+  "hardlink_exists": false
+}

@@ -1,0 +1,1 @@
+python: posix_spawn: /Library/Frameworks/Python.framework/Versions/3.11/Resources/Python.app/Contents/MacOS/Python: Undefined error: 0

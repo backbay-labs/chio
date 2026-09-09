@@ -1,0 +1,1 @@
+Permission denied: The request to write /workspace/forbidden.txt was blocked by a guard and the file was not created or modified. Stopping as instructed after the denial.

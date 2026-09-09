@@ -1,0 +1,8 @@
+{
+  "sourceCommit": "65671a01c",
+  "wheelSha256": "a28809866dc8395ae852b8542b9835c24d8e17398d8626f7856fc1d413109938",
+  "bridgeSha256": "b7785282b4f4e4da42e4158c7390a2d1411ba2763b01956b07896aadf6dcc6d9",
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "hostRevision": "175054c14b54404663d8614a178280cffe6062eb",
+  "acceptance": "unresolved"
+}
