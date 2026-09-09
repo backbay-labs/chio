@@ -248,6 +248,20 @@ capabilities:
             denied=request(token,path,{'ttlSeconds':300,'allowedTools':['write_file']},method='GET' if path.endswith('health') else 'POST')
             check('admin_denied_'+path.rsplit('/',1)[-1],denied[0]==401,denied[:2])
         check('observer_negative_control',before=={'forbidden.txt':'original'} and observe().get('useful.txt')=='legitimate useful work',{'before':before})
+        error_sid,error_token,_=session()
+        error_params={'name':'write_file','arguments':{'path':'/outside-resource-root.txt','content':'must remain outside the resource'},'_meta':{'chioRequestId':'known-tool-error'}}
+        before_error=observe()
+        error_status,error_response,_=rpc(error_token,error_sid,'tools/call',error_params)
+        check('known_tool_error_received',error_status==200 and error_response['result'].get('isError') is True
+              and error_response['result']['_meta']['chioEvidence']['output'].get('isError') is True
+              and observe()==before_error,error_response)
+        after_error=call(error_token,error_sid,'after-tool-error.txt','after verified failure','after-known-error')
+        check('known_tool_error_fenced_before_ack',after_error[0]==409 and observe()==before_error,after_error[:2])
+        verify_and_ack(error_token,error_sid,error_params,error_response)
+        replay_error=rpc(error_token,error_sid,'tools/call',error_params)
+        check('known_tool_error_exact_replay',replay_error[0]==200 and replay_error[1]==error_response,replay_error[1])
+        recovered_error=call(error_token,error_sid,'after-tool-error.txt','after verified failure','after-known-error')
+        check('known_tool_error_ack_restores_work',recovered_error[0]==200 and observe().get('after-tool-error.txt')=='after verified failure',recovered_error[1])
         expired_sid,expired_token,_=session(ttl=1)
         time.sleep(1.1)
         expired=call(expired_token,expired_sid,'expired.txt','forbidden','expired')

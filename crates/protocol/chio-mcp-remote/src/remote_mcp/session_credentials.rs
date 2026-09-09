@@ -714,10 +714,11 @@ fn verified_completed_response(keypair: &Keypair, call: &CredentialCall, message
         || admission["projected_dispatch_state"] != "terminal"
         || !admission["tool_outcome_id"].is_string()
         || evidence["outputKind"] != "value"
-        || message["result"]["isError"] == true
     {
         return false;
     }
+    // A terminal tool result can report failure. Acknowledge its verified delivery
+    // without converting isError into success or treating it as an unknown dispatch.
     canonical_json_bytes(&evidence["output"])
         .is_ok_and(|bytes| sha256_hex(&bytes) == receipt.content_hash)
 }
@@ -903,13 +904,14 @@ mod tests {
         keypair: &Keypair,
         call: &CredentialCall,
         arguments: Value,
+        is_error: bool,
     ) -> Result<Value, Box<dyn std::error::Error>> {
         use chio_core::receipt::body::{ChioReceipt, ChioReceiptBody};
         use chio_core::receipt::decision::{Decision, ToolCallAction};
         use chio_core::receipt::kinds::{
             BoundaryClass, ReceiptKind, RedactionMode, ToolOrigin, TrustLevel,
         };
-        let output = json!({"content":[{"type":"text","text":"original completed result"}]});
+        let output = json!({"content":[{"type":"text","text":"original completed result"}],"isError":is_error});
         let receipt = ChioReceipt::sign(
             ChioReceiptBody {
                 id: "delivery-ack-test".to_owned(),
@@ -942,7 +944,7 @@ mod tests {
         )?;
         Ok(
             json!({"jsonrpc":"2.0","id":1,"result":{"_meta":{"chioEvidence":{
-            "receipt":receipt,"outputKind":"value","output":output}},"isError":false}}),
+            "receipt":receipt,"outputKind":"value","output":output}},"isError":is_error}}),
         )
     }
 
@@ -962,8 +964,12 @@ mod tests {
         else {
             return Err("reserve".into());
         };
-        let completed =
-            completed_response(&keypair, &pending, message["params"]["arguments"].clone())?;
+        let completed = completed_response(
+            &keypair,
+            &pending,
+            message["params"]["arguments"].clone(),
+            false,
+        )?;
         assert!(verified_completed_response(&keypair, &pending, &completed));
         let delivered = finish_at(&path, &keypair, &pending, &completed).map_err(|_| "complete")?;
         let acknowledgement: DeliveryAcknowledgement =
@@ -1006,6 +1012,60 @@ mod tests {
         let mut third = next.clone();
         third["params"]["_meta"]["chioRequestId"] = json!("logical-three");
         assert!(reserve_at(&path, &keypair, &credential, &third).is_err());
+        std::fs::remove_file(path)?;
+        Ok(())
+    }
+
+    #[test]
+    fn completed_tool_error_can_be_acknowledged_without_claiming_success(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(format!(
+            "chio-tool-error-{}.sqlite",
+            Keypair::generate().public_key().to_hex()
+        ));
+        let keypair = Keypair::generate();
+        let credential = record();
+        let message = json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+            "name":"write_file","arguments":{"path":"/outside-resource"},"_meta":{"chioRequestId":"tool-error"}}});
+        let Ok(CallReservation::Pending(pending)) =
+            reserve_at(&path, &keypair, &credential, &message)
+        else {
+            return Err("reserve tool error".into());
+        };
+        let response = completed_response(
+            &keypair,
+            &pending,
+            message["params"]["arguments"].clone(),
+            true,
+        )?;
+        assert!(verified_completed_response(&keypair, &pending, &response));
+        let mut forged = response.clone();
+        forged["result"]["_meta"]["chioEvidence"]["output"]["isError"] = json!(false);
+        assert!(!verified_completed_response(&keypair, &pending, &forged));
+        assert!(!verified_completed_response(
+            &keypair,
+            &pending,
+            &json!({"error":{"code":-32603}})
+        ));
+        let delivered = finish_at(&path, &keypair, &pending, &response).map_err(|_| "finish")?;
+        assert_eq!(
+            delivered["result"]["_meta"]["chioEvidence"]["output"]["isError"],
+            true
+        );
+        let mut next = message.clone();
+        next["params"]["_meta"]["chioRequestId"] = json!("after-error");
+        assert!(reserve_at(&path, &keypair, &credential, &next).is_err());
+        let acknowledgement =
+            serde_json::from_value(delivered["result"]["_meta"]["chioDelivery"].clone())?;
+        acknowledge_at(&path, &keypair, &credential, &acknowledgement)
+            .map_err(|_| "acknowledge")?;
+        assert!(
+            matches!(reserve_at(&path, &keypair, &credential, &message), Ok(CallReservation::Replay(value)) if value == delivered)
+        );
+        assert!(matches!(
+            reserve_at(&path, &keypair, &credential, &next),
+            Ok(CallReservation::Pending(_))
+        ));
         std::fs::remove_file(path)?;
         Ok(())
     }
