@@ -204,6 +204,209 @@ fn hitl_sign_token(
     GovernedApprovalToken::sign(body, approver).unwrap()
 }
 
+fn bound_tool_invocation_fixture() -> (ChioKernel, ToolGrant, ToolCallRequest, u64) {
+    let config = make_config();
+    let approver = config.keypair.clone();
+    let kernel = make_kernel(config);
+    let subject = CoreKeypair::generate();
+    let mut grant = make_grant("srv-a", "read_file");
+    grant
+        .constraints
+        .push(Constraint::RequireApprovalAbove { threshold_units: 0 });
+    let capability = make_capability(&kernel, &subject, make_scope(vec![grant.clone()]), 300);
+    let mut request = make_request_with_arguments(
+        "bound-request-1",
+        &capability,
+        "read_file",
+        "srv-a",
+        serde_json::json!({"path": "/workspace/approved.txt", "options": {"limit": 10}}),
+    );
+    let mut intent = make_governed_intent(
+        "bound-intent-1",
+        "srv-a",
+        "read_file",
+        "read the approved file",
+        0,
+        "USD",
+    );
+    intent.body = GovernedTransactionIntentBody::BoundToolInvocation {
+        capability_id: capability.id.clone(),
+        parameters_hash: chio_core::sha256(&canonical_json_bytes(&request.arguments).unwrap()),
+    };
+    request.approval_token = Some(make_governed_approval_token(
+        &approver,
+        &capability.subject,
+        &intent,
+        &request.request_id,
+    ));
+    request.governed_intent = Some(intent);
+    (kernel, grant, request, current_unix_timestamp())
+}
+
+#[test]
+fn bound_tool_invocation_accepts_approved_canonical_arguments() {
+    let (kernel, grant, mut request, now) = bound_tool_invocation_fixture();
+    // Object member order does not change the RFC 8785 parameter binding.
+    request.arguments =
+        serde_json::from_str(r#"{"options":{"limit":10},"path":"/workspace/approved.txt"}"#)
+            .unwrap();
+    let result = kernel
+        .validate_governed_transaction_pure(
+            &request,
+            &request.capability,
+            &grant,
+            GovernedValidationContext {
+                parent_context: None,
+                now,
+            },
+        )
+        .unwrap();
+    assert!(result.is_some());
+    assert!(kernel
+        .validate_governed_approval_for_dispatch_non_consuming(&request, &request.capability, now,)
+        .unwrap()
+        .is_some());
+}
+
+#[test]
+fn bound_tool_invocation_denies_parameter_mutation_with_valid_approval() {
+    let (kernel, grant, original, now) = bound_tool_invocation_fixture();
+    for arguments in [
+        serde_json::json!({"path": "/workspace/forbidden.txt", "options": {"limit": 10}}),
+        serde_json::json!({"path": "/workspace/approved.txt", "options": {"limit": 100}}),
+        serde_json::json!({"path": "/workspace/approved.txt", "options": {"limit": 10}, "write": true}),
+        serde_json::json!({"path": "/workspace/approved.txt", "options": {"limit": "10"}}),
+        serde_json::json!({"path": "/workspace/approved.txt"}),
+    ] {
+        let mut request = original.clone();
+        request.arguments = arguments;
+        let error = kernel
+            .validate_governed_transaction_pure(
+                &request,
+                &request.capability,
+                &grant,
+                GovernedValidationContext {
+                    parent_context: None,
+                    now,
+                },
+            )
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("parameter hash does not match"),
+            "{error}"
+        );
+
+        let direct_error = kernel
+            .validate_governed_approval_for_dispatch_non_consuming(
+                &request,
+                &request.capability,
+                now,
+            )
+            .unwrap_err();
+        assert!(
+            direct_error
+                .to_string()
+                .contains("parameter hash does not match"),
+            "{direct_error}"
+        );
+    }
+}
+
+#[test]
+fn bound_tool_invocation_denies_capability_transfer_for_same_subject() {
+    let (kernel, grant, mut request, now) = bound_tool_invocation_fixture();
+    let alternate = kernel
+        .issue_capability(
+            &request.capability.subject,
+            make_scope(vec![grant.clone()]),
+            300,
+        )
+        .unwrap();
+    assert_ne!(alternate.id, request.capability.id);
+    assert_eq!(alternate.subject, request.capability.subject);
+    request.capability = alternate;
+
+    let error = kernel
+        .validate_governed_transaction_pure(
+            &request,
+            &request.capability,
+            &grant,
+            GovernedValidationContext {
+                parent_context: None,
+                now,
+            },
+        )
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("capability does not match"),
+        "{error}"
+    );
+
+    let direct_error = kernel
+        .validate_governed_approval_for_dispatch_non_consuming(&request, &request.capability, now)
+        .unwrap_err();
+    assert!(
+        direct_error
+            .to_string()
+            .contains("capability does not match"),
+        "{direct_error}"
+    );
+
+    let intent_hash = request
+        .governed_intent
+        .as_ref()
+        .unwrap()
+        .binding_hash()
+        .unwrap();
+    let threshold_error = kernel
+        .validate_threshold_approval_set(&request, &request.capability, &intent_hash, now)
+        .unwrap_err();
+    assert!(
+        threshold_error
+            .to_string()
+            .contains("capability does not match"),
+        "{threshold_error}"
+    );
+}
+
+#[test]
+fn bound_tool_invocation_rejects_mutation_before_approval_checks() {
+    let (kernel, grant, mut request, now) = bound_tool_invocation_fixture();
+    request.arguments = serde_json::json!({"path": "/workspace/forbidden.txt"});
+    request.approval_token = None;
+    let error = kernel
+        .validate_governed_transaction_pure(
+            &request,
+            &request.capability,
+            &grant,
+            GovernedValidationContext {
+                parent_context: None,
+                now,
+            },
+        )
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("parameter hash does not match"),
+        "{error}"
+    );
+
+    let intent_hash = request
+        .governed_intent
+        .as_ref()
+        .unwrap()
+        .binding_hash()
+        .unwrap();
+    let threshold_error = kernel
+        .validate_threshold_approval_set(&request, &request.capability, &intent_hash, now)
+        .unwrap_err();
+    assert!(
+        threshold_error
+            .to_string()
+            .contains("parameter hash does not match"),
+        "{threshold_error}"
+    );
+}
+
 #[test]
 fn threshold_approval_set_is_policy_bound_and_order_independent() {
     let policy_hash = sha256_hex(b"threshold-policy");

@@ -3,7 +3,7 @@
 // Source:     spec/schemas/chio-wire/v1/**/*.schema.json
 // Tool:       json-schema-to-typescript 15.0.4 (see xtask/codegen-tools.lock.toml)
 // Pin file:   sdks/typescript/scripts/package.json
-// Schema SHA: 6792ebebdd0e9ef44b32a6418d2e5595ae3592b8cc5b8624919ab5219112f7f5
+// Schema SHA: 16c5e8925e28ebf549d1a3892f2b8f14d68cbbfe2a57aa6aa8fcb60f8247e4c3
 //
 // The schema-sha above is sha256 of `<rel-path>\0<bytes>\0` for every
 // schema in lex order. It changes whenever any schema under
@@ -63,7 +63,8 @@ export namespace Agent_GovernedTransactionIntent {
       | {
           kind: "active_response_plan";
           value: ChioGovernedActiveResponseIntentBody;
-        };
+        }
+      | ChioBoundToolInvocation;
   }
   export interface ChioGovernedActiveResponseIntentBody {
     plan_schema: "chio.governed-response-plan.v1";
@@ -85,6 +86,17 @@ export namespace Agent_GovernedTransactionIntent {
     ];
     expires_at: number;
     rollback_binding: {};
+  }
+  export interface ChioBoundToolInvocation {
+    kind: "bound_tool_invocation";
+    value: BoundToolInvocationBinding;
+  }
+  export interface BoundToolInvocationBinding {
+    capability_id: string;
+    /**
+     * SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).
+     */
+    parameters_hash: string;
   }
 }
 
@@ -360,7 +372,8 @@ export namespace Agent_ToolCallRequest {
       | {
           kind: "active_response_plan";
           value: ChioGovernedActiveResponseIntentBody;
-        };
+        }
+      | ChioBoundToolInvocation;
   }
   export interface ChioGovernedActiveResponseIntentBody {
     plan_schema: "chio.governed-response-plan.v1";
@@ -382,6 +395,17 @@ export namespace Agent_ToolCallRequest {
     ];
     expires_at: number;
     rollback_binding: {};
+  }
+  export interface ChioBoundToolInvocation {
+    kind: "bound_tool_invocation";
+    value: BoundToolInvocationBinding;
+  }
+  export interface BoundToolInvocationBinding {
+    capability_id: string;
+    /**
+     * SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).
+     */
+    parameters_hash: string;
   }
   export interface ChioGovernedApprovalToken {
     id: string;

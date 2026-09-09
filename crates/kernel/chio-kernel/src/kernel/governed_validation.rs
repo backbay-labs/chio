@@ -15,6 +15,39 @@ mod verified_outcome;
 use verified_outcome::validate_verified_outcome_request;
 
 impl ChioKernel {
+    fn validate_bound_tool_invocation(
+        request: &ToolCallRequest,
+        cap: &CapabilityToken,
+    ) -> Result<(), KernelError> {
+        use chio_core::capability::governance::GovernedTransactionIntentBody;
+
+        let Some(GovernedTransactionIntentBody::BoundToolInvocation {
+            capability_id,
+            parameters_hash,
+        }) = request.governed_intent.as_ref().map(|intent| &intent.body)
+        else {
+            return Ok(());
+        };
+        if capability_id.is_empty() || capability_id != &cap.id {
+            return Err(KernelError::GovernedTransactionDenied(
+                "bound tool invocation capability does not match the authorizing capability"
+                    .to_string(),
+            ));
+        }
+        let canonical_arguments = canonical_json_bytes(&request.arguments).map_err(|error| {
+            KernelError::GovernedTransactionDenied(format!(
+                "bound tool invocation arguments are not canonicalizable: {error}"
+            ))
+        })?;
+        if chio_core::sha256(&canonical_arguments) != *parameters_hash {
+            return Err(KernelError::GovernedTransactionDenied(
+                "bound tool invocation parameter hash does not match the tool call arguments"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) fn threshold_approval_requirement(
         &self,
         request: &ToolCallRequest,
@@ -353,6 +386,7 @@ impl ChioKernel {
         approval_token: &GovernedApprovalToken,
         now: u64,
     ) -> Result<(), KernelError> {
+        Self::validate_bound_tool_invocation(request, cap)?;
         approval_token
             .validate_time(now)
             .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
@@ -489,6 +523,7 @@ impl ChioKernel {
     ) -> Result<VerifiedThresholdApprovalSet, KernelError> {
         use std::collections::HashSet;
 
+        Self::validate_bound_tool_invocation(request, cap)?;
         const MAX_APPROVAL_TOKENS: usize =
             chio_core::capability::threshold_approval::MAX_THRESHOLD_APPROVAL_TOKENS;
         if request.approval_tokens.is_empty() || request.approval_tokens.len() > MAX_APPROVAL_TOKENS
@@ -1321,6 +1356,7 @@ impl ChioKernel {
         grant: &ToolGrant,
         context: GovernedValidationContext<'_>,
     ) -> Result<Option<ValidatedGovernedAdmission>, KernelError> {
+        Self::validate_bound_tool_invocation(request, cap)?;
         let GovernedValidationContext {
             parent_context,
             now,

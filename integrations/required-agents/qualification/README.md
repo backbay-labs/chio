@@ -47,6 +47,14 @@ Cases:
   without required approval intent, and rejection of a malformed approval
   token, with no resulting files. Real pending/rejected/approved operator
   workflows remain unresolved by this case.
+- `approval-workflow`: durable operator pending/reject/approve, wrong admin
+  credential rejection, exact arguments, immutable decisions, expiration,
+  record integrity, revoked capability, useful approved execution, and signed
+  outcome replay after restart. See [APPROVALS.md](APPROVALS.md).
+- `approved-unknown-after-dispatch`: a legitimately approved resource effect
+  occurs before the kernel receives its result; restart and retry with the
+  original approved request preserve the effect's unknown outcome and the
+  independent sentinel.
 - `grant-budget`: one wildcard grant's two-invocation quota spans different
   tools, remains exhausted after restart, and explicitly demonstrates that
   fresh session issuance grants a new quota.
@@ -66,8 +74,8 @@ invent resource success or a kernel verdict.
 `passed` means the bounded assertions named above passed. All I01-I08 cases
 must still run independently through every required host. These cases do not
 prove signed receipt verification by an installed host plugin, operating
-system isolation of a host, kernel-process tamper prevention, application
-approvals, or publication of compatible artifacts.
+system isolation of a host, kernel-process tamper prevention, approvals through
+an actual agent host, or publication of compatible artifacts.
 
 The selected CLI creates a new capability for each newly admitted session.
 `max_invocations` is keyed by capability ID and grant index. Multiple explicit

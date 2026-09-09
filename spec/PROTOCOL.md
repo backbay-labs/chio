@@ -706,6 +706,25 @@ Approval tokens are verified against trusted authority keys and are bound to:
 - the canonical hash of the attached governed intent
 - approval-token `issued_at` and `expires_at` time bounds
 
+For approval of exact tool arguments, the governed intent carries
+`body { kind: "bound_tool_invocation", value: { capability_id, parameters_hash } }`.
+Both value fields are mandatory. `capability_id` is the nonempty ID of the
+authorizing capability. `parameters_hash` is SHA-256 of the RFC 8785 canonical
+JSON tool arguments, encoded as a 32-byte `Hash` (lowercase hexadecimal with a
+`0x` prefix). The kernel MUST compare both bindings against the current
+capability and arguments before validating approval artifacts or dispatching
+the tool. A mismatch MUST deny the call, including when another capability
+has the same subject. The signed intent hash commits both bindings. This body
+does not itself require approval; the matched grant's approval constraints
+still determine whether approval is required.
+
+An omitted body retains the existing `tool_invocation` behavior. Hosts
+claiming approval of exact arguments MUST use `bound_tool_invocation` and MUST
+reject unsupported receivers instead of downgrading to `tool_invocation` or
+moving the binding into advisory context. Session ownership remains the
+responsibility of the authenticated host coordinator; this intent body does
+not claim a kernel session binding.
+
 Chio's normative provenance model now distinguishes three evidence classes:
 
 - `asserted`: caller-supplied context that Chio preserves but has not

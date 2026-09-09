@@ -1,5 +1,6 @@
 use alloc::collections::BTreeMap;
 
+use crate::canonical::canonical_json_bytes;
 use crate::crypto::{Keypair, PublicKey, SigningBackend};
 use crate::error::{Error, Result};
 use crate::runtime_attestation::AttestationVerifierFamily;
@@ -971,6 +972,62 @@ fn governed_transaction_intent_binding_hash_changes_with_payload() {
         base.binding_hash().unwrap(),
         changed_destination.binding_hash().unwrap()
     );
+}
+
+#[test]
+fn bound_tool_invocation_intent_hash_commits_canonical_parameters() {
+    let arguments = serde_json::json!({"path": "/workspace/approved.txt", "content": "ok"});
+    let parameters_hash = crate::hashing::sha256(&canonical_json_bytes(&arguments).unwrap());
+    let mut wire = serde_json::json!({
+        "id": "bound-intent-1",
+        "server_id": "files",
+        "tool_name": "write_file",
+        "purpose": "write the reviewed file",
+        "body": {
+            "kind": "bound_tool_invocation",
+            "value": {"capability_id": "cap-reviewed-1", "parameters_hash": parameters_hash}
+        }
+    });
+    let intent: GovernedTransactionIntent = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(
+        intent.body,
+        GovernedTransactionIntentBody::BoundToolInvocation {
+            capability_id: "cap-reviewed-1".to_string(),
+            parameters_hash,
+        }
+    );
+    assert_eq!(intent.governed_operation_expires_at(), None);
+    assert_eq!(serde_json::to_value(&intent).unwrap(), wire);
+
+    wire["body"]["value"]["capability_id"] = serde_json::json!("cap-reviewed-2");
+    let changed_capability: GovernedTransactionIntent =
+        serde_json::from_value(wire.clone()).unwrap();
+    assert_ne!(
+        intent.binding_hash().unwrap(),
+        changed_capability.binding_hash().unwrap()
+    );
+    wire["body"]["value"]
+        .as_object_mut()
+        .unwrap()
+        .remove("capability_id");
+    assert!(serde_json::from_value::<GovernedTransactionIntent>(wire.clone()).is_err());
+    wire["body"]["value"]["capability_id"] = serde_json::json!("cap-reviewed-1");
+
+    wire["body"]["value"]["parameters_hash"] =
+        serde_json::to_value(crate::hashing::sha256(b"different parameters")).unwrap();
+    let changed: GovernedTransactionIntent = serde_json::from_value(wire.clone()).unwrap();
+    assert_ne!(
+        intent.binding_hash().unwrap(),
+        changed.binding_hash().unwrap()
+    );
+
+    wire["body"]["value"]["parameters_hash"] = serde_json::json!("0x1234");
+    assert!(serde_json::from_value::<GovernedTransactionIntent>(wire.clone()).is_err());
+
+    wire.as_object_mut().unwrap().remove("body");
+    let legacy: GovernedTransactionIntent = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(legacy.body, GovernedTransactionIntentBody::ToolInvocation);
+    assert_eq!(serde_json::to_value(legacy).unwrap(), wire);
 }
 
 #[test]

@@ -5,6 +5,21 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "server_id", "tool_name", "purpose"],
+  "$defs": {
+    "BoundToolInvocationBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability_id", "parameters_hash"],
+      "properties": {
+        "capability_id": { "type": "string", "minLength": 1 },
+        "parameters_hash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$",
+          "description": "SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix)."
+        }
+      }
+    }
+  },
   "properties": {
     "id": { "type": "string", "minLength": 1 },
     "server_id": { "type": "string", "minLength": 1 },
@@ -40,6 +55,16 @@
           "properties": {
             "kind": { "const": "active_response_plan" },
             "value": { "$ref": "active-response-governed-intent.schema.json" }
+          }
+        },
+        {
+          "title": "Chio Bound Tool Invocation",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "bound_tool_invocation" },
+            "value": { "$ref": "#/$defs/BoundToolInvocationBinding" }
           }
         }
       ]

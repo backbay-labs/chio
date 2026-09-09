@@ -39,7 +39,8 @@ admin API.
   integrity-tagged restore path, so a restart can resume in-flight sessions
   without re-authenticating.
 - Serve `/admin/*` operator routes (health, authority rotation, receipts,
-  revocations, budgets, session trust/drain/shutdown, Prometheus metrics)
+  revocations, budgets, session trust/drain/shutdown, exact-call approval
+  records and decisions, Prometheus metrics)
   behind a constant-time bearer check.
 - Publish OAuth protected-resource and authorization-server discovery
   metadata carrying Chio's governed-authorization profile.
@@ -59,6 +60,14 @@ admin API.
   outside a full server, for negative-conformance testing.
 
 ## Testing
+
+Hosted operator approval uses `POST /admin/approvals`,
+`GET /admin/approvals/{id}`, and `POST /admin/approvals/{id}/decision`.
+It requires durable admission/session state and a distinct operator credential.
+These routes never dispatch a tool; approved artifacts enter the ordinary
+kernel `tools/call` path with a capability and canonical-argument binding.
+See the [operator procedure](../../../integrations/required-agents/qualification/APPROVALS.md)
+and real resource qualification runner for recovery and outcome semantics.
 
 `cargo test -p chio-mcp-remote`
 

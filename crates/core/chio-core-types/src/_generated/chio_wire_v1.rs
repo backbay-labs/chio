@@ -813,6 +813,197 @@ pub mod agent_tool_call_request {
                 })
         }
     }
+    ///`BoundToolInvocationBinding`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "capability_id",
+    ///    "parameters_hash"
+    ///  ],
+    ///  "properties": {
+    ///    "capability_id": {
+    ///      "type": "string",
+    ///      "minLength": 1
+    ///    },
+    ///    "parameters_hash": {
+    ///      "description": "SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).",
+    ///      "type": "string",
+    ///      "pattern": "^0x[0-9a-f]{64}$"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct BoundToolInvocationBinding {
+        pub capability_id: BoundToolInvocationBindingCapabilityId,
+        ///SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).
+        pub parameters_hash: BoundToolInvocationBindingParametersHash,
+    }
+    impl ::std::convert::From<&BoundToolInvocationBinding> for BoundToolInvocationBinding {
+        fn from(value: &BoundToolInvocationBinding) -> Self {
+            value.clone()
+        }
+    }
+    ///`BoundToolInvocationBindingCapabilityId`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct BoundToolInvocationBindingCapabilityId(::std::string::String);
+    impl ::std::ops::Deref for BoundToolInvocationBindingCapabilityId {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<BoundToolInvocationBindingCapabilityId> for ::std::string::String {
+        fn from(value: BoundToolInvocationBindingCapabilityId) -> Self {
+            value.0
+        }
+    }
+    impl ::std::convert::From<&BoundToolInvocationBindingCapabilityId>
+        for BoundToolInvocationBindingCapabilityId
+    {
+        fn from(value: &BoundToolInvocationBindingCapabilityId) -> Self {
+            value.clone()
+        }
+    }
+    impl ::std::str::FromStr for BoundToolInvocationBindingCapabilityId {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for BoundToolInvocationBindingCapabilityId {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for BoundToolInvocationBindingCapabilityId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for BoundToolInvocationBindingCapabilityId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for BoundToolInvocationBindingCapabilityId {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+    ///SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).",
+    ///  "type": "string",
+    ///  "pattern": "^0x[0-9a-f]{64}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct BoundToolInvocationBindingParametersHash(::std::string::String);
+    impl ::std::ops::Deref for BoundToolInvocationBindingParametersHash {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<BoundToolInvocationBindingParametersHash> for ::std::string::String {
+        fn from(value: BoundToolInvocationBindingParametersHash) -> Self {
+            value.0
+        }
+    }
+    impl ::std::convert::From<&BoundToolInvocationBindingParametersHash>
+        for BoundToolInvocationBindingParametersHash
+    {
+        fn from(value: &BoundToolInvocationBindingParametersHash) -> Self {
+            value.clone()
+        }
+    }
+    impl ::std::str::FromStr for BoundToolInvocationBindingParametersHash {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^0x[0-9a-f]{64}$").unwrap());
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^0x[0-9a-f]{64}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for BoundToolInvocationBindingParametersHash {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for BoundToolInvocationBindingParametersHash {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for BoundToolInvocationBindingParametersHash {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for BoundToolInvocationBindingParametersHash {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
     ///`Caveat`
     ///
     /// <details><summary>JSON schema</summary>
@@ -1663,6 +1854,23 @@ pub mod agent_tool_call_request {
     ///                    }
     ///                  },
     ///                  "additionalProperties": false
+    ///                }
+    ///              },
+    ///              "additionalProperties": false
+    ///            },
+    ///            {
+    ///              "title": "Chio Bound Tool Invocation",
+    ///              "type": "object",
+    ///              "required": [
+    ///                "kind",
+    ///                "value"
+    ///              ],
+    ///              "properties": {
+    ///                "kind": {
+    ///                  "const": "bound_tool_invocation"
+    ///                },
+    ///                "value": {
+    ///                  "$ref": "#/$defs/BoundToolInvocationBinding"
     ///                }
     ///              },
     ///              "additionalProperties": false
@@ -5190,6 +5398,23 @@ pub mod agent_tool_call_request {
     ///            }
     ///          },
     ///          "additionalProperties": false
+    ///        },
+    ///        {
+    ///          "title": "Chio Bound Tool Invocation",
+    ///          "type": "object",
+    ///          "required": [
+    ///            "kind",
+    ///            "value"
+    ///          ],
+    ///          "properties": {
+    ///            "kind": {
+    ///              "const": "bound_tool_invocation"
+    ///            },
+    ///            "value": {
+    ///              "$ref": "#/$defs/BoundToolInvocationBinding"
+    ///            }
+    ///          },
+    ///          "additionalProperties": false
     ///        }
     ///      ]
     ///    },
@@ -5379,6 +5604,23 @@ pub mod agent_tool_call_request {
     ///        }
     ///      },
     ///      "additionalProperties": false
+    ///    },
+    ///    {
+    ///      "title": "Chio Bound Tool Invocation",
+    ///      "type": "object",
+    ///      "required": [
+    ///        "kind",
+    ///        "value"
+    ///      ],
+    ///      "properties": {
+    ///        "kind": {
+    ///          "const": "bound_tool_invocation"
+    ///        },
+    ///        "value": {
+    ///          "$ref": "#/$defs/BoundToolInvocationBinding"
+    ///        }
+    ///      },
+    ///      "additionalProperties": false
     ///    }
     ///  ]
     ///}
@@ -5405,10 +5647,18 @@ pub mod agent_tool_call_request {
             rollback_binding: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
             target_binding: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
         },
+        ///Chio Bound Tool Invocation
+        #[serde(rename = "bound_tool_invocation")]
+        BoundToolInvocation(BoundToolInvocationBinding),
     }
     impl ::std::convert::From<&Self> for ChioGovernedTransactionIntentBody {
         fn from(value: &ChioGovernedTransactionIntentBody) -> Self {
             value.clone()
+        }
+    }
+    impl ::std::convert::From<BoundToolInvocationBinding> for ChioGovernedTransactionIntentBody {
+        fn from(value: BoundToolInvocationBinding) -> Self {
+            Self::BoundToolInvocation(value)
         }
     }
     ///`ChioGovernedTransactionIntentId`

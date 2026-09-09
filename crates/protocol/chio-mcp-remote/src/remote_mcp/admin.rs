@@ -21,6 +21,15 @@ pub(super) fn install_admin_routes(router: Router<RemoteAppState>) -> Router<Rem
             get(handle_admin_session_trust).post(handle_admin_revoke_session_trust),
         )
         .route(ADMIN_SESSIONS_PATH, get(handle_admin_sessions))
+        .route("/admin/approvals", post(super::remote_mcp_approvals::submit))
+        .route(
+            "/admin/approvals/{id}",
+            get(super::remote_mcp_approvals::get_record),
+        )
+        .route(
+            "/admin/approvals/{id}/decision",
+            post(super::remote_mcp_approvals::decide),
+        )
         .route("/admin/metrics", get(handle_admin_metrics))
         .route(ADMIN_SESSION_DRAIN_PATH, post(handle_admin_session_drain))
         .route(
@@ -729,7 +738,10 @@ async fn handle_admin_metrics(State(state): State<RemoteAppState>, request: Requ
         .into_response()
 }
 
-fn validate_admin_request(headers: &HeaderMap, admin_token: Option<&str>) -> Result<(), Response> {
+pub(super) fn validate_admin_request(
+    headers: &HeaderMap,
+    admin_token: Option<&str>,
+) -> Result<(), Response> {
     validate_origin(headers)?;
     validate_admin_auth(headers, admin_token)
 }

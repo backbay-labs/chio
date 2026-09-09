@@ -2,7 +2,7 @@
 // or 'cargo xtask codegen --lang go'.
 //
 // Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Schema content SHA-256: 5a3ab3398e7601fe616aecfd864031942ece8e8ac2fcf18721c6dcc6a33d0457
+// Schema content SHA-256: 922076fd17b27d213a2239141ab719bd70c039db6a0771056cf9a22ff4b18812
 // Tool:   oapi-codegen v2.4.1 (see xtask/codegen-tools.lock.toml)
 //
 // The Schema content SHA-256 is computed from the lex-sorted schema bytes
@@ -45,6 +45,11 @@ const (
 // Defines values for AgentGovernedTransactionIntentBody1Kind.
 const (
 	AgentGovernedTransactionIntentBody1KindActiveResponsePlan AgentGovernedTransactionIntentBody1Kind = "active_response_plan"
+)
+
+// Defines values for AgentGovernedTransactionIntentBody2Kind.
+const (
+	AgentGovernedTransactionIntentBody2KindBoundToolInvocation AgentGovernedTransactionIntentBody2Kind = "bound_tool_invocation"
 )
 
 // Defines values for AgentHeartbeatType.
@@ -839,9 +844,26 @@ type AgentGovernedTransactionIntentBody1 struct {
 // AgentGovernedTransactionIntentBody1Kind defines model for AgentGovernedTransactionIntent.Body.1.Kind.
 type AgentGovernedTransactionIntentBody1Kind string
 
+// AgentGovernedTransactionIntentBody2 defines model for .
+type AgentGovernedTransactionIntentBody2 struct {
+	Kind  AgentGovernedTransactionIntentBody2Kind                  `json:"kind"`
+	Value AgentGovernedTransactionIntentBoundToolInvocationBinding `json:"value"`
+}
+
+// AgentGovernedTransactionIntentBody2Kind defines model for AgentGovernedTransactionIntent.Body.2.Kind.
+type AgentGovernedTransactionIntentBody2Kind string
+
 // AgentGovernedTransactionIntent_Body defines model for AgentGovernedTransactionIntent.Body.
 type AgentGovernedTransactionIntent_Body struct {
 	union json.RawMessage
+}
+
+// AgentGovernedTransactionIntentBoundToolInvocationBinding defines model for AgentGovernedTransactionIntentBoundToolInvocationBinding.
+type AgentGovernedTransactionIntentBoundToolInvocationBinding struct {
+	CapabilityId string `json:"capability_id"`
+
+	// ParametersHash SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).
+	ParametersHash string `json:"parameters_hash"`
 }
 
 // AgentHeartbeat defines model for AgentHeartbeat.
@@ -2891,6 +2913,32 @@ func (t *AgentGovernedTransactionIntent_Body) FromAgentGovernedTransactionIntent
 
 // MergeAgentGovernedTransactionIntentBody1 performs a merge with any union data inside the AgentGovernedTransactionIntent_Body, using the provided AgentGovernedTransactionIntentBody1
 func (t *AgentGovernedTransactionIntent_Body) MergeAgentGovernedTransactionIntentBody1(v AgentGovernedTransactionIntentBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAgentGovernedTransactionIntentBody2 returns the union data inside the AgentGovernedTransactionIntent_Body as a AgentGovernedTransactionIntentBody2
+func (t AgentGovernedTransactionIntent_Body) AsAgentGovernedTransactionIntentBody2() (AgentGovernedTransactionIntentBody2, error) {
+	var body AgentGovernedTransactionIntentBody2
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAgentGovernedTransactionIntentBody2 overwrites any union data inside the AgentGovernedTransactionIntent_Body as the provided AgentGovernedTransactionIntentBody2
+func (t *AgentGovernedTransactionIntent_Body) FromAgentGovernedTransactionIntentBody2(v AgentGovernedTransactionIntentBody2) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAgentGovernedTransactionIntentBody2 performs a merge with any union data inside the AgentGovernedTransactionIntent_Body, using the provided AgentGovernedTransactionIntentBody2
+func (t *AgentGovernedTransactionIntent_Body) MergeAgentGovernedTransactionIntentBody2(v AgentGovernedTransactionIntentBody2) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
