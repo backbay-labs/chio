@@ -1,0 +1,3 @@
+remote MCP edge listening on http://127.0.0.1:54515/mcp
+WARN chio_mcp_adapter::transport message=unexpected upstream message without an active request: {\"id\":0,\"jsonrpc\":\"2.0\",\"method\":\"roots/list\"}
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio

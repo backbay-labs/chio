@@ -1,0 +1,24 @@
+{
+  "startedAt": "2026-09-09T16:19:33.947907+00:00",
+  "sourceRevision": "b39728c58f-plus-preserved-working-tree-patch",
+  "runnerSha256": "0c0ec8c94c640e85e0e891240bf3b72cfced3935196908f9fc842c1689331785",
+  "barrierSha256": "a690f141d14fb3b9a18a8541e89bb5eabf76a18f71e504ad16cd2878bec398b6",
+  "binary": "/tmp/chio-approval-candidate-20260909/chio",
+  "binarySha256": "82e70065d44ce8e09ea1d9c891568eb41bcac6a45ec8d19c0a3480339505cb48",
+  "kernelVersion": "chio-cli 0.1.0",
+  "image": "sha256:0106edcb15a1c0d12d914ea0504f0e63ec85f5e6fdd3825b4d7a0d1367af3991",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.4\nBuildVersion:\t\t25E246",
+  "docker": "28.3.3",
+  "claim": "shared kernel qualification only, no host acceptance",
+  "cases": [
+    {
+      "case": "approval-workflow",
+      "status": "passed"
+    },
+    {
+      "case": "approved-unknown-after-dispatch",
+      "status": "passed"
+    }
+  ],
+  "binaryChangedDuringRun": false
+}

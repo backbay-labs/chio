@@ -1,0 +1,672 @@
+[
+  {
+    "runtime": {
+      "volume": "chio-qualification-0e333c7cb8b4",
+      "policySha256": "85235c1c04ce31f2b756d4d0d315c627a12c29081356fdd9d83e3ab20de11fcc"
+    }
+  },
+  {
+    "path": "/admin/health",
+    "request": null,
+    "session": null,
+    "status": 200,
+    "response": {
+      "auth": {
+        "adminTokenConfigured": true,
+        "audienceConfigured": false,
+        "issuerConfigured": false,
+        "mode": "static_bearer",
+        "scopes": []
+      },
+      "authority": {
+        "appliesToFutureSessionsOnly": true,
+        "backend": "sqlite",
+        "configured": true,
+        "generation": 1,
+        "publicKey": "8e758b9ae9e43ed4a72671c5fce2c9e7c8b2f5120acc38a958644621a6fc8e7c",
+        "rotatedAt": 1788970789,
+        "trustedPublicKeys": [
+          "8e758b9ae9e43ed4a72671c5fce2c9e7c8b2f5120acc38a958644621a6fc8e7c"
+        ]
+      },
+      "controlPlane": {
+        "controlTokenConfigured": false,
+        "controlUrl": null,
+        "proxied": false
+      },
+      "federation": {
+        "enterpriseProviders": {
+          "configured": false,
+          "count": 0,
+          "invalidCount": 0,
+          "validatedCount": 0
+        },
+        "identityFederationConfigured": false
+      },
+      "oauth": {
+        "authorizationServerMetadata": false,
+        "localAuthorizationServer": false,
+        "protectedResourceMetadata": false
+      },
+      "ok": true,
+      "server": {
+        "serverId": "fs",
+        "serverName": "fs",
+        "serverVersion": "0.1.0",
+        "sharedHostedOwner": false,
+        "sharedHostedOwnerStats": null
+      },
+      "sessions": {
+        "activeCount": 0,
+        "drainGraceMillis": 5000,
+        "idleExpiryMillis": 900000,
+        "reaperIntervalMillis": 250,
+        "terminalCount": 0,
+        "tombstoneRetentionMillis": 1800000
+      },
+      "stores": {
+        "authorityDbConfigured": true,
+        "authoritySeedConfigured": false,
+        "budgetsConfigured": true,
+        "receiptsConfigured": true,
+        "revocationsConfigured": true,
+        "sessionTombstonesConfigured": true
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2025-11-25",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "shared-kernel-qualification",
+          "version": "1"
+        }
+      }
+    },
+    "session": null,
+    "status": 200,
+    "response": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilities": {
+          "experimental": {
+            "chioProtocol": {
+              "compatibility": "exact_match",
+              "downgradeBehavior": "reject",
+              "errorRegistry": {
+                "path": "spec/errors/chio-error-registry.v1.json",
+                "schema": "chio.error-registry.v1"
+              },
+              "requestIdentity": {
+                "requestBoundArtifactsRequireStableId": true,
+                "stableRequestIdMetaField": "chioRequestId"
+              },
+              "selectedProtocolVersion": "2025-11-25",
+              "supportedProtocolVersions": [
+                "2025-11-25"
+              ]
+            },
+            "chioToolStreaming": {
+              "toolCallChunkNotifications": true
+            },
+            "io.chio/execution-evidence": {
+              "contextMethod": "chio/execution-context",
+              "outputKinds": [
+                "value",
+                "none"
+              ],
+              "resultMetaField": "chioEvidence",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "version": "1"
+            }
+          },
+          "logging": {},
+          "tasks": {
+            "cancel": {},
+            "list": {},
+            "requests": {
+              "tools": {
+                "call": {}
+              }
+            }
+          },
+          "tools": {
+            "listChanged": true
+          }
+        },
+        "protocolVersion": "2025-11-25",
+        "serverInfo": {
+          "name": "Chio MCP Edge",
+          "version": "0.1.0"
+        }
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "notifications/initialized"
+    },
+    "session": "cfdb45c0293a2cfe320a2d272c5bbafb7e378376332f0abfe7c9b28c39dc2121",
+    "status": 202,
+    "response": null
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "chio/execution-context",
+      "params": {}
+    },
+    "session": "cfdb45c0293a2cfe320a2d272c5bbafb7e378376332f0abfe7c9b28c39dc2121",
+    "status": 200,
+    "response": {
+      "id": 2,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilityIds": [
+          "cap-01a086f7-ee28-7de3-8dae-494ea40d821e"
+        ],
+        "evidenceVersion": "1",
+        "schema": "chio.mcp.execution-context.v1",
+        "subjectKey": "00184b7def479218455ceed71fb33866921496ed954a7f743db56540750609fc"
+      }
+    }
+  },
+  {
+    "path": "/admin/sessions/cfdb45c0293a2cfe320a2d272c5bbafb7e378376332f0abfe7c9b28c39dc2121/trust",
+    "request": null,
+    "session": null,
+    "status": 200,
+    "response": {
+      "authContext": {
+        "method": {
+          "kind": "static_bearer",
+          "principal": "static-bearer:8f051b2217a894b7",
+          "token_fingerprint": "8f051b2217a894b709d7132bbf0842c56f8a613fc2c479c180f285feb9f7c778"
+        },
+        "transport": "streamable_http"
+      },
+      "capabilities": [
+        {
+          "capabilityId": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+          "issuerPublicKey": "8e758b9ae9e43ed4a72671c5fce2c9e7c8b2f5120acc38a958644621a6fc8e7c",
+          "revoked": false,
+          "subjectPublicKey": "00184b7def479218455ceed71fb33866921496ed954a7f743db56540750609fc"
+        }
+      ],
+      "lifecycle": {
+        "createdAt": 1788970790484,
+        "drainDeadlineAt": null,
+        "idleExpiresAt": 1788971690595,
+        "lastSeenAt": 1788970790595,
+        "protocolVersion": null,
+        "reconnect": {
+          "mode": "post-session-reuse-only",
+          "requiresAuthContinuity": true,
+          "resumable": true,
+          "terminalStates": [
+            "draining",
+            "deleted",
+            "expired",
+            "closed"
+          ]
+        },
+        "state": "ready"
+      },
+      "ownership": {
+        "hostedIdentityProfile": "strong_dedicated_session",
+        "hostedIsolation": "dedicated_per_session",
+        "notificationDelivery": "post_response_fallback",
+        "notificationStreamAttached": false,
+        "notificationStreamOwner": "session_notification_stream",
+        "requestOwnership": {
+          "resultStreamOwner": "request_stream",
+          "terminalStateOwner": "request",
+          "workOwner": "request"
+        },
+        "requestStreamActive": false,
+        "requestStreamOwner": "exclusive_request_stream"
+      },
+      "sessionId": "cfdb45c0293a2cfe320a2d272c5bbafb7e378376332f0abfe7c9b28c39dc2121"
+    }
+  },
+  {
+    "path": "/admin/approvals",
+    "request": {
+      "session_id": "cfdb45c0293a2cfe320a2d272c5bbafb7e378376332f0abfe7c9b28c39dc2121",
+      "capability_id": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+      "request_id": "approved-uncertain",
+      "tool_name": "write_file",
+      "arguments": {
+        "path": "/workspace/uncertain.txt",
+        "content": "approved-before-crash"
+      },
+      "purpose": "Hold a real approved resource reply before kernel completion",
+      "ttl_seconds": 300
+    },
+    "session": null,
+    "status": 201,
+    "response": {
+      "dispatchPerformedByThisEndpoint": false,
+      "record": {
+        "arguments": {
+          "content": "approved-before-crash",
+          "path": "/workspace/uncertain.txt"
+        },
+        "capability_id": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+        "created_at": 1788970790,
+        "expires_at": 1788971090,
+        "id": "approval-f7bc4931f299045a821bcb79b1407942d652d5eba5d6b0dc4e157f384c342888",
+        "intent": {
+          "body": {
+            "kind": "bound_tool_invocation",
+            "value": {
+              "capability_id": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+              "parameters_hash": "0x92187a4daf01966c43ada8f935d2a8b3ad2f2f393e32279efcd4ee946911ee12"
+            }
+          },
+          "context": {
+            "capabilityId": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+            "mcpSessionId": "cfdb45c0293a2cfe320a2d272c5bbafb7e378376332f0abfe7c9b28c39dc2121",
+            "policyFingerprint": "9ae6d6efd8c154e3bd5f73b58233275edf19031b83f9cb110a58d9866b5d1ae9"
+          },
+          "id": "approval-f7bc4931f299045a821bcb79b1407942d652d5eba5d6b0dc4e157f384c342888",
+          "purpose": "Hold a real approved resource reply before kernel completion",
+          "server_id": "fs",
+          "tool_name": "write_file"
+        },
+        "policy_fingerprint": "9ae6d6efd8c154e3bd5f73b58233275edf19031b83f9cb110a58d9866b5d1ae9",
+        "request_id": "approved-uncertain",
+        "schema": "chio.mcp.operator-approval.v1",
+        "session_id": "cfdb45c0293a2cfe320a2d272c5bbafb7e378376332f0abfe7c9b28c39dc2121",
+        "subject": "00184b7def479218455ceed71fb33866921496ed954a7f743db56540750609fc"
+      },
+      "status": "pending"
+    }
+  },
+  {
+    "path": "/admin/approvals/approval-f7bc4931f299045a821bcb79b1407942d652d5eba5d6b0dc4e157f384c342888/decision",
+    "request": {
+      "decision": "approved"
+    },
+    "session": null,
+    "status": 200,
+    "response": {
+      "dispatchPerformedByThisEndpoint": false,
+      "record": {
+        "arguments": {
+          "content": "approved-before-crash",
+          "path": "/workspace/uncertain.txt"
+        },
+        "capability_id": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+        "created_at": 1788970790,
+        "decision": {
+          "approver": "987e64066ea4e81aed18b4ec9dd80d632cc9d81e1beced42aa216baa32bbda23",
+          "decision": "approved",
+          "expires_at": 1788971090,
+          "governed_intent_hash": "1cea372de536d6660f4d2f44192e188ca2897b73a4e2580d12b0225027013db5",
+          "id": "approval-f7bc4931f299045a821bcb79b1407942d652d5eba5d6b0dc4e157f384c342888-decision",
+          "issued_at": 1788970790,
+          "request_id": "approved-uncertain",
+          "signature": "dc86e65c328aa50b05819c711bc9932745ec5bb94d9ac3fbe5d6aeabbc558ad56fcd61a034d805cf8e929d45e87b18e5674100c6ebb783c23780e17d0f0f2c07",
+          "subject": "00184b7def479218455ceed71fb33866921496ed954a7f743db56540750609fc"
+        },
+        "expires_at": 1788971090,
+        "id": "approval-f7bc4931f299045a821bcb79b1407942d652d5eba5d6b0dc4e157f384c342888",
+        "intent": {
+          "body": {
+            "kind": "bound_tool_invocation",
+            "value": {
+              "capability_id": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+              "parameters_hash": "0x92187a4daf01966c43ada8f935d2a8b3ad2f2f393e32279efcd4ee946911ee12"
+            }
+          },
+          "context": {
+            "capabilityId": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+            "mcpSessionId": "cfdb45c0293a2cfe320a2d272c5bbafb7e378376332f0abfe7c9b28c39dc2121",
+            "policyFingerprint": "9ae6d6efd8c154e3bd5f73b58233275edf19031b83f9cb110a58d9866b5d1ae9"
+          },
+          "id": "approval-f7bc4931f299045a821bcb79b1407942d652d5eba5d6b0dc4e157f384c342888",
+          "purpose": "Hold a real approved resource reply before kernel completion",
+          "server_id": "fs",
+          "tool_name": "write_file"
+        },
+        "policy_fingerprint": "9ae6d6efd8c154e3bd5f73b58233275edf19031b83f9cb110a58d9866b5d1ae9",
+        "request_id": "approved-uncertain",
+        "schema": "chio.mcp.operator-approval.v1",
+        "session_id": "cfdb45c0293a2cfe320a2d272c5bbafb7e378376332f0abfe7c9b28c39dc2121",
+        "subject": "00184b7def479218455ceed71fb33866921496ed954a7f743db56540750609fc"
+      },
+      "status": "approved",
+      "toolCallParams": {
+        "_meta": {
+          "chioApprovalToken": {
+            "approver": "987e64066ea4e81aed18b4ec9dd80d632cc9d81e1beced42aa216baa32bbda23",
+            "decision": "approved",
+            "expires_at": 1788971090,
+            "governed_intent_hash": "1cea372de536d6660f4d2f44192e188ca2897b73a4e2580d12b0225027013db5",
+            "id": "approval-f7bc4931f299045a821bcb79b1407942d652d5eba5d6b0dc4e157f384c342888-decision",
+            "issued_at": 1788970790,
+            "request_id": "approved-uncertain",
+            "signature": "dc86e65c328aa50b05819c711bc9932745ec5bb94d9ac3fbe5d6aeabbc558ad56fcd61a034d805cf8e929d45e87b18e5674100c6ebb783c23780e17d0f0f2c07",
+            "subject": "00184b7def479218455ceed71fb33866921496ed954a7f743db56540750609fc"
+          },
+          "chioGovernedIntent": {
+            "body": {
+              "kind": "bound_tool_invocation",
+              "value": {
+                "capability_id": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+                "parameters_hash": "0x92187a4daf01966c43ada8f935d2a8b3ad2f2f393e32279efcd4ee946911ee12"
+              }
+            },
+            "context": {
+              "capabilityId": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+              "mcpSessionId": "cfdb45c0293a2cfe320a2d272c5bbafb7e378376332f0abfe7c9b28c39dc2121",
+              "policyFingerprint": "9ae6d6efd8c154e3bd5f73b58233275edf19031b83f9cb110a58d9866b5d1ae9"
+            },
+            "id": "approval-f7bc4931f299045a821bcb79b1407942d652d5eba5d6b0dc4e157f384c342888",
+            "purpose": "Hold a real approved resource reply before kernel completion",
+            "server_id": "fs",
+            "tool_name": "write_file"
+          },
+          "chioRequestId": "approved-uncertain"
+        },
+        "arguments": {
+          "content": "approved-before-crash",
+          "path": "/workspace/uncertain.txt"
+        },
+        "name": "write_file"
+      }
+    }
+  },
+  {
+    "observer": "uncertain.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": true,
+      "content": "approved-before-crash"
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "tools/call",
+      "params": {
+        "_meta": {
+          "chioApprovalToken": {
+            "approver": "987e64066ea4e81aed18b4ec9dd80d632cc9d81e1beced42aa216baa32bbda23",
+            "decision": "approved",
+            "expires_at": 1788971090,
+            "governed_intent_hash": "1cea372de536d6660f4d2f44192e188ca2897b73a4e2580d12b0225027013db5",
+            "id": "approval-f7bc4931f299045a821bcb79b1407942d652d5eba5d6b0dc4e157f384c342888-decision",
+            "issued_at": 1788970790,
+            "request_id": "approved-uncertain",
+            "signature": "dc86e65c328aa50b05819c711bc9932745ec5bb94d9ac3fbe5d6aeabbc558ad56fcd61a034d805cf8e929d45e87b18e5674100c6ebb783c23780e17d0f0f2c07",
+            "subject": "00184b7def479218455ceed71fb33866921496ed954a7f743db56540750609fc"
+          },
+          "chioGovernedIntent": {
+            "body": {
+              "kind": "bound_tool_invocation",
+              "value": {
+                "capability_id": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+                "parameters_hash": "0x92187a4daf01966c43ada8f935d2a8b3ad2f2f393e32279efcd4ee946911ee12"
+              }
+            },
+            "context": {
+              "capabilityId": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+              "mcpSessionId": "cfdb45c0293a2cfe320a2d272c5bbafb7e378376332f0abfe7c9b28c39dc2121",
+              "policyFingerprint": "9ae6d6efd8c154e3bd5f73b58233275edf19031b83f9cb110a58d9866b5d1ae9"
+            },
+            "id": "approval-f7bc4931f299045a821bcb79b1407942d652d5eba5d6b0dc4e157f384c342888",
+            "purpose": "Hold a real approved resource reply before kernel completion",
+            "server_id": "fs",
+            "tool_name": "write_file"
+          },
+          "chioRequestId": "approved-uncertain"
+        },
+        "arguments": {
+          "content": "approved-before-crash",
+          "path": "/workspace/uncertain.txt"
+        },
+        "name": "write_file"
+      }
+    },
+    "session": "cfdb45c0293a2cfe320a2d272c5bbafb7e378376332f0abfe7c9b28c39dc2121",
+    "status": 200,
+    "response": null
+  },
+  {
+    "lostApprovedResponse": [
+      200,
+      {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        "x-chio-mcp-response-mode": "post_request_sse",
+        "connection": "close",
+        "transfer-encoding": "chunked",
+        "date": "Wed, 09 Sep 2026 16:19:50 GMT"
+      },
+      null
+    ]
+  },
+  {
+    "observer": "uncertain.txt",
+    "operatorReplacement": "independent-approved-after-crash",
+    "resource": {
+      "exists": true,
+      "content": "independent-approved-after-crash"
+    }
+  },
+  {
+    "path": "/admin/health",
+    "request": null,
+    "session": null,
+    "status": 200,
+    "response": {
+      "auth": {
+        "adminTokenConfigured": true,
+        "audienceConfigured": false,
+        "issuerConfigured": false,
+        "mode": "static_bearer",
+        "scopes": []
+      },
+      "authority": {
+        "appliesToFutureSessionsOnly": true,
+        "backend": "sqlite",
+        "configured": true,
+        "generation": 1,
+        "publicKey": "8e758b9ae9e43ed4a72671c5fce2c9e7c8b2f5120acc38a958644621a6fc8e7c",
+        "rotatedAt": 1788970789,
+        "trustedPublicKeys": [
+          "8e758b9ae9e43ed4a72671c5fce2c9e7c8b2f5120acc38a958644621a6fc8e7c"
+        ]
+      },
+      "controlPlane": {
+        "controlTokenConfigured": false,
+        "controlUrl": null,
+        "proxied": false
+      },
+      "federation": {
+        "enterpriseProviders": {
+          "configured": false,
+          "count": 0,
+          "invalidCount": 0,
+          "validatedCount": 0
+        },
+        "identityFederationConfigured": false
+      },
+      "oauth": {
+        "authorizationServerMetadata": false,
+        "localAuthorizationServer": false,
+        "protectedResourceMetadata": false
+      },
+      "ok": true,
+      "server": {
+        "serverId": "fs",
+        "serverName": "fs",
+        "serverVersion": "0.1.0",
+        "sharedHostedOwner": false,
+        "sharedHostedOwnerStats": null
+      },
+      "sessions": {
+        "activeCount": 1,
+        "drainGraceMillis": 5000,
+        "idleExpiryMillis": 900000,
+        "reaperIntervalMillis": 250,
+        "terminalCount": 0,
+        "tombstoneRetentionMillis": 1800000
+      },
+      "stores": {
+        "authorityDbConfigured": true,
+        "authoritySeedConfigured": false,
+        "budgetsConfigured": true,
+        "receiptsConfigured": true,
+        "revocationsConfigured": true,
+        "sessionTombstonesConfigured": true
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "method": "tools/call",
+      "params": {
+        "_meta": {
+          "chioApprovalToken": {
+            "approver": "987e64066ea4e81aed18b4ec9dd80d632cc9d81e1beced42aa216baa32bbda23",
+            "decision": "approved",
+            "expires_at": 1788971090,
+            "governed_intent_hash": "1cea372de536d6660f4d2f44192e188ca2897b73a4e2580d12b0225027013db5",
+            "id": "approval-f7bc4931f299045a821bcb79b1407942d652d5eba5d6b0dc4e157f384c342888-decision",
+            "issued_at": 1788970790,
+            "request_id": "approved-uncertain",
+            "signature": "dc86e65c328aa50b05819c711bc9932745ec5bb94d9ac3fbe5d6aeabbc558ad56fcd61a034d805cf8e929d45e87b18e5674100c6ebb783c23780e17d0f0f2c07",
+            "subject": "00184b7def479218455ceed71fb33866921496ed954a7f743db56540750609fc"
+          },
+          "chioGovernedIntent": {
+            "body": {
+              "kind": "bound_tool_invocation",
+              "value": {
+                "capability_id": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+                "parameters_hash": "0x92187a4daf01966c43ada8f935d2a8b3ad2f2f393e32279efcd4ee946911ee12"
+              }
+            },
+            "context": {
+              "capabilityId": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+              "mcpSessionId": "cfdb45c0293a2cfe320a2d272c5bbafb7e378376332f0abfe7c9b28c39dc2121",
+              "policyFingerprint": "9ae6d6efd8c154e3bd5f73b58233275edf19031b83f9cb110a58d9866b5d1ae9"
+            },
+            "id": "approval-f7bc4931f299045a821bcb79b1407942d652d5eba5d6b0dc4e157f384c342888",
+            "purpose": "Hold a real approved resource reply before kernel completion",
+            "server_id": "fs",
+            "tool_name": "write_file"
+          },
+          "chioRequestId": "approved-uncertain"
+        },
+        "arguments": {
+          "content": "approved-before-crash",
+          "path": "/workspace/uncertain.txt"
+        },
+        "name": "write_file"
+      }
+    },
+    "session": "cfdb45c0293a2cfe320a2d272c5bbafb7e378376332f0abfe7c9b28c39dc2121",
+    "status": 200,
+    "response": {
+      "id": 4,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": null,
+            "outputKind": "none",
+            "receipt": {
+              "action": {
+                "parameter_hash": "92187a4daf01966c43ada8f935d2a8b3ad2f2f393e32279efcd4ee946911ee12",
+                "parameters": {
+                  "content": "approved-before-crash",
+                  "path": "/workspace/uncertain.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a086f7-ee28-7de3-8dae-494ea40d821e",
+              "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+              "decision": {
+                "guard": "kernel",
+                "reason": "durable admission failed: request replay is retained in state OutcomeUnknownAfterDispatch",
+                "verdict": "deny"
+              },
+              "id": "bae1c9cb4894a585a04bffe75c0a4efd0621877538aee9050eec06b06defd75d",
+              "kernel_key": "987e64066ea4e81aed18b4ec9dd80d632cc9d81e1beced42aa216baa32bbda23",
+              "metadata": {
+                "attribution": {
+                  "delegation_depth": 0,
+                  "issuer_key": "8e758b9ae9e43ed4a72671c5fce2c9e7c8b2f5120acc38a958644621a6fc8e7c",
+                  "subject_key": "00184b7def479218455ceed71fb33866921496ed954a7f743db56540750609fc"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a086f7-f59a-7521-bdc2-fc459b086ca8",
+                "governed_transaction": {
+                  "approval": {
+                    "approval_artifact_digest": "eb3e30328d95d456daee0c9cf4a52981a3e39d4ee073c848ba0851b41b69cb11",
+                    "approved": true,
+                    "approver_key": "987e64066ea4e81aed18b4ec9dd80d632cc9d81e1beced42aa216baa32bbda23",
+                    "token_id": "approval-f7bc4931f299045a821bcb79b1407942d652d5eba5d6b0dc4e157f384c342888-decision"
+                  },
+                  "intent_hash": "1cea372de536d6660f4d2f44192e188ca2897b73a4e2580d12b0225027013db5",
+                  "intent_id": "approval-f7bc4931f299045a821bcb79b1407942d652d5eba5d6b0dc4e157f384c342888",
+                  "purpose": "Hold a real approved resource reply before kernel completion",
+                  "server_id": "fs",
+                  "tool_name": "write_file"
+                },
+                "receipt_context": {
+                  "request_id": "approved-uncertain"
+                }
+              },
+              "policy_hash": "e7d7cdd80b52a14d7a810edc148603b3d1f138e53c6161fff979cfea5d64c323",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "985b703fc3cba419292b59fbf5f8dca2c355aa4cddf8c0f02d58e5ed008294a926bca936ce2e51d31ae8669a5ee26ae78c895071378f23d930d2278f11a6b50a",
+              "timestamp": 1788970792,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "approved-uncertain",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "durable admission failed: request replay is retained in state OutcomeUnknownAfterDispatch",
+            "type": "text"
+          }
+        ],
+        "isError": true
+      }
+    }
+  },
+  {
+    "observer": "uncertain.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": true,
+      "content": "independent-approved-after-crash"
+    }
+  }
+]

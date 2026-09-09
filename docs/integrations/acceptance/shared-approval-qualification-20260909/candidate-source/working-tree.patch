@@ -1,0 +1,2220 @@
+diff --git a/crates/core/chio-core-types/src/_generated/chio_wire_v1.rs b/crates/core/chio-core-types/src/_generated/chio_wire_v1.rs
+index bea82fbda4..f4237cf99d 100644
+--- a/crates/core/chio-core-types/src/_generated/chio_wire_v1.rs
++++ b/crates/core/chio-core-types/src/_generated/chio_wire_v1.rs
+@@ -1587,6 +1587,38 @@ pub mod agent_tool_call_request {
+     ///              ],
+     ///              "properties": {
+     ///                "kind": {
++    ///                  "const": "bound_tool_invocation"
++    ///                },
++    ///                "value": {
++    ///                  "type": "object",
++    ///                  "required": [
++    ///                    "capability_id",
++    ///                    "parameters_hash"
++    ///                  ],
++    ///                  "properties": {
++    ///                    "capability_id": {
++    ///                      "type": "string",
++    ///                      "minLength": 1
++    ///                    },
++    ///                    "parameters_hash": {
++    ///                      "description": "SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).",
++    ///                      "type": "string",
++    ///                      "pattern": "^0x[0-9a-f]{64}$"
++    ///                    }
++    ///                  },
++    ///                  "additionalProperties": false
++    ///                }
++    ///              },
++    ///              "additionalProperties": false
++    ///            },
++    ///            {
++    ///              "type": "object",
++    ///              "required": [
++    ///                "kind",
++    ///                "value"
++    ///              ],
++    ///              "properties": {
++    ///                "kind": {
+     ///                  "const": "active_response_plan"
+     ///                },
+     ///                "value": {
+@@ -5111,6 +5143,38 @@ pub mod agent_tool_call_request {
+     ///          ],
+     ///          "properties": {
+     ///            "kind": {
++    ///              "const": "bound_tool_invocation"
++    ///            },
++    ///            "value": {
++    ///              "type": "object",
++    ///              "required": [
++    ///                "capability_id",
++    ///                "parameters_hash"
++    ///              ],
++    ///              "properties": {
++    ///                "capability_id": {
++    ///                  "type": "string",
++    ///                  "minLength": 1
++    ///                },
++    ///                "parameters_hash": {
++    ///                  "description": "SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).",
++    ///                  "type": "string",
++    ///                  "pattern": "^0x[0-9a-f]{64}$"
++    ///                }
++    ///              },
++    ///              "additionalProperties": false
++    ///            }
++    ///          },
++    ///          "additionalProperties": false
++    ///        },
++    ///        {
++    ///          "type": "object",
++    ///          "required": [
++    ///            "kind",
++    ///            "value"
++    ///          ],
++    ///          "properties": {
++    ///            "kind": {
+     ///              "const": "active_response_plan"
+     ///            },
+     ///            "value": {
+@@ -5300,6 +5364,38 @@ pub mod agent_tool_call_request {
+     ///      ],
+     ///      "properties": {
+     ///        "kind": {
++    ///          "const": "bound_tool_invocation"
++    ///        },
++    ///        "value": {
++    ///          "type": "object",
++    ///          "required": [
++    ///            "capability_id",
++    ///            "parameters_hash"
++    ///          ],
++    ///          "properties": {
++    ///            "capability_id": {
++    ///              "type": "string",
++    ///              "minLength": 1
++    ///            },
++    ///            "parameters_hash": {
++    ///              "description": "SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).",
++    ///              "type": "string",
++    ///              "pattern": "^0x[0-9a-f]{64}$"
++    ///            }
++    ///          },
++    ///          "additionalProperties": false
++    ///        }
++    ///      },
++    ///      "additionalProperties": false
++    ///    },
++    ///    {
++    ///      "type": "object",
++    ///      "required": [
++    ///        "kind",
++    ///        "value"
++    ///      ],
++    ///      "properties": {
++    ///        "kind": {
+     ///          "const": "active_response_plan"
+     ///        },
+     ///        "value": {
+@@ -5389,6 +5485,12 @@ pub mod agent_tool_call_request {
+     pub enum ChioGovernedTransactionIntentBody {
+         #[serde(rename = "tool_invocation")]
+         ToolInvocation,
++        #[serde(rename = "bound_tool_invocation")]
++        BoundToolInvocation {
++            capability_id: ChioGovernedTransactionIntentBodyBoundToolInvocationCapabilityId,
++            ///SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).
++            parameters_hash: ChioGovernedTransactionIntentBodyBoundToolInvocationParametersHash,
++        },
+         #[serde(rename = "active_response_plan")]
+         ActiveResponsePlan {
+             canonical_plan_body: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+@@ -5411,6 +5513,185 @@ pub mod agent_tool_call_request {
+             value.clone()
+         }
+     }
++    ///`ChioGovernedTransactionIntentBodyBoundToolInvocationCapabilityId`
++    ///
++    /// <details><summary>JSON schema</summary>
++    ///
++    /// ```json
++    ///{
++    ///  "type": "string",
++    ///  "minLength": 1
++    ///}
++    /// ```
++    /// </details>
++    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
++    #[serde(transparent)]
++    pub struct ChioGovernedTransactionIntentBodyBoundToolInvocationCapabilityId(
++        ::std::string::String,
++    );
++    impl ::std::ops::Deref for ChioGovernedTransactionIntentBodyBoundToolInvocationCapabilityId {
++        type Target = ::std::string::String;
++        fn deref(&self) -> &::std::string::String {
++            &self.0
++        }
++    }
++    impl ::std::convert::From<ChioGovernedTransactionIntentBodyBoundToolInvocationCapabilityId>
++        for ::std::string::String
++    {
++        fn from(value: ChioGovernedTransactionIntentBodyBoundToolInvocationCapabilityId) -> Self {
++            value.0
++        }
++    }
++    impl ::std::convert::From<&ChioGovernedTransactionIntentBodyBoundToolInvocationCapabilityId>
++        for ChioGovernedTransactionIntentBodyBoundToolInvocationCapabilityId
++    {
++        fn from(value: &ChioGovernedTransactionIntentBodyBoundToolInvocationCapabilityId) -> Self {
++            value.clone()
++        }
++    }
++    impl ::std::str::FromStr for ChioGovernedTransactionIntentBodyBoundToolInvocationCapabilityId {
++        type Err = self::error::ConversionError;
++        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
++            if value.chars().count() < 1usize {
++                return Err("shorter than 1 characters".into());
++            }
++            Ok(Self(value.to_string()))
++        }
++    }
++    impl ::std::convert::TryFrom<&str>
++        for ChioGovernedTransactionIntentBodyBoundToolInvocationCapabilityId
++    {
++        type Error = self::error::ConversionError;
++        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
++            value.parse()
++        }
++    }
++    impl ::std::convert::TryFrom<&::std::string::String>
++        for ChioGovernedTransactionIntentBodyBoundToolInvocationCapabilityId
++    {
++        type Error = self::error::ConversionError;
++        fn try_from(
++            value: &::std::string::String,
++        ) -> ::std::result::Result<Self, self::error::ConversionError> {
++            value.parse()
++        }
++    }
++    impl ::std::convert::TryFrom<::std::string::String>
++        for ChioGovernedTransactionIntentBodyBoundToolInvocationCapabilityId
++    {
++        type Error = self::error::ConversionError;
++        fn try_from(
++            value: ::std::string::String,
++        ) -> ::std::result::Result<Self, self::error::ConversionError> {
++            value.parse()
++        }
++    }
++    impl<'de> ::serde::Deserialize<'de>
++        for ChioGovernedTransactionIntentBodyBoundToolInvocationCapabilityId
++    {
++        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
++        where
++            D: ::serde::Deserializer<'de>,
++        {
++            ::std::string::String::deserialize(deserializer)?
++                .parse()
++                .map_err(|e: self::error::ConversionError| {
++                    <D::Error as ::serde::de::Error>::custom(e.to_string())
++                })
++        }
++    }
++    ///SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).
++    ///
++    /// <details><summary>JSON schema</summary>
++    ///
++    /// ```json
++    ///{
++    ///  "description": "SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).",
++    ///  "type": "string",
++    ///  "pattern": "^0x[0-9a-f]{64}$"
++    ///}
++    /// ```
++    /// </details>
++    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
++    #[serde(transparent)]
++    pub struct ChioGovernedTransactionIntentBodyBoundToolInvocationParametersHash(
++        ::std::string::String,
++    );
++    impl ::std::ops::Deref for ChioGovernedTransactionIntentBodyBoundToolInvocationParametersHash {
++        type Target = ::std::string::String;
++        fn deref(&self) -> &::std::string::String {
++            &self.0
++        }
++    }
++    impl ::std::convert::From<ChioGovernedTransactionIntentBodyBoundToolInvocationParametersHash>
++        for ::std::string::String
++    {
++        fn from(value: ChioGovernedTransactionIntentBodyBoundToolInvocationParametersHash) -> Self {
++            value.0
++        }
++    }
++    impl ::std::convert::From<&ChioGovernedTransactionIntentBodyBoundToolInvocationParametersHash>
++        for ChioGovernedTransactionIntentBodyBoundToolInvocationParametersHash
++    {
++        fn from(
++            value: &ChioGovernedTransactionIntentBodyBoundToolInvocationParametersHash,
++        ) -> Self {
++            value.clone()
++        }
++    }
++    impl ::std::str::FromStr for ChioGovernedTransactionIntentBodyBoundToolInvocationParametersHash {
++        type Err = self::error::ConversionError;
++        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
++            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
++                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^0x[0-9a-f]{64}$").unwrap());
++            if PATTERN.find(value).is_none() {
++                return Err("doesn't match pattern \"^0x[0-9a-f]{64}$\"".into());
++            }
++            Ok(Self(value.to_string()))
++        }
++    }
++    impl ::std::convert::TryFrom<&str>
++        for ChioGovernedTransactionIntentBodyBoundToolInvocationParametersHash
++    {
++        type Error = self::error::ConversionError;
++        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
++            value.parse()
++        }
++    }
++    impl ::std::convert::TryFrom<&::std::string::String>
++        for ChioGovernedTransactionIntentBodyBoundToolInvocationParametersHash
++    {
++        type Error = self::error::ConversionError;
++        fn try_from(
++            value: &::std::string::String,
++        ) -> ::std::result::Result<Self, self::error::ConversionError> {
++            value.parse()
++        }
++    }
++    impl ::std::convert::TryFrom<::std::string::String>
++        for ChioGovernedTransactionIntentBodyBoundToolInvocationParametersHash
++    {
++        type Error = self::error::ConversionError;
++        fn try_from(
++            value: ::std::string::String,
++        ) -> ::std::result::Result<Self, self::error::ConversionError> {
++            value.parse()
++        }
++    }
++    impl<'de> ::serde::Deserialize<'de>
++        for ChioGovernedTransactionIntentBodyBoundToolInvocationParametersHash
++    {
++        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
++        where
++            D: ::serde::Deserializer<'de>,
++        {
++            ::std::string::String::deserialize(deserializer)?
++                .parse()
++                .map_err(|e: self::error::ConversionError| {
++                    <D::Error as ::serde::de::Error>::custom(e.to_string())
++                })
++        }
++    }
+     ///`ChioGovernedTransactionIntentId`
+     ///
+     /// <details><summary>JSON schema</summary>
+diff --git a/crates/core/chio-core-types/src/capability/governance.rs b/crates/core/chio-core-types/src/capability/governance.rs
+index 5a3d0a0eed..5b7da5fecc 100644
+--- a/crates/core/chio-core-types/src/capability/governance.rs
++++ b/crates/core/chio-core-types/src/capability/governance.rs
+@@ -10,6 +10,7 @@ use crate::crypto::{
+     Signature, SigningAlgorithm, SigningBackend,
+ };
+ use crate::error::{Error, Result};
++use crate::hashing::Hash;
+ use crate::schema_binding::ensure_schema_matches;
+ use crate::session::SessionAnchorReference;
+ use crate::signer_binding::{
+@@ -856,6 +857,12 @@ impl GovernedResponsePlanIntentBody {
+ pub enum GovernedTransactionIntentBody {
+     #[default]
+     ToolInvocation,
++    /// Tool invocation bound to one capability and SHA-256 of its RFC 8785 arguments.
++    /// Approval cannot transfer to a different capability or parameter payload.
++    BoundToolInvocation {
++        capability_id: String,
++        parameters_hash: Hash,
++    },
+     ActiveResponsePlan(Box<GovernedResponsePlanIntentBody>),
+ }
+ 
+@@ -918,7 +925,8 @@ impl GovernedTransactionIntent {
+     #[must_use]
+     pub const fn governed_operation_expires_at(&self) -> Option<u64> {
+         match &self.body {
+-            GovernedTransactionIntentBody::ToolInvocation => None,
++            GovernedTransactionIntentBody::ToolInvocation
++            | GovernedTransactionIntentBody::BoundToolInvocation { .. } => None,
+             GovernedTransactionIntentBody::ActiveResponsePlan(plan) => Some(plan.expires_at),
+         }
+     }
+diff --git a/crates/core/chio-core-types/src/capability/tests.rs b/crates/core/chio-core-types/src/capability/tests.rs
+index c6c554a983..40fde1ad0c 100644
+--- a/crates/core/chio-core-types/src/capability/tests.rs
++++ b/crates/core/chio-core-types/src/capability/tests.rs
+@@ -1,5 +1,6 @@
+ use alloc::collections::BTreeMap;
+ 
++use crate::canonical::canonical_json_bytes;
+ use crate::crypto::{Keypair, PublicKey, SigningBackend};
+ use crate::error::{Error, Result};
+ use crate::runtime_attestation::AttestationVerifierFamily;
+@@ -973,6 +974,62 @@ fn governed_transaction_intent_binding_hash_changes_with_payload() {
+     );
+ }
+ 
++#[test]
++fn bound_tool_invocation_intent_hash_commits_canonical_parameters() {
++    let arguments = serde_json::json!({"path": "/workspace/approved.txt", "content": "ok"});
++    let parameters_hash = crate::hashing::sha256(&canonical_json_bytes(&arguments).unwrap());
++    let mut wire = serde_json::json!({
++        "id": "bound-intent-1",
++        "server_id": "files",
++        "tool_name": "write_file",
++        "purpose": "write the reviewed file",
++        "body": {
++            "kind": "bound_tool_invocation",
++            "value": {"capability_id": "cap-reviewed-1", "parameters_hash": parameters_hash}
++        }
++    });
++    let intent: GovernedTransactionIntent = serde_json::from_value(wire.clone()).unwrap();
++    assert_eq!(
++        intent.body,
++        GovernedTransactionIntentBody::BoundToolInvocation {
++            capability_id: "cap-reviewed-1".to_string(),
++            parameters_hash,
++        }
++    );
++    assert_eq!(intent.governed_operation_expires_at(), None);
++    assert_eq!(serde_json::to_value(&intent).unwrap(), wire);
++
++    wire["body"]["value"]["capability_id"] = serde_json::json!("cap-reviewed-2");
++    let changed_capability: GovernedTransactionIntent =
++        serde_json::from_value(wire.clone()).unwrap();
++    assert_ne!(
++        intent.binding_hash().unwrap(),
++        changed_capability.binding_hash().unwrap()
++    );
++    wire["body"]["value"]
++        .as_object_mut()
++        .unwrap()
++        .remove("capability_id");
++    assert!(serde_json::from_value::<GovernedTransactionIntent>(wire.clone()).is_err());
++    wire["body"]["value"]["capability_id"] = serde_json::json!("cap-reviewed-1");
++
++    wire["body"]["value"]["parameters_hash"] =
++        serde_json::to_value(crate::hashing::sha256(b"different parameters")).unwrap();
++    let changed: GovernedTransactionIntent = serde_json::from_value(wire.clone()).unwrap();
++    assert_ne!(
++        intent.binding_hash().unwrap(),
++        changed.binding_hash().unwrap()
++    );
++
++    wire["body"]["value"]["parameters_hash"] = serde_json::json!("0x1234");
++    assert!(serde_json::from_value::<GovernedTransactionIntent>(wire.clone()).is_err());
++
++    wire.as_object_mut().unwrap().remove("body");
++    let legacy: GovernedTransactionIntent = serde_json::from_value(wire.clone()).unwrap();
++    assert_eq!(legacy.body, GovernedTransactionIntentBody::ToolInvocation);
++    assert_eq!(serde_json::to_value(legacy).unwrap(), wire);
++}
++
+ #[test]
+ fn active_response_intent_checks_plan_body_hash_and_effect_order() {
+     let executor = Keypair::generate();
+diff --git a/crates/kernel/chio-kernel/src/kernel/governed_validation.rs b/crates/kernel/chio-kernel/src/kernel/governed_validation.rs
+index 81a3b09bb3..8a43c91504 100644
+--- a/crates/kernel/chio-kernel/src/kernel/governed_validation.rs
++++ b/crates/kernel/chio-kernel/src/kernel/governed_validation.rs
+@@ -15,6 +15,39 @@ mod verified_outcome;
+ use verified_outcome::validate_verified_outcome_request;
+ 
+ impl ChioKernel {
++    fn validate_bound_tool_invocation(
++        request: &ToolCallRequest,
++        cap: &CapabilityToken,
++    ) -> Result<(), KernelError> {
++        use chio_core::capability::governance::GovernedTransactionIntentBody;
++
++        let Some(GovernedTransactionIntentBody::BoundToolInvocation {
++            capability_id,
++            parameters_hash,
++        }) = request.governed_intent.as_ref().map(|intent| &intent.body)
++        else {
++            return Ok(());
++        };
++        if capability_id.is_empty() || capability_id != &cap.id {
++            return Err(KernelError::GovernedTransactionDenied(
++                "bound tool invocation capability does not match the authorizing capability"
++                    .to_string(),
++            ));
++        }
++        let canonical_arguments = canonical_json_bytes(&request.arguments).map_err(|error| {
++            KernelError::GovernedTransactionDenied(format!(
++                "bound tool invocation arguments are not canonicalizable: {error}"
++            ))
++        })?;
++        if chio_core::sha256(&canonical_arguments) != *parameters_hash {
++            return Err(KernelError::GovernedTransactionDenied(
++                "bound tool invocation parameter hash does not match the tool call arguments"
++                    .to_string(),
++            ));
++        }
++        Ok(())
++    }
++
+     pub(crate) fn threshold_approval_requirement(
+         &self,
+         request: &ToolCallRequest,
+@@ -353,6 +386,7 @@ impl ChioKernel {
+         approval_token: &GovernedApprovalToken,
+         now: u64,
+     ) -> Result<(), KernelError> {
++        Self::validate_bound_tool_invocation(request, cap)?;
+         approval_token
+             .validate_time(now)
+             .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+@@ -489,6 +523,7 @@ impl ChioKernel {
+     ) -> Result<VerifiedThresholdApprovalSet, KernelError> {
+         use std::collections::HashSet;
+ 
++        Self::validate_bound_tool_invocation(request, cap)?;
+         const MAX_APPROVAL_TOKENS: usize =
+             chio_core::capability::threshold_approval::MAX_THRESHOLD_APPROVAL_TOKENS;
+         if request.approval_tokens.is_empty() || request.approval_tokens.len() > MAX_APPROVAL_TOKENS
+@@ -1321,6 +1356,7 @@ impl ChioKernel {
+         grant: &ToolGrant,
+         context: GovernedValidationContext<'_>,
+     ) -> Result<Option<ValidatedGovernedAdmission>, KernelError> {
++        Self::validate_bound_tool_invocation(request, cap)?;
+         let GovernedValidationContext {
+             parent_context,
+             now,
+diff --git a/crates/kernel/chio-kernel/src/kernel/tests/approval_flow.rs b/crates/kernel/chio-kernel/src/kernel/tests/approval_flow.rs
+index 4f20d2d97f..620b40ecaa 100644
+--- a/crates/kernel/chio-kernel/src/kernel/tests/approval_flow.rs
++++ b/crates/kernel/chio-kernel/src/kernel/tests/approval_flow.rs
+@@ -204,6 +204,209 @@ fn hitl_sign_token(
+     GovernedApprovalToken::sign(body, approver).unwrap()
+ }
+ 
++fn bound_tool_invocation_fixture() -> (ChioKernel, ToolGrant, ToolCallRequest, u64) {
++    let config = make_config();
++    let approver = config.keypair.clone();
++    let kernel = make_kernel(config);
++    let subject = CoreKeypair::generate();
++    let mut grant = make_grant("srv-a", "read_file");
++    grant
++        .constraints
++        .push(Constraint::RequireApprovalAbove { threshold_units: 0 });
++    let capability = make_capability(&kernel, &subject, make_scope(vec![grant.clone()]), 300);
++    let mut request = make_request_with_arguments(
++        "bound-request-1",
++        &capability,
++        "read_file",
++        "srv-a",
++        serde_json::json!({"path": "/workspace/approved.txt", "options": {"limit": 10}}),
++    );
++    let mut intent = make_governed_intent(
++        "bound-intent-1",
++        "srv-a",
++        "read_file",
++        "read the approved file",
++        0,
++        "USD",
++    );
++    intent.body = GovernedTransactionIntentBody::BoundToolInvocation {
++        capability_id: capability.id.clone(),
++        parameters_hash: chio_core::sha256(&canonical_json_bytes(&request.arguments).unwrap()),
++    };
++    request.approval_token = Some(make_governed_approval_token(
++        &approver,
++        &capability.subject,
++        &intent,
++        &request.request_id,
++    ));
++    request.governed_intent = Some(intent);
++    (kernel, grant, request, current_unix_timestamp())
++}
++
++#[test]
++fn bound_tool_invocation_accepts_approved_canonical_arguments() {
++    let (kernel, grant, mut request, now) = bound_tool_invocation_fixture();
++    // Object member order does not change the RFC 8785 parameter binding.
++    request.arguments =
++        serde_json::from_str(r#"{"options":{"limit":10},"path":"/workspace/approved.txt"}"#)
++            .unwrap();
++    let result = kernel
++        .validate_governed_transaction_pure(
++            &request,
++            &request.capability,
++            &grant,
++            GovernedValidationContext {
++                parent_context: None,
++                now,
++            },
++        )
++        .unwrap();
++    assert!(result.is_some());
++    assert!(kernel
++        .validate_governed_approval_for_dispatch_non_consuming(&request, &request.capability, now,)
++        .unwrap()
++        .is_some());
++}
++
++#[test]
++fn bound_tool_invocation_denies_parameter_mutation_with_valid_approval() {
++    let (kernel, grant, original, now) = bound_tool_invocation_fixture();
++    for arguments in [
++        serde_json::json!({"path": "/workspace/forbidden.txt", "options": {"limit": 10}}),
++        serde_json::json!({"path": "/workspace/approved.txt", "options": {"limit": 100}}),
++        serde_json::json!({"path": "/workspace/approved.txt", "options": {"limit": 10}, "write": true}),
++        serde_json::json!({"path": "/workspace/approved.txt", "options": {"limit": "10"}}),
++        serde_json::json!({"path": "/workspace/approved.txt"}),
++    ] {
++        let mut request = original.clone();
++        request.arguments = arguments;
++        let error = kernel
++            .validate_governed_transaction_pure(
++                &request,
++                &request.capability,
++                &grant,
++                GovernedValidationContext {
++                    parent_context: None,
++                    now,
++                },
++            )
++            .unwrap_err();
++        assert!(
++            error.to_string().contains("parameter hash does not match"),
++            "{error}"
++        );
++
++        let direct_error = kernel
++            .validate_governed_approval_for_dispatch_non_consuming(
++                &request,
++                &request.capability,
++                now,
++            )
++            .unwrap_err();
++        assert!(
++            direct_error
++                .to_string()
++                .contains("parameter hash does not match"),
++            "{direct_error}"
++        );
++    }
++}
++
++#[test]
++fn bound_tool_invocation_denies_capability_transfer_for_same_subject() {
++    let (kernel, grant, mut request, now) = bound_tool_invocation_fixture();
++    let alternate = kernel
++        .issue_capability(
++            &request.capability.subject,
++            make_scope(vec![grant.clone()]),
++            300,
++        )
++        .unwrap();
++    assert_ne!(alternate.id, request.capability.id);
++    assert_eq!(alternate.subject, request.capability.subject);
++    request.capability = alternate;
++
++    let error = kernel
++        .validate_governed_transaction_pure(
++            &request,
++            &request.capability,
++            &grant,
++            GovernedValidationContext {
++                parent_context: None,
++                now,
++            },
++        )
++        .unwrap_err();
++    assert!(
++        error.to_string().contains("capability does not match"),
++        "{error}"
++    );
++
++    let direct_error = kernel
++        .validate_governed_approval_for_dispatch_non_consuming(&request, &request.capability, now)
++        .unwrap_err();
++    assert!(
++        direct_error
++            .to_string()
++            .contains("capability does not match"),
++        "{direct_error}"
++    );
++
++    let intent_hash = request
++        .governed_intent
++        .as_ref()
++        .unwrap()
++        .binding_hash()
++        .unwrap();
++    let threshold_error = kernel
++        .validate_threshold_approval_set(&request, &request.capability, &intent_hash, now)
++        .unwrap_err();
++    assert!(
++        threshold_error
++            .to_string()
++            .contains("capability does not match"),
++        "{threshold_error}"
++    );
++}
++
++#[test]
++fn bound_tool_invocation_rejects_mutation_before_approval_checks() {
++    let (kernel, grant, mut request, now) = bound_tool_invocation_fixture();
++    request.arguments = serde_json::json!({"path": "/workspace/forbidden.txt"});
++    request.approval_token = None;
++    let error = kernel
++        .validate_governed_transaction_pure(
++            &request,
++            &request.capability,
++            &grant,
++            GovernedValidationContext {
++                parent_context: None,
++                now,
++            },
++        )
++        .unwrap_err();
++    assert!(
++        error.to_string().contains("parameter hash does not match"),
++        "{error}"
++    );
++
++    let intent_hash = request
++        .governed_intent
++        .as_ref()
++        .unwrap()
++        .binding_hash()
++        .unwrap();
++    let threshold_error = kernel
++        .validate_threshold_approval_set(&request, &request.capability, &intent_hash, now)
++        .unwrap_err();
++    assert!(
++        threshold_error
++            .to_string()
++            .contains("parameter hash does not match"),
++        "{threshold_error}"
++    );
++}
++
+ #[test]
+ fn threshold_approval_set_is_policy_bound_and_order_independent() {
+     let policy_hash = sha256_hex(b"threshold-policy");
+diff --git a/crates/protocol/chio-mcp-remote/README.md b/crates/protocol/chio-mcp-remote/README.md
+index cfd7d5a723..0fab7572f3 100644
+--- a/crates/protocol/chio-mcp-remote/README.md
++++ b/crates/protocol/chio-mcp-remote/README.md
+@@ -39,7 +39,8 @@ admin API.
+   integrity-tagged restore path, so a restart can resume in-flight sessions
+   without re-authenticating.
+ - Serve `/admin/*` operator routes (health, authority rotation, receipts,
+-  revocations, budgets, session trust/drain/shutdown, Prometheus metrics)
++  revocations, budgets, session trust/drain/shutdown, exact-call approval
++  records and decisions, Prometheus metrics)
+   behind a constant-time bearer check.
+ - Publish OAuth protected-resource and authorization-server discovery
+   metadata carrying Chio's governed-authorization profile.
+@@ -60,6 +61,14 @@ admin API.
+ 
+ ## Testing
+ 
++Hosted operator approval uses `POST /admin/approvals`,
++`GET /admin/approvals/{id}`, and `POST /admin/approvals/{id}/decision`.
++It requires durable admission/session state and a distinct operator credential.
++These routes never dispatch a tool; approved artifacts enter the ordinary
++kernel `tools/call` path with a capability and canonical-argument binding.
++See the [operator procedure](../../../integrations/required-agents/qualification/APPROVALS.md)
++and real resource qualification runner for recovery and outcome semantics.
++
+ `cargo test -p chio-mcp-remote`
+ 
+ `chio-conformance`'s `ssrf_oidc_jwks_loopback` integration test calls
+diff --git a/crates/protocol/chio-mcp-remote/src/lib.rs b/crates/protocol/chio-mcp-remote/src/lib.rs
+index 3f24f09848..0d88fab398 100644
+--- a/crates/protocol/chio-mcp-remote/src/lib.rs
++++ b/crates/protocol/chio-mcp-remote/src/lib.rs
+@@ -5,6 +5,8 @@ pub use chio_control_plane::{CliError, JwtProviderProfile};
+ 
+ #[path = "remote_mcp/admin.rs"]
+ mod remote_mcp_admin;
++#[path = "remote_mcp/approvals.rs"]
++mod remote_mcp_approvals;
+ #[path = "remote_mcp/session_store.rs"]
+ mod remote_mcp_session_store;
+ 
+diff --git a/crates/protocol/chio-mcp-remote/src/remote_mcp/admin.rs b/crates/protocol/chio-mcp-remote/src/remote_mcp/admin.rs
+index 2211e3b2d0..5d039090d8 100644
+--- a/crates/protocol/chio-mcp-remote/src/remote_mcp/admin.rs
++++ b/crates/protocol/chio-mcp-remote/src/remote_mcp/admin.rs
+@@ -21,6 +21,15 @@ pub(super) fn install_admin_routes(router: Router<RemoteAppState>) -> Router<Rem
+             get(handle_admin_session_trust).post(handle_admin_revoke_session_trust),
+         )
+         .route(ADMIN_SESSIONS_PATH, get(handle_admin_sessions))
++        .route("/admin/approvals", post(super::remote_mcp_approvals::submit))
++        .route(
++            "/admin/approvals/{id}",
++            get(super::remote_mcp_approvals::get_record),
++        )
++        .route(
++            "/admin/approvals/{id}/decision",
++            post(super::remote_mcp_approvals::decide),
++        )
+         .route("/admin/metrics", get(handle_admin_metrics))
+         .route(ADMIN_SESSION_DRAIN_PATH, post(handle_admin_session_drain))
+         .route(
+@@ -729,7 +738,10 @@ async fn handle_admin_metrics(State(state): State<RemoteAppState>, request: Requ
+         .into_response()
+ }
+ 
+-fn validate_admin_request(headers: &HeaderMap, admin_token: Option<&str>) -> Result<(), Response> {
++pub(super) fn validate_admin_request(
++    headers: &HeaderMap,
++    admin_token: Option<&str>,
++) -> Result<(), Response> {
+     validate_origin(headers)?;
+     validate_admin_auth(headers, admin_token)
+ }
+diff --git a/integrations/required-agents/qualification/README.md b/integrations/required-agents/qualification/README.md
+index a0d98f08af..83fcd0d924 100644
+--- a/integrations/required-agents/qualification/README.md
++++ b/integrations/required-agents/qualification/README.md
+@@ -47,6 +47,14 @@ Cases:
+   without required approval intent, and rejection of a malformed approval
+   token, with no resulting files. Real pending/rejected/approved operator
+   workflows remain unresolved by this case.
++- `approval-workflow`: durable operator pending/reject/approve, wrong admin
++  credential rejection, exact arguments, immutable decisions, expiration,
++  record integrity, revoked capability, useful approved execution, and signed
++  outcome replay after restart. See [APPROVALS.md](APPROVALS.md).
++- `approved-unknown-after-dispatch`: a legitimately approved resource effect
++  occurs before the kernel receives its result; restart and retry with the
++  original approved request preserve the effect's unknown outcome and the
++  independent sentinel.
+ - `grant-budget`: one wildcard grant's two-invocation quota spans different
+   tools, remains exhausted after restart, and explicitly demonstrates that
+   fresh session issuance grants a new quota.
+@@ -66,8 +74,8 @@ invent resource success or a kernel verdict.
+ `passed` means the bounded assertions named above passed. All I01-I08 cases
+ must still run independently through every required host. These cases do not
+ prove signed receipt verification by an installed host plugin, operating
+-system isolation of a host, kernel-process tamper prevention, application
+-approvals, or publication of compatible artifacts.
++system isolation of a host, kernel-process tamper prevention, approvals through
++an actual agent host, or publication of compatible artifacts.
+ 
+ The selected CLI creates a new capability for each newly admitted session.
+ `max_invocations` is keyed by capability ID and grant index. Multiple explicit
+diff --git a/integrations/required-agents/qualification/shared_kernel.py b/integrations/required-agents/qualification/shared_kernel.py
+index 5513752698..727ca8e928 100644
+--- a/integrations/required-agents/qualification/shared_kernel.py
++++ b/integrations/required-agents/qualification/shared_kernel.py
+@@ -10,6 +10,7 @@ from pathlib import Path
+ import secrets
+ import signal
+ import socket
++import sqlite3
+ import subprocess
+ import sys
+ import threading
+@@ -343,6 +344,90 @@ def approval_case(runtime):
+     runtime.evidence.append({"unresolved": "No real pending/rejected/approved operator workflow is exercised. This case proves only missing and malformed approval artifacts cannot authorize writes."})
+ 
+ 
++def approval_workflow_case(runtime):
++    runtime.start()
++    runtime.initialize()
++    trust = runtime.http(f"/admin/sessions/{runtime.session}/trust", token=runtime.admin_token)[2]
++    capability_id = trust["capabilities"][0]["capabilityId"]
++
++    def submit(name, ttl=300):
++        payload = {"session_id": runtime.session, "capability_id": capability_id,
++                   "request_id": "approval-" + name, "tool_name": "write_file",
++                   "arguments": {"path": "/workspace/" + name + ".txt", "content": "approved-" + name},
++                   "purpose": "Disposable exact-argument approval qualification", "ttl_seconds": ttl}
++        assert runtime.http("/admin/approvals", payload)[0] == 401
++        status, _, body = runtime.http("/admin/approvals", payload, token=runtime.admin_token)
++        assert status == 201 and body["status"] == "pending", body
++        assert "toolCallParams" not in body
++        assert runtime.observe(name + ".txt")["exists"] is False
++        return body
++
++    def decide(record, decision):
++        return runtime.http("/admin/approvals/" + record["record"]["id"] + "/decision",
++                            {"decision": decision}, token=runtime.admin_token)
++
++    pending = submit("pending")
++    runtime.stop()
++    runtime.start()
++    retained = runtime.http("/admin/approvals/" + pending["record"]["id"], token=runtime.admin_token)[2]
++    assert retained == pending, retained
++    assert runtime.observe("pending.txt")["exists"] is False
++    rejected = decide(pending, "denied")
++    assert rejected[0] == 200 and rejected[2]["status"] == "denied", rejected
++    assert decide(pending, "approved")[0] == 409
++    blocked = runtime.rpc("tools/call", rejected[2]["toolCallParams"])[2]
++    assert blocked.get("error") or blocked.get("result", {}).get("isError"), blocked
++    assert runtime.observe("pending.txt")["exists"] is False
++
++    tamper = submit("tamper")
++    approved_tamper = decide(tamper, "approved")[2]
++    changed = json.loads(json.dumps(approved_tamper["toolCallParams"]))
++    changed["arguments"]["path"] = "/workspace/substituted.txt"
++    blocked = runtime.rpc("tools/call", changed)[2]
++    assert blocked.get("error") or blocked.get("result", {}).get("isError"), blocked
++    assert runtime.observe("substituted.txt")["exists"] is False
++    assert runtime.observe("tamper.txt")["exists"] is False
++
++    valid = submit("valid")
++    approved = decide(valid, "approved")
++    assert approved[0] == 200 and approved[2]["status"] == "approved", approved
++    assert decide(valid, "approved")[2] == approved[2]
++    assert decide(valid, "denied")[0] == 409
++    assert runtime.observe("valid.txt")["exists"] is False
++    result = runtime.rpc("tools/call", approved[2]["toolCallParams"])[2]
++    assert outcome(result).get("outputKind") == "value", result
++    assert runtime.observe("valid.txt")["content"] == "approved-valid"
++    runtime.observe("valid.txt", "independent-after-approved")
++    runtime.stop()
++    runtime.start()
++    retained = runtime.http("/admin/approvals/" + valid["record"]["id"], token=runtime.admin_token)[2]
++    assert retained == approved[2], retained
++    replay = runtime.rpc("tools/call", approved[2]["toolCallParams"])[2]
++    assert outcome(replay).get("receipt", {}).get("id") == outcome(result)["receipt"]["id"], replay
++    assert runtime.observe("valid.txt")["content"] == "independent-after-approved"
++
++    expired = submit("expired", ttl=2)
++    time.sleep(3)
++    assert decide(expired, "approved")[0] == 409
++    assert runtime.observe("expired.txt")["exists"] is False
++    integrity = submit("integrity")
++    with sqlite3.connect(runtime.state / "sessions.db") as database:
++        row = database.execute("SELECT signed_record FROM remote_operator_approvals WHERE id = ?",
++                               (integrity["record"]["id"],)).fetchone()
++        damaged = json.loads(row[0])
++        damaged["record"]["arguments"]["content"] = "unapproved-state-tampering"
++        database.execute("UPDATE remote_operator_approvals SET signed_record = ? WHERE id = ?",
++                         (json.dumps(damaged), integrity["record"]["id"]))
++    assert decide(integrity, "approved")[0] == 409
++    assert runtime.observe("integrity.txt")["exists"] is False
++    revoked = submit("revoked")
++    approved_revoked = decide(revoked, "approved")[2]
++    assert runtime.http("/admin/revocations", {"capability_id": capability_id}, token=runtime.admin_token)[0] == 200
++    blocked = runtime.rpc("tools/call", approved_revoked["toolCallParams"])[2]
++    assert blocked.get("error") or blocked.get("result", {}).get("isError"), blocked
++    assert runtime.observe("revoked.txt")["exists"] is False
++
++
+ def cancellation_case(runtime):
+     runtime.start()
+     runtime.initialize()
+@@ -376,6 +461,42 @@ def cancellation_case(runtime):
+     assert runtime.observe("uncertain.txt")["content"] == "independent-after-cancel"
+ 
+ 
++def approved_unknown_case(runtime):
++    runtime.start()
++    runtime.initialize()
++    trust = runtime.http(f"/admin/sessions/{runtime.session}/trust", token=runtime.admin_token)[2]
++    proposal = {"session_id": runtime.session, "capability_id": trust["capabilities"][0]["capabilityId"],
++                "request_id": "approved-uncertain", "tool_name": "write_file",
++                "arguments": {"path": "/workspace/uncertain.txt", "content": "approved-before-crash"},
++                "purpose": "Hold a real approved resource reply before kernel completion", "ttl_seconds": 300}
++    created = runtime.http("/admin/approvals", proposal, token=runtime.admin_token)
++    assert created[0] == 201, created
++    approved = runtime.http("/admin/approvals/" + created[2]["record"]["id"] + "/decision",
++                            {"decision": "approved"}, token=runtime.admin_token)
++    assert approved[0] == 200, approved
++    parameters = approved[2]["toolCallParams"]
++    with concurrent.futures.ThreadPoolExecutor() as executor:
++        pending = executor.submit(runtime.rpc, "tools/call", parameters)
++        marker = runtime.directory / "resource-replied.json"
++        deadline = time.monotonic() + 20
++        while not marker.exists() and time.monotonic() < deadline:
++            time.sleep(0.05)
++        assert marker.exists(), "approved resource did not reach reply barrier"
++        assert runtime.observe("uncertain.txt")["content"] == "approved-before-crash"
++        runtime.stop(kill=True)
++        try:
++            runtime.evidence.append({"lostApprovedResponse": pending.result(timeout=10)})
++        except Exception as error:
++            runtime.evidence.append({"lostApprovedResponseError": type(error).__name__})
++    runtime.observe("uncertain.txt", "independent-approved-after-crash")
++    (runtime.directory / "release").touch()
++    runtime.start()
++    retry = runtime.rpc("tools/call", parameters)[2]
++    assert retry.get("error") or retry.get("result", {}).get("isError"), retry
++    assert outcome(retry).get("outputKind") != "value", retry
++    assert runtime.observe("uncertain.txt")["content"] == "independent-approved-after-crash"
++
++
+ def budget_case(runtime):
+     runtime.start()
+     original_context = runtime.initialize()
+@@ -442,6 +563,8 @@ def main():
+              ("unknown-after-dispatch", unknown_case, {"barrier": True}),
+              ("cancellation-after-dispatch", cancellation_case, {"barrier": True}),
+              ("approval-artifact-rejection", approval_case, {"policy": APPROVAL_POLICY}),
++             ("approval-workflow", approval_workflow_case, {"policy": APPROVAL_POLICY}),
++             ("approved-unknown-after-dispatch", approved_unknown_case, {"policy": APPROVAL_POLICY, "barrier": True}),
+              ("grant-budget", budget_case, {"policy": BUDGET_POLICY}),
+              ("parallel-grant-budget", parallel_budget_case, {"policy": BUDGET_POLICY})]
+     selected = set(args.cases.split(",")) if args.cases else {case[0] for case in cases}
+diff --git a/sdks/go/chio-go-http/types.go b/sdks/go/chio-go-http/types.go
+index 23084e3d24..c5ff7f5687 100644
+--- a/sdks/go/chio-go-http/types.go
++++ b/sdks/go/chio-go-http/types.go
+@@ -2,7 +2,7 @@
+ // or 'cargo xtask codegen --lang go'.
+ //
+ // Source: spec/schemas/chio-wire/v1/**/*.schema.json
+-// Schema content SHA-256: 5a3ab3398e7601fe616aecfd864031942ece8e8ac2fcf18721c6dcc6a33d0457
++// Schema content SHA-256: 9719463e95ea8b94c483f47e905d048a7c53c7229f5d20271d451a7c9c10eb6a
+ // Tool:   oapi-codegen v2.4.1 (see xtask/codegen-tools.lock.toml)
+ //
+ // The Schema content SHA-256 is computed from the lex-sorted schema bytes
+@@ -47,6 +47,11 @@ const (
+ 	AgentGovernedTransactionIntentBody1KindActiveResponsePlan AgentGovernedTransactionIntentBody1Kind = "active_response_plan"
+ )
+ 
++// Defines values for AgentGovernedTransactionIntentBody2Kind.
++const (
++	AgentGovernedTransactionIntentBody2KindBoundToolInvocation AgentGovernedTransactionIntentBody2Kind = "bound_tool_invocation"
++)
++
+ // Defines values for AgentHeartbeatType.
+ const (
+ 	AgentHeartbeatTypeHeartbeat AgentHeartbeatType = "heartbeat"
+@@ -839,6 +844,20 @@ type AgentGovernedTransactionIntentBody1 struct {
+ // AgentGovernedTransactionIntentBody1Kind defines model for AgentGovernedTransactionIntent.Body.1.Kind.
+ type AgentGovernedTransactionIntentBody1Kind string
+ 
++// AgentGovernedTransactionIntentBody2 defines model for .
++type AgentGovernedTransactionIntentBody2 struct {
++	Kind  AgentGovernedTransactionIntentBody2Kind `json:"kind"`
++	Value struct {
++		CapabilityId string `json:"capability_id"`
++
++		// ParametersHash SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).
++		ParametersHash string `json:"parameters_hash"`
++	} `json:"value"`
++}
++
++// AgentGovernedTransactionIntentBody2Kind defines model for AgentGovernedTransactionIntent.Body.2.Kind.
++type AgentGovernedTransactionIntentBody2Kind string
++
+ // AgentGovernedTransactionIntent_Body defines model for AgentGovernedTransactionIntent.Body.
+ type AgentGovernedTransactionIntent_Body struct {
+ 	union json.RawMessage
+@@ -2901,6 +2920,32 @@ func (t *AgentGovernedTransactionIntent_Body) MergeAgentGovernedTransactionInten
+ 	return err
+ }
+ 
++// AsAgentGovernedTransactionIntentBody2 returns the union data inside the AgentGovernedTransactionIntent_Body as a AgentGovernedTransactionIntentBody2
++func (t AgentGovernedTransactionIntent_Body) AsAgentGovernedTransactionIntentBody2() (AgentGovernedTransactionIntentBody2, error) {
++	var body AgentGovernedTransactionIntentBody2
++	err := json.Unmarshal(t.union, &body)
++	return body, err
++}
++
++// FromAgentGovernedTransactionIntentBody2 overwrites any union data inside the AgentGovernedTransactionIntent_Body as the provided AgentGovernedTransactionIntentBody2
++func (t *AgentGovernedTransactionIntent_Body) FromAgentGovernedTransactionIntentBody2(v AgentGovernedTransactionIntentBody2) error {
++	b, err := json.Marshal(v)
++	t.union = b
++	return err
++}
++
++// MergeAgentGovernedTransactionIntentBody2 performs a merge with any union data inside the AgentGovernedTransactionIntent_Body, using the provided AgentGovernedTransactionIntentBody2
++func (t *AgentGovernedTransactionIntent_Body) MergeAgentGovernedTransactionIntentBody2(v AgentGovernedTransactionIntentBody2) error {
++	b, err := json.Marshal(v)
++	if err != nil {
++		return err
++	}
++
++	merged, err := runtime.JSONMerge(t.union, b)
++	t.union = merged
++	return err
++}
++
+ func (t AgentGovernedTransactionIntent_Body) MarshalJSON() ([]byte, error) {
+ 	b, err := t.union.MarshalJSON()
+ 	return b, err
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/__init__.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/__init__.py
+index 01b6bb6b9e..e988284925 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/__init__.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/__init__.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+@@ -29,11 +29,11 @@ from pydantic_core import core_schema
+ #: SHA-256 of the lexicographically sorted concatenation of every
+ #: ``spec/schemas/chio-wire/v1/**/*.schema.json`` byte stream that was
+ #: fed into datamodel-code-generator at build time.
+-SCHEMA_SHA256 = "8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c"
++SCHEMA_SHA256 = "4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e"
+ 
+-from .agent import Body as AgentBody, Body3, ChioAgentmessageHeartbeat, ChioAgentmessageListCapabilities, ChioAgentmessageToolCallRequest, ChioGovernedActiveResponseIntentBody, ChioGovernedTransactionIntent, MaxAmount, OrderedEffect
++from .agent import Body as AgentBody, Body3, Body4, ChioAgentmessageHeartbeat, ChioAgentmessageListCapabilities, ChioAgentmessageToolCallRequest, ChioGovernedActiveResponseIntentBody, ChioGovernedTransactionIntent, MaxAmount, OrderedEffect, Value as AgentValue
+ from .anchor import Body as AnchorBody, CheckpointId, ChioAnchorBatchV1, Inclusion, Kind as AnchorKind, Witness, WitnessReceipt, WitnessState, WitnessState1, WitnessState2, WitnessState3
+-from .capability import AggregateRootPublicKey, AggregateRootSignature, AggregateRootSigningAlgorithm, Algorithm as CapabilityAlgorithm, Attenuation, AttenuationProof, AttenuationWitness, Body as CapabilityBody, Caveat, ChioAggregateBudgetRootBinding, ChioAggregateInvocationBudget, ChioAggregateInvocationBudget1, ChioAggregateInvocationBudget2, ChioCapabilityGrant, ChioCapabilityNegotiationV1, ChioCapabilityRevocationEntry, ChioCapabilitytoken, ChioCumulativeApprovalRootBinding, ChioGovernedApprovalToken, ChioOpaqueSupplementalAuthorization, ChioScope, ChioThresholdApprovalProposal, ChioVerifiedApprovalSetBody, Constraint, CumulativeApprovalDelegableConstraint, CumulativeApprovalDirectConstraint, CumulativeRootMonetaryAmount, CumulativeRootPublicKey, CumulativeRootSignature, CumulativeRootSigningAlgorithm, Decision as CapabilityDecision, DelegationLink, GenericConstraint, GovernedApprovalPublicKey, GovernedApprovalSignature, GrantKind, GrantSubsetRelation, Kind as CapabilityKind, LegacyApprovalConstraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ScopeAttenuation, Subset, ThresholdProposalPublicKey, ThresholdProposalSignature, TokenDigest, ToolGrant, Value, Value1, Value2
++from .capability import AggregateRootPublicKey, AggregateRootSignature, AggregateRootSigningAlgorithm, Algorithm as CapabilityAlgorithm, Attenuation, AttenuationProof, AttenuationWitness, Body as CapabilityBody, Caveat, ChioAggregateBudgetRootBinding, ChioAggregateInvocationBudget, ChioAggregateInvocationBudget1, ChioAggregateInvocationBudget2, ChioCapabilityGrant, ChioCapabilityNegotiationV1, ChioCapabilityRevocationEntry, ChioCapabilitytoken, ChioCumulativeApprovalRootBinding, ChioGovernedApprovalToken, ChioOpaqueSupplementalAuthorization, ChioScope, ChioThresholdApprovalProposal, ChioVerifiedApprovalSetBody, Constraint, CumulativeApprovalDelegableConstraint, CumulativeApprovalDirectConstraint, CumulativeRootMonetaryAmount, CumulativeRootPublicKey, CumulativeRootSignature, CumulativeRootSigningAlgorithm, Decision as CapabilityDecision, DelegationLink, GenericConstraint, GovernedApprovalPublicKey, GovernedApprovalSignature, GrantKind, GrantSubsetRelation, Kind as CapabilityKind, LegacyApprovalConstraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ScopeAttenuation, Subset, ThresholdProposalPublicKey, ThresholdProposalSignature, TokenDigest, ToolGrant, Value as CapabilityValue, Value2, Value3
+ from .error import ChioToolcallerrorCapabilityDenied, ChioToolcallerrorCapabilityExpired, ChioToolcallerrorCapabilityRevoked, ChioToolcallerrorInternalError, ChioToolcallerrorPolicyDenied, ChioToolcallerrorToolServerError, Detail as ErrorDetail
+ from .federation import CapabilityLeaseRef, ChioBilateralDsseSignatureSliceEnvelope, ChioBilateralDsseSignatureSliceStatement, CoSign, CrossOrgVisibility, Digest as FederationDigest, GovernanceReceiptRef, HashRecord, JointDisposition, KernelIdentity, PolicyEvaluationSummary, PolicyVerdict, Predicate, Signature, SubjectItem, Verdict as FederationVerdict
+ from .jsonrpc import ChioJsonRpc20Notification, ChioJsonRpc20Request, ChioJsonRpc20Response, ChioJsonRpc20Response1, ChioJsonRpc20Response2, Error as JsonrpcError
+@@ -53,6 +53,7 @@ CapabilityResourceGrant = ResourceGrant
+ __all__ = [
+     "ActorRef",
+     "AgentBody",
++    "AgentValue",
+     "AggregateRootPublicKey",
+     "AggregateRootSignature",
+     "AggregateRootSigningAlgorithm",
+@@ -63,6 +64,7 @@ __all__ = [
+     "AttenuationWitness",
+     "BbsReceiptSignature",
+     "Body3",
++    "Body4",
+     "BoundTo",
+     "BoundaryClass",
+     "BudgetSnapshotAnchorProvenance",
+@@ -76,6 +78,7 @@ __all__ = [
+     "CapabilityPromptGrant",
+     "CapabilityResourceGrant",
+     "CapabilityToken",
++    "CapabilityValue",
+     "Caveat",
+     "CheckpointId",
+     "ChioAgentmessageHeartbeat",
+@@ -254,9 +257,8 @@ __all__ = [
+     "TrustControlTier",
+     "TrustControlWorkloadIdentity",
+     "TrustLevel",
+-    "Value",
+-    "Value1",
+     "Value2",
++    "Value3",
+     "Witness",
+     "WitnessReceipt",
+     "WitnessState",
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/__init__.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/__init__.py
+index 577631d5c8..999ab1fd59 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/__init__.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/__init__.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+@@ -11,7 +11,7 @@
+ from __future__ import annotations
+ 
+ from .active_response_governed_intent_schema import ChioGovernedActiveResponseIntentBody, OrderedEffect
+-from .governed_transaction_intent_schema import Body, Body3, ChioGovernedTransactionIntent, MaxAmount
++from .governed_transaction_intent_schema import Body, Body3, Body4, ChioGovernedTransactionIntent, MaxAmount, Value
+ from .heartbeat_schema import ChioAgentmessageHeartbeat
+ from .list_capabilities_schema import ChioAgentmessageListCapabilities
+ from .tool_call_request_schema import ChioAgentmessageToolCallRequest
+@@ -19,6 +19,7 @@ from .tool_call_request_schema import ChioAgentmessageToolCallRequest
+ __all__ = [
+     "Body",
+     "Body3",
++    "Body4",
+     "ChioAgentmessageHeartbeat",
+     "ChioAgentmessageListCapabilities",
+     "ChioAgentmessageToolCallRequest",
+@@ -26,4 +27,5 @@ __all__ = [
+     "ChioGovernedTransactionIntent",
+     "MaxAmount",
+     "OrderedEffect",
++    "Value",
+ ]
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/active_response_governed_intent_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/active_response_governed_intent_schema.py
+index 8c38246984..5886574289 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/active_response_governed_intent_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/active_response_governed_intent_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/governed_transaction_intent_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/governed_transaction_intent_schema.py
+index d0458347cd..f859dc60bd 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/governed_transaction_intent_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/governed_transaction_intent_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+@@ -13,7 +13,7 @@ from __future__ import annotations
+ 
+ from typing import Any, Literal
+ 
+-from pydantic import BaseModel, ConfigDict, conint, constr
++from pydantic import BaseModel, ConfigDict, Field, conint, constr
+ 
+ from . import active_response_governed_intent_schema
+ 
+@@ -41,6 +41,25 @@ class Body3(BaseModel):
+     value: active_response_governed_intent_schema.ChioGovernedActiveResponseIntentBody
+ 
+ 
++class Value(BaseModel):
++    model_config = ConfigDict(
++        extra="forbid",
++    )
++    capability_id: constr(min_length=1)
++    parameters_hash: constr(pattern=r"^0x[0-9a-f]{64}$") = Field(
++        ...,
++        description="SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).",
++    )
++
++
++class Body4(BaseModel):
++    model_config = ConfigDict(
++        extra="forbid",
++    )
++    kind: Literal["bound_tool_invocation"]
++    value: Value = Field(..., title="Chio Bound Tool Invocation Binding")
++
++
+ class ChioGovernedTransactionIntent(BaseModel):
+     model_config = ConfigDict(
+         extra="forbid",
+@@ -56,4 +75,4 @@ class ChioGovernedTransactionIntent(BaseModel):
+     call_chain: dict[str, Any] | None = None
+     autonomy: dict[str, Any] | None = None
+     context: Any | None = None
+-    body: Body | Body3 | None = None
++    body: Body | Body3 | Body4 | None = None
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/heartbeat_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/heartbeat_schema.py
+index 20bdbc8bff..4cfe2ddaaa 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/heartbeat_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/heartbeat_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/list_capabilities_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/list_capabilities_schema.py
+index 2d5bfb56ec..8ef405a944 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/list_capabilities_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/list_capabilities_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/tool_call_request_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/tool_call_request_schema.py
+index 260c1c5032..4d5a2dbb70 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/tool_call_request_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/agent/tool_call_request_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/anchor/__init__.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/anchor/__init__.py
+index 6bdb02d30f..2fe0ed88a4 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/anchor/__init__.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/anchor/__init__.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/anchor/batch_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/anchor/batch_schema.py
+index 0765781aa9..1d6b3b99a8 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/anchor/batch_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/anchor/batch_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/__init__.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/__init__.py
+index 0d8fcf80e0..85c09e86f4 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/__init__.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/__init__.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+@@ -19,7 +19,7 @@ from .grant_schema import ChioCapabilityGrant, Constraint, MonetaryAmount, Opera
+ from .revocation_schema import ChioCapabilityRevocationEntry
+ from .supplemental_authorization_schema import ChioOpaqueSupplementalAuthorization
+ from .threshold_approval_proposal_schema import Algorithm, ChioThresholdApprovalProposal, ThresholdProposalPublicKey, ThresholdProposalSignature
+-from .token_schema import Algorithm, Attenuation, AttenuationProof, AttenuationWitness, Caveat, ChioCapabilitytoken, ChioScope, Constraint, CumulativeApprovalDelegableConstraint, CumulativeApprovalDirectConstraint, DelegationLink, GenericConstraint, GrantKind, GrantSubsetRelation, Kind, LegacyApprovalConstraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ScopeAttenuation, Subset, ToolGrant, Value, Value1, Value2
++from .token_schema import Algorithm, Attenuation, AttenuationProof, AttenuationWitness, Caveat, ChioCapabilitytoken, ChioScope, Constraint, CumulativeApprovalDelegableConstraint, CumulativeApprovalDirectConstraint, DelegationLink, GenericConstraint, GrantKind, GrantSubsetRelation, Kind, LegacyApprovalConstraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ScopeAttenuation, Subset, ToolGrant, Value, Value2, Value3
+ from .verified_approval_set_schema import ChioVerifiedApprovalSetBody, TokenDigest
+ 
+ __all__ = [
+@@ -73,6 +73,6 @@ __all__ = [
+     "TokenDigest",
+     "ToolGrant",
+     "Value",
+-    "Value1",
+     "Value2",
++    "Value3",
+ ]
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/aggregate_budget_root_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/aggregate_budget_root_schema.py
+index df29f5d7cd..0bb0089638 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/aggregate_budget_root_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/aggregate_budget_root_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/aggregate_invocation_budget_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/aggregate_invocation_budget_schema.py
+index 02aff35c1b..c1335f26c5 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/aggregate_invocation_budget_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/aggregate_invocation_budget_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/capabilities_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/capabilities_schema.py
+index 2fdf4ca6bf..63cedc54aa 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/capabilities_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/capabilities_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/cumulative_approval_root_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/cumulative_approval_root_schema.py
+index fec8f0a40d..3c4e5d8136 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/cumulative_approval_root_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/cumulative_approval_root_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/governed_approval_token_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/governed_approval_token_schema.py
+index 7027ee7de6..9976732e46 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/governed_approval_token_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/governed_approval_token_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/grant_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/grant_schema.py
+index dc5450274e..881e6a8fc7 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/grant_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/grant_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/revocation_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/revocation_schema.py
+index 44b4b067a2..a30e535f34 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/revocation_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/revocation_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/supplemental_authorization_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/supplemental_authorization_schema.py
+index b551bbf0df..5d4a6a5966 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/supplemental_authorization_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/supplemental_authorization_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/threshold_approval_proposal_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/threshold_approval_proposal_schema.py
+index 0683d8e555..48437e4f12 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/threshold_approval_proposal_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/threshold_approval_proposal_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/token_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/token_schema.py
+index 67e2e22f2b..441380d49c 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/token_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/token_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+@@ -81,7 +81,7 @@ class LegacyApprovalConstraint(BaseModel):
+     value: Value
+ 
+ 
+-class Value1(BaseModel):
++class Value2(BaseModel):
+     model_config = ConfigDict(
+         extra="forbid",
+     )
+@@ -96,7 +96,7 @@ class CumulativeApprovalDirectConstraint(BaseModel):
+         extra="forbid",
+     )
+     type: Literal["require_cumulative_approval_above"]
+-    value: Value1
++    value: Value2
+ 
+ 
+ class Kind(Enum):
+@@ -198,7 +198,7 @@ class PromptGrant(BaseModel):
+     operations: list[Operation] = Field(..., min_length=1)
+ 
+ 
+-class Value2(BaseModel):
++class Value3(BaseModel):
+     model_config = ConfigDict(
+         extra="forbid",
+     )
+@@ -215,7 +215,7 @@ class CumulativeApprovalDelegableConstraint(BaseModel):
+         extra="forbid",
+     )
+     type: Literal["require_cumulative_approval_above"]
+-    value: Value2
++    value: Value3
+ 
+ 
+ class AttenuationWitness(BaseModel):
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/verified_approval_set_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/verified_approval_set_schema.py
+index ed42b4c423..f9321d3d13 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/verified_approval_set_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/capability/verified_approval_set_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/__init__.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/__init__.py
+index 62c87c70f1..6c91645617 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/__init__.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/__init__.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/capability_denied_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/capability_denied_schema.py
+index 2dc8940196..d2d89905f3 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/capability_denied_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/capability_denied_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/capability_expired_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/capability_expired_schema.py
+index cea762356d..d5856a9b02 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/capability_expired_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/capability_expired_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/capability_revoked_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/capability_revoked_schema.py
+index dc3e782e2e..8a3a655848 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/capability_revoked_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/capability_revoked_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/internal_error_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/internal_error_schema.py
+index c1c8c0ecaa..35a55f21ee 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/internal_error_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/internal_error_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/policy_denied_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/policy_denied_schema.py
+index ac8af08a4c..d4bdb19119 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/policy_denied_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/policy_denied_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/tool_server_error_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/tool_server_error_schema.py
+index 0ad57764ec..231c7e15c4 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/tool_server_error_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/error/tool_server_error_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/federation/__init__.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/federation/__init__.py
+index 9f392ca7cd..9abf25f4bf 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/federation/__init__.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/federation/__init__.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/federation/bilateral_signature_slice_envelope_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/federation/bilateral_signature_slice_envelope_schema.py
+index 79708c2a25..7ccecc11f9 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/federation/bilateral_signature_slice_envelope_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/federation/bilateral_signature_slice_envelope_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/federation/bilateral_signature_slice_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/federation/bilateral_signature_slice_schema.py
+index dc1dedcbe8..0a87dcc5ad 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/federation/bilateral_signature_slice_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/federation/bilateral_signature_slice_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/__init__.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/__init__.py
+index 64c00ed536..add1fb0ca0 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/__init__.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/__init__.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/notification_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/notification_schema.py
+index 4cc6dbba22..607f9b91b4 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/notification_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/notification_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/request_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/request_schema.py
+index 96d1698e74..4decf9ebba 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/request_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/request_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/response_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/response_schema.py
+index 310c0bde0f..92ca8a5fef 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/response_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/jsonrpc/response_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/__init__.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/__init__.py
+index 5d5b9e8116..3dea90f010 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/__init__.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/__init__.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/capability_list_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/capability_list_schema.py
+index 1312a51df6..cdc7efe64d 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/capability_list_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/capability_list_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/capability_revoked_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/capability_revoked_schema.py
+index 85c3a03bdb..23d7d97845 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/capability_revoked_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/capability_revoked_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/combined_capture_metadata_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/combined_capture_metadata_schema.py
+index 7d7e3d9a87..17cbd61b6b 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/combined_capture_metadata_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/combined_capture_metadata_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/execution_nonce_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/execution_nonce_schema.py
+index 93f3541586..886ea3c808 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/execution_nonce_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/execution_nonce_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/heartbeat_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/heartbeat_schema.py
+index 3eb50905f6..6d00caa779 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/heartbeat_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/heartbeat_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/tool_call_chunk_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/tool_call_chunk_schema.py
+index e9576fe602..aafc126c69 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/tool_call_chunk_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/tool_call_chunk_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/tool_call_response_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/tool_call_response_schema.py
+index 95e6d7ff52..6baf4f4f22 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/tool_call_response_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/kernel/tool_call_response_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/__init__.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/__init__.py
+index 6ce979d2ec..2cf22f597b 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/__init__.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/__init__.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/attestation_bundle_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/attestation_bundle_schema.py
+index 9c55e27100..21c493c3bc 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/attestation_bundle_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/attestation_bundle_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/context_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/context_schema.py
+index a11b483d03..eda7c1e376 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/context_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/context_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/stamp_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/stamp_schema.py
+index 8392734788..c575c6f336 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/stamp_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/stamp_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/verdict_link_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/verdict_link_schema.py
+index eac5563b7f..66bc4d46c3 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/verdict_link_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/provenance/verdict_link_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/__init__.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/__init__.py
+index 078b71ef15..4302b98ea1 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/__init__.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/__init__.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/admission_metadata_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/admission_metadata_schema.py
+index e687a0e575..8542dbcc32 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/admission_metadata_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/admission_metadata_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/delivery_contract_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/delivery_contract_schema.py
+index c42b31e6bc..64363fd778 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/delivery_contract_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/delivery_contract_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/finding_delivery_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/finding_delivery_schema.py
+index d0b24ca641..ecd223e552 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/finding_delivery_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/finding_delivery_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/inclusion_proof_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/inclusion_proof_schema.py
+index f7455fac0e..1f6800d2ad 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/inclusion_proof_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/inclusion_proof_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/lineage_statement_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/lineage_statement_schema.py
+index ac4b950b95..1b92c77d67 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/lineage_statement_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/lineage_statement_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/record_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/record_schema.py
+index 83aa6ae549..6e2c2afcad 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/record_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/receipt/record_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/__init__.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/__init__.py
+index 2e80b31167..c8753e4875 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/__init__.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/__init__.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/cancelled_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/cancelled_schema.py
+index 613e56a05d..cff476a069 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/cancelled_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/cancelled_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/err_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/err_schema.py
+index d9e1c1043e..4d0553a8ad 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/err_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/err_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/incomplete_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/incomplete_schema.py
+index 54ea490210..01953d7f96 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/incomplete_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/incomplete_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/ok_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/ok_schema.py
+index 8306f57129..e950b536e1 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/ok_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/ok_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/stream_complete_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/stream_complete_schema.py
+index 1ad0cfcc1d..d2a5dca839 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/stream_complete_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/result/stream_complete_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/__init__.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/__init__.py
+index 3fa0402b22..a0823d0102 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/__init__.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/__init__.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/attestation_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/attestation_schema.py
+index 2c3c8ec44c..9b57ad2a23 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/attestation_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/attestation_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/budget_snapshot_anchor_provenance_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/budget_snapshot_anchor_provenance_schema.py
+index c4d7d04c2c..616d0e9f82 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/budget_snapshot_anchor_provenance_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/budget_snapshot_anchor_provenance_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/heartbeat_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/heartbeat_schema.py
+index 0bc1088e04..37d08d7ee2 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/heartbeat_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/heartbeat_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/lease_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/lease_schema.py
+index c5cc4a997b..088fabdc2a 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/lease_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/lease_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/terminate_schema.py b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/terminate_schema.py
+index 127714b6d4..45e860fc36 100644
+--- a/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/terminate_schema.py
++++ b/sdks/python/chio-sdk-python/src/chio_sdk/_generated/trust_control/terminate_schema.py
+@@ -2,7 +2,7 @@
+ #
+ # Source: spec/schemas/chio-wire/v1/**/*.schema.json
+ # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
+-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
++# Schema sha256: 4c4b91131a3287ff3c94ddaa73fe02f90ebb88295308b2edb4314ef55122472e
+ #
+ # Manual edits will be overwritten by the next regeneration; the
+ # spec-drift CI lane enforces this header on every file
+diff --git a/sdks/typescript/packages/conformance/src/_generated/index.ts b/sdks/typescript/packages/conformance/src/_generated/index.ts
+index 1eade218ec..a9f82fe14f 100644
+--- a/sdks/typescript/packages/conformance/src/_generated/index.ts
++++ b/sdks/typescript/packages/conformance/src/_generated/index.ts
+@@ -3,7 +3,7 @@
+ // Source:     spec/schemas/chio-wire/v1/**/*.schema.json
+ // Tool:       json-schema-to-typescript 15.0.4 (see xtask/codegen-tools.lock.toml)
+ // Pin file:   sdks/typescript/scripts/package.json
+-// Schema SHA: 6792ebebdd0e9ef44b32a6418d2e5595ae3592b8cc5b8624919ab5219112f7f5
++// Schema SHA: 10651af9525eb5441afbd40d74d64bda9f587d2b4b0e40158bc605f922f160d5
+ //
+ // The schema-sha above is sha256 of `<rel-path>\0<bytes>\0` for every
+ // schema in lex order. It changes whenever any schema under
+@@ -63,7 +63,8 @@ export namespace Agent_GovernedTransactionIntent {
+       | {
+           kind: "active_response_plan";
+           value: ChioGovernedActiveResponseIntentBody;
+-        };
++        }
++      | ChioBoundToolInvocation;
+   }
+   export interface ChioGovernedActiveResponseIntentBody {
+     plan_schema: "chio.governed-response-plan.v1";
+@@ -86,6 +87,17 @@ export namespace Agent_GovernedTransactionIntent {
+     expires_at: number;
+     rollback_binding: {};
+   }
++  export interface ChioBoundToolInvocation {
++    kind: "bound_tool_invocation";
++    value: ChioBoundToolInvocationBinding;
++  }
++  export interface ChioBoundToolInvocationBinding {
++    capability_id: string;
++    /**
++     * SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).
++     */
++    parameters_hash: string;
++  }
+ }
+ 
+ // -----------------------------------------------------------------------------
+@@ -360,7 +372,8 @@ export namespace Agent_ToolCallRequest {
+       | {
+           kind: "active_response_plan";
+           value: ChioGovernedActiveResponseIntentBody;
+-        };
++        }
++      | ChioBoundToolInvocation;
+   }
+   export interface ChioGovernedActiveResponseIntentBody {
+     plan_schema: "chio.governed-response-plan.v1";
+@@ -383,6 +396,17 @@ export namespace Agent_ToolCallRequest {
+     expires_at: number;
+     rollback_binding: {};
+   }
++  export interface ChioBoundToolInvocation {
++    kind: "bound_tool_invocation";
++    value: ChioBoundToolInvocationBinding;
++  }
++  export interface ChioBoundToolInvocationBinding {
++    capability_id: string;
++    /**
++     * SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix).
++     */
++    parameters_hash: string;
++  }
+   export interface ChioGovernedApprovalToken {
+     id: string;
+     approver: string;
+diff --git a/spec/PROTOCOL.md b/spec/PROTOCOL.md
+index cd3ca9f282..766acfd869 100644
+--- a/spec/PROTOCOL.md
++++ b/spec/PROTOCOL.md
+@@ -706,6 +706,25 @@ Approval tokens are verified against trusted authority keys and are bound to:
+ - the canonical hash of the attached governed intent
+ - approval-token `issued_at` and `expires_at` time bounds
+ 
++For approval of exact tool arguments, the governed intent carries
++`body { kind: "bound_tool_invocation", value: { capability_id, parameters_hash } }`.
++Both value fields are mandatory. `capability_id` is the nonempty ID of the
++authorizing capability. `parameters_hash` is SHA-256 of the RFC 8785 canonical
++JSON tool arguments, encoded as a 32-byte `Hash` (lowercase hexadecimal with a
++`0x` prefix). The kernel MUST compare both bindings against the current
++capability and arguments before validating approval artifacts or dispatching
++the tool. A mismatch MUST deny the call, including when another capability
++has the same subject. The signed intent hash commits both bindings. This body
++does not itself require approval; the matched grant's approval constraints
++still determine whether approval is required.
++
++An omitted body retains the existing `tool_invocation` behavior. Hosts
++claiming approval of exact arguments MUST use `bound_tool_invocation` and MUST
++reject unsupported receivers instead of downgrading to `tool_invocation` or
++moving the binding into advisory context. Session ownership remains the
++responsibility of the authenticated host coordinator; this intent body does
++not claim a kernel session binding.
++
+ Chio's normative provenance model now distinguishes three evidence classes:
+ 
+ - `asserted`: caller-supplied context that Chio preserves but has not
+diff --git a/spec/schemas/chio-wire/v1/agent/governed-transaction-intent.schema.json b/spec/schemas/chio-wire/v1/agent/governed-transaction-intent.schema.json
+index 2518368475..0799b5be48 100644
+--- a/spec/schemas/chio-wire/v1/agent/governed-transaction-intent.schema.json
++++ b/spec/schemas/chio-wire/v1/agent/governed-transaction-intent.schema.json
+@@ -41,6 +41,29 @@
+             "kind": { "const": "active_response_plan" },
+             "value": { "$ref": "active-response-governed-intent.schema.json" }
+           }
++        },
++        {
++          "title": "Chio Bound Tool Invocation",
++          "type": "object",
++          "additionalProperties": false,
++          "required": ["kind", "value"],
++          "properties": {
++            "kind": { "const": "bound_tool_invocation" },
++            "value": {
++              "title": "Chio Bound Tool Invocation Binding",
++              "type": "object",
++              "additionalProperties": false,
++              "required": ["capability_id", "parameters_hash"],
++              "properties": {
++                "capability_id": { "type": "string", "minLength": 1 },
++                "parameters_hash": {
++                  "type": "string",
++                  "pattern": "^0x[0-9a-f]{64}$",
++                  "description": "SHA-256 of RFC 8785 canonical tool arguments, serialized as the canonical chio-core-types Hash (32 bytes, lowercase hex with 0x prefix)."
++                }
++              }
++            }
++          }
+         }
+       ]
+     }

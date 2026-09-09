@@ -1,0 +1,8 @@
+hushspec: "0.1.0"
+name: qualification-approval
+rules:
+  tool_access:
+    enabled: true
+    default: block
+    allow: [read_text_file, write_file]
+    require_confirmation: [write_file]

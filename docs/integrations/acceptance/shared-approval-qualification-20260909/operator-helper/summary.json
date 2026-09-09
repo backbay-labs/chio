@@ -1,0 +1,19 @@
+{
+  "status": "passed",
+  "helperSha256": "53c2f473b620b7d847d31da2a927202e6476aee6c1b940b7bfaf02728f46abf8",
+  "binarySha256": "82e70065d44ce8e09ea1d9c891568eb41bcac6a45ec8d19c0a3480339505cb48",
+  "submitStdout": {
+    "output": "/tmp/chio-approval-helper-20260909-r1/resource/private-state/pending.json",
+    "httpStatus": 201,
+    "status": "pending",
+    "approvalId": "approval-08877c285781afb72cd80b03ac85fe1c1f5a6e170ea4f70bdbe4ad2e96f4efc8"
+  },
+  "approveStdout": {
+    "output": "/tmp/chio-approval-helper-20260909-r1/resource/private-state/approved.json",
+    "httpStatus": 200,
+    "status": "approved",
+    "approvalId": "approval-08877c285781afb72cd80b03ac85fe1c1f5a6e170ea4f70bdbe4ad2e96f4efc8"
+  },
+  "artifactMode": "0o600",
+  "claim": "documented operator helper against real kernel and resource, not a host acceptance"
+}

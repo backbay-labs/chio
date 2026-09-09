@@ -1,0 +1,431 @@
+[
+  {
+    "runtime": {
+      "volume": "chio-qualification-fa926ff55446",
+      "policySha256": "85235c1c04ce31f2b756d4d0d315c627a12c29081356fdd9d83e3ab20de11fcc"
+    }
+  },
+  {
+    "path": "/admin/health",
+    "request": null,
+    "session": null,
+    "status": 200,
+    "response": {
+      "auth": {
+        "adminTokenConfigured": true,
+        "audienceConfigured": false,
+        "issuerConfigured": false,
+        "mode": "static_bearer",
+        "scopes": []
+      },
+      "authority": {
+        "appliesToFutureSessionsOnly": true,
+        "backend": "sqlite",
+        "configured": true,
+        "generation": 1,
+        "publicKey": "19a4051b10f3d051e1afd2512834893aa417f7ac7b00f93e29eaadb76e940e07",
+        "rotatedAt": 1788970872,
+        "trustedPublicKeys": [
+          "19a4051b10f3d051e1afd2512834893aa417f7ac7b00f93e29eaadb76e940e07"
+        ]
+      },
+      "controlPlane": {
+        "controlTokenConfigured": false,
+        "controlUrl": null,
+        "proxied": false
+      },
+      "federation": {
+        "enterpriseProviders": {
+          "configured": false,
+          "count": 0,
+          "invalidCount": 0,
+          "validatedCount": 0
+        },
+        "identityFederationConfigured": false
+      },
+      "oauth": {
+        "authorizationServerMetadata": false,
+        "localAuthorizationServer": false,
+        "protectedResourceMetadata": false
+      },
+      "ok": true,
+      "server": {
+        "serverId": "fs",
+        "serverName": "fs",
+        "serverVersion": "0.1.0",
+        "sharedHostedOwner": false,
+        "sharedHostedOwnerStats": null
+      },
+      "sessions": {
+        "activeCount": 0,
+        "drainGraceMillis": 5000,
+        "idleExpiryMillis": 900000,
+        "reaperIntervalMillis": 250,
+        "terminalCount": 0,
+        "tombstoneRetentionMillis": 1800000
+      },
+      "stores": {
+        "authorityDbConfigured": true,
+        "authoritySeedConfigured": false,
+        "budgetsConfigured": true,
+        "receiptsConfigured": true,
+        "revocationsConfigured": true,
+        "sessionTombstonesConfigured": true
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2025-11-25",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "shared-kernel-qualification",
+          "version": "1"
+        }
+      }
+    },
+    "session": null,
+    "status": 200,
+    "response": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilities": {
+          "experimental": {
+            "chioProtocol": {
+              "compatibility": "exact_match",
+              "downgradeBehavior": "reject",
+              "errorRegistry": {
+                "path": "spec/errors/chio-error-registry.v1.json",
+                "schema": "chio.error-registry.v1"
+              },
+              "requestIdentity": {
+                "requestBoundArtifactsRequireStableId": true,
+                "stableRequestIdMetaField": "chioRequestId"
+              },
+              "selectedProtocolVersion": "2025-11-25",
+              "supportedProtocolVersions": [
+                "2025-11-25"
+              ]
+            },
+            "chioToolStreaming": {
+              "toolCallChunkNotifications": true
+            },
+            "io.chio/execution-evidence": {
+              "contextMethod": "chio/execution-context",
+              "outputKinds": [
+                "value",
+                "none"
+              ],
+              "resultMetaField": "chioEvidence",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "version": "1"
+            }
+          },
+          "logging": {},
+          "tasks": {
+            "cancel": {},
+            "list": {},
+            "requests": {
+              "tools": {
+                "call": {}
+              }
+            }
+          },
+          "tools": {
+            "listChanged": true
+          }
+        },
+        "protocolVersion": "2025-11-25",
+        "serverInfo": {
+          "name": "Chio MCP Edge",
+          "version": "0.1.0"
+        }
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "notifications/initialized"
+    },
+    "session": "4bf2388bb1bf86a6cd835a44d967147695d59ccca9e5dd5493a0434d80dde697",
+    "status": 202,
+    "response": null
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "chio/execution-context",
+      "params": {}
+    },
+    "session": "4bf2388bb1bf86a6cd835a44d967147695d59ccca9e5dd5493a0434d80dde697",
+    "status": 200,
+    "response": {
+      "id": 2,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilityIds": [
+          "cap-01a086f9-32c0-7633-895b-95809b72a552"
+        ],
+        "evidenceVersion": "1",
+        "schema": "chio.mcp.execution-context.v1",
+        "subjectKey": "0b8f44639f45f229f5dce282017e02568e5a8ca74363e6ffda7a2971aebf6c81"
+      }
+    }
+  },
+  {
+    "path": "/admin/sessions/4bf2388bb1bf86a6cd835a44d967147695d59ccca9e5dd5493a0434d80dde697/trust",
+    "request": null,
+    "session": null,
+    "status": 200,
+    "response": {
+      "authContext": {
+        "method": {
+          "kind": "static_bearer",
+          "principal": "static-bearer:169ac2d3a523dd56",
+          "token_fingerprint": "169ac2d3a523dd569c27387f67a0d71f0771982128c144fb0859f1779e2c40c1"
+        },
+        "transport": "streamable_http"
+      },
+      "capabilities": [
+        {
+          "capabilityId": "cap-01a086f9-32c0-7633-895b-95809b72a552",
+          "issuerPublicKey": "19a4051b10f3d051e1afd2512834893aa417f7ac7b00f93e29eaadb76e940e07",
+          "revoked": false,
+          "subjectPublicKey": "0b8f44639f45f229f5dce282017e02568e5a8ca74363e6ffda7a2971aebf6c81"
+        }
+      ],
+      "lifecycle": {
+        "createdAt": 1788970873707,
+        "drainDeadlineAt": null,
+        "idleExpiresAt": 1788971773870,
+        "lastSeenAt": 1788970873870,
+        "protocolVersion": null,
+        "reconnect": {
+          "mode": "post-session-reuse-only",
+          "requiresAuthContinuity": true,
+          "resumable": true,
+          "terminalStates": [
+            "draining",
+            "deleted",
+            "expired",
+            "closed"
+          ]
+        },
+        "state": "ready"
+      },
+      "ownership": {
+        "hostedIdentityProfile": "strong_dedicated_session",
+        "hostedIsolation": "dedicated_per_session",
+        "notificationDelivery": "post_response_fallback",
+        "notificationStreamAttached": false,
+        "notificationStreamOwner": "session_notification_stream",
+        "requestOwnership": {
+          "resultStreamOwner": "request_stream",
+          "terminalStateOwner": "request",
+          "workOwner": "request"
+        },
+        "requestStreamActive": false,
+        "requestStreamOwner": "exclusive_request_stream"
+      },
+      "sessionId": "4bf2388bb1bf86a6cd835a44d967147695d59ccca9e5dd5493a0434d80dde697"
+    }
+  },
+  {
+    "observer": "helper.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": false
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "tools/call",
+      "params": {
+        "_meta": {
+          "chioApprovalToken": {
+            "approver": "52c4145833da5e4b4a6341ee98412a8594b71d42090805b1edf52fd9cd27659e",
+            "decision": "approved",
+            "expires_at": 1788971174,
+            "governed_intent_hash": "ae406b781677161617a0bab97080ea9bf44cc89b04ffd339457570b873615c45",
+            "id": "approval-08877c285781afb72cd80b03ac85fe1c1f5a6e170ea4f70bdbe4ad2e96f4efc8-decision",
+            "issued_at": 1788970874,
+            "request_id": "helper-approved-operation",
+            "signature": "de1dc381a5d1470962568d5ad35ff0c333bbebec404964aa2e47b1b3fe06d8fcac412d1e36d188a29dcd2aedd48c1943ab85527d08dfe0b7eb1c72a84d602a0c",
+            "subject": "0b8f44639f45f229f5dce282017e02568e5a8ca74363e6ffda7a2971aebf6c81"
+          },
+          "chioGovernedIntent": {
+            "body": {
+              "kind": "bound_tool_invocation",
+              "value": {
+                "capability_id": "cap-01a086f9-32c0-7633-895b-95809b72a552",
+                "parameters_hash": "0xab120dbc7d5966e085d5bab2f59bdb9a4ba1555683387114da17c5e25353a9bd"
+              }
+            },
+            "context": {
+              "capabilityId": "cap-01a086f9-32c0-7633-895b-95809b72a552",
+              "mcpSessionId": "4bf2388bb1bf86a6cd835a44d967147695d59ccca9e5dd5493a0434d80dde697",
+              "policyFingerprint": "9ae6d6efd8c154e3bd5f73b58233275edf19031b83f9cb110a58d9866b5d1ae9"
+            },
+            "id": "approval-08877c285781afb72cd80b03ac85fe1c1f5a6e170ea4f70bdbe4ad2e96f4efc8",
+            "purpose": "Qualify documented helper",
+            "server_id": "fs",
+            "tool_name": "write_file"
+          },
+          "chioRequestId": "helper-approved-operation"
+        },
+        "arguments": {
+          "content": "operator-helper-qualified",
+          "path": "/workspace/helper.txt"
+        },
+        "name": "write_file"
+      }
+    },
+    "session": "4bf2388bb1bf86a6cd835a44d967147695d59ccca9e5dd5493a0434d80dde697",
+    "status": 200,
+    "response": {
+      "id": 3,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": {
+              "content": [
+                {
+                  "text": "Successfully wrote to /workspace/helper.txt",
+                  "type": "text"
+                }
+              ],
+              "isError": false,
+              "structuredContent": {
+                "content": "Successfully wrote to /workspace/helper.txt"
+              }
+            },
+            "outputKind": "value",
+            "receipt": {
+              "action": {
+                "parameter_hash": "ab120dbc7d5966e085d5bab2f59bdb9a4ba1555683387114da17c5e25353a9bd",
+                "parameters": {
+                  "content": "operator-helper-qualified",
+                  "path": "/workspace/helper.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a086f9-32c0-7633-895b-95809b72a552",
+              "content_hash": "c5ff825451521ee0b226367293f3d0d539656abfd2a3a41763f93b7c3a01c6e3",
+              "decision": {
+                "verdict": "allow"
+              },
+              "id": "e884781dd6869568a22e2b91fe2714e38d5f39763d73163dd36eacb157f44c81",
+              "kernel_key": "52c4145833da5e4b4a6341ee98412a8594b71d42090805b1edf52fd9cd27659e",
+              "metadata": {
+                "admission_operation": {
+                  "compensation_status": "not_compensated",
+                  "coordinator_lease_epoch": 1,
+                  "coordinator_lease_id": "01a086f9-2ecc-73f2-81ef-31e8c76e491d",
+                  "operation_id": "701b05ca01b4565100a39475bfff4363c8087ff0eeccd6c4618c407721876d05",
+                  "projected_dispatch_state": "terminal",
+                  "projected_operation_version": 8,
+                  "projected_state": "completed",
+                  "request_binding_hash": "69b219b181e72ddd28fe9a30f4a379c670ef714d103df155c283f876d9772653",
+                  "request_id": "helper-approved-operation",
+                  "request_namespace_digest": "63964b9e2056b07f2857b59c6e9445e5955ea035eb6355d49a91781cf336d02e",
+                  "retained_dispatch_commit": {
+                    "committed_version": 6,
+                    "coordinator_lease_epoch": 1,
+                    "coordinator_lease_id": "01a086f9-2ecc-73f2-81ef-31e8c76e491d",
+                    "provider_attempt": {
+                      "attempt_id": "attempt:701b05ca01b4565100a39475bfff4363c8087ff0eeccd6c4618c407721876d05",
+                      "operation_id": "701b05ca01b4565100a39475bfff4363c8087ff0eeccd6c4618c407721876d05",
+                      "transport_id": "kernel-tool-server:fs",
+                      "transport_key_epoch": 1
+                    },
+                    "store_fence": {
+                      "lease_id": "01a086f9-2ecc-73f2-81ef-31e8c76e491d",
+                      "owner_epoch": 1,
+                      "store_uuid": "01a086f9-2d6d-71f2-9e2a-3a07db4d75c4"
+                    }
+                  },
+                  "schema": "chio.admission-receipt.v1",
+                  "store_fence": {
+                    "lease_id": "01a086f9-2ecc-73f2-81ef-31e8c76e491d",
+                    "owner_epoch": 1,
+                    "store_uuid": "01a086f9-2d6d-71f2-9e2a-3a07db4d75c4"
+                  },
+                  "tool_outcome_id": "29a98935ec28f3b7e93e4fc083b1881e0d1f6076bb08173e2543a06f517220b0",
+                  "tool_outcome_version": 2,
+                  "trusted_time_unix_ms": 1788970874737
+                },
+                "attribution": {
+                  "delegation_depth": 0,
+                  "grant_index": 1,
+                  "issuer_key": "19a4051b10f3d051e1afd2512834893aa417f7ac7b00f93e29eaadb76e940e07",
+                  "subject_key": "0b8f44639f45f229f5dce282017e02568e5a8ca74363e6ffda7a2971aebf6c81"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a086f9-37e0-7223-9b2a-0fb8852fe802",
+                "governed_transaction": {
+                  "approval": {
+                    "approval_artifact_digest": "240c90819653522773a07b49cfe07996c46efebab7f3ceb3f0474d71469f28d2",
+                    "approved": true,
+                    "approver_key": "52c4145833da5e4b4a6341ee98412a8594b71d42090805b1edf52fd9cd27659e",
+                    "token_id": "approval-08877c285781afb72cd80b03ac85fe1c1f5a6e170ea4f70bdbe4ad2e96f4efc8-decision"
+                  },
+                  "intent_hash": "ae406b781677161617a0bab97080ea9bf44cc89b04ffd339457570b873615c45",
+                  "intent_id": "approval-08877c285781afb72cd80b03ac85fe1c1f5a6e170ea4f70bdbe4ad2e96f4efc8",
+                  "purpose": "Qualify documented helper",
+                  "server_id": "fs",
+                  "tool_name": "write_file"
+                },
+                "receipt_context": {
+                  "request_id": "helper-approved-operation"
+                }
+              },
+              "policy_hash": "e7d7cdd80b52a14d7a810edc148603b3d1f138e53c6161fff979cfea5d64c323",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "23b1f4887ffa24cecccc5a0c75f4d86ae65bdf8a4891927ac3289e2ea7fa6dd5603fbd07197f138ed562764bc9e17a6e885ef2d8cdf23abecd1d3b3d3ea36b03",
+              "timestamp": 1788970874,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "helper-approved-operation",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "Successfully wrote to /workspace/helper.txt",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "Successfully wrote to /workspace/helper.txt"
+        }
+      }
+    }
+  },
+  {
+    "observer": "helper.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": true,
+      "content": "operator-helper-qualified"
+    }
+  }
+]
