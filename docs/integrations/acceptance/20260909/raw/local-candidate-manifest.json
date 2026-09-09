@@ -26,8 +26,9 @@
     {
       "component": "claude",
       "path": "packages/chio-claude-code-plugin-0.3.0.tgz",
-      "sha256": "21129a251ff57f52024efeaa4cca4c1b74d8971b7ffb3ce81cb0701af20b64f8",
-      "bytes": 4984646
+      "sha256": "8a7f9a21615271ec12ff641ff90ff3e6fec8229caf0d4cde5b0eda9b138c1e82",
+      "bytes": 4985238,
+      "sourceRevision": "d09f330"
     },
     {
       "component": "codex",
@@ -50,8 +51,9 @@
     {
       "component": "openclaw",
       "path": "packages/chio-openclaw-kernel-0.1.0.tgz",
-      "sha256": "d7b364ff015b283907056064f8fa92658694b154f5217881ec77c97612863d2a",
-      "bytes": 4658750
+      "sha256": "ba6b80e71598ec8f01205ef7d443f71fdb2df78fe4b3cad576d9107518f3b6c5",
+      "bytes": 4660327,
+      "sourceRevision": "3915efa"
     },
     {
       "component": "hermes-wheelhouse",
@@ -255,9 +257,9 @@
     {
       "component": "docker-image",
       "path": "images/openclaw-host.tar",
-      "sha256": "58c7f08239a7a095cb0897c7b390a633a13f203357b6e7e66be089a4bf57e913",
-      "bytes": 354166784,
-      "imageId": "sha256:98404ca86440e10066733abc421e8af82a40571f46d244c0dec14ea99d5a6d08"
+      "sha256": "2b1851f1659c3d4e457120c3a4697b561867d5c62f0729890926be40c7138adb",
+      "bytes": 354170368,
+      "imageId": "sha256:1586b295831a811e4ba890fe466e9397bc44eeff9b77fa41ae740cc845eb4c2d"
     },
     {
       "component": "resource-owner",
@@ -268,8 +270,8 @@
     {
       "component": "instructions",
       "path": "README.md",
-      "sha256": "209767847ecbb7a42ff884a195b793177f6cb87b7d8ed940182763bbcf6ac13d",
-      "bytes": 6907
+      "sha256": "01b2f9a7ccef31c7f279463eac74b18690ed8e790303d0f89193d14f2d5b74f1",
+      "bytes": 7606
     }
   ],
   "missing": [
@@ -277,5 +279,6 @@
     "Isolated authenticated Cursor host and bounded hosted protocol",
     "Full host-specific I01-I08 completion",
     "Release/security gates and public publication"
-  ]
+  ],
+  "superseded": "superseded/pre-host-supervision retains previous selections; never use for the current candidate"
 }

@@ -24,7 +24,7 @@ local candidate identities, not a published version combination.
 
 | Host | Pinned runtime | Recorded implementation and observations | Remaining acceptance work |
 |---|---|---|---|
-| Claude Code | 2.1.266 | Restricted parent HTTP transport and full native-result verification; actual host/kernel useful work, budget, denial, native-tool and response-loss cases with local Messages fixture | Isolated Anthropic credential; authenticated provider cases, remaining authority/fault/lifecycle matrix and publication |
+| Claude Code | 2.1.267 for current received-result cases; earlier 2.1.266 retained separately | Restricted parent HTTP transport and full native-result verification; actual host/kernel useful work, budget, denial, native-tool and response-loss cases with local Messages fixture | Isolated Anthropic credential; authenticated provider cases, remaining authority/fault/lifecycle matrix and publication |
 | Codex | 0.153.4 | Parent HTTP transport and complete native-result verification; actual OpenAI/kernel useful work, denials, budget, seven approvals, capability revocation and explicit delivery recovery | Remaining in-flight revocation, fault/cancellation/crash, identity/scope and lifecycle cases; release qualification and publication |
 | Cursor | GUI 3.19.13; CLI 2026.09.08-6caf4ff | Parent-owned HTTP gateway, scoped guest route and private journal; packaged real CLI discovery plus exact retained default-deny OS profile probes | Isolated authentication and bounded hosted AgentService protocol; protected prompt mode refuses. No useful model-driven workflow or full gate accepted |
 | Hermes | 0.20.5; upstream `175054c14b54404663d8614a178280cffe6062eb` | r9 wheel: full native-result cache binding, scoped parent transport, actual OpenAI/kernel workflow, denials, approvals, budget, capability revocation and delivery recovery | Full remaining authority/fault/lifecycle matrix; four legacy opt-in skips retained; publication |
@@ -275,9 +275,9 @@ case using the local fixture. Previous failed evidence remains committed.
 | Host | Current local candidate SHA256 | Evidence directory in owning repository |
 |---|---|---|
 | Codex | `860811efcdebea7a4c9fe4db7b9a4c9eb764b55c0fadd4dc6e9429447e7813b6` | `acceptance/2026-09-09/received-result` |
-| Claude | `21129a251ff57f52024efeaa4cca4c1b74d8971b7ffb3ce81cb0701af20b64f8` | `acceptance/2026-09-09/received-result` |
+| Claude | `8a7f9a21615271ec12ff641ff90ff3e6fec8229caf0d4cde5b0eda9b138c1e82` | `acceptance/2026-09-09/host-supervision` |
 | Pi | `b6f38bfb2c129e00d6e8c5c74b5b92ec4d527d26a81683316683abc690afac2c` | `evidence/2026-09-09/authority` |
-| OpenClaw | `d7b364ff015b283907056064f8fa92658694b154f5217881ec77c97612863d2a` | `native/evidence/2026-09-09/authority` |
+| OpenClaw | `ba6b80e71598ec8f01205ef7d443f71fdb2df78fe4b3cad576d9107518f3b6c5` | `native/evidence/2026-09-09/host-supervision` |
 | Hermes r8 | `ae93ce01524b78a824a7a150dfa0367952c98b33c77ef270fce759415098aba2` | `sdks/python/chio-hermes/evidence/2026-09-09/authority` |
 
 These five candidates use kernel `33dd1dea21a4`. The TypeScript candidates use
@@ -343,3 +343,73 @@ restart, the original authority completed a native read of the retained file
 with exactly one new read dispatch and no repeated write. Raw observations are
 in `raw/local-delivery`. This verifies a local installation/restart subset,
 not cross-version upgrade or six-host release acceptance.
+
+Identity correction: current Claude received-result raw summaries consistently
+record host 2.1.267, SHA256
+`a681f3008f0050029aeebcab3af51bb6a55ddeb625a3af3141a4416d43cd2558`.
+Its artifact summary initially retained the old 2.1.266 inventory label. The
+summary is corrected from raw observations; earlier 2.1.266 cases stay separately
+bound to their own builds and are not promoted to current-version acceptance.
+
+
+## Launcher death, live revocation and kernel-failure qualification
+
+Status remains **0/6 accepted**. Confidence is high in the bounded observations
+below; complete host acceptance remains unresolved.
+
+Claude's earlier launcher-death probe left its actual native process running
+until the test deadline. Source `717cdb0` adds a separate trusted process lifeline;
+source `d09f330` retains the exact generated gateway bundles used in the archive.
+The new candidate stops the isolated host when its parent dies, preserves the
+original resource fence and allows an explicit recovery read without replaying
+the write. Its own cold-installed workflow, budget, substituted-result and
+response-loss cases pass. Native identity is Claude 2.1.267, not 2.1.266. These
+runs use a local Messages fixture; isolated Anthropic qualification is still
+blocked. The failed predecessor remains in the host supervision record.
+
+OpenClaw source `3915efa` adds a private Docker lifeline watchdog. The prior real
+crash left agent and relay containers running and needed operator cleanup. The
+new candidate's forced launcher crash automatically removes only its recorded
+containers and network, preserves state/control volumes and retains the
+unacknowledged resource fence. Independent inspection confirms container absence.
+A failed Docker inventory query yields unresolved cleanup, never false absence.
+Nineteen component tests pass with no skips. The current archive ran its own
+real native host/OpenAI useful workflow, denials, response loss/recovery, result
+substitution, seven approval stages, aggregate budget and revocation cases.
+Its image is `sha256:1586b295831a811e4ba890fe466e9397bc44eeff9b77fa41ae740cc845eb4c2d`.
+Earlier creation cutpoints and full lifecycle coverage remain open.
+
+Each of Codex, Pi, Hermes r9 and this OpenClaw candidate now has an additional
+14-case record in its `kernel-faults` directory, separately classified:
+
+- Two native sessions revoke actual capability or session credentials between
+  a successful first write and the second native call. No second write occurs.
+  Capability revocation is a verified denial. Credential loss stays unverified
+  and unknown because no trusted terminal result was obtained.
+- Three native sessions exercise an actual isolated kernel SIGKILL, an injected
+  malformed transport response, or a withheld response until timeout. Exactly
+  the first authorized write is observed; the second outcome stays unknown.
+- Three later native sessions retain each original configuration and journal.
+  Replacement writes remain fenced and original unknown records are unchanged.
+- Six startup cases refuse an absent kernel, genuinely expired credential,
+  incorrect principal/session/resource, or unauthorized fifth tool. These are
+  launcher refusals before native startup, not native tool-call denials.
+
+There are 32 native runs and 24 explicit preflight refusals across these four
+hosts, with no skips. This is a case count, not a count of accepted gates.
+Hermes's first expired-credential run was unrecognized by the harness; the exact
+local validation error was checked in source, added to the preflight classifier,
+and rerun. Both records remain. Per-host archive identities and evidence paths
+are in `raw/live-fault-authority-records.json`; reproducible test procedures are
+in `scripts/acceptance/README.md`. Remaining plugin omission/failure, cancellation,
+parallelism, authority/evidence variants and lifecycle cases must still be
+resolved separately for each host.
+
+The durable bundle now selects the supervised Claude and OpenClaw candidates.
+All 44 active file hashes verify. The previous selections are preserved under
+`superseded/pre-host-supervision`. The new OpenClaw image loads from its saved
+archive; both packages install offline with empty caches. Using the relocated
+OpenClaw installation, saved image and copied bundle kernel, the actual host
+completed write/edit/read/list with four independent dispatch observations.
+Raw local delivery evidence is in `raw/local-delivery-supervision`. Public
+publication and six-host acceptance remain open.

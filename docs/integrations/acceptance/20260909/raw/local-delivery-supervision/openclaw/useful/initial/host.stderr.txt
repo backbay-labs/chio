@@ -1,0 +1,3 @@
+WARNING: Localhost DNS (127.0.0.1) may fail in containers.
+tools policy: profile "minimal" (agent "main") has configured tool sections (tools.exec) that no longer implicitly widen the profile. Add alsoAllow: ["exec", "process"] explicitly if these tools should be available. See #47487.
+tools policy: profile "minimal" (agent "main") has configured tool sections (tools.exec) that no longer implicitly widen the profile. Add alsoAllow: ["exec", "process"] explicitly if these tools should be available. See #47487.

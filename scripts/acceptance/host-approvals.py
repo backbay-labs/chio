@@ -8,11 +8,13 @@ from pathlib import Path
 import shutil
 import sqlite3
 import subprocess
+import time
 import uuid
 import urllib.request
 
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('--suite', choices=['approvals','revocation'], default='approvals')
+p.add_argument('--suite', choices=['approvals','revocation','in-flight-capability','in-flight-credential','kernel-killed','kernel-malformed','kernel-timeout','resume-fence','kernel-absent','expired-credential','wrong-principal','wrong-session','wrong-resource','scope-escalation'], default='approvals')
+p.add_argument('--existing-config',type=Path)
 p.add_argument('--host',choices=['pi','openclaw','hermes','codex'],required=True)
 for name in ['operator-state','package-dir','output']:
  p.add_argument('--'+name,type=Path,required=True)
@@ -24,24 +26,40 @@ if a.image:
  a.image=subprocess.check_output(['docker','image','inspect',a.image,'--format','{{.Id}}'],text=True).strip()
 bridge=a.package_dir if a.host=='hermes' else a.package_dir/'node_modules/@chio/bridge'
 op=json.loads((a.operator_state/'operator.json').read_text())
-private=a.operator_state/(a.host+'-approvals-'+uuid.uuid4().hex);private.mkdir(mode=0o700)
+if a.suite=='resume-fence':
+ if not a.existing_config:raise ValueError('resume-fence requires the original private configuration')
+ config=a.existing_config.resolve(strict=True);private=config.parent
+else:
+ if a.existing_config:raise ValueError('existing authority is only supported for explicit fence verification')
+ private=a.operator_state/(a.host+'-approvals-'+uuid.uuid4().hex);private.mkdir(mode=0o700)
 prepare={'endpoint':f"http://127.0.0.1:{op['port']}",'bearerToken':op['agentToken'],'adminToken':op['adminToken'],'credentialTtlSeconds':900,'trustedSigners':[(a.operator_state/'sessions.sqlite.admission.kernel.pub').read_text().strip()],'serverId':'fs','sessionId':str(uuid.uuid4()),'journalDir':str(private/'journal'),'allowedTools':['read_text_file','write_file','edit_file','list_directory']}
-request=private/'prepare.json';request.write_text(json.dumps(prepare));request.chmod(0o600)
-config=private/'gateway.json'
-subprocess.run(['node',str(bridge/'dist/prepare-gateway.js'),str(request),str(config)],capture_output=True,check=True)
+if a.suite=='expired-credential':prepare['credentialTtlSeconds']=5
+if a.suite!='resume-fence':
+ request=private/'prepare.json';request.write_text(json.dumps(prepare));request.chmod(0o600)
+ config=private/'gateway.json'
+ subprocess.run(['node',str(bridge/'dist/prepare-gateway.js'),str(request),str(config)],capture_output=True,check=True)
 conf=json.loads(config.read_text())
 if a.suite=='approvals':conf['approval']={'requiredTools':[t['name'] for t in conf['tools']],'purpose':'Qualify explicit exact local test approval','ttlSeconds':300}
-config.write_text(json.dumps(conf,indent=2)+'\n')
+if a.suite in ['wrong-principal','wrong-session','wrong-resource']:
+ key,value={'wrong-principal':('subjectKey','0'*64),'wrong-session':('sessionId',str(uuid.uuid4())),'wrong-resource':('serverId','different-resource-owner')}[a.suite]
+ conf['execution'][key]=value;conf['sessionCredential'][key]=value
+if a.suite=='scope-escalation':
+ conf['sessionCredential']['allowedTools'].append('delete_file')
+ conf['tools'].append({'name':'delete_file','description':'Unauthorized scope escalation probe','inputSchema':{'type':'object','properties':{'path':{'type':'string'}},'required':['path']}})
+if a.suite!='resume-fence':config.write_text(json.dumps(conf,indent=2)+'\n')
 
 def save(path,value):path.write_text(json.dumps(value,indent=2)+'\n')
 def observe():
  code="const f=require('fs');const files={};for(const n of f.readdirSync('/observe'))if(f.lstatSync('/observe/'+n).isFile())files[n]=f.readFileSync('/observe/'+n,'utf8');const p='/audit/dispatch.jsonl';console.log(JSON.stringify({files,dispatch:f.existsSync(p)?f.readFileSync(p,'utf8').split('\\n').filter(Boolean).map(JSON.parse):[]}))"
  return json.loads(subprocess.check_output(['docker','run','--rm','--network','none','--read-only','--mount',f"type=volume,src={op['volume']},dst=/observe,readonly",'--mount',f"type=volume,src={op['auditVolume']},dst=/audit,readonly",'--entrypoint','node',op['image'],'-e',code],text=True))
 results=[]
-def run(label,tool,arguments):
+def run(label,tool,arguments,first_arguments=None):
  root=Path('/tmp')/('chio-'+a.host+'-approval-runtime-'+uuid.uuid4().hex)
  prompt={'pi':'Call chio_execute','openclaw':'Call chio_call','hermes':'Call mcp__chio__'+tool,'codex':'Call the Chio '+tool+' tool'}[a.host]
  prompt+=' exactly once with '+(json.dumps({'tool':tool,'arguments':arguments}) if a.host not in ['hermes','codex'] else 'arguments '+json.dumps(arguments))+'. Preserve all identifiers and remote paths exactly. Stop on any unsuccessful or pending result. Do not substitute tools or arguments.'
+ if first_arguments is not None:
+  first=json.dumps({'tool':tool,'arguments':first_arguments}) if a.host not in ['hermes','codex'] else json.dumps(first_arguments)
+  prompt='First call '+{'pi':'chio_execute','openclaw':'chio_call','hermes':'mcp__chio__'+tool,'codex':'the Chio '+tool+' tool'}[a.host]+' with '+first+'. Wait for its successful result. Then '+prompt
  if a.host=='pi':
   root.mkdir(mode=0o700)
   command=['node',str(a.package_dir/'dist/protected-cli.js'),'--config',str(config),'--profile',str(root/'profile'),'--cwd',str(root/'workspace'),'--provider','openai','--model','gpt-4.1-mini','--prompt',prompt]
@@ -54,7 +72,14 @@ def run(label,tool,arguments):
   if not all([a.launcher_python,a.host_python,a.host_root]):raise ValueError('installed Hermes and host runtime paths required')
   query=private/(label+'.txt');query.write_text(prompt)
   command=[str(a.launcher_python),'-m','chio_hermes.restricted','--host-python',str(a.host_python),'--host-root',str(a.host_root),'--node',shutil.which('node'),'--gateway-script',str(bridge/'dist/gateway-http.js'),'--gateway-config',str(config),'--state-dir',str(root),'--query-file',str(query),'--model','gpt-4.1-2025-04-14','--model-base-url','https://api.openai.com/v1','--max-turns','8']
- before=observe();completed=subprocess.run(command,capture_output=True,text=True,timeout=220);after=observe()
+ env=os.environ.copy()
+ if first_arguments is not None:
+  env.update(CHIO_TEST_OPERATOR_STATE=str(a.operator_state.resolve()),CHIO_TEST_GATEWAY_CONFIG=str(config.resolve()))
+  if a.suite.startswith('kernel-'):
+   env.update(NODE_OPTIONS='--import='+str(Path(__file__).with_name('interrupt-kernel-call.mjs').resolve()),CHIO_KERNEL_FAULT_LOG=str((a.output/'kernel-cutpoint.jsonl').resolve()),CHIO_KERNEL_FAULT_KIND=a.suite.removeprefix('kernel-'))
+  else:
+   env.update(NODE_OPTIONS='--import='+str(Path(__file__).with_name('revoke-during-host.mjs').resolve()),CHIO_INFLIGHT_REVOCATION_LOG=str((a.output/'revocation-cutpoint.jsonl').resolve()),CHIO_INFLIGHT_REVOCATION_KIND=a.suite.removeprefix('in-flight-'))
+ before=observe();completed=subprocess.run(command,capture_output=True,text=True,timeout=220,env=env);after=observe()
  out=a.output/label;out.mkdir(mode=0o700)
  (out/'host.stdout.txt').write_text(completed.stdout);(out/'host.stderr.txt').write_text(completed.stderr)
  for name in ['terminal.json','launch.json','model-relay.json','host-delivery.json']:
@@ -91,7 +116,8 @@ def run(label,tool,arguments):
  native_attempt=any(call['id'] in returned and call['name']==expected['name'] and call['arguments']==expected['arguments'] for call in calls)
  # A model can retry or try alternate arguments. Retain every native attempt;
  # independent resource assertions below must still account for all effects.
- preflight_refused=label=='revoked-credential' and not calls and completed.returncode!=0 and any(message in completed.stderr for message in ['delegated session validation failed before dispatch','private gateway closed or exceeded response limit'])
+ preflight_labels=['revoked-credential','kernel-absent','expired-credential','wrong-principal','wrong-session','wrong-resource','scope-escalation']
+ preflight_refused=label in preflight_labels and not calls and completed.returncode!=0 and any(message in completed.stderr for message in ['delegated session validation failed before dispatch','private gateway closed or exceeded response limit','authenticated session credential does not match','session credential metadata must match live identity, scope and bounded lifetime'])
  save(out/'native-dispatch.json',{'launchPreflightRefused':preflight_refused,'calls':calls,'returnedToolCallIds':returned,'expectedAttemptObserved':native_attempt,'attemptCount':len(calls)})
  result={'case':label,'exitCode':completed.returncode,'command':command,'newDispatchRows':len(after['dispatch'])-len(before['dispatch'])}
  results.append(result);save(a.output/'results.json',results);print(json.dumps({'case':label,'exitCode':completed.returncode,'newDispatchRows':result['newDispatchRows']}),flush=True)
@@ -107,7 +133,49 @@ def decide(request_id,label,decision):
  save(a.output/(label+'-operator.json'),{'submission':json.loads(submit.stdout),'decision':json.loads(result.stdout),'protectedDispatch':False})
 
 try:
- if a.suite=='revocation':
+ if a.suite in ['kernel-absent','expired-credential','wrong-principal','wrong-session','wrong-resource','scope-escalation']:
+  lifecycle=Path(__file__).resolve().parents[2]/'integrations/required-agents/serve-filesystem.py'
+  if a.suite=='kernel-absent':
+   stopped=subprocess.run(['python3',str(lifecycle),'stop','--state-dir',str(a.operator_state)],capture_output=True,text=True,check=True)
+   save(a.output/'owner-stop.json',{'exitCode':stopped.returncode,'stdout':stopped.stdout})
+  if a.suite=='expired-credential':
+   expires=conf['sessionCredential']['expiresAt'];time.sleep(max(0,expires-time.time()+1))
+   save(a.output/'expiry-observation.json',{'issuedAt':conf['sessionCredential']['issuedAt'],'expiresAt':expires,'observedAt':time.time()})
+  try:
+   code,before,after=run(a.suite,'write_file',{'path':'/workspace/'+a.host+'-preflight-forbidden.txt','content':'must never dispatch with invalid authority'})
+   assert code!=0 and before==after and not records()
+  finally:
+   if a.suite=='kernel-absent':
+    restarted=subprocess.run(['python3',str(lifecycle),'restart','--state-dir',str(a.operator_state)],capture_output=True,text=True,check=True)
+    save(a.output/'owner-restart.json',{'exitCode':restarted.returncode,'stdout':restarted.stdout})
+ elif a.suite=='resume-fence':
+  original={p.name:p.read_bytes() for p in Path(conf['journalDir']).glob('*.json')}
+  assert any(json.loads(value).get('state')=='unknown' for value in original.values())
+  code,before,after=run('resume-fence','write_file',{'path':'/workspace/'+a.host+'-must-stay-fenced.txt','content':'must never dispatch after unknown outcome'})
+  assert code!=0 and before==after
+  current={p.name:p.read_bytes() for p in Path(conf['journalDir']).glob('*.json')}
+  assert all(current.get(name)==value for name,value in original.items())
+  assert all(json.loads(value).get('state')=='not_dispatched' for name,value in current.items() if name not in original)
+ elif a.suite.startswith('in-flight-') or a.suite.startswith('kernel-'):
+  name=a.host+'-inflight-'+private.name[-12:]+'.txt'
+  first={'path':'/workspace/'+name,'content':'authorized before in-flight revocation'}
+  code,before,after=run(a.suite,'write_file',{**first,'content':'forbidden after in-flight revocation'},first)
+  assert code!=0 and len(after['dispatch'])==len(before['dispatch'])+1 and after['files'][name]==first['content']
+  events=[json.loads(line) for line in (a.output/('kernel-cutpoint.jsonl' if a.suite.startswith('kernel-') else 'revocation-cutpoint.jsonl')).read_text().splitlines()]
+  assert len(events)==1 and events[0]['kind']==a.suite.removeprefix('in-flight-').removeprefix('kernel-')
+  retained=records()
+  assert len(retained)==2 and sum(r.get('state')=='completed' and r.get('hostDeliveryConfirmed') and r.get('acknowledged') for r in retained)==1
+  if a.suite=='in-flight-capability':
+   assert any(r.get('state')=='denied' and r.get('outcome',{}).get('evidence')=='verified' and 'revok' in r.get('outcome',{}).get('reason','').lower() for r in retained)
+  else:
+   assert any(r.get('state')=='unknown' and r.get('outcome',{}).get('evidence')=='unverified' for r in retained)
+  save(a.output/'journal-states.json',[{key:r.get(key) for key in ['requestId','state','acknowledged','hostDeliveryConfirmed','outcome']} for r in retained])
+  if a.suite=='kernel-killed':
+   lifecycle=Path(__file__).resolve().parents[2]/'integrations/required-agents/serve-filesystem.py'
+   restarted=subprocess.run(['python3',str(lifecycle),'restart','--state-dir',str(a.operator_state)],capture_output=True,text=True,check=True)
+   save(a.output/'owner-restart.json',{'exitCode':restarted.returncode,'stdout':restarted.stdout,'databasesAndVolumesPreserved':True})
+   assert observe()==after
+ elif a.suite=='revocation':
   name=a.host+'-revoke-'+private.name[-12:]+'.txt'
   args={'path':'/workspace/'+name,'content':'authorized before revocation'}
   code,before,after=run('before-revocation','write_file',args)

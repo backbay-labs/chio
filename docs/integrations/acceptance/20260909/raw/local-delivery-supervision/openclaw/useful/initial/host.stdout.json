@@ -1,0 +1,158 @@
+{
+  "payloads": [
+    {
+      "text": "The file /workspace/openclaw-qualified-042438bb1fc6.txt now contains the content: \"OpenClaw kernel verified\". The /workspace directory contains the following files:\n\n- codex-qualified-eb3b7f3ab60a.txt\n- forbidden.txt\n- openclaw-qualified-042438bb1fc6.txt\n- secret.txt\n\nLet me know if you need any further actions.",
+      "mediaUrl": null
+    }
+  ],
+  "meta": {
+    "durationMs": 9377,
+    "agentMeta": {
+      "sessionId": "d0c25b16-f701-4596-926f-376569c22602",
+      "sessionFile": "/state/openclaw/agents/main/sessions/d0c25b16-f701-4596-926f-376569c22602.jsonl",
+      "provider": "chio-model",
+      "model": "gpt-4.1-mini",
+      "contextTokens": 128000,
+      "agentHarnessId": "pi",
+      "lastCallUsage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "total": 0
+      }
+    },
+    "aborted": false,
+    "systemPromptReport": {
+      "source": "run",
+      "generatedAt": 1788994054920,
+      "sessionId": "d0c25b16-f701-4596-926f-376569c22602",
+      "sessionKey": "agent:main:explicit:d0c25b16-f701-4596-926f-376569c22602",
+      "provider": "chio-model",
+      "model": "gpt-4.1-mini",
+      "workspaceDir": "/state/workspace",
+      "bootstrapMaxChars": 12000,
+      "bootstrapTotalMaxChars": 60000,
+      "bootstrapTruncation": {
+        "warningMode": "always",
+        "warningShown": false,
+        "truncatedFiles": 0,
+        "nearLimitFiles": 0,
+        "totalNearLimit": false
+      },
+      "sandbox": {
+        "mode": "off",
+        "sandboxed": false
+      },
+      "systemPrompt": {
+        "chars": 5952,
+        "projectContextChars": 545,
+        "nonProjectContextChars": 5407
+      },
+      "injectedWorkspaceFiles": [
+        {
+          "name": "AGENTS.md",
+          "path": "/state/workspace/AGENTS.md",
+          "missing": true,
+          "rawChars": 0,
+          "injectedChars": 49,
+          "truncated": false
+        },
+        {
+          "name": "SOUL.md",
+          "path": "/state/workspace/SOUL.md",
+          "missing": true,
+          "rawChars": 0,
+          "injectedChars": 47,
+          "truncated": false
+        },
+        {
+          "name": "TOOLS.md",
+          "path": "/state/workspace/TOOLS.md",
+          "missing": true,
+          "rawChars": 0,
+          "injectedChars": 48,
+          "truncated": false
+        },
+        {
+          "name": "IDENTITY.md",
+          "path": "/state/workspace/IDENTITY.md",
+          "missing": true,
+          "rawChars": 0,
+          "injectedChars": 51,
+          "truncated": false
+        },
+        {
+          "name": "USER.md",
+          "path": "/state/workspace/USER.md",
+          "missing": true,
+          "rawChars": 0,
+          "injectedChars": 47,
+          "truncated": false
+        },
+        {
+          "name": "BOOTSTRAP.md",
+          "path": "/state/workspace/BOOTSTRAP.md",
+          "missing": true,
+          "rawChars": 0,
+          "injectedChars": 0,
+          "truncated": false
+        }
+      ],
+      "skills": {
+        "promptChars": 0,
+        "entries": []
+      },
+      "tools": {
+        "listChars": 0,
+        "schemaChars": 230,
+        "entries": [
+          {
+            "name": "chio_call",
+            "summaryChars": 2727,
+            "schemaChars": 230,
+            "propertiesCount": 2
+          }
+        ]
+      },
+      "currentTurn": {
+        "promptChars": 321,
+        "runtimeContextChars": 0
+      }
+    },
+    "finalPromptText": "Use chio_call only, with exact schemas in its description. Preserve remote paths exactly. Write /workspace/openclaw-qualified-042438bb1fc6.txt with content \"OpenClaw HTTP verified\". Edit HTTP to kernel, read that exact file, then list /workspace. Make one tool call per turn. Stop on any unsuccessful or uncertain result.",
+    "finalAssistantVisibleText": "The file /workspace/openclaw-qualified-042438bb1fc6.txt now contains the content: \"OpenClaw kernel verified\". The /workspace directory contains the following files:\n\n- codex-qualified-eb3b7f3ab60a.txt\n- forbidden.txt\n- openclaw-qualified-042438bb1fc6.txt\n- secret.txt\n\nLet me know if you need any further actions.",
+    "finalAssistantRawText": "The file /workspace/openclaw-qualified-042438bb1fc6.txt now contains the content: \"OpenClaw kernel verified\". The /workspace directory contains the following files:\n\n- codex-qualified-eb3b7f3ab60a.txt\n- forbidden.txt\n- openclaw-qualified-042438bb1fc6.txt\n- secret.txt\n\nLet me know if you need any further actions.",
+    "replayInvalid": false,
+    "livenessState": "working",
+    "stopReason": "stop",
+    "executionTrace": {
+      "winnerProvider": "chio-model",
+      "winnerModel": "gpt-4.1-mini",
+      "attempts": [
+        {
+          "provider": "chio-model",
+          "model": "gpt-4.1-mini",
+          "result": "success",
+          "stage": "assistant"
+        }
+      ],
+      "fallbackUsed": false,
+      "runner": "embedded"
+    },
+    "requestShaping": {
+      "thinking": "off"
+    },
+    "toolSummary": {
+      "calls": 4,
+      "tools": [
+        "chio_call"
+      ],
+      "failures": 0
+    },
+    "completion": {
+      "stopReason": "stop",
+      "finishReason": "stop"
+    }
+  }
+}

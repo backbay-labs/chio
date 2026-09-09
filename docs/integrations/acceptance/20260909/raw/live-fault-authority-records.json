@@ -1,0 +1,34 @@
+[
+  {
+    "host": "codex",
+    "record": "/Users/connor/Medica/backbay/standalone/chio-codex-plugin/.worktrees/required-agent-integrations-20260909/acceptance/2026-09-09/kernel-faults",
+    "archiveSha256": "860811efcdebea7a4c9fe4db7b9a4c9eb764b55c0fadd4dc6e9429447e7813b6",
+    "nativeRuns": 8,
+    "preflightRefusals": 6,
+    "skips": 0
+  },
+  {
+    "host": "pi",
+    "record": "/Users/connor/Medica/backbay/standalone/chio-pi-plugin/evidence/2026-09-09/kernel-faults",
+    "archiveSha256": "b6f38bfb2c129e00d6e8c5c74b5b92ec4d527d26a81683316683abc690afac2c",
+    "nativeRuns": 8,
+    "preflightRefusals": 6,
+    "skips": 0
+  },
+  {
+    "host": "hermes",
+    "record": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/kernel-faults",
+    "archiveSha256": "8b600edd80fdbfa91ca976c264d53ad145b79c49b9ac37c376f6685cfb90c929",
+    "nativeRuns": 8,
+    "preflightRefusals": 6,
+    "skips": 0
+  },
+  {
+    "host": "openclaw",
+    "record": "/Users/connor/Medica/backbay/standalone/chio-open-claw-plugin/.worktrees/required-agent-integrations-20260909/native/evidence/2026-09-09/kernel-faults",
+    "archiveSha256": "ba6b80e71598ec8f01205ef7d443f71fdb2df78fe4b3cad576d9107518f3b6c5",
+    "nativeRuns": 8,
+    "preflightRefusals": 6,
+    "skips": 0
+  }
+]

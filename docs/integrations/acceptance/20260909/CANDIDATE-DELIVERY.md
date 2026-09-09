@@ -84,7 +84,7 @@ hooks. The following files are inside the corresponding installed package:
 | Cursor | `bin/chio-cursor-protected.mjs --probe` | `OPERATIONS.md`; pinned extracted CLI and private gateway config. Only discovery works. Protected prompt mode deliberately refuses pending isolated authentication and hosted-protocol qualification |
 | Hermes | `python -m chio_hermes.restricted` | Adapter `README.md`; pinned host Python/source, installed bridge, private gateway config, new state, query file and fixed provider route |
 | Pi | `dist/protected-cli.js` | `README.md`; private config, new profile/workspace, OpenAI provider/model and prompt |
-| OpenClaw | `scripts/protected.mjs` | `README.md`; private config, new state and immutable host image `sha256:98404ca86440e10066733abc421e8af82a40571f46d244c0dec14ea99d5a6d08` |
+| OpenClaw | `scripts/protected.mjs` | `README.md`; private config, new state and immutable host image `sha256:1586b295831a811e4ba890fe466e9397bc44eeff9b77fa41ae740cc845eb4c2d` |
 
 For example, after preparing a session and selecting a new evidence directory:
 
@@ -123,3 +123,14 @@ unknown-outcome state. Remove only explicitly designated disposable profiles,
 install prefixes and volumes after inspection. No normal-home cleanup script is
 provided. Complete upgrade/removal and in-flight-failure qualification remain
 open, so this bundle must not be described as accepted lifecycle delivery.
+
+The selected Claude and OpenClaw packages include trusted launcher-death
+supervision. Their replaced artifacts and the previous OpenClaw image remain in
+`superseded/pre-host-supervision`, outside the active installation manifest.
+The new artifacts passed their own forced-crash recovery checks. Claude tests
+used an actual native host with a local model fixture; authenticated Anthropic
+qualification remains open. OpenClaw tests used its actual native host and
+OpenAI service. Preserved volumes and unknown outcomes still require explicit
+operator recovery. A watchdog cleanup error is unresolved, not successful
+removal. Earlier startup/crash cutpoints and full lifecycle acceptance remain
+open.
