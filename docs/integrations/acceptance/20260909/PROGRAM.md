@@ -48,6 +48,19 @@ is in progress. The first repaired artifact had a malformed MCP capability
 announcement and failed Codex and Claude initialization with zero dispatches.
 Both failures are retained; no older passing host result closes this gap.
 
+The corrected bridge artifact `b7785282b4f4` passed 11 actual kernel/resource
+response-loss and recovery checks. Current cold-installed Codex, Pi and Claude
+packages each independently exercised loss of the complete HTTP result before
+the real host received it. Each original write occurred once, restart/resume
+remained fenced, and explicit operator recovery permitted a subsequent useful
+read without repeating the write. Codex and Pi used actual OpenAI providers;
+Claude used its actual host with a local Messages fixture. The ordinary current
+host cuts also passed: Codex five cases, Pi three cases, and Claude four cases.
+These bounded observations do not close the complete I01-I08 matrix. See each
+host's new `host-delivery` evidence directory. Hermes is being moved to the same
+launcher-owned transport; OpenClaw and Cursor remain independently mandatory.
+
+
 ## Demonstrated shared repairs
 
 - The shipped CLI reports `0.1.0` and has SHA256
