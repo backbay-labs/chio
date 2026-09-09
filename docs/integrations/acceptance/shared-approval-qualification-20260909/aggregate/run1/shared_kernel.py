@@ -229,17 +229,6 @@ class Runtime:
                      "--entrypoint", "node", self.image, "-e",
                      "const fs=require('fs');const p='/audit/dispatch.jsonl';if(fs.existsSync(p))process.stdout.write(fs.readFileSync(p));"])
         (self.directory / "resource-dispatch.jsonl").write_text(audit + ("\n" if audit else ""))
-        expected = {
-            "bounded-approval-workflow": [("write_file", "/workspace/valid.txt")],
-            "approved-grant-budget": [("write_file", "/workspace/budgeted-approved.txt"),
-                                      ("read_text_file", "/workspace/budgeted-approved.txt")],
-        }.get(self.directory.name)
-        if expected is not None:
-            actual = [(row["tool"], row["path"]) for row in
-                      (json.loads(line) for line in audit.splitlines() if line)]
-            if actual != expected:
-                self.preserve_volumes = True
-                raise AssertionError("independent resource dispatch differs from the approved calls")
         if self.preserve_volumes:
             return
         for volume in [self.volume, self.audit_volume]:

@@ -1,0 +1,24 @@
+{
+  "startedAt": "2026-09-09T17:59:11.026461+00:00",
+  "sourceRevision": "25d5717a5bcfd228391dbeee61d8d57f3c5e6177",
+  "runnerSha256": "0d100b8836de951c3e3ac5f6c0830c71c8d25eb50f0bfef20443832246a49e22",
+  "barrierSha256": "a690f141d14fb3b9a18a8541e89bb5eabf76a18f71e504ad16cd2878bec398b6",
+  "binary": "/tmp/chio-session-startup-aggregate-20260909/chio-d0b87623cb3d",
+  "binarySha256": "d0b87623cb3dd227f79cd3178b32bb04e35b48ddcb9dab63c6598d79b8e13b66",
+  "kernelVersion": "chio-cli 0.1.0",
+  "image": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.4\nBuildVersion:\t\t25E246",
+  "docker": "28.3.3",
+  "claim": "shared kernel qualification only, no host acceptance",
+  "cases": [
+    {
+      "case": "bounded-approval-workflow",
+      "status": "passed"
+    },
+    {
+      "case": "approved-grant-budget",
+      "status": "passed"
+    }
+  ],
+  "binaryChangedDuringRun": false
+}

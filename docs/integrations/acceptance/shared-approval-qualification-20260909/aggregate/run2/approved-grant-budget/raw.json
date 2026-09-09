@@ -1,0 +1,1271 @@
+[
+  {
+    "runtime": {
+      "volume": "chio-qualification-a77e3411a11b",
+      "auditVolume": "chio-qualification-a77e3411a11b-audit",
+      "image": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+      "policySha256": "6c6b1b00180aec1b23dc80fdab660664130771f888ed94ee9c1fbfc2889d06fd"
+    }
+  },
+  {
+    "path": "/admin/health",
+    "request": null,
+    "session": null,
+    "status": 200,
+    "response": {
+      "auth": {
+        "adminTokenConfigured": true,
+        "audienceConfigured": false,
+        "issuerConfigured": false,
+        "mode": "static_bearer",
+        "scopes": []
+      },
+      "authority": {
+        "appliesToFutureSessionsOnly": true,
+        "backend": "sqlite",
+        "configured": true,
+        "generation": 1,
+        "publicKey": "68274fb855c08f52db14e19e2cad4b550fff48298d885eeafff1b16aa77f9c9b",
+        "rotatedAt": 1788976761,
+        "trustedPublicKeys": [
+          "68274fb855c08f52db14e19e2cad4b550fff48298d885eeafff1b16aa77f9c9b"
+        ]
+      },
+      "controlPlane": {
+        "controlTokenConfigured": false,
+        "controlUrl": null,
+        "proxied": false
+      },
+      "federation": {
+        "enterpriseProviders": {
+          "configured": false,
+          "count": 0,
+          "invalidCount": 0,
+          "validatedCount": 0
+        },
+        "identityFederationConfigured": false
+      },
+      "oauth": {
+        "authorizationServerMetadata": false,
+        "localAuthorizationServer": false,
+        "protectedResourceMetadata": false
+      },
+      "ok": true,
+      "server": {
+        "serverId": "fs",
+        "serverName": "fs",
+        "serverVersion": "0.1.0",
+        "sharedHostedOwner": false,
+        "sharedHostedOwnerStats": null
+      },
+      "sessions": {
+        "activeCount": 0,
+        "drainGraceMillis": 5000,
+        "idleExpiryMillis": 900000,
+        "reaperIntervalMillis": 250,
+        "terminalCount": 0,
+        "tombstoneRetentionMillis": 1800000
+      },
+      "stores": {
+        "authorityDbConfigured": true,
+        "authoritySeedConfigured": false,
+        "budgetsConfigured": true,
+        "receiptsConfigured": true,
+        "revocationsConfigured": true,
+        "sessionTombstonesConfigured": true
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2025-11-25",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "shared-kernel-qualification",
+          "version": "1"
+        }
+      }
+    },
+    "session": null,
+    "status": 200,
+    "response": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilities": {
+          "experimental": {
+            "chioProtocol": {
+              "compatibility": "exact_match",
+              "downgradeBehavior": "reject",
+              "errorRegistry": {
+                "path": "spec/errors/chio-error-registry.v1.json",
+                "schema": "chio.error-registry.v1"
+              },
+              "requestIdentity": {
+                "requestBoundArtifactsRequireStableId": true,
+                "stableRequestIdMetaField": "chioRequestId"
+              },
+              "selectedProtocolVersion": "2025-11-25",
+              "supportedProtocolVersions": [
+                "2025-11-25"
+              ]
+            },
+            "chioToolStreaming": {
+              "toolCallChunkNotifications": true
+            },
+            "io.chio/execution-evidence": {
+              "contextMethod": "chio/execution-context",
+              "outputKinds": [
+                "value",
+                "none"
+              ],
+              "resultMetaField": "chioEvidence",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "version": "1"
+            }
+          },
+          "logging": {},
+          "tasks": {
+            "cancel": {},
+            "list": {},
+            "requests": {
+              "tools": {
+                "call": {}
+              }
+            }
+          },
+          "tools": {
+            "listChanged": true
+          }
+        },
+        "protocolVersion": "2025-11-25",
+        "serverInfo": {
+          "name": "Chio MCP Edge",
+          "version": "0.1.0"
+        }
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "notifications/initialized"
+    },
+    "session": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+    "status": 202,
+    "response": null
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "chio/execution-context",
+      "params": {}
+    },
+    "session": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+    "status": 200,
+    "response": {
+      "id": 2,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilityIds": [
+          "cap-01a08753-0d56-7841-9600-a74c6820b98f"
+        ],
+        "evidenceVersion": "1",
+        "schema": "chio.mcp.execution-context.v1",
+        "serverId": "fs",
+        "serverIds": [
+          "fs"
+        ],
+        "subjectKey": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+      }
+    }
+  },
+  {
+    "path": "/admin/sessions/2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640/trust",
+    "request": null,
+    "session": null,
+    "status": 200,
+    "response": {
+      "authContext": {
+        "method": {
+          "kind": "static_bearer",
+          "principal": "static-bearer:d417f98f329fb9d7",
+          "token_fingerprint": "d417f98f329fb9d7d8f275357ddb3eabd1453b5fbe8a967585c2ccd885b0bc56"
+        },
+        "transport": "streamable_http"
+      },
+      "capabilities": [
+        {
+          "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+          "issuerPublicKey": "68274fb855c08f52db14e19e2cad4b550fff48298d885eeafff1b16aa77f9c9b",
+          "revoked": false,
+          "subjectPublicKey": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+        }
+      ],
+      "lifecycle": {
+        "createdAt": 1788976762233,
+        "drainDeadlineAt": null,
+        "idleExpiresAt": 1788977662340,
+        "lastSeenAt": 1788976762340,
+        "protocolVersion": null,
+        "reconnect": {
+          "mode": "post-session-reuse-only",
+          "requiresAuthContinuity": true,
+          "resumable": true,
+          "terminalStates": [
+            "draining",
+            "deleted",
+            "expired",
+            "closed"
+          ]
+        },
+        "state": "ready"
+      },
+      "ownership": {
+        "hostedIdentityProfile": "strong_dedicated_session",
+        "hostedIsolation": "dedicated_per_session",
+        "notificationDelivery": "post_response_fallback",
+        "notificationStreamAttached": false,
+        "notificationStreamOwner": "session_notification_stream",
+        "requestOwnership": {
+          "resultStreamOwner": "request_stream",
+          "terminalStateOwner": "request",
+          "workOwner": "request"
+        },
+        "requestStreamActive": false,
+        "requestStreamOwner": "exclusive_request_stream"
+      },
+      "sessionId": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640"
+    }
+  },
+  {
+    "path": "/admin/approvals",
+    "request": {
+      "session_id": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+      "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+      "request_id": "approved-budget-write",
+      "tool_name": "write_file",
+      "arguments": {
+        "path": "/workspace/budgeted-approved.txt",
+        "content": "approved-budget"
+      },
+      "purpose": "Qualify exact approvals sharing one finite invocation quota",
+      "ttl_seconds": 300
+    },
+    "session": null,
+    "status": 201,
+    "response": {
+      "dispatchPerformedByThisEndpoint": false,
+      "record": {
+        "arguments": {
+          "content": "approved-budget",
+          "path": "/workspace/budgeted-approved.txt"
+        },
+        "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+        "created_at": 1788976762,
+        "expires_at": 1788977062,
+        "id": "approval-aaa54e20acabda6f85e839946bf24a5f8c722c4a204f98737d65d85cfe0e8f1f",
+        "intent": {
+          "body": {
+            "kind": "bound_tool_invocation",
+            "value": {
+              "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "parameters_hash": "0x5c26f7e82987a4fab23b7d0cfba3ba6bbe874ffb9cad1a23075a19a7af409d34"
+            }
+          },
+          "context": {
+            "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+            "mcpSessionId": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+            "policyFingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01"
+          },
+          "id": "approval-aaa54e20acabda6f85e839946bf24a5f8c722c4a204f98737d65d85cfe0e8f1f",
+          "purpose": "Qualify exact approvals sharing one finite invocation quota",
+          "server_id": "fs",
+          "tool_name": "write_file"
+        },
+        "policy_fingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01",
+        "request_id": "approved-budget-write",
+        "schema": "chio.mcp.operator-approval.v1",
+        "session_id": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+        "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+      },
+      "status": "pending"
+    }
+  },
+  {
+    "path": "/admin/approvals/approval-aaa54e20acabda6f85e839946bf24a5f8c722c4a204f98737d65d85cfe0e8f1f/decision",
+    "request": {
+      "decision": "approved"
+    },
+    "session": null,
+    "status": 200,
+    "response": {
+      "dispatchPerformedByThisEndpoint": false,
+      "record": {
+        "arguments": {
+          "content": "approved-budget",
+          "path": "/workspace/budgeted-approved.txt"
+        },
+        "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+        "created_at": 1788976762,
+        "decision": {
+          "approver": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+          "decision": "approved",
+          "expires_at": 1788977062,
+          "governed_intent_hash": "50bc64fb9b4f233425d353d478ae61669818ff0ee6a1c877c599c23075970877",
+          "id": "approval-aaa54e20acabda6f85e839946bf24a5f8c722c4a204f98737d65d85cfe0e8f1f-decision",
+          "issued_at": 1788976762,
+          "request_id": "approved-budget-write",
+          "signature": "45c6c8a8ab05ff7065496cbfba63fdadf598ebf544f95118e00cebb01774659883038b9b7fd1cf310ed9e850e4dc9e48fbb3f2fd5cf2d5eb8c3768dd4f718b03",
+          "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+        },
+        "expires_at": 1788977062,
+        "id": "approval-aaa54e20acabda6f85e839946bf24a5f8c722c4a204f98737d65d85cfe0e8f1f",
+        "intent": {
+          "body": {
+            "kind": "bound_tool_invocation",
+            "value": {
+              "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "parameters_hash": "0x5c26f7e82987a4fab23b7d0cfba3ba6bbe874ffb9cad1a23075a19a7af409d34"
+            }
+          },
+          "context": {
+            "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+            "mcpSessionId": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+            "policyFingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01"
+          },
+          "id": "approval-aaa54e20acabda6f85e839946bf24a5f8c722c4a204f98737d65d85cfe0e8f1f",
+          "purpose": "Qualify exact approvals sharing one finite invocation quota",
+          "server_id": "fs",
+          "tool_name": "write_file"
+        },
+        "policy_fingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01",
+        "request_id": "approved-budget-write",
+        "schema": "chio.mcp.operator-approval.v1",
+        "session_id": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+        "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+      },
+      "status": "approved",
+      "toolCallParams": {
+        "_meta": {
+          "chioApprovalToken": {
+            "approver": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+            "decision": "approved",
+            "expires_at": 1788977062,
+            "governed_intent_hash": "50bc64fb9b4f233425d353d478ae61669818ff0ee6a1c877c599c23075970877",
+            "id": "approval-aaa54e20acabda6f85e839946bf24a5f8c722c4a204f98737d65d85cfe0e8f1f-decision",
+            "issued_at": 1788976762,
+            "request_id": "approved-budget-write",
+            "signature": "45c6c8a8ab05ff7065496cbfba63fdadf598ebf544f95118e00cebb01774659883038b9b7fd1cf310ed9e850e4dc9e48fbb3f2fd5cf2d5eb8c3768dd4f718b03",
+            "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+          },
+          "chioGovernedIntent": {
+            "body": {
+              "kind": "bound_tool_invocation",
+              "value": {
+                "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+                "parameters_hash": "0x5c26f7e82987a4fab23b7d0cfba3ba6bbe874ffb9cad1a23075a19a7af409d34"
+              }
+            },
+            "context": {
+              "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "mcpSessionId": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+              "policyFingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01"
+            },
+            "id": "approval-aaa54e20acabda6f85e839946bf24a5f8c722c4a204f98737d65d85cfe0e8f1f",
+            "purpose": "Qualify exact approvals sharing one finite invocation quota",
+            "server_id": "fs",
+            "tool_name": "write_file"
+          },
+          "chioRequestId": "approved-budget-write"
+        },
+        "arguments": {
+          "content": "approved-budget",
+          "path": "/workspace/budgeted-approved.txt"
+        },
+        "name": "write_file"
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "tools/call",
+      "params": {
+        "_meta": {
+          "chioApprovalToken": {
+            "approver": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+            "decision": "approved",
+            "expires_at": 1788977062,
+            "governed_intent_hash": "50bc64fb9b4f233425d353d478ae61669818ff0ee6a1c877c599c23075970877",
+            "id": "approval-aaa54e20acabda6f85e839946bf24a5f8c722c4a204f98737d65d85cfe0e8f1f-decision",
+            "issued_at": 1788976762,
+            "request_id": "approved-budget-write",
+            "signature": "45c6c8a8ab05ff7065496cbfba63fdadf598ebf544f95118e00cebb01774659883038b9b7fd1cf310ed9e850e4dc9e48fbb3f2fd5cf2d5eb8c3768dd4f718b03",
+            "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+          },
+          "chioGovernedIntent": {
+            "body": {
+              "kind": "bound_tool_invocation",
+              "value": {
+                "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+                "parameters_hash": "0x5c26f7e82987a4fab23b7d0cfba3ba6bbe874ffb9cad1a23075a19a7af409d34"
+              }
+            },
+            "context": {
+              "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "mcpSessionId": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+              "policyFingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01"
+            },
+            "id": "approval-aaa54e20acabda6f85e839946bf24a5f8c722c4a204f98737d65d85cfe0e8f1f",
+            "purpose": "Qualify exact approvals sharing one finite invocation quota",
+            "server_id": "fs",
+            "tool_name": "write_file"
+          },
+          "chioRequestId": "approved-budget-write"
+        },
+        "arguments": {
+          "content": "approved-budget",
+          "path": "/workspace/budgeted-approved.txt"
+        },
+        "name": "write_file"
+      }
+    },
+    "session": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+    "status": 200,
+    "response": {
+      "id": 3,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": {
+              "content": [
+                {
+                  "text": "Successfully wrote to /workspace/budgeted-approved.txt",
+                  "type": "text"
+                }
+              ],
+              "isError": false,
+              "structuredContent": {
+                "content": "Successfully wrote to /workspace/budgeted-approved.txt"
+              }
+            },
+            "outputKind": "value",
+            "receipt": {
+              "action": {
+                "parameter_hash": "5c26f7e82987a4fab23b7d0cfba3ba6bbe874ffb9cad1a23075a19a7af409d34",
+                "parameters": {
+                  "content": "approved-budget",
+                  "path": "/workspace/budgeted-approved.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "content_hash": "ab63ebbfdbedecc5921adb4981301d0bfb2cc587e9561997f548c5f481376a0a",
+              "decision": {
+                "verdict": "allow"
+              },
+              "id": "5cbad7e9f87384adf29cd872a765dd9f11e2a5e7f693474787ba88b807a182d2",
+              "kernel_key": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+              "metadata": {
+                "admission_operation": {
+                  "compensation_status": "not_compensated",
+                  "coordinator_lease_epoch": 1,
+                  "coordinator_lease_id": "01a08753-0b7a-7e93-b8de-5fdf889ac61c",
+                  "operation_id": "41cef114ca5c4e414ab07e9fcf27904aba7d0d16bcbb5904b45ed5531fe9c300",
+                  "projected_dispatch_state": "terminal",
+                  "projected_operation_version": 8,
+                  "projected_state": "completed",
+                  "request_binding_hash": "68f13765d6af63313870b3335296dfbfd0fc608e1ed6d8ad8b67e4482a3a8eb8",
+                  "request_id": "approved-budget-write",
+                  "request_namespace_digest": "6840d7d1f24f5fd6a599faac2fe9cee3fd70370e8500d2ac88ce100afa562aef",
+                  "retained_dispatch_commit": {
+                    "committed_version": 6,
+                    "coordinator_lease_epoch": 1,
+                    "coordinator_lease_id": "01a08753-0b7a-7e93-b8de-5fdf889ac61c",
+                    "provider_attempt": {
+                      "attempt_id": "attempt:41cef114ca5c4e414ab07e9fcf27904aba7d0d16bcbb5904b45ed5531fe9c300",
+                      "operation_id": "41cef114ca5c4e414ab07e9fcf27904aba7d0d16bcbb5904b45ed5531fe9c300",
+                      "transport_id": "kernel-tool-server:fs",
+                      "transport_key_epoch": 1
+                    },
+                    "store_fence": {
+                      "lease_id": "01a08753-0b7a-7e93-b8de-5fdf889ac61c",
+                      "owner_epoch": 1,
+                      "store_uuid": "01a08753-0a95-7510-bbb5-c9e8110ec1af"
+                    }
+                  },
+                  "schema": "chio.admission-receipt.v1",
+                  "store_fence": {
+                    "lease_id": "01a08753-0b7a-7e93-b8de-5fdf889ac61c",
+                    "owner_epoch": 1,
+                    "store_uuid": "01a08753-0a95-7510-bbb5-c9e8110ec1af"
+                  },
+                  "tool_outcome_id": "d716a98f539ce4a949a1218960a7ef66747c025b868185635ba6e772c0a115d6",
+                  "tool_outcome_version": 2,
+                  "trusted_time_unix_ms": 1788976762664
+                },
+                "attribution": {
+                  "delegation_depth": 0,
+                  "grant_index": 0,
+                  "issuer_key": "68274fb855c08f52db14e19e2cad4b550fff48298d885eeafff1b16aa77f9c9b",
+                  "subject_key": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a08753-0f94-7782-9d48-deeba4cf6f37",
+                "governed_transaction": {
+                  "approval": {
+                    "approval_artifact_digest": "7d33b7dc15b828509aede2cac433c5782043bed8b00d1e6c5e066ab29be2d492",
+                    "approved": true,
+                    "approver_key": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+                    "token_id": "approval-aaa54e20acabda6f85e839946bf24a5f8c722c4a204f98737d65d85cfe0e8f1f-decision"
+                  },
+                  "intent_hash": "50bc64fb9b4f233425d353d478ae61669818ff0ee6a1c877c599c23075970877",
+                  "intent_id": "approval-aaa54e20acabda6f85e839946bf24a5f8c722c4a204f98737d65d85cfe0e8f1f",
+                  "purpose": "Qualify exact approvals sharing one finite invocation quota",
+                  "server_id": "fs",
+                  "tool_name": "write_file"
+                },
+                "receipt_context": {
+                  "request_id": "approved-budget-write"
+                }
+              },
+              "policy_hash": "685bb944751a8caea9669a4da77ae981c0bbdc7990cd9826916a868a999e9ef7",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "134022226ed864e521326289ba024a9e771afc9392b9a492ac8ff8bf3510192050baba6f5d27ca21763847ba8f43518278a6637e2ad11ab857cb5f41b64a5f05",
+              "timestamp": 1788976762,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "approved-budget-write",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "Successfully wrote to /workspace/budgeted-approved.txt",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "Successfully wrote to /workspace/budgeted-approved.txt"
+        }
+      }
+    }
+  },
+  {
+    "observer": "budgeted-approved.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": true,
+      "content": "approved-budget"
+    }
+  },
+  {
+    "path": "/admin/approvals",
+    "request": {
+      "session_id": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+      "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+      "request_id": "approved-budget-read",
+      "tool_name": "read_text_file",
+      "arguments": {
+        "path": "/workspace/budgeted-approved.txt"
+      },
+      "purpose": "Qualify exact approvals sharing one finite invocation quota",
+      "ttl_seconds": 300
+    },
+    "session": null,
+    "status": 201,
+    "response": {
+      "dispatchPerformedByThisEndpoint": false,
+      "record": {
+        "arguments": {
+          "path": "/workspace/budgeted-approved.txt"
+        },
+        "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+        "created_at": 1788976762,
+        "expires_at": 1788977062,
+        "id": "approval-deeb8bc91e7b0819d7aa06508315dca27320e6e7295393fbf72f2662709630f1",
+        "intent": {
+          "body": {
+            "kind": "bound_tool_invocation",
+            "value": {
+              "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "parameters_hash": "0x0122dfed17075d59c336be5c157b81c11f08e2cddd682ac60221f870483bbfaa"
+            }
+          },
+          "context": {
+            "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+            "mcpSessionId": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+            "policyFingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01"
+          },
+          "id": "approval-deeb8bc91e7b0819d7aa06508315dca27320e6e7295393fbf72f2662709630f1",
+          "purpose": "Qualify exact approvals sharing one finite invocation quota",
+          "server_id": "fs",
+          "tool_name": "read_text_file"
+        },
+        "policy_fingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01",
+        "request_id": "approved-budget-read",
+        "schema": "chio.mcp.operator-approval.v1",
+        "session_id": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+        "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+      },
+      "status": "pending"
+    }
+  },
+  {
+    "path": "/admin/approvals/approval-deeb8bc91e7b0819d7aa06508315dca27320e6e7295393fbf72f2662709630f1/decision",
+    "request": {
+      "decision": "approved"
+    },
+    "session": null,
+    "status": 200,
+    "response": {
+      "dispatchPerformedByThisEndpoint": false,
+      "record": {
+        "arguments": {
+          "path": "/workspace/budgeted-approved.txt"
+        },
+        "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+        "created_at": 1788976762,
+        "decision": {
+          "approver": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+          "decision": "approved",
+          "expires_at": 1788977062,
+          "governed_intent_hash": "6e67e90b0a5a75d6f70149d79389feaa2060e4dcde885fe492b1658e99bcabd5",
+          "id": "approval-deeb8bc91e7b0819d7aa06508315dca27320e6e7295393fbf72f2662709630f1-decision",
+          "issued_at": 1788976762,
+          "request_id": "approved-budget-read",
+          "signature": "0420baee77c00abf6aa26d708290df4db6a40d081167f48d5018d8128fdd0e82ea8f7a3196b1971a870a1d0a90213a58854c2cc64f9c6610b9ecbfb4d3cb7c09",
+          "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+        },
+        "expires_at": 1788977062,
+        "id": "approval-deeb8bc91e7b0819d7aa06508315dca27320e6e7295393fbf72f2662709630f1",
+        "intent": {
+          "body": {
+            "kind": "bound_tool_invocation",
+            "value": {
+              "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "parameters_hash": "0x0122dfed17075d59c336be5c157b81c11f08e2cddd682ac60221f870483bbfaa"
+            }
+          },
+          "context": {
+            "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+            "mcpSessionId": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+            "policyFingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01"
+          },
+          "id": "approval-deeb8bc91e7b0819d7aa06508315dca27320e6e7295393fbf72f2662709630f1",
+          "purpose": "Qualify exact approvals sharing one finite invocation quota",
+          "server_id": "fs",
+          "tool_name": "read_text_file"
+        },
+        "policy_fingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01",
+        "request_id": "approved-budget-read",
+        "schema": "chio.mcp.operator-approval.v1",
+        "session_id": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+        "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+      },
+      "status": "approved",
+      "toolCallParams": {
+        "_meta": {
+          "chioApprovalToken": {
+            "approver": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+            "decision": "approved",
+            "expires_at": 1788977062,
+            "governed_intent_hash": "6e67e90b0a5a75d6f70149d79389feaa2060e4dcde885fe492b1658e99bcabd5",
+            "id": "approval-deeb8bc91e7b0819d7aa06508315dca27320e6e7295393fbf72f2662709630f1-decision",
+            "issued_at": 1788976762,
+            "request_id": "approved-budget-read",
+            "signature": "0420baee77c00abf6aa26d708290df4db6a40d081167f48d5018d8128fdd0e82ea8f7a3196b1971a870a1d0a90213a58854c2cc64f9c6610b9ecbfb4d3cb7c09",
+            "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+          },
+          "chioGovernedIntent": {
+            "body": {
+              "kind": "bound_tool_invocation",
+              "value": {
+                "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+                "parameters_hash": "0x0122dfed17075d59c336be5c157b81c11f08e2cddd682ac60221f870483bbfaa"
+              }
+            },
+            "context": {
+              "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "mcpSessionId": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+              "policyFingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01"
+            },
+            "id": "approval-deeb8bc91e7b0819d7aa06508315dca27320e6e7295393fbf72f2662709630f1",
+            "purpose": "Qualify exact approvals sharing one finite invocation quota",
+            "server_id": "fs",
+            "tool_name": "read_text_file"
+          },
+          "chioRequestId": "approved-budget-read"
+        },
+        "arguments": {
+          "path": "/workspace/budgeted-approved.txt"
+        },
+        "name": "read_text_file"
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "method": "tools/call",
+      "params": {
+        "_meta": {
+          "chioApprovalToken": {
+            "approver": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+            "decision": "approved",
+            "expires_at": 1788977062,
+            "governed_intent_hash": "6e67e90b0a5a75d6f70149d79389feaa2060e4dcde885fe492b1658e99bcabd5",
+            "id": "approval-deeb8bc91e7b0819d7aa06508315dca27320e6e7295393fbf72f2662709630f1-decision",
+            "issued_at": 1788976762,
+            "request_id": "approved-budget-read",
+            "signature": "0420baee77c00abf6aa26d708290df4db6a40d081167f48d5018d8128fdd0e82ea8f7a3196b1971a870a1d0a90213a58854c2cc64f9c6610b9ecbfb4d3cb7c09",
+            "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+          },
+          "chioGovernedIntent": {
+            "body": {
+              "kind": "bound_tool_invocation",
+              "value": {
+                "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+                "parameters_hash": "0x0122dfed17075d59c336be5c157b81c11f08e2cddd682ac60221f870483bbfaa"
+              }
+            },
+            "context": {
+              "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "mcpSessionId": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+              "policyFingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01"
+            },
+            "id": "approval-deeb8bc91e7b0819d7aa06508315dca27320e6e7295393fbf72f2662709630f1",
+            "purpose": "Qualify exact approvals sharing one finite invocation quota",
+            "server_id": "fs",
+            "tool_name": "read_text_file"
+          },
+          "chioRequestId": "approved-budget-read"
+        },
+        "arguments": {
+          "path": "/workspace/budgeted-approved.txt"
+        },
+        "name": "read_text_file"
+      }
+    },
+    "session": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+    "status": 200,
+    "response": {
+      "id": 4,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": {
+              "content": [
+                {
+                  "text": "approved-budget",
+                  "type": "text"
+                }
+              ],
+              "isError": false,
+              "structuredContent": {
+                "content": "approved-budget"
+              }
+            },
+            "outputKind": "value",
+            "receipt": {
+              "action": {
+                "parameter_hash": "0122dfed17075d59c336be5c157b81c11f08e2cddd682ac60221f870483bbfaa",
+                "parameters": {
+                  "path": "/workspace/budgeted-approved.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "content_hash": "2b399b15e0ccdda2decdaacc028af1b4d7ee2f2c0592eccb82943df2425103aa",
+              "decision": {
+                "verdict": "allow"
+              },
+              "id": "bce49285c568cca570ced749d0f949e1118f2fa07637786a2200dbf33d48aeb9",
+              "kernel_key": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+              "metadata": {
+                "admission_operation": {
+                  "compensation_status": "not_compensated",
+                  "coordinator_lease_epoch": 1,
+                  "coordinator_lease_id": "01a08753-0b7a-7e93-b8de-5fdf889ac61c",
+                  "operation_id": "426c9423ebe6f27281b3b13a3ac43fa49c9445e5227379d20c350962c6cc210c",
+                  "projected_dispatch_state": "terminal",
+                  "projected_operation_version": 8,
+                  "projected_state": "completed",
+                  "request_binding_hash": "15d8e0b19765361ac15b6421e03c7a1dc3fd4a7de5bb338b29eb22301683c492",
+                  "request_id": "approved-budget-read",
+                  "request_namespace_digest": "6840d7d1f24f5fd6a599faac2fe9cee3fd70370e8500d2ac88ce100afa562aef",
+                  "retained_dispatch_commit": {
+                    "committed_version": 6,
+                    "coordinator_lease_epoch": 1,
+                    "coordinator_lease_id": "01a08753-0b7a-7e93-b8de-5fdf889ac61c",
+                    "provider_attempt": {
+                      "attempt_id": "attempt:426c9423ebe6f27281b3b13a3ac43fa49c9445e5227379d20c350962c6cc210c",
+                      "operation_id": "426c9423ebe6f27281b3b13a3ac43fa49c9445e5227379d20c350962c6cc210c",
+                      "transport_id": "kernel-tool-server:fs",
+                      "transport_key_epoch": 1
+                    },
+                    "store_fence": {
+                      "lease_id": "01a08753-0b7a-7e93-b8de-5fdf889ac61c",
+                      "owner_epoch": 1,
+                      "store_uuid": "01a08753-0a95-7510-bbb5-c9e8110ec1af"
+                    }
+                  },
+                  "schema": "chio.admission-receipt.v1",
+                  "store_fence": {
+                    "lease_id": "01a08753-0b7a-7e93-b8de-5fdf889ac61c",
+                    "owner_epoch": 1,
+                    "store_uuid": "01a08753-0a95-7510-bbb5-c9e8110ec1af"
+                  },
+                  "tool_outcome_id": "0e263c99136574a4de15a95a9d118b0771ee0aeb5542ed0153f76a5fc27e36eb",
+                  "tool_outcome_version": 2,
+                  "trusted_time_unix_ms": 1788976763254
+                },
+                "attribution": {
+                  "delegation_depth": 0,
+                  "grant_index": 0,
+                  "issuer_key": "68274fb855c08f52db14e19e2cad4b550fff48298d885eeafff1b16aa77f9c9b",
+                  "subject_key": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a08753-11e6-7c02-b440-23f4dc947562",
+                "governed_transaction": {
+                  "approval": {
+                    "approval_artifact_digest": "b00eaa4ab5bd25ea6f8ea91fbc38ec7e2de197c1120f481bbcffee2ca3ddc7ba",
+                    "approved": true,
+                    "approver_key": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+                    "token_id": "approval-deeb8bc91e7b0819d7aa06508315dca27320e6e7295393fbf72f2662709630f1-decision"
+                  },
+                  "intent_hash": "6e67e90b0a5a75d6f70149d79389feaa2060e4dcde885fe492b1658e99bcabd5",
+                  "intent_id": "approval-deeb8bc91e7b0819d7aa06508315dca27320e6e7295393fbf72f2662709630f1",
+                  "purpose": "Qualify exact approvals sharing one finite invocation quota",
+                  "server_id": "fs",
+                  "tool_name": "read_text_file"
+                },
+                "receipt_context": {
+                  "request_id": "approved-budget-read"
+                }
+              },
+              "policy_hash": "685bb944751a8caea9669a4da77ae981c0bbdc7990cd9826916a868a999e9ef7",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "5a500f444523d42721159a7b0e8c3a1032901da702cfa7509ea5af3fca3cc9776372b5ade6c973745e5dc2877a750974d7c87ccf1d07fab76187baa4f58f7909",
+              "timestamp": 1788976763,
+              "tool_name": "read_text_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "approved-budget-read",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "approved-budget",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "approved-budget"
+        }
+      }
+    }
+  },
+  {
+    "path": "/admin/health",
+    "request": null,
+    "session": null,
+    "status": 200,
+    "response": {
+      "auth": {
+        "adminTokenConfigured": true,
+        "audienceConfigured": false,
+        "issuerConfigured": false,
+        "mode": "static_bearer",
+        "scopes": []
+      },
+      "authority": {
+        "appliesToFutureSessionsOnly": true,
+        "backend": "sqlite",
+        "configured": true,
+        "generation": 1,
+        "publicKey": "68274fb855c08f52db14e19e2cad4b550fff48298d885eeafff1b16aa77f9c9b",
+        "rotatedAt": 1788976761,
+        "trustedPublicKeys": [
+          "68274fb855c08f52db14e19e2cad4b550fff48298d885eeafff1b16aa77f9c9b"
+        ]
+      },
+      "controlPlane": {
+        "controlTokenConfigured": false,
+        "controlUrl": null,
+        "proxied": false
+      },
+      "federation": {
+        "enterpriseProviders": {
+          "configured": false,
+          "count": 0,
+          "invalidCount": 0,
+          "validatedCount": 0
+        },
+        "identityFederationConfigured": false
+      },
+      "oauth": {
+        "authorizationServerMetadata": false,
+        "localAuthorizationServer": false,
+        "protectedResourceMetadata": false
+      },
+      "ok": true,
+      "server": {
+        "serverId": "fs",
+        "serverName": "fs",
+        "serverVersion": "0.1.0",
+        "sharedHostedOwner": false,
+        "sharedHostedOwnerStats": null
+      },
+      "sessions": {
+        "activeCount": 1,
+        "drainGraceMillis": 5000,
+        "idleExpiryMillis": 900000,
+        "reaperIntervalMillis": 250,
+        "terminalCount": 0,
+        "tombstoneRetentionMillis": 1800000
+      },
+      "stores": {
+        "authorityDbConfigured": true,
+        "authoritySeedConfigured": false,
+        "budgetsConfigured": true,
+        "receiptsConfigured": true,
+        "revocationsConfigured": true,
+        "sessionTombstonesConfigured": true
+      }
+    }
+  },
+  {
+    "path": "/admin/approvals",
+    "request": {
+      "session_id": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+      "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+      "request_id": "approved-budget-exhausted",
+      "tool_name": "write_file",
+      "arguments": {
+        "path": "/workspace/approved-over-budget.txt",
+        "content": "must-not-write"
+      },
+      "purpose": "Qualify exact approvals sharing one finite invocation quota",
+      "ttl_seconds": 300
+    },
+    "session": null,
+    "status": 201,
+    "response": {
+      "dispatchPerformedByThisEndpoint": false,
+      "record": {
+        "arguments": {
+          "content": "must-not-write",
+          "path": "/workspace/approved-over-budget.txt"
+        },
+        "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+        "created_at": 1788976764,
+        "expires_at": 1788977064,
+        "id": "approval-29d5e188f13e0f9aeeeb66be828ddb4f909c1c750a0c788fdf93b3625a87508f",
+        "intent": {
+          "body": {
+            "kind": "bound_tool_invocation",
+            "value": {
+              "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "parameters_hash": "0x64368a578f7f477e9b3482c6be4dd73594380a18404c3482ebbb36ba7104868c"
+            }
+          },
+          "context": {
+            "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+            "mcpSessionId": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+            "policyFingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01"
+          },
+          "id": "approval-29d5e188f13e0f9aeeeb66be828ddb4f909c1c750a0c788fdf93b3625a87508f",
+          "purpose": "Qualify exact approvals sharing one finite invocation quota",
+          "server_id": "fs",
+          "tool_name": "write_file"
+        },
+        "policy_fingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01",
+        "request_id": "approved-budget-exhausted",
+        "schema": "chio.mcp.operator-approval.v1",
+        "session_id": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+        "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+      },
+      "status": "pending"
+    }
+  },
+  {
+    "path": "/admin/approvals/approval-29d5e188f13e0f9aeeeb66be828ddb4f909c1c750a0c788fdf93b3625a87508f/decision",
+    "request": {
+      "decision": "approved"
+    },
+    "session": null,
+    "status": 200,
+    "response": {
+      "dispatchPerformedByThisEndpoint": false,
+      "record": {
+        "arguments": {
+          "content": "must-not-write",
+          "path": "/workspace/approved-over-budget.txt"
+        },
+        "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+        "created_at": 1788976764,
+        "decision": {
+          "approver": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+          "decision": "approved",
+          "expires_at": 1788977064,
+          "governed_intent_hash": "508c53d2c3251d791b731a7c3f9363ac182a0e547ef6dd1cec6a8250daee0739",
+          "id": "approval-29d5e188f13e0f9aeeeb66be828ddb4f909c1c750a0c788fdf93b3625a87508f-decision",
+          "issued_at": 1788976764,
+          "request_id": "approved-budget-exhausted",
+          "signature": "f97d0bde8d7fe986df7d5c80ed720ea6d2b2616f51bb75f50db4b6d774331db7246d24f22fb804afa0920ea37ad84dc1e6c00d3a88a4ed0f806034842791e906",
+          "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+        },
+        "expires_at": 1788977064,
+        "id": "approval-29d5e188f13e0f9aeeeb66be828ddb4f909c1c750a0c788fdf93b3625a87508f",
+        "intent": {
+          "body": {
+            "kind": "bound_tool_invocation",
+            "value": {
+              "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "parameters_hash": "0x64368a578f7f477e9b3482c6be4dd73594380a18404c3482ebbb36ba7104868c"
+            }
+          },
+          "context": {
+            "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+            "mcpSessionId": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+            "policyFingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01"
+          },
+          "id": "approval-29d5e188f13e0f9aeeeb66be828ddb4f909c1c750a0c788fdf93b3625a87508f",
+          "purpose": "Qualify exact approvals sharing one finite invocation quota",
+          "server_id": "fs",
+          "tool_name": "write_file"
+        },
+        "policy_fingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01",
+        "request_id": "approved-budget-exhausted",
+        "schema": "chio.mcp.operator-approval.v1",
+        "session_id": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+        "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+      },
+      "status": "approved",
+      "toolCallParams": {
+        "_meta": {
+          "chioApprovalToken": {
+            "approver": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+            "decision": "approved",
+            "expires_at": 1788977064,
+            "governed_intent_hash": "508c53d2c3251d791b731a7c3f9363ac182a0e547ef6dd1cec6a8250daee0739",
+            "id": "approval-29d5e188f13e0f9aeeeb66be828ddb4f909c1c750a0c788fdf93b3625a87508f-decision",
+            "issued_at": 1788976764,
+            "request_id": "approved-budget-exhausted",
+            "signature": "f97d0bde8d7fe986df7d5c80ed720ea6d2b2616f51bb75f50db4b6d774331db7246d24f22fb804afa0920ea37ad84dc1e6c00d3a88a4ed0f806034842791e906",
+            "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+          },
+          "chioGovernedIntent": {
+            "body": {
+              "kind": "bound_tool_invocation",
+              "value": {
+                "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+                "parameters_hash": "0x64368a578f7f477e9b3482c6be4dd73594380a18404c3482ebbb36ba7104868c"
+              }
+            },
+            "context": {
+              "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "mcpSessionId": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+              "policyFingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01"
+            },
+            "id": "approval-29d5e188f13e0f9aeeeb66be828ddb4f909c1c750a0c788fdf93b3625a87508f",
+            "purpose": "Qualify exact approvals sharing one finite invocation quota",
+            "server_id": "fs",
+            "tool_name": "write_file"
+          },
+          "chioRequestId": "approved-budget-exhausted"
+        },
+        "arguments": {
+          "content": "must-not-write",
+          "path": "/workspace/approved-over-budget.txt"
+        },
+        "name": "write_file"
+      }
+    }
+  },
+  {
+    "path": "/mcp",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "method": "tools/call",
+      "params": {
+        "_meta": {
+          "chioApprovalToken": {
+            "approver": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+            "decision": "approved",
+            "expires_at": 1788977064,
+            "governed_intent_hash": "508c53d2c3251d791b731a7c3f9363ac182a0e547ef6dd1cec6a8250daee0739",
+            "id": "approval-29d5e188f13e0f9aeeeb66be828ddb4f909c1c750a0c788fdf93b3625a87508f-decision",
+            "issued_at": 1788976764,
+            "request_id": "approved-budget-exhausted",
+            "signature": "f97d0bde8d7fe986df7d5c80ed720ea6d2b2616f51bb75f50db4b6d774331db7246d24f22fb804afa0920ea37ad84dc1e6c00d3a88a4ed0f806034842791e906",
+            "subject": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+          },
+          "chioGovernedIntent": {
+            "body": {
+              "kind": "bound_tool_invocation",
+              "value": {
+                "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+                "parameters_hash": "0x64368a578f7f477e9b3482c6be4dd73594380a18404c3482ebbb36ba7104868c"
+              }
+            },
+            "context": {
+              "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "mcpSessionId": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+              "policyFingerprint": "d4b4fb7b7f63cf4019e62190b5e94ea5d5cd9f605dcafbe34c33d3ae67262e01"
+            },
+            "id": "approval-29d5e188f13e0f9aeeeb66be828ddb4f909c1c750a0c788fdf93b3625a87508f",
+            "purpose": "Qualify exact approvals sharing one finite invocation quota",
+            "server_id": "fs",
+            "tool_name": "write_file"
+          },
+          "chioRequestId": "approved-budget-exhausted"
+        },
+        "arguments": {
+          "content": "must-not-write",
+          "path": "/workspace/approved-over-budget.txt"
+        },
+        "name": "write_file"
+      }
+    },
+    "session": "2ed0485536e1af3d2b023e72f83281b2e2cdc83895368083f7ddde1d5b1b3640",
+    "status": 200,
+    "response": {
+      "id": 5,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": null,
+            "outputKind": "none",
+            "receipt": {
+              "action": {
+                "parameter_hash": "64368a578f7f477e9b3482c6be4dd73594380a18404c3482ebbb36ba7104868c",
+                "parameters": {
+                  "content": "must-not-write",
+                  "path": "/workspace/approved-over-budget.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+              "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+              "decision": {
+                "guard": "kernel",
+                "reason": "invocation budget exhausted for capability cap-01a08753-0d56-7841-9600-a74c6820b98f",
+                "verdict": "deny"
+              },
+              "id": "55a1ccda632801cb02dba2eef4a328b4716e754626bed604ebe0ea2d09b77338",
+              "kernel_key": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+              "metadata": {
+                "attribution": {
+                  "delegation_depth": 0,
+                  "issuer_key": "68274fb855c08f52db14e19e2cad4b550fff48298d885eeafff1b16aa77f9c9b",
+                  "subject_key": "447fd2594eeea0ee6c2db63548e1636e0d29f95fec9861ef805469b9cd56d3e2"
+                },
+                "budget_authority": {
+                  "authority_profile": "authoritative_hold_event",
+                  "guarantee_level": "single_node_atomic",
+                  "metering_profile": "max_cost_preauthorize_then_reconcile_actual"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a08753-15bf-7843-9705-e105adaf0ef2",
+                "governed_transaction": {
+                  "approval": {
+                    "approval_artifact_digest": "92fbb23b8f017e5ff1d64cb9ee1d52bb4bdbb9e8ee421c7263e8684c7e92254f",
+                    "approved": true,
+                    "approver_key": "4707c498a0045356c35a651131b96c21dad320825ae18fd66268d911f92df564",
+                    "token_id": "approval-29d5e188f13e0f9aeeeb66be828ddb4f909c1c750a0c788fdf93b3625a87508f-decision"
+                  },
+                  "intent_hash": "508c53d2c3251d791b731a7c3f9363ac182a0e547ef6dd1cec6a8250daee0739",
+                  "intent_id": "approval-29d5e188f13e0f9aeeeb66be828ddb4f909c1c750a0c788fdf93b3625a87508f",
+                  "purpose": "Qualify exact approvals sharing one finite invocation quota",
+                  "server_id": "fs",
+                  "tool_name": "write_file"
+                },
+                "receipt_context": {
+                  "request_id": "approved-budget-exhausted"
+                }
+              },
+              "policy_hash": "685bb944751a8caea9669a4da77ae981c0bbdc7990cd9826916a868a999e9ef7",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "07f96dc4a0403143ecf74c292af7a414330755caff1c7a3e6e0f11133d95d12ddec36d3bd3e631e290962dee7f8e6c431fbbfd59d909a7d4f96b54264e10d90e",
+              "timestamp": 1788976764,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "approved-budget-exhausted",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "invocation budget exhausted for capability cap-01a08753-0d56-7841-9600-a74c6820b98f",
+            "type": "text"
+          }
+        ],
+        "isError": true
+      }
+    }
+  },
+  {
+    "observer": "approved-over-budget.txt",
+    "operatorReplacement": null,
+    "resource": {
+      "exists": false
+    }
+  },
+  {
+    "path": "/admin/budgets?capability_id=cap-01a08753-0d56-7841-9600-a74c6820b98f",
+    "request": null,
+    "session": null,
+    "status": 200,
+    "response": {
+      "backend": "sqlite",
+      "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+      "configured": true,
+      "count": 1,
+      "usages": [
+        {
+          "capabilityId": "cap-01a08753-0d56-7841-9600-a74c6820b98f",
+          "grantIndex": 0,
+          "invocationCount": 2,
+          "updatedAt": 1788976763
+        }
+      ]
+    }
+  },
+  {
+    "approvedBudget": "approved write and read share one two-invocation grant; restart and a new approved token do not replenish it"
+  }
+]

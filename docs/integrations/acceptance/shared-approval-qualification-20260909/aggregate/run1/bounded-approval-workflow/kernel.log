@@ -1,0 +1,10 @@
+remote MCP edge listening on http://127.0.0.1:60393/mcp
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio
+WARN chio_mcp_adapter::stderr message=No valid root directories provided by client
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio
+WARN chio_mcp_adapter::stderr message=No valid root directories provided by client
+remote MCP edge listening on http://127.0.0.1:60393/mcp
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio
+WARN chio_mcp_adapter::stderr message=No valid root directories provided by client
+remote MCP edge listening on http://127.0.0.1:60393/mcp
+WARN chio_kernel::kernel::evaluation::nested_flow_evaluation message=capability rejected request_id=approval-revoked reason=capability has been revoked: cap-01a08715-f7eb-79b3-bde9-238143a4b78b

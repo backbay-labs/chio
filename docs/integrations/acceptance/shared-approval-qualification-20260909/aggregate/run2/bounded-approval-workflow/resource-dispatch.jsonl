@@ -1,0 +1,1 @@
+{"schema":"chio.resource-dispatch-observation.v1","processId":1,"sequence":1,"observedAt":"2026-09-09T17:59:15.334Z","upstreamRequestId":3,"tool":"write_file","path":"/workspace/valid.txt","argumentsSha256":"7bed5eaa6dbd2959f3fe0dca69daf5eba372818c719c43119292e28658a2ce5e","frameSha256":"ce4753bf8bcb987e32ad9947df1bf9262133f3ba0b3454a0389c9b216fcd3d9f"}
