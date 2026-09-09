@@ -617,3 +617,38 @@ fn guard_install_rejects_symlink_member() {
     let msg = err.to_string();
     assert!(msg.contains("non-regular"), "{msg}");
 }
+
+#[test]
+fn signed_guard_archive_installs_without_local_sidecar() {
+    use ed25519_dalek::SigningKey;
+    use sha2::{Digest, Sha256};
+    let project = tempfile::tempdir().unwrap();
+    let destination = tempfile::tempdir().unwrap();
+    let wasm = project.path().join("signed.wasm");
+    let bytes = b"\x00asm\x01\x00\x00\x00";
+    fs::write(&wasm, bytes).unwrap();
+    let key = SigningKey::from_bytes(&[23; 32]);
+    let seed = project.path().join("seed");
+    fs::write(&seed, hex::encode(key.to_bytes())).unwrap();
+    fs::write(project.path().join("guard-manifest.yaml"), format!(
+        "name: signed\nversion: '0.1.0'\nabi_version: '1'\nwit_world: 'chio:guard/guard@0.2.0'\nwasm_path: signed.wasm\nwasm_sha256: {}\nsigner_public_key: {}\n",
+        hex::encode(Sha256::digest(bytes)), hex::encode(key.verifying_key().to_bytes())
+    )).unwrap();
+    crate::guards::sign::cmd_guard_sign(&wasm, &seed, "signed", "0.1.0").unwrap();
+    pack_from_dir(project.path()).unwrap();
+    // Hand off only the archive. The install must not use the author's files.
+    let archive = destination.path().join("release.arcguard");
+    fs::copy(project.path().join("signed-0.1.0.arcguard"), &archive).unwrap();
+    drop(project);
+    cmd_guard_install(&archive, destination.path()).unwrap();
+    let installed = destination.path().join("signed/signed.wasm");
+    crate::guards::sign::cmd_guard_verify(&installed).unwrap();
+    fs::write(&installed, b"modified module").unwrap();
+    assert!(crate::guards::sign::cmd_guard_verify(&installed).is_err());
+    fs::write(&installed, bytes).unwrap();
+    let sidecar_path = installed.with_extension("wasm.sig");
+    let mut sidecar: serde_json::Value = serde_json::from_slice(&fs::read(&sidecar_path).unwrap()).unwrap();
+    sidecar["signature"] = serde_json::Value::String("00".repeat(64));
+    fs::write(&sidecar_path, serde_json::to_vec(&sidecar).unwrap()).unwrap();
+    assert!(crate::guards::sign::cmd_guard_verify(&installed).is_err());
+}

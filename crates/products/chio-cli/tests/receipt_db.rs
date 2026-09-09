@@ -224,3 +224,25 @@ fn check_command_persists_receipt_via_control_service() {
     assert_eq!(decision_kind, "allow");
     assert_eq!(child_count, 0);
 }
+
+#[test]
+fn independent_checks_reuse_one_persistent_admission_database() {
+    let dir = tempfile::tempdir().expect("private store directory");
+    secure_private_directory(dir.path());
+    let db = dir.path().join("receipts.db");
+    let sessions = dir.path().join("sessions.db");
+    let mut ids = std::collections::HashSet::new();
+    for (command, expected) in [("echo first", 0), ("rm -rf /", 2), ("echo second", 0)] {
+        let output = Command::new(env!("CARGO_BIN_EXE_chio"))
+            .args(["--receipt-db", db.to_str().unwrap(), "--session-db", sessions.to_str().unwrap(),
+                "--format", "json", "check", "--policy", receipt_db_policy().to_str().unwrap(),
+                "--server", "*", "--tool", "bash", "--params", &serde_json::json!({"command": command}).to_string()])
+            .output().expect("check policy");
+        assert_eq!(output.status.code(), Some(expected), "stdout: {}\nstderr: {}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("check report");
+        assert!(ids.insert(report["receipt_id"].as_str().unwrap().to_owned()), "each call has its own receipt");
+    }
+    let db = Connection::open(db).unwrap();
+    let count: i64 = db.query_row("SELECT COUNT(*) FROM chio_tool_receipts", [], |row| row.get(0)).unwrap();
+    assert_eq!(count, 3);
+}

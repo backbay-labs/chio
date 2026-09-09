@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use chio_wasm_guards::manifest::GuardManifest;
+use chio_wasm_guards::manifest::{signature_sidecar_path, verify_guard_signature, GuardManifest};
 use flate2::write::GzEncoder;
 use flate2::Compression;
 
@@ -99,6 +99,17 @@ pub(super) fn pack_from_dir(project_dir: &Path) -> Result<(), CliError> {
             ))
         })?;
 
+    let sidecar_path = signature_sidecar_path(&wasm_abs_path.to_string_lossy());
+    let signature_bytes = match fs::read(&sidecar_path) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(guard_io_error(format!("failed to read guard signature: {error}"))),
+    };
+    if manifest.signer_public_key.is_some() {
+        verify_guard_signature(&wasm_abs_path.to_string_lossy(), &wasm_bytes, &manifest)
+            .map_err(|error| CliError::guard_error(format!("cannot package signed guard: {error}")))?;
+    }
+
     let archive_name = format!("{}-{}.arcguard", manifest.name, manifest.version);
     let archive_path = project_dir.join(&archive_name);
 
@@ -125,6 +136,15 @@ pub(super) fn pack_from_dir(project_dir: &Path) -> Result<(), CliError> {
     tar_builder
         .append_data(&mut wasm_header, wasm_filename, wasm_bytes.as_slice())
         .map_err(|e| guard_io_error(format!("failed to add wasm to archive: {e}")))?;
+
+    if let Some(bytes) = &signature_bytes {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        tar_builder.append_data(&mut header, format!("{wasm_filename}.sig"), bytes.as_slice())
+            .map_err(|error| guard_io_error(format!("failed to add signature to archive: {error}")))?;
+    }
 
     let enc = tar_builder
         .into_inner()
@@ -199,30 +219,39 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
         ))
     })?;
 
-    // Find the .wasm file in the temp directory (the non-manifest entry)
-    let wasm_filename = {
-        let mut found: Option<String> = None;
-        for entry in fs::read_dir(&tmp_path)
-            .map_err(|e| guard_io_error(format!("failed to list temp directory: {e}")))?
-        {
-            let entry = entry
-                .map_err(|e| guard_io_error(format!("failed to read directory entry: {e}")))?;
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-            if name_str != "guard-manifest.yaml" {
-                found = Some(name_str.into_owned());
-            }
-        }
-        found.ok_or_else(|| {
-            CliError::guard_error("archive does not contain a .wasm file".to_string())
-        })?
-    };
+    // Select the module named by the manifest. A detached signature is a
+    // separate archive member and must never be mistaken for the module.
+    let wasm_filename = Path::new(&manifest.wasm_path).file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| name.ends_with(".wasm"))
+        .ok_or_else(|| CliError::guard_error("manifest must name a .wasm module".to_string()))?;
+    let src_signature = tmp_path.join(format!("{wasm_filename}.sig"));
+    if manifest.signer_public_key.is_some() {
+        let source = tmp_path.join(wasm_filename);
+        let bytes = fs::read(&source).map_err(|error| guard_io_error(format!("failed to read packaged module: {error}")))?;
+        verify_guard_signature(&source.to_string_lossy(), &bytes, &manifest)
+            .map_err(|error| CliError::guard_error(format!("cannot install signed guard: {error}")))?;
+    }
 
     // Copy the .wasm file
     let src_wasm = tmp_path.join(&wasm_filename);
     let dst_wasm = guard_dir.join(&wasm_filename);
     fs::copy(&src_wasm, &dst_wasm)
         .map_err(|e| guard_io_error(format!("failed to copy wasm file: {e}")))?;
+
+    let dst_signature = guard_dir.join(format!("{wasm_filename}.sig"));
+    match fs::copy(&src_signature, &dst_signature) {
+        Ok(_) => {},
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // Replacing an unsigned module must not retain an older signature.
+            if let Err(error) = fs::remove_file(&dst_signature) {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    return Err(guard_io_error(format!("failed to remove old signature: {error}")));
+                }
+            }
+        },
+        Err(error) => return Err(guard_io_error(format!("failed to install signature: {error}"))),
+    }
 
     // Update the manifest's wasm_path to point to the co-located filename and write it
     let updated_manifest_content = update_manifest_wasm_path(&manifest_content, &wasm_filename)?;

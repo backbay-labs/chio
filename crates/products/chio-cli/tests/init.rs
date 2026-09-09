@@ -337,7 +337,25 @@ fn scaffolded_demo_runs_governed_hello_flow() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Hello, Ada! This call was mediated by Chio."));
-    assert!(stdout.contains("latest receipt:"));
+    assert!(stdout.contains("call receipt:"));
+    let first_call: serde_json::Value = serde_json::from_str(stdout.split("tool_call:\n").nth(1).unwrap().split("\ngoverned greeting:").next().unwrap().trim()).unwrap();
+    let first_id = first_call.pointer("/result/_meta/chioReceipt/receiptId").and_then(serde_json::Value::as_str).unwrap();
+    assert!(stdout.split("call receipt:\n").nth(1).unwrap().contains(first_id));
+    let second = Command::new("cargo")
+        .args(["run", "--quiet", "--manifest-path"])
+        .arg(project_dir.join("Cargo.toml"))
+        .args(["--bin", "demo", "--", "Grace"])
+        .env("CHIO_BIN", env!("CARGO_BIN_EXE_chio"))
+        .env("CARGO_TARGET_DIR", &cargo_target_dir).output().unwrap();
+    assert!(second.status.success(), "{}", String::from_utf8_lossy(&second.stderr));
+    let second_stdout = String::from_utf8_lossy(&second.stdout);
+    let second_call: serde_json::Value = serde_json::from_str(second_stdout.split("tool_call:\n").nth(1).unwrap().split("\ngoverned greeting:").next().unwrap().trim()).unwrap();
+    let second_id = second_call.pointer("/result/_meta/chioReceipt/receiptId").and_then(serde_json::Value::as_str).unwrap();
+    assert_ne!(first_id, second_id);
+    assert!(second_stdout.split("call receipt:\n").nth(1).unwrap().contains(second_id));
+    assert!(!second_stdout.split("call receipt:\n").nth(1).unwrap().contains(first_id));
+    assert!(second_stdout.contains("Hello, Grace!"));
+
     assert!(project_dir.join(".chio/receipts.db").exists());
     assert!(project_dir.join(".chio/session.db").exists());
     assert_private_directory(&project_dir.join(".chio"));
