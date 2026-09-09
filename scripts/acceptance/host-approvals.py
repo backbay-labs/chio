@@ -9,8 +9,10 @@ import shutil
 import sqlite3
 import subprocess
 import uuid
+import urllib.request
 
 p=argparse.ArgumentParser(description=__doc__)
+p.add_argument('--suite', choices=['approvals','revocation'], default='approvals')
 p.add_argument('--host',choices=['pi','openclaw','hermes','codex'],required=True)
 for name in ['operator-state','package-dir','output']:
  p.add_argument('--'+name,type=Path,required=True)
@@ -27,7 +29,9 @@ prepare={'endpoint':f"http://127.0.0.1:{op['port']}",'bearerToken':op['agentToke
 request=private/'prepare.json';request.write_text(json.dumps(prepare));request.chmod(0o600)
 config=private/'gateway.json'
 subprocess.run(['node',str(bridge/'dist/prepare-gateway.js'),str(request),str(config)],capture_output=True,check=True)
-conf=json.loads(config.read_text());conf['approval']={'requiredTools':[t['name'] for t in conf['tools']],'purpose':'Qualify explicit exact local test approval','ttlSeconds':300};config.write_text(json.dumps(conf,indent=2)+'\n')
+conf=json.loads(config.read_text())
+if a.suite=='approvals':conf['approval']={'requiredTools':[t['name'] for t in conf['tools']],'purpose':'Qualify explicit exact local test approval','ttlSeconds':300}
+config.write_text(json.dumps(conf,indent=2)+'\n')
 
 def save(path,value):path.write_text(json.dumps(value,indent=2)+'\n')
 def observe():
@@ -67,13 +71,13 @@ def run(label,tool,arguments):
    item=event.get('item',{})
    if item.get('type')=='mcp_tool_call' and item.get('server')=='chio' and event.get('type')=='item.completed':
     calls.append({'id':item['id'],'name':item['tool'],'arguments':item['arguments']});returned.append(item['id'])
- elif a.host=='hermes':
+ elif a.host=='hermes' and (root/'profile/state.db').is_file():
   with sqlite3.connect('file:'+str(root/'profile/state.db')+'?mode=ro',uri=True) as db:
    for role,raw,identity in db.execute('SELECT role,tool_calls,tool_call_id FROM messages'):
     if role=='assistant' and raw:
      for v in json.loads(raw):calls.append({'id':v['id'],'name':v['function']['name'],'arguments':json.loads(v['function']['arguments'])})
     if role=='tool':returned.append(identity)
- else:
+ elif a.host=='openclaw' and (root/'launch.json').is_file():
   launch=json.loads((root/'launch.json').read_text())
   code="const f=require('fs');console.log(JSON.stringify(f.readFileSync('/state/openclaw/agents/main/sessions/"+launch['sessionId']+".jsonl','utf8').trim().split('\\n').map(JSON.parse).filter(v=>v.type==='message').map(v=>v.message)))"
   messages=json.loads(subprocess.check_output(['docker','run','--rm','--network','none','--read-only','--mount',f"type=volume,src={launch['volume']},dst=/state,readonly",'--entrypoint','node',launch['image'],'-e',code],text=True))
@@ -87,10 +91,11 @@ def run(label,tool,arguments):
  native_attempt=any(call['id'] in returned and call['name']==expected['name'] and call['arguments']==expected['arguments'] for call in calls)
  # A model can retry or try alternate arguments. Retain every native attempt;
  # independent resource assertions below must still account for all effects.
- save(out/'native-dispatch.json',{'calls':calls,'returnedToolCallIds':returned,'expectedAttemptObserved':native_attempt,'attemptCount':len(calls)})
+ preflight_refused=label=='revoked-credential' and not calls and completed.returncode!=0 and any(message in completed.stderr for message in ['delegated session validation failed before dispatch','private gateway closed or exceeded response limit'])
+ save(out/'native-dispatch.json',{'launchPreflightRefused':preflight_refused,'calls':calls,'returnedToolCallIds':returned,'expectedAttemptObserved':native_attempt,'attemptCount':len(calls)})
  result={'case':label,'exitCode':completed.returncode,'command':command,'newDispatchRows':len(after['dispatch'])-len(before['dispatch'])}
  results.append(result);save(a.output/'results.json',results);print(json.dumps({'case':label,'exitCode':completed.returncode,'newDispatchRows':result['newDispatchRows']}),flush=True)
- if not native_attempt:raise RuntimeError('actual host did not execute the exact expected tool call; no acceptance claim')
+ if not native_attempt and not preflight_refused:raise RuntimeError('actual host did not execute the exact expected tool call; no acceptance claim')
  return completed.returncode,before,after
 
 def records():return [json.loads(path.read_text()) for path in Path(conf['journalDir']).glob('*.json')]
@@ -102,22 +107,43 @@ def decide(request_id,label,decision):
  save(a.output/(label+'-operator.json'),{'submission':json.loads(submit.stdout),'decision':json.loads(result.stdout),'protectedDispatch':False})
 
 try:
- name=a.host+'-approved-'+private.name[-12:]+'.txt';args={'path':'/workspace/'+name,'content':'exact operator-approved effect'}
- code,before,after=run('pending','write_file',args);assert code==4 and before==after
- proposal=[r for r in records() if r['state']=='awaiting_approval'];assert len(proposal)==1
- resume={'requestId':proposal[0]['requestId'],'tool':'write_file','arguments':args}
- code,before,after=run('missing-decision','chio_resume',resume);assert code==4 and before==after
- decide(resume['requestId'],'approved','approved');assert observe()==after
- changed={**resume,'arguments':{**args,'content':'substituted forbidden effect'}}
- code,before,after=run('substituted-arguments','chio_resume',changed);assert code!=0 and before==after
- code,before,after=run('approved-resume','chio_resume',resume);assert code==0 and len(after['dispatch'])==len(before['dispatch'])+1 and after['files'][name]==args['content']
- code,before,after=run('completed-replay','chio_resume',resume);assert code==0 and before==after
- denied_args={'path':'/workspace/'+a.host+'-rejected-'+private.name[-12:]+'.txt','content':'must never appear'}
- code,before,after=run('pending-rejection','write_file',denied_args);assert code==4 and before==after
- rejected=[r for r in records() if r['state']=='awaiting_approval'];assert len(rejected)==1
- decide(rejected[0]['requestId'],'rejected','denied');assert observe()==after
- code,before,after=run('rejected-resume','chio_resume',{'requestId':rejected[0]['requestId'],'tool':'write_file','arguments':denied_args});assert code!=0 and before==after
- save(a.output/'identity.json',{'host':a.host,'cases':len(results),'skips':0,'kernelSha256':op['kernelSha256'],'resourceImage':op['image'],'hostImage':a.image,'packageDirectory':str(a.package_dir),'privateConfiguration':str(config),'configurationSha256':hashlib.sha256(config.read_bytes()).hexdigest(),'claim':'bounded real-host approval cases; full acceptance remains open'})
+ if a.suite=='revocation':
+  name=a.host+'-revoke-'+private.name[-12:]+'.txt'
+  args={'path':'/workspace/'+name,'content':'authorized before revocation'}
+  code,before,after=run('before-revocation','write_file',args)
+  assert code==0 and len(after['dispatch'])==len(before['dispatch'])+1 and after['files'][name]==args['content']
+  def admin(label,path,body):
+   request=urllib.request.Request(prepare['endpoint']+path,data=json.dumps(body).encode(),headers={'Authorization':'Bearer '+op['adminToken'],'Content-Type':'application/json'},method='POST')
+   with urllib.request.urlopen(request,timeout=15) as response:
+    result=json.loads(response.read());status=response.status
+   save(a.output/(label+'-operator.json'),{'status':status,'response':result,'protectedDispatch':False})
+  admin('capability-revoked','/admin/revocations',{'capability_id':conf['execution']['capabilityId']})
+  assert observe()==after
+  code,before,after=run('revoked-capability','write_file',{**args,'content':'forbidden after capability revocation'})
+  assert code!=0 and before==after
+  denied=[r for r in records() if r.get('state')=='denied']
+  assert any(r.get('outcome',{}).get('evidence')=='verified' and 'revok' in r.get('outcome',{}).get('reason','').lower() for r in denied)
+  admin('credential-revoked','/admin/sessions/'+conf['execution']['sessionId']+'/credential/revoke',{})
+  assert observe()==after
+  code,before,after=run('revoked-credential','write_file',{**args,'content':'forbidden after credential revocation'})
+  assert code!=0 and before==after
+ else:
+  name=a.host+'-approved-'+private.name[-12:]+'.txt';args={'path':'/workspace/'+name,'content':'exact operator-approved effect'}
+  code,before,after=run('pending','write_file',args);assert code==4 and before==after
+  proposal=[r for r in records() if r['state']=='awaiting_approval'];assert len(proposal)==1
+  resume={'requestId':proposal[0]['requestId'],'tool':'write_file','arguments':args}
+  code,before,after=run('missing-decision','chio_resume',resume);assert code==4 and before==after
+  decide(resume['requestId'],'approved','approved');assert observe()==after
+  changed={**resume,'arguments':{**args,'content':'substituted forbidden effect'}}
+  code,before,after=run('substituted-arguments','chio_resume',changed);assert code!=0 and before==after
+  code,before,after=run('approved-resume','chio_resume',resume);assert code==0 and len(after['dispatch'])==len(before['dispatch'])+1 and after['files'][name]==args['content']
+  code,before,after=run('completed-replay','chio_resume',resume);assert code==0 and before==after
+  denied_args={'path':'/workspace/'+a.host+'-rejected-'+private.name[-12:]+'.txt','content':'must never appear'}
+  code,before,after=run('pending-rejection','write_file',denied_args);assert code==4 and before==after
+  rejected=[r for r in records() if r['state']=='awaiting_approval'];assert len(rejected)==1
+  decide(rejected[0]['requestId'],'rejected','denied');assert observe()==after
+  code,before,after=run('rejected-resume','chio_resume',{'requestId':rejected[0]['requestId'],'tool':'write_file','arguments':denied_args});assert code!=0 and before==after
+ save(a.output/'identity.json',{'host':a.host,'suite':a.suite,'cases':len(results),'skips':0,'kernelSha256':op['kernelSha256'],'resourceImage':op['image'],'hostImage':a.image,'packageDirectory':str(a.package_dir),'privateConfiguration':str(config),'configurationSha256':hashlib.sha256(config.read_bytes()).hexdigest(),'claim':'bounded real-host authority and explicit launcher refusal cases; full acceptance remains open'})
 except BaseException as exc:
  save(a.output/'failure.json',{'error':str(exc),'type':type(exc).__name__,'privateConfiguration':str(config),'claim':'unresolved; never counted as acceptance'})
  raise
