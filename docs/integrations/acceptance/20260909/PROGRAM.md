@@ -445,3 +445,29 @@ the actual Hermes/OpenAI host completed write/edit/read/list through the copied
 kernel, with four independent dispatch observations. Raw evidence is in
 `raw/local-delivery-hermes-r10`. This closes another installation subset, not
 public release or full upgrade/removal acceptance. All six remain unaccepted.
+
+
+## Native evidence substitution and current container qualification
+
+The current Codex, Pi, Hermes r10 and OpenClaw candidates each passed three
+additional native evidence-negative sessions and three original-authority
+fenced restarts. Each initial session performs two legitimate kernel writes.
+The transport then substitutes either the first call's intact valid signed
+receipt into the second response, an altered signing key, or a mismatched
+request ID. Every second result is rejected as unverified unknown. Its delivery
+is not acknowledged. The later replacement write remains fenced and the
+original unknown record remains unchanged. The independent observer records
+the two original authorized writes, then zero new restart effects. These are
+I06/I07 subsets, not a claim of preventing an already authorized original effect.
+Per-host archive identities and committed raw records are in
+`raw/native-evidence-binding-records.json`.
+
+OpenClaw's delivered current image `1586b295831a` also passed a fresh boundary
+probe while its actual native host performed kernel reads. Independent processes
+and a Node descendant each passed ten confinement checks. Operator files,
+protected resource mounts, Docker socket, control/plugin/root writes and direct
+host TCP were inaccessible; isolated state remained writable. A trusted-relay
+positive connection succeeded and zero guest connections reached the observer.
+This rerun is bound to the current image, rather than borrowing the earlier
+`98404ca86440` image's boundary result. Record:
+`native/evidence/2026-09-09/container-boundary-current`.

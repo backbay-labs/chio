@@ -53,3 +53,19 @@ tools. `revocation` checks native capability denial followed by revoked-credenti
 startup refusal. Concurrent tests must use different owners or their independent
 dispatch counts will be contaminated. Required cases that fail or cannot run
 remain unresolved. Passing these subsets does not close I01-I08.
+
+
+`cancel-host-response.mjs` is used by each host's response-loss driver with
+`CHIO_CANCEL_HOST_KIND=self` (or `hermes` for its private Node gateway). The
+fault record identifies an actual SIGTERM to the isolated trusted launcher
+after a committed effect but before host delivery. Preserve the driver's raw
+case label and record the cancellation cutpoint explicitly.
+
+`evidence-foreign-receipt`, `evidence-wrong-signer`, and `evidence-request-id`
+perform two legitimate native writes. The second kernel response is altered
+before the bridge verifies it. The foreign-receipt case reuses the intact
+signed receipt from the first actual successful native call. Independent
+observation must see two authorized effects, an unknown second result and no
+second acknowledgement. Follow each with `resume-fence` using its original
+configuration. These cases test evidence rejection, not pre-effect denial of
+the two authorized writes. They do not resolve unknown outcomes automatically.

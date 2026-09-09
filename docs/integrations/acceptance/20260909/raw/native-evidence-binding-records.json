@@ -1,0 +1,46 @@
+[
+  {
+    "host": "codex",
+    "archiveSha256": "860811efcdebea7a4c9fe4db7b9a4c9eb764b55c0fadd4dc6e9429447e7813b6",
+    "sourceRevision": "8eff2ac2de3048d7279a892e877a2e40533377a0",
+    "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+    "nativeRuns": 6,
+    "skips": 0,
+    "claim": "bounded real native host and actual OpenAI evidence binding and fencing; full acceptance remains open",
+    "evidence": "/Users/connor/Medica/backbay/standalone/chio-codex-plugin/.worktrees/required-agent-integrations-20260909/acceptance/2026-09-09/evidence-binding",
+    "evidenceCommit": "3987caf"
+  },
+  {
+    "host": "pi",
+    "archiveSha256": "b6f38bfb2c129e00d6e8c5c74b5b92ec4d527d26a81683316683abc690afac2c",
+    "sourceRevision": "047e1851e25b118e73d2cbd6a44bbf252a4f4f56",
+    "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+    "nativeRuns": 6,
+    "skips": 0,
+    "claim": "bounded real native host and actual OpenAI evidence binding and fencing; full acceptance remains open",
+    "evidence": "/Users/connor/Medica/backbay/standalone/chio-pi-plugin/evidence/2026-09-09/evidence-binding",
+    "evidenceCommit": "3dbd39c"
+  },
+  {
+    "host": "hermes",
+    "archiveSha256": "660d3bb2be90a1096eef0daed2701ba3c1b461a8a0e5e43a79f011f165423215",
+    "sourceRevision": "425092599f5950deebc7f9577852304792138ab8",
+    "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+    "nativeRuns": 6,
+    "skips": 0,
+    "claim": "bounded real native host and actual OpenAI evidence binding and fencing; full acceptance remains open",
+    "evidence": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/evidence-binding",
+    "evidenceCommit": "68ae70164"
+  },
+  {
+    "host": "openclaw",
+    "archiveSha256": "ba6b80e71598ec8f01205ef7d443f71fdb2df78fe4b3cad576d9107518f3b6c5",
+    "sourceRevision": "6178680b0c498a3fb1d652eb962b010c40470156",
+    "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+    "nativeRuns": 6,
+    "skips": 0,
+    "claim": "bounded real native host and actual OpenAI evidence binding and fencing; full acceptance remains open",
+    "evidence": "/Users/connor/Medica/backbay/standalone/chio-open-claw-plugin/.worktrees/required-agent-integrations-20260909/native/evidence/2026-09-09/evidence-binding",
+    "evidenceCommit": "5187150"
+  }
+]

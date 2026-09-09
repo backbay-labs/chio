@@ -13,7 +13,7 @@ import uuid
 import urllib.request
 
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('--suite', choices=['approvals','revocation','in-flight-capability','in-flight-credential','kernel-killed','kernel-malformed','kernel-timeout','resume-fence','kernel-absent','expired-credential','wrong-principal','wrong-session','wrong-resource','scope-escalation'], default='approvals')
+p.add_argument('--suite', choices=['approvals','revocation','in-flight-capability','in-flight-credential','kernel-killed','kernel-malformed','kernel-timeout','resume-fence','kernel-absent','expired-credential','wrong-principal','wrong-session','wrong-resource','scope-escalation','evidence-foreign-receipt','evidence-wrong-signer','evidence-request-id'], default='approvals')
 p.add_argument('--existing-config',type=Path)
 p.add_argument('--host',choices=['pi','openclaw','hermes','codex'],required=True)
 for name in ['operator-state','package-dir','output']:
@@ -75,7 +75,9 @@ def run(label,tool,arguments,first_arguments=None):
  env=os.environ.copy()
  if first_arguments is not None:
   env.update(CHIO_TEST_OPERATOR_STATE=str(a.operator_state.resolve()),CHIO_TEST_GATEWAY_CONFIG=str(config.resolve()))
-  if a.suite.startswith('kernel-'):
+  if a.suite.startswith('evidence-'):
+   env.update(NODE_OPTIONS='--import='+str(Path(__file__).with_name('substitute-kernel-evidence.mjs').resolve()),CHIO_EVIDENCE_FAULT_LOG=str((a.output/'evidence-cutpoint.jsonl').resolve()),CHIO_EVIDENCE_FAULT_KIND=a.suite.removeprefix('evidence-'))
+  elif a.suite.startswith('kernel-'):
    env.update(NODE_OPTIONS='--import='+str(Path(__file__).with_name('interrupt-kernel-call.mjs').resolve()),CHIO_KERNEL_FAULT_LOG=str((a.output/'kernel-cutpoint.jsonl').resolve()),CHIO_KERNEL_FAULT_KIND=a.suite.removeprefix('kernel-'))
   else:
    env.update(NODE_OPTIONS='--import='+str(Path(__file__).with_name('revoke-during-host.mjs').resolve()),CHIO_INFLIGHT_REVOCATION_LOG=str((a.output/'revocation-cutpoint.jsonl').resolve()),CHIO_INFLIGHT_REVOCATION_KIND=a.suite.removeprefix('in-flight-'))
@@ -156,19 +158,23 @@ try:
   current={p.name:p.read_bytes() for p in Path(conf['journalDir']).glob('*.json')}
   assert all(current.get(name)==value for name,value in original.items())
   assert all(json.loads(value).get('state')=='not_dispatched' for name,value in current.items() if name not in original)
- elif a.suite.startswith('in-flight-') or a.suite.startswith('kernel-'):
+ elif a.suite.startswith(('in-flight-','kernel-','evidence-')):
   name=a.host+'-inflight-'+private.name[-12:]+'.txt'
   first={'path':'/workspace/'+name,'content':'authorized before in-flight revocation'}
-  code,before,after=run(a.suite,'write_file',{**first,'content':'forbidden after in-flight revocation'},first)
-  assert code!=0 and len(after['dispatch'])==len(before['dispatch'])+1 and after['files'][name]==first['content']
-  events=[json.loads(line) for line in (a.output/('kernel-cutpoint.jsonl' if a.suite.startswith('kernel-') else 'revocation-cutpoint.jsonl')).read_text().splitlines()]
-  assert len(events)==1 and events[0]['kind']==a.suite.removeprefix('in-flight-').removeprefix('kernel-')
+  second={**first,'content':'second legitimate effect requiring its own evidence' if a.suite.startswith('evidence-') else 'forbidden after in-flight revocation'}
+  code,before,after=run(a.suite,'write_file',second,first)
+  evidence_fault=a.suite.startswith('evidence-')
+  assert code!=0 and len(after['dispatch'])==len(before['dispatch'])+(2 if evidence_fault else 1) and after['files'][name]==(second['content'] if evidence_fault else first['content'])
+  events=[json.loads(line) for line in (a.output/('evidence-cutpoint.jsonl' if evidence_fault else 'kernel-cutpoint.jsonl' if a.suite.startswith('kernel-') else 'revocation-cutpoint.jsonl')).read_text().splitlines()]
+  assert len(events)==1 and events[0]['kind']==a.suite.removeprefix('in-flight-').removeprefix('kernel-').removeprefix('evidence-')
   retained=records()
   assert len(retained)==2 and sum(r.get('state')=='completed' and r.get('hostDeliveryConfirmed') and r.get('acknowledged') for r in retained)==1
   if a.suite=='in-flight-capability':
    assert any(r.get('state')=='denied' and r.get('outcome',{}).get('evidence')=='verified' and 'revok' in r.get('outcome',{}).get('reason','').lower() for r in retained)
   else:
    assert any(r.get('state')=='unknown' and r.get('outcome',{}).get('evidence')=='unverified' for r in retained)
+  if evidence_fault:
+   assert any(r.get('state')=='unknown' and r.get('outcome',{}).get('reason') in ['execution receipt failed trusted request verification','missing or substituted execution evidence'] for r in retained)
   save(a.output/'journal-states.json',[{key:r.get(key) for key in ['requestId','state','acknowledged','hostDeliveryConfirmed','outcome']} for r in retained])
   if a.suite=='kernel-killed':
    lifecycle=Path(__file__).resolve().parents[2]/'integrations/required-agents/serve-filesystem.py'
