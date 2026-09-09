@@ -1,0 +1,6 @@
+{
+  "sourcePath": "/tmp/chio-final-kernel-stall-sample-20260909.txt",
+  "uncompressedSha256": "810c6d95ce5d931f82d07e6dce84528a76e02aa9be034637f4b8b40150b6a04d",
+  "bytes": 4951741,
+  "context": "Initial program failure supplied by the coordinating agent; measured against baseline artifact e7539855906b before this repair."
+}

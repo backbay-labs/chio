@@ -1,0 +1,20 @@
+{
+  "schema": "chio.session-startup-regression.v1",
+  "volume": "chio-required-startup-7963a8e85c5f",
+  "calls": 128,
+  "environment": "macOS-26.4-arm64-arm-64bit",
+  "maxStartupSeconds": 10,
+  "artifacts": {
+    "fixed": {
+      "path": "/tmp/chio-session-startup-aggregate-20260909/chio-d0b87623cb3d",
+      "sha256": "d0b87623cb3dd227f79cd3178b32bb04e35b48ddcb9dab63c6598d79b8e13b66"
+    },
+    "baseline": {
+      "path": "/tmp/chio-required-agent-artifacts-20260909/chio-macos-arm64-e7539855906b",
+      "sha256": "e7539855906bd5eb7b4eb2e5a12ca0533889cf61ced3bf4adf5850b792aa6447"
+    }
+  },
+  "policySha256": "52a6faf50c7326632e9cbf77e6e52d2132be5414e32944eb751dee9e04e6a740",
+  "image": "sha256:0106edcb15a1c0d12d914ea0504f0e63ec85f5e6fdd3825b4d7a0d1367af3991",
+  "events": []
+}

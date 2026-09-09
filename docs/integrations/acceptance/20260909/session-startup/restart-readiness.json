@@ -1,0 +1,25 @@
+{
+  "schema": "chio.session-startup-readiness.v1",
+  "kernelSha256": "d0b87623cb3dd227f79cd3178b32bb04e35b48ddcb9dab63c6598d79b8e13b66",
+  "priorEffects": true,
+  "sessions": [
+    {
+      "index": 0,
+      "initializeSeconds": 1.3288304160087137,
+      "contextSeconds": 0.0015167499950621277
+    },
+    {
+      "index": 1,
+      "initializeSeconds": 1.3397940840077354,
+      "contextSeconds": 0.0015608329995302483
+    },
+    {
+      "index": 2,
+      "initializeSeconds": 1.3348660000046948,
+      "contextSeconds": 0.001123332986026071
+    }
+  ],
+  "authenticatedReadinessSeconds": 13.237733916990692,
+  "effectsUnchanged": true,
+  "passed": true
+}

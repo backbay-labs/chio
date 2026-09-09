@@ -1,0 +1,25 @@
+kernel:
+  max_capability_ttl: 3600
+  delegation_depth_limit: 0
+  durable_admission_mode: all
+
+guards:
+  forbidden_path:
+    enabled: true
+    additional_patterns:
+      - "**/forbidden.txt"
+      - "**/secret.txt"
+      - "**/.env*"
+      - "**/.git/**"
+      - "**/.ssh/**"
+  secret_patterns:
+    enabled: true
+
+capabilities:
+  default:
+    tools:
+      - server: "fs"
+        tool: "write_file"
+        operations: [invoke]
+        ttl: 3600
+        max_invocations: 256

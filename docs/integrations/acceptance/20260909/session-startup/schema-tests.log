@@ -1,0 +1,39 @@
+   Compiling syn v2.0.117
+   Compiling serde_json v1.0.149
+   Compiling synstructure v0.13.2
+   Compiling zerovec-derive v0.11.2
+   Compiling zerofrom-derive v0.1.6
+   Compiling zerofrom v0.1.6
+   Compiling yoke-derive v0.8.1
+   Compiling displaydoc v0.2.5
+   Compiling yoke v0.8.1
+   Compiling serde_derive v1.0.228
+   Compiling zerovec v0.11.5
+   Compiling tinystr v0.8.2
+   Compiling icu_locale_core v2.1.1
+   Compiling potential_utf v0.1.4
+   Compiling zerotrie v0.2.3
+   Compiling icu_collections v2.1.1
+   Compiling icu_provider v2.1.1
+   Compiling serde v1.0.228
+   Compiling ref-cast-impl v1.0.25
+   Compiling ref-cast v1.0.25
+   Compiling icu_normalizer v2.1.1
+   Compiling icu_properties v2.1.2
+   Compiling fluent-uri v0.4.1
+   Compiling idna_adapter v1.2.1
+   Compiling ahash v0.8.12
+   Compiling idna v1.1.0
+   Compiling referencing v0.46.0
+   Compiling email_address v0.2.9
+   Compiling jsonschema v0.46.0
+   Compiling chio-spec-validate v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/session-startup-reconciliation-20260909/crates/tooling/chio-spec-validate)
+    Finished `test` profile [unoptimized] target(s) in 9.91s
+     Running tests/bound_tool_invocation.rs (/Users/connor/Medica/backbay/standalone/arc/target/debug/deps/bound_tool_invocation-2285bb7a84f319cd)
+
+running 2 tests
+test bound_tool_invocation_schema_accepts_bound_and_legacy_intents ... ok
+test bound_tool_invocation_schema_rejects_missing_malformed_or_extra_bindings ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+

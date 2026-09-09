@@ -1,0 +1,18 @@
+    Finished `test` profile [unoptimized] target(s) in 1.16s
+     Running unittests src/lib.rs (/Users/connor/Medica/backbay/standalone/arc/target/debug/deps/chio_store_sqlite-e8d4b01dfde25ef3)
+
+running 1 test
+test receipt_store::tests::single_writer::reader_pool_never_begins_a_write_transaction ... FAILED
+
+failures:
+
+---- receipt_store::tests::single_writer::reader_pool_never_begins_a_write_transaction stdout ----
+Error: Sqlite(SqliteFailure(Error { code: ReadOnly, extended_code: 8 }, Some("attempt to write a readonly database")))
+
+
+failures:
+    receipt_store::tests::single_writer::reader_pool_never_begins_a_write_transaction
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1111 filtered out; finished in 0.07s
+
+error: test failed, to rerun pass `-p chio-store-sqlite --lib`

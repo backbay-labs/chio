@@ -1,0 +1,16 @@
+{
+  "source": "25d5717a5bcfd228391dbeee61d8d57f3c5e6177",
+  "binary": "/tmp/chio-session-startup-aggregate-20260909/chio-d0b87623cb3d",
+  "sha256": "d0b87623cb3dd227f79cd3178b32bb04e35b48ddcb9dab63c6598d79b8e13b66",
+  "bytes": 320550912,
+  "base": "ca478135865238ed738723270f93da0c431232c2",
+  "startupFix": "73cd14e727405de3cac523f82ce6212f0c405604",
+  "incoming": [
+    "3ee116996",
+    "6b512c231",
+    "30ad0ea0d",
+    "e0161f1c0"
+  ],
+  "buildCommand": "CARGO_TARGET_DIR=/Users/connor/Medica/backbay/standalone/arc/target CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo build -p chio-cli --bin chio",
+  "profile": "dev, unoptimized, Cargo.toml debug=0"
+}
