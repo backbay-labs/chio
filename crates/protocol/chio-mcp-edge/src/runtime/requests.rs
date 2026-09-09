@@ -5,6 +5,20 @@ impl ChioMcpEdge {
         match method {
             "initialize" => self.handle_initialize(id, params),
             "ping" => jsonrpc_result(id, json!({})),
+            "chio/execution-context" => {
+                if !matches!(self.state, EdgeState::Ready { .. }) {
+                    return jsonrpc_error(id, JSONRPC_INVALID_REQUEST, "session is not ready");
+                }
+                jsonrpc_result(
+                    id,
+                    json!({
+                        "schema": "chio.mcp.execution-context.v1",
+                        "evidenceVersion": "1",
+                        "subjectKey": self.agent_id,
+                        "capabilityIds": self.capabilities.iter().map(|cap| &cap.id).collect::<Vec<_>>(),
+                    }),
+                )
+            }
             "tools/list" => self.handle_tools_list(id, params),
             "tools/call" => self.handle_tools_call(id, params),
             "tasks/list" => self.handle_tasks_list(id, params),
@@ -199,6 +213,16 @@ impl ChioMcpEdge {
             capabilities.insert("logging".to_string(), json!({}));
         }
         let mut experimental = serde_json::Map::new();
+        experimental.insert(
+            "io.chio/execution-evidence".to_string(),
+            json!({
+                "version": "1",
+                "schema": "chio.mcp.execution-evidence.v1",
+                "resultMetaField": "chioEvidence",
+                "contextMethod": "chio/execution-context",
+                "outputKinds": ["value", "none"],
+            }),
+        );
         experimental.insert(
             CHIO_TOOL_STREAMING_CAPABILITY_KEY.to_string(),
             json!({

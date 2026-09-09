@@ -148,6 +148,11 @@ fn execute_bridge_mcp_tool_call_presents_execution_nonce_in_strict_mode() {
 
     let preflight = execute_bridge_mcp_tool_call(&kernel, request.clone()).unwrap();
     assert_eq!(preflight.response.verdict, Verdict::Allow);
+    assert_eq!(
+        preflight.mcp_result["_meta"]["chioEvidence"]["outputKind"],
+        "none"
+    );
+    assert!(preflight.mcp_result["_meta"]["chioEvidence"]["output"].is_null());
     assert!(
         preflight.response.output.is_none(),
         "strict MCP preflight must not execute the target tool"

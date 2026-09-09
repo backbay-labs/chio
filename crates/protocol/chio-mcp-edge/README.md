@@ -99,3 +99,58 @@ queued notifications) over stdio or an in-process channel.
   targets through `McpTargetExecutor`.
 - `chio-openapi-mcp-bridge` - projects OpenAPI operations into this crate's
   `McpToolInfo`.
+# Execution evidence extension
+
+The MCP initialize response advertises
+`capabilities.experimental["io.chio/execution-evidence"].version = "1"`.
+For tool calls that produce a kernel response, the edge adds
+`result._meta.chioEvidence`:
+
+```json
+{
+  "schema": "chio.mcp.execution-evidence.v1",
+  "requestId": "caller-stable-operation-id",
+  "receipt": {},
+  "outputKind": "value",
+  "output": {},
+  "terminalState": "completed"
+}
+```
+
+`receipt` is the full signed kernel receipt. `output` is the original JSON
+value returned by the kernel, before MCP wrapping, and its RFC 8785 canonical
+bytes are the preimage of the receipt's `content_hash`. The normal MCP result
+may add content blocks or `isError`; hash the evidence output, not that result.
+Upstream tools cannot override the reserved `chioEvidence` metadata.
+
+Clients must pin the expected kernel signer through trusted configuration,
+verify the receipt signature and content-addressed ID, and bind the signed
+capability ID, attribution subject, server, tool, action parameter hash and
+`metadata.receipt_context.request_id` to the intended operation. Supply
+`params._meta.chioRequestId` for every operation and preserve it across retries.
+The JSON-RPC ID is only a transport correlation ID. The envelope's `requestId`
+and `terminalState` are diagnostic projections, not additional signed claims.
+Use the receipt's signed decision and any durable admission state for claims.
+
+`outputKind: "none"` supplies no execution result, including an authorization
+preflight or a denied call. It cannot establish executed success, even if the
+receipt says Allow. Version 1 supplies a value preimage only for completed
+Allow responses. Streams carry `outputKind: "stream"` and null evidence output;
+their existing chunk receipt protocol must be verified separately. Suppressed
+outputs are never re-exposed through evidence.
+
+Errors before kernel evaluation, cancelled transport responses, and failed
+receipt persistence may have no evidence. Treat missing, unsupported, malformed
+or untrusted evidence as unresolved, not as proof of no effect or permission to
+retry a consequential operation. This extension does not provide OS isolation
+or make a client-side authorization check a resource enforcement boundary.
+
+The authenticated, ready session also supports `chio/execution-context`, as
+advertised by the extension's `contextMethod`. It returns the public subject
+key, assigned capability IDs, and evidence version. This read-only response
+lets an operator pin the authority assigned to an established session before
+any tool call. It is session diagnostics over the authenticated transport,
+not a signed authorization token. Clients must retain that session, compare
+its context to the operator-pinned caller and capability before dispatch, and
+still verify the signed invocation receipt. Losing or replacing a session
+must not silently mint a fresh authority or reset a budget.

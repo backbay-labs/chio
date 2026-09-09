@@ -6,6 +6,7 @@ pub(in crate::runtime) struct KernelResponseToToolResultArgs<'a> {
     pub output: Option<ToolCallOutput>,
     pub reason: Option<String>,
     pub verdict: Verdict,
+    pub receipt: &'a chio_core::receipt::body::ChioReceipt,
     pub terminal_state: &'a OperationTerminalState,
     pub execution_nonce: Option<&'a SignedExecutionNonce>,
     pub peer_supports_chio_tool_streaming: bool,
@@ -20,6 +21,7 @@ pub(in crate::runtime) fn kernel_response_to_tool_result(
         output,
         reason,
         verdict,
+        receipt,
         terminal_state,
         execution_nonce,
         peer_supports_chio_tool_streaming,
@@ -29,6 +31,17 @@ pub(in crate::runtime) fn kernel_response_to_tool_result(
     let terminal_reason = reason
         .as_deref()
         .or_else(|| terminal_state_reason(terminal_state));
+
+    // Preserve the exact value whose canonical bytes the kernel signed. The
+    // ordinary MCP projection may wrap arbitrary JSON and is not that value.
+    // Never re-expose an output suppressed by denial or an incomplete outcome.
+    let (output_kind, evidence_output) = match output.as_ref() {
+        Some(ToolCallOutput::Value(value)) if !is_error && verdict == Verdict::Allow => {
+            ("value", value.clone())
+        }
+        Some(ToolCallOutput::Stream(_)) => ("stream", Value::Null),
+        _ => ("none", Value::Null),
+    };
 
     let result = match output {
         Some(ToolCallOutput::Value(value)) if !is_error => value_to_tool_result(value),
@@ -57,7 +70,32 @@ pub(in crate::runtime) fn kernel_response_to_tool_result(
         Some(ToolCallOutput::Value(value)) => value_to_tool_result(value),
         None => value_to_tool_result(Value::Null),
     };
-    attach_execution_nonce_meta_to_result(result, execution_nonce)
+    let mut result = attach_execution_nonce_meta_to_result(result, execution_nonce);
+    if let Some(object) = result.as_object_mut() {
+        let meta = object.entry("_meta").or_insert_with(|| json!({}));
+        // An upstream tool cannot suppress or substitute kernel evidence by
+        // supplying its own reserved metadata or a malformed metadata object.
+        if !meta.is_object() {
+            *meta = json!({});
+        }
+        if let Some(meta) = meta.as_object_mut() {
+            meta.insert(
+                "chioEvidence".to_string(),
+                json!({
+                    "schema": "chio.mcp.execution-evidence.v1",
+                    "requestId": receipt.metadata.as_ref()
+                        .and_then(|metadata| metadata.pointer("/receipt_context/request_id")),
+                    "receipt": receipt,
+                    "outputKind": output_kind,
+                    "output": evidence_output,
+                    // Diagnostic projection only. The receipt's signed decision,
+                    // content hash and admission state remain authoritative.
+                    "terminalState": terminal_state_label(terminal_state),
+                }),
+            );
+        }
+    }
+    result
 }
 
 pub(in crate::runtime) fn queue_tool_stream_chunk_notifications(

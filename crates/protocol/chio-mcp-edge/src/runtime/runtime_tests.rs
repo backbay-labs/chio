@@ -24,6 +24,9 @@ use std::sync::{Arc, Mutex};
 #[path = "runtime_tests/channel_roots.rs"]
 mod channel_roots;
 
+#[path = "runtime_tests/execution_evidence.rs"]
+mod execution_evidence;
+
 static METRICS_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 fn metrics_test_guard() -> std::sync::MutexGuard<'static, ()> {
@@ -924,6 +927,9 @@ fn normalize_transport_output(messages: &mut [Value]) {
 fn normalize_dynamic_transport_fields(value: &mut Value) {
     match value {
         Value::Object(map) => {
+            // Each transport run has a fresh signing identity. Dedicated
+            // execution-evidence tests verify these receipts and their bindings.
+            map.remove("chioEvidence");
             if let Some(owner_session_id) = map.get_mut("ownerSessionId") {
                 *owner_session_id = json!("$session");
             }
