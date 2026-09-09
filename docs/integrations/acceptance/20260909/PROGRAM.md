@@ -413,3 +413,35 @@ OpenClaw installation, saved image and copied bundle kernel, the actual host
 completed write/edit/read/list with four independent dispatch observations.
 Raw local delivery evidence is in `raw/local-delivery-supervision`. Public
 publication and six-host acceptance remain open.
+
+
+## Operator cancellation and the current Hermes wheel
+
+Actual operator SIGTERM after a committed write, before host result delivery,
+passed on the unchanged Codex, Pi and OpenClaw candidates. Each reported unknown
+or unresolved, retained the original fence and completed an explicit recovery
+read without another write. The exact cutpoint appears in each host's
+`operator-cancellation` record; the reused driver retains its older
+`host-response-loss` scenario label. It is not an additional ordinary loss test.
+
+Hermes r9 failed that test: its Python launcher exited on SIGTERM without a
+terminal report after one committed write. Source `d0062596d` handles cancellation,
+forwards it to the isolated native process group, stops remaining descendants
+and writes the truthful terminal outcome. The current r10 wheel SHA256 is
+`660d3bb2be90a1096eef0daed2701ba3c1b461a8a0e5e43a79f011f165423215`.
+It independently passed cancellation/recovery, useful work, denials, response
+loss/recovery, private gateway crash, budget and approvals, plus the complete
+14-case authority/kernel-fault subset described above. Source and evidence are
+committed as `d0062596d` and `425092599`. Its component suite passes 236 tests;
+four legacy opt-in skips remain explicitly unresolved. Prior r9 results are
+historical, not substitutes for these r10 executions.
+
+The durable bundle now selects r10 and retains r9 under `superseded/hermes-r9`.
+It includes Hermes's exact qualified bridge archive `b7785282b4f4`, installed
+under a separate `hermes-bridge` prefix. Other hosts continue using their pinned
+bridge builds. All 45 selected bundle checksums pass. The wheel and bridge
+installed offline with no cache; pip check passed. From those relocated files,
+the actual Hermes/OpenAI host completed write/edit/read/list through the copied
+kernel, with four independent dispatch observations. Raw evidence is in
+`raw/local-delivery-hermes-r10`. This closes another installation subset, not
+public release or full upgrade/removal acceptance. All six remain unaccepted.

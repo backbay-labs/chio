@@ -1,0 +1,28 @@
+{
+  "command": [
+    "/Users/connor/.local/share/chio-required-candidates/20260909/install/hermes-r10/bin/python",
+    "-m",
+    "chio_hermes.restricted",
+    "--host-python",
+    "/tmp/chio-hermes-20260909/clean-host-venv/bin/python",
+    "--host-root",
+    "/tmp/chio-hermes-20260909/public-upstream-source",
+    "--node",
+    "/opt/homebrew/bin/node",
+    "--gateway-script",
+    "/Users/connor/.local/share/chio-required-candidates/20260909/install/hermes-bridge/node_modules/@chio/bridge/dist/gateway-http.js",
+    "--gateway-config",
+    "/Users/connor/.local/share/chio-required-operators/delivery-install-20260909/hermes-useful-ae9b09abc2cc4be5b24d41e59a293eb1/gateway.json",
+    "--state-dir",
+    "/tmp/chio-hermes-qualified-be31385ede6146b6b3f99d1048e2f9d3",
+    "--query-file",
+    "/Users/connor/.local/share/chio-required-operators/delivery-install-20260909/hermes-useful-ae9b09abc2cc4be5b24d41e59a293eb1/initial.txt",
+    "--model",
+    "gpt-4.1-2025-04-14",
+    "--model-base-url",
+    "https://api.openai.com/v1",
+    "--max-turns",
+    "12"
+  ],
+  "exitCode": 0
+}

@@ -39,6 +39,8 @@ python3.11 -m venv install/hermes
 install/hermes/bin/python -m pip install --no-index --no-cache-dir \
   --find-links hermes-wheelhouse chio-hermes==0.1.2
 install/hermes/bin/python -m pip check
+npm install --prefix install/hermes-bridge --offline --ignore-scripts \
+  packages/chio-bridge-hermes-0.3.0-b7785282b4f4.tgz
 ```
 
 Hermes itself must be the separately pinned public upstream checkout and host
@@ -134,3 +136,12 @@ OpenAI service. Preserved volumes and unknown outcomes still require explicit
 operator recovery. A watchdog cleanup error is unresolved, not successful
 removal. Earlier startup/crash cutpoints and full lifecycle acceptance remain
 open.
+
+Hermes r10 uses the separately retained `hermes-bridge` archive above. Pass
+`install/hermes-bridge/node_modules/@chio/bridge/dist/gateway-http.js` to its
+launcher. This pins the exact bridge used in its native qualification, while
+the other integrations retain their own tested bridge builds. The previous r9
+wheel and manifest remain under `superseded/hermes-r9`. The selected r10 wheel
+handles operator SIGTERM/SIGINT, reaps the isolated process group and reports an
+unacknowledged committed result as unresolved. SIGKILL and every other lifecycle
+cutpoint are separate requirements.

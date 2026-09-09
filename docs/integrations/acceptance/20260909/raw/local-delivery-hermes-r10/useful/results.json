@@ -1,0 +1,38 @@
+[
+  {
+    "case": "useful",
+    "passed": true,
+    "exitCode": 0,
+    "terminal": {
+      "hostExitCode": 0,
+      "exitCode": 0,
+      "outcome": "completed",
+      "operatorInterrupt": null,
+      "confirmedDeliveries": 4
+    },
+    "newDispatchRows": 4,
+    "acknowledgements": [
+      {
+        "state": "completed",
+        "acknowledged": true,
+        "hostDeliveryConfirmed": true
+      },
+      {
+        "state": "completed",
+        "acknowledged": true,
+        "hostDeliveryConfirmed": true
+      },
+      {
+        "state": "completed",
+        "acknowledged": true,
+        "hostDeliveryConfirmed": true
+      },
+      {
+        "state": "completed",
+        "acknowledged": true,
+        "hostDeliveryConfirmed": true
+      }
+    ],
+    "privateState": "/Users/connor/.local/share/chio-required-operators/delivery-install-20260909/hermes-useful-ae9b09abc2cc4be5b24d41e59a293eb1"
+  }
+]

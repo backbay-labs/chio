@@ -1,0 +1,154 @@
+{
+  "files": {
+    "codex-qualified-eb3b7f3ab60a.txt": "Codex kernel verified\n",
+    "forbidden.txt": "independent forbidden observer\n",
+    "hermes-qualified-41e59a293eb1.txt": "Hermes kernel verified",
+    "openclaw-qualified-042438bb1fc6.txt": "OpenClaw kernel verified",
+    "secret.txt": "sensitive observer\n"
+  },
+  "dispatch": [
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-09T22:14:31.791Z",
+      "upstreamRequestId": 3,
+      "tool": "write_file",
+      "path": "/workspace/codex-qualified-eb3b7f3ab60a.txt",
+      "argumentsSha256": "08a68da7af15e0b6558778edf44b10876e1c098f9b7d3df1f9703892c78692a1",
+      "frameSha256": "d03704f7b9ab92892f995070790a8ae5f3ecc09d7f087c0700819764b14fe1be"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 2,
+      "observedAt": "2026-09-09T22:14:34.486Z",
+      "upstreamRequestId": 4,
+      "tool": "edit_file",
+      "path": "/workspace/codex-qualified-eb3b7f3ab60a.txt",
+      "argumentsSha256": "218d89dc563c2bd4e42f8cf8a5c5db1f24a4edf0ec42f4606168b67045fbcb83",
+      "frameSha256": "bffabe3a265243e9e00b591991470363f9d3291db8a982229bb52c7d3068f0a5"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 3,
+      "observedAt": "2026-09-09T22:14:38.022Z",
+      "upstreamRequestId": 5,
+      "tool": "read_text_file",
+      "path": "/workspace/codex-qualified-eb3b7f3ab60a.txt",
+      "argumentsSha256": "affff4907b8245e0c3a005abed5db16d61e5420fe49992655ec10b0df18ead76",
+      "frameSha256": "7741339829aece40468773dca2d9830a5e76d315d260cb6eafb8e3756914b699"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 4,
+      "observedAt": "2026-09-09T22:14:40.211Z",
+      "upstreamRequestId": 6,
+      "tool": "list_directory",
+      "path": "/workspace",
+      "argumentsSha256": "acda0d21aae64c6f16c860dce985a6a79157d631474d0be08aa42fc3efa55f9a",
+      "frameSha256": "60f38f5d6335a0f30839e219a880188fbd4ba7df01ecc6c143b58d81f1fdcde8"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-09T22:16:47.562Z",
+      "upstreamRequestId": 3,
+      "tool": "read_text_file",
+      "path": "/workspace/codex-qualified-eb3b7f3ab60a.txt",
+      "argumentsSha256": "affff4907b8245e0c3a005abed5db16d61e5420fe49992655ec10b0df18ead76",
+      "frameSha256": "857c1339bae9fbb1da82bd8da2d37e12c27aed508e18e1537b664ffca9a53d10"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 2,
+      "observedAt": "2026-09-09T22:47:36.284Z",
+      "upstreamRequestId": 4,
+      "tool": "write_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "2ec8373cb18f85ca5f6c9cb96edcb2daaca966df413851ba0c3be9ce694723ed",
+      "frameSha256": "d4a474ffdfc968cf7954439e4bdc64bdafbe28601fbbbf7639690ce55c9ea303"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 3,
+      "observedAt": "2026-09-09T22:47:37.933Z",
+      "upstreamRequestId": 5,
+      "tool": "edit_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "343e1a9e29fc456db15920891655db9cadcbcd7fbc0a50b4fd2ea9bec261d1af",
+      "frameSha256": "1a64737f0459b6ec2a6ba45dca7436d031d8e60be2c786a30e12c1a4956f34eb"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 4,
+      "observedAt": "2026-09-09T22:47:39.307Z",
+      "upstreamRequestId": 6,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "045da5d8243dd8ff076bcd830e5a14d86e5a80e3f027207647eaa8dc63edfa4f"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 5,
+      "observedAt": "2026-09-09T22:47:40.635Z",
+      "upstreamRequestId": 7,
+      "tool": "list_directory",
+      "path": "/workspace",
+      "argumentsSha256": "acda0d21aae64c6f16c860dce985a6a79157d631474d0be08aa42fc3efa55f9a",
+      "frameSha256": "a1f82a74565de24e2c69a96f8ac83d25433ac5a0aa6febed3c32f07313bd3a1b"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 6,
+      "observedAt": "2026-09-09T23:08:47.959Z",
+      "upstreamRequestId": 8,
+      "tool": "write_file",
+      "path": "/workspace/hermes-qualified-41e59a293eb1.txt",
+      "argumentsSha256": "61225337f76de6585f89c2880f9c5cd0af1af51e122bc4295fa881ddde225174",
+      "frameSha256": "750290671a67d6adb0d25903a2f1a44bd3245a0ff652fbec81d4ee44fe49bbdc"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 7,
+      "observedAt": "2026-09-09T23:08:49.415Z",
+      "upstreamRequestId": 9,
+      "tool": "edit_file",
+      "path": "/workspace/hermes-qualified-41e59a293eb1.txt",
+      "argumentsSha256": "d29ea431345ca3214b7f8f9ec052347dc57cd9a50f636905ace4ff99cf66beea",
+      "frameSha256": "05c25701e9736f0b674ecaaaf8c1a5e0f3623b39f3fd3eb522e4ce483efc184e"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 8,
+      "observedAt": "2026-09-09T23:08:50.689Z",
+      "upstreamRequestId": 10,
+      "tool": "read_text_file",
+      "path": "/workspace/hermes-qualified-41e59a293eb1.txt",
+      "argumentsSha256": "83e3cb8fbbe4845de9fcbec01649d2fe684bfb496ece15287b93b5ece297a8e6",
+      "frameSha256": "b3c0973ff98259a43429239564a64ed75fd3dfeb889f02c2338f559bfd9c53c2"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 9,
+      "observedAt": "2026-09-09T23:08:54.130Z",
+      "upstreamRequestId": 11,
+      "tool": "list_directory",
+      "path": "/workspace",
+      "argumentsSha256": "acda0d21aae64c6f16c860dce985a6a79157d631474d0be08aa42fc3efa55f9a",
+      "frameSha256": "5f5d10e4744c50bb3e7314234cd3a6872aaac0ce80bc74043b3e1e80e4f2d89e"
+    }
+  ]
+}

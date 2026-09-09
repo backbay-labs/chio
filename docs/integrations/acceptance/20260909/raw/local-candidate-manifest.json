@@ -82,8 +82,10 @@
     {
       "component": "hermes-wheelhouse",
       "path": "hermes-wheelhouse/chio_hermes-0.1.2-py3-none-any.whl",
-      "sha256": "8b600edd80fdbfa91ca976c264d53ad145b79c49b9ac37c376f6685cfb90c929",
-      "bytes": 54840
+      "sha256": "660d3bb2be90a1096eef0daed2701ba3c1b461a8a0e5e43a79f011f165423215",
+      "bytes": 55432,
+      "sourceRevision": "d0062596d",
+      "bridgeArchive": "packages/chio-bridge-hermes-0.3.0-b7785282b4f4.tgz"
     },
     {
       "component": "hermes-wheelhouse",
@@ -270,8 +272,14 @@
     {
       "component": "instructions",
       "path": "README.md",
-      "sha256": "01b2f9a7ccef31c7f279463eac74b18690ed8e790303d0f89193d14f2d5b74f1",
-      "bytes": 7606
+      "sha256": "da0369cce02f5a50212b3a9fa8fda7ee25275344175af5fc11be133beec2488e",
+      "bytes": 8318
+    },
+    {
+      "component": "hermes-bridge",
+      "path": "packages/chio-bridge-hermes-0.3.0-b7785282b4f4.tgz",
+      "sha256": "b7785282b4f4e4da42e4158c7390a2d1411ba2763b01956b07896aadf6dcc6d9",
+      "bytes": 934950
     }
   ],
   "missing": [
@@ -280,5 +288,5 @@
     "Full host-specific I01-I08 completion",
     "Release/security gates and public publication"
   ],
-  "superseded": "superseded/pre-host-supervision retains previous selections; never use for the current candidate"
+  "superseded": "superseded/pre-host-supervision and superseded/hermes-r9 retain prior selections; never use as current candidates"
 }

@@ -17,11 +17,12 @@
   },
   {
     "host": "hermes",
-    "record": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/kernel-faults",
-    "archiveSha256": "8b600edd80fdbfa91ca976c264d53ad145b79c49b9ac37c376f6685cfb90c929",
+    "record": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/cancellation-r10",
+    "archiveSha256": "660d3bb2be90a1096eef0daed2701ba3c1b461a8a0e5e43a79f011f165423215",
     "nativeRuns": 8,
     "preflightRefusals": 6,
-    "skips": 0
+    "skips": 0,
+    "historicalR9Record": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/kernel-faults"
   },
   {
     "host": "openclaw",

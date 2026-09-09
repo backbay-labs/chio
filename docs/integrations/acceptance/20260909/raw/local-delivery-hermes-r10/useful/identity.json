@@ -1,0 +1,10 @@
+{
+  "claim": "bounded real host cases, not I01-I08 acceptance",
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "image": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "cases": 1,
+  "skips": 0,
+  "launcherPython": "/Users/connor/.local/share/chio-required-candidates/20260909/install/hermes-r10/bin/python",
+  "hostRoot": "/tmp/chio-hermes-20260909/public-upstream-source",
+  "bridge": "/Users/connor/.local/share/chio-required-candidates/20260909/install/hermes-bridge/node_modules/@chio/bridge"
+}
