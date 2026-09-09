@@ -303,10 +303,9 @@ async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> R
         .map(|metadata| metadata.resource.as_str())
         .unwrap_or(MCP_ENDPOINT_PATH)
         .to_string();
-    let request_auth_context = match authenticate_session_request(
+    let (request_auth_context, session_credential) = match remote_mcp_session_credentials::authenticate_request(
+        &state,
         request.headers(),
-        &state.auth_mode,
-        state.protected_resource_metadata.as_deref(),
         "POST",
         &expected_target,
     )
@@ -337,6 +336,12 @@ async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> R
         }
     };
 
+    if let Some(credential) = session_credential.as_ref() {
+        if let Err(response) = credential.validate_message(&message) {
+            return response;
+        }
+    }
+    let response_method = message.get("method").and_then(Value::as_str).unwrap_or_default().to_owned();
     let is_initialize = is_initialize_request(&message);
     let is_request = message.get("id").is_some() && message.get("method").is_some();
     if is_initialize {
@@ -430,6 +435,25 @@ async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> R
     let request_id = message.get("id").cloned().unwrap_or(Value::Null);
     let mut event_rx = session.subscribe();
     let stream_lock = session.active_request_stream.clone().lock_owned().await;
+    // Authority may expire or be revoked while waiting behind another request.
+    if session_credential.is_some() {
+        if let Err(response) = remote_mcp_session_credentials::authenticate_request(
+            &state, &headers, "POST", &expected_target,
+        ).await {
+            return response;
+        }
+    }
+    let credential_call = if response_method == "tools/call" {
+        if let Some(credential) = session_credential.as_ref() {
+            match remote_mcp_session_credentials::reserve_call(&state, credential, &message) {
+                Ok(remote_mcp_session_credentials::CallReservation::Pending(call)) => Some(call),
+                Ok(remote_mcp_session_credentials::CallReservation::Replay(response)) => {
+                    return Json(response).into_response();
+                }
+                Err(response) => return response,
+            }
+        } else { None }
+    } else { None };
     if let Err(error) = session.send(message) {
         drop(stream_lock);
         return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
@@ -458,13 +482,30 @@ async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> R
                         );
                     }
 
+                    if is_terminal_response_for_request(&event.message, &request_id) {
+                        if let Some(call) = credential_call.as_ref() {
+                            if remote_mcp_session_credentials::finish_call(&state, call, &event.message).is_err() {
+                                // The effect may already exist. Withhold success and
+                                // leave the durable pending fence in place.
+                                let failure = json!({"jsonrpc":"2.0","id":request_id,
+                                    "error":{"code":-32603,"message":"credential outcome persistence failed; effect is uncertain"}});
+                                yield Ok(Event::default().data(failure.to_string()));
+                                break;
+                            }
+                        }
+                    }
                     let should_emit = should_emit_post_stream_event(
                         &event,
                         Some(&request_id),
                         session_for_stream.has_active_notification_stream(),
                     );
-                    if should_emit {
-                        let data = serde_json::to_string(&event.message).unwrap_or_else(|_| "null".to_string());
+                    if should_emit && (session_credential.is_none()
+                        || is_terminal_response_for_request(&event.message, &request_id)) {
+                        let mut message = event.message.clone();
+                        if let Some(credential) = session_credential.as_ref() {
+                            credential.restrict_response(&response_method, &mut message);
+                        }
+                        let data = serde_json::to_string(&message).unwrap_or_else(|_| "null".to_string());
                         yield Ok(Event::default().id(event.event_id).data(data));
                     }
                     if is_terminal_response_for_request(&event.message, &request_id) {
@@ -667,16 +708,15 @@ async fn handle_get(State(state): State<RemoteAppState>, request: Request) -> Re
         .map(|metadata| metadata.resource.as_str())
         .unwrap_or(MCP_ENDPOINT_PATH)
         .to_string();
-    let request_auth_context = match authenticate_session_request(
+    let request_auth_context = match remote_mcp_session_credentials::authenticate_request(
+        &state,
         request.headers(),
-        &state.auth_mode,
-        state.protected_resource_metadata.as_deref(),
         "GET",
         &expected_target,
     )
     .await
     {
-        Ok(auth_context) => auth_context,
+        Ok((auth_context, _)) => auth_context,
         Err(response) => return response,
     };
     if let Err(response) = validate_get_accept_header(request.headers()) {
@@ -908,16 +948,15 @@ async fn handle_delete(State(state): State<RemoteAppState>, request: Request) ->
         .map(|metadata| metadata.resource.as_str())
         .unwrap_or(MCP_ENDPOINT_PATH)
         .to_string();
-    let request_auth_context = match authenticate_session_request(
+    let request_auth_context = match remote_mcp_session_credentials::authenticate_request(
+        &state,
         request.headers(),
-        &state.auth_mode,
-        state.protected_resource_metadata.as_deref(),
         "DELETE",
         &expected_target,
     )
     .await
     {
-        Ok(auth_context) => auth_context,
+        Ok((auth_context, _)) => auth_context,
         Err(response) => return response,
     };
 

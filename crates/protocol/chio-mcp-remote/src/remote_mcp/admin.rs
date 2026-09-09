@@ -3,6 +3,7 @@ use chio_kernel::ReceiptReadContext;
 use subtle::ConstantTimeEq;
 
 pub(super) fn install_admin_routes(router: Router<RemoteAppState>) -> Router<RemoteAppState> {
+    let router = remote_mcp_session_credentials::install_routes(router);
     router
         .route(ADMIN_HEALTH_PATH, get(handle_admin_health))
         .route(

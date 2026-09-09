@@ -9,6 +9,8 @@ mod remote_mcp_admin;
 mod remote_mcp_approvals;
 #[path = "remote_mcp/session_store.rs"]
 mod remote_mcp_session_store;
+#[path = "remote_mcp/session_credentials.rs"]
+mod remote_mcp_session_credentials;
 
 use remote_mcp_session_store::*;
 
