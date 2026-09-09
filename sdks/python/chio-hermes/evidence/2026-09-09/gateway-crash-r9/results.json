@@ -1,0 +1,22 @@
+[
+  {
+    "case": "gateway-crash",
+    "passed": true,
+    "exitCode": 2,
+    "terminal": {
+      "hostExitCode": 0,
+      "exitCode": 2,
+      "outcome": "unresolved",
+      "confirmedDeliveries": 0
+    },
+    "newDispatchRows": 1,
+    "acknowledgements": [
+      {
+        "state": "completed",
+        "acknowledged": false,
+        "hostDeliveryConfirmed": null
+      }
+    ],
+    "privateState": "/Users/connor/.local/share/chio-required-operators/hermes-host-delivery-20260909/hermes-gateway-crash-8edf6e9749a947b29e3f4b847ceb7b4d"
+  }
+]

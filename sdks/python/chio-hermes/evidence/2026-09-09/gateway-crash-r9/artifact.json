@@ -1,0 +1,7 @@
+{
+  "host": "hermes",
+  "artifactSha256": "8b600edd80fdbfa91ca976c264d53ad145b79c49b9ac37c376f6685cfb90c929",
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "faultInjectorSha256": "c14ad2e7263781beb5cc516d77cfe188fba89cd50ce89b95a84d8b53c519400a",
+  "claim": "bounded real-host forced gateway crash and original-authority recovery; full acceptance unresolved"
+}

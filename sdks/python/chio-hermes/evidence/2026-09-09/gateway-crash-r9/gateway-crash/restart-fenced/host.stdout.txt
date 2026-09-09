@@ -1,0 +1,1 @@
+I was unable to complete the file replacement. The operation was blocked with the message: "an unresolved operation fences this gateway; operator reconciliation required." No changes were made.
