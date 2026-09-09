@@ -6,6 +6,13 @@ contract. Keep the operator credential outside the agent environment. Configure
 durable kernel admission, session and authority databases, and an explicit admin
 token distinct from the session admission token.
 
+The adjacent `approval-policy.yaml` combines one finite wildcard grant with
+confirmation required for all four supported tools. That form retains one
+shared invocation budget. To require confirmation only for selected tools,
+use exact explicit tool grants; their invocation budgets are separate. A
+confirmation pattern narrower than an explicit wildcard grant is rejected
+because a single grant cannot encode that distinction safely.
+
 The operator records a proposed call before its first dispatch. A pending record
 does not perform the tool action. Approval signs permission to submit that exact
 call; it also does not perform the action. The agent then uses the normal kernel

@@ -4,6 +4,15 @@ Confidence: high for the bounded effects observed below. This accepts no agent
 host. Each of the six required hosts still needs its own I01-I08 evidence using
 the final delivered artifacts.
 
+This candidate is rejected for native approval policies with explicit grants.
+A follow-up real resource test confirmed that an explicit finite wildcard grant
+ignored `require_confirmation: ['*']` and performed an unapproved write.
+`initial-native-grant-discovery/` preserves that failure. Fix commit
+`6b512c231` applies confirmation and argument-size constraints to explicit
+grants and rejects unrepresentable narrow confirmation patterns. Its new native
+bounded approval cases require the final aggregate build and rerun. The passing
+operator cases below use HushSpec synthesized grants and do not erase this failure.
+
 The real kernel and Docker resource passed `approval-workflow` and
 `approved-unknown-after-dispatch` on 2026-09-09 starting at 16:19:33 UTC. The runner
 exited zero, recorded no cleanup failure, and verified that the binary did not

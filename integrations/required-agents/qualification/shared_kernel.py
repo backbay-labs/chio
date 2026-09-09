@@ -20,6 +20,7 @@ import urllib.request
 
 IMAGE = "chio-required-agent-filesystem:20260909"
 PROTOCOL = "2025-11-25"
+NATIVE_APPROVAL_POLICY = Path(__file__).with_name("approval-policy.yaml").read_text()
 POLICY = """kernel:
   max_capability_ttl: 3600
   delegation_depth_limit: 0
@@ -344,11 +345,15 @@ def approval_case(runtime):
     runtime.evidence.append({"unresolved": "No real pending/rejected/approved operator workflow is exercised. This case proves only missing and malformed approval artifacts cannot authorize writes."})
 
 
-def approval_workflow_case(runtime):
+def approval_workflow_case(runtime, verify_missing_denial=False):
     runtime.start()
     runtime.initialize()
     trust = runtime.http(f"/admin/sessions/{runtime.session}/trust", token=runtime.admin_token)[2]
     capability_id = trust["capabilities"][0]["capabilityId"]
+    if verify_missing_denial:
+        missing = runtime.write("native-approval-missing.txt", "must-not-write", "native-approval-missing")
+        assert missing.get("error") or missing.get("result", {}).get("isError"), missing
+        assert runtime.observe("native-approval-missing.txt")["exists"] is False
 
     def submit(name, ttl=300):
         payload = {"session_id": runtime.session, "capability_id": capability_id,
@@ -426,6 +431,47 @@ def approval_workflow_case(runtime):
     blocked = runtime.rpc("tools/call", approved_revoked["toolCallParams"])[2]
     assert blocked.get("error") or blocked.get("result", {}).get("isError"), blocked
     assert runtime.observe("revoked.txt")["exists"] is False
+
+
+def bounded_approval_workflow_case(runtime):
+    approval_workflow_case(runtime, verify_missing_denial=True)
+
+
+def approved_budget_case(runtime):
+    runtime.start()
+    runtime.initialize()
+    trust = runtime.http(f"/admin/sessions/{runtime.session}/trust", token=runtime.admin_token)[2]
+    capability_id = trust["capabilities"][0]["capabilityId"]
+
+    def approved_call(request_id, tool_name, arguments):
+        proposal = {"session_id": runtime.session, "capability_id": capability_id,
+                    "request_id": request_id, "tool_name": tool_name, "arguments": arguments,
+                    "purpose": "Qualify exact approvals sharing one finite invocation quota", "ttl_seconds": 300}
+        created = runtime.http("/admin/approvals", proposal, token=runtime.admin_token)
+        assert created[0] == 201, created
+        approved = runtime.http("/admin/approvals/" + created[2]["record"]["id"] + "/decision",
+                                {"decision": "approved"}, token=runtime.admin_token)
+        assert approved[0] == 200, approved
+        return runtime.rpc("tools/call", approved[2]["toolCallParams"])[2]
+
+    write = approved_call("approved-budget-write", "write_file", {
+        "path": "/workspace/budgeted-approved.txt", "content": "approved-budget"})
+    assert outcome(write).get("outputKind") == "value", write
+    assert runtime.observe("budgeted-approved.txt")["content"] == "approved-budget"
+    read = approved_call("approved-budget-read", "read_text_file", {"path": "/workspace/budgeted-approved.txt"})
+    assert outcome(read).get("outputKind") == "value", read
+    runtime.stop()
+    runtime.start()
+    blocked = approved_call("approved-budget-exhausted", "write_file", {
+        "path": "/workspace/approved-over-budget.txt", "content": "must-not-write"})
+    assert blocked.get("error") or blocked.get("result", {}).get("isError"), blocked
+    assert runtime.observe("approved-over-budget.txt")["exists"] is False
+    budget = runtime.http("/admin/budgets?capability_id=" + capability_id, token=runtime.admin_token)
+    assert budget[0] == 200, budget
+    assert len(budget[2]["usages"]) == 1, budget
+    assert budget[2]["usages"][0]["grantIndex"] == 0, budget
+    assert budget[2]["usages"][0]["invocationCount"] == 2, budget
+    runtime.evidence.append({"approvedBudget": "approved write and read share one two-invocation grant; restart and a new approved token do not replenish it"})
 
 
 def cancellation_case(runtime):
@@ -564,6 +610,8 @@ def main():
              ("cancellation-after-dispatch", cancellation_case, {"barrier": True}),
              ("approval-artifact-rejection", approval_case, {"policy": APPROVAL_POLICY}),
              ("approval-workflow", approval_workflow_case, {"policy": APPROVAL_POLICY}),
+             ("bounded-approval-workflow", bounded_approval_workflow_case, {"policy": NATIVE_APPROVAL_POLICY}),
+             ("approved-grant-budget", approved_budget_case, {"policy": NATIVE_APPROVAL_POLICY.replace("max_invocations: 64", "max_invocations: 2")}),
              ("approved-unknown-after-dispatch", approved_unknown_case, {"policy": APPROVAL_POLICY, "barrier": True}),
              ("grant-budget", budget_case, {"policy": BUDGET_POLICY}),
              ("parallel-grant-budget", parallel_budget_case, {"policy": BUDGET_POLICY})]
@@ -574,7 +622,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     # Retain the exact tested driver source beside its hashes, so later
     # qualification-runner improvements cannot obscure historical evidence.
-    for source in [Path(__file__), Path(__file__).with_name("stdio_response_barrier.py")]:
+    for source in [Path(__file__), Path(__file__).with_name("stdio_response_barrier.py"), Path(__file__).with_name("approval-policy.yaml")]:
         (args.output / source.name).write_bytes(source.read_bytes())
     manifest = {"startedAt": datetime.now(timezone.utc).isoformat(),
                 "sourceRevision": args.source_revision,

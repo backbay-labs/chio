@@ -55,6 +55,12 @@ Cases:
   occurs before the kernel receives its result; restart and retry with the
   original approved request preserve the effect's unknown outcome and the
   independent sentinel.
+- `bounded-approval-workflow`: the complete operator workflow using the native
+  `approval-policy.yaml` with a single 64-invocation grant, including direct
+  missing-approval prevention. Every listed tool requires approval in this mode.
+- `approved-grant-budget`: approved write and read share one two-invocation
+  wildcard grant; restart and a new approved token cannot authorize a third
+  effect after the quota is exhausted.
 - `grant-budget`: one wildcard grant's two-invocation quota spans different
   tools, remains exhausted after restart, and explicitly demonstrates that
   fresh session issuance grants a new quota.
