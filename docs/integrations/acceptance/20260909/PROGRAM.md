@@ -83,7 +83,14 @@ from one host substitutes for another host's missing case.
 
 ## Candidate identities and limitations
 
-The current acknowledgement kernel was built from
+The current kernel includes the terminal tool-error acknowledgement repair at
+`d8c5f53705173e614a853bad6c0a85acfdf1212b`, binary SHA256
+`33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25`.
+It passed 38 actual kernel/resource cases and 55 remote library tests. The
+predecessor mishandled a known filesystem error discovered by a clean-installed
+Codex run. All earlier host passes remain bounded to their recorded artifacts.
+
+The preceding acknowledgement kernel was built from
 `8501b0058dfcbccd858ae2cdeda82948fb1e9a08`, equivalent to root code `31c28d05c3`.
 Its SHA256 is
 `0e683f6f7cc8f21816b10641e3c18fba2dd1445fbcd28752cd3260d8ac5edb5a`.

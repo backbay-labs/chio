@@ -1,0 +1,13 @@
+{
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "source": "d8c5f53705173e614a853bad6c0a85acfdf1212b",
+  "sourceDirty": "",
+  "image": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "volume": "chio-required-credentials-7ca43de17f4a",
+  "auditVolume": "chio-required-credentials-7ca43de17f4a-audit",
+  "runtime": "/Users/connor/.local/share/chio-required-operators/tool-error-ack-qualification-20260909",
+  "port": 53624,
+  "cryptographyVersion": "46.0.3",
+  "cases": 38,
+  "passed": 38
+}

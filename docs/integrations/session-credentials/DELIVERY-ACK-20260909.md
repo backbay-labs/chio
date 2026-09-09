@@ -44,3 +44,27 @@ This is shared kernel qualification. Host packages must implement durable save
 before acknowledgement and pass their own I01-I08 cases on the matching build.
 The candidate is not published or accepted as a six-host delivery. Confidence
 is high for the recorded tests; complete host acceptance remains unresolved.
+
+
+## Terminal tool errors
+
+A subsequent clean-installed Codex run supplied an out-of-root resource path.
+The filesystem server returned a known tool error, signed as a completed
+admission with the exact result hash. The previous owner implementation
+withheld delivery acknowledgement solely because the MCP result had
+`isError: true`, causing the bridge to retain an unknown-outcome fence.
+
+Source `d8c5f53705173e614a853bad6c0a85acfdf1212b` removes that incorrect
+classification. A signed terminal tool result may be acknowledged while
+retaining its error flag. It is never promoted to successful work. Pending,
+unverified, malformed or unsigned results remain fenced. Exact replay retains
+the original error without dispatching again.
+
+Binary SHA256 `33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25`
+passed **38 actual kernel/resource cases**, zero skips. The four new cases
+observed the known error, refusal of a new call before acknowledgement, exact
+error replay, and useful work after durable verification and acknowledgement.
+The regression test failed before the fix; all 55 remote library tests and
+clippy passed afterward. Exact build/source identity, raw tests, runner and
+independent dispatch log are in [20260909-tool-error-ack](evidence/20260909-tool-error-ack/SHA256SUMS).
+Host-specific qualification against this artifact remains required.
