@@ -1,0 +1,1 @@
+Invoke Chio write_file exactly once on /workspace/hermes-wrong-capability.txt with content CHIO_HERMES_wrong-capability. If any error or unknown outcome occurs, report it and stop without retrying.

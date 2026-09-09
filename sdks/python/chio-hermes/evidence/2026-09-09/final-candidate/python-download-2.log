@@ -1,0 +1,49 @@
+Collecting httpx==0.28.1
+  Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 73.5/73.5 kB 1.1 MB/s eta 0:00:00
+Collecting pydantic==2.13.5
+  Downloading pydantic-2.13.5-py3-none-any.whl (472 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 472.6/472.6 kB 3.3 MB/s eta 0:00:00
+Collecting pyyaml==6.0.3
+  Downloading pyyaml-6.0.3-cp311-cp311-macosx_11_0_arm64.whl (175 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 175.6/175.6 kB 12.1 MB/s eta 0:00:00
+Collecting anyio
+  Downloading anyio-4.15.1-py3-none-any.whl (132 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 132.1/132.1 kB 15.2 MB/s eta 0:00:00
+Collecting certifi
+  Downloading certifi-2026.7.22-py3-none-any.whl (136 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 137.0/137.0 kB 6.2 MB/s eta 0:00:00
+Collecting httpcore==1.*
+  Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 78.8/78.8 kB 12.9 MB/s eta 0:00:00
+Collecting idna
+  Downloading idna-3.19-py3-none-any.whl (68 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 68.5/68.5 kB 10.7 MB/s eta 0:00:00
+Collecting annotated-types>=0.6.0
+  Downloading annotated_types-0.8.0-py3-none-any.whl (13 kB)
+Collecting pydantic-core==2.46.5
+  Downloading pydantic_core-2.46.5-cp311-cp311-macosx_11_0_arm64.whl (1.9 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.9/1.9 MB 807.3 kB/s eta 0:00:00
+Collecting typing-extensions>=4.14.1
+  Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 45.6/45.6 kB 1.7 MB/s eta 0:00:00
+Collecting typing-inspection>=0.4.2
+  Downloading typing_inspection-0.4.4-py3-none-any.whl (14 kB)
+Collecting h11>=0.16
+  Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+Saved ./final-wheelhouse/httpx-0.28.1-py3-none-any.whl
+Saved ./final-wheelhouse/pydantic-2.13.5-py3-none-any.whl
+Saved ./final-wheelhouse/pyyaml-6.0.3-cp311-cp311-macosx_11_0_arm64.whl
+Saved ./final-wheelhouse/httpcore-1.0.9-py3-none-any.whl
+Saved ./final-wheelhouse/pydantic_core-2.46.5-cp311-cp311-macosx_11_0_arm64.whl
+Saved ./final-wheelhouse/annotated_types-0.8.0-py3-none-any.whl
+Saved ./final-wheelhouse/typing_extensions-4.16.0-py3-none-any.whl
+Saved ./final-wheelhouse/typing_inspection-0.4.4-py3-none-any.whl
+Saved ./final-wheelhouse/anyio-4.15.1-py3-none-any.whl
+Saved ./final-wheelhouse/idna-3.19-py3-none-any.whl
+Saved ./final-wheelhouse/certifi-2026.7.22-py3-none-any.whl
+Saved ./final-wheelhouse/h11-0.16.0-py3-none-any.whl
+Successfully downloaded httpx pydantic pyyaml httpcore pydantic-core annotated-types typing-extensions typing-inspection anyio idna certifi h11
+
+[notice] A new release of pip available: 22.3.1 -> 26.2.1
+[notice] To update, run: /private/tmp/chio-hermes-20260909/final-python-consumer/bin/python -m pip install --upgrade pip

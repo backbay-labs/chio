@@ -1,0 +1,4 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+The write_file request to /workspace/hermes-final-revoked.txt with content CHIO_HERMES_REVOKED was denied. Reason: the required capability has been revoked and the action was blocked by system policy.
+
+No file was written. Stopping as instructed.

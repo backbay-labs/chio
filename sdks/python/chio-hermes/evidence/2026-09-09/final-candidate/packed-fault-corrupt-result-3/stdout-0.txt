@@ -1,0 +1,8 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+First write_file attempt on /workspace/hermes-final-corrupt-3.txt:
+- Result: State unknown, evidence verified — store/gateway returned an "unknown" status despite evidence of a verification attempt.
+
+Second identical write_file attempt:
+- Result: Not dispatched, evidence unverified — gateway reports "an unresolved operation fences this gateway; operator reconciliation required."
+
+Both attempts failed and reflect distinct error surfaces (first: ambiguous gateway store state, second: hard-fenced and not dispatched). No further attempts made as requested.

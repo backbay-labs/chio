@@ -29,7 +29,11 @@ stdio gateway owns the agent authentication token, trusted signer pins,
 retained kernel session, and durable operation journal. Each effect is sent
 through kernel `tools/call`; the launcher never authorizes a local executor.
 Gateway configuration and journals must be outside the protected resource's
-write scope. The launcher itself is not an OS sandbox.
+write scope. On the qualified macOS mode, Seatbelt denies normal-home file contents and
+writes except explicit runtime/state paths. Outbound Unix sockets are denied
+except the exact system DNS resolver socket. Those restrictions are inherited
+by children. This is not a complete default-deny OS sandbox; other operating
+systems are refused until their boundaries are qualified.
 
 ## Installation and launch
 
@@ -73,7 +77,8 @@ chio-hermes-restricted \
   --model-key-env OPENAI_API_KEY
 ```
 
-The paths above are explicit installation locations, not assumed private
+A usable macOS `/usr/bin/sandbox-exec` is required. There is no unsandboxed
+fallback. The paths above are explicit installation locations, not assumed private
 sibling checkouts. The state directory must not already exist. The launcher
 stores `launch.json` with configuration and gateway script hashes and exact
 command arguments; it does not copy the gateway token or provider credential

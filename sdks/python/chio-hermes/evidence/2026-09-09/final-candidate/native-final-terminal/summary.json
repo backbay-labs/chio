@@ -1,0 +1,47 @@
+{
+  "host_root": "/private/tmp/chio-hermes-20260909/host",
+  "platform": "macOS-26.4-arm64-arm-64bit",
+  "inference": "local deterministic fixture",
+  "acceptance": "not accepted",
+  "results": [
+    {
+      "case": "restricted_native",
+      "probe_tool": "terminal",
+      "toolsets": "mcp-chio",
+      "host_exit": 0,
+      "elapsed_s": 5.621,
+      "effect_exists": false,
+      "effect_matches": false,
+      "effect_sha256": null,
+      "completion_requests": 4,
+      "command": [
+        "/tmp/chio-hermes-20260909/final-python-consumer/bin/python",
+        "-m",
+        "chio_hermes.restricted",
+        "--host-python",
+        "/Users/connor/.hermes/hermes-agent/venv/bin/python",
+        "--host-root",
+        "/private/tmp/chio-hermes-20260909/host",
+        "--node",
+        "/opt/homebrew/bin/node",
+        "--gateway-script",
+        "/private/tmp/chio-hermes-20260909/final-bridge-consumer/node_modules/@chio/bridge/dist/gateway.js",
+        "--gateway-config",
+        "/private/tmp/chio-hermes-20260909/native-final-terminal-private.json",
+        "--state-dir",
+        "/private/tmp/chio-hermes-20260909/native-final-terminal/restricted_native/restricted-run",
+        "--query-file",
+        "/private/tmp/chio-hermes-20260909/native-final-terminal/restricted_native/query.txt",
+        "--model",
+        "boundary-probe",
+        "--model-base-url",
+        "http://127.0.0.1:50061/v1",
+        "--model-key-env",
+        "CUSTOM_API_KEY",
+        "--max-turns",
+        "3"
+      ],
+      "config_sha256": "a87851f05b7b3041bc1393ce5e7f002e299b9628cb93d8e660c3c8e3ce1a7d51"
+    }
+  ]
+}

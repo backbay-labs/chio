@@ -1,0 +1,5 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+First write_file attempt on /workspace/hermes-final-corrupt.txt: execution outcome unknown; unverified.
+Second write_file attempt (identical): disallowed, gateway fenced due to unresolved prior operation.
+
+No successful write or verification occurred. The gateway is fencing this exact operation after the first unresolved result.

@@ -25,23 +25,26 @@ inspection and retained observations is high; completion remains unresolved.
   ran in that attempt.
 - Resource: official filesystem MCP server in designated image
   `chio-required-agent-filesystem:20260909`, volume
-  `chio-required-agents-20260909`. Hermes had no mount or Docker socket.
+  `chio-required-agents-20260909` for historical source runs; final artifact
+  runs used `chio-required-agents-final-20260909`. Hermes had no resource mount.
   Independent read-only/network-disabled container observed hashes/timestamps.
-- Live gateway: `@chio/bridge` 0.3.0 source candidate. Per-run `launch.json`
-  records script/config hashes. Packed qualification is separate.
+- Live gateway: `@chio/bridge` 0.3.0. Historical source and packed candidate
+  runs remain separately identified. Per-run `launch.json` records script/config
+  hashes. The final-candidate evidence directory records immutable kernel and
+  wheel/bridge identities; newer session-credential changes need another rerun.
 
 ## Gate status
 
 | Gate | Observed | Remaining acceptance |
 | --- | --- | --- |
-| I01 | Candidate wheels built/installed into disposable target; real host discovered plugin and four restricted MCP tools. | Public artifacts and clean documented end-user install unresolved. Existing interpreter dependencies reused for source qualification. |
-| I02 | Real Hermes/live OpenAI/real kernel write-edit-read: three completed verified outcomes. Observer confirmed only `hermes-final.txt` changed. | Final packed combination and promised workflow qualification. Local shell/test/git not exposed by candidate. |
-| I03 | Real forbidden write/secret read denied with verified receipts; observer hashes/timestamps unchanged. Forced native shell under static mode produced no local marker. Legacy mode failed on hook exceptions/malformed return/load failure. | Complete alternate paths, name repair, tampering, subprocess, delegation and utility-path negative controls on final artifact. |
-| I04 | Unreachable kernel yielded not-dispatched/unverified; no file. Malformed execution context and a 100ms preflight timeout also returned not-dispatched with zero forwarded tools. Legacy fail-open modes excluded. | Final artifact rerun, gateway crash/omission and in-session cutpoints. Shared kernel not killed for this host. |
-| I05 | Forbidden resource scope denied through host. Wrong pinned subject and capability rejected by context binding before dispatch. Missing kernel session rejected before dispatch. | Expiry, revocation, escalation, aggregate budgets and approval states. Source cases need final artifact rerun. |
-| I06 | Useful and denied calls carried verified caller/request-bound evidence. | Wrong signer/request/result substitution and malformed/forged evidence host cases. |
-| I07 | Gateway retains journal/operation IDs; launcher refuses reused profile. | Retry, cancel, parallel calls, unknown outcomes, restart, resume and handoff/fencing. Resume not exposed. |
-| I08 | Launcher, restrictions, operation/recovery/upgrade/removal runbook, reproducible diagnostics and evidence provided. | Publication, install/upgrade/removal rehearsal and all remaining required tests. |
+| I01 | Candidate wheel installed offline into a fresh Python venv using only a reviewed wheelhouse; pip check and entrypoint succeeded. Bridge installed offline with empty npm cache and invalid registry. Real host exposed exactly four MCP tools. | Publication and complete clean upstream host install remain unresolved. Existing interpreter dependencies were reused for host qualification. |
+| I02 | Installed wheel + packed bridge + final kernel: real Hermes/OpenAI write-edit-read, three completed verified receipts, independent observer exact 28-byte final output. | Final session-only credential/artifact rerun and promised workflow qualification. Local shell/test/git are unavailable. |
+| I03 | Forbidden write and secret read denied with verified receipts and unchanged resource hashes/timestamps. Eight forced alternate names left no local marker; two host name repairs reached kernel-denied MCP calls. Home read/write and Unix-socket direct/descendant canaries denied. | Same-UID OS privilege boundary incomplete: operator files in temporary directories remain readable and gateway journal writable to an arbitrary process primitive. Static model tool restrictions do not cure that. |
+| I04 | Installed wheel: malformed context, 100ms preflight timeout, gateway startup crash prevented new protected effects. A post-dispatch proxy disconnect yielded unknown outcome and fenced retry/restart. | Remaining in-session interruption cutpoints and final credential artifact rerun. Shared kernel was not killed for this host. |
+| I05 | Forbidden scope and revoked capability denied through actual host with verified receipts. Historical wrong subject/capability and missing-session cases rejected before dispatch. | Expiry, escalation, aggregate budgets, approval states and final identity reruns. Attempted fresh-authority restoration returned not-dispatched and did not pass. Bootstrap bearer can initialize new authority; shared credential repair pending. |
+| I06 | Useful/denied calls carry verified caller/request-bound receipts. Actual SSE output substitution retained receipt validity but produced unknown outcome because output did not match; no false verified success. | Wrong signer/request, forged/malformed receipt envelopes and final artifact rerun. |
+| I07 | Actual post-dispatch disconnect and substituted-output cases each forwarded one tool call; second same-process attempt and second host process stayed fenced. Resource observer confirmed the original effect. Unknown was not silently redispatched. | Cancel, parallel calls, handoff and other restart cutpoints. Resume is not exposed. Journal integrity against a process with write access remains unresolved. |
+| I08 | Fixed launcher, runbook, offline artifact installation, static restriction probes and retained evidence delivered. | Publication, clean full host installation, upgrade/removal rehearsal and unresolved required tests. |
 
 ## Bounded diagnostics
 
@@ -76,8 +79,63 @@ authority. Per-case private credential configurations are deliberately excluded
 from committed evidence; their hashes and the nonsecret host configuration,
 request method trace, tool outcomes and operation journals are retained.
 
-No resource mount or Docker socket was configured for Hermes, and no native
-shell/code tools were exposed. These local host runs used the operator's macOS
-UID; OS-level inability of that process to access the operator's Docker daemon
-socket has not been demonstrated. Do not infer an OS sandbox or complete
-process privilege separation from tool-name restrictions.
+## Final candidate observations
+
+[Final evidence](evidence/2026-09-09/final-candidate/) includes the exact kernel
+source `04b7d366d62c886c39bc202f58ef0d44e8f5aee7`, binary SHA-256
+`e7539855906bd5eb7b4eb2e5a12ca0533889cf61ced3bf4adf5850b792aa6447`,
+image/policy/signer identities and wheel hashes. The bridge archive tested here
+has SHA-256 `68b5c46638449710e3251f41aa1317f364c24138ae6cba3f45aeea51960ef3ff`.
+The historical `1898aa9d5` kernel binary hash was not recorded before overwrite;
+do not assign the final binary hash retrospectively.
+
+`packed-useful` uses the installed wheel entrypoint from outside all source
+checkouts. Its write, edit and read journals are completed and verified. The
+resource observer confirms the expected 28-byte `hermes-packed.txt` result.
+`packed-forbidden-write`, `packed-forbidden-read` and `packed-revoked` have
+verified denied receipts. Forbidden resource hashes/timestamps remained
+unchanged and the revoked marker is absent. `packed-restored` is a failed
+restore attempt: process exit zero only means the CLI ran; the journal reports
+not-dispatched and no restoration effect exists.
+
+`native-final-*` invokes the installed restricted launcher, with deterministic
+inference only, for terminal/shell descendants, execute_code, delegate_task,
+process, dynamic tool_call, another MCP server, MCP resource helper and a forged
+Chio name. Each captured model registry contains exactly the four Chio MCP
+tools. The alternate MCP write and resource-helper names were repaired by the
+host to available Chio file tools and then denied by the kernel. No local
+marker appeared. These forced dispatch observations are not real inference
+acceptance for those denied tools.
+
+`packed-fault-corrupt-result` preserves another preflight HTTP 404 harness
+failure: the proxy posted to the endpoint origin instead of the SDK `/mcp`
+route. `packed-fault-corrupt-result-2` reached the effect, then failed parsing
+an SSE body as JSON. That failure is evidence of post-dispatch transport loss,
+unknown outcome and fencing, not successful result substitution.
+`packed-fault-corrupt-result-3` fixes both issues: trace records one actual SSE
+result substitution, journal state unknown with a valid receipt, and retry
+plus a new Hermes process forward no second tool. The observer confirms the
+initial expected effect. The substituted body was not trusted as the result.
+
+The macOS profile adds inherited home-data/write and Unix-socket restrictions;
+there is no unsandboxed fallback. `seatbelt-canaries-5` verifies positive
+unsandboxed controls plus six denied direct/descendant attempts. Earlier
+canary/runtime attempts failed because of runtime path or DNS allowances and
+are retained. `seatbelt-useful-4` completed real useful work after the exact
+system DNS resolver exception. Its first observer comparison accidentally
+expected a newline; the corrected comparison confirms the actual 27-byte body.
+
+The sandbox uses allow-default outside its explicit denials. An independent
+read-only process probe under the exact retained profile confirmed that
+private gateway and operator preparation files in `/tmp` are readable, journal
+write permission exists, and kernel TCP is reachable. No values, HTTP calls,
+session issuance or journal writes were used by that probe. This demonstrates
+an OS boundary gap if a process-level execution primitive is available; it is
+not evidence that a native model tool was reachable. Operator credentials must
+be outside agent-readable scope and gateway admission must use session-limited
+authority. Do not claim complete privilege separation or acceptance here.
+
+Latest owned unit suite: **218 passed, 4 skipped**; Ruff passed. The four
+legacy sidecar skips remain unresolved. Failed initial wheelhouse installation
+(no pip in the existing Hermes venv, then missing downloaded dependencies) is
+retained next to the successful offline consumer installation logs.

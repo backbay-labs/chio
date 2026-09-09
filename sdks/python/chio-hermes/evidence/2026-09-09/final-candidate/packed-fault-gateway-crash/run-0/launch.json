@@ -1,0 +1,37 @@
+{
+  "schema": "chio.hermes.restricted-run.v1",
+  "hostRevision": "175054c14b54404663d8614a178280cffe6062eb",
+  "gatewayConfigSha256": "43190a6c8473a20cd689581863781698122d56e8e325791ba4e8af7ca5294279",
+  "gatewayScriptSha256": "c128200861c4b994bfe6fe5f95109bd0d8a49a0355d7841e96b0c0fab8e129d8",
+  "configSha256": "c21c6d5eab5f81ddf198a61977b8c7dde42b6c26bfa3989d317a8a8ccf04fb80",
+  "sandboxSha256": "dcb54cbcec14aa5f67ea6c81e28c804afa982c6906846899e825b8b31a3fcb0a",
+  "tools": [
+    "read_text_file",
+    "write_file",
+    "edit_file",
+    "list_directory"
+  ],
+  "command": [
+    "/usr/bin/sandbox-exec",
+    "-f",
+    "/private/tmp/chio-hermes-20260909/packed-fault-gateway-crash/run-0/host.sb",
+    "/Users/connor/.hermes/hermes-agent/venv/bin/python",
+    "/private/tmp/chio-hermes-20260909/host/hermes",
+    "chat",
+    "--cli",
+    "--ignore-rules",
+    "--provider",
+    "chio-model",
+    "-m",
+    "gpt-4.1",
+    "-t",
+    "mcp-chio",
+    "--max-turns",
+    "6",
+    "-Q",
+    "--query-file",
+    "/private/tmp/chio-hermes-20260909/final-gateway-crash-query.txt"
+  ],
+  "supportedMode": "one-shot external resource tools only",
+  "acceptance": "candidate; see ACCEPTANCE.md"
+}

@@ -1,0 +1,5 @@
+(version 1)
+(allow default)
+(deny network-outbound (remote unix-socket))
+(deny file-read-data (require-all (subpath "/Users/connor") (require-not (subpath "/private/tmp/chio-hermes-20260909/host")) (require-not (subpath "/Users/connor/.hermes/hermes-agent/venv")) (require-not (subpath "/Library/Frameworks/Python.framework/Versions/3.11")) (require-not (subpath "/private/tmp/chio-hermes-20260909/final-bridge-consumer/node_modules/@chio/bridge")) (require-not (literal "/private/tmp/chio-final-resource-20260909/hermes-seatbelt-useful-gateway.json")) (require-not (literal "/private/tmp/chio-hermes-20260909/useful-final-query.txt")) (require-not (subpath "/private/tmp/chio-hermes-20260909/seatbelt-useful-3")) (require-not (subpath "/private/tmp/chio-final-resource-20260909/hermes-seatbelt-useful-journal"))))
+(deny file-write* (require-all (subpath "/Users/connor") (require-not (subpath "/private/tmp/chio-hermes-20260909/seatbelt-useful-3")) (require-not (subpath "/private/tmp/chio-final-resource-20260909/hermes-seatbelt-useful-journal"))))

@@ -1,0 +1,9 @@
+{
+  "positive_read_matches": true,
+  "positive_unix_connect": true,
+  "sandbox_exit": -6,
+  "sandbox_results": null,
+  "forbidden_write_exists": false,
+  "forbidden_unix_observed": false,
+  "profileSha256": "c76cc1a04ba3c3d36f0da4d42f243f4395e15cd9cf6eb31b78438bd48cd35ebd"
+}

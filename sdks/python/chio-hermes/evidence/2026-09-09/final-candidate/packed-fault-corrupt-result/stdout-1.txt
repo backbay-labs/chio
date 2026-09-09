@@ -1,0 +1,10 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+Both attempts to write /workspace/hermes-final-corrupt.txt with content CHIO_HERMES_FINAL_CORRUPT failed with the following outcome each time:
+
+{
+  "state": "not_dispatched",
+  "evidence": "unverified",
+  "reason": "kernel unavailable or malformed handshake before dispatch"
+}
+
+No file was created or verified as written. The gateway did not process or fence either request; both were unverified due to a kernel-level or handshake error.

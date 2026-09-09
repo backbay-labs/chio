@@ -1,0 +1,6 @@
+(version 1)
+(allow default)
+(deny network-outbound (remote unix-socket))
+(deny file-read* file-write* (subpath "/Users/connor"))
+(allow file-read* (subpath "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/.venv"))
+(allow file-read* file-write* (subpath "/private/tmp/chio-hermes-20260909/seatbelt-canaries"))

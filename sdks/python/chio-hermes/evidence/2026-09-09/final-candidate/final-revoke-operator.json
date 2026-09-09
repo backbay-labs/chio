@@ -1,0 +1,8 @@
+{
+  "action": "revoke",
+  "result": {
+    "capabilityId": "cap-01a086e7-f79d-7a81-ae4e-a297ccbbf1c8",
+    "newlyRevoked": true,
+    "revoked": true
+  }
+}

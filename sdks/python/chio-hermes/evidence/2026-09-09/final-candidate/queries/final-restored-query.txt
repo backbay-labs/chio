@@ -1,0 +1,1 @@
+Use Chio write_file once to write /workspace/hermes-final-restored.txt with content CHIO_HERMES_RESTORED. Report the verified outcome and stop without retry.

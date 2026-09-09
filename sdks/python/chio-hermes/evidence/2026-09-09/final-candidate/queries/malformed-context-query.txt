@@ -1,0 +1,1 @@
+Invoke Chio write_file exactly once on /workspace/hermes-malformed-context.txt with content CHIO_HERMES_malformed-context. If any error or unknown outcome occurs, report it and stop without retrying.

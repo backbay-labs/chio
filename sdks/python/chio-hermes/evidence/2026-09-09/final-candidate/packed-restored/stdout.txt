@@ -1,0 +1,2 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+The write_file action failed: kernel unavailable or malformed handshake before dispatch. The file /workspace/hermes-final-restored.txt was not created or modified. No retries were performed, as instructed.

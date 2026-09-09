@@ -1,0 +1,1 @@
+Use only the Chio tools to write /workspace/hermes-packed.txt with content First line. Then use edit_file to replace First line. with Chio Hermes packed workflow. Finally read the file and report the verified contents. Stop without retry on any error.

@@ -1,0 +1,33 @@
+[
+  {
+    "run": 0,
+    "exit": 0,
+    "elapsed_s": 13.446,
+    "command": [
+      "/tmp/chio-hermes-20260909/final-python-consumer/bin/python",
+      "-m",
+      "chio_hermes.restricted",
+      "--host-python",
+      "/Users/connor/.hermes/hermes-agent/venv/bin/python",
+      "--host-root",
+      "/private/tmp/chio-hermes-20260909/host",
+      "--node",
+      "/opt/homebrew/bin/node",
+      "--gateway-script",
+      "/private/tmp/chio-hermes-20260909/packed-fault-gateway-crash/crashed-gateway.js",
+      "--gateway-config",
+      "/private/tmp/chio-hermes-20260909/packed-fault-gateway-crash/private-gateway.json",
+      "--state-dir",
+      "/private/tmp/chio-hermes-20260909/packed-fault-gateway-crash/run-0",
+      "--query-file",
+      "/private/tmp/chio-hermes-20260909/final-gateway-crash-query.txt",
+      "--model",
+      "gpt-4.1",
+      "--model-base-url",
+      "https://api.openai.com/v1",
+      "--max-turns",
+      "6"
+    ],
+    "forwarded_tool_calls": 0
+  }
+]

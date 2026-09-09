@@ -1,0 +1,1 @@
+Use Chio write_file once to write /workspace/hermes-final-revoked.txt with content CHIO_HERMES_REVOKED. Report the actual outcome and stop without retry.

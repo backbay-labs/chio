@@ -20,6 +20,33 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 
+def corrupt_output(payload: bytes, content_type: str) -> bytes:
+    """Substitute evidence output in JSON or the kernel's SSE result frame."""
+    def substitute(raw: str) -> str:
+        response = json.loads(raw)
+        evidence = response.get("result", {}).get("_meta", {}).get("chioEvidence")
+        if not isinstance(evidence, dict):
+            raise ValueError("fault injection requires an actual execution evidence envelope")
+        evidence["output"] = {"substituted": "untrusted result body"}
+        return json.dumps(response)
+
+    if "text/event-stream" not in content_type:
+        return substitute(payload.decode()).encode()
+    blocks = payload.decode().replace("\r\n", "\n").split("\n\n")
+    changed = False
+    for index, block in enumerate(blocks):
+        lines = block.splitlines()
+        data = [line[5:].lstrip() for line in lines if line.startswith("data:")]
+        if not data:
+            continue
+        blocks[index] = "\n".join([line for line in lines if not line.startswith("data:")]
+                                  + ["data: " + substitute("\n".join(data))])
+        changed = True
+    if not changed:
+        raise ValueError("fault injection found no SSE result frame")
+    return "\n\n".join(blocks).encode()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fault", required=True, choices=[
@@ -45,7 +72,7 @@ def main() -> int:
             raw = self.rfile.read(int(self.headers["Content-Length"]))
             request = json.loads(raw)
             method = request.get("method")
-            entry = {"method": method, "forwarded": False}
+            entry = {"method": method, "path": self.path, "forwarded": False}
             trace.append(entry)
             if args.fault == "timeout-context" and method == "chio/execution-context":
                 time.sleep(1)
@@ -58,7 +85,9 @@ def main() -> int:
                 headers = {"Content-Type": "application/json"}
             else:
                 entry["forwarded"] = True
-                outbound = urllib.request.Request(original_endpoint, data=raw, method="POST",
+                # The SDK takes an origin and appends /mcp. Preserve its actual
+                # request path; posting to the bare origin returns HTTP 404.
+                outbound = urllib.request.Request(original_endpoint.rstrip("/") + self.path, data=raw, method="POST",
                     headers={**{key: value for key, value in self.headers.items()
                                 if key.lower() not in {"host", "content-length", "connection", "accept-encoding"}},
                              "Accept-Encoding": "identity"})
@@ -71,13 +100,12 @@ def main() -> int:
                     status = upstream.status
                     headers = {key: value for key, value in upstream.headers.items()
                                if key.lower() in {"content-type", "mcp-session-id"}}
+                    content_type = upstream.headers.get("Content-Type", "")
                 if args.fault == "corrupt-result" and method == "tools/call" and status == 200:
-                    response = json.loads(payload)
-                    evidence = response.get("result", {}).get("_meta", {}).get("chioEvidence")
-                    if isinstance(evidence, dict):
-                        evidence["output"] = {"substituted": "untrusted result body"}
-                        payload = json.dumps(response).encode()
-                        entry["result_corrupted"] = True
+                    entry["http_status"] = status
+                    entry["response_content_type"] = content_type
+                    payload = corrupt_output(payload, content_type)
+                    entry["result_corrupted"] = True
             entry["http_status"] = status
             self.send_response(status)
             for key, value in headers.items():
@@ -92,7 +120,7 @@ def main() -> int:
     server = ThreadingHTTPServer(("127.0.0.1", 0), FaultProxy)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     if args.fault in {"malformed-context", "timeout-context", "corrupt-result"}:
-        config["execution"]["endpoint"] = f"http://127.0.0.1:{server.server_port}/mcp"
+        config["execution"]["endpoint"] = f"http://127.0.0.1:{server.server_port}"
     if args.fault == "timeout-context":
         config["execution"]["timeoutMs"] = 100
     if args.fault == "wrong-subject":

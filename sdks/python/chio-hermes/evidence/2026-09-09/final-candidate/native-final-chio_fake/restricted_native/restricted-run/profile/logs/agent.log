@@ -1,0 +1,42 @@
+2026-09-09 12:04:06,310 INFO hermes_cli.plugins: Plugin 'browser-browser-use' registered browser provider: browser-use
+2026-09-09 12:04:06,312 INFO hermes_cli.plugins: Plugin 'browser-browserbase' registered browser provider: browserbase
+2026-09-09 12:04:06,313 INFO hermes_cli.plugins: Plugin 'browser-firecrawl' registered browser provider: firecrawl
+2026-09-09 12:04:06,418 INFO hermes_cli.plugins: Plugin 'deepinfra' registered image_gen provider: deepinfra
+2026-09-09 12:04:06,418 INFO hermes_cli.plugins: Plugin 'fal' registered image_gen provider: fal
+2026-09-09 12:04:06,419 INFO hermes_cli.plugins: Plugin 'krea' registered image_gen provider: krea
+2026-09-09 12:04:06,419 INFO hermes_cli.plugins: Plugin 'openai' registered image_gen provider: openai
+2026-09-09 12:04:06,420 INFO hermes_cli.plugins: Plugin 'openai-codex' registered image_gen provider: openai-codex
+2026-09-09 12:04:06,421 INFO hermes_cli.plugins: Plugin 'openrouter' registered image_gen provider: openrouter
+2026-09-09 12:04:06,421 INFO hermes_cli.plugins: Plugin 'openrouter' registered image_gen provider: nous
+2026-09-09 12:04:06,422 INFO hermes_cli.plugins: Plugin 'xai' registered image_gen provider: xai
+2026-09-09 12:04:06,426 INFO hermes_cli.plugins: Plugin 'deepinfra' registered video_gen provider: deepinfra
+2026-09-09 12:04:06,427 INFO hermes_cli.plugins: Plugin 'fal' registered video_gen provider: fal
+2026-09-09 12:04:06,427 INFO hermes_cli.plugins: Plugin 'xai' registered video_gen provider: xai
+2026-09-09 12:04:06,429 INFO hermes_cli.plugins: Plugin 'web-brave-free' registered web provider: brave-free
+2026-09-09 12:04:06,431 INFO hermes_cli.plugins: Plugin 'web-ddgs' registered web provider: ddgs
+2026-09-09 12:04:06,432 INFO hermes_cli.plugins: Plugin 'web-exa' registered web provider: exa
+2026-09-09 12:04:06,434 INFO hermes_cli.plugins: Plugin 'web-firecrawl' registered web provider: firecrawl
+2026-09-09 12:04:06,435 INFO hermes_cli.plugins: Plugin 'web-keenable' registered web provider: keenable
+2026-09-09 12:04:06,435 INFO hermes_cli.plugins: Plugin 'web-parallel' registered web provider: parallel
+2026-09-09 12:04:06,436 INFO hermes_cli.plugins: Plugin 'web-searxng' registered web provider: searxng
+2026-09-09 12:04:06,437 INFO hermes_cli.plugins: Plugin 'web-tavily' registered web provider: tavily
+2026-09-09 12:04:06,437 INFO hermes_cli.plugins: Plugin 'web-xai' registered web provider: xai
+2026-09-09 12:04:06,461 INFO hermes_cli.plugins: Plugin discovery complete: 55 found, 49 enabled
+2026-09-09 12:04:07,320 INFO tools.mcp_tool: MCP server 'chio' (stdio): registered 4 tool(s): mcp__chio__read_text_file, mcp__chio__write_file, mcp__chio__edit_file, mcp__chio__list_directory
+2026-09-09 12:04:07,320 INFO tools.mcp_tool: MCP: registered 4 tool(s) from 1 server(s)
+2026-09-09 12:04:07,320 INFO tools.mcp_tool:   MCP: 4 tool(s) from 1 server(s)
+2026-09-09 12:04:07,790 WARNING hermes_state: state.db: linked SQLite 3.40.1 is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) — using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.
+2026-09-09 12:04:08,041 INFO run_agent: Loaded environment variables from /private/tmp/chio-hermes-20260909/native-final-chio_fake/restricted_native/restricted-run/profile/.env
+2026-09-09 12:04:08,043 INFO tools.tirith_security: tirith not found — downloading latest release for aarch64-apple-darwin...
+2026-09-09 12:04:08,533 WARNING hermes_state: state.db (async_delegation): linked SQLite 3.40.1 is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) — using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.
+2026-09-09 12:04:08,856 INFO run_agent: OpenAI client created (agent_init, shared=True) thread=MainThread:8400148672 provider=custom base_url=http://127.0.0.1:50511/v1 model=boundary-probe
+2026-09-09 12:04:08,955 INFO agent.model_metadata: Could not detect context length for model 'boundary-probe' at http://127.0.0.1:50511/v1 — defaulting to 256,000 tokens (probe-down). Set model.context_length in config.yaml to override.
+2026-09-09 12:04:08,955 WARNING agent.model_metadata: Could not determine context length for model 'boundary-probe' (base_url=http://127.0.0.1:50511/v1) — falling back to 256,000 tokens. Set model.context_length in config.yaml to override.
+2026-09-09 12:04:09,048 INFO [20260909_120407_e691e0] agent.turn_context: conversation turn: session=20260909_120407_e691e0 model=boundary-probe provider=custom platform=cli history=0 msg='Perform the requested boundary diagnostic, then stop. '
+2026-09-09 12:04:09,098 INFO agent.auxiliary_client: Auxiliary auto-detect: using main provider custom (boundary-probe)
+2026-09-09 12:04:09,099 INFO agent.auxiliary_client: Auxiliary title_generation: using custom (boundary-probe) at http://127.0.0.1:50511/v1/
+2026-09-09 12:04:09,118 INFO run_agent: OpenAI client created (chat_completion_stream_request, shared=False) thread=Thread-5 (<lambda>):12935360512 provider=custom base_url=http://127.0.0.1:50511/v1 model=boundary-probe
+2026-09-09 12:04:09,311 INFO [20260909_120407_e691e0] agent.conversation_loop: API call #1: model=boundary-probe provider=custom in=100 out=30 total=130 latency=0.2s
+2026-09-09 12:04:09,322 INFO [20260909_120407_e691e0] agent.conversation_loop: API call #2: model=boundary-probe provider=custom in=100 out=30 total=130 latency=0.0s
+2026-09-09 12:04:09,332 INFO [20260909_120407_e691e0] agent.conversation_loop: Turn ended: reason=text_response(finish_reason=stop) model=boundary-probe api_calls=2/3 budget=2/3 tool_turns=1 last_msg_role=assistant response_len=15 session=20260909_120407_e691e0
+2026-09-09 12:04:09,396 INFO [20260909_120407_e691e0] cli: CLI cleanup calling memory shutdown for session 20260909_120407_e691e0 with 4 message(s)

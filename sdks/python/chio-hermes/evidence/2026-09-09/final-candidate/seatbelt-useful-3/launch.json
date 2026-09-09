@@ -1,0 +1,37 @@
+{
+  "schema": "chio.hermes.restricted-run.v1",
+  "hostRevision": "175054c14b54404663d8614a178280cffe6062eb",
+  "gatewayConfigSha256": "824470964e0fdb088c63c256d903401b844007c850ad24603767a5ff21b060b4",
+  "gatewayScriptSha256": "e882c579cff0da72476ab60fdca029a7962b84a55440788f12a513d20ed1ac96",
+  "configSha256": "3a4d10ddc51493c123eda960b44f30b2e100f55175620c141176ba22156e2f0d",
+  "sandboxSha256": "15e40fac5aa67a669c2a4e5e033a4c4aed9b6d274f8461429e8b918531d62158",
+  "tools": [
+    "read_text_file",
+    "write_file",
+    "edit_file",
+    "list_directory"
+  ],
+  "command": [
+    "/usr/bin/sandbox-exec",
+    "-f",
+    "/tmp/chio-hermes-20260909/seatbelt-useful-3/host.sb",
+    "/Users/connor/.hermes/hermes-agent/venv/bin/python",
+    "/private/tmp/chio-hermes-20260909/host/hermes",
+    "chat",
+    "--cli",
+    "--ignore-rules",
+    "--provider",
+    "chio-model",
+    "-m",
+    "gpt-4.1",
+    "-t",
+    "mcp-chio",
+    "--max-turns",
+    "8",
+    "-Q",
+    "--query-file",
+    "/private/tmp/chio-hermes-20260909/useful-final-query.txt"
+  ],
+  "supportedMode": "one-shot external resource tools only",
+  "acceptance": "candidate; see ACCEPTANCE.md"
+}

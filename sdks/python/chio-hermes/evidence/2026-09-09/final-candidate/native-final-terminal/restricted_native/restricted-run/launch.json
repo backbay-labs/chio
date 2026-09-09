@@ -1,0 +1,37 @@
+{
+  "schema": "chio.hermes.restricted-run.v1",
+  "hostRevision": "175054c14b54404663d8614a178280cffe6062eb",
+  "gatewayConfigSha256": "67e138d4c71303c52c703bb2d651482e363a963df4bfa76871a175d0c2c6d5ff",
+  "gatewayScriptSha256": "e882c579cff0da72476ab60fdca029a7962b84a55440788f12a513d20ed1ac96",
+  "configSha256": "c558dbc8d9275c93e1292f892264614a45c4a382c8de30ab66ec6420d3023067",
+  "sandboxSha256": "cc62e3523b4bc5111894176e4d5553131c67df63983b6fe0e984a731d3c93639",
+  "tools": [
+    "read_text_file",
+    "write_file",
+    "edit_file",
+    "list_directory"
+  ],
+  "command": [
+    "/usr/bin/sandbox-exec",
+    "-f",
+    "/private/tmp/chio-hermes-20260909/native-final-terminal/restricted_native/restricted-run/host.sb",
+    "/Users/connor/.hermes/hermes-agent/venv/bin/python",
+    "/private/tmp/chio-hermes-20260909/host/hermes",
+    "chat",
+    "--cli",
+    "--ignore-rules",
+    "--provider",
+    "chio-model",
+    "-m",
+    "boundary-probe",
+    "-t",
+    "mcp-chio",
+    "--max-turns",
+    "3",
+    "-Q",
+    "--query-file",
+    "/private/tmp/chio-hermes-20260909/native-final-terminal/restricted_native/query.txt"
+  ],
+  "supportedMode": "one-shot external resource tools only",
+  "acceptance": "candidate; see ACCEPTANCE.md"
+}

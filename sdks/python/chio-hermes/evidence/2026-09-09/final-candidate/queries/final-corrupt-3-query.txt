@@ -1,0 +1,1 @@
+Use Chio write_file on /workspace/hermes-final-corrupt-3.txt with content CHIO_HERMES_FINAL_CORRUPT_3. If the result is unverified or unknown, make exactly one additional identical write_file attempt to check the gateway fence. Report both actual outcomes accurately and stop.

@@ -1,0 +1,8 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+Outcome of first write_file attempt:
+- State: unknown (unverified execution outcome; no evidence of success or failure).
+
+Outcome of second write_file attempt:
+- State: not_dispatched (operation fenced due to an unresolved prior operation; operator intervention required).
+
+No file write was verified as successful. The gateway prevents further identical attempts until reconciliation occurs.

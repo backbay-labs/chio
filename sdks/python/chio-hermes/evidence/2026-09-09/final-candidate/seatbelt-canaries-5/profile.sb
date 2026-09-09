@@ -1,0 +1,5 @@
+(version 1)
+(allow default)
+(deny network-outbound (require-all (remote unix-socket) (require-not (remote unix-socket (path-literal "/private/var/run/mDNSResponder")))))
+(deny file-read-data (require-all (subpath "/Users/connor") (require-not (subpath "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/.venv")) (require-not (subpath "/Users/connor/.local/share/uv/python/cpython-3.13.5-macos-aarch64-none")) (require-not (subpath "/private/tmp/chio-hermes-20260909/seatbelt-canaries-5"))))
+(deny file-write* (require-all (subpath "/Users/connor") (require-not (subpath "/private/tmp/chio-hermes-20260909/seatbelt-canaries-5"))))

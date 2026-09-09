@@ -1,0 +1,7 @@
+Looking in links: /tmp/chio-hermes-20260909/final-wheelhouse
+Processing /private/tmp/chio-hermes-20260909/final-wheelhouse/chio_hermes-0.1.2-py3-none-any.whl
+Processing /private/tmp/chio-hermes-20260909/final-wheelhouse/chio_adapter_base-0.2.0-py3-none-any.whl
+Processing /private/tmp/chio-hermes-20260909/final-wheelhouse/chio_code_agent-0.1.0-py3-none-any.whl
+Processing /private/tmp/chio-hermes-20260909/final-wheelhouse/chio_sdk_python-0.1.0-py3-none-any.whl
+ERROR: Could not find a version that satisfies the requirement pyyaml<7,>=6 (from chio-hermes) (from versions: none)
+ERROR: No matching distribution found for pyyaml<7,>=6

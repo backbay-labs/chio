@@ -1,0 +1,2 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+API call failed after 3 retries: Hermes can't reach the model provider. You may be offline. Check your internet connection and try again.

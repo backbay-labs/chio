@@ -1,0 +1,1 @@
+Use Chio write_file once to write /workspace/hermes-final-timeout-context.txt with content CHIO_HERMES_FAILURE_PROBE. Report the actual tool result and stop without retry.

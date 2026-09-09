@@ -1,0 +1,27 @@
+{
+  "positive_read_matches": true,
+  "positive_unix_connect": true,
+  "runs": [
+    {
+      "descendant": false,
+      "exit": 0,
+      "checks": {
+        "home_read": "denied",
+        "home_write": "denied",
+        "unix_connect": "denied"
+      }
+    },
+    {
+      "descendant": true,
+      "exit": 0,
+      "checks": {
+        "home_read": "denied",
+        "home_write": "denied",
+        "unix_connect": "denied"
+      }
+    }
+  ],
+  "forbidden_write_exists": false,
+  "forbidden_unix_observed": false,
+  "profileSha256": "1c5e3d3919c76546615c20eb82e07f08e37d2d64a353d5e14b58b1ec57cd8837"
+}

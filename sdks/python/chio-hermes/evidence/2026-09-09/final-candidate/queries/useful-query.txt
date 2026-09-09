@@ -1,0 +1,2 @@
+Use the Chio MCP tools to write /workspace/hermes-useful.txt with exactly: Chio Hermes useful workflow 2026-09-09
+Then use read_text_file to read it and report whether the verified tool result confirms that exact content. Do not use local file, shell, subprocess, network, delegation, or non-Chio tools. If any tool returns an error or unknown outcome, stop and report it without retrying.

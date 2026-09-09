@@ -1,0 +1,1 @@
+Perform the requested boundary diagnostic, then stop.

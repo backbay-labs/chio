@@ -14,6 +14,7 @@ import os
 import re
 import stat
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -74,9 +75,42 @@ def gateway_tool_names(config: dict[str, Any]) -> list[str]:
     return names
 
 
+def macos_profile(*, home: Path, read_paths: list[Path], write_paths: list[Path]) -> str:
+    """Deny home credentials/mutations and Unix sockets in the host and children.
+
+    This adds OS controls to the static tool boundary. It is deliberately not
+    described as a comprehensive default-deny OS sandbox.
+    """
+    def quoted(path: Path) -> str:
+        value = str(path.resolve())
+        if any(ord(char) < 32 for char in value):
+            raise ValueError("sandbox paths cannot contain control characters")
+        return json.dumps(value, ensure_ascii=False)
+
+    lines = ["(version 1)", "(allow default)",
+             "(deny network-outbound (require-all (remote unix-socket) "
+             "(require-not (remote unix-socket (path-literal \"/private/var/run/mDNSResponder\")))))"]
+    read_exclusions = [
+        f"(require-not ({'subpath' if path.is_dir() else 'literal'} {quoted(path)}))"
+        for path in read_paths
+    ] + [f"(require-not (subpath {quoted(path)}))" for path in write_paths]
+    write_exclusions = [f"(require-not (subpath {quoted(path)}))" for path in write_paths]
+    lines.append(f"(deny file-read-data (require-all (subpath {quoted(home)}) {' '.join(read_exclusions)}))")
+    lines.append(f"(deny file-write* (require-all (subpath {quoted(home)}) {' '.join(write_exclusions)}))")
+    return "\n".join(lines) + "\n"
+
+
+def sandbox_executable() -> Path:
+    executable = Path("/usr/bin/sandbox-exec")
+    if sys.platform != "darwin" or not executable.is_file():
+        raise ValueError("this candidate requires the qualified macOS sandbox-exec boundary")
+    return executable
+
+
 def prepare(args: argparse.Namespace) -> tuple[list[str], dict[str, str], Path]:
     host_root = args.host_root.resolve()
     validate_host(host_root)
+    sandbox = sandbox_executable()
     if Path("/etc/hermes").exists() or os.environ.get("HERMES_MANAGED_DIR"):
         raise ValueError("machine-managed Hermes configuration needs separate qualification")
     config_path = args.gateway_config.absolute()
@@ -125,16 +159,29 @@ def prepare(args: argparse.Namespace) -> tuple[list[str], dict[str, str], Path]:
         "HERMES_SKIP_NODE_BOOTSTRAP": "1",
         "CHIO_HERMES_MODEL_API_KEY": model_key,
         "NO_COLOR": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
     })
     command = [str(args.host_python.absolute()), str(host_root / "hermes"), "chat", "--cli",
                "--ignore-rules", "--provider", "chio-model", "-m", args.model,
                "-t", "mcp-chio", "--max-turns", str(args.max_turns), "-Q",
                "--query-file", str(args.query_file.resolve())]
+    sandbox_path = state / "host.sb"
+    # The resource service must not be among these trusted runtime paths.
+    sandbox_path.write_text(macos_profile(
+        home=Path.home(),
+        read_paths=[host_root, args.host_python.absolute().parent.parent,
+                    args.host_python.resolve().parent.parent,
+                    args.gateway_script.resolve().parent.parent, config_path,
+                    args.query_file.resolve()],
+        write_paths=[state, Path(gateway["journalDir"])],
+    ))
+    command = [str(sandbox), "-f", str(sandbox_path), *command]
     manifest = {
         "schema": "chio.hermes.restricted-run.v1", "hostRevision": HOST_REVISION,
         "gatewayConfigSha256": hashlib.sha256(config_path.read_bytes()).hexdigest(),
         "gatewayScriptSha256": hashlib.sha256(args.gateway_script.read_bytes()).hexdigest(),
         "configSha256": hashlib.sha256((profile / "config.yaml").read_bytes()).hexdigest(),
+        "sandboxSha256": hashlib.sha256(sandbox_path.read_bytes()).hexdigest(),
         "tools": names, "command": command,
         "supportedMode": "one-shot external resource tools only",
         "acceptance": "candidate; see ACCEPTANCE.md",

@@ -1,0 +1,43 @@
+2026-09-09 12:04:28,864 INFO hermes_cli.plugins: Plugin 'browser-browser-use' registered browser provider: browser-use
+2026-09-09 12:04:28,865 INFO hermes_cli.plugins: Plugin 'browser-browserbase' registered browser provider: browserbase
+2026-09-09 12:04:28,866 INFO hermes_cli.plugins: Plugin 'browser-firecrawl' registered browser provider: firecrawl
+2026-09-09 12:04:29,014 INFO hermes_cli.plugins: Plugin 'deepinfra' registered image_gen provider: deepinfra
+2026-09-09 12:04:29,015 INFO hermes_cli.plugins: Plugin 'fal' registered image_gen provider: fal
+2026-09-09 12:04:29,016 INFO hermes_cli.plugins: Plugin 'krea' registered image_gen provider: krea
+2026-09-09 12:04:29,017 INFO hermes_cli.plugins: Plugin 'openai' registered image_gen provider: openai
+2026-09-09 12:04:29,017 INFO hermes_cli.plugins: Plugin 'openai-codex' registered image_gen provider: openai-codex
+2026-09-09 12:04:29,018 INFO hermes_cli.plugins: Plugin 'openrouter' registered image_gen provider: openrouter
+2026-09-09 12:04:29,018 INFO hermes_cli.plugins: Plugin 'openrouter' registered image_gen provider: nous
+2026-09-09 12:04:29,021 INFO hermes_cli.plugins: Plugin 'xai' registered image_gen provider: xai
+2026-09-09 12:04:29,026 INFO hermes_cli.plugins: Plugin 'deepinfra' registered video_gen provider: deepinfra
+2026-09-09 12:04:29,027 INFO hermes_cli.plugins: Plugin 'fal' registered video_gen provider: fal
+2026-09-09 12:04:29,028 INFO hermes_cli.plugins: Plugin 'xai' registered video_gen provider: xai
+2026-09-09 12:04:29,030 INFO hermes_cli.plugins: Plugin 'web-brave-free' registered web provider: brave-free
+2026-09-09 12:04:29,031 INFO hermes_cli.plugins: Plugin 'web-ddgs' registered web provider: ddgs
+2026-09-09 12:04:29,032 INFO hermes_cli.plugins: Plugin 'web-exa' registered web provider: exa
+2026-09-09 12:04:29,036 INFO hermes_cli.plugins: Plugin 'web-firecrawl' registered web provider: firecrawl
+2026-09-09 12:04:29,037 INFO hermes_cli.plugins: Plugin 'web-keenable' registered web provider: keenable
+2026-09-09 12:04:29,038 INFO hermes_cli.plugins: Plugin 'web-parallel' registered web provider: parallel
+2026-09-09 12:04:29,040 INFO hermes_cli.plugins: Plugin 'web-searxng' registered web provider: searxng
+2026-09-09 12:04:29,042 INFO hermes_cli.plugins: Plugin 'web-tavily' registered web provider: tavily
+2026-09-09 12:04:29,044 INFO hermes_cli.plugins: Plugin 'web-xai' registered web provider: xai
+2026-09-09 12:04:29,103 INFO hermes_cli.plugins: Plugin discovery complete: 55 found, 49 enabled
+2026-09-09 12:04:29,968 INFO tools.mcp_tool: MCP server 'chio' (stdio): registered 4 tool(s): mcp__chio__read_text_file, mcp__chio__write_file, mcp__chio__edit_file, mcp__chio__list_directory
+2026-09-09 12:04:29,970 INFO tools.mcp_tool: MCP: registered 4 tool(s) from 1 server(s)
+2026-09-09 12:04:29,970 INFO tools.mcp_tool:   MCP: 4 tool(s) from 1 server(s)
+2026-09-09 12:04:30,154 WARNING hermes_state: state.db: linked SQLite 3.40.1 is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) — using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.
+2026-09-09 12:04:30,290 INFO tools.tirith_security: tirith not found — downloading latest release for aarch64-apple-darwin...
+2026-09-09 12:04:30,302 INFO run_agent: Loaded environment variables from /private/tmp/chio-hermes-20260909/packed-fault-corrupt-result/run-1/profile/.env
+2026-09-09 12:04:30,760 WARNING hermes_state: state.db (async_delegation): linked SQLite 3.40.1 is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) — using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.
+2026-09-09 12:04:31,129 INFO run_agent: OpenAI client created (agent_init, shared=True) thread=MainThread:8400148672 provider=custom base_url=https://api.openai.com/v1 model=gpt-4.1
+2026-09-09 12:04:31,225 INFO [20260909_120430_311003] agent.turn_context: conversation turn: session=20260909_120430_311003 model=gpt-4.1 provider=custom platform=cli history=0 msg='Invoke Chio write_file on /workspace/hermes-final-corrupt.txt with content CHIO_...'
+2026-09-09 12:04:31,256 INFO agent.auxiliary_client: Auxiliary auto-detect: using main provider custom (gpt-4.1)
+2026-09-09 12:04:31,256 INFO agent.auxiliary_client: Auxiliary title_generation: using custom (gpt-4.1) at https://api.openai.com/v1/
+2026-09-09 12:04:31,267 INFO run_agent: OpenAI client created (chat_completion_stream_request, shared=False) thread=Thread-5 (<lambda>):6392344576 provider=custom base_url=https://api.openai.com/v1 model=gpt-4.1
+2026-09-09 12:04:33,281 INFO [20260909_120430_311003] agent.conversation_loop: API call #1: model=gpt-4.1 provider=custom in=2587 out=39 total=2626 latency=2.0s
+2026-09-09 12:04:33,308 WARNING [20260909_120430_311003] agent.tool_executor: Tool mcp__chio__write_file returned error (0.01s): {"error": "{\"state\":\"not_dispatched\",\"evidence\":\"unverified\",\"requestId\":\"hermes-final-corrupt:a22883e93273fa52419f3f34bb7e1125f2cd14a1f32561e419adc15324916c4b\",\"reason\":\"kernel unavail
+2026-09-09 12:04:34,273 INFO [20260909_120430_311003] agent.conversation_loop: API call #2: model=gpt-4.1 provider=custom in=2785 out=39 total=2824 latency=1.0s cache=2560/2785 (92%)
+2026-09-09 12:04:34,279 WARNING [20260909_120430_311003] agent.tool_executor: Tool mcp__chio__write_file returned error (0.00s): {"error": "{\"state\":\"not_dispatched\",\"evidence\":\"unverified\",\"requestId\":\"hermes-final-corrupt:fe94ccbd074bb18b213f513152e3e3d0503e3746292df1d92bdd30aa4aaaee76\",\"reason\":\"kernel unavail
+2026-09-09 12:04:36,179 INFO [20260909_120430_311003] agent.conversation_loop: API call #3: model=gpt-4.1 provider=custom in=3031 out=98 total=3129 latency=1.9s cache=2688/3031 (89%)
+2026-09-09 12:04:36,182 INFO [20260909_120430_311003] agent.conversation_loop: Turn ended: reason=text_response(finish_reason=stop) model=gpt-4.1 api_calls=3/6 budget=3/6 tool_turns=2 last_msg_role=assistant response_len=437 session=20260909_120430_311003
+2026-09-09 12:04:36,214 INFO [20260909_120430_311003] cli: CLI cleanup calling memory shutdown for session 20260909_120430_311003 with 6 message(s)

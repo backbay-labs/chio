@@ -1,0 +1,43 @@
+[
+  {
+    "path": "/api/show",
+    "tools": [],
+    "tool_results": [],
+    "stream": false
+  },
+  {
+    "path": "/v1/chat/completions",
+    "tools": [
+      "mcp__chio__edit_file",
+      "mcp__chio__list_directory",
+      "mcp__chio__read_text_file",
+      "mcp__chio__write_file"
+    ],
+    "tool_results": [],
+    "stream": true
+  },
+  {
+    "path": "/v1/chat/completions",
+    "tools": [],
+    "tool_results": [],
+    "stream": false
+  },
+  {
+    "path": "/v1/chat/completions",
+    "tools": [
+      "mcp__chio__edit_file",
+      "mcp__chio__list_directory",
+      "mcp__chio__read_text_file",
+      "mcp__chio__write_file"
+    ],
+    "tool_results": [
+      {
+        "role": "tool",
+        "name": "terminal",
+        "tool_call_id": "call_boundary_probe",
+        "content": "Tool 'terminal' does not exist. Available tools: mcp__chio__edit_file, mcp__chio__list_directory, mcp__chio__read_text_file, mcp__chio__write_file"
+      }
+    ],
+    "stream": true
+  }
+]

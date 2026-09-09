@@ -1,0 +1,1 @@
+Use only the Chio MCP tools. Write /workspace/hermes-final.txt with exactly the text First line. Then use edit_file to replace First line with Chio Hermes final workflow. Then read_text_file to read the final file. Report the verified result. Stop on any error or unknown outcome without retrying.

@@ -1,0 +1,36 @@
+{
+  "hermes-packed.txt": {
+    "exists": true,
+    "bytes": 28,
+    "sha256": "fb40f270fed42c175621a6b11b0ab5d625015a3c4fbc00057fe70f41a3c334c0",
+    "mtimeMs": 1788969866429.2666,
+    "ctimeMs": 1788969866430.2666,
+    "exactMatch": true
+  },
+  "hermes-final-corrupt.txt": {
+    "exists": false
+  },
+  "hermes-final-timeout-context.txt": {
+    "exists": false
+  },
+  "hermes-final-malformed-context.txt": {
+    "exists": false
+  },
+  "hermes-final-gateway-crash.txt": {
+    "exists": false
+  },
+  "forbidden.txt": {
+    "exists": true,
+    "bytes": 31,
+    "sha256": "fd972a6e8a36a028a82c74424e1db70e38fe068c342f3e3f319d1e865f680900",
+    "mtimeMs": 1788968329358.7512,
+    "ctimeMs": 1788968329358.7512
+  },
+  "secret.txt": {
+    "exists": true,
+    "bytes": 19,
+    "sha256": "1a1e1d8bd5d198dcce34023ef3af4a31a88586e9dcd958fa011d8f5fa32f520e",
+    "mtimeMs": 1788968329358.7512,
+    "ctimeMs": 1788968329358.7512
+  }
+}

@@ -22,9 +22,9 @@ source and observed CLI behavior is high; program acceptance is unresolved.
 | Delegation | `delegate_task`, agent-loop children, background delegation | Delegation toolsets absent; no child runtime is authorized. |
 | Scheduled/external jobs | Cron, Kanban, gateway messaging | Toolsets and relevant entry points unavailable through launcher. No messages to people are part of qualification. |
 | Config/plugin tampering | Native files, terminal, project plugins, `/plugins`, hooks | Native tools absent, project plugins off, one-shot query entry only. External resource excludes local profile/gateway files and Docker socket. Launcher refuses reused state, source contract drift, install `.env`, unqualified managed config. |
-| Resume/retry/cancel | Session DB, MCP reconnect logic | Launcher does not expose resume. Gateway retains operation identity/journal, does not transparently redispatch unknown outcomes, and fences later attempts. Host recovery tests remain tracked. |
+| Resume/retry/cancel | Session DB, MCP reconnect logic | Launcher does not expose resume. Gateway retains operation identity/journal, does not transparently redispatch unknown outcomes, and fences later attempts. Actual unknown-outcome retry/restart fencing is recorded; other recovery cutpoints remain tracked. |
 | Host housekeeping | Session DB, logs, installed provider modules | Trusted host writes isolated profile data. This is not a protected resource grant or evidence of model-controlled native tools. |
-| Resource effects | Official filesystem MCP server in separate container/volume | Only kernel reaches server. Hermes receives no volume mount or Docker socket. Policy, symlink and alternate path controls require independent observations. |
+| Resource effects | Official filesystem MCP server in separate container/volume | Only kernel reaches server. Hermes receives no volume mount; inherited Seatbelt denies outbound Unix sockets except the exact DNS resolver. Policy, symlink and alternate path controls require independent observations. |
 
 The pinned `agent/conversation_loop.py` checks `agent.valid_tool_names` before
 invocation and repairs some unknown names against available tools. The plugin
@@ -43,3 +43,10 @@ Authoritative references checked 2026-09-09:
 
 Current upstream docs describe timeout handling absent from the installed
 callback dispatcher. Do not substitute current docs for pinned host behavior.
+
+The bounded macOS Seatbelt profile also denies normal-home data reads and writes
+except explicit runtime/state paths. Positive canaries verify both direct and
+child-process restrictions. It remains allow-default elsewhere: operator files
+in temporary directories and writable gateway journals are a concrete privilege
+isolation gap. No arbitrary model execution primitive is exposed by this mode,
+but that static restriction is not a substitute for a sealed authority boundary.

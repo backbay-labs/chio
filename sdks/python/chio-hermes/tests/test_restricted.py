@@ -15,6 +15,7 @@ from chio_hermes import restricted
 
 @pytest.fixture
 def launch_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> argparse.Namespace:
+    monkeypatch.setattr(restricted, "sandbox_executable", lambda: Path("/usr/bin/sandbox-exec"))
     host = tmp_path / "host"
     host.mkdir()
     (host / "hermes").write_text("host test fixture")
@@ -99,3 +100,14 @@ def test_wildcard_cannot_expand_gateway_tool_allowlist(launch_args: argparse.Nam
     config["tools"][0]["name"] = "*"
     with pytest.raises(ValueError, match="without wildcards"):
         restricted.gateway_tool_names(config)
+
+
+def test_unsupported_platform_has_no_unsandboxed_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(restricted.sys, "platform", "unsupported")
+    with pytest.raises(ValueError, match="macOS sandbox-exec"):
+        restricted.sandbox_executable()
+
+
+def test_sandbox_path_cannot_inject_policy(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="control characters"):
+        restricted.macos_profile(home=tmp_path / "malicious\npath", read_paths=[], write_paths=[])

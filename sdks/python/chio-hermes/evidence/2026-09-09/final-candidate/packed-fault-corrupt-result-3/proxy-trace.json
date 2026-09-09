@@ -1,0 +1,16 @@
+[
+  {
+    "method": "chio/execution-context",
+    "path": "/mcp",
+    "forwarded": true,
+    "http_status": 200
+  },
+  {
+    "method": "tools/call",
+    "path": "/mcp",
+    "forwarded": true,
+    "http_status": 200,
+    "response_content_type": "text/event-stream",
+    "result_corrupted": true
+  }
+]

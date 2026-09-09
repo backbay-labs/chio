@@ -1,0 +1,1 @@
+Invoke Chio write_file exactly once on /workspace/hermes-timeout-context.txt with content CHIO_HERMES_timeout-context. If any error or unknown outcome occurs, report it and stop without retrying.

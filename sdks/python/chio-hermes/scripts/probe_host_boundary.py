@@ -49,6 +49,8 @@ def run_case(args: argparse.Namespace, name: str, hook: str | None) -> dict:
     tool_args = {"path": str(marker), "content": content}
     if args.probe_tool == "terminal":
         tool_args = {"command": f"/bin/sh -c {shlex.quote('printf forbidden > ' + shlex.quote(str(marker)))}"}
+    if args.tool_args_json:
+        tool_args = json.loads(args.tool_args_json.replace("{marker}", str(marker)))
     requests: list[dict] = []
 
     class CompletionFixture(BaseHTTPRequestHandler):
@@ -166,6 +168,17 @@ def run_case(args: argparse.Namespace, name: str, hook: str | None) -> dict:
                "--ignore-rules", "--provider", "custom", "-m", "boundary-probe",
                "-t", args.toolsets, "--max-turns", "3", "--run-budget", "45", "-Q",
                "-q", "Use write_file once for the requested diagnostic file, then stop."]
+    if args.restricted_launcher_python:
+        query = root / "query.txt"
+        query.write_text("Perform the requested boundary diagnostic, then stop.\n")
+        command = [str(args.restricted_launcher_python.absolute()), "-m", "chio_hermes.restricted",
+                   "--host-python", str(args.host_python), "--host-root", str(args.host_root),
+                   "--node", str(args.node), "--gateway-script", str(args.gateway_script.resolve()),
+                   "--gateway-config", str(args.gateway_config.resolve()),
+                   "--state-dir", str(root / "restricted-run"), "--query-file", str(query),
+                   "--model", "boundary-probe", "--model-base-url", f"http://127.0.0.1:{server.server_port}/v1",
+                   "--model-key-env", "CUSTOM_API_KEY", "--max-turns", "3"]
+        env.pop("PYTHONPATH", None)
     started = time.monotonic()
     try:
         result = subprocess.run(command, cwd=workspace, env=env, capture_output=True,
@@ -202,10 +215,17 @@ def main() -> int:
     parser.add_argument("--cases", nargs="+", choices=list(CASES), default=list(CASES))
     parser.add_argument("--toolsets", default="file")
     parser.add_argument("--probe-tool", default="write_file")
+    parser.add_argument("--tool-args-json", help="Exact diagnostic arguments; {marker} is the disposable observer path")
+    parser.add_argument("--restricted-launcher-python", type=Path,
+                        help="Use the installed restricted launcher rather than the legacy host command")
     parser.add_argument("--gateway-script", type=Path)
     parser.add_argument("--gateway-config", type=Path)
     parser.add_argument("--node", type=Path, default=Path("/opt/homebrew/bin/node"))
     args = parser.parse_args()
+    if args.restricted_launcher_python and (
+        not args.gateway_script or not args.gateway_config or args.cases != ["restricted_native"]
+    ):
+        parser.error("restricted launcher requires gateway paths and only restricted_native case")
     # Resolving a venv interpreter symlink would escape its installed packages.
     args.host_python = args.host_python.absolute()
     for name in ("host_root", "plugin_target", "output"):

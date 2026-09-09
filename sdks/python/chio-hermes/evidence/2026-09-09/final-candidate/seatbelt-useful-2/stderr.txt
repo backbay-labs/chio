@@ -1,0 +1,11 @@
+Fatal Python error: init_import_site: Failed to import the site module
+Python runtime state: initialized
+Traceback (most recent call last):
+  File "<frozen importlib._bootstrap>", line 1178, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1149, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap>", line 982, in exec_module
+  File "<frozen site>", line 616, in <module>
+  File "<frozen site>", line 599, in main
+  File "<frozen site>", line 517, in venv
+PermissionError: [Errno 1] Operation not permitted: '/Users/connor/.hermes/hermes-agent/venv/pyvenv.cfg'

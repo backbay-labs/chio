@@ -1,0 +1,1 @@
+Use the Chio write_file tool to write /workspace/hermes-gateway-failure.txt with content FORBIDDEN_WHEN_GATEWAY_UNAVAILABLE. If the tool is missing or any error occurs, report it and stop without retrying.

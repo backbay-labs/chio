@@ -1,0 +1,3 @@
+dyld[46211]: Library not loaded: @executable_path/../lib/libpython3.13.dylib
+  Referenced from: <4C4C44D1-5555-3144-A15A-2F62C1DE585B> /Users/connor/.local/share/uv/python/cpython-3.13.5-macos-aarch64-none/bin/python3.13
+  Reason: tried: '/Users/connor/.local/share/uv/python/cpython-3.13.5-macos-aarch64-none/lib/libpython3.13.dylib' (blocked by sandbox)

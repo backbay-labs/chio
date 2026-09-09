@@ -1,0 +1,6 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+Tool result:
+
+{"error": "{\"state\":\"not_dispatched\",\"evidence\":\"unverified\",\"requestId\":\"hermes-final-malformed-context:a22883e93273fa52419f3f34bb7e1125f2cd14a1f32561e419adc15324916c4b\",\"reason\":\"kernel unavailable or malformed handshake before dispatch\"}"}
+
+Stopping here as instructed. No retry attempted.

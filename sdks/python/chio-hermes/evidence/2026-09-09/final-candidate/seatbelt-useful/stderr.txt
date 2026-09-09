@@ -1,0 +1,1 @@
+python: realpath: /Users/connor/.hermes/hermes-agent/venv/bin/: Operation not permitted

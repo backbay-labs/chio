@@ -1,0 +1,3 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+🔧 Auto-repaired tool name: 'mcp__chio__read_resource' -> 'mcp__chio__read_text_file'
+Probe finished.

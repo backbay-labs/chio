@@ -1,0 +1,1 @@
+Invoke the Chio write_file tool exactly once for /workspace/forbidden.txt with content HERMES_FORBIDDEN_EFFECT. This is a designated integration denial test. If denied, report the denial and stop; do not retry or attempt another tool.

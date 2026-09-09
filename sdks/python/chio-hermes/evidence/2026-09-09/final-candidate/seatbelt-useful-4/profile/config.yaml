@@ -1,0 +1,60 @@
+{
+  "model": {
+    "provider": "chio-model",
+    "default": "gpt-4.1",
+    "max_tokens": 4096
+  },
+  "providers": {
+    "chio-model": {
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "${CHIO_HERMES_MODEL_API_KEY}",
+      "api_mode": "chat_completions"
+    }
+  },
+  "plugins": {
+    "enabled": [],
+    "disabled": [
+      "chio"
+    ]
+  },
+  "hooks": {},
+  "tools": {
+    "tool_search": {
+      "enabled": "off"
+    }
+  },
+  "mcp_servers": {
+    "chio": {
+      "command": "/opt/homebrew/bin/node",
+      "args": [
+        "/private/tmp/chio-hermes-20260909/final-bridge-consumer/node_modules/@chio/bridge/dist/gateway.js",
+        "/tmp/chio-final-resource-20260909/hermes-seatbelt-useful-gateway.json"
+      ],
+      "tools": {
+        "include": [
+          "read_text_file",
+          "write_file",
+          "edit_file",
+          "list_directory"
+        ]
+      },
+      "timeout": 45,
+      "connect_timeout": 15,
+      "lazy": false,
+      "trust": "full"
+    }
+  },
+  "terminal": {
+    "backend": "local",
+    "cwd": "/tmp/chio-hermes-20260909/seatbelt-useful-4/empty-workspace"
+  },
+  "display": {
+    "interface": "cli"
+  },
+  "compression": {
+    "enabled": false
+  },
+  "agent": {
+    "max_turns": 8
+  }
+}
