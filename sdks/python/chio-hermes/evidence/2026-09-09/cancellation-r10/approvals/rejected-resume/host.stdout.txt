@@ -1,0 +1,1 @@
+The call to mcp__chio__chio_resume with the specified arguments was not successful. The operation was denied before dispatch and was not executed ("operator denied the proposal before dispatch"). No action has been taken. Stopping as instructed.

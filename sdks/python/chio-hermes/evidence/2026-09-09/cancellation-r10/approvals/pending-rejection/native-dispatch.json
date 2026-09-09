@@ -1,0 +1,18 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_jkoRXCuLZ9YgpYHDfXt108VV",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/hermes-rejected-ddc6945ad3f4.txt",
+        "content": "must never appear"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_jkoRXCuLZ9YgpYHDfXt108VV"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

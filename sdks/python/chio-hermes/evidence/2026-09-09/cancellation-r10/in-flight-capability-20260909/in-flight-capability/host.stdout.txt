@@ -1,0 +1,3 @@
+First write to /workspace/hermes-inflight-35eaf40aa4b9.txt succeeded ("authorized before in-flight revocation").
+Second write with content "forbidden after in-flight revocation" was denied: capability has been revoked (cap-01a0886a-34e6-7461-9cb8-fb81287eb5df).
+No further actions will be taken as requested.

@@ -1,0 +1,32 @@
+[
+  {
+    "case": "kernel-absent",
+    "exitCode": 2,
+    "command": [
+      "/tmp/chio-hermes-cancellation-cold-consumer-r10-20260909/bin/python",
+      "-m",
+      "chio_hermes.restricted",
+      "--host-python",
+      "/tmp/chio-hermes-20260909/clean-host-venv/bin/python",
+      "--host-root",
+      "/tmp/chio-hermes-20260909/public-upstream-source",
+      "--node",
+      "/opt/homebrew/bin/node",
+      "--gateway-script",
+      "/tmp/chio-bridge-host-delivery-cold-consumer-r2-20260909/node_modules/@chio/bridge/dist/gateway-http.js",
+      "--gateway-config",
+      "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-approvals-a5eba67b61fa4d93b63f5c2cc9878a7d/gateway.json",
+      "--state-dir",
+      "/tmp/chio-hermes-approval-runtime-9edf98b1eaa14a609a24039a8558e4e7",
+      "--query-file",
+      "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-approvals-a5eba67b61fa4d93b63f5c2cc9878a7d/kernel-absent.txt",
+      "--model",
+      "gpt-4.1-2025-04-14",
+      "--model-base-url",
+      "https://api.openai.com/v1",
+      "--max-turns",
+      "8"
+    ],
+    "newDispatchRows": 0
+  }
+]

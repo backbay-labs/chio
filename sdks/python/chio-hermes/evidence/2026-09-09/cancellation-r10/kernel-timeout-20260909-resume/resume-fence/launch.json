@@ -1,0 +1,37 @@
+{
+  "schema": "chio.hermes.restricted-run.v1",
+  "hostRevision": "175054c14b54404663d8614a178280cffe6062eb",
+  "gatewayConfigSha256": "93f7cb92402322b1f6f8560a44ea34e57134a5027a8c28f3b8b4500a25565edb",
+  "gatewayScriptSha256": "753e9e168417fb82261a55d60046d34f8e50233ebaedcccfc32dcb0167394ddc",
+  "configSha256": "bf23e0cbd25948af2fda61b5169f16e21c12ff722735e9733c446cf044e4dedf",
+  "sandboxSha256": "fff87adf7531521ebb30b2a77cf135d876395c416f5502417389c272fc2d1861",
+  "tools": [
+    "read_text_file",
+    "write_file",
+    "edit_file",
+    "list_directory"
+  ],
+  "command": [
+    "/usr/bin/sandbox-exec",
+    "-f",
+    "/tmp/chio-hermes-approval-runtime-e3932e4a23dd4d2781b774af5cc3106f/host.sb",
+    "/tmp/chio-hermes-20260909/clean-host-venv/bin/python",
+    "/private/tmp/chio-hermes-20260909/public-upstream-source/hermes",
+    "chat",
+    "--cli",
+    "--ignore-rules",
+    "--provider",
+    "chio-model",
+    "-m",
+    "gpt-4.1-2025-04-14",
+    "-t",
+    "mcp-chio",
+    "--max-turns",
+    "8",
+    "-Q",
+    "--query-file",
+    "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-approvals-2c2c58012a41403da68abbeb892a3d0e/resume-fence.txt"
+  ],
+  "supportedMode": "one-shot external resource tools only",
+  "acceptance": "candidate; see ACCEPTANCE.md"
+}

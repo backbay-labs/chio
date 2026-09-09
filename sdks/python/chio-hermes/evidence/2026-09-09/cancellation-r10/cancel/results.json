@@ -1,0 +1,23 @@
+[
+  {
+    "case": "host-response-loss",
+    "passed": true,
+    "exitCode": 2,
+    "terminal": {
+      "hostExitCode": -9,
+      "exitCode": 2,
+      "outcome": "unresolved",
+      "operatorInterrupt": "SIGTERM",
+      "confirmedDeliveries": 0
+    },
+    "newDispatchRows": 1,
+    "acknowledgements": [
+      {
+        "state": "completed",
+        "acknowledged": false,
+        "hostDeliveryConfirmed": null
+      }
+    ],
+    "privateState": "/Users/connor/.local/share/chio-required-operators/hermes-host-delivery-20260909/hermes-host-response-loss-1913b53eb7cf4ec18455f0e6c9eb8151"
+  }
+]

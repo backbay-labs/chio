@@ -1,0 +1,37 @@
+{
+  "schema": "chio.hermes.restricted-run.v1",
+  "hostRevision": "175054c14b54404663d8614a178280cffe6062eb",
+  "gatewayConfigSha256": "3e3f7dd6db8f6c38919ec3efe6ee6dbfa79944b1bb02f4e4fc20cb58c4664de7",
+  "gatewayScriptSha256": "753e9e168417fb82261a55d60046d34f8e50233ebaedcccfc32dcb0167394ddc",
+  "configSha256": "209bef295ffc662f646156c6e4f3473acaac0f2eff0183341c7128e0de33c3f2",
+  "sandboxSha256": "af1cc85a6de8e5ac6ef2f635c28c9118a9c279e3078557d89a688d8b1ad4494d",
+  "tools": [
+    "read_text_file",
+    "write_file",
+    "edit_file",
+    "list_directory"
+  ],
+  "command": [
+    "/usr/bin/sandbox-exec",
+    "-f",
+    "/tmp/chio-hermes-qualified-852906f1651d4ffe9fd11424dd7d81a5/host.sb",
+    "/tmp/chio-hermes-20260909/clean-host-venv/bin/python",
+    "/private/tmp/chio-hermes-20260909/public-upstream-source/hermes",
+    "chat",
+    "--cli",
+    "--ignore-rules",
+    "--provider",
+    "chio-model",
+    "-m",
+    "gpt-4.1-2025-04-14",
+    "-t",
+    "mcp-chio",
+    "--max-turns",
+    "12",
+    "-Q",
+    "--query-file",
+    "/Users/connor/.local/share/chio-required-operators/budget3-hosts-20260909/hermes-aggregate-budget-8496683d129a4d8684fa20467def218f/initial.txt"
+  ],
+  "supportedMode": "one-shot external resource tools only",
+  "acceptance": "candidate; see ACCEPTANCE.md"
+}

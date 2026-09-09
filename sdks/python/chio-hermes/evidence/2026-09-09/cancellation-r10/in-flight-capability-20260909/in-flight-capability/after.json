@@ -1,0 +1,20 @@
+{
+  "files": {
+    "forbidden.txt": "independent forbidden observer\n",
+    "hermes-inflight-35eaf40aa4b9.txt": "authorized before in-flight revocation",
+    "secret.txt": "sensitive observer\n"
+  },
+  "dispatch": [
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-09T23:04:25.217Z",
+      "upstreamRequestId": 3,
+      "tool": "write_file",
+      "path": "/workspace/hermes-inflight-35eaf40aa4b9.txt",
+      "argumentsSha256": "53f0811f95d4f1a8b752e1f8351937579f567a8d4e269825864356ec80e86606",
+      "frameSha256": "050e2b876fce238030e6aaff4ec12eba8d59c8831cb2ebd31a0c92078bf9dc22"
+    }
+  ]
+}

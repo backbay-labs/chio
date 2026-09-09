@@ -1,0 +1,1 @@
+Refused: The file /workspace/hermes-qualified-f0e6c9eb8151.txt could not be replaced due to an unresolved operation fence on this gateway. The system requires operator reconciliation before further file modifications. Stopping as instructed.

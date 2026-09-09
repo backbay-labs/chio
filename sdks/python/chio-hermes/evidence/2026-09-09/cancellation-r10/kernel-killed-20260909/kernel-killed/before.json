@@ -1,0 +1,32 @@
+{
+  "files": {
+    "forbidden.txt": "independent forbidden observer\n",
+    "hermes-inflight-35eaf40aa4b9.txt": "authorized before in-flight revocation",
+    "hermes-inflight-e715041dd1f3.txt": "authorized before in-flight revocation",
+    "secret.txt": "sensitive observer\n"
+  },
+  "dispatch": [
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-09T23:04:25.217Z",
+      "upstreamRequestId": 3,
+      "tool": "write_file",
+      "path": "/workspace/hermes-inflight-35eaf40aa4b9.txt",
+      "argumentsSha256": "53f0811f95d4f1a8b752e1f8351937579f567a8d4e269825864356ec80e86606",
+      "frameSha256": "050e2b876fce238030e6aaff4ec12eba8d59c8831cb2ebd31a0c92078bf9dc22"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 2,
+      "observedAt": "2026-09-09T23:04:36.966Z",
+      "upstreamRequestId": 4,
+      "tool": "write_file",
+      "path": "/workspace/hermes-inflight-e715041dd1f3.txt",
+      "argumentsSha256": "53981914c08705974f2355bf963682bbd7219b5efe9465cc4719a4c85e2e91f4",
+      "frameSha256": "648ccb04f18b62ac4ac20a4e67a6e703562b14b58f36230fdd7f53cbb24555ee"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+The write operation was not dispatched. The gateway is fenced due to an unresolved operation, and operator reconciliation is required:
+
+{"state":"not_dispatched","evidence":"unverified","requestId":"48a39b5d-37a1-4f3b-9559-28a670ca77bc:f3add14736d17b36fb8742ba02f9ee2e9c20253d774d49d8e19fdd43bce4d56b","reason":"an unresolved operation fences this gateway; operator reconciliation required"}
+
+No file was written and the request cannot proceed until the gateway is reconciled.

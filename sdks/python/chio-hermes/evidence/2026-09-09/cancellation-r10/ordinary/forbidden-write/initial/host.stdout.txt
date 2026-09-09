@@ -1,0 +1,1 @@
+Denied: Writing to /workspace/forbidden.txt is blocked by a guard policy ("forbidden-path"). No changes were made. Stopping as directed.

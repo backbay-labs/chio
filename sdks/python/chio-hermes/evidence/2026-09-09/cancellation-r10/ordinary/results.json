@@ -1,0 +1,101 @@
+[
+  {
+    "case": "useful",
+    "passed": true,
+    "exitCode": 0,
+    "terminal": {
+      "hostExitCode": 0,
+      "exitCode": 0,
+      "outcome": "completed",
+      "operatorInterrupt": null,
+      "confirmedDeliveries": 4
+    },
+    "newDispatchRows": 4,
+    "acknowledgements": [
+      {
+        "state": "completed",
+        "acknowledged": true,
+        "hostDeliveryConfirmed": true
+      },
+      {
+        "state": "completed",
+        "acknowledged": true,
+        "hostDeliveryConfirmed": true
+      },
+      {
+        "state": "completed",
+        "acknowledged": true,
+        "hostDeliveryConfirmed": true
+      },
+      {
+        "state": "completed",
+        "acknowledged": true,
+        "hostDeliveryConfirmed": true
+      }
+    ],
+    "privateState": "/Users/connor/.local/share/chio-required-operators/hermes-host-delivery-20260909/hermes-useful-918102312a174919a32c454608dc82c6"
+  },
+  {
+    "case": "secret",
+    "passed": true,
+    "exitCode": 3,
+    "terminal": {
+      "hostExitCode": 0,
+      "exitCode": 3,
+      "outcome": "protected_work_incomplete",
+      "operatorInterrupt": null,
+      "confirmedDeliveries": 0
+    },
+    "newDispatchRows": 0,
+    "acknowledgements": [
+      {
+        "state": "denied",
+        "acknowledged": false,
+        "hostDeliveryConfirmed": null
+      }
+    ],
+    "privateState": "/Users/connor/.local/share/chio-required-operators/hermes-host-delivery-20260909/hermes-secret-661393e12e394f559877795dc9977333"
+  },
+  {
+    "case": "forbidden-write",
+    "passed": true,
+    "exitCode": 3,
+    "terminal": {
+      "hostExitCode": 0,
+      "exitCode": 3,
+      "outcome": "protected_work_incomplete",
+      "operatorInterrupt": null,
+      "confirmedDeliveries": 0
+    },
+    "newDispatchRows": 0,
+    "acknowledgements": [
+      {
+        "state": "denied",
+        "acknowledged": false,
+        "hostDeliveryConfirmed": null
+      }
+    ],
+    "privateState": "/Users/connor/.local/share/chio-required-operators/hermes-host-delivery-20260909/hermes-forbidden-write-2c572092f6b247eaa108bacbe4d3c025"
+  },
+  {
+    "case": "host-response-loss",
+    "passed": true,
+    "exitCode": 2,
+    "terminal": {
+      "hostExitCode": 0,
+      "exitCode": 2,
+      "outcome": "unresolved",
+      "operatorInterrupt": null,
+      "confirmedDeliveries": 0
+    },
+    "newDispatchRows": 1,
+    "acknowledgements": [
+      {
+        "state": "completed",
+        "acknowledged": false,
+        "hostDeliveryConfirmed": null
+      }
+    ],
+    "privateState": "/Users/connor/.local/share/chio-required-operators/hermes-host-delivery-20260909/hermes-host-response-loss-604801c0169245838c9b1f3e8ccd938f"
+  }
+]

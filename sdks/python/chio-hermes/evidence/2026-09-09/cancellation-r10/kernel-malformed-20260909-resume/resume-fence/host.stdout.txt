@@ -1,0 +1,1 @@
+Tool call returned error: an unresolved operation fences this gateway; operator reconciliation required. The write was not dispatched and no changes were made. Stopping as instructed.

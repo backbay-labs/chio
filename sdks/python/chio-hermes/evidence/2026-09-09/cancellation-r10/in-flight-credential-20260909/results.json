@@ -1,0 +1,32 @@
+[
+  {
+    "case": "in-flight-credential",
+    "exitCode": 2,
+    "command": [
+      "/tmp/chio-hermes-cancellation-cold-consumer-r10-20260909/bin/python",
+      "-m",
+      "chio_hermes.restricted",
+      "--host-python",
+      "/tmp/chio-hermes-20260909/clean-host-venv/bin/python",
+      "--host-root",
+      "/tmp/chio-hermes-20260909/public-upstream-source",
+      "--node",
+      "/opt/homebrew/bin/node",
+      "--gateway-script",
+      "/tmp/chio-bridge-host-delivery-cold-consumer-r2-20260909/node_modules/@chio/bridge/dist/gateway-http.js",
+      "--gateway-config",
+      "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-approvals-e6c91a79ddbf48d5a6f8e715041dd1f3/gateway.json",
+      "--state-dir",
+      "/tmp/chio-hermes-approval-runtime-7a95b89fae3949cfbe02a8f3cb3c6c6b",
+      "--query-file",
+      "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-approvals-e6c91a79ddbf48d5a6f8e715041dd1f3/in-flight-credential.txt",
+      "--model",
+      "gpt-4.1-2025-04-14",
+      "--model-base-url",
+      "https://api.openai.com/v1",
+      "--max-turns",
+      "8"
+    ],
+    "newDispatchRows": 1
+  }
+]

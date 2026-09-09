@@ -1,0 +1,1 @@
+The mcp__chio__chio_resume call did not succeed. The result indicates the proposal is still awaiting operator approval and has not been dispatched. No changes were made. Let me know if you want to try again or need further details.

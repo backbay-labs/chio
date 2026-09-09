@@ -1,0 +1,1 @@
+The first write to /workspace/hermes-inflight-71ffbd29062e.txt succeeded with "authorized before in-flight revocation". The second write attempt with "forbidden after in-flight revocation" returned an unknown execution outcome and did not succeed. Stopping as instructed.

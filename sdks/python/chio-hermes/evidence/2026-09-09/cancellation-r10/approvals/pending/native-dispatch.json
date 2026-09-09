@@ -1,0 +1,18 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_UBcbirgiaqqAvBUNVgPuVadF",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/hermes-approved-ddc6945ad3f4.txt",
+        "content": "exact operator-approved effect"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_UBcbirgiaqqAvBUNVgPuVadF"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

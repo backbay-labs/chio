@@ -1,0 +1,1 @@
+Refused: the write operation was blocked due to an unresolved gateway operation. No changes were made to /workspace/hermes-qualified-470b900decc9.txt. Stopping as instructed.

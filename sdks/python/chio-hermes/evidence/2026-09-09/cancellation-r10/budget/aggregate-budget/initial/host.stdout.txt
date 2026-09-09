@@ -1,0 +1,1 @@
+Stopped: Listing /workspace was denied because the invocation budget for this capability is exhausted. All previous steps completed successfully.

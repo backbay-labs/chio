@@ -1,0 +1,6 @@
+The resume operation was not successful. The system returned:
+
+state: not_dispatched
+reason: operation identity conflicts with retained request
+
+No changes were made, and the action did not proceed.

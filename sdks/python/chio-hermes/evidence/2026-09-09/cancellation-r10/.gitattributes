@@ -1,0 +1,2 @@
+# Preserve exact native stdout, including provider-generated trailing spaces.
+**/host.stdout.txt -text -whitespace
