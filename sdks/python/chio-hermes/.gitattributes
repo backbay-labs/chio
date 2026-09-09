@@ -1,0 +1,2 @@
+# Preserve raw host terminal output, including CRLF warning lines.
+evidence/**/stdout*.txt -text whitespace=cr-at-eol
