@@ -208,3 +208,19 @@ faults, later crash cutpoints, cancellation and lifecycle gates remain open.
 Cursor's isolated authentication and bounded hosted execution contract and
 Claude's isolated provider credential remain external inputs. No synthetic
 fixture or another host's result closes those missing real-host cases.
+
+The subsequent acknowledgement-confirmation-loss cutpoint failed in both Pi
+`6c994035ef3d...` and OpenClaw `96f67ee343d...`. After receiving the signed result,
+the guest sent its proof, but the HTTP acknowledgement response was lost. Both
+reported uncertainty and, after restart with the same authority, dispatched a
+replacement write. Each independent resource audit records two writes and the
+replacement content. The owning repositories retain `ack-confirmation-loss`
+evidence. Their preceding bounded passes do not resolve this I07 failure.
+
+The repair under qualification moves acknowledgement into the trusted model
+relay, after the native host echoes the full verified result in conversation
+history. Bridge source `0d31365` exposes exact received-outcome acknowledgement;
+its archive is `7d9e34f7408a316e35125982a23faaecfd2f31f4da6b50ca8eab287c2c918f67`.
+The 119-test existing suite and expanded six-case HTTP suite passed. Pi and
+OpenClaw package rebuilds and real-host reruns are required before claiming the
+specific failure resolved. No host is accepted.
