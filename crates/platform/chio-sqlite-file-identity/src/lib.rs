@@ -103,19 +103,27 @@ pub fn main_database_file_identity(
         return Err("SQLite main database descriptor is unavailable".to_owned());
     }
 
-    let descriptor_path = if cfg!(target_os = "linux") {
-        format!("/proc/self/fd/{}", prefix.descriptor)
-    } else {
-        format!("/dev/fd/{}", prefix.descriptor)
+    let mut metadata = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: the live connection owns the descriptor returned by its bundled
+    // Unix VFS. fstat writes a complete stat on success and neither closes nor
+    // duplicates the descriptor. Closing even a duplicate would release the
+    // process's POSIX locks on this inode, invalidating SQLite's lock state.
+    if unsafe { libc::fstat(prefix.descriptor, metadata.as_mut_ptr()) } != 0 {
+        return Err(format!(
+            "SQLite main database descriptor metadata failed: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    // SAFETY: fstat returned success and initialized metadata above.
+    let metadata = unsafe { metadata.assume_init() };
+    // The stat field widths differ between supported Unix targets.
+    #[allow(clippy::unnecessary_cast)]
+    let identity = SqliteFileIdentity {
+        device: metadata.st_dev as u64,
+        inode: metadata.st_ino as u64,
+        link_count: metadata.st_nlink as u64,
     };
-    let metadata = std::fs::metadata(&descriptor_path)
-        .map_err(|error| format!("SQLite main database descriptor metadata failed: {error}"))?;
-    use std::os::unix::fs::MetadataExt as _;
-    Ok(SqliteFileIdentity {
-        device: metadata.dev(),
-        inode: metadata.ino(),
-        link_count: metadata.nlink(),
-    })
+    Ok(identity)
 }
 
 #[cfg(not(unix))]
@@ -144,6 +152,88 @@ mod tests {
         assert_eq!(actual.device, expected.dev());
         assert_eq!(actual.inode, expected.ino());
         assert_eq!(actual.link_count, expected.nlink());
+        connection.execute("INSERT INTO identity_probe VALUES (1)", [])?;
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn follows_the_borrowed_file_after_path_replacement() -> Result<(), Box<dyn std::error::Error>>
+    {
+        use std::os::unix::fs::MetadataExt as _;
+
+        let directory = tempfile::tempdir()?;
+        let database = directory.path().join("identity.sqlite3");
+        let moved = directory.path().join("original.sqlite3");
+        let connection = rusqlite::Connection::open(&database)?;
+        connection.execute_batch("CREATE TABLE identity_probe (value INTEGER NOT NULL);")?;
+        let original = main_database_file_identity(&connection)?;
+        std::fs::rename(&database, &moved)?;
+        std::fs::write(&database, b"replacement file")?;
+
+        assert_eq!(main_database_file_identity(&connection)?, original);
+        assert_ne!(std::fs::metadata(&database)?.ino(), original.inode);
+        std::fs::remove_file(&moved)?;
+        let unlinked = main_database_file_identity(&connection)?;
+        assert_eq!(unlinked.device, original.device);
+        assert_eq!(unlinked.inode, original.inode);
+        assert_eq!(unlinked.link_count, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_a_database_without_a_main_file() -> Result<(), Box<dyn std::error::Error>> {
+        let connection = rusqlite::Connection::open_in_memory()?;
+        assert!(main_database_file_identity(&connection).is_err());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "invoked in a separate process by preserves_transaction_locks"]
+    fn transaction_lock_probe() -> Result<(), Box<dyn std::error::Error>> {
+        let database = std::env::var("CHIO_IDENTITY_LOCK_PROBE_DATABASE")?;
+        let connection = rusqlite::Connection::open(database)?;
+        connection.busy_timeout(std::time::Duration::ZERO)?;
+        let result = connection.execute_batch("BEGIN IMMEDIATE;");
+        assert!(
+            matches!(result, Err(rusqlite::Error::SqliteFailure(error, _))
+            if error.code == rusqlite::ErrorCode::DatabaseBusy),
+            "competing process acquired a locked database: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preserves_transaction_locks() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let database = directory.path().join("locked.sqlite3");
+        let connection = rusqlite::Connection::open(&database)?;
+        connection.execute_batch(
+            "PRAGMA journal_mode=DELETE; CREATE TABLE probe (value INTEGER); BEGIN EXCLUSIVE;",
+        )?;
+        for inspect in [false, true] {
+            if inspect {
+                main_database_file_identity(&connection)?;
+            }
+            let result = std::process::Command::new(std::env::current_exe()?)
+                .args([
+                    "--ignored",
+                    "--exact",
+                    "tests::transaction_lock_probe",
+                    "--nocapture",
+                ])
+                .env("CHIO_IDENTITY_LOCK_PROBE_DATABASE", &database)
+                .output()?;
+            assert!(
+                result.status.success(),
+                "lock probe failed after inspect={inspect}: {}{}",
+                String::from_utf8_lossy(&result.stdout),
+                String::from_utf8_lossy(&result.stderr)
+            );
+        }
+        connection.execute_batch("ROLLBACK;")?;
         Ok(())
     }
 }
