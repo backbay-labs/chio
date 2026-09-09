@@ -1,0 +1,9 @@
+{
+  "host": "hermes",
+  "archiveSha256": "660d3bb2be90a1096eef0daed2701ba3c1b461a8a0e5e43a79f011f165423215",
+  "sourceRevision": "425092599f5950deebc7f9577852304792138ab8",
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "nativeRuns": 6,
+  "skips": 0,
+  "claim": "bounded real native host and actual OpenAI evidence binding and fencing; full acceptance remains open"
+}

@@ -1,0 +1,2 @@
+# Preserve raw native/provider output bytes.
+**/host.stdout.txt -text -whitespace

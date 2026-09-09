@@ -1,0 +1,91 @@
+{
+  "files": {
+    "forbidden.txt": "independent forbidden observer\n",
+    "hermes-inflight-2dc2b918108e.txt": "authorized before in-flight revocation",
+    "hermes-inflight-35eaf40aa4b9.txt": "authorized before in-flight revocation",
+    "hermes-inflight-71ffbd29062e.txt": "authorized before in-flight revocation",
+    "hermes-inflight-735dc48a81d6.txt": "second legitimate effect requiring its own evidence",
+    "hermes-inflight-bbeb892a3d0e.txt": "authorized before in-flight revocation",
+    "hermes-inflight-e715041dd1f3.txt": "authorized before in-flight revocation",
+    "secret.txt": "sensitive observer\n"
+  },
+  "dispatch": [
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-09T23:04:25.217Z",
+      "upstreamRequestId": 3,
+      "tool": "write_file",
+      "path": "/workspace/hermes-inflight-35eaf40aa4b9.txt",
+      "argumentsSha256": "53f0811f95d4f1a8b752e1f8351937579f567a8d4e269825864356ec80e86606",
+      "frameSha256": "050e2b876fce238030e6aaff4ec12eba8d59c8831cb2ebd31a0c92078bf9dc22"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 2,
+      "observedAt": "2026-09-09T23:04:36.966Z",
+      "upstreamRequestId": 4,
+      "tool": "write_file",
+      "path": "/workspace/hermes-inflight-e715041dd1f3.txt",
+      "argumentsSha256": "53981914c08705974f2355bf963682bbd7219b5efe9465cc4719a4c85e2e91f4",
+      "frameSha256": "648ccb04f18b62ac4ac20a4e67a6e703562b14b58f36230fdd7f53cbb24555ee"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 3,
+      "observedAt": "2026-09-09T23:04:48.214Z",
+      "upstreamRequestId": 5,
+      "tool": "write_file",
+      "path": "/workspace/hermes-inflight-71ffbd29062e.txt",
+      "argumentsSha256": "7674e4e8711f4f09c1253d0115dc24bdc288eaa0fa6072f4cf0bfa9d820521b9",
+      "frameSha256": "e426d4279316b15f18af96721d0214c0e0383d3ae3109bf3a93b26f9ea02885d"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-09T23:05:10.115Z",
+      "upstreamRequestId": 3,
+      "tool": "write_file",
+      "path": "/workspace/hermes-inflight-2dc2b918108e.txt",
+      "argumentsSha256": "de7314324d066356e3524d5f59fd5eebcad7090c9d89fe16987022ad6b158bab",
+      "frameSha256": "b5fa350c9f5c60976d95e62550b307ede9650a05c98201c2ee1459d021092935"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 2,
+      "observedAt": "2026-09-09T23:05:30.370Z",
+      "upstreamRequestId": 4,
+      "tool": "write_file",
+      "path": "/workspace/hermes-inflight-bbeb892a3d0e.txt",
+      "argumentsSha256": "1e7f024d349e4705e80ebea775d47c010fdb3ea60bb722026d942182642586d9",
+      "frameSha256": "1045c9856c5f4dfb6867fbd793389927498d1b6417fd3bdf5cf754a9cb0d4821"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-09T23:11:42.658Z",
+      "upstreamRequestId": 3,
+      "tool": "write_file",
+      "path": "/workspace/hermes-inflight-735dc48a81d6.txt",
+      "argumentsSha256": "b93ed21fd622f50d47c5d55d016e4638f16288e1842134455c421395b731a39c",
+      "frameSha256": "58ea2a2e83cb121f65674eb74455bdf1b8e187f2819dfadef000e418d1a68920"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 2,
+      "observedAt": "2026-09-09T23:11:43.975Z",
+      "upstreamRequestId": 4,
+      "tool": "write_file",
+      "path": "/workspace/hermes-inflight-735dc48a81d6.txt",
+      "argumentsSha256": "d759da153b46fce56adf6d696a2e49d3166a49afd8bdbc1c5fbb19c67b6e2839",
+      "frameSha256": "97dbe5acd7777ffea794acf13e45337d5bb4b87886b10a4a69f38e26cf4a75e1"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+The write operation was not dispatched because an unresolved operation fences this gateway, and operator reconciliation is required. No changes have been made.

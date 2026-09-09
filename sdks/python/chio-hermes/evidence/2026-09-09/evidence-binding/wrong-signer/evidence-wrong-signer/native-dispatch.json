@@ -1,0 +1,27 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_z7xlzge0z0CH8jXKWhfuLLV3",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/hermes-inflight-9089f7d48e31.txt",
+        "content": "authorized before in-flight revocation"
+      }
+    },
+    {
+      "id": "call_nm3szw8X5PtzXLXbfAtc5nV9",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "content": "second legitimate effect requiring its own evidence",
+        "path": "/workspace/hermes-inflight-9089f7d48e31.txt"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_z7xlzge0z0CH8jXKWhfuLLV3",
+    "call_nm3szw8X5PtzXLXbfAtc5nV9"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 2
+}
