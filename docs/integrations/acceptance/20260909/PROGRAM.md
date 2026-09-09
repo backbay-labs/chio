@@ -163,3 +163,48 @@ hosted execution contract, and Claude's isolated model credential, are external
 inputs under investigation. Required checks that cannot run remain unresolved.
 Publication must preserve the existing release and security gates. No public
 release, independent adoption or research novelty is claimed by this record.
+
+## Native HTTP host qualification and received-result repair
+
+All six remain mandatory and unaccepted (0/6). Hermes source `65671a01c`,
+qualified by `cbb5d5e0a`, completed useful write/edit/read/list through the real
+Hermes/OpenAI host, plus forbidden read/write and final-response-loss recovery.
+The cold-installed wheel has four useful deliveries, zero forbidden dispatches,
+and same-authority restart fencing until the operator reads and acknowledges
+the exact retained outcome. Python and descendant process probes observed the
+selected TCP positive controls and denied home/other-profile data, filesystem
+aliases, hardlinks, shell execution, Unix sockets and unrelated TCP access.
+The initial framework-bootstrap probe failure is retained separately.
+
+The native OpenClaw launcher now keeps kernel credentials and journals outside
+the agent. Its cold-installed archive builds a pinned host image without a
+private sibling or host filesystem share. Source `8928eba` and the owning
+repository's `native/evidence/2026-09-09/http-host-delivery` record useful work,
+forbidden read/write, response-loss recovery and substituted output through the
+actual OpenClaw/OpenAI host, with independent resource observations. Native
+container process boundaries and the remaining gates still need qualification.
+
+Final-hop result substitution exposed a concrete evidence defect in Pi and
+OpenClaw: both older guests accepted forged result text under an authentic
+unchanged decision receipt, reported completion and acknowledged delivery.
+Bridge `b8cef33` adds received-result verification, retaining the existing MCP
+protocol. Its artifact SHA256 is
+`eb4392bf298595d52d92610ea82c6e64d6f534718fe575bc5ea9a583c5810a4b`;
+119 component tests passed without skips. Repaired Pi and OpenClaw guests now
+verify the result hash and expected host operation before acknowledgement.
+Both real hosts reject the same substitution, return unresolved, retain the
+original resource read, and leave delivery unacknowledged. Each host's 18-test
+component suite and its own real-host observations are retained separately.
+
+Pi artifact SHA256:
+`6c994035ef3d3b51f6f4db3859cead726afe9e5dc710642b782be9beeb466bbb`.
+OpenClaw artifact SHA256:
+`96f67ee343d14f7ba40d2ff6986fc3b79887ee53179a6399156249cee8ac5c79`.
+OpenClaw image:
+`sha256:38ab384535544261d851394a9d6ef59d9c6de5b7367652464f977f7a8bc890a6`.
+All use kernel `33dd1dea21a4`; these are qualified subsets, not published
+accepted releases. Full authority/approval/budget/revocation, kernel and plugin
+faults, later crash cutpoints, cancellation and lifecycle gates remain open.
+Cursor's isolated authentication and bounded hosted execution contract and
+Claude's isolated provider credential remain external inputs. No synthetic
+fixture or another host's result closes those missing real-host cases.
