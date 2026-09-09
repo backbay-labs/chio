@@ -1,0 +1,25 @@
+{
+  "remaining": [
+    {
+      "pid": 13430,
+      "ppid": 13406,
+      "pgid": 13430,
+      "command": "/Library/Frameworks/Python.framework/Versions/3.11/Resources/Python.app/Contents/MacOS/Python /private/tmp/chio-hermes-20260909/public-upstream-source/hermes chat --cli --ignore-rules --provider chio-model -m gpt-4.1-2025-04-14 -t mcp-chio --max-turns 12 -Q --query-file /Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-launcher-crash-114ac6b38d8d41028fbf0146c97cbe23/initial.txt"
+    }
+  ],
+  "automaticCleanup": false,
+  "observedChildren": [
+    {
+      "pid": 13407,
+      "ppid": 13406,
+      "pgid": 13252,
+      "command": "/opt/homebrew/Cellar/node/25.5.0/bin/node /private/tmp/chio-hermes-cancellation-cold-consumer-r10-20260909/lib/python3.11/site-packages/chio_hermes/gateway_runner.mjs /private/tmp/chio-bridge-host-delivery-cold-consumer-r2-20260909/node_modules/@chio/bridge/dist/gateway-http.js /Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-launcher-crash-114ac6b38d8d41028fbf0146c97cbe23/gateway.json"
+    },
+    {
+      "pid": 13430,
+      "ppid": 13406,
+      "pgid": 13430,
+      "command": "/Library/Frameworks/Python.framework/Versions/3.11/Resources/Python.app/Contents/MacOS/Python /private/tmp/chio-hermes-20260909/public-upstream-source/hermes chat --cli --ignore-rules --provider chio-model -m gpt-4.1-2025-04-14 -t mcp-chio --max-turns 12 -Q --query-file /Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-launcher-crash-114ac6b38d8d41028fbf0146c97cbe23/initial.txt"
+    }
+  ]
+}

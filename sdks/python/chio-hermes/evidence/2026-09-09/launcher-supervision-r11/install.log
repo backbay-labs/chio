@@ -1,0 +1,20 @@
+Looking in links: /tmp/chio-hermes-supervisor-wheelhouse-r11-20260909
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/chio_hermes-0.1.2-py3-none-any.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/certifi-2026.7.22-py3-none-any.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/chio_adapter_base-0.2.0-py3-none-any.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/chio_code_agent-0.1.0-py3-none-any.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/chio_sdk_python-0.1.0-py3-none-any.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/pyyaml-6.0.3-cp311-cp311-macosx_11_0_arm64.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/pydantic-2.13.5-py3-none-any.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/httpx-0.28.1-py3-none-any.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/anyio-4.15.1-py3-none-any.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/httpcore-1.0.9-py3-none-any.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/idna-3.19-py3-none-any.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/h11-0.16.0-py3-none-any.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/annotated_types-0.8.0-py3-none-any.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/pydantic_core-2.46.5-cp311-cp311-macosx_11_0_arm64.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/typing_extensions-4.16.0-py3-none-any.whl
+Processing /private/tmp/chio-hermes-supervisor-wheelhouse-r11-20260909/typing_inspection-0.4.4-py3-none-any.whl
+Installing collected packages: typing-extensions, pyyaml, idna, h11, certifi, annotated-types, typing-inspection, pydantic-core, httpcore, anyio, pydantic, httpx, chio-sdk-python, chio-code-agent, chio-adapter-base, chio-hermes
+Successfully installed annotated-types-0.8.0 anyio-4.15.1 certifi-2026.7.22 chio-adapter-base-0.2.0 chio-code-agent-0.1.0 chio-hermes-0.1.2 chio-sdk-python-0.1.0 h11-0.16.0 httpcore-1.0.9 httpx-0.28.1 idna-3.19 pydantic-2.13.5 pydantic-core-2.46.5 pyyaml-6.0.3 typing-extensions-4.16.0 typing-inspection-0.4.4
+No broken requirements found.

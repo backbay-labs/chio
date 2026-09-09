@@ -10,6 +10,8 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
+import time
 import subprocess
 import uuid
 
@@ -22,7 +24,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 for name in ["operator-state", "launcher-python", "host-python", "host-root", "bridge", "output"]:
     parser.add_argument("--" + name, type=Path, required=True)
 parser.add_argument("--fault-injector", type=Path)
-parser.add_argument("--cases", nargs="+", choices=["useful", "secret", "forbidden-write", "host-response-loss", "aggregate-budget", "gateway-crash"], default=["useful", "secret", "forbidden-write"])
+parser.add_argument("--cases", nargs="+", choices=["useful", "secret", "forbidden-write", "host-response-loss", "aggregate-budget", "gateway-crash", "launcher-crash"], default=["useful", "secret", "forbidden-write"])
 a = parser.parse_args()
 a.output.mkdir(mode=0o700)
 operator = json.loads((a.operator_state / "operator.json").read_text())
@@ -69,7 +71,39 @@ for case in a.cases:
                 raise ValueError("explicit fault injector required")
             env["NODE_OPTIONS"] = "--import=" + str(a.fault_injector.resolve())
             env["CHIO_GATEWAY_CRASH_FAULT_LOG" if case == "gateway-crash" else "CHIO_HOST_RESPONSE_FAULT_LOG"] = str(evidence / "fault.jsonl")
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=220, env=env)
+        if case == "launcher-crash" and fault:
+            # Child stdout must not keep communicate() waiting after its parent dies.
+            import tempfile
+            with tempfile.TemporaryFile(mode="w+") as stdout, tempfile.TemporaryFile(mode="w+") as stderr:
+                process = subprocess.Popen(command, stdout=stdout, stderr=stderr, text=True, env=env)
+                try:
+                    process.wait(timeout=220)
+                except subprocess.TimeoutExpired:
+                    process.kill(); process.wait(timeout=5)
+                    raise
+                faults = [json.loads(line) for line in (evidence / "fault.jsonl").read_text().splitlines()]
+                children = faults[-1]["children"]
+                def remaining():
+                    alive = []
+                    for child in children:
+                        current = subprocess.run(["ps", "-p", str(child["pid"]), "-o", "stat=,command="], capture_output=True, text=True)
+                        parts = current.stdout.strip().split(None, 1)
+                        if current.returncode == 0 and len(parts) == 2 and not parts[0].startswith("Z") and parts[1] == child["command"]:
+                            alive.append(child)
+                    return alive
+                deadline = time.monotonic() + 12
+                alive = remaining()
+                while alive and time.monotonic() < deadline:
+                    time.sleep(0.2); alive = remaining()
+                save(evidence / "processes-after-launcher-death.json", {"remaining": alive, "automaticCleanup": not alive, "observedChildren": children})
+                for child in alive:
+                    # Failure cleanup is recorded separately and never counted as automatic.
+                    os.kill(child["pid"], signal.SIGKILL)
+                if alive:save(evidence / "operator-cleanup.json", {"killedExactObservedPids": [child["pid"] for child in alive]})
+                stdout.seek(0); stderr.seek(0)
+                completed = subprocess.CompletedProcess(command, process.returncode, stdout.read(), stderr.read())
+        else:
+            completed = subprocess.run(command, capture_output=True, text=True, timeout=220, env=env)
         target = evidence / label; target.mkdir(mode=0o700)
         (target / "host.stdout.txt").write_text(completed.stdout)
         (target / "host.stderr.txt").write_text(completed.stderr)
@@ -81,9 +115,9 @@ for case in a.cases:
         return completed.returncode, terminal
 
     if case == "aggregate-budget": prompts[case] = prompts["useful"]
-    if case == "gateway-crash": prompts[case] = prompts["host-response-loss"]
+    if case in ["gateway-crash", "launcher-crash"]: prompts[case] = prompts["host-response-loss"]
     before = observe()
-    code, terminal = run("initial", prompts[case], case in ["host-response-loss", "gateway-crash"])
+    code, terminal = run("initial", prompts[case], case in ["host-response-loss", "gateway-crash", "launcher-crash"])
     after = observe(); save(evidence / "before.json", before); save(evidence / "after.json", after)
     journal = [json.loads(path.read_text()) for path in (private / "journal").glob("*.json")]
     acknowledgements = [{"state": value.get("state"), "acknowledged": value.get("acknowledged"), "hostDeliveryConfirmed": value.get("hostDeliveryConfirmed")} for value in journal]
@@ -95,16 +129,21 @@ for case in a.cases:
     elif case == "useful":
         passed &= code == 0 and terminal.get("confirmedDeliveries") == 4 and len(delta) == 4 and after["files"].get(name) == "Hermes kernel verified"
         passed &= len(acknowledgements) == 4 and all(v["acknowledged"] and v["hostDeliveryConfirmed"] for v in acknowledgements)
-    elif case not in ["host-response-loss", "gateway-crash"]:
+    elif case not in ["host-response-loss", "gateway-crash", "launcher-crash"]:
         passed &= code == 3 and terminal.get("outcome") == "protected_work_incomplete" and before == after
         passed &= len(journal) == 1 and journal[0].get("state") == "denied"
     else:
         completed = [value for value in journal if value.get("state") == "completed"]
         faults = [json.loads(line) for line in (evidence / "fault.jsonl").read_text().splitlines()]
-        passed &= code == 2 and terminal.get("outcome") == "unresolved" and len(delta) == 1 and after["files"].get(name) == "original retained effect"
+        passed &= len(delta) == 1 and after["files"].get(name) == "original retained effect"
+        if case == "launcher-crash":
+            cleanup = json.loads((evidence / "processes-after-launcher-death.json").read_text())
+            passed &= code == -signal.SIGKILL and not terminal and cleanup["automaticCleanup"]
+        else:
+            passed &= code == 2 and terminal.get("outcome") == "unresolved"
         passed &= bool(faults) and len(completed) == 1 and not completed[0].get("hostDeliveryConfirmed") and not completed[0].get("acknowledged")
         if passed:
-            if case == "gateway-crash":
+            if case in ["gateway-crash", "launcher-crash"] and (private / "journal/gateway.lock").exists():
                 lock = subprocess.run(["node", str(a.bridge / "dist/gateway-operator.js"), "recover-lock", str(config)], capture_output=True, text=True, check=True)
                 save(evidence / "dead-owner-lock-recovery.json", json.loads(lock.stdout))
                 assert observe() == after

@@ -315,7 +315,7 @@ def prepare(args: argparse.Namespace) -> tuple[list[str], dict[str, str], Path]:
 
 
 def run_host(command: list[str], env: dict[str, str], workspace: Path) -> tuple[int, int | None]:
-    """Forward operator cancellation to the isolated host and reap its process group."""
+    """Supervise the isolated group through a private parent-liveness pipe."""
     child: subprocess.Popen[bytes] | None = None
     interrupted: int | None = None
     deadline: float | None = None
@@ -323,7 +323,9 @@ def run_host(command: list[str], env: dict[str, str], workspace: Path) -> tuple[
     def forward(signum: int, _frame: Any) -> None:
         nonlocal interrupted, deadline
         interrupted = interrupted or signum
-        deadline = deadline or time.monotonic() + 5
+        # The supervisor gets five seconds to stop its native group. The outer
+        # deadline is longer so it cannot kill cleanup before that grace ends.
+        deadline = deadline or time.monotonic() + 10
         if child is not None:
             try:
                 os.killpg(child.pid, signum)
@@ -334,7 +336,14 @@ def run_host(command: list[str], env: dict[str, str], workspace: Path) -> tuple[
     try:
         for signum in previous:
             signal.signal(signum, forward)
-        child = subprocess.Popen(command, env=env, cwd=workspace, start_new_session=True)
+        child = subprocess.Popen(
+            [sys.executable, "-I", str(Path(__file__).with_name("host_supervisor.py"))],
+            stdin=subprocess.PIPE, start_new_session=True,
+        )
+        if child.stdin is None:
+            raise ValueError("private host lifeline unavailable")
+        child.stdin.write(json.dumps({"command": command, "env": env, "cwd": str(workspace)}).encode() + b"\n")
+        child.stdin.flush()
         if interrupted is not None:
             forward(interrupted, None)
         while True:
@@ -348,19 +357,21 @@ def run_host(command: list[str], env: dict[str, str], workspace: Path) -> tuple[
                         pass
                     deadline = None
     finally:
+        if child is not None and child.stdin is not None:
+            child.stdin.close()
         if interrupted is not None and child is not None:
-            # The leader may exit before a descendant finishes. Cancellation
-            # still owns the whole isolated group, including those descendants.
+            # The supervisor owns native descendant cleanup before it exits.
+            # The launcher separately reaps its own supervisor process group.
             try:
                 os.killpg(child.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
         if child is not None and child.poll() is None:
             try:
-                os.killpg(child.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            child.wait(timeout=5)
+                child.wait(timeout=6)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait(timeout=5)
         for signum, handler in previous.items():
             signal.signal(signum, handler)
 

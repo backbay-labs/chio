@@ -6,9 +6,11 @@ import signal
 import subprocess
 import sys
 import time
+import pytest
 
 
-def test_cancellation_reaps_group_when_leader_exits_before_descendant(tmp_path: Path) -> None:
+@pytest.mark.parametrize("interruption", [signal.SIGTERM, signal.SIGKILL])
+def test_cancellation_reaps_group_when_leader_exits_before_descendant(tmp_path: Path, interruption: int) -> None:
     marker = tmp_path / "started.json"
     child = tmp_path / "child.py"
     child.write_text(
@@ -32,10 +34,14 @@ def test_cancellation_reaps_group_when_leader_exits_before_descendant(tmp_path: 
             time.sleep(0.05)
         assert marker.exists()
         leader, descendant = json.loads(marker.read_text())
-        runner.send_signal(signal.SIGTERM)
+        runner.send_signal(interruption)
         stdout, stderr = runner.communicate(timeout=10)
-        assert runner.returncode == 0, stderr
-        assert json.loads(stdout) == [-signal.SIGTERM, signal.SIGTERM]
+        if interruption == signal.SIGKILL:
+            assert runner.returncode == -signal.SIGKILL, stderr
+            assert not stdout
+        else:
+            assert runner.returncode == 0, stderr
+            assert json.loads(stdout) == [-signal.SIGTERM, signal.SIGTERM]
         for pid in (leader, descendant):
             result = subprocess.run(["ps", "-p", str(pid), "-o", "stat="], capture_output=True, text=True)
             assert result.returncode != 0 or result.stdout.strip().startswith("Z")

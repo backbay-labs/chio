@@ -95,11 +95,11 @@ chio-hermes-restricted \
   --host-python /opt/hermes/venv/bin/python \
   --host-root /opt/hermes/pinned-source \
   --node /opt/node/bin/node \
-  --gateway-script /opt/chio-bridge/dist/gateway.js \
+  --gateway-script /opt/chio-bridge/dist/gateway-http.js \
   --gateway-config /private/operator/hermes-gateway.json \
   --state-dir /private/operator/runs/hermes-unique-run \
   --query-file /private/operator/task.txt \
-  --model gpt-4.1 \
+  --model gpt-4.1-2025-04-14 \
   --model-base-url https://api.openai.com/v1 \
   --model-key-env OPENAI_API_KEY
 ```
@@ -115,6 +115,13 @@ that cannot call another provider route. The gateway configuration is private (m
 journal is private (mode `0700`).
 
 ## Recovery, upgrade, and removal
+
+The launcher gives its trusted host supervisor a private liveness pipe. The
+native agent and descendants do not inherit that pipe. Launcher death closes
+it, causing termination of the isolated host group and forced cleanup after a
+five-second grace period. Operator SIGINT/SIGTERM follows the same path. A
+SIGKILL cannot produce a launcher terminal report; retain the journal and treat
+any unacknowledged effect as unresolved. Never infer success from process exit.
 
 A normal completed operation has a verified outcome in the gateway journal.
 An error after dispatch can mean an unknown external outcome. Stop the session

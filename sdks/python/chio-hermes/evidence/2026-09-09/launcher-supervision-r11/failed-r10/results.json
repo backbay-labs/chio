@@ -1,0 +1,17 @@
+[
+  {
+    "case": "launcher-crash",
+    "passed": false,
+    "exitCode": -9,
+    "terminal": {},
+    "newDispatchRows": 1,
+    "acknowledgements": [
+      {
+        "state": "completed",
+        "acknowledged": false,
+        "hostDeliveryConfirmed": null
+      }
+    ],
+    "privateState": "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-launcher-crash-114ac6b38d8d41028fbf0146c97cbe23"
+  }
+]
