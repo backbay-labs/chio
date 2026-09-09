@@ -36,15 +36,15 @@ are bounded to their recorded source, artifact and configuration. Counts from
 different builds cannot be combined into a final passing host matrix. No result
 from one host substitutes for another host's missing case.
 
-## Current delivery blocker
+## Retained delivery failures and repairs
 
 The bridge could acknowledge a completed result before the host received its
 HTTP response. A dropped-response regression caused a replacement request to
 execute. This is an I07 failure in the prior packaged HTTP candidates. The
 repair retains the fence until an actual host returns the exact delivery proof.
-Codex and Claude launchers consume host tool-result events; Pi returns the proof
-from its native extension. Component tests passed, but real host qualification
-is in progress. The first repaired artifact had a malformed MCP capability
+Codex and Claude launchers consume host tool-result history. The earlier Pi guest proof
+round trip was replaced by parent acknowledgement of native history. The later host records below qualify bounded repairs; full acceptance
+is still open. The first repaired artifact had a malformed MCP capability
 announcement and failed Codex and Claude initialization with zero dispatches.
 Both failures are retained; no older passing host result closes this gap.
 
@@ -236,3 +236,69 @@ OpenClaw archive: `f93ea8480937bf85fe07910a0260a24baaefc0089a4e3c213a311cb21efff
 Exact images, commands and observations are in each owning repository's
 `evidence/2026-09-09/native-history-ack` record (under `native/` for OpenClaw).
 Later host/plugin crash cutpoints and the full required matrix remain open.
+
+## Current authority and received-result checkpoint
+
+All six remain mandatory and zero are accepted. Exact artifacts and raw
+observations are committed in each owning repository. The current source
+checkpoints are Codex `cb2433d`, Claude `5a7d69a`, Pi `93f4567`, OpenClaw
+`b3fb4fd`, and Hermes approval repair `c29b9d3c3`.
+
+Codex, Hermes, Pi and OpenClaw each executed seven approval stages through the
+actual native host and OpenAI provider: pending, missing decision, changed
+arguments, approved resume, completed replay, pending rejection and rejected
+resume. Only approved resume caused an effect. Exact native calls, arguments,
+return identities and all additional model attempts are retained. Independent
+resource observers saw one approved write, no substituted/rejected write and
+no replay dispatch. Hermes initially omitted chio_resume from native MCP
+filtering; its r7 resume observations lacked a native call and are failed
+coverage. The r8 repair exposes this gateway control tool without widening the
+four-tool session credential.
+
+Aggregate budgets were exercised separately through each of those four hosts:
+write/edit/read completed, the fourth list call received a signed invocation
+budget denial, and the resource audit contains exactly three new dispatches.
+Claude also passed this budget case through the actual executable and kernel,
+with a local Messages fixture. No authenticated Anthropic result is claimed.
+
+Final-hop result substitution exposed additional failures in Codex and Claude:
+the old launchers acknowledged authentic delivery proofs carrying substituted
+result bytes. Codex reported the forged content; Claude forwarded it in native
+history to the local model fixture. Both repairs verify the complete received
+outcome before acknowledgement and another model turn. Their new cold-installed
+candidates reject the substituted result with zero acknowledgements. Codex also
+passed useful work, forbidden reads/writes, response loss with fenced restart
+and explicit recovery, approvals and the three-call aggregate budget. Claude
+passed useful work plus forbidden/native probes, result loss and the budget
+case using the local fixture. Previous failed evidence remains committed.
+
+| Host | Current local candidate SHA256 | Evidence directory in owning repository |
+|---|---|---|
+| Codex | `860811efcdebea7a4c9fe4db7b9a4c9eb764b55c0fadd4dc6e9429447e7813b6` | `acceptance/2026-09-09/received-result` |
+| Claude | `21129a251ff57f52024efeaa4cca4c1b74d8971b7ffb3ce81cb0701af20b64f8` | `acceptance/2026-09-09/received-result` |
+| Pi | `b6f38bfb2c129e00d6e8c5c74b5b92ec4d527d26a81683316683abc690afac2c` | `evidence/2026-09-09/authority` |
+| OpenClaw | `d7b364ff015b283907056064f8fa92658694b154f5217881ec77c97612863d2a` | `native/evidence/2026-09-09/authority` |
+| Hermes r8 | `ae93ce01524b78a824a7a150dfa0367952c98b33c77ef270fce759415098aba2` | `sdks/python/chio-hermes/evidence/2026-09-09/authority` |
+
+These five candidates use kernel `33dd1dea21a4`. The TypeScript candidates use
+bridge `7d9e34f7408a`; Hermes r8 uses `b7785282b4f4` with its private complete
+outcome verifier. Hermes budget evidence in the authority directory uses r7,
+as its artifact record explicitly states. No results across different builds
+are silently combined into an accepted matrix.
+
+OpenClaw's actual container boundary probe passed in the running host and a
+Node descendant: isolated state writes worked, protected resource/operator
+files, Docker socket, control and plugin writes, root writes and direct host
+TCP were denied. The trusted relay's TCP positive control succeeded with zero
+guest connections observed. Host image for the r2 archive is
+`sha256:98404ca86440e10066733abc421e8af82a40571f46d244c0dec14ea99d5a6d08`.
+The earlier probe image and exact evidence remain separately recorded in
+`native/evidence/2026-09-09/container-boundary`.
+
+Full remaining identity/scope/revocation, fault/cancellation/crash cutpoints,
+and supported upgrade/recovery/removal qualification remain open. The public
+installer still delivers the incompatible historical CLI. None of these
+archives is a published accepted release. Cursor still requires isolated
+host authentication and a bounded hosted protocol; Claude requires isolated
+Anthropic provider access. Those external inputs do not waive other hosts'
+remaining tests or the six-of-six completion requirement.
