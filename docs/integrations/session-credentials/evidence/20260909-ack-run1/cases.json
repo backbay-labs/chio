@@ -1,0 +1,1511 @@
+[
+  {
+    "case": "forbidden_observer_control_observer-control",
+    "passed": true,
+    "details": {
+      "directResourceOwnerWrite": "observer-control"
+    },
+    "resource": {
+      "forbidden.txt": "observer-control"
+    }
+  },
+  {
+    "case": "forbidden_observer_control_original",
+    "passed": true,
+    "details": {
+      "directResourceOwnerWrite": "original"
+    },
+    "resource": {
+      "forbidden.txt": "original"
+    }
+  },
+  {
+    "case": "delegated_context",
+    "passed": true,
+    "details": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilityIds": [
+          "cap-01a08753-2c51-7190-8b34-3f0f9a02c854"
+        ],
+        "deliveryAcknowledgementVersion": "1",
+        "evidenceVersion": "1",
+        "schema": "chio.mcp.execution-context.v1",
+        "serverId": "fs",
+        "serverIds": [
+          "fs"
+        ],
+        "sessionCredential": {
+          "allowedTools": [
+            "list_directory",
+            "read_text_file",
+            "write_file"
+          ],
+          "capabilityIds": [
+            "cap-01a08753-2c51-7190-8b34-3f0f9a02c854"
+          ],
+          "endpointPath": "/mcp",
+          "expiresAt": 1788977070,
+          "issuedAt": 1788976770,
+          "schema": "chio.mcp.session-credential.v1",
+          "serverId": "fs",
+          "sessionId": "db3e39cc85144524b98017835e1d754b1fead248f6976c9591cd216a351fd41d",
+          "subjectKey": "d32cc9df5b046abd51f46ecfc8e0cf26203fbe9e668b51fbd6a8d7a76f466562"
+        },
+        "subjectKey": "d32cc9df5b046abd51f46ecfc8e0cf26203fbe9e668b51fbd6a8d7a76f466562"
+      }
+    },
+    "resource": {
+      "forbidden.txt": "original"
+    }
+  },
+  {
+    "case": "inventory_filtered",
+    "passed": true,
+    "details": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "nextCursor": null,
+        "tools": [
+          {
+            "annotations": {
+              "destructiveHint": false,
+              "readOnlyHint": true
+            },
+            "description": "Read Text File\n\nRead the complete contents of a file from the file system as text. Handles various text encodings and provides detailed error messages if the file cannot be read. Use this tool when you need to examine the contents of a single file. Use the 'head' parameter to read only the first N lines of a file, or the 'tail' parameter to read only the last N lines of a file. Operates on the file as text regardless of extension. Only works within allowed directories.",
+            "execution": {
+              "taskSupport": "optional"
+            },
+            "inputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "properties": {
+                "head": {
+                  "description": "If provided, returns only the first N lines of the file",
+                  "type": "number"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "tail": {
+                  "description": "If provided, returns only the last N lines of the file",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "type": "object"
+            },
+            "name": "read_text_file",
+            "outputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "content"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "annotations": {
+              "destructiveHint": true,
+              "readOnlyHint": false
+            },
+            "description": "Write File\n\nCreate a new file or completely overwrite an existing file with new content. Use with caution as it will overwrite existing files without warning. Handles text content with proper encoding. Only works within allowed directories.",
+            "execution": {
+              "taskSupport": "optional"
+            },
+            "inputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "properties": {
+                "content": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "content"
+              ],
+              "type": "object"
+            },
+            "name": "write_file",
+            "outputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "content"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "annotations": {
+              "destructiveHint": false,
+              "readOnlyHint": true
+            },
+            "description": "List Directory\n\nGet a detailed listing of all files and directories in a specified path. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is essential for understanding directory structure and finding specific files within a directory. Only works within allowed directories.",
+            "execution": {
+              "taskSupport": "optional"
+            },
+            "inputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "properties": {
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "type": "object"
+            },
+            "name": "list_directory",
+            "outputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "content"
+              ],
+              "type": "object"
+            }
+          }
+        ]
+      }
+    },
+    "resource": {
+      "forbidden.txt": "original"
+    }
+  },
+  {
+    "case": "useful_effect",
+    "passed": true,
+    "details": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioDelivery": {
+            "acknowledgement": "cpGZRfxt7_fh34us1-vlYWIyayOr5IJbCJRVSFzh9Yg",
+            "receiptId": "87671d9b85a4578905edfe5d4fe251dfccb6b9f251dc63884e2bb85ed8bbe2a2",
+            "requestHash": "f55b011a1f9b977ced5613864cd447bd847e8391a27d665f8a6a16f389923df5",
+            "requestId": "useful-1",
+            "resultHash": "d0541823c2ea10b1247f99ee3e8304c876bd2f2ca5ac3cba81f0775d3252233f",
+            "schema": "chio.mcp.delivery-ack.v1"
+          },
+          "chioEvidence": {
+            "output": {
+              "content": [
+                {
+                  "text": "Successfully wrote to /workspace/useful.txt",
+                  "type": "text"
+                }
+              ],
+              "isError": false,
+              "structuredContent": {
+                "content": "Successfully wrote to /workspace/useful.txt"
+              }
+            },
+            "outputKind": "value",
+            "receipt": {
+              "action": {
+                "parameter_hash": "900fe0615ccaa33fd653bcb249afab414c3f544d4070dacaa47636169d52ebbb",
+                "parameters": {
+                  "content": "legitimate useful work",
+                  "path": "/workspace/useful.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a08753-2c51-7190-8b34-3f0f9a02c854",
+              "content_hash": "d0541823c2ea10b1247f99ee3e8304c876bd2f2ca5ac3cba81f0775d3252233f",
+              "decision": {
+                "verdict": "allow"
+              },
+              "id": "87671d9b85a4578905edfe5d4fe251dfccb6b9f251dc63884e2bb85ed8bbe2a2",
+              "kernel_key": "0124a4ab09692d1953a42acb63a84123b66d54937c63602793b5a6ee3ed4a61c",
+              "metadata": {
+                "admission_operation": {
+                  "compensation_status": "not_compensated",
+                  "coordinator_lease_epoch": 1,
+                  "coordinator_lease_id": "01a08753-2641-7380-a3d5-ac6062349150",
+                  "operation_id": "e932d790eb8fdaabc1e30c5fe696f61363f9f9be209c099f7c374e1f217d7989",
+                  "projected_dispatch_state": "terminal",
+                  "projected_operation_version": 8,
+                  "projected_state": "completed",
+                  "request_binding_hash": "a0054370b51059dcb9966a0daf65134822087387f935a55e2ab56d2dce55dbf1",
+                  "request_id": "useful-1",
+                  "request_namespace_digest": "5fa8d91ecf19f6d93b69eb1644a3960b10f7ee5db1f45f9db098898a1d70a630",
+                  "retained_dispatch_commit": {
+                    "committed_version": 6,
+                    "coordinator_lease_epoch": 1,
+                    "coordinator_lease_id": "01a08753-2641-7380-a3d5-ac6062349150",
+                    "provider_attempt": {
+                      "attempt_id": "attempt:e932d790eb8fdaabc1e30c5fe696f61363f9f9be209c099f7c374e1f217d7989",
+                      "operation_id": "e932d790eb8fdaabc1e30c5fe696f61363f9f9be209c099f7c374e1f217d7989",
+                      "transport_id": "kernel-tool-server:fs",
+                      "transport_key_epoch": 1
+                    },
+                    "store_fence": {
+                      "lease_id": "01a08753-2641-7380-a3d5-ac6062349150",
+                      "owner_epoch": 1,
+                      "store_uuid": "01a08753-2560-7d53-a9d6-3382545fd737"
+                    }
+                  },
+                  "schema": "chio.admission-receipt.v1",
+                  "store_fence": {
+                    "lease_id": "01a08753-2641-7380-a3d5-ac6062349150",
+                    "owner_epoch": 1,
+                    "store_uuid": "01a08753-2560-7d53-a9d6-3382545fd737"
+                  },
+                  "tool_outcome_id": "13a1ae30345e884cbec0757eb051064276078b135bfaf9c6b37a738a0da66517",
+                  "tool_outcome_version": 2,
+                  "trusted_time_unix_ms": 1788976771140
+                },
+                "attribution": {
+                  "delegation_depth": 0,
+                  "grant_index": 0,
+                  "issuer_key": "282c061ced90d32cacbd498dcfaec5eebb814d1620d6521f6ba302d39471c733",
+                  "subject_key": "d32cc9df5b046abd51f46ecfc8e0cf26203fbe9e668b51fbd6a8d7a76f466562"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a08753-30b4-7a20-af7b-fe9ac60b79e6",
+                "receipt_context": {
+                  "request_id": "useful-1"
+                }
+              },
+              "policy_hash": "2da4ca418e0e12c6a90f18d59941478b88e7874d659dff9eeb4224d844dc9c51",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "9fb9331e35b2616a158276dad2d469e1ff2f340c4a5cb6d5a754c548fd475eb63320413c8556bde03cdb1b1f276b49eea899c6c8b41b56ca3e9d6bedb6f6ee03",
+              "timestamp": 1788976771,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "useful-1",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "Successfully wrote to /workspace/useful.txt",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "Successfully wrote to /workspace/useful.txt"
+        }
+      }
+    },
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "exact_owner_replay",
+    "passed": true,
+    "details": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioDelivery": {
+            "acknowledgement": "cpGZRfxt7_fh34us1-vlYWIyayOr5IJbCJRVSFzh9Yg",
+            "receiptId": "87671d9b85a4578905edfe5d4fe251dfccb6b9f251dc63884e2bb85ed8bbe2a2",
+            "requestHash": "f55b011a1f9b977ced5613864cd447bd847e8391a27d665f8a6a16f389923df5",
+            "requestId": "useful-1",
+            "resultHash": "d0541823c2ea10b1247f99ee3e8304c876bd2f2ca5ac3cba81f0775d3252233f",
+            "schema": "chio.mcp.delivery-ack.v1"
+          },
+          "chioEvidence": {
+            "output": {
+              "content": [
+                {
+                  "text": "Successfully wrote to /workspace/useful.txt",
+                  "type": "text"
+                }
+              ],
+              "isError": false,
+              "structuredContent": {
+                "content": "Successfully wrote to /workspace/useful.txt"
+              }
+            },
+            "outputKind": "value",
+            "receipt": {
+              "action": {
+                "parameter_hash": "900fe0615ccaa33fd653bcb249afab414c3f544d4070dacaa47636169d52ebbb",
+                "parameters": {
+                  "content": "legitimate useful work",
+                  "path": "/workspace/useful.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a08753-2c51-7190-8b34-3f0f9a02c854",
+              "content_hash": "d0541823c2ea10b1247f99ee3e8304c876bd2f2ca5ac3cba81f0775d3252233f",
+              "decision": {
+                "verdict": "allow"
+              },
+              "id": "87671d9b85a4578905edfe5d4fe251dfccb6b9f251dc63884e2bb85ed8bbe2a2",
+              "kernel_key": "0124a4ab09692d1953a42acb63a84123b66d54937c63602793b5a6ee3ed4a61c",
+              "metadata": {
+                "admission_operation": {
+                  "compensation_status": "not_compensated",
+                  "coordinator_lease_epoch": 1,
+                  "coordinator_lease_id": "01a08753-2641-7380-a3d5-ac6062349150",
+                  "operation_id": "e932d790eb8fdaabc1e30c5fe696f61363f9f9be209c099f7c374e1f217d7989",
+                  "projected_dispatch_state": "terminal",
+                  "projected_operation_version": 8,
+                  "projected_state": "completed",
+                  "request_binding_hash": "a0054370b51059dcb9966a0daf65134822087387f935a55e2ab56d2dce55dbf1",
+                  "request_id": "useful-1",
+                  "request_namespace_digest": "5fa8d91ecf19f6d93b69eb1644a3960b10f7ee5db1f45f9db098898a1d70a630",
+                  "retained_dispatch_commit": {
+                    "committed_version": 6,
+                    "coordinator_lease_epoch": 1,
+                    "coordinator_lease_id": "01a08753-2641-7380-a3d5-ac6062349150",
+                    "provider_attempt": {
+                      "attempt_id": "attempt:e932d790eb8fdaabc1e30c5fe696f61363f9f9be209c099f7c374e1f217d7989",
+                      "operation_id": "e932d790eb8fdaabc1e30c5fe696f61363f9f9be209c099f7c374e1f217d7989",
+                      "transport_id": "kernel-tool-server:fs",
+                      "transport_key_epoch": 1
+                    },
+                    "store_fence": {
+                      "lease_id": "01a08753-2641-7380-a3d5-ac6062349150",
+                      "owner_epoch": 1,
+                      "store_uuid": "01a08753-2560-7d53-a9d6-3382545fd737"
+                    }
+                  },
+                  "schema": "chio.admission-receipt.v1",
+                  "store_fence": {
+                    "lease_id": "01a08753-2641-7380-a3d5-ac6062349150",
+                    "owner_epoch": 1,
+                    "store_uuid": "01a08753-2560-7d53-a9d6-3382545fd737"
+                  },
+                  "tool_outcome_id": "13a1ae30345e884cbec0757eb051064276078b135bfaf9c6b37a738a0da66517",
+                  "tool_outcome_version": 2,
+                  "trusted_time_unix_ms": 1788976771140
+                },
+                "attribution": {
+                  "delegation_depth": 0,
+                  "grant_index": 0,
+                  "issuer_key": "282c061ced90d32cacbd498dcfaec5eebb814d1620d6521f6ba302d39471c733",
+                  "subject_key": "d32cc9df5b046abd51f46ecfc8e0cf26203fbe9e668b51fbd6a8d7a76f466562"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a08753-30b4-7a20-af7b-fe9ac60b79e6",
+                "receipt_context": {
+                  "request_id": "useful-1"
+                }
+              },
+              "policy_hash": "2da4ca418e0e12c6a90f18d59941478b88e7874d659dff9eeb4224d844dc9c51",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "9fb9331e35b2616a158276dad2d469e1ff2f340c4a5cb6d5a754c548fd475eb63320413c8556bde03cdb1b1f276b49eea899c6c8b41b56ca3e9d6bedb6f6ee03",
+              "timestamp": 1788976771,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "useful-1",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "Successfully wrote to /workspace/useful.txt",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "Successfully wrote to /workspace/useful.txt"
+        }
+      }
+    },
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "hidden_tool_denied",
+    "passed": true,
+    "details": [
+      403,
+      "method or tool outside session credential authority"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "new_issuance_denied",
+    "passed": true,
+    "details": [
+      401,
+      "invalid, expired, or revoked session credential"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "wrong_session_denied",
+    "passed": true,
+    "details": [
+      401,
+      "invalid, expired, or revoked session credential"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "admin_denied_health",
+    "passed": true,
+    "details": [
+      401,
+      "missing or invalid admin bearer token"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "admin_denied_credential",
+    "passed": true,
+    "details": [
+      401,
+      "missing or invalid admin bearer token"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "admin_denied_revoke",
+    "passed": true,
+    "details": [
+      401,
+      "missing or invalid admin bearer token"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "observer_negative_control",
+    "passed": true,
+    "details": {
+      "before": {
+        "forbidden.txt": "original"
+      }
+    },
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "expiry_denied",
+    "passed": true,
+    "details": [
+      401,
+      "invalid, expired, or revoked session credential"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "credential_revocation_denied",
+    "passed": true,
+    "details": [
+      401,
+      "invalid, expired, or revoked session credential"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "capability_revocation_denied",
+    "passed": true,
+    "details": [
+      200,
+      {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "result": {
+          "_meta": {
+            "chioEvidence": {
+              "output": null,
+              "outputKind": "none",
+              "receipt": {
+                "action": {
+                  "parameter_hash": "bb067783fa565643ef59fb760d847f5ecaf6ec8ddc9768eada6eaffd59d50fea",
+                  "parameters": {
+                    "content": "forbidden",
+                    "path": "/workspace/revoked-cap.txt"
+                  }
+                },
+                "boundary_class": "prevent",
+                "capability_id": "cap-01a08753-42e0-7730-8491-b7b4464831de",
+                "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "decision": {
+                  "guard": "kernel",
+                  "reason": "capability has been revoked: cap-01a08753-42e0-7730-8491-b7b4464831de",
+                  "verdict": "deny"
+                },
+                "id": "9198900888d5b9f086fdc3fe54e3b9fd53f7ec250d8580fcac2fa39598d7f66f",
+                "kernel_key": "0124a4ab09692d1953a42acb63a84123b66d54937c63602793b5a6ee3ed4a61c",
+                "metadata": {
+                  "attribution": {
+                    "delegation_depth": 0,
+                    "issuer_key": "282c061ced90d32cacbd498dcfaec5eebb814d1620d6521f6ba302d39471c733",
+                    "subject_key": "28490937b9a401259d029067b9d09682f4cac2836fe40a72bd1f6a64ac2809ba"
+                  },
+                  "chio_receipt_signing_nonce": "rcpt-01a08753-4389-79c3-8223-b05ec6035d39",
+                  "receipt_context": {
+                    "request_id": "revoked-cap"
+                  }
+                },
+                "policy_hash": "2da4ca418e0e12c6a90f18d59941478b88e7874d659dff9eeb4224d844dc9c51",
+                "receipt_kind": "mediated_decision",
+                "redaction_mode": "none",
+                "signature": "5b95179a03fdf59ed210bcfd259fe531d8b38b26f1513d5d82d918bc1b62dbc95d080ae3803a822f4bf1a6471ee96deea0c68f697828707cd23554525994f60c",
+                "timestamp": 1788976776,
+                "tool_name": "write_file",
+                "tool_origin": "caller_executed",
+                "tool_server": "fs",
+                "trust_level": "mediated"
+              },
+              "requestId": "revoked-cap",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "terminalState": "completed"
+            }
+          },
+          "content": [
+            {
+              "text": "capability has been revoked: cap-01a08753-42e0-7730-8491-b7b4464831de",
+              "type": "text"
+            }
+          ],
+          "isError": true
+        }
+      }
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "kernel_denial_no_effect",
+    "passed": true,
+    "details": [
+      200,
+      {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "result": {
+          "_meta": {
+            "chioEvidence": {
+              "output": null,
+              "outputKind": "none",
+              "receipt": {
+                "action": {
+                  "parameter_hash": "d96ee6884a470764ca2e4b7b4ed04d0a094d8c6a1ffd59009e4d8c33c1eb7c1c",
+                  "parameters": {
+                    "content": "forbidden replacement",
+                    "path": "/workspace/forbidden.txt"
+                  }
+                },
+                "boundary_class": "prevent",
+                "capability_id": "cap-01a08753-34ca-7780-a4f8-ce05b0672e98",
+                "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "decision": {
+                  "guard": "kernel",
+                  "reason": "guard denied the request: guard \"guard-pipeline\" denied the request",
+                  "verdict": "deny"
+                },
+                "evidence": [
+                  {
+                    "details": "action=deny; reason=guard denied request",
+                    "guard_name": "forbidden-path",
+                    "verdict": false
+                  }
+                ],
+                "id": "6a811c9e77db1a8b5abe5c4e9bf3446b52667075c990d7d91775b437d23af32b",
+                "kernel_key": "0124a4ab09692d1953a42acb63a84123b66d54937c63602793b5a6ee3ed4a61c",
+                "metadata": {
+                  "attribution": {
+                    "delegation_depth": 0,
+                    "issuer_key": "282c061ced90d32cacbd498dcfaec5eebb814d1620d6521f6ba302d39471c733",
+                    "subject_key": "d1cc6384f4e8e4d7a8c1c48205ceb07c59f3559715ec656f373f8aff980d5dad"
+                  },
+                  "budget_authority": {
+                    "authority_profile": "authoritative_hold_event",
+                    "guarantee_level": "single_node_atomic",
+                    "metering_profile": "max_cost_preauthorize_then_reconcile_actual"
+                  },
+                  "chio_receipt_signing_nonce": "rcpt-01a08753-454e-7d11-b328-30651174cd71",
+                  "receipt_context": {
+                    "request_id": "forbidden"
+                  }
+                },
+                "policy_hash": "2da4ca418e0e12c6a90f18d59941478b88e7874d659dff9eeb4224d844dc9c51",
+                "receipt_kind": "mediated_decision",
+                "redaction_mode": "none",
+                "signature": "c5524529524b57e639a454bc1852db190862c4cd0c80ed506df3d9683c8fcb09e692e7d938b285c97916ec8a8da20e40b45fc339b5f9500f8ab6ae20e0097b02",
+                "timestamp": 1788976776,
+                "tool_name": "write_file",
+                "tool_origin": "caller_executed",
+                "tool_server": "fs",
+                "trust_level": "mediated"
+              },
+              "requestId": "forbidden",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "terminalState": "completed"
+            }
+          },
+          "content": [
+            {
+              "text": "guard denied the request: guard \"guard-pipeline\" denied the request",
+              "type": "text"
+            }
+          ],
+          "isError": true
+        }
+      }
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "denial_fences_new_ids",
+    "passed": true,
+    "details": [
+      409,
+      "session credential has a pending or uncertain call; operator reconciliation is required"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "aggregate_budget_preserved",
+    "passed": true,
+    "details": [
+      200,
+      {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "result": {
+          "_meta": {
+            "chioEvidence": {
+              "output": null,
+              "outputKind": "none",
+              "receipt": {
+                "action": {
+                  "parameter_hash": "46dd035c2514772c7f3634def4570e7eb885a49957e03a56772102f142158d65",
+                  "parameters": {
+                    "content": "forbidden",
+                    "path": "/workspace/budget-overflow.txt"
+                  }
+                },
+                "boundary_class": "prevent",
+                "capability_id": "cap-01a08753-4862-7af1-a920-b190fe14a384",
+                "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "decision": {
+                  "guard": "kernel",
+                  "reason": "invocation budget exhausted for capability cap-01a08753-4862-7af1-a920-b190fe14a384",
+                  "verdict": "deny"
+                },
+                "id": "62a89229f91bf31a68fb85107c1d3a70f9b90cf106fec205d183d92c0f50f296",
+                "kernel_key": "0124a4ab09692d1953a42acb63a84123b66d54937c63602793b5a6ee3ed4a61c",
+                "metadata": {
+                  "attribution": {
+                    "delegation_depth": 0,
+                    "issuer_key": "282c061ced90d32cacbd498dcfaec5eebb814d1620d6521f6ba302d39471c733",
+                    "subject_key": "00d2e24e894d6306be17ba9b25d827c36bc243bfa9bf5c165ee1e39d3e2d09fd"
+                  },
+                  "budget_authority": {
+                    "authority_profile": "authoritative_hold_event",
+                    "guarantee_level": "single_node_atomic",
+                    "metering_profile": "max_cost_preauthorize_then_reconcile_actual"
+                  },
+                  "chio_receipt_signing_nonce": "rcpt-01a08753-563d-7011-892b-199dee10cfa0",
+                  "receipt_context": {
+                    "request_id": "budget-overflow"
+                  }
+                },
+                "policy_hash": "2da4ca418e0e12c6a90f18d59941478b88e7874d659dff9eeb4224d844dc9c51",
+                "receipt_kind": "mediated_decision",
+                "redaction_mode": "none",
+                "signature": "449ffd0649e95215ca5be9f634276d8fa3580f1d3d6598f45a41b23b6e573d262798367a8669c779e5df6f13dac92b26922faa9d3f9a7de9745d05357a610303",
+                "timestamp": 1788976780,
+                "tool_name": "write_file",
+                "tool_origin": "caller_executed",
+                "tool_server": "fs",
+                "trust_level": "mediated"
+              },
+              "requestId": "budget-overflow",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "terminalState": "completed"
+            }
+          },
+          "content": [
+            {
+              "text": "invocation budget exhausted for capability cap-01a08753-4862-7af1-a920-b190fe14a384",
+              "type": "text"
+            }
+          ],
+          "isError": true
+        }
+      }
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "lost_response_owner_fence",
+    "passed": true,
+    "details": [
+      409,
+      "session credential has a pending or uncertain call; operator reconciliation is required"
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "credential_rotation_preserves_fence",
+    "passed": true,
+    "details": [
+      409,
+      "session credential has a pending or uncertain call; operator reconciliation is required"
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "retained_session_restart",
+    "passed": true,
+    "details": [
+      200,
+      {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "result": {
+          "_meta": {
+            "chioDelivery": {
+              "acknowledgement": "4zYE9ArsE1hNYw7rAHRHJIR7xocC-G951_18tlOCcR0",
+              "receiptId": "cc015aef6e6ab17e22d7d7cefd4cdd5ac94c782bb498ef79e7f4246a3a38c57e",
+              "requestHash": "e3e66e169b1914aca17d0f4fea93eac034eff822ab207302ef7e17f94e459cab",
+              "requestId": "resumed",
+              "resultHash": "f9d782e12d5e7d6e302b4f3121dff94b29416189aec64ac6668f116de893877b",
+              "schema": "chio.mcp.delivery-ack.v1"
+            },
+            "chioEvidence": {
+              "output": {
+                "content": [
+                  {
+                    "text": "Successfully wrote to /workspace/resumed.txt",
+                    "type": "text"
+                  }
+                ],
+                "isError": false,
+                "structuredContent": {
+                  "content": "Successfully wrote to /workspace/resumed.txt"
+                }
+              },
+              "outputKind": "value",
+              "receipt": {
+                "action": {
+                  "parameter_hash": "ad9ad911d7f2e66ce2eecfe5fd88a1cabc1b74921a17501ab7253630ebe89578",
+                  "parameters": {
+                    "content": "same retained identity",
+                    "path": "/workspace/resumed.txt"
+                  }
+                },
+                "boundary_class": "prevent",
+                "capability_id": "cap-01a08753-2c51-7190-8b34-3f0f9a02c854",
+                "content_hash": "f9d782e12d5e7d6e302b4f3121dff94b29416189aec64ac6668f116de893877b",
+                "decision": {
+                  "verdict": "allow"
+                },
+                "id": "cc015aef6e6ab17e22d7d7cefd4cdd5ac94c782bb498ef79e7f4246a3a38c57e",
+                "kernel_key": "0124a4ab09692d1953a42acb63a84123b66d54937c63602793b5a6ee3ed4a61c",
+                "metadata": {
+                  "admission_operation": {
+                    "compensation_status": "not_compensated",
+                    "coordinator_lease_epoch": 2,
+                    "coordinator_lease_id": "01a08753-71a4-7e22-aa8f-deb7a3664527",
+                    "operation_id": "2dbb490a925c4ce4b40c5a0a2c333d65423b20417754fdbce53d06605958cb73",
+                    "projected_dispatch_state": "terminal",
+                    "projected_operation_version": 8,
+                    "projected_state": "completed",
+                    "request_binding_hash": "191b795308e57e68e4c7f497be1f9819d58a92fa5168cb90e67855ebc258229d",
+                    "request_id": "resumed",
+                    "request_namespace_digest": "5fa8d91ecf19f6d93b69eb1644a3960b10f7ee5db1f45f9db098898a1d70a630",
+                    "retained_dispatch_commit": {
+                      "committed_version": 6,
+                      "coordinator_lease_epoch": 2,
+                      "coordinator_lease_id": "01a08753-71a4-7e22-aa8f-deb7a3664527",
+                      "provider_attempt": {
+                        "attempt_id": "attempt:2dbb490a925c4ce4b40c5a0a2c333d65423b20417754fdbce53d06605958cb73",
+                        "operation_id": "2dbb490a925c4ce4b40c5a0a2c333d65423b20417754fdbce53d06605958cb73",
+                        "transport_id": "kernel-tool-server:fs",
+                        "transport_key_epoch": 2
+                      },
+                      "store_fence": {
+                        "lease_id": "01a08753-71a4-7e22-aa8f-deb7a3664527",
+                        "owner_epoch": 2,
+                        "store_uuid": "01a08753-2560-7d53-a9d6-3382545fd737"
+                      }
+                    },
+                    "schema": "chio.admission-receipt.v1",
+                    "store_fence": {
+                      "lease_id": "01a08753-71a4-7e22-aa8f-deb7a3664527",
+                      "owner_epoch": 2,
+                      "store_uuid": "01a08753-2560-7d53-a9d6-3382545fd737"
+                    },
+                    "tool_outcome_id": "7d88897c5ab1268b4405f8b2d30dc7eec9ac8029c281c1f8832cf8eb5b4ecd5b",
+                    "tool_outcome_version": 2,
+                    "trusted_time_unix_ms": 1788976789314
+                  },
+                  "attribution": {
+                    "delegation_depth": 0,
+                    "grant_index": 0,
+                    "issuer_key": "282c061ced90d32cacbd498dcfaec5eebb814d1620d6521f6ba302d39471c733",
+                    "subject_key": "d32cc9df5b046abd51f46ecfc8e0cf26203fbe9e668b51fbd6a8d7a76f466562"
+                  },
+                  "chio_receipt_signing_nonce": "rcpt-01a08753-77b5-7262-a20c-6d115a9346b9",
+                  "receipt_context": {
+                    "request_id": "resumed"
+                  }
+                },
+                "policy_hash": "2da4ca418e0e12c6a90f18d59941478b88e7874d659dff9eeb4224d844dc9c51",
+                "receipt_kind": "mediated_decision",
+                "redaction_mode": "none",
+                "signature": "56eccffd5e2ed06bc8b0f32ff269f7146af0f7710667bde62b606d9d1f0e08b12cfcaff4d9e6288149b4a9491fbdfca165f4bc94acf4b544b788f8498152cc0b",
+                "timestamp": 1788976789,
+                "tool_name": "write_file",
+                "tool_origin": "caller_executed",
+                "tool_server": "fs",
+                "trust_level": "mediated"
+              },
+              "requestId": "resumed",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "terminalState": "completed"
+            }
+          },
+          "content": [
+            {
+              "text": "Successfully wrote to /workspace/resumed.txt",
+              "type": "text"
+            }
+          ],
+          "isError": false,
+          "structuredContent": {
+            "content": "Successfully wrote to /workspace/resumed.txt"
+          }
+        }
+      }
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "unknown_fence_survives_restart",
+    "passed": true,
+    "details": [
+      409,
+      "session credential has a pending or uncertain call; operator reconciliation is required"
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "proxy_lost_completed_response_owner_fence",
+    "passed": true,
+    "details": {
+      "blocked": [
+        409,
+        "session credential has a pending or uncertain call; operator reconciliation is required"
+      ],
+      "upstreamResponseFullyConsumed": true,
+      "guestJournalDeleted": true
+    },
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "proxy-lost.txt": "one committed external effect",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "unacknowledged_rotation_fence",
+    "passed": true,
+    "details": [
+      409,
+      "session credential has a pending or uncertain call; operator reconciliation is required"
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "proxy-lost.txt": "one committed external effect",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "unacknowledged_restart_fence",
+    "passed": true,
+    "details": [
+      409,
+      "session credential has a pending or uncertain call; operator reconciliation is required"
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "proxy-lost.txt": "one committed external effect",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "exact_original_response_recovery",
+    "passed": true,
+    "details": {
+      "id": 100,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioDelivery": {
+            "acknowledgement": "_wT2eZw2092irg28p-KqfAGAUXBcbloVD_S-y_FF4Os",
+            "receiptId": "46b036b18bc4a123dad489f8c3b3ca9f2588a8805eb370c50346eabe58a95183",
+            "requestHash": "c23ce87beeff63847cd26b33b209ab27e689ec4ea349eb4728acbe78b5cb2268",
+            "requestId": "proxy-original",
+            "resultHash": "1cae4fc90498137358743c01544c7ba5178a7edb7cf94241591f39c7f8545aff",
+            "schema": "chio.mcp.delivery-ack.v1"
+          },
+          "chioEvidence": {
+            "output": {
+              "content": [
+                {
+                  "text": "Successfully wrote to /workspace/proxy-lost.txt",
+                  "type": "text"
+                }
+              ],
+              "isError": false,
+              "structuredContent": {
+                "content": "Successfully wrote to /workspace/proxy-lost.txt"
+              }
+            },
+            "outputKind": "value",
+            "receipt": {
+              "action": {
+                "parameter_hash": "f95a040cb202e7d16f44e47da7fd0c67e8afa213a4c74c3720a3630603858288",
+                "parameters": {
+                  "content": "one committed external effect",
+                  "path": "/workspace/proxy-lost.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a08753-7a75-7d51-a1f0-0a003765fa14",
+              "content_hash": "1cae4fc90498137358743c01544c7ba5178a7edb7cf94241591f39c7f8545aff",
+              "decision": {
+                "verdict": "allow"
+              },
+              "id": "46b036b18bc4a123dad489f8c3b3ca9f2588a8805eb370c50346eabe58a95183",
+              "kernel_key": "0124a4ab09692d1953a42acb63a84123b66d54937c63602793b5a6ee3ed4a61c",
+              "metadata": {
+                "admission_operation": {
+                  "compensation_status": "not_compensated",
+                  "coordinator_lease_epoch": 2,
+                  "coordinator_lease_id": "01a08753-71a4-7e22-aa8f-deb7a3664527",
+                  "operation_id": "cad6f297e1451d17d7174da0d404561c9676125337268c6f72b4dc640e6f809d",
+                  "projected_dispatch_state": "terminal",
+                  "projected_operation_version": 8,
+                  "projected_state": "completed",
+                  "request_binding_hash": "780e1f8b1c4bbc148943af36d92b5e4f4ed1d7fe4120d2bf75b76a27f2e76c69",
+                  "request_id": "proxy-original",
+                  "request_namespace_digest": "5fa8d91ecf19f6d93b69eb1644a3960b10f7ee5db1f45f9db098898a1d70a630",
+                  "retained_dispatch_commit": {
+                    "committed_version": 6,
+                    "coordinator_lease_epoch": 2,
+                    "coordinator_lease_id": "01a08753-71a4-7e22-aa8f-deb7a3664527",
+                    "provider_attempt": {
+                      "attempt_id": "attempt:cad6f297e1451d17d7174da0d404561c9676125337268c6f72b4dc640e6f809d",
+                      "operation_id": "cad6f297e1451d17d7174da0d404561c9676125337268c6f72b4dc640e6f809d",
+                      "transport_id": "kernel-tool-server:fs",
+                      "transport_key_epoch": 2
+                    },
+                    "store_fence": {
+                      "lease_id": "01a08753-71a4-7e22-aa8f-deb7a3664527",
+                      "owner_epoch": 2,
+                      "store_uuid": "01a08753-2560-7d53-a9d6-3382545fd737"
+                    }
+                  },
+                  "schema": "chio.admission-receipt.v1",
+                  "store_fence": {
+                    "lease_id": "01a08753-71a4-7e22-aa8f-deb7a3664527",
+                    "owner_epoch": 2,
+                    "store_uuid": "01a08753-2560-7d53-a9d6-3382545fd737"
+                  },
+                  "tool_outcome_id": "11b4f64a2ab79f97bd91f7f6c57e2e5ec8840a6ffbd4ac6e4b0e36506118cf1a",
+                  "tool_outcome_version": 2,
+                  "trusted_time_unix_ms": 1788976790563
+                },
+                "attribution": {
+                  "delegation_depth": 0,
+                  "grant_index": 0,
+                  "issuer_key": "282c061ced90d32cacbd498dcfaec5eebb814d1620d6521f6ba302d39471c733",
+                  "subject_key": "c3392c891adbdaf74fba5d5103a75a74a9a39a56a2d19f3e6ede940bd4388e82"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a08753-7c94-77b3-a931-9cea8124b918",
+                "receipt_context": {
+                  "request_id": "proxy-original"
+                }
+              },
+              "policy_hash": "2da4ca418e0e12c6a90f18d59941478b88e7874d659dff9eeb4224d844dc9c51",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "6776ef83048bda9fd03891f0da313e0e20efa44ad2f3840ff9231e79a81c9c2b48bd4b7d20c8a933e5f0f349719e775e194341854076fe82f47efbf54df22105",
+              "timestamp": 1788976790,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "proxy-original",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "Successfully wrote to /workspace/proxy-lost.txt",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "Successfully wrote to /workspace/proxy-lost.txt"
+        }
+      }
+    },
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "proxy-lost.txt": "one committed external effect",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "ack_rejects_requestId",
+    "passed": true,
+    "details": [
+      409,
+      "session credential has a pending or uncertain call; operator reconciliation is required"
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "proxy-lost.txt": "one committed external effect",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "ack_rejects_requestHash",
+    "passed": true,
+    "details": [
+      403,
+      "delivery acknowledgement does not match the original outcome"
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "proxy-lost.txt": "one committed external effect",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "ack_rejects_receiptId",
+    "passed": true,
+    "details": [
+      403,
+      "delivery acknowledgement does not match the original outcome"
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "proxy-lost.txt": "one committed external effect",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "ack_rejects_resultHash",
+    "passed": true,
+    "details": [
+      403,
+      "delivery acknowledgement does not match the original outcome"
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "proxy-lost.txt": "one committed external effect",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "ack_rejects_acknowledgement",
+    "passed": true,
+    "details": [
+      403,
+      "delivery acknowledgement does not match the original outcome"
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "proxy-lost.txt": "one committed external effect",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "verified_durable_replay_ack_allows_continuation",
+    "passed": true,
+    "details": [
+      200,
+      {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "result": {
+          "_meta": {
+            "chioDelivery": {
+              "acknowledgement": "0vP9vMxrF1QO772cGDN4AAyIL0HxEtM0TzDIPw_Uouw",
+              "receiptId": "394065d5dee6675971af928868eb43fd2cdda1a4e95d139d735c2a67cda7682c",
+              "requestHash": "920703fdc73f974ef860d7512b63aa80e753898dc0def950d2a7248cdef0e316",
+              "requestId": "proxy-continued",
+              "resultHash": "708d9b8c44275324eb53b88b30e8c8fc030e906af7731c605d34b96cb8137c03",
+              "schema": "chio.mcp.delivery-ack.v1"
+            },
+            "chioEvidence": {
+              "output": {
+                "content": [
+                  {
+                    "text": "Successfully wrote to /workspace/proxy-continued.txt",
+                    "type": "text"
+                  }
+                ],
+                "isError": false,
+                "structuredContent": {
+                  "content": "Successfully wrote to /workspace/proxy-continued.txt"
+                }
+              },
+              "outputKind": "value",
+              "receipt": {
+                "action": {
+                  "parameter_hash": "375c7dbcc19ff7cd9b2289e0e8cff0f6c5eb16c5d68ede1eaba8347c462f2f0d",
+                  "parameters": {
+                    "content": "useful continuation after verified recovery",
+                    "path": "/workspace/proxy-continued.txt"
+                  }
+                },
+                "boundary_class": "prevent",
+                "capability_id": "cap-01a08753-7a75-7d51-a1f0-0a003765fa14",
+                "content_hash": "708d9b8c44275324eb53b88b30e8c8fc030e906af7731c605d34b96cb8137c03",
+                "decision": {
+                  "verdict": "allow"
+                },
+                "id": "394065d5dee6675971af928868eb43fd2cdda1a4e95d139d735c2a67cda7682c",
+                "kernel_key": "0124a4ab09692d1953a42acb63a84123b66d54937c63602793b5a6ee3ed4a61c",
+                "metadata": {
+                  "admission_operation": {
+                    "compensation_status": "not_compensated",
+                    "coordinator_lease_epoch": 3,
+                    "coordinator_lease_id": "01a08753-8326-7263-96b5-c24367f26a6c",
+                    "operation_id": "e03b67f7ecc99a88cc81079dfd2d977b87ef5c337a0b4f1edc7fbeda46938eb8",
+                    "projected_dispatch_state": "terminal",
+                    "projected_operation_version": 8,
+                    "projected_state": "completed",
+                    "request_binding_hash": "36481475c8cea3dd158abd573053b9f5a0e21c5c867d866e0c9a02fafd87d43b",
+                    "request_id": "proxy-continued",
+                    "request_namespace_digest": "5fa8d91ecf19f6d93b69eb1644a3960b10f7ee5db1f45f9db098898a1d70a630",
+                    "retained_dispatch_commit": {
+                      "committed_version": 6,
+                      "coordinator_lease_epoch": 3,
+                      "coordinator_lease_id": "01a08753-8326-7263-96b5-c24367f26a6c",
+                      "provider_attempt": {
+                        "attempt_id": "attempt:e03b67f7ecc99a88cc81079dfd2d977b87ef5c337a0b4f1edc7fbeda46938eb8",
+                        "operation_id": "e03b67f7ecc99a88cc81079dfd2d977b87ef5c337a0b4f1edc7fbeda46938eb8",
+                        "transport_id": "kernel-tool-server:fs",
+                        "transport_key_epoch": 3
+                      },
+                      "store_fence": {
+                        "lease_id": "01a08753-8326-7263-96b5-c24367f26a6c",
+                        "owner_epoch": 3,
+                        "store_uuid": "01a08753-2560-7d53-a9d6-3382545fd737"
+                      }
+                    },
+                    "schema": "chio.admission-receipt.v1",
+                    "store_fence": {
+                      "lease_id": "01a08753-8326-7263-96b5-c24367f26a6c",
+                      "owner_epoch": 3,
+                      "store_uuid": "01a08753-2560-7d53-a9d6-3382545fd737"
+                    },
+                    "tool_outcome_id": "3dd047b85c84e997641c04d5be55ae878eede0d652e800c425a38359c32a2faf",
+                    "tool_outcome_version": 2,
+                    "trusted_time_unix_ms": 1788976795200
+                  },
+                  "attribution": {
+                    "delegation_depth": 0,
+                    "grant_index": 0,
+                    "issuer_key": "282c061ced90d32cacbd498dcfaec5eebb814d1620d6521f6ba302d39471c733",
+                    "subject_key": "c3392c891adbdaf74fba5d5103a75a74a9a39a56a2d19f3e6ede940bd4388e82"
+                  },
+                  "chio_receipt_signing_nonce": "rcpt-01a08753-8ea6-7f23-a22c-858c9c367c5c",
+                  "receipt_context": {
+                    "request_id": "proxy-continued"
+                  }
+                },
+                "policy_hash": "2da4ca418e0e12c6a90f18d59941478b88e7874d659dff9eeb4224d844dc9c51",
+                "receipt_kind": "mediated_decision",
+                "redaction_mode": "none",
+                "signature": "de09cd7004809958d36af86c95ba3cf4898a22df575a7679e94b4c105ef4f94df585cb776e763ff976cf2d64ab407b6f17b3c070718850b7594a72a44f65c903",
+                "timestamp": 1788976795,
+                "tool_name": "write_file",
+                "tool_origin": "caller_executed",
+                "tool_server": "fs",
+                "trust_level": "mediated"
+              },
+              "requestId": "proxy-continued",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "terminalState": "completed"
+            }
+          },
+          "content": [
+            {
+              "text": "Successfully wrote to /workspace/proxy-continued.txt",
+              "type": "text"
+            }
+          ],
+          "isError": false,
+          "structuredContent": {
+            "content": "Successfully wrote to /workspace/proxy-continued.txt"
+          }
+        }
+      }
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "proxy-continued.txt": "useful continuation after verified recovery",
+      "proxy-lost.txt": "one committed external effect",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "missing_session_no_fresh_issuance",
+    "passed": true,
+    "details": [
+      401,
+      "invalid, expired, or revoked session credential"
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "proxy-continued.txt": "useful continuation after verified recovery",
+      "proxy-lost.txt": "one committed external effect",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  }
+]

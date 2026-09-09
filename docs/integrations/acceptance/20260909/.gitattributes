@@ -1,0 +1,2 @@
+# Raw transcripts retain original bytes, including trailing whitespace and CRLF.
+raw/** -text -whitespace

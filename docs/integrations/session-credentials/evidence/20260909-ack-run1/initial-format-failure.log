@@ -1,0 +1,41 @@
+Diff in /Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/protocol/chio-mcp-remote/src/lib.rs:7:
+ mod remote_mcp_admin;
+ #[path = "remote_mcp/approvals.rs"]
+ mod remote_mcp_approvals;
+-#[path = "remote_mcp/session_store.rs"]
+-mod remote_mcp_session_store;
+ #[path = "remote_mcp/session_credentials.rs"]
+ mod remote_mcp_session_credentials;
++#[path = "remote_mcp/session_store.rs"]
++mod remote_mcp_session_store;
+ 
+ use remote_mcp_session_store::*;
+ 
+Diff in /Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/protocol/chio-mcp-remote/src/remote_mcp/admin.rs:22:
+             get(handle_admin_session_trust).post(handle_admin_revoke_session_trust),
+         )
+         .route(ADMIN_SESSIONS_PATH, get(handle_admin_sessions))
+-        .route("/admin/approvals", post(super::remote_mcp_approvals::submit))
++        .route(
++            "/admin/approvals",
++            post(super::remote_mcp_approvals::submit),
++        )
+         .route(
+             "/admin/approvals/{id}",
+             get(super::remote_mcp_approvals::get_record),
+Diff in /Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/protocol/chio-mcp-remote/src/remote_mcp/approvals.rs:1:
+ //! Operator-owned approval records. This module never dispatches protected work.
+ //! Returned artifacts are admitted only by the ordinary kernel tools/call path.
+ use super::*;
+-use chio_core::Hash;
+ use chio_core::capability::governance::{
+     GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody,
+     GovernedTransactionIntent, GovernedTransactionIntentBody,
+Diff in /Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/protocol/chio-mcp-remote/src/remote_mcp/approvals.rs:8:
+ };
+-use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
++use chio_core::Hash;
++use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+ 
+ #[derive(Debug, Deserialize)]
+ #[serde(deny_unknown_fields)]

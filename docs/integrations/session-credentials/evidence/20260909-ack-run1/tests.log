@@ -1,0 +1,138 @@
+   Compiling chio-core-types v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/core/chio-core-types)
+   Compiling chio-metrics-spec v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/observability/chio-metrics-spec)
+   Compiling chio-attest-verify v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-attest-verify)
+   Compiling chio-egress-contract v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/protocol/chio-egress-contract)
+   Compiling chio-web3-bindings v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-web3-bindings)
+   Compiling chio-data-guards-redactors-default v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/guards/chio-data-guards/redactors/default)
+   Compiling chio-log-redact v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/observability/chio-log-redact)
+   Compiling chio-supervisor v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/core/chio-supervisor)
+   Compiling chio-bounded v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/core/chio-bounded)
+   Compiling chio-workflow-preflight v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-workflow-preflight)
+   Compiling chio-finding-market-migrations v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-finding-market-migrations)
+   Compiling chio-sqlite-file-identity v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-sqlite-file-identity)
+   Compiling chio-spec-validate v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/tooling/chio-spec-validate)
+   Compiling chio-http-serve v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/protocol/chio-http-serve)
+   Compiling chio-errors v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/core/chio-errors)
+   Compiling chio-listing v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-listing)
+   Compiling chio-fiscal v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-fiscal)
+   Compiling chio-revocation-oracle v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-revocation-oracle)
+   Compiling chio-finding v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-finding)
+   Compiling chio-governance v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-governance)
+   Compiling chio-pheromone v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-pheromone)
+   Compiling chio-open-market v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-open-market)
+   Compiling chio-appraisal v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-appraisal)
+   Compiling chio-underwriting v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-underwriting)
+   Compiling chio-federation v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-federation)
+   Compiling chio-did v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-did)
+   Compiling chio-fincred v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-fincred)
+   Compiling chio-lineage v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/observability/chio-lineage)
+   Compiling chio-weights v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-weights)
+   Compiling chio-credit v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-credit)
+   Compiling chio-custody-hw v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-custody-hw)
+   Compiling chio-tool-call-fabric v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/protocol/chio-tool-call-fabric)
+   Compiling chio-kernel-core v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/kernel/chio-kernel-core)
+   Compiling chio-swarm-authority v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/kernel/chio-swarm-authority)
+   Compiling chio-disclosure-lineage v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-disclosure-lineage)
+   Compiling chio-finding-market-port v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-finding-market-port)
+   Compiling chio-finding-market-store-postgres v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-finding-market-store-postgres)
+   Compiling chio-web3 v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-web3)
+   Compiling chio-market v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-market)
+   Compiling chio-reputation v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-reputation)
+   Compiling chio-finding-worker v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-finding-worker)
+   Compiling chio-autonomy v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-autonomy)
+   Compiling chio-core v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/core/chio-core)
+   Compiling chio-settle v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-settle)
+   Compiling chio-link v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-link)
+   Compiling chio-workflow v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-workflow)
+   Compiling chio-selective-disclosure v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-selective-disclosure)
+   Compiling chio-attest-buyer-core v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-attest-buyer-core)
+   Compiling chio-manifest v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-manifest)
+   Compiling chio-kernel v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/kernel/chio-kernel)
+   Compiling chio-federation-authority v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-federation-authority)
+   Compiling chio-metering v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/economy/chio-metering)
+   Compiling chio-signing-remote v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-signing-remote)
+   Compiling chio-credentials v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-credentials)
+   Compiling chio-finding-verifier v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-finding-verifier)
+   Compiling chio-transaction-passport v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-transaction-passport)
+   Compiling chio-risk-comptroller v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-risk-comptroller)
+   Compiling chio-http-session v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-http-session)
+   Compiling chio-guards v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/guards/chio-guards)
+   Compiling chio-commerce-order v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-commerce-order)
+   Compiling chio-agent-web-interop v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-agent-web-interop)
+   Compiling chio-cross-protocol v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/protocol/chio-cross-protocol)
+   Compiling chio-edge-metrics v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/protocol/chio-edge-metrics)
+   Compiling chio-mcp-edge v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/protocol/chio-mcp-edge)
+   Compiling chio-store-sqlite v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-store-sqlite)
+   Compiling chio-trace-validate v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/tooling/chio-trace-validate)
+   Compiling chio-mcp-adapter v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/protocol/chio-mcp-adapter)
+   Compiling chio-external-guards v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/guards/chio-external-guards)
+   Compiling chio-policy v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/guards/chio-policy)
+   Compiling chio-conformance v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/tooling/chio-conformance)
+   Compiling chio-data-guards v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/guards/chio-data-guards)
+   Compiling chio-trust-market-context v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-trust-market-context)
+   Compiling chio-enterprise-export v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-enterprise-export)
+   Compiling chio-finding-challenge v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/trust/chio-finding-challenge)
+   Compiling chio-finding-hosted-edge v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-finding-hosted-edge)
+   Compiling chio-control-plane v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/platform/chio-control-plane)
+   Compiling chio-mcp-remote v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-delivery-ack-20260909/crates/protocol/chio-mcp-remote)
+    Finished `test` profile [unoptimized] target(s) in 1m 39s
+     Running unittests src/lib.rs (/Users/connor/Medica/backbay/standalone/arc/target/debug/deps/chio_mcp_remote-68520b61bf1dc65c)
+
+running 54 tests
+test http_service_tests::parse_remote_session_peer_capabilities_honors_explicitly_disabled_roots ... ok
+test http_service_tests::parse_remote_session_peer_capabilities_honors_explicitly_disabled_elicitation ... ok
+test http_service_tests::parse_remote_session_peer_capabilities_honors_explicitly_disabled_sampling ... ok
+test http_service_tests::parse_remote_session_peer_capabilities_honors_progress_and_cancellation_declarations ... ok
+test remote_mcp_session_credentials::tests::credential_route_allowlist_excludes_issuance_and_hidden_tools ... ok
+test remote_mcp_admin::tests::validate_admin_request_rejects_disallowed_origin_before_bearer_auth ... ok
+test remote_mcp_session_credentials::tests::credential_response_filters_inventory_and_exposes_bound_context ... ok
+test remote_mcp_admin::tests::validate_admin_request_accepts_local_origin_and_matching_bearer_token ... ok
+test tests::build_federated_principal_azure_ad_prefers_oid_and_appid ... ok
+test tests::build_federated_principal_prefers_subject_over_client_id ... ok
+test tests::build_federated_claims_normalizes_enterprise_identity_metadata ... ok
+test http_service_tests::read_limited_mcp_post_body_rejects_streaming_body_over_limit ... ok
+test http_service_tests::read_limited_mcp_post_body_rejects_oversized_content_length ... ok
+test tests::chio_oauth_discovery_profile_metadata_advertises_sender_constraints ... ok
+test tests::chio_oauth_discovery_validation_rejects_profile_mismatch ... ok
+test tests::introspection_bearer_verifier_accepts_active_token_with_resource_claim ... ok
+test tests::introspection_bearer_verifier_rejects_inactive_token ... ok
+test tests::jwt_bearer_verifier_authenticates_es256_jwks_token ... ok
+test tests::jwt_bearer_verifier_builds_oauth_session_auth_context ... ok
+test tests::jwt_remote_auth_requires_separate_admin_token ... ok
+test tests::identity_federation_derives_stable_keypair_per_principal ... ok
+test tests::expected_resume_agent_id_is_revalidated_from_identity_federation_seed ... ok
+test tests::load_active_session_records_skips_malformed_rows ... ok
+test tests::load_active_session_records_keeps_active_row_when_matching_tombstone_is_malformed ... ok
+test tests::local_authorization_server_issues_unique_codes_for_same_second_approvals ... ok
+test tests::mcp_rate_limit_key_ignores_unverified_client_headers ... ok
+test tests::mcp_session_id_header_classifies_missing_invalid_and_valid_values ... ok
+test tests::oidc_fetch_rejects_special_use_address_contract ... ok
+test tests::load_active_session_records_skips_terminal_tombstoned_rows ... ok
+test tests::provider_profile_can_derive_standard_oidc_discovery_url_from_issuer ... ok
+test remote_mcp_session_credentials::tests::completed_cache_replays_exact_request_and_rejects_conflicts ... ok
+test tests::remote_auth_state_rejects_unusable_static_bearer_tokens ... ok
+test tests::load_terminal_session_records_skips_mismatched_payload_session_id ... ok
+test remote_mcp_session_credentials::tests::pending_owner_call_survives_reopen_and_token_rotation ... ok
+test tests::remote_session_auth_context_uses_static_bearer_fingerprint_and_origin ... ok
+test tests::remote_session_new_preserves_ready_lifecycle_on_restore ... ok
+test tests::session_runtime::mcp_rate_limiter_caps_session_window ... ok
+test tests::jwt_bearer_verifier_authenticates_es384_jwks_token ... ok
+test tests::session_runtime::mcp_rate_limiter_caps_tracked_keys ... ok
+test tests::shared_hosted_owner_notification_fanout_replays_to_all_live_taps ... ok
+test tests::shared_hosted_owner_notification_fanout_tracks_pruned_dead_subscribers ... ok
+test tests::session_runtime::remote_session_factory_rejects_admission_sidecar_aliases ... ok
+test tests::shared_upstream_notification_fanout_copies_notifications_and_prunes_dead_queues ... ok
+test tests::validate_restored_peer_capabilities_rejects_tampered_record ... ok
+test tests::validate_resume_record_integrity_rejects_tampered_auth_context ... ok
+test tests::stored_capability_issuer_revalidation_rejects_untrusted_restart_issuer ... ok
+test tests::oidc_fetch_uses_contract_backed_client_for_hostname_url ... ok
+test tests::purge_terminal_session_records_keeps_tombstones_for_stale_active_rows ... ok
+test remote_mcp_session_credentials::tests::credential_storage_rejects_substitution_and_survives_reopen ... ok
+test tests::remote_session_ledger_startup_skips_malformed_terminal_tombstones ... ok
+test remote_mcp_session_credentials::tests::caller_acknowledgement_is_required_after_verified_kernel_completion ... ok
+test tests::session_runtime::remote_session_factory_holds_one_durable_admission_sidecar ... ok
+test tests::jwt_bearer_verifier_authenticates_ps256_jwks_token ... ok
+test tests::jwt_bearer_verifier_authenticates_rs256_jwks_token ... ok
+
+test result: ok. 54 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.89s
+

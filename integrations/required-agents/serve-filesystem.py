@@ -45,7 +45,8 @@ def start(args):
             raise ValueError("refusing an existing volume; preserve it and select a fresh test volume")
     state.mkdir(mode=0o700, parents=False, exist_ok=False)
     policy = state / "filesystem-policy.yaml"
-    policy.write_bytes(Path(__file__).resolve().with_name("filesystem-policy.yaml").read_bytes())
+    selected_policy = Path(args.policy).resolve(strict=True)
+    policy.write_bytes(selected_policy.read_bytes())
     policy.chmod(0o400)
     run("docker", "volume", "create", "--label", "chio.task=required-agent-integrations", args.volume)
     run("docker", "volume", "create", "--label", "chio.task=required-agent-integrations", audit_volume)
@@ -69,6 +70,7 @@ def start(args):
     operator = {"agentToken": secrets.token_hex(32), "adminToken": secrets.token_hex(32),
                 "command": command, "kernelSha256": digest, "port": args.port,
                 "image": args.image, "volume": args.volume, "auditVolume": audit_volume,
+                "policySha256": hashlib.sha256(policy.read_bytes()).hexdigest(),
                 "stateDir": str(state)}
     private_json(state / "operator.json", operator)
     launch(state, operator)
@@ -78,6 +80,8 @@ def launch(state, operator):
     kernel = Path(operator["command"][0])
     if hashlib.sha256(kernel.read_bytes()).hexdigest() != operator["kernelSha256"]:
         raise ValueError("kernel changed; qualify and explicitly select an upgrade")
+    if operator.get("policySha256") and hashlib.sha256((state / "filesystem-policy.yaml").read_bytes()).hexdigest() != operator["policySha256"]:
+        raise ValueError("snapshot policy changed; qualify the new policy before admission")
     env = os.environ.copy()
     env.update(CHIO_AUTH_TOKEN=operator["agentToken"], CHIO_ADMIN_TOKEN=operator["adminToken"])
     with open(state / "kernel.log", "ab") as log:
@@ -118,6 +122,7 @@ def main():
     for flag in ("state-dir", "kernel", "kernel-sha256", "image", "volume"):
         create.add_argument("--" + flag, required=True)
     create.add_argument("--port", type=int, required=True)
+    create.add_argument("--policy", default=str(Path(__file__).resolve().with_name("filesystem-policy.yaml")))
     for action in ("stop", "restart"):
         sub.add_parser(action).add_argument("--state-dir", required=True)
     args = parser.parse_args()

@@ -63,7 +63,10 @@ Create the operator parent directory with mode 0700 first. Every supported host
 sandbox must deny this directory, historical operator state in `/tmp`, and all
 other host profiles. A mode-0600 file alone does not isolate same-user processes.
 The launcher refuses an existing resource or audit volume or state directory. It creates private
-operator credentials, snapshots the policy, and starts a durable kernel owner.
+operator credentials, snapshots and hashes the policy, and starts a durable kernel owner.
+Use `--policy /absolute/selected-policy.yaml` for a separately qualified policy,
+such as the explicit-confirmation qualification policy. Restart rejects changes
+to that snapshot.
 A listening process alone is not readiness: authenticated MCP preparation must
 also succeed. Preserve failed startup databases and logs for diagnosis.
 
@@ -100,10 +103,13 @@ chio-prepare-gateway /absolute/private/request.json /absolute/private/gateway.js
 
 Preparation establishes and pins the actual caller, capability, resource owner
 and retained kernel session. It authenticates the delegated credential's scope
-against that session and stores only the delegated bearer in the guest config.
-It performs no protected tool action. Configure the host-specific
-restricted launcher to start the packaged `chio-mcp-gateway` with this exact
-private file. Do not enable other MCP servers, native shell, custom tools,
+against that session and stores only the delegated bearer in the private gateway config.
+It performs no protected tool action. The restricted launcher loads this file
+outside the guest sandbox and starts the packaged `startGatewayHttp` transport
+in its own process. The guest receives only an ephemeral loopback transport token,
+with no direct kernel egress or access to the gateway config or journal. Closing
+or killing the launcher removes this resource route. The delegated context must
+advertise delivery acknowledgement version 1. Do not enable other MCP servers, native shell, custom tools,
 delegation, background jobs or administrative commands in this mode.
 
 ## Observe and recover
@@ -123,8 +129,22 @@ took effect; it does not prove the original action had no effect. Do not remove
 journals, change request identities, clear locks, or create replacement sessions
 to retry an uncertain action. Reconcile the resource and the durable kernel
 ledger first. Automatic unknown-outcome resolution is not supplied by this
-candidate. Some hosts leave a gateway lock on exit; this remains an explicit
-recovery gap rather than an automatic lock-deletion procedure.
+candidate. The bridge offers `chio-gateway-operator status CONFIG` and
+`chio-gateway-operator recover-lock CONFIG`. Recovery requires the recorded
+process to be dead on the same machine, protects against concurrent recovery,
+and preserves every operation record. It does not clear an unknown outcome.
+
+The kernel keeps completed-but-unacknowledged calls fenced. The bridge verifies
+and durably records the exact response before acknowledging it. An exact replay
+returns the retained response without dispatching it again. Credential rotation
+and restart preserve the owner fence. A fresh host transport uses a new RPC
+namespace while retaining the same kernel authority and operation journal.
+
+Retained MCP sessions expire after 15 minutes of inactivity by default, which
+can precede a delegated credential's expiry. Preparation is not a lease extending
+that idle limit. An expired session refuses new effects and is terminal; do not
+automatically initialize a replacement to retry uncertain work. Reconcile the
+prior session before the operator authorizes an independent new session.
 
 ```sh
 python3 integrations/required-agents/serve-filesystem.py stop --state-dir /private/tmp/chio-required-example

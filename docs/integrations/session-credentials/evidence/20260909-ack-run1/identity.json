@@ -1,0 +1,13 @@
+{
+  "kernelSha256": "0e683f6f7cc8f21816b10641e3c18fba2dd1445fbcd28752cd3260d8ac5edb5a",
+  "source": "8501b0058dfcbccd858ae2cdeda82948fb1e9a08",
+  "sourceDirty": "",
+  "image": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "volume": "chio-required-credentials-a414184db5a5",
+  "auditVolume": "chio-required-credentials-a414184db5a5-audit",
+  "runtime": "/Users/connor/.local/share/chio-required-operators/delivery-ack-qualification-20260909",
+  "port": 65346,
+  "cryptographyVersion": "46.0.3",
+  "cases": 34,
+  "passed": 34
+}
