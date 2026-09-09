@@ -1,0 +1,11 @@
+{
+  "bundle": "/Users/connor/.local/share/chio-required-candidates/20260909",
+  "verifiedEntries": 47,
+  "operatorOfflineInstallExitCode": 0,
+  "nativeCodexFaultAndRecovery": "passed",
+  "operatorSourceDependencies": "bundle standalone exporter and offline operator archive only",
+  "originalWrites": 2,
+  "recoveryWrites": 0,
+  "recoveryReads": 1,
+  "acceptedHosts": 0
+}

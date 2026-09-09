@@ -113,6 +113,43 @@ before acknowledgement. Recover a lock only after its recorded owner is dead.
 Never delete the journal, replace the session, or automatically redispatch an
 unknown operation. Approval decisions use the exact pending request descriptor.
 
+If the host retained an unknown operation but the owner retained its signed
+completion, install the separately shipped operator bridge. It uses the same
+kernel contract; host runtime bridge archives stay at their qualified identities:
+
+```sh
+npm install --prefix install/operator-bridge --offline --ignore-scripts \
+  packages/chio-bridge-operator-0.3.0-02a0e4ad4e61.tgz
+python3 resource-owner/export-owner-outcome.py \
+  --operator-state /absolute/private/original-owner \
+  --gateway-config /absolute/private/original-owner/original-session/gateway.json \
+  --request-id ORIGINAL_REQUEST_ID \
+  --output /absolute/private/new-owner-result.json
+node install/operator-bridge/node_modules/@chio/bridge/dist/gateway-operator.js \
+  owner-result-import /absolute/private/original-owner/original-session/gateway.json \
+  /absolute/private/new-owner-result.json
+node install/operator-bridge/node_modules/@chio/bridge/dist/gateway-operator.js \
+  delivery-export /absolute/private/original-owner/original-session/gateway.json \
+  ORIGINAL_REQUEST_ID /absolute/private/new-received-result.json
+```
+
+Stop the host before import. Use `recover-lock` only for a proven dead owner.
+The exporter reads the exact session/request row without network dispatch. Import
+verifies its signature, original authority, request and complete result; it keeps
+the previous unknown outcome and leaves the completion fenced and unacknowledged.
+Read the exported result and compare the independent resource observation before
+acknowledging it explicitly:
+
+```sh
+node install/operator-bridge/node_modules/@chio/bridge/dist/gateway-operator.js \
+  delivery-acknowledge /absolute/private/original-owner/original-session/gateway.json \
+  /absolute/private/new-received-result.json
+```
+
+Missing, pending, invalidly signed or mismatched owner records leave uncertainty
+unresolved. The procedure cannot renew expired or revoked authority. No step
+redispatches the original tool action. A failed acknowledgement keeps the fence.
+
 `serve-filesystem.py stop --state-dir ...` stops the selected owner and preserves
 its databases and volumes. `restart --state-dir ...` checks the retained kernel
 and policy hashes before starting the same owner. Neither command is a database

@@ -69,3 +69,14 @@ observation must see two authorized effects, an unknown second result and no
 second acknowledgement. Follow each with `resume-fence` using its original
 configuration. These cases test evidence rejection, not pre-effect denial of
 the two authorized writes. They do not resolve unknown outcomes automatically.
+
+
+`recover-owner-result` requires `--existing-config` from an original native
+unknown operation and `--operator-bridge` pointing to the separately installed
+signed-owner recovery candidate. It exports the owner's retained signed row,
+requires forged-signature rejection without journal changes, imports the valid
+completion while preserving its fence, reads the exact exported result, and
+acknowledges it explicitly. The actual host then performs one read with no
+repeated write. `--owner-exporter` selects the delivered standalone exporter for
+relocated installation testing. Missing owner completions remain unresolved.
+This suite never prepares replacement authority or retries the original write.

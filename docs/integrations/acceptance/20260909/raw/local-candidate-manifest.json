@@ -272,14 +272,26 @@
     {
       "component": "instructions",
       "path": "README.md",
-      "sha256": "da0369cce02f5a50212b3a9fa8fda7ee25275344175af5fc11be133beec2488e",
-      "bytes": 8318
+      "sha256": "c786658d9ea468e4f59c08a849589e75f9e79538210d1bcc3d2805abdffb52dd",
+      "bytes": 10311
     },
     {
       "component": "hermes-bridge",
       "path": "packages/chio-bridge-hermes-0.3.0-b7785282b4f4.tgz",
       "sha256": "b7785282b4f4e4da42e4158c7390a2d1411ba2763b01956b07896aadf6dcc6d9",
       "bytes": 934950
+    },
+    {
+      "component": "operator-bridge",
+      "path": "packages/chio-bridge-operator-0.3.0-02a0e4ad4e61.tgz",
+      "sha256": "02a0e4ad4e61ffb989302cae8774a9ae9ab8f647473f1926d1e671673169a37b",
+      "bytes": 939735
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/export-owner-outcome.py",
+      "sha256": "b795973deadfa255768a4e4eb07e9755decc4de1f75746e49f6a19f2f4ba12fb",
+      "bytes": 2858
     }
   ],
   "missing": [

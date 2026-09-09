@@ -1,0 +1,13 @@
+{
+  "host": "codex",
+  "suite": "recover-owner-result",
+  "cases": 1,
+  "skips": 0,
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "resourceImage": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "hostImage": null,
+  "packageDirectory": "/Users/connor/.local/share/chio-required-candidates/20260909/install/codex/node_modules/@chio/codex-plugin",
+  "privateConfiguration": "/Users/connor/.local/share/chio-required-operators/delivery-install-20260909/codex-approvals-edabbac09d8a4e2983874e48775918d7/gateway.json",
+  "configurationSha256": "c0aea74a2b0e5d68f13433a26669637f4964734c2ee76471f7e48ed386849b3d",
+  "claim": "bounded real-host authority and explicit launcher refusal cases; full acceptance remains open"
+}

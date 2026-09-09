@@ -1,0 +1,20 @@
+[
+  {
+    "case": "evidence-foreign-receipt",
+    "exitCode": 2,
+    "command": [
+      "node",
+      "/Users/connor/.local/share/chio-required-candidates/20260909/install/codex/node_modules/@chio/codex-plugin/dist/cli/main.js",
+      "restricted",
+      "--gateway-config",
+      "/Users/connor/.local/share/chio-required-operators/delivery-install-20260909/codex-approvals-edabbac09d8a4e2983874e48775918d7/gateway.json",
+      "--codex-binary",
+      "/opt/homebrew/bin/codex",
+      "--evidence-dir",
+      "/tmp/chio-codex-approval-runtime-793d712da1c348318fa434d246ff972c",
+      "--prompt",
+      "First call the Chio write_file tool with {\"path\": \"/workspace/codex-inflight-4e48775918d7.txt\", \"content\": \"authorized before in-flight revocation\"}. Wait for its successful result. Then Call the Chio write_file tool exactly once with arguments {\"path\": \"/workspace/codex-inflight-4e48775918d7.txt\", \"content\": \"second legitimate effect requiring its own evidence\"}. Preserve all identifiers and remote paths exactly. Stop on any unsuccessful or pending result. Do not substitute tools or arguments."
+    ],
+    "newDispatchRows": 2
+  }
+]

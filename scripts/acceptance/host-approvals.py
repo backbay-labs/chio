@@ -13,8 +13,10 @@ import uuid
 import urllib.request
 
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('--suite', choices=['approvals','revocation','in-flight-capability','in-flight-credential','kernel-killed','kernel-malformed','kernel-timeout','resume-fence','kernel-absent','expired-credential','wrong-principal','wrong-session','wrong-resource','scope-escalation','evidence-foreign-receipt','evidence-wrong-signer','evidence-request-id'], default='approvals')
+p.add_argument('--suite', choices=['approvals','revocation','in-flight-capability','in-flight-credential','kernel-killed','kernel-malformed','kernel-timeout','resume-fence','kernel-absent','expired-credential','wrong-principal','wrong-session','wrong-resource','scope-escalation','evidence-foreign-receipt','evidence-wrong-signer','evidence-request-id','recover-owner-result'], default='approvals')
 p.add_argument('--existing-config',type=Path)
+p.add_argument('--operator-bridge',type=Path)
+p.add_argument('--owner-exporter',type=Path)
 p.add_argument('--host',choices=['pi','openclaw','hermes','codex'],required=True)
 for name in ['operator-state','package-dir','output']:
  p.add_argument('--'+name,type=Path,required=True)
@@ -26,7 +28,7 @@ if a.image:
  a.image=subprocess.check_output(['docker','image','inspect',a.image,'--format','{{.Id}}'],text=True).strip()
 bridge=a.package_dir if a.host=='hermes' else a.package_dir/'node_modules/@chio/bridge'
 op=json.loads((a.operator_state/'operator.json').read_text())
-if a.suite=='resume-fence':
+if a.suite in ['resume-fence','recover-owner-result']:
  if not a.existing_config:raise ValueError('resume-fence requires the original private configuration')
  config=a.existing_config.resolve(strict=True);private=config.parent
 else:
@@ -34,7 +36,7 @@ else:
  private=a.operator_state/(a.host+'-approvals-'+uuid.uuid4().hex);private.mkdir(mode=0o700)
 prepare={'endpoint':f"http://127.0.0.1:{op['port']}",'bearerToken':op['agentToken'],'adminToken':op['adminToken'],'credentialTtlSeconds':900,'trustedSigners':[(a.operator_state/'sessions.sqlite.admission.kernel.pub').read_text().strip()],'serverId':'fs','sessionId':str(uuid.uuid4()),'journalDir':str(private/'journal'),'allowedTools':['read_text_file','write_file','edit_file','list_directory']}
 if a.suite=='expired-credential':prepare['credentialTtlSeconds']=5
-if a.suite!='resume-fence':
+if a.suite not in ['resume-fence','recover-owner-result']:
  request=private/'prepare.json';request.write_text(json.dumps(prepare));request.chmod(0o600)
  config=private/'gateway.json'
  subprocess.run(['node',str(bridge/'dist/prepare-gateway.js'),str(request),str(config)],capture_output=True,check=True)
@@ -46,7 +48,7 @@ if a.suite in ['wrong-principal','wrong-session','wrong-resource']:
 if a.suite=='scope-escalation':
  conf['sessionCredential']['allowedTools'].append('delete_file')
  conf['tools'].append({'name':'delete_file','description':'Unauthorized scope escalation probe','inputSchema':{'type':'object','properties':{'path':{'type':'string'}},'required':['path']}})
-if a.suite!='resume-fence':config.write_text(json.dumps(conf,indent=2)+'\n')
+if a.suite not in ['resume-fence','recover-owner-result']:config.write_text(json.dumps(conf,indent=2)+'\n')
 
 def save(path,value):path.write_text(json.dumps(value,indent=2)+'\n')
 def observe():
@@ -135,7 +137,38 @@ def decide(request_id,label,decision):
  save(a.output/(label+'-operator.json'),{'submission':json.loads(submit.stdout),'decision':json.loads(result.stdout),'protectedDispatch':False})
 
 try:
- if a.suite in ['kernel-absent','expired-credential','wrong-principal','wrong-session','wrong-resource','scope-escalation']:
+ if a.suite=='recover-owner-result':
+  if not a.operator_bridge:raise ValueError('explicit installed operator bridge required')
+  uncertain=[r for r in records() if r.get('state')=='unknown'];assert len(uncertain)==1
+  original=uncertain[0];request_id=original['requestId'];before=observe()
+  record_path=Path(conf['journalDir'])/(hashlib.sha256(request_id.encode()).hexdigest()+'.json')
+  original_bytes=record_path.read_bytes()
+  export=private/('owner-export-'+uuid.uuid4().hex+'.json')
+  exporter=a.owner_exporter or Path(__file__).resolve().parents[2]/'integrations/required-agents/export-owner-outcome.py'
+  result=subprocess.run(['python3',str(exporter),'--operator-state',str(a.operator_state),'--gateway-config',str(config),'--request-id',request_id,'--output',str(export)],capture_output=True,text=True,check=True)
+  assert observe()==before
+  save(a.output/'owner-export.json',json.loads(result.stdout))
+  payload=json.loads(export.read_text());shutil.copy2(export,a.output/'owner-signed-record.json')
+  forged=private/('owner-forged-'+uuid.uuid4().hex+'.json');save(forged,{**payload,'signature':'0'*128});forged.chmod(0o600)
+  cli=a.operator_bridge/'dist/gateway-operator.js'
+  rejected=subprocess.run(['node',str(cli),'owner-result-import',str(config),str(forged)],capture_output=True,text=True)
+  assert rejected.returncode!=0 and record_path.read_bytes()==original_bytes and observe()==before
+  save(a.output/'forged-owner-rejected.json',{'exitCode':rejected.returncode,'stderr':rejected.stderr,'journalUnchanged':True,'protectedDispatch':False})
+  imported=subprocess.run(['node',str(cli),'owner-result-import',str(config),str(export)],capture_output=True,text=True,check=True)
+  imported_state=json.loads(record_path.read_text())
+  assert imported_state['state']=='completed' and not imported_state['acknowledged'] and not imported_state['hostDeliveryConfirmed']
+  assert imported_state['operatorReconciliation']['previousOutcome']==original['outcome'] and observe()==before
+  save(a.output/'owner-import.json',json.loads(imported.stdout))
+  received=private/('owner-received-'+uuid.uuid4().hex+'.json')
+  subprocess.run(['node',str(cli),'delivery-export',str(config),request_id,str(received)],capture_output=True,text=True,check=True)
+  outcome=json.loads(received.read_text());assert outcome['outcome']['requestId']==request_id and observe()==before
+  ack=subprocess.run(['node',str(cli),'delivery-acknowledge',str(config),str(received)],capture_output=True,text=True,check=True)
+  assert json.loads(ack.stdout)['protectedDispatch'] is False and observe()==before
+  save(a.output/'operator-acknowledgement.json',json.loads(ack.stdout))
+  code,pre_read,after=run('after-owner-reconciliation','read_text_file',{'path':original['request']['arguments']['path']})
+  assert code==0 and pre_read==before and after['files']==before['files'] and len(after['dispatch'])==len(before['dispatch'])+1
+  save(a.output/'reconciled-operation.json',json.loads(record_path.read_text()))
+ elif a.suite in ['kernel-absent','expired-credential','wrong-principal','wrong-session','wrong-resource','scope-escalation']:
   lifecycle=Path(__file__).resolve().parents[2]/'integrations/required-agents/serve-filesystem.py'
   if a.suite=='kernel-absent':
    stopped=subprocess.run(['python3',str(lifecycle),'stop','--state-dir',str(a.operator_state)],capture_output=True,text=True,check=True)

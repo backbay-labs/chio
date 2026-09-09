@@ -1,0 +1,27 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "item_1",
+      "name": "write_file",
+      "arguments": {
+        "path": "/workspace/codex-inflight-4e48775918d7.txt",
+        "content": "authorized before in-flight revocation"
+      }
+    },
+    {
+      "id": "item_3",
+      "name": "write_file",
+      "arguments": {
+        "path": "/workspace/codex-inflight-4e48775918d7.txt",
+        "content": "second legitimate effect requiring its own evidence"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "item_1",
+    "item_3"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 2
+}

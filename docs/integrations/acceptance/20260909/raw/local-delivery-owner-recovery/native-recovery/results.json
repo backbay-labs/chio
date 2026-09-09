@@ -1,0 +1,20 @@
+[
+  {
+    "case": "after-owner-reconciliation",
+    "exitCode": 0,
+    "command": [
+      "node",
+      "/Users/connor/.local/share/chio-required-candidates/20260909/install/codex/node_modules/@chio/codex-plugin/dist/cli/main.js",
+      "restricted",
+      "--gateway-config",
+      "/Users/connor/.local/share/chio-required-operators/delivery-install-20260909/codex-approvals-edabbac09d8a4e2983874e48775918d7/gateway.json",
+      "--codex-binary",
+      "/opt/homebrew/bin/codex",
+      "--evidence-dir",
+      "/tmp/chio-codex-approval-runtime-3040eeadcf0949dbb7da3aa22ec406a6",
+      "--prompt",
+      "Call the Chio read_text_file tool exactly once with arguments {\"path\": \"/workspace/codex-inflight-4e48775918d7.txt\"}. Preserve all identifiers and remote paths exactly. Stop on any unsuccessful or pending result. Do not substitute tools or arguments."
+    ],
+    "newDispatchRows": 1
+  }
+]

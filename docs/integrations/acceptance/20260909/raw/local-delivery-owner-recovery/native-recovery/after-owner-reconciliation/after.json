@@ -1,0 +1,331 @@
+{
+  "files": {
+    "codex-inflight-4e48775918d7.txt": "second legitimate effect requiring its own evidence",
+    "codex-qualified-eb3b7f3ab60a.txt": "Codex kernel verified\n",
+    "forbidden.txt": "independent forbidden observer\n",
+    "hermes-qualified-41e59a293eb1.txt": "Hermes kernel verified",
+    "openclaw-qualified-042438bb1fc6.txt": "OpenClaw kernel verified",
+    "secret.txt": "sensitive observer\n"
+  },
+  "dispatch": [
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-09T22:14:31.791Z",
+      "upstreamRequestId": 3,
+      "tool": "write_file",
+      "path": "/workspace/codex-qualified-eb3b7f3ab60a.txt",
+      "argumentsSha256": "08a68da7af15e0b6558778edf44b10876e1c098f9b7d3df1f9703892c78692a1",
+      "frameSha256": "d03704f7b9ab92892f995070790a8ae5f3ecc09d7f087c0700819764b14fe1be"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 2,
+      "observedAt": "2026-09-09T22:14:34.486Z",
+      "upstreamRequestId": 4,
+      "tool": "edit_file",
+      "path": "/workspace/codex-qualified-eb3b7f3ab60a.txt",
+      "argumentsSha256": "218d89dc563c2bd4e42f8cf8a5c5db1f24a4edf0ec42f4606168b67045fbcb83",
+      "frameSha256": "bffabe3a265243e9e00b591991470363f9d3291db8a982229bb52c7d3068f0a5"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 3,
+      "observedAt": "2026-09-09T22:14:38.022Z",
+      "upstreamRequestId": 5,
+      "tool": "read_text_file",
+      "path": "/workspace/codex-qualified-eb3b7f3ab60a.txt",
+      "argumentsSha256": "affff4907b8245e0c3a005abed5db16d61e5420fe49992655ec10b0df18ead76",
+      "frameSha256": "7741339829aece40468773dca2d9830a5e76d315d260cb6eafb8e3756914b699"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 4,
+      "observedAt": "2026-09-09T22:14:40.211Z",
+      "upstreamRequestId": 6,
+      "tool": "list_directory",
+      "path": "/workspace",
+      "argumentsSha256": "acda0d21aae64c6f16c860dce985a6a79157d631474d0be08aa42fc3efa55f9a",
+      "frameSha256": "60f38f5d6335a0f30839e219a880188fbd4ba7df01ecc6c143b58d81f1fdcde8"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-09T22:16:47.562Z",
+      "upstreamRequestId": 3,
+      "tool": "read_text_file",
+      "path": "/workspace/codex-qualified-eb3b7f3ab60a.txt",
+      "argumentsSha256": "affff4907b8245e0c3a005abed5db16d61e5420fe49992655ec10b0df18ead76",
+      "frameSha256": "857c1339bae9fbb1da82bd8da2d37e12c27aed508e18e1537b664ffca9a53d10"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 2,
+      "observedAt": "2026-09-09T22:47:36.284Z",
+      "upstreamRequestId": 4,
+      "tool": "write_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "2ec8373cb18f85ca5f6c9cb96edcb2daaca966df413851ba0c3be9ce694723ed",
+      "frameSha256": "d4a474ffdfc968cf7954439e4bdc64bdafbe28601fbbbf7639690ce55c9ea303"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 3,
+      "observedAt": "2026-09-09T22:47:37.933Z",
+      "upstreamRequestId": 5,
+      "tool": "edit_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "343e1a9e29fc456db15920891655db9cadcbcd7fbc0a50b4fd2ea9bec261d1af",
+      "frameSha256": "1a64737f0459b6ec2a6ba45dca7436d031d8e60be2c786a30e12c1a4956f34eb"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 4,
+      "observedAt": "2026-09-09T22:47:39.307Z",
+      "upstreamRequestId": 6,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "045da5d8243dd8ff076bcd830e5a14d86e5a80e3f027207647eaa8dc63edfa4f"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 5,
+      "observedAt": "2026-09-09T22:47:40.635Z",
+      "upstreamRequestId": 7,
+      "tool": "list_directory",
+      "path": "/workspace",
+      "argumentsSha256": "acda0d21aae64c6f16c860dce985a6a79157d631474d0be08aa42fc3efa55f9a",
+      "frameSha256": "a1f82a74565de24e2c69a96f8ac83d25433ac5a0aa6febed3c32f07313bd3a1b"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 6,
+      "observedAt": "2026-09-09T23:08:47.959Z",
+      "upstreamRequestId": 8,
+      "tool": "write_file",
+      "path": "/workspace/hermes-qualified-41e59a293eb1.txt",
+      "argumentsSha256": "61225337f76de6585f89c2880f9c5cd0af1af51e122bc4295fa881ddde225174",
+      "frameSha256": "750290671a67d6adb0d25903a2f1a44bd3245a0ff652fbec81d4ee44fe49bbdc"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 7,
+      "observedAt": "2026-09-09T23:08:49.415Z",
+      "upstreamRequestId": 9,
+      "tool": "edit_file",
+      "path": "/workspace/hermes-qualified-41e59a293eb1.txt",
+      "argumentsSha256": "d29ea431345ca3214b7f8f9ec052347dc57cd9a50f636905ace4ff99cf66beea",
+      "frameSha256": "05c25701e9736f0b674ecaaaf8c1a5e0f3623b39f3fd3eb522e4ce483efc184e"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 8,
+      "observedAt": "2026-09-09T23:08:50.689Z",
+      "upstreamRequestId": 10,
+      "tool": "read_text_file",
+      "path": "/workspace/hermes-qualified-41e59a293eb1.txt",
+      "argumentsSha256": "83e3cb8fbbe4845de9fcbec01649d2fe684bfb496ece15287b93b5ece297a8e6",
+      "frameSha256": "b3c0973ff98259a43429239564a64ed75fd3dfeb889f02c2338f559bfd9c53c2"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 9,
+      "observedAt": "2026-09-09T23:08:54.130Z",
+      "upstreamRequestId": 11,
+      "tool": "list_directory",
+      "path": "/workspace",
+      "argumentsSha256": "acda0d21aae64c6f16c860dce985a6a79157d631474d0be08aa42fc3efa55f9a",
+      "frameSha256": "5f5d10e4744c50bb3e7314234cd3a6872aaac0ce80bc74043b3e1e80e4f2d89e"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 10,
+      "observedAt": "2026-09-09T23:13:26.682Z",
+      "upstreamRequestId": 12,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "25d8132a99de5e91407dedfa7e168758cf2daa20d79dbb28abbdf3003250507b"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 11,
+      "observedAt": "2026-09-09T23:13:28.350Z",
+      "upstreamRequestId": 13,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "239e978d7d1446f344148447c86130503ac715b0457ff25a8b75b8c2e49ce6ee"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 12,
+      "observedAt": "2026-09-09T23:13:29.696Z",
+      "upstreamRequestId": 14,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "e987f207a984434a8720e9eb9199a732446aa447bea3c0939589fab94de05014"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 13,
+      "observedAt": "2026-09-09T23:13:31.281Z",
+      "upstreamRequestId": 15,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "b71e8fa99555b36724fd6dc7f8c99e8e30cc5079ccc93b11c0342251695d9715"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 14,
+      "observedAt": "2026-09-09T23:13:32.537Z",
+      "upstreamRequestId": 16,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "839f9450cde86d282ae06676c90ef0d6c50f181003effdd1f8f6c1a9fd686cad"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 15,
+      "observedAt": "2026-09-09T23:13:33.948Z",
+      "upstreamRequestId": 17,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "7b0fb2906930468bc347d996da42e6eb756163e3f7dba61754bb4bccea6273ad"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 16,
+      "observedAt": "2026-09-09T23:13:35.254Z",
+      "upstreamRequestId": 18,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "d0b34fd3070dd32145b09291bcf66bfeb02cfbef22c18cf39839f62b67462ad7"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 17,
+      "observedAt": "2026-09-09T23:13:36.580Z",
+      "upstreamRequestId": 19,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "2cc02649c5df645fcc4a69bf302820bfdb6363f89f9b061574c1b465771aeebb"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 18,
+      "observedAt": "2026-09-09T23:13:37.885Z",
+      "upstreamRequestId": 20,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "4ef7412739d3eec4539708437a4a0b26b112e131124600a6993549668d848ac7"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 19,
+      "observedAt": "2026-09-09T23:13:39.136Z",
+      "upstreamRequestId": 21,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "7cd731b0c116b791907b4d5fca0e1c7cf0a1912f8a67b0c175860a23d45eb772"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 20,
+      "observedAt": "2026-09-09T23:13:40.491Z",
+      "upstreamRequestId": 22,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "4c537acdfbf03322e2928c6719106f5953a945f1b82e53061e687ceb56162f0f"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 21,
+      "observedAt": "2026-09-09T23:13:41.762Z",
+      "upstreamRequestId": 23,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "a54f226d0e63ed5e55f639f08d0fac3f5b2a87b455e5c0e97eacfd72da8df196"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 22,
+      "observedAt": "2026-09-09T23:13:43.214Z",
+      "upstreamRequestId": 24,
+      "tool": "read_text_file",
+      "path": "/workspace/openclaw-qualified-042438bb1fc6.txt",
+      "argumentsSha256": "1c6c5ef6a0699fd55a403aa4fd973d97a19d0e9dd728abbb086357c9e8ecfe31",
+      "frameSha256": "59901ad61c0777db225efab2dcf31a3459577480ff8c6b627150016bac156f88"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 23,
+      "observedAt": "2026-09-09T23:41:16.009Z",
+      "upstreamRequestId": 25,
+      "tool": "write_file",
+      "path": "/workspace/codex-inflight-4e48775918d7.txt",
+      "argumentsSha256": "8c71adac36828a845c80d1602529834135f6680c0666a6b2e5608c2d053b2e36",
+      "frameSha256": "d265dc561e3e46eb8ed1145f3e8ae28013ecc1f256c486777720744ff9d7a567"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 24,
+      "observedAt": "2026-09-09T23:41:18.630Z",
+      "upstreamRequestId": 26,
+      "tool": "write_file",
+      "path": "/workspace/codex-inflight-4e48775918d7.txt",
+      "argumentsSha256": "4cf3caafc82f8b89706bdb5f423fddc924d1ceab56fb89d746e1a49416c6cef7",
+      "frameSha256": "94efc796d1e40ebb4f5a0c64fd9deba2f57ce60c89b509dbbc43986f5fe1eddb"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 25,
+      "observedAt": "2026-09-09T23:41:56.316Z",
+      "upstreamRequestId": 27,
+      "tool": "read_text_file",
+      "path": "/workspace/codex-inflight-4e48775918d7.txt",
+      "argumentsSha256": "c16553688a27e458f0461dc089e0ab334b6d3b5a409c797307124ac313e37b1c",
+      "frameSha256": "499dc064b1f243f5092d6f2a8c6782e9cae90cd3c95e217db947b06e52639efa"
+    }
+  ]
+}

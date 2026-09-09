@@ -25,11 +25,11 @@ local candidate identities, not a published version combination.
 | Host | Pinned runtime | Recorded implementation and observations | Remaining acceptance work |
 |---|---|---|---|
 | Claude Code | 2.1.267 for current received-result cases; earlier 2.1.266 retained separately | Restricted parent HTTP transport and full native-result verification; actual host/kernel useful work, budget, denial, native-tool and response-loss cases with local Messages fixture | Isolated Anthropic credential; authenticated provider cases, remaining authority/fault/lifecycle matrix and publication |
-| Codex | 0.153.4 | Parent HTTP transport and complete native-result verification; actual OpenAI/kernel useful work, denials, budget, seven approvals, capability revocation and explicit delivery recovery | Remaining in-flight revocation, fault/cancellation/crash, identity/scope and lifecycle cases; release qualification and publication |
+| Codex | 0.153.4 | Current archive: useful work, denials, budget, approvals, revocation, 14 authority/fault cases, evidence substitution, cancellation, crash and signed owner-result recovery through actual OpenAI/kernel sessions | Remaining plugin omission/failure, parallel-call and lifecycle cases; release qualification and publication |
 | Cursor | GUI 3.19.13; CLI 2026.09.08-6caf4ff | Parent-owned HTTP gateway, scoped guest route and private journal; packaged real CLI discovery plus exact retained default-deny OS profile probes | Isolated authentication and bounded hosted AgentService protocol; protected prompt mode refuses. No useful model-driven workflow or full gate accepted |
-| Hermes | 0.20.5; upstream `175054c14b54404663d8614a178280cffe6062eb` | r9 wheel: full native-result cache binding, scoped parent transport, actual OpenAI/kernel workflow, denials, approvals, budget, capability revocation and delivery recovery | Full remaining authority/fault/lifecycle matrix; four legacy opt-in skips retained; publication |
-| Pi Agent | `@earendil-works/pi-coding-agent@0.85.1`; upstream `d981de1229ef899957bbe968bc8dcda02a21f477` | Stock AgentSession with one Chio tool; native-history acknowledgement, actual provider/kernel workflow, denials, approvals, budget, revocation and delivery recovery | Remaining in-flight revocation, identity/scope, fault/cancellation/crash and lifecycle cases; publication |
-| OpenClaw | 2026.5.20 (`e510042`) | Native runtime plugin and default-deny container; parent native-history acknowledgement; actual provider/kernel workflow, approvals, budget, revocation and recovery; process and descendant probes | Remaining authority/fault/cancellation/crash and lifecycle cases; publication |
+| Hermes | 0.20.5; upstream `175054c14b54404663d8614a178280cffe6062eb` | Current r10 wheel: useful work, denials, approvals, budget, 14 authority/fault cases, evidence substitution, cancellation, gateway crash and signed owner-result recovery through actual OpenAI/kernel sessions | Remaining plugin omission/failure, parallel-call, launcher SIGKILL and lifecycle cases; four legacy opt-in skips unresolved; publication |
+| Pi Agent | `@earendil-works/pi-coding-agent@0.85.1`; upstream `d981de1229ef899957bbe968bc8dcda02a21f477` | Current archive: stock AgentSession with one Chio tool; actual provider/kernel workflow, denials, approvals, budget, 14 authority/fault cases, evidence substitution, cancellation, crash and signed owner-result recovery | Remaining plugin omission/failure, parallel-call and lifecycle cases; publication |
+| OpenClaw | 2026.5.20 (`e510042`) | Current supervised archive/image: actual provider/kernel workflow, denials, approvals, budget, 14 authority/fault cases, evidence substitution, cancellation, crash and signed owner-result recovery; current-image process/descendant probes | Remaining plugin omission/failure, parallel-call, early creation crash and lifecycle cases; publication |
 
 All eight gates are open for the program. Individual passed cases in host records
 are bounded to their recorded source, artifact and configuration. Counts from
@@ -471,3 +471,44 @@ positive connection succeeded and zero guest connections reached the observer.
 This rerun is bound to the current image, rather than borrowing the earlier
 `98404ca86440` image's boundary result. Record:
 `native/evidence/2026-09-09/container-boundary-current`.
+
+
+## Signed owner-result recovery without redispatch
+
+Bridge source `52f80517af3fce948a3cbc9c9bb485fcdac7dd04` adds an operator-only
+importer for completed signed owner records absent from a host's verified cache.
+It verifies the retained original caller, session, capability, resource, request,
+trusted signer, result and delivery proof. It preserves the original unknown
+outcome and does not dispatch, acknowledge or release the fence. A separate
+explicit export/read/acknowledgement step is still required. The standalone
+owner exporter reads SQLite in read-only mode. No kernel or wire change was
+needed. The bridge suite passes 131 tests with zero skips.
+
+Each current Codex, Pi, Hermes r10 and OpenClaw candidate independently passed
+an actual native two-write evidence-substitution session, followed by signed
+owner recovery and one successful native read. Each rejected a forged owner
+signature with unchanged journal and effects. Export, import and explicit
+acknowledgement produced zero resource dispatches; the original write was never
+repeated. Four missing-owner-completion negatives refuse export and preserve the
+original unknown records. Exact per-host evidence commits and artifact hashes
+are in `raw/signed-owner-recovery-records.json`. These are I06/I07 subsets.
+
+The separate operator bridge archive SHA256 is
+`02a0e4ad4e61ffb989302cae8774a9ae9ab8f647473f1926d1e671673169a37b`.
+It and the standalone exporter are included in the local candidate bundle;
+host runtime archives remain unchanged. The documented procedure requires the
+original private authority and never creates a replacement session for recovery.
+
+Claude's current official gateway documentation explicitly states that routing
+Claude Code to non-Claude models is unsupported. The available OpenAI credential
+therefore does not supply a supported substitute for the missing isolated
+Claude-provider credential. Source checked 2026-09-09:
+<https://code.claude.com/docs/en/llm-gateway>. Cursor authentication and its hosted
+execution boundary remain separate blockers. All six remain unaccepted.
+
+All 47 selected bundle file hashes verify. The operator archive installed offline
+with an empty npm cache. The relocated bundle exporter, operator bridge, Codex
+package and copied kernel passed a fresh native fault/recovery run: two original
+authorized writes, zero operator dispatches, one recovery read and no repeated
+write. Evidence is in `raw/local-delivery-owner-recovery`. This qualifies the
+local documented recovery path, not public release or full lifecycle acceptance.
