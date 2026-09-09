@@ -662,8 +662,32 @@ fn build_scope_from_policy() {
     assert_eq!(capabilities[0].scope.grants[0].server_id, "*");
     assert_eq!(capabilities[0].scope.grants[0].tool_name, "*");
     assert_eq!(capabilities[0].ttl, 300);
+    assert_eq!(capabilities[0].scope.grants[0].max_invocations, None);
 }
 
+#[test]
+fn native_policy_materializes_signed_invocation_limits_and_hashes_them() {
+    let base = "capabilities:\n  default:\n    tools:\n      - server: fs\n        tool: '*'\n        ttl: 300\n";
+    let bounded = format!("{base}        max_invocations: 2\n");
+    let zero = format!("{base}        max_invocations: 0\n");
+    let policies = [base, &bounded, &zero].map(|yaml| parse_policy(yaml).test_unwrap());
+    let scopes = policies
+        .each_ref()
+        .map(|policy| build_runtime_default_capabilities(policy).test_unwrap());
+    assert_eq!(scopes[0][0].scope.grants[0].max_invocations, None);
+    assert_eq!(scopes[1][0].scope.grants[0].max_invocations, Some(2));
+    assert_eq!(scopes[2][0].scope.grants[0].max_invocations, Some(0));
+    let hashes: Vec<_> = policies
+        .iter()
+        .zip(&scopes)
+        .map(|(policy, scope)| runtime_hash_for_chio_yaml(policy, scope).test_unwrap())
+        .collect();
+    assert_ne!(hashes[0], hashes[1]);
+    assert_ne!(hashes[1], hashes[2]);
+    for invalid in ["-1", "4294967296", "two", "1.5"] {
+        assert!(parse_policy(&format!("{base}        max_invocations: {invalid}\n")).is_err());
+    }
+}
 #[test]
 fn build_scope_with_resources_and_prompts() {
     let yaml = r#"

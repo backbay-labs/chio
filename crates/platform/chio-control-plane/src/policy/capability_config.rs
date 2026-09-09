@@ -40,6 +40,10 @@ pub struct ToolGrantConfig {
     /// TTL in seconds for this grant.
     #[serde(default = "default_grant_ttl")]
     pub ttl: u64,
+    /// Maximum invocations of this grant within the issued capability.
+    /// Separate grants and newly issued capabilities have independent quotas.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_invocations: Option<u32>,
 }
 
 /// A resource grant specified in the policy YAML.
