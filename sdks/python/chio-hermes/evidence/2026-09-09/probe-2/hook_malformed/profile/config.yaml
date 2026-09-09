@@ -1,0 +1,26 @@
+{
+  "model": {
+    "provider": "custom",
+    "default": "boundary-probe",
+    "api_mode": "chat_completions",
+    "base_url": "http://127.0.0.1:56662/v1"
+  },
+  "terminal": {
+    "backend": "local",
+    "cwd": "/private/tmp/chio-hermes-20260909/probe-2/hook_malformed/workspace"
+  },
+  "plugins": {
+    "enabled": [
+      "boundary-probe"
+    ]
+  },
+  "display": {
+    "interface": "cli"
+  },
+  "compression": {
+    "enabled": false
+  },
+  "agent": {
+    "max_turns": 3
+  }
+}

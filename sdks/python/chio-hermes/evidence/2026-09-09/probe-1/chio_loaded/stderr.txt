@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/private/tmp/chio-hermes-20260909/host/hermes", line 10, in <module>
+    from hermes_cli.main import main
+  File "/private/tmp/chio-hermes-20260909/host/hermes_cli/main.py", line 723, in <module>
+    from hermes_cli.config import get_hermes_home
+  File "/private/tmp/chio-hermes-20260909/host/hermes_cli/config.py", line 724, in <module>
+    from utils import atomic_replace, fast_safe_load
+ModuleNotFoundError: No module named 'utils'

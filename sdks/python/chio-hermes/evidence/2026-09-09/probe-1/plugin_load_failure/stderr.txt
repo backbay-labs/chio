@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "/private/tmp/chio-hermes-20260909/host/hermes", line 11, in <module>
+    main()
+  File "/private/tmp/chio-hermes-20260909/host/hermes_cli/main.py", line 12702, in main
+    if _try_fast_chat_launch():
+       ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/chio-hermes-20260909/host/hermes_cli/main.py", line 12235, in _try_fast_chat_launch
+    cmd_chat(args)
+  File "/private/tmp/chio-hermes-20260909/host/hermes_cli/main.py", line 3235, in cmd_chat
+    from cli import main as cli_main
+  File "/private/tmp/chio-hermes-20260909/host/cli.py", line 60, in <module>
+    from prompt_toolkit.history import FileHistory
+ModuleNotFoundError: No module named 'prompt_toolkit'

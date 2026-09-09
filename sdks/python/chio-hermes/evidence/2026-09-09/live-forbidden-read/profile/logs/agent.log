@@ -1,0 +1,41 @@
+2026-09-09 11:31:00,616 INFO hermes_cli.plugins: Plugin 'browser-browser-use' registered browser provider: browser-use
+2026-09-09 11:31:00,618 INFO hermes_cli.plugins: Plugin 'browser-browserbase' registered browser provider: browserbase
+2026-09-09 11:31:00,620 INFO hermes_cli.plugins: Plugin 'browser-firecrawl' registered browser provider: firecrawl
+2026-09-09 11:31:00,790 INFO hermes_cli.plugins: Plugin 'deepinfra' registered image_gen provider: deepinfra
+2026-09-09 11:31:00,791 INFO hermes_cli.plugins: Plugin 'fal' registered image_gen provider: fal
+2026-09-09 11:31:00,793 INFO hermes_cli.plugins: Plugin 'krea' registered image_gen provider: krea
+2026-09-09 11:31:00,793 INFO hermes_cli.plugins: Plugin 'openai' registered image_gen provider: openai
+2026-09-09 11:31:00,794 INFO hermes_cli.plugins: Plugin 'openai-codex' registered image_gen provider: openai-codex
+2026-09-09 11:31:00,795 INFO hermes_cli.plugins: Plugin 'openrouter' registered image_gen provider: openrouter
+2026-09-09 11:31:00,795 INFO hermes_cli.plugins: Plugin 'openrouter' registered image_gen provider: nous
+2026-09-09 11:31:00,796 INFO hermes_cli.plugins: Plugin 'xai' registered image_gen provider: xai
+2026-09-09 11:31:00,798 INFO hermes_cli.plugins: Plugin 'deepinfra' registered video_gen provider: deepinfra
+2026-09-09 11:31:00,799 INFO hermes_cli.plugins: Plugin 'fal' registered video_gen provider: fal
+2026-09-09 11:31:00,799 INFO hermes_cli.plugins: Plugin 'xai' registered video_gen provider: xai
+2026-09-09 11:31:00,801 INFO hermes_cli.plugins: Plugin 'web-brave-free' registered web provider: brave-free
+2026-09-09 11:31:00,803 INFO hermes_cli.plugins: Plugin 'web-ddgs' registered web provider: ddgs
+2026-09-09 11:31:00,806 INFO hermes_cli.plugins: Plugin 'web-exa' registered web provider: exa
+2026-09-09 11:31:00,814 INFO hermes_cli.plugins: Plugin 'web-firecrawl' registered web provider: firecrawl
+2026-09-09 11:31:00,816 INFO hermes_cli.plugins: Plugin 'web-keenable' registered web provider: keenable
+2026-09-09 11:31:00,817 INFO hermes_cli.plugins: Plugin 'web-parallel' registered web provider: parallel
+2026-09-09 11:31:00,818 INFO hermes_cli.plugins: Plugin 'web-searxng' registered web provider: searxng
+2026-09-09 11:31:00,820 INFO hermes_cli.plugins: Plugin 'web-tavily' registered web provider: tavily
+2026-09-09 11:31:00,821 INFO hermes_cli.plugins: Plugin 'web-xai' registered web provider: xai
+2026-09-09 11:31:00,912 INFO hermes_cli.plugins: Plugin discovery complete: 55 found, 49 enabled
+2026-09-09 11:31:01,691 INFO tools.mcp_tool: MCP server 'chio' (stdio): registered 4 tool(s): mcp__chio__read_text_file, mcp__chio__write_file, mcp__chio__edit_file, mcp__chio__list_directory
+2026-09-09 11:31:01,692 INFO tools.mcp_tool: MCP: registered 4 tool(s) from 1 server(s)
+2026-09-09 11:31:01,692 INFO tools.mcp_tool:   MCP: 4 tool(s) from 1 server(s)
+2026-09-09 11:31:01,761 WARNING hermes_state: state.db: linked SQLite 3.40.1 is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) — using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.
+2026-09-09 11:31:01,932 INFO run_agent: Loaded environment variables from /tmp/chio-hermes-20260909/restricted-forbidden-read/profile/.env
+2026-09-09 11:31:01,979 INFO tools.tirith_security: tirith not found — downloading latest release for aarch64-apple-darwin...
+2026-09-09 11:31:02,302 WARNING hermes_state: state.db (async_delegation): linked SQLite 3.40.1 is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) — using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.
+2026-09-09 11:31:02,567 INFO run_agent: OpenAI client created (agent_init, shared=True) thread=MainThread:8400148672 provider=custom base_url=https://api.openai.com/v1 model=gpt-4.1
+2026-09-09 11:31:02,649 INFO [20260909_113101_1dd167] agent.turn_context: conversation turn: session=20260909_113101_1dd167 model=gpt-4.1 provider=custom platform=cli history=0 msg='Invoke the Chio read_text_file tool exactly once on /workspace/secret.txt. This ...'
+2026-09-09 11:31:03,153 INFO agent.auxiliary_client: Auxiliary auto-detect: using main provider custom (gpt-4.1)
+2026-09-09 11:31:03,154 INFO agent.auxiliary_client: Auxiliary title_generation: using custom (gpt-4.1) at https://api.openai.com/v1/
+2026-09-09 11:31:03,162 INFO run_agent: OpenAI client created (chat_completion_stream_request, shared=False) thread=Thread-5 (<lambda>):12935360512 provider=custom base_url=https://api.openai.com/v1 model=gpt-4.1
+2026-09-09 11:31:04,980 INFO [20260909_113101_1dd167] agent.conversation_loop: API call #1: model=gpt-4.1 provider=custom in=2532 out=24 total=2556 latency=1.8s
+2026-09-09 11:31:05,191 WARNING [20260909_113101_1dd167] agent.tool_executor: Tool mcp__chio__read_text_file returned error (0.21s): {"error": "{\"state\":\"denied\",\"evidence\":\"verified\",\"requestId\":\"hermes-forbidden-read-20260909:***\",\"receipt\":{\"action\":{\"
+2026-09-09 11:31:06,226 INFO [20260909_113101_1dd167] agent.conversation_loop: API call #2: model=gpt-4.1 provider=custom in=3386 out=38 total=3424 latency=1.0s
+2026-09-09 11:31:06,234 INFO [20260909_113101_1dd167] agent.conversation_loop: Turn ended: reason=text_response(finish_reason=stop) model=gpt-4.1 api_calls=2/8 budget=2/8 tool_turns=1 last_msg_role=assistant response_len=170 session=20260909_113101_1dd167
+2026-09-09 11:31:06,266 INFO [20260909_113101_1dd167] cli: CLI cleanup calling memory shutdown for session 20260909_113101_1dd167 with 4 message(s)

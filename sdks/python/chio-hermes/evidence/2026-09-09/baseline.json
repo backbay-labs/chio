@@ -1,0 +1,18 @@
+{
+  "hostRevision": "175054c14b54404663d8614a178280cffe6062eb",
+  "hostVersion": "0.20.5 (2026.8.19)",
+  "kernelSourceBaseline": "f5566d9a765c21cb36652a99c79de64968a656bf",
+  "hostPython": "3.11.3",
+  "pluginSourceBaselineVersion": "0.1.1",
+  "pluginCandidateVersion": "0.1.2",
+  "legacyManifestVersion": "0.1.0",
+  "operatingSystem": "ProductName:\t\tmacOS\nProductVersion:\t\t26.4\nBuildVersion:\t\t25E246",
+  "architecture": "arm64",
+  "wheelIdentities": {
+    "chio_code_agent-0.1.0-py3-none-any.whl": "5d7964db8cf91bb045990f887f66f2e28abf3382e28f236b6a16b7eb8b9f2098",
+    "chio_hermes-0.1.2-py3-none-any.whl": "8423e4a15d6a0d816ccd52bf067308e482589a142775f5466f538e9f7ac06d27",
+    "chio_adapter_base-0.2.0-py3-none-any.whl": "1b19a256d049a6addd1f2e7548b36be078d5f5bb55813be808df53a288e002fb",
+    "chio_sdk_python-0.1.0-py3-none-any.whl": "d111fb935e4fcf7a3ccf6d11be662905d597eceb67a2cc716db21b6feb6744d4"
+  },
+  "qualification": "Local candidate and bounded real-host fixture evidence; not accepted."
+}

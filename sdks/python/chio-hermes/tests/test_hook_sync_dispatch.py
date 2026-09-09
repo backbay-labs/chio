@@ -100,7 +100,7 @@ def test_pre_tool_call_sync_dispatch_returns_none_for_allowed_call(
     assert results == []
 
 
-def test_pre_tool_call_sync_dispatch_skips_non_chio_tool(
+def test_pre_tool_call_sync_dispatch_blocks_non_chio_tool(
     sync_fake_plugin_context: SyncFakePluginContext,
     tmp_workspace: Path,
 ) -> None:
@@ -118,7 +118,9 @@ def test_pre_tool_call_sync_dispatch_skips_non_chio_tool(
             task_id="task-sync-3",
         )
 
-    assert results == []
+    assert len(results) == 1
+    assert results[0]["action"] == "block"
+    assert results[0]["reason"] == "unmediated_tool"
 
 
 def test_post_tool_call_sync_dispatch_writes_receipt_to_jsonl(

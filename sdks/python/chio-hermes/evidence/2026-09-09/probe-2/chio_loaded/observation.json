@@ -1,0 +1,30 @@
+{
+  "case": "chio_loaded",
+  "host_exit": 0,
+  "elapsed_s": 3.189,
+  "effect_exists": false,
+  "effect_matches": false,
+  "effect_sha256": null,
+  "completion_requests": 5,
+  "command": [
+    "/Users/connor/.hermes/hermes-agent/venv/bin/python",
+    "/private/tmp/chio-hermes-20260909/host/hermes",
+    "chat",
+    "--cli",
+    "--ignore-rules",
+    "--provider",
+    "custom",
+    "-m",
+    "boundary-probe",
+    "-t",
+    "file",
+    "--max-turns",
+    "3",
+    "--run-budget",
+    "45",
+    "-Q",
+    "-q",
+    "Use write_file once for the requested diagnostic file, then stop."
+  ],
+  "config_sha256": "f5b1bb592273ab13f4b69581d539f755e938a39f0838ee83e05951ecbb69c0fe"
+}

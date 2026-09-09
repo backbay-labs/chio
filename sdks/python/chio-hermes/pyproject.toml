@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chio-hermes"
-version = "0.1.1"
+version = "0.1.2"
 description = "Hermes Agent plugin for the Chio protocol - capability-scoped file/shell/git tools, signed receipts, policy enforcement via pre_tool_call hook"
 readme = "README.md"
 license = "Apache-2.0"
@@ -53,6 +53,9 @@ dev = [
 
 [project.entry-points."hermes_agent.plugins"]
 chio = "chio_hermes"
+
+[project.scripts]
+chio-hermes-restricted = "chio_hermes.restricted:main"
 
 [tool.uv.sources]
 chio-adapter-base = { path = "../chio-adapter-base" }

@@ -149,19 +149,44 @@ def test_pre_tool_call_blocks_on_unexpected_policy_error(
     assert "policy backend unavailable" in result["message"]
 
 
-def test_pre_tool_call_ignores_non_chio_tool(
-    tmp_workspace: Path,
+@pytest.mark.parametrize(
+    "tool_name",
+    [
+        "read_file", "write_file", "patch", "search_files", "terminal", "process",
+        "web_fetch", "browser_navigate", "delegate_task", "execute_code",
+        "cronjob", "send_message", "mcp_external_write", "chio_unregistered", None,
+    ],
+)
+def test_pre_tool_call_blocks_tools_outside_registered_boundary(
+    tmp_workspace: Path, tool_name: str | None,
 ) -> None:
-    """Non-chio_ tools pass through untouched (other plugins own them)."""
+    """Native, external, delegated and forged-prefix routes cannot pass the hook."""
     runtime = make_configured_runtime(cwd=tmp_workspace)
     hook = make_pre_tool_call(runtime)
     result = hook(
-        tool_name="read_file",  # built-in Hermes tool, not ours
+        tool_name=tool_name,
         args={"path": ".env"},
         task_id="task-1",
     )
     assert not inspect.iscoroutine(result)
-    assert result is None
+    assert result["action"] == "block"
+    assert result["reason"] == "unmediated_tool"
+
+
+def test_pre_tool_call_blocks_when_not_configured() -> None:
+    result = make_pre_tool_call(RuntimeHandle())(
+        tool_name="chio_file_write", args={"path": "src/output", "content": "x"}
+    )
+    assert result["action"] == "block"
+    assert result["reason"] == "not_configured"
+
+
+def test_pre_tool_call_blocks_malformed_arguments(tmp_workspace: Path) -> None:
+    result = make_pre_tool_call(make_configured_runtime(cwd=tmp_workspace))(
+        tool_name="chio_file_write", args="malformed"
+    )
+    assert result["action"] == "block"
+    assert result["reason"] == "invalid_args"
 
 
 @pytest.mark.parametrize(

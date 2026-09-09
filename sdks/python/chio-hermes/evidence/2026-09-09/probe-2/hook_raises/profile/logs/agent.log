@@ -1,0 +1,49 @@
+2026-09-09 10:34:14,549 INFO hermes_cli.plugins: Plugin 'browser-browser-use' registered browser provider: browser-use
+2026-09-09 10:34:14,550 INFO hermes_cli.plugins: Plugin 'browser-browserbase' registered browser provider: browserbase
+2026-09-09 10:34:14,551 INFO hermes_cli.plugins: Plugin 'browser-firecrawl' registered browser provider: firecrawl
+2026-09-09 10:34:14,649 INFO hermes_cli.plugins: Plugin 'deepinfra' registered image_gen provider: deepinfra
+2026-09-09 10:34:14,650 INFO hermes_cli.plugins: Plugin 'fal' registered image_gen provider: fal
+2026-09-09 10:34:14,650 INFO hermes_cli.plugins: Plugin 'krea' registered image_gen provider: krea
+2026-09-09 10:34:14,650 INFO hermes_cli.plugins: Plugin 'openai' registered image_gen provider: openai
+2026-09-09 10:34:14,651 INFO hermes_cli.plugins: Plugin 'openai-codex' registered image_gen provider: openai-codex
+2026-09-09 10:34:14,651 INFO hermes_cli.plugins: Plugin 'openrouter' registered image_gen provider: openrouter
+2026-09-09 10:34:14,651 INFO hermes_cli.plugins: Plugin 'openrouter' registered image_gen provider: nous
+2026-09-09 10:34:14,652 INFO hermes_cli.plugins: Plugin 'xai' registered image_gen provider: xai
+2026-09-09 10:34:14,653 INFO hermes_cli.plugins: Plugin 'deepinfra' registered video_gen provider: deepinfra
+2026-09-09 10:34:14,654 INFO hermes_cli.plugins: Plugin 'fal' registered video_gen provider: fal
+2026-09-09 10:34:14,654 INFO hermes_cli.plugins: Plugin 'xai' registered video_gen provider: xai
+2026-09-09 10:34:14,655 INFO hermes_cli.plugins: Plugin 'web-brave-free' registered web provider: brave-free
+2026-09-09 10:34:14,656 INFO hermes_cli.plugins: Plugin 'web-ddgs' registered web provider: ddgs
+2026-09-09 10:34:14,657 INFO hermes_cli.plugins: Plugin 'web-exa' registered web provider: exa
+2026-09-09 10:34:14,658 INFO hermes_cli.plugins: Plugin 'web-firecrawl' registered web provider: firecrawl
+2026-09-09 10:34:14,659 INFO hermes_cli.plugins: Plugin 'web-keenable' registered web provider: keenable
+2026-09-09 10:34:14,660 INFO hermes_cli.plugins: Plugin 'web-parallel' registered web provider: parallel
+2026-09-09 10:34:14,660 INFO hermes_cli.plugins: Plugin 'web-searxng' registered web provider: searxng
+2026-09-09 10:34:14,661 INFO hermes_cli.plugins: Plugin 'web-tavily' registered web provider: tavily
+2026-09-09 10:34:14,662 INFO hermes_cli.plugins: Plugin 'web-xai' registered web provider: xai
+2026-09-09 10:34:14,684 INFO hermes_cli.plugin_capabilities: capability_check plugin=boundary-probe capability=tools.override decision=deny checked_by=plugin_capability_granted evidence=not granted
+2026-09-09 10:34:14,685 INFO hermes_cli.plugins: Plugin discovery complete: 57 found, 50 enabled
+2026-09-09 10:34:14,977 WARNING hermes_state: state.db: linked SQLite 3.40.1 is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) — using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.
+2026-09-09 10:34:15,040 INFO tools.tirith_security: tirith not found — downloading latest release for aarch64-apple-darwin...
+2026-09-09 10:34:15,042 WARNING cli: Background MCP discovery previously exited with no connected servers; retrying discovery thread
+2026-09-09 10:34:15,052 INFO run_agent: Loaded environment variables from /private/tmp/chio-hermes-20260909/probe-2/hook_raises/profile/.env
+2026-09-09 10:34:15,331 WARNING hermes_state: state.db (async_delegation): linked SQLite 3.40.1 is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) — using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.
+2026-09-09 10:34:15,620 INFO run_agent: OpenAI client created (agent_init, shared=True) thread=MainThread:8400148672 provider=custom base_url=http://127.0.0.1:56583/v1 model=boundary-probe
+2026-09-09 10:34:15,653 INFO agent.model_metadata: Could not detect context length for model 'boundary-probe' at http://127.0.0.1:56583/v1 — defaulting to 256,000 tokens (probe-down). Set model.context_length in config.yaml to override.
+2026-09-09 10:34:15,653 WARNING agent.model_metadata: Could not determine context length for model 'boundary-probe' (base_url=http://127.0.0.1:56583/v1) — falling back to 256,000 tokens. Set model.context_length in config.yaml to override.
+2026-09-09 10:34:15,681 INFO agent.model_metadata: Could not detect context length for model 'boundary-probe' at http://127.0.0.1:56583/v1 — defaulting to 256,000 tokens (probe-down). Set model.context_length in config.yaml to override.
+2026-09-09 10:34:15,752 INFO [20260909_103414_fa486c] agent.turn_context: conversation turn: session=20260909_103414_fa486c model=boundary-probe provider=custom platform=cli history=0 msg='Use write_file once for the requested diagnostic file, then stop.'
+2026-09-09 10:34:16,199 INFO agent.auxiliary_client: Auxiliary auto-detect: using main provider custom (boundary-probe)
+2026-09-09 10:34:16,200 INFO agent.auxiliary_client: Auxiliary title_generation: using custom (boundary-probe) at http://127.0.0.1:56583/v1/
+2026-09-09 10:34:16,206 INFO run_agent: OpenAI client created (chat_completion_stream_request, shared=False) thread=Thread-5 (<lambda>):12918534144 provider=custom base_url=http://127.0.0.1:56583/v1 model=boundary-probe
+2026-09-09 10:34:16,342 INFO [20260909_103414_fa486c] agent.conversation_loop: API call #1: model=boundary-probe provider=custom in=100 out=30 total=130 latency=0.2s
+2026-09-09 10:34:16,353 WARNING hermes_cli.plugins: Hook 'pre_tool_call' callback pre_tool_call raised: injected policy callback failure
+2026-09-09 10:34:16,356 INFO tools.file_tools: Creating new local environment for task default...
+2026-09-09 10:34:16,414 INFO tools.environments.base: Session snapshot created (session=3babcb1c1ef6, cwd=/private/tmp/chio-hermes-20260909/probe-2/hook_raises/workspace)
+2026-09-09 10:34:16,414 INFO tools.file_tools: local environment ready for task default
+2026-09-09 10:34:16,646 INFO [20260909_103414_fa486c] agent.tool_executor: tool write_file completed (0.29s, 330 chars)
+2026-09-09 10:34:16,655 INFO [20260909_103414_fa486c] agent.conversation_loop: API call #2: model=boundary-probe provider=custom in=100 out=30 total=130 latency=0.0s
+2026-09-09 10:34:16,661 INFO [20260909_103414_fa486c] agent.conversation_loop: Turn ended: reason=text_response(finish_reason=stop) model=boundary-probe api_calls=2/3 budget=2/3 tool_turns=1 last_msg_role=assistant response_len=15 session=20260909_103414_fa486c
+2026-09-09 10:34:16,665 INFO [20260909_103414_fa486c] tools.terminal_tool: Manually cleaned up environment for task: default
+2026-09-09 10:34:16,666 INFO [20260909_103414_fa486c] tools.terminal_tool: Cleaned 1 environments
+2026-09-09 10:34:16,666 INFO [20260909_103414_fa486c] cli: CLI cleanup calling memory shutdown for session 20260909_103414_fa486c with 4 message(s)

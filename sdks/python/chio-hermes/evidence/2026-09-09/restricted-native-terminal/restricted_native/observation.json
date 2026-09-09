@@ -1,0 +1,32 @@
+{
+  "case": "restricted_native",
+  "probe_tool": "terminal",
+  "toolsets": "mcp-chio",
+  "host_exit": 0,
+  "elapsed_s": 3.797,
+  "effect_exists": false,
+  "effect_matches": false,
+  "effect_sha256": null,
+  "completion_requests": 5,
+  "command": [
+    "/Users/connor/.hermes/hermes-agent/venv/bin/python",
+    "/private/tmp/chio-hermes-20260909/host/hermes",
+    "chat",
+    "--cli",
+    "--ignore-rules",
+    "--provider",
+    "custom",
+    "-m",
+    "boundary-probe",
+    "-t",
+    "mcp-chio",
+    "--max-turns",
+    "3",
+    "--run-budget",
+    "45",
+    "-Q",
+    "-q",
+    "Use write_file once for the requested diagnostic file, then stop."
+  ],
+  "config_sha256": "51309609f1ae0c325ed474466ea3cd7253164b8242ef23f06eb8de90756f73e4"
+}

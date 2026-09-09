@@ -50,11 +50,29 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
         task_id: str | None = None,
         **_kwargs: Any,
     ) -> dict[str, Any] | None:
-        if not _is_chio_tool(tool_name):
-            return None
+        # A prefix is not an ownership check: another plugin or MCP server can
+        # register a chio_* name. Only our exact registered tools may proceed.
+        from chio_hermes.manifest import TOOL_TABLE
+
+        if tool_name not in {entry.name for entry in TOOL_TABLE}:
+            return _block_pre_tool_call(
+                "Chio blocks tools outside its registered toolset. "
+                "Use a registered chio_* tool for this operation.",
+                guard="chio_tool_boundary",
+                reason="unmediated_tool",
+            )
         if not handle.is_configured() or handle.policy is None:
-            # Degraded mode: handler emits chio_not_configured.
-            return None
+            return _block_pre_tool_call(
+                "Chio is not configured; protected tool execution is unavailable.",
+                guard="chio_configuration",
+                reason="not_configured",
+            )
+        if args is not None and not isinstance(args, dict):
+            return _block_pre_tool_call(
+                "Chio tool arguments must be an object.",
+                guard="chio_policy_error",
+                reason="invalid_args",
+            )
         params = dict(args or {})
 
         try:

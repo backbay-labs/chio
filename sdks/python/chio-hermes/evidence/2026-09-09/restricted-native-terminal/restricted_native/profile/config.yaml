@@ -1,0 +1,44 @@
+{
+  "model": {
+    "provider": "custom",
+    "default": "boundary-probe",
+    "api_mode": "chat_completions",
+    "base_url": "http://127.0.0.1:60178/v1"
+  },
+  "terminal": {
+    "backend": "local",
+    "cwd": "/private/tmp/chio-hermes-20260909/restricted-native-terminal/restricted_native/workspace"
+  },
+  "plugins": {
+    "enabled": []
+  },
+  "display": {
+    "interface": "cli"
+  },
+  "compression": {
+    "enabled": false
+  },
+  "agent": {
+    "max_turns": 3
+  },
+  "mcp_servers": {
+    "chio": {
+      "command": "/opt/homebrew/bin/node",
+      "args": [
+        "/Users/connor/Medica/backbay/standalone/chio-bridge/.worktrees/required-agent-integrations-20260909/dist/gateway.js",
+        "/private/tmp/chio-six-host-kernel-20260909/hermes-gateway.json"
+      ],
+      "tools": {
+        "include": [
+          "read_text_file",
+          "write_file",
+          "edit_file",
+          "list_directory"
+        ]
+      },
+      "timeout": 45,
+      "connect_timeout": 15,
+      "lazy": false
+    }
+  }
+}

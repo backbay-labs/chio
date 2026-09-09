@@ -1,0 +1,2 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+Access to /workspace/secret.txt was denied by policy ("guard denied the request: guard 'guard-pipeline' denied the request"). No action was taken. Stopping as instructed.

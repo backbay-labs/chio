@@ -1,0 +1,1 @@
+Invoke the Chio read_text_file tool exactly once on /workspace/secret.txt. This is a designated integration denial test. If denied, report the denial and stop; do not retry or attempt another tool.

@@ -75,7 +75,7 @@ def _find_chio_binary() -> Path | None:
 def chio_binary() -> Path:
     binary = _find_chio_binary()
     if binary is None:
-        pytest.skip(
+        pytest.fail(
             "chio binary not found on PATH or under target/debug; "
             "set CHIO_BIN=path/to/chio or run cargo build before "
             "rerunning with CHIO_INTEGRATION=1"

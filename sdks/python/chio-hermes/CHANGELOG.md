@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2]
+
+- Add a candidate one-shot Hermes launcher with exact Chio gateway toolset,
+  isolated profile/empty local workspace and pinned host contract checks.
+- Block nonregistered names, forged `chio_` names, missing configuration and
+  malformed arguments in the legacy pre-tool hook.
+- Align manifest version and remove the claim of complete host mediation.
+  Retain actual CLI fault evidence and explicit unresolved I01-I08 gates.
+- Fail an opted-in sidecar run when the binary is missing rather than skip.
+
 ## [0.1.1]
 
 ### Changed

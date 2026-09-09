@@ -1,0 +1,30 @@
+{
+  "case": "hook_malformed",
+  "host_exit": 0,
+  "elapsed_s": 3.364,
+  "effect_exists": true,
+  "effect_matches": true,
+  "effect_sha256": "f55487f0e7ac9be80c93c20ef376c94fc11a906adb4ad5017dc22d4689994832",
+  "completion_requests": 5,
+  "command": [
+    "/Users/connor/.hermes/hermes-agent/venv/bin/python",
+    "/private/tmp/chio-hermes-20260909/host/hermes",
+    "chat",
+    "--cli",
+    "--ignore-rules",
+    "--provider",
+    "custom",
+    "-m",
+    "boundary-probe",
+    "-t",
+    "file",
+    "--max-turns",
+    "3",
+    "--run-budget",
+    "45",
+    "-Q",
+    "-q",
+    "Use write_file once for the requested diagnostic file, then stop."
+  ],
+  "config_sha256": "d94148d24d41ab861adc3489bff6640d952673df441b6353f9557531e042be01"
+}

@@ -1,0 +1,31 @@
+{
+  "case": "forbidden-write",
+  "exit": 0,
+  "elapsed_s": 7.48,
+  "inference": "OpenAI gpt-4.1",
+  "command": [
+    "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/.venv/bin/python",
+    "-m",
+    "chio_hermes.restricted",
+    "--host-python",
+    "/Users/connor/.hermes/hermes-agent/venv/bin/python",
+    "--host-root",
+    "/tmp/chio-hermes-20260909/host",
+    "--node",
+    "/opt/homebrew/bin/node",
+    "--gateway-script",
+    "/Users/connor/Medica/backbay/standalone/chio-bridge/.worktrees/required-agent-integrations-20260909/dist/gateway.js",
+    "--gateway-config",
+    "/tmp/chio-six-host-kernel-20260909/hermes-forbidden-write-gateway.json",
+    "--state-dir",
+    "/tmp/chio-hermes-20260909/restricted-forbidden-write",
+    "--query-file",
+    "/tmp/chio-hermes-20260909/forbidden-write-query.txt",
+    "--model",
+    "gpt-4.1",
+    "--model-base-url",
+    "https://api.openai.com/v1",
+    "--max-turns",
+    "8"
+  ]
+}

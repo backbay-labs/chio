@@ -1,0 +1,2 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+Error: The write_file operation failed due to "kernel unavailable or malformed handshake before dispatch." No changes were made. Stopping without retrying.

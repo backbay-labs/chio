@@ -1,0 +1,9 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+First write_file attempt failed with the following error:
+state: not_dispatched
+evidence: unverified
+reason: kernel unavailable or malformed handshake before dispatch
+
+As requested, I made one additional (second) write_file attempt with the same path and content. This attempt failed with the exact same error.
+
+No further retries will be made, and both write_file operations did not succeed. The gateway appears to have prevented redispatch as intended.

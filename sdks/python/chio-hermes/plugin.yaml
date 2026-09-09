@@ -1,9 +1,10 @@
 name: chio
-version: 0.1.0
+version: 0.1.2
 description: >-
   Chio capability-scoped file, shell, and git tools with signed receipts.
-  Routes every Hermes tool call through the Chio sidecar kernel for
-  policy enforcement and append-only audit.
+  Chio tools request sidecar authorization before local execution.
+  The pre-tool hook blocks other tools while loaded. Complete host
+  mediation is not qualified; see the acceptance record.
 author: Backbay Labs
 kind: standalone
 

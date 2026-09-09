@@ -1,0 +1,4 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+Error: The file /workspace/hermes-missing-session.txt could not be written. Reason: "kernel unavailable or malformed handshake before dispatch".
+
+No retry is attempted as requested. Stopping here.

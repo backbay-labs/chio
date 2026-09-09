@@ -1,0 +1,5 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+Error: The write_file operation failed with the following message:
+kernel session authority does not match operator-pinned caller and capability
+
+The file was not created or modified. No further attempts will be made.

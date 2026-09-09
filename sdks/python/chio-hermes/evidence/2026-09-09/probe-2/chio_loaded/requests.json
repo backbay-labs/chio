@@ -1,0 +1,49 @@
+[
+  {
+    "path": "/api/show",
+    "tools": [],
+    "tool_results": [],
+    "stream": false
+  },
+  {
+    "path": "/api/show",
+    "tools": [],
+    "tool_results": [],
+    "stream": false
+  },
+  {
+    "path": "/v1/chat/completions",
+    "tools": [
+      "patch",
+      "read_file",
+      "search_files",
+      "write_file"
+    ],
+    "tool_results": [],
+    "stream": true
+  },
+  {
+    "path": "/v1/chat/completions",
+    "tools": [],
+    "tool_results": [],
+    "stream": false
+  },
+  {
+    "path": "/v1/chat/completions",
+    "tools": [
+      "patch",
+      "read_file",
+      "search_files",
+      "write_file"
+    ],
+    "tool_results": [
+      {
+        "role": "tool",
+        "name": "write_file",
+        "content": "{\"error\": \"Chio blocks tools outside its registered toolset. Use a registered chio_* tool for this operation.\"}",
+        "tool_call_id": "call_boundary_probe"
+      }
+    ],
+    "stream": true
+  }
+]

@@ -1,0 +1,2 @@
+  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only
+Error occurred: kernel unavailable or malformed handshake before dispatch. Write operation to /workspace/hermes-missing-kernel.txt was not performed. Stopping as requested.

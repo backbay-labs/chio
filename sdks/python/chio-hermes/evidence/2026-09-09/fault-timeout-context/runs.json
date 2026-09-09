@@ -1,0 +1,33 @@
+[
+  {
+    "run": 0,
+    "exit": 0,
+    "elapsed_s": 12.141,
+    "command": [
+      "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/.venv/bin/python",
+      "-m",
+      "chio_hermes.restricted",
+      "--host-python",
+      "/Users/connor/.hermes/hermes-agent/venv/bin/python",
+      "--host-root",
+      "/private/tmp/chio-hermes-20260909/host",
+      "--node",
+      "/opt/homebrew/bin/node",
+      "--gateway-script",
+      "/Users/connor/Medica/backbay/standalone/chio-bridge/.worktrees/required-agent-integrations-20260909/dist/gateway.js",
+      "--gateway-config",
+      "/private/tmp/chio-hermes-20260909/fault-timeout-context/private-gateway.json",
+      "--state-dir",
+      "/private/tmp/chio-hermes-20260909/fault-timeout-context/run-0",
+      "--query-file",
+      "/private/tmp/chio-hermes-20260909/timeout-context-query.txt",
+      "--model",
+      "gpt-4.1",
+      "--model-base-url",
+      "https://api.openai.com/v1",
+      "--max-turns",
+      "6"
+    ],
+    "forwarded_tool_calls": 0
+  }
+]

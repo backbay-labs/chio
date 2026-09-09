@@ -1,0 +1,49 @@
+[
+  {
+    "path": "/api/show",
+    "tools": [],
+    "tool_results": [],
+    "stream": false
+  },
+  {
+    "path": "/api/show",
+    "tools": [],
+    "tool_results": [],
+    "stream": false
+  },
+  {
+    "path": "/v1/chat/completions",
+    "tools": [
+      "patch",
+      "read_file",
+      "search_files",
+      "write_file"
+    ],
+    "tool_results": [],
+    "stream": true
+  },
+  {
+    "path": "/v1/chat/completions",
+    "tools": [],
+    "tool_results": [],
+    "stream": false
+  },
+  {
+    "path": "/v1/chat/completions",
+    "tools": [
+      "patch",
+      "read_file",
+      "search_files",
+      "write_file"
+    ],
+    "tool_results": [
+      {
+        "role": "tool",
+        "name": "write_file",
+        "content": "{\"bytes_written\": 40, \"dirs_created\": true, \"verified\": true, \"lint\": {\"status\": \"skipped\", \"message\": \"No linter for .txt files\"}, \"resolved_path\": \"/private/tmp/chio-hermes-20260909/probe-2/native_control/workspace/forbidden.txt\", \"files_modified\": [\"/private/tmp/chio-hermes-20260909/probe-2/native_control/workspace/forbidden.txt\"]}",
+        "tool_call_id": "call_boundary_probe"
+      }
+    ],
+    "stream": true
+  }
+]
