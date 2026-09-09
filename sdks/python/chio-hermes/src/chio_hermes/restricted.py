@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import os
+import signal
 import re
 import stat
 import subprocess
@@ -313,6 +314,57 @@ def prepare(args: argparse.Namespace) -> tuple[list[str], dict[str, str], Path]:
     return command, env, workspace
 
 
+def run_host(command: list[str], env: dict[str, str], workspace: Path) -> tuple[int, int | None]:
+    """Forward operator cancellation to the isolated host and reap its process group."""
+    child: subprocess.Popen[bytes] | None = None
+    interrupted: int | None = None
+    deadline: float | None = None
+
+    def forward(signum: int, _frame: Any) -> None:
+        nonlocal interrupted, deadline
+        interrupted = interrupted or signum
+        deadline = deadline or time.monotonic() + 5
+        if child is not None:
+            try:
+                os.killpg(child.pid, signum)
+            except ProcessLookupError:
+                pass
+
+    previous = {signum: signal.getsignal(signum) for signum in (signal.SIGINT, signal.SIGTERM)}
+    try:
+        for signum in previous:
+            signal.signal(signum, forward)
+        child = subprocess.Popen(command, env=env, cwd=workspace, start_new_session=True)
+        if interrupted is not None:
+            forward(interrupted, None)
+        while True:
+            try:
+                return child.wait(timeout=0.1), interrupted
+            except subprocess.TimeoutExpired:
+                if deadline is not None and time.monotonic() >= deadline:
+                    try:
+                        os.killpg(child.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    deadline = None
+    finally:
+        if interrupted is not None and child is not None:
+            # The leader may exit before a descendant finishes. Cancellation
+            # still owns the whole isolated group, including those descendants.
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if child is not None and child.poll() is None:
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            child.wait(timeout=5)
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("host-python", "host-root", "node", "gateway-script", "gateway-config",
@@ -336,7 +388,7 @@ def main() -> int:
                 args.model_relay_url, args.model_relay_token = relay.base_url, relay.token
                 command, env, workspace = prepare(args)
                 try:
-                    host_code = subprocess.call(command, env=env, cwd=workspace)
+                    host_code, interrupted = run_host(command, env, workspace)
                     private = _private_json(args.gateway_config.absolute())
                     records = [_private_json(path) for path in Path(private["journalDir"]).glob("*.json")]
                     unresolved = any(record.get("state") in ["pending", "unknown"] or record.get("state") == "completed" and (not record.get("acknowledged") or not record.get("hostDeliveryConfirmed")) for record in records)
@@ -345,9 +397,9 @@ def main() -> int:
                     unresolved |= "unknown" in gateway.outcomes.values()
                     pending |= "awaiting_approval" in gateway.outcomes.values()
                     unsuccessful |= any(value in ["denied", "not_dispatched"] for value in gateway.outcomes.values())
-                    outcome = "unresolved" if unresolved else "awaiting_approval" if pending else "protected_work_incomplete" if unsuccessful else "completed" if host_code == 0 else "host_failed"
-                    exit_code = 2 if unresolved else 4 if pending else 3 if unsuccessful else host_code
-                    (args.state_dir / "terminal.json").write_text(json.dumps({"hostExitCode": host_code, "exitCode": exit_code, "outcome": outcome, "confirmedDeliveries": len(gateway.events)}) + "\n")
+                    outcome = "unresolved" if unresolved else "awaiting_approval" if pending else "protected_work_incomplete" if unsuccessful else "cancelled" if interrupted else "completed" if host_code == 0 else "host_failed"
+                    exit_code = 2 if unresolved else 4 if pending else 3 if unsuccessful else 128 + interrupted if interrupted else host_code
+                    (args.state_dir / "terminal.json").write_text(json.dumps({"hostExitCode": host_code, "exitCode": exit_code, "outcome": outcome, "operatorInterrupt": signal.Signals(interrupted).name if interrupted else None, "confirmedDeliveries": len(gateway.events)}) + "\n")
                     return exit_code
                 finally:
                     (args.state_dir / "model-relay.json").write_text(json.dumps(relay.events, indent=2) + "\n")
