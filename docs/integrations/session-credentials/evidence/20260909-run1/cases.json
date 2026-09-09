@@ -1,0 +1,22 @@
+[
+  {
+    "case": "forbidden_observer_control_observer-control",
+    "passed": true,
+    "details": {
+      "directResourceOwnerWrite": "observer-control"
+    },
+    "resource": {
+      "forbidden.txt": "observer-control"
+    }
+  },
+  {
+    "case": "forbidden_observer_control_original",
+    "passed": true,
+    "details": {
+      "directResourceOwnerWrite": "original"
+    },
+    "resource": {
+      "forbidden.txt": "original"
+    }
+  }
+]

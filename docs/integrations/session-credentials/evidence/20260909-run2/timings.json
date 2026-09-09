@@ -1,0 +1,380 @@
+[
+  {
+    "httpMethod": "GET",
+    "path": "/admin/health",
+    "rpcMethod": null,
+    "status": 200,
+    "elapsedMs": 365.309
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "initialize",
+    "status": 200,
+    "elapsedMs": 567.973
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "notifications/initialized",
+    "status": 202,
+    "elapsedMs": 105.229
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/admin/sessions/1a3aa86b31cb9c248978dc39f5167dc393f81a7fc089989366a4ce6617fdf352/credential",
+    "rpcMethod": null,
+    "status": 200,
+    "elapsedMs": 5.837
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "chio/execution-context",
+    "status": 200,
+    "elapsedMs": 3.843
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/list",
+    "status": 200,
+    "elapsedMs": 5.175
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 200,
+    "elapsedMs": 575.89
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 200,
+    "elapsedMs": 4.7
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 403,
+    "elapsedMs": 2.426
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "initialize",
+    "status": 401,
+    "elapsedMs": 1.621
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "initialize",
+    "status": 200,
+    "elapsedMs": 107.347
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "notifications/initialized",
+    "status": 202,
+    "elapsedMs": 102.853
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/admin/sessions/9f38f9feb2036a457af6b375491894d8b869d630c7c33b7c584c8969baf889ab/credential",
+    "rpcMethod": null,
+    "status": 200,
+    "elapsedMs": 3.98
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 401,
+    "elapsedMs": 2.198
+  },
+  {
+    "httpMethod": "GET",
+    "path": "/admin/health",
+    "rpcMethod": null,
+    "status": 401,
+    "elapsedMs": 0.879
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/admin/sessions/1a3aa86b31cb9c248978dc39f5167dc393f81a7fc089989366a4ce6617fdf352/credential",
+    "rpcMethod": null,
+    "status": 401,
+    "elapsedMs": 0.98
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/admin/sessions/1a3aa86b31cb9c248978dc39f5167dc393f81a7fc089989366a4ce6617fdf352/credential/revoke",
+    "rpcMethod": null,
+    "status": 401,
+    "elapsedMs": 1.438
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "initialize",
+    "status": 200,
+    "elapsedMs": 101.341
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "notifications/initialized",
+    "status": 202,
+    "elapsedMs": 103.468
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/admin/sessions/a84e2c3492545798f6adb33501a6a7b4b336f15970e936e21873a33547400a42/credential",
+    "rpcMethod": null,
+    "status": 200,
+    "elapsedMs": 3.883
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 401,
+    "elapsedMs": 2.443
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "initialize",
+    "status": 200,
+    "elapsedMs": 103.312
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "notifications/initialized",
+    "status": 202,
+    "elapsedMs": 103.465
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/admin/sessions/4016e829943355347425a3b6b3c909a626aaeecbddc775aace1a52c969056709/credential",
+    "rpcMethod": null,
+    "status": 200,
+    "elapsedMs": 5.154
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/admin/sessions/4016e829943355347425a3b6b3c909a626aaeecbddc775aace1a52c969056709/credential/revoke",
+    "rpcMethod": null,
+    "status": 200,
+    "elapsedMs": 1.957
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 401,
+    "elapsedMs": 1.037
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "initialize",
+    "status": 200,
+    "elapsedMs": 89.277
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "notifications/initialized",
+    "status": 202,
+    "elapsedMs": 103.87
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/admin/sessions/df0bb062fcaadd8d35f749b5fc4bf707cf4e178bbe7576e05535c71212bf694f/credential",
+    "rpcMethod": null,
+    "status": 200,
+    "elapsedMs": 6.628
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/admin/revocations",
+    "rpcMethod": null,
+    "status": 200,
+    "elapsedMs": 39.734
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 200,
+    "elapsedMs": 18.426
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 200,
+    "elapsedMs": 129.926
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 409,
+    "elapsedMs": 3.781
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "initialize",
+    "status": 200,
+    "elapsedMs": 87.623
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "notifications/initialized",
+    "status": 202,
+    "elapsedMs": 102.259
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/admin/sessions/25cfb51c5f1b6b8cb029668282c2fcf80f8b6d1b388e9d5981811dbcd30e1e75/credential",
+    "rpcMethod": null,
+    "status": 200,
+    "elapsedMs": 3.341
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 200,
+    "elapsedMs": 461.412
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 200,
+    "elapsedMs": 485.869
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 200,
+    "elapsedMs": 405.862
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 200,
+    "elapsedMs": 434.693
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 200,
+    "elapsedMs": 418.971
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 200,
+    "elapsedMs": 459.734
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 200,
+    "elapsedMs": 466.65
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 200,
+    "elapsedMs": 421.856
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 200,
+    "elapsedMs": 129.245
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "initialize",
+    "status": 200,
+    "elapsedMs": 147.159
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "notifications/initialized",
+    "status": 202,
+    "elapsedMs": 103.541
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/admin/sessions/5bff24e25ec0bbd9f42cd3f0ec81d4daacbfe4941927e2a26e3fe8b6b127c6d8/credential",
+    "rpcMethod": null,
+    "status": 200,
+    "elapsedMs": 4.003
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 409,
+    "elapsedMs": 6.479
+  },
+  {
+    "httpMethod": "GET",
+    "path": "/admin/health",
+    "rpcMethod": null,
+    "status": 200,
+    "elapsedMs": 883.585
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 200,
+    "elapsedMs": 464.115
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 409,
+    "elapsedMs": 3.844
+  },
+  {
+    "httpMethod": "GET",
+    "path": "/admin/health",
+    "rpcMethod": null,
+    "status": 200,
+    "elapsedMs": 5.957
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "tools/call",
+    "status": 401,
+    "elapsedMs": 9.411
+  }
+]

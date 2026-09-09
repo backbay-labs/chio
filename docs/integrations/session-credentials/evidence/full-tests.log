@@ -1,0 +1,60 @@
+    Finished `test` profile [unoptimized] target(s) in 1.39s
+     Running unittests src/lib.rs (/Users/connor/Medica/backbay/standalone/arc/target/debug/deps/chio_mcp_remote-68520b61bf1dc65c)
+
+running 53 tests
+test http_service_tests::parse_remote_session_peer_capabilities_honors_explicitly_disabled_sampling ... ok
+test http_service_tests::parse_remote_session_peer_capabilities_honors_progress_and_cancellation_declarations ... ok
+test http_service_tests::parse_remote_session_peer_capabilities_honors_explicitly_disabled_roots ... ok
+test http_service_tests::parse_remote_session_peer_capabilities_honors_explicitly_disabled_elicitation ... ok
+test remote_mcp_session_credentials::tests::credential_route_allowlist_excludes_issuance_and_hidden_tools ... ok
+test remote_mcp_session_credentials::tests::credential_response_filters_inventory_and_exposes_bound_context ... ok
+test remote_mcp_admin::tests::validate_admin_request_rejects_disallowed_origin_before_bearer_auth ... ok
+test tests::build_federated_claims_normalizes_enterprise_identity_metadata ... ok
+test remote_mcp_admin::tests::validate_admin_request_accepts_local_origin_and_matching_bearer_token ... ok
+test tests::build_federated_principal_azure_ad_prefers_oid_and_appid ... ok
+test tests::build_federated_principal_prefers_subject_over_client_id ... ok
+test http_service_tests::read_limited_mcp_post_body_rejects_oversized_content_length ... ok
+test http_service_tests::read_limited_mcp_post_body_rejects_streaming_body_over_limit ... ok
+test tests::chio_oauth_discovery_profile_metadata_advertises_sender_constraints ... ok
+test tests::chio_oauth_discovery_validation_rejects_profile_mismatch ... ok
+test tests::introspection_bearer_verifier_rejects_inactive_token ... ok
+test tests::introspection_bearer_verifier_accepts_active_token_with_resource_claim ... ok
+test tests::jwt_bearer_verifier_builds_oauth_session_auth_context ... ok
+test tests::jwt_bearer_verifier_authenticates_es256_jwks_token ... ok
+test tests::jwt_remote_auth_requires_separate_admin_token ... ok
+test tests::identity_federation_derives_stable_keypair_per_principal ... ok
+test tests::expected_resume_agent_id_is_revalidated_from_identity_federation_seed ... ok
+test tests::load_active_session_records_keeps_active_row_when_matching_tombstone_is_malformed ... ok
+test tests::jwt_bearer_verifier_authenticates_es384_jwks_token ... ok
+test tests::mcp_rate_limit_key_ignores_unverified_client_headers ... ok
+test tests::local_authorization_server_issues_unique_codes_for_same_second_approvals ... ok
+test tests::mcp_session_id_header_classifies_missing_invalid_and_valid_values ... ok
+test tests::oidc_fetch_rejects_special_use_address_contract ... ok
+test tests::load_active_session_records_skips_malformed_rows ... ok
+test tests::provider_profile_can_derive_standard_oidc_discovery_url_from_issuer ... ok
+test tests::load_terminal_session_records_skips_mismatched_payload_session_id ... ok
+test tests::remote_auth_state_rejects_unusable_static_bearer_tokens ... ok
+test tests::load_active_session_records_skips_terminal_tombstoned_rows ... ok
+test tests::remote_session_auth_context_uses_static_bearer_fingerprint_and_origin ... ok
+test tests::remote_session_new_preserves_ready_lifecycle_on_restore ... ok
+test tests::session_runtime::mcp_rate_limiter_caps_session_window ... ok
+test tests::session_runtime::mcp_rate_limiter_caps_tracked_keys ... ok
+test tests::oidc_fetch_uses_contract_backed_client_for_hostname_url ... ok
+test tests::shared_hosted_owner_notification_fanout_replays_to_all_live_taps ... ok
+test tests::shared_hosted_owner_notification_fanout_tracks_pruned_dead_subscribers ... ok
+test tests::shared_upstream_notification_fanout_copies_notifications_and_prunes_dead_queues ... ok
+test tests::session_runtime::remote_session_factory_rejects_admission_sidecar_aliases ... ok
+test tests::stored_capability_issuer_revalidation_rejects_untrusted_restart_issuer ... ok
+test remote_mcp_session_credentials::tests::pending_owner_call_survives_reopen_and_token_rotation ... ok
+test tests::validate_restored_peer_capabilities_rejects_tampered_record ... ok
+test tests::validate_resume_record_integrity_rejects_tampered_auth_context ... ok
+test remote_mcp_session_credentials::tests::credential_storage_rejects_substitution_and_survives_reopen ... ok
+test tests::remote_session_ledger_startup_skips_malformed_terminal_tombstones ... ok
+test remote_mcp_session_credentials::tests::completed_cache_replays_exact_request_and_rejects_conflicts ... ok
+test tests::purge_terminal_session_records_keeps_tombstones_for_stale_active_rows ... ok
+test tests::session_runtime::remote_session_factory_holds_one_durable_admission_sidecar ... ok
+test tests::jwt_bearer_verifier_authenticates_rs256_jwks_token ... ok
+test tests::jwt_bearer_verifier_authenticates_ps256_jwks_token ... ok
+
+test result: ok. 53 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.36s
+

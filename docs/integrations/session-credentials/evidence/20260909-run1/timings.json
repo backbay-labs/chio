@@ -1,0 +1,16 @@
+[
+  {
+    "httpMethod": "GET",
+    "path": "/admin/health",
+    "rpcMethod": null,
+    "status": 200,
+    "elapsedMs": 373.568
+  },
+  {
+    "httpMethod": "POST",
+    "path": "/mcp",
+    "rpcMethod": "initialize",
+    "status": 500,
+    "elapsedMs": 451.215
+  }
+]

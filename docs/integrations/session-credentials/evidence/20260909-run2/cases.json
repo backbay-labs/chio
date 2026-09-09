@@ -1,0 +1,995 @@
+[
+  {
+    "case": "forbidden_observer_control_observer-control",
+    "passed": true,
+    "details": {
+      "directResourceOwnerWrite": "observer-control"
+    },
+    "resource": {
+      "forbidden.txt": "observer-control"
+    }
+  },
+  {
+    "case": "forbidden_observer_control_original",
+    "passed": true,
+    "details": {
+      "directResourceOwnerWrite": "original"
+    },
+    "resource": {
+      "forbidden.txt": "original"
+    }
+  },
+  {
+    "case": "delegated_context",
+    "passed": true,
+    "details": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilityIds": [
+          "cap-01a08700-4df4-78a1-9175-84ba0112155f"
+        ],
+        "evidenceVersion": "1",
+        "schema": "chio.mcp.execution-context.v1",
+        "serverId": "fs",
+        "serverIds": [
+          "fs"
+        ],
+        "sessionCredential": {
+          "allowedTools": [
+            "list_directory",
+            "read_text_file",
+            "write_file"
+          ],
+          "capabilityIds": [
+            "cap-01a08700-4df4-78a1-9175-84ba0112155f"
+          ],
+          "endpointPath": "/mcp",
+          "expiresAt": 1788971639,
+          "issuedAt": 1788971339,
+          "schema": "chio.mcp.session-credential.v1",
+          "serverId": "fs",
+          "sessionId": "1a3aa86b31cb9c248978dc39f5167dc393f81a7fc089989366a4ce6617fdf352",
+          "subjectKey": "24f703bb561580bff55a43bb52b08ae4c0eb341c44d24baa71975b60ac79a848"
+        },
+        "subjectKey": "24f703bb561580bff55a43bb52b08ae4c0eb341c44d24baa71975b60ac79a848"
+      }
+    },
+    "resource": {
+      "forbidden.txt": "original"
+    }
+  },
+  {
+    "case": "inventory_filtered",
+    "passed": true,
+    "details": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "nextCursor": null,
+        "tools": [
+          {
+            "annotations": {
+              "destructiveHint": false,
+              "readOnlyHint": true
+            },
+            "description": "Read Text File\n\nRead the complete contents of a file from the file system as text. Handles various text encodings and provides detailed error messages if the file cannot be read. Use this tool when you need to examine the contents of a single file. Use the 'head' parameter to read only the first N lines of a file, or the 'tail' parameter to read only the last N lines of a file. Operates on the file as text regardless of extension. Only works within allowed directories.",
+            "execution": {
+              "taskSupport": "optional"
+            },
+            "inputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "properties": {
+                "head": {
+                  "description": "If provided, returns only the first N lines of the file",
+                  "type": "number"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "tail": {
+                  "description": "If provided, returns only the last N lines of the file",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "type": "object"
+            },
+            "name": "read_text_file",
+            "outputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "content"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "annotations": {
+              "destructiveHint": true,
+              "readOnlyHint": false
+            },
+            "description": "Write File\n\nCreate a new file or completely overwrite an existing file with new content. Use with caution as it will overwrite existing files without warning. Handles text content with proper encoding. Only works within allowed directories.",
+            "execution": {
+              "taskSupport": "optional"
+            },
+            "inputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "properties": {
+                "content": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "content"
+              ],
+              "type": "object"
+            },
+            "name": "write_file",
+            "outputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "content"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "annotations": {
+              "destructiveHint": false,
+              "readOnlyHint": true
+            },
+            "description": "List Directory\n\nGet a detailed listing of all files and directories in a specified path. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is essential for understanding directory structure and finding specific files within a directory. Only works within allowed directories.",
+            "execution": {
+              "taskSupport": "optional"
+            },
+            "inputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "properties": {
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "type": "object"
+            },
+            "name": "list_directory",
+            "outputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "content"
+              ],
+              "type": "object"
+            }
+          }
+        ]
+      }
+    },
+    "resource": {
+      "forbidden.txt": "original"
+    }
+  },
+  {
+    "case": "useful_effect",
+    "passed": true,
+    "details": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": {
+              "content": [
+                {
+                  "text": "Successfully wrote to /workspace/useful.txt",
+                  "type": "text"
+                }
+              ],
+              "isError": false,
+              "structuredContent": {
+                "content": "Successfully wrote to /workspace/useful.txt"
+              }
+            },
+            "outputKind": "value",
+            "receipt": {
+              "action": {
+                "parameter_hash": "900fe0615ccaa33fd653bcb249afab414c3f544d4070dacaa47636169d52ebbb",
+                "parameters": {
+                  "content": "legitimate useful work",
+                  "path": "/workspace/useful.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a08700-4df4-78a1-9175-84ba0112155f",
+              "content_hash": "d0541823c2ea10b1247f99ee3e8304c876bd2f2ca5ac3cba81f0775d3252233f",
+              "decision": {
+                "verdict": "allow"
+              },
+              "id": "97ae05a9634eb6b633d0b3c2b9808138cb2bb021c821f98bfe7ec818b14141c6",
+              "kernel_key": "6eae18c2ab8b98e64efa0d0f18f0c7efe7ccc2e88ca7f87f32c9251f672f596e",
+              "metadata": {
+                "admission_operation": {
+                  "compensation_status": "not_compensated",
+                  "coordinator_lease_epoch": 1,
+                  "coordinator_lease_id": "01a08700-463c-7ac2-a306-fc6c41c5d141",
+                  "operation_id": "1a44bac3fcaf14f0132afbc6badb2ac0820f734fb183b90aeb680a320bfddd77",
+                  "projected_dispatch_state": "terminal",
+                  "projected_operation_version": 8,
+                  "projected_state": "completed",
+                  "request_binding_hash": "0675819957ead03fb7e62e4c7a89267e8f163311f679eba3e895efbdeb4b0b69",
+                  "request_id": "useful-1",
+                  "request_namespace_digest": "6e82ce814214b3e9629cdf793bf6beb050e1b9f326d03bb818c330a7249301a7",
+                  "retained_dispatch_commit": {
+                    "committed_version": 6,
+                    "coordinator_lease_epoch": 1,
+                    "coordinator_lease_id": "01a08700-463c-7ac2-a306-fc6c41c5d141",
+                    "provider_attempt": {
+                      "attempt_id": "attempt:1a44bac3fcaf14f0132afbc6badb2ac0820f734fb183b90aeb680a320bfddd77",
+                      "operation_id": "1a44bac3fcaf14f0132afbc6badb2ac0820f734fb183b90aeb680a320bfddd77",
+                      "transport_id": "kernel-tool-server:fs",
+                      "transport_key_epoch": 1
+                    },
+                    "store_fence": {
+                      "lease_id": "01a08700-463c-7ac2-a306-fc6c41c5d141",
+                      "owner_epoch": 1,
+                      "store_uuid": "01a08700-4534-7540-8671-85f3b5b01aa7"
+                    }
+                  },
+                  "schema": "chio.admission-receipt.v1",
+                  "store_fence": {
+                    "lease_id": "01a08700-463c-7ac2-a306-fc6c41c5d141",
+                    "owner_epoch": 1,
+                    "store_uuid": "01a08700-4534-7540-8671-85f3b5b01aa7"
+                  },
+                  "tool_outcome_id": "9b69d8b24abc3b655f2d32b4a1f2c02281f3d7571065b42551ab6ecffeb3d5b0",
+                  "tool_outcome_version": 2,
+                  "trusted_time_unix_ms": 1788971340472
+                },
+                "attribution": {
+                  "delegation_depth": 0,
+                  "grant_index": 0,
+                  "issuer_key": "48b8ba1a6f3878341fe0e9729b3d462ef18e832a29684357d1856381d166b1bf",
+                  "subject_key": "24f703bb561580bff55a43bb52b08ae4c0eb341c44d24baa71975b60ac79a848"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a08700-5339-72f1-b0ce-9de7a66e7f46",
+                "receipt_context": {
+                  "request_id": "useful-1"
+                }
+              },
+              "policy_hash": "2da4ca418e0e12c6a90f18d59941478b88e7874d659dff9eeb4224d844dc9c51",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "5c4c07c775d692e8896c94e9eab468be89bcceec20b7dc9884b94955e067f965a4bae47bce22f2de6ad979298227c6db0e5920f9733a8b2585b1630d7165d90f",
+              "timestamp": 1788971340,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "useful-1",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "Successfully wrote to /workspace/useful.txt",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "Successfully wrote to /workspace/useful.txt"
+        }
+      }
+    },
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "exact_owner_replay",
+    "passed": true,
+    "details": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": {
+              "content": [
+                {
+                  "text": "Successfully wrote to /workspace/useful.txt",
+                  "type": "text"
+                }
+              ],
+              "isError": false,
+              "structuredContent": {
+                "content": "Successfully wrote to /workspace/useful.txt"
+              }
+            },
+            "outputKind": "value",
+            "receipt": {
+              "action": {
+                "parameter_hash": "900fe0615ccaa33fd653bcb249afab414c3f544d4070dacaa47636169d52ebbb",
+                "parameters": {
+                  "content": "legitimate useful work",
+                  "path": "/workspace/useful.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a08700-4df4-78a1-9175-84ba0112155f",
+              "content_hash": "d0541823c2ea10b1247f99ee3e8304c876bd2f2ca5ac3cba81f0775d3252233f",
+              "decision": {
+                "verdict": "allow"
+              },
+              "id": "97ae05a9634eb6b633d0b3c2b9808138cb2bb021c821f98bfe7ec818b14141c6",
+              "kernel_key": "6eae18c2ab8b98e64efa0d0f18f0c7efe7ccc2e88ca7f87f32c9251f672f596e",
+              "metadata": {
+                "admission_operation": {
+                  "compensation_status": "not_compensated",
+                  "coordinator_lease_epoch": 1,
+                  "coordinator_lease_id": "01a08700-463c-7ac2-a306-fc6c41c5d141",
+                  "operation_id": "1a44bac3fcaf14f0132afbc6badb2ac0820f734fb183b90aeb680a320bfddd77",
+                  "projected_dispatch_state": "terminal",
+                  "projected_operation_version": 8,
+                  "projected_state": "completed",
+                  "request_binding_hash": "0675819957ead03fb7e62e4c7a89267e8f163311f679eba3e895efbdeb4b0b69",
+                  "request_id": "useful-1",
+                  "request_namespace_digest": "6e82ce814214b3e9629cdf793bf6beb050e1b9f326d03bb818c330a7249301a7",
+                  "retained_dispatch_commit": {
+                    "committed_version": 6,
+                    "coordinator_lease_epoch": 1,
+                    "coordinator_lease_id": "01a08700-463c-7ac2-a306-fc6c41c5d141",
+                    "provider_attempt": {
+                      "attempt_id": "attempt:1a44bac3fcaf14f0132afbc6badb2ac0820f734fb183b90aeb680a320bfddd77",
+                      "operation_id": "1a44bac3fcaf14f0132afbc6badb2ac0820f734fb183b90aeb680a320bfddd77",
+                      "transport_id": "kernel-tool-server:fs",
+                      "transport_key_epoch": 1
+                    },
+                    "store_fence": {
+                      "lease_id": "01a08700-463c-7ac2-a306-fc6c41c5d141",
+                      "owner_epoch": 1,
+                      "store_uuid": "01a08700-4534-7540-8671-85f3b5b01aa7"
+                    }
+                  },
+                  "schema": "chio.admission-receipt.v1",
+                  "store_fence": {
+                    "lease_id": "01a08700-463c-7ac2-a306-fc6c41c5d141",
+                    "owner_epoch": 1,
+                    "store_uuid": "01a08700-4534-7540-8671-85f3b5b01aa7"
+                  },
+                  "tool_outcome_id": "9b69d8b24abc3b655f2d32b4a1f2c02281f3d7571065b42551ab6ecffeb3d5b0",
+                  "tool_outcome_version": 2,
+                  "trusted_time_unix_ms": 1788971340472
+                },
+                "attribution": {
+                  "delegation_depth": 0,
+                  "grant_index": 0,
+                  "issuer_key": "48b8ba1a6f3878341fe0e9729b3d462ef18e832a29684357d1856381d166b1bf",
+                  "subject_key": "24f703bb561580bff55a43bb52b08ae4c0eb341c44d24baa71975b60ac79a848"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a08700-5339-72f1-b0ce-9de7a66e7f46",
+                "receipt_context": {
+                  "request_id": "useful-1"
+                }
+              },
+              "policy_hash": "2da4ca418e0e12c6a90f18d59941478b88e7874d659dff9eeb4224d844dc9c51",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "5c4c07c775d692e8896c94e9eab468be89bcceec20b7dc9884b94955e067f965a4bae47bce22f2de6ad979298227c6db0e5920f9733a8b2585b1630d7165d90f",
+              "timestamp": 1788971340,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "useful-1",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "Successfully wrote to /workspace/useful.txt",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "Successfully wrote to /workspace/useful.txt"
+        }
+      }
+    },
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "hidden_tool_denied",
+    "passed": true,
+    "details": [
+      403,
+      "method or tool outside session credential authority"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "new_issuance_denied",
+    "passed": true,
+    "details": [
+      401,
+      "invalid, expired, or revoked session credential"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "wrong_session_denied",
+    "passed": true,
+    "details": [
+      401,
+      "invalid, expired, or revoked session credential"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "admin_denied_health",
+    "passed": true,
+    "details": [
+      401,
+      "missing or invalid admin bearer token"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "admin_denied_credential",
+    "passed": true,
+    "details": [
+      401,
+      "missing or invalid admin bearer token"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "admin_denied_revoke",
+    "passed": true,
+    "details": [
+      401,
+      "missing or invalid admin bearer token"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "observer_negative_control",
+    "passed": true,
+    "details": {
+      "before": {
+        "forbidden.txt": "original"
+      }
+    },
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "expiry_denied",
+    "passed": true,
+    "details": [
+      401,
+      "invalid, expired, or revoked session credential"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "credential_revocation_denied",
+    "passed": true,
+    "details": [
+      401,
+      "invalid, expired, or revoked session credential"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "capability_revocation_denied",
+    "passed": true,
+    "details": [
+      200,
+      {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "result": {
+          "_meta": {
+            "chioEvidence": {
+              "output": null,
+              "outputKind": "none",
+              "receipt": {
+                "action": {
+                  "parameter_hash": "bb067783fa565643ef59fb760d847f5ecaf6ec8ddc9768eada6eaffd59d50fea",
+                  "parameters": {
+                    "content": "forbidden",
+                    "path": "/workspace/revoked-cap.txt"
+                  }
+                },
+                "boundary_class": "prevent",
+                "capability_id": "cap-01a08700-68ef-7420-aa2b-e2da627ddd95",
+                "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "decision": {
+                  "guard": "kernel",
+                  "reason": "capability has been revoked: cap-01a08700-68ef-7420-aa2b-e2da627ddd95",
+                  "verdict": "deny"
+                },
+                "id": "e5dc81c430013cdbf6a54372df7c3ad94f2c0fc179b039114b3df5f31b4fa362",
+                "kernel_key": "6eae18c2ab8b98e64efa0d0f18f0c7efe7ccc2e88ca7f87f32c9251f672f596e",
+                "metadata": {
+                  "attribution": {
+                    "delegation_depth": 0,
+                    "issuer_key": "48b8ba1a6f3878341fe0e9729b3d462ef18e832a29684357d1856381d166b1bf",
+                    "subject_key": "17b99001dad5d64489dbad90273589c922cc28270fc3b48555bbf725f2b18507"
+                  },
+                  "chio_receipt_signing_nonce": "rcpt-01a08700-69bc-7f63-a8e4-fe3356ccecc5",
+                  "receipt_context": {
+                    "request_id": "revoked-cap"
+                  }
+                },
+                "policy_hash": "2da4ca418e0e12c6a90f18d59941478b88e7874d659dff9eeb4224d844dc9c51",
+                "receipt_kind": "mediated_decision",
+                "redaction_mode": "none",
+                "signature": "7994e2ea36cc4219602ba799709e919ed8f44f040cb682199fc1d5ca07f2827e055658763aab4887dcbe2c2ff898b8411861cb17c9b0f561fe14868249a3b403",
+                "timestamp": 1788971346,
+                "tool_name": "write_file",
+                "tool_origin": "caller_executed",
+                "tool_server": "fs",
+                "trust_level": "mediated"
+              },
+              "requestId": "revoked-cap",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "terminalState": "completed"
+            }
+          },
+          "content": [
+            {
+              "text": "capability has been revoked: cap-01a08700-68ef-7420-aa2b-e2da627ddd95",
+              "type": "text"
+            }
+          ],
+          "isError": true
+        }
+      }
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "kernel_denial_no_effect",
+    "passed": true,
+    "details": [
+      200,
+      {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "result": {
+          "_meta": {
+            "chioEvidence": {
+              "output": null,
+              "outputKind": "none",
+              "receipt": {
+                "action": {
+                  "parameter_hash": "d96ee6884a470764ca2e4b7b4ed04d0a094d8c6a1ffd59009e4d8c33c1eb7c1c",
+                  "parameters": {
+                    "content": "forbidden replacement",
+                    "path": "/workspace/forbidden.txt"
+                  }
+                },
+                "boundary_class": "prevent",
+                "capability_id": "cap-01a08700-58d8-7152-86ed-a009c807f7e5",
+                "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "decision": {
+                  "guard": "kernel",
+                  "reason": "guard denied the request: guard \"guard-pipeline\" denied the request",
+                  "verdict": "deny"
+                },
+                "evidence": [
+                  {
+                    "details": "action=deny; reason=guard denied request",
+                    "guard_name": "forbidden-path",
+                    "verdict": false
+                  }
+                ],
+                "id": "6b73db100c5e74bfa48519f8ab746e66e1a3b6b5fffa6daa69f3fee6854c7207",
+                "kernel_key": "6eae18c2ab8b98e64efa0d0f18f0c7efe7ccc2e88ca7f87f32c9251f672f596e",
+                "metadata": {
+                  "attribution": {
+                    "delegation_depth": 0,
+                    "issuer_key": "48b8ba1a6f3878341fe0e9729b3d462ef18e832a29684357d1856381d166b1bf",
+                    "subject_key": "7aa59c171010147f327e40bdc54f0e6f1b5491c2bd659d246cf6b676d8437b31"
+                  },
+                  "budget_authority": {
+                    "authority_profile": "authoritative_hold_event",
+                    "guarantee_level": "single_node_atomic",
+                    "metering_profile": "max_cost_preauthorize_then_reconcile_actual"
+                  },
+                  "chio_receipt_signing_nonce": "rcpt-01a08700-6bd4-71b0-8d37-1c1d8b752120",
+                  "receipt_context": {
+                    "request_id": "forbidden"
+                  }
+                },
+                "policy_hash": "2da4ca418e0e12c6a90f18d59941478b88e7874d659dff9eeb4224d844dc9c51",
+                "receipt_kind": "mediated_decision",
+                "redaction_mode": "none",
+                "signature": "ad5dc6d40271d1ba41b2b59a38bf6bace76e429f602ecf53ac4f5a291e1d392ed2f1985ec5d8d172be16ff38bf4ef1221d025842b108f0b1d4540be065245f06",
+                "timestamp": 1788971346,
+                "tool_name": "write_file",
+                "tool_origin": "caller_executed",
+                "tool_server": "fs",
+                "trust_level": "mediated"
+              },
+              "requestId": "forbidden",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "terminalState": "completed"
+            }
+          },
+          "content": [
+            {
+              "text": "guard denied the request: guard \"guard-pipeline\" denied the request",
+              "type": "text"
+            }
+          ],
+          "isError": true
+        }
+      }
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "denial_fences_new_ids",
+    "passed": true,
+    "details": [
+      409,
+      "session credential has a pending or uncertain call; operator reconciliation is required"
+    ],
+    "resource": {
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "aggregate_budget_preserved",
+    "passed": true,
+    "details": [
+      200,
+      {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "result": {
+          "_meta": {
+            "chioEvidence": {
+              "output": null,
+              "outputKind": "none",
+              "receipt": {
+                "action": {
+                  "parameter_hash": "46dd035c2514772c7f3634def4570e7eb885a49957e03a56772102f142158d65",
+                  "parameters": {
+                    "content": "forbidden",
+                    "path": "/workspace/budget-overflow.txt"
+                  }
+                },
+                "boundary_class": "prevent",
+                "capability_id": "cap-01a08700-6f07-7eb3-b600-de225e313238",
+                "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "decision": {
+                  "guard": "kernel",
+                  "reason": "invocation budget exhausted for capability cap-01a08700-6f07-7eb3-b600-de225e313238",
+                  "verdict": "deny"
+                },
+                "id": "63539e830981826a223ea9ce60963a06d3fcf39efc8194ed1227e4a5ff75deca",
+                "kernel_key": "6eae18c2ab8b98e64efa0d0f18f0c7efe7ccc2e88ca7f87f32c9251f672f596e",
+                "metadata": {
+                  "attribution": {
+                    "delegation_depth": 0,
+                    "issuer_key": "48b8ba1a6f3878341fe0e9729b3d462ef18e832a29684357d1856381d166b1bf",
+                    "subject_key": "f87858a718e52511cd00638dc66acf2e264eb2187e39f3e4111613bbf2c8eba8"
+                  },
+                  "budget_authority": {
+                    "authority_profile": "authoritative_hold_event",
+                    "guarantee_level": "single_node_atomic",
+                    "metering_profile": "max_cost_preauthorize_then_reconcile_actual"
+                  },
+                  "chio_receipt_signing_nonce": "rcpt-01a08700-7dfb-7bc2-b013-20866bf0c106",
+                  "receipt_context": {
+                    "request_id": "budget-overflow"
+                  }
+                },
+                "policy_hash": "2da4ca418e0e12c6a90f18d59941478b88e7874d659dff9eeb4224d844dc9c51",
+                "receipt_kind": "mediated_decision",
+                "redaction_mode": "none",
+                "signature": "baf2bdd242a954682bcaaa9754f213385738fc6f99c796a90137aa9acd8c2682e5e78eaa372b9d5c205acf0ff63fe57043ccdd98a7adabb15c015885b2596b0a",
+                "timestamp": 1788971351,
+                "tool_name": "write_file",
+                "tool_origin": "caller_executed",
+                "tool_server": "fs",
+                "trust_level": "mediated"
+              },
+              "requestId": "budget-overflow",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "terminalState": "completed"
+            }
+          },
+          "content": [
+            {
+              "text": "invocation budget exhausted for capability cap-01a08700-6f07-7eb3-b600-de225e313238",
+              "type": "text"
+            }
+          ],
+          "isError": true
+        }
+      }
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "lost_response_owner_fence",
+    "passed": true,
+    "details": [
+      409,
+      "session credential has a pending or uncertain call; operator reconciliation is required"
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "retained_session_restart",
+    "passed": true,
+    "details": [
+      200,
+      {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "result": {
+          "_meta": {
+            "chioEvidence": {
+              "output": {
+                "content": [
+                  {
+                    "text": "Successfully wrote to /workspace/resumed.txt",
+                    "type": "text"
+                  }
+                ],
+                "isError": false,
+                "structuredContent": {
+                  "content": "Successfully wrote to /workspace/resumed.txt"
+                }
+              },
+              "outputKind": "value",
+              "receipt": {
+                "action": {
+                  "parameter_hash": "ad9ad911d7f2e66ce2eecfe5fd88a1cabc1b74921a17501ab7253630ebe89578",
+                  "parameters": {
+                    "content": "same retained identity",
+                    "path": "/workspace/resumed.txt"
+                  }
+                },
+                "boundary_class": "prevent",
+                "capability_id": "cap-01a08700-4df4-78a1-9175-84ba0112155f",
+                "content_hash": "f9d782e12d5e7d6e302b4f3121dff94b29416189aec64ac6668f116de893877b",
+                "decision": {
+                  "verdict": "allow"
+                },
+                "id": "feb4cb732f29d6ebe5a9db4f27aef663fbdf1b385f0fe98e9dae7f2a63999dcb",
+                "kernel_key": "6eae18c2ab8b98e64efa0d0f18f0c7efe7ccc2e88ca7f87f32c9251f672f596e",
+                "metadata": {
+                  "admission_operation": {
+                    "compensation_status": "not_compensated",
+                    "coordinator_lease_epoch": 2,
+                    "coordinator_lease_id": "01a08700-99dd-7a71-b5e3-b47f48e574c9",
+                    "operation_id": "aa31563cfd859c62f5f3cc2aabaeb98d7aae2cf8527fed5deb4067cdf1245f35",
+                    "projected_dispatch_state": "terminal",
+                    "projected_operation_version": 8,
+                    "projected_state": "completed",
+                    "request_binding_hash": "b418cfaa2817f802f81baa62b7dbca7b11161a8c6ac664609a7d8cfc792f46ab",
+                    "request_id": "resumed",
+                    "request_namespace_digest": "6e82ce814214b3e9629cdf793bf6beb050e1b9f326d03bb818c330a7249301a7",
+                    "retained_dispatch_commit": {
+                      "committed_version": 6,
+                      "coordinator_lease_epoch": 2,
+                      "coordinator_lease_id": "01a08700-99dd-7a71-b5e3-b47f48e574c9",
+                      "provider_attempt": {
+                        "attempt_id": "attempt:aa31563cfd859c62f5f3cc2aabaeb98d7aae2cf8527fed5deb4067cdf1245f35",
+                        "operation_id": "aa31563cfd859c62f5f3cc2aabaeb98d7aae2cf8527fed5deb4067cdf1245f35",
+                        "transport_id": "kernel-tool-server:fs",
+                        "transport_key_epoch": 2
+                      },
+                      "store_fence": {
+                        "lease_id": "01a08700-99dd-7a71-b5e3-b47f48e574c9",
+                        "owner_epoch": 2,
+                        "store_uuid": "01a08700-4534-7540-8671-85f3b5b01aa7"
+                      }
+                    },
+                    "schema": "chio.admission-receipt.v1",
+                    "store_fence": {
+                      "lease_id": "01a08700-99dd-7a71-b5e3-b47f48e574c9",
+                      "owner_epoch": 2,
+                      "store_uuid": "01a08700-4534-7540-8671-85f3b5b01aa7"
+                    },
+                    "tool_outcome_id": "d1290940f9ccabde1473594da709515246a6ac0568b1ae53dad1d77fc17bf0f8",
+                    "tool_outcome_version": 2,
+                    "trusted_time_unix_ms": 1788971360329
+                  },
+                  "attribution": {
+                    "delegation_depth": 0,
+                    "grant_index": 0,
+                    "issuer_key": "48b8ba1a6f3878341fe0e9729b3d462ef18e832a29684357d1856381d166b1bf",
+                    "subject_key": "24f703bb561580bff55a43bb52b08ae4c0eb341c44d24baa71975b60ac79a848"
+                  },
+                  "chio_receipt_signing_nonce": "rcpt-01a08700-a0b8-7a40-b420-df9086f0b2ba",
+                  "receipt_context": {
+                    "request_id": "resumed"
+                  }
+                },
+                "policy_hash": "2da4ca418e0e12c6a90f18d59941478b88e7874d659dff9eeb4224d844dc9c51",
+                "receipt_kind": "mediated_decision",
+                "redaction_mode": "none",
+                "signature": "cf218fb41a8407e6f96ffa3e6ab024360f72f0b717da676cc824d18b80e8a57eefcbce9b22a2b51cf0138e2e64b327166d640f1ed8cb25bb5fb0b29706f61d0b",
+                "timestamp": 1788971360,
+                "tool_name": "write_file",
+                "tool_origin": "caller_executed",
+                "tool_server": "fs",
+                "trust_level": "mediated"
+              },
+              "requestId": "resumed",
+              "schema": "chio.mcp.execution-evidence.v1",
+              "terminalState": "completed"
+            }
+          },
+          "content": [
+            {
+              "text": "Successfully wrote to /workspace/resumed.txt",
+              "type": "text"
+            }
+          ],
+          "isError": false,
+          "structuredContent": {
+            "content": "Successfully wrote to /workspace/resumed.txt"
+          }
+        }
+      }
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "unknown_fence_survives_restart",
+    "passed": true,
+    "details": [
+      409,
+      "session credential has a pending or uncertain call; operator reconciliation is required"
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  },
+  {
+    "case": "missing_session_no_fresh_issuance",
+    "passed": true,
+    "details": [
+      401,
+      "invalid, expired, or revoked session credential"
+    ],
+    "resource": {
+      "budget-0.txt": "permitted",
+      "budget-1.txt": "permitted",
+      "budget-2.txt": "permitted",
+      "budget-3.txt": "permitted",
+      "budget-4.txt": "permitted",
+      "budget-5.txt": "permitted",
+      "budget-6.txt": "permitted",
+      "budget-7.txt": "permitted",
+      "forbidden.txt": "original",
+      "resumed.txt": "same retained identity",
+      "unknown.txt": "external effect exists",
+      "useful.txt": "legitimate useful work"
+    }
+  }
+]

@@ -94,7 +94,7 @@ capabilities:
         max_invocations: 8
 ''')
     command = [binary,'--session-db',str(runtime/'sessions.sqlite'),'--receipt-db',str(runtime/'receipts.sqlite'),
-               '--authority-db',str(runtime/'authority.sqlite'),'--authority-seed-file',str(runtime/'authority.seed'),
+               '--authority-db',str(runtime/'authority.sqlite'),
                'mcp','serve-http','--policy',str(policy),'--server-id','fs','--shared-hosted-owner',
                '--listen',f'127.0.0.1:{port}','--',sys.executable,str(Path(__file__).resolve()),'--relay',*docker]
     private = runtime/'operator.json'
@@ -212,6 +212,13 @@ capabilities:
         time.sleep(4.5)
         fenced=call(unknown_token,unknown_sid,'after-unknown.txt','must not dispatch','after-unknown')
         check('lost_response_owner_fence',timed_out and observe().get('unknown.txt')=='external effect exists' and fenced[0]==409 and 'after-unknown.txt' not in observe(),fenced[:2])
+        rotation_status,rotation,_=request(admin,f'/admin/sessions/{unknown_sid}/credential',
+            {'ttlSeconds':300,'allowedTools':unknown_binding['allowedTools']})
+        assert rotation_status==200
+        unknown_token=rotation.pop('bearerToken')
+        rotated=call(unknown_token,unknown_sid,'after-rotation.txt','must not dispatch','after-rotation')
+        check('credential_rotation_preserves_fence',rotation['capabilityIds']==unknown_binding['capabilityIds']
+              and rotated[0]==409 and 'after-rotation.txt' not in observe(),rotated[:2])
         stop(); start()
         resumed=call(token,sid,'resumed.txt','same retained identity','resumed')
         check('retained_session_restart',resumed[0]==200 and observe().get('resumed.txt')=='same retained identity',resumed[:2])

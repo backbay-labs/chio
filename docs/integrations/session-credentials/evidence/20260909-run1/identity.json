@@ -1,0 +1,11 @@
+{
+  "kernelSha256": "e73950c1586187f24b0250cb4e6753009e51652b64be4ea93840f07d4e664ae4",
+  "source": "30ad0ea0d74bb6609b4e2894bfafb7492445e068",
+  "sourceDirty": "?? docs/integrations/session-credentials/evidence/\n",
+  "image": "sha256:0106edcb15a1c0d12d914ea0504f0e63ec85f5e6fdd3825b4d7a0d1367af3991",
+  "volume": "chio-required-credentials-622efd5aef52",
+  "runtime": "/private/tmp/chio-session-credential-resource-20260909-1",
+  "port": 55852,
+  "cases": 2,
+  "passed": 2
+}

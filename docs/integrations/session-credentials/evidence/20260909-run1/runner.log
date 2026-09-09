@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-session-credentials-20260909/scripts/acceptance/session-credentials.py", line 237, in <module>
+    main()
+  File "/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-session-credentials-20260909/scripts/acceptance/session-credentials.py", line 165, in main
+    sid,token,binding=session()
+                      ^^^^^^^^^
+  File "/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-session-credentials-20260909/scripts/acceptance/session-credentials.py", line 144, in session
+    assert status==200 and sid, (status,body)
+           ^^^^^^^^^^^
+AssertionError: (500, 'urn:chio:error:cli:other [cli:error]: use either --authority-seed-file or --authority-db, not both (Preserve the original message and migrate the call site to a specific registry code when touched.)')
