@@ -1,0 +1,17 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_4TIwzLweHnaapJ14wtPT9wgr",
+      "name": "mcp__chio__read_text_file",
+      "arguments": {
+        "path": "/workspace/hermes-inflight-54234a5650cc.txt"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_4TIwzLweHnaapJ14wtPT9wgr"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

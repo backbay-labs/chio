@@ -1,0 +1,11 @@
+{
+  "host": "hermes",
+  "priorNativeEvidence": "/tmp/chio-hermes-r10-kernel-malformed-20260909",
+  "requestId": "3cddc758-b3d2-466b-831c-ffedd1da43d3:a9bc8e825fb1ad942102488e9b8d5a0d6672b52862984055c9f6b696825c0c1c",
+  "exitCode": 1,
+  "reason": "no retained signed completion for this original unknown operation",
+  "originalJournalSha256": "8ad8d4f7cd520199b6c2d5b074f85ab9c214efea1b7e5e79ba949d87c20c1b13",
+  "journalUnchanged": true,
+  "outputCreated": false,
+  "protectedDispatch": false
+}
