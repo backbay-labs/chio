@@ -224,3 +224,15 @@ its archive is `7d9e34f7408a316e35125982a23faaecfd2f31f4da6b50ca8eab287c2c918f67
 The 119-test existing suite and expanded six-case HTTP suite passed. Pi and
 OpenClaw package rebuilds and real-host reruns are required before claiming the
 specific failure resolved. No host is accepted.
+
+The native-history candidates now pass the specific predecessor ACK-response
+fault with actual Pi and OpenClaw: each completed one original write, the
+resource observer recorded one dispatch, and the parent journal confirmed the
+result from native history. No guest acknowledgement response exists for the
+injector to drop. Both candidates also passed their own five actual-host cases
+(useful work, forbidden read/write, result loss/recovery and result substitution).
+Pi archive: `380c7ab33de2dd5ccdfd5b3ff5b8ad079e87800d32d4282398ceefe2f7b712d3`.
+OpenClaw archive: `f93ea8480937bf85fe07910a0260a24baaefc0089a4e3c213a311cb21efff0e1`.
+Exact images, commands and observations are in each owning repository's
+`evidence/2026-09-09/native-history-ack` record (under `native/` for OpenClaw).
+Later host/plugin crash cutpoints and the full required matrix remain open.
