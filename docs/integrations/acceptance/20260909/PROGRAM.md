@@ -24,12 +24,12 @@ local candidate identities, not a published version combination.
 
 | Host | Pinned runtime | Recorded implementation and observations | Remaining acceptance work |
 |---|---|---|---|
-| Claude Code | 2.1.266 | `chio-claude-code-plugin/acceptance/2026-09-09/REPORT.md`: restricted launcher, real host with local Messages fixture, actual kernel write/edit/read/list, disabled native tools, denials and receipt fault cases | Process sandbox and HTTP bridge completed an actual-host/local-model-fixture workflow on the acknowledgement kernel. Authenticated model access, additional boundary/fault tests and approvals remain and usable recovery; publish tested artifacts |
-| Codex | 0.153.4 | `chio-codex-plugin/acceptance/2026-09-09/final/FOLLOWUP.md`: actual provider and host workflows, independent effects, hooks fail open, restricted launcher and truthful terminal status repairs | Actual provider/host write-edit-read-list passed in the default-deny process boundary on the acknowledgement kernel. Rerun wrong-resource prevention before effect, full budget/recovery, owner acknowledgement and approvals on final artifacts; publish |
-| Cursor | GUI 3.19.13; CLI 2026.09.08-6caf4ff | `chio-cursor-plugin/evidence/final/BOUNDARY-REVIEW.md`: extension installation/activation/removal, real MCP discovery, actual process probes | Isolated authentication missing; hosted AgentService exposes remote/cloud tool paths whose prevention is unqualified. Protected prompt mode must refuse until its bounded protocol is established. Useful real workflow and all dependent gates unresolved |
-| Hermes | 0.20.5; upstream `175054c14b54404663d8614a178280cffe6062eb` | `arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes`: pinned public source installation, restricted four-tool host, real provider/kernel effects, receipt fault and restart cases | Qualify tightened process confinement and local model relay with final gateway; owner acknowledgement, host approvals and full I01-I08; four legacy opt-in sidecar skips remain explicit |
-| Pi Agent | `@earendil-works/pi-coding-agent@0.85.1`; upstream `d981de1229ef899957bbe968bc8dcda02a21f477` | New `chio-pi-plugin`: stock AgentSession, one Chio custom tool, no discovered extensions or native tools, actual provider/kernel workflows, default-deny macOS process tests | Final bridge acknowledgement, approvals, budget and full recovery reruns; standalone installation and publication of the matching candidate |
-| OpenClaw | 2026.5.20 (`e510042`) | `chio-open-claw-plugin/native/ACCEPTANCE.md`: native runtime plugin and container boundary, actual host/kernel effects and lifecycle tests; original hosted chat gateway preserved | New scoped credential/owner acknowledgement, approvals, native budget/revocation, latest profile repair and final packaging reruns; publish |
+| Claude Code | 2.1.266 | Restricted parent HTTP transport and full native-result verification; actual host/kernel useful work, budget, denial, native-tool and response-loss cases with local Messages fixture | Isolated Anthropic credential; authenticated provider cases, remaining authority/fault/lifecycle matrix and publication |
+| Codex | 0.153.4 | Parent HTTP transport and complete native-result verification; actual OpenAI/kernel useful work, denials, budget, seven approvals, capability revocation and explicit delivery recovery | Remaining in-flight revocation, fault/cancellation/crash, identity/scope and lifecycle cases; release qualification and publication |
+| Cursor | GUI 3.19.13; CLI 2026.09.08-6caf4ff | Parent-owned HTTP gateway, scoped guest route and private journal; packaged real CLI discovery plus exact retained default-deny OS profile probes | Isolated authentication and bounded hosted AgentService protocol; protected prompt mode refuses. No useful model-driven workflow or full gate accepted |
+| Hermes | 0.20.5; upstream `175054c14b54404663d8614a178280cffe6062eb` | r9 wheel: full native-result cache binding, scoped parent transport, actual OpenAI/kernel workflow, denials, approvals, budget, capability revocation and delivery recovery | Full remaining authority/fault/lifecycle matrix; four legacy opt-in skips retained; publication |
+| Pi Agent | `@earendil-works/pi-coding-agent@0.85.1`; upstream `d981de1229ef899957bbe968bc8dcda02a21f477` | Stock AgentSession with one Chio tool; native-history acknowledgement, actual provider/kernel workflow, denials, approvals, budget, revocation and delivery recovery | Remaining in-flight revocation, identity/scope, fault/cancellation/crash and lifecycle cases; publication |
+| OpenClaw | 2026.5.20 (`e510042`) | Native runtime plugin and default-deny container; parent native-history acknowledgement; actual provider/kernel workflow, approvals, budget, revocation and recovery; process and descendant probes | Remaining authority/fault/cancellation/crash and lifecycle cases; publication |
 
 All eight gates are open for the program. Individual passed cases in host records
 are bounded to their recorded source, artifact and configuration. Counts from
@@ -302,3 +302,44 @@ archives is a published accepted release. Cursor still requires isolated
 host authentication and a bounded hosted protocol; Claude requires isolated
 Anthropic provider access. Those external inputs do not waive other hosts'
 remaining tests or the six-of-six completion requirement.
+
+## Retained candidates, revocation and current Cursor boundary
+
+The four provider-backed hosts each performed a useful write, then an exact
+native write attempt after capability revocation received a verified kernel
+denial without a new dispatch. After session-credential revocation, each
+launcher refused before starting the native host. The latter is explicitly a
+preflight case, not fabricated native execution. First harness failures are
+retained: it had incorrectly required a tool result when the launcher refused.
+In-flight revocation is still a separate unresolved case.
+
+Hermes source `9dc475c60` repairs the native-history cache to bind the complete
+outcome instead of proof alone. Its component regression failed before the fix;
+235 tests pass after it, with four retained opt-in skips. Cold-installed r9
+wheel SHA256 `8b600edd80fdbfa91ca976c264d53ad145b79c49b9ac37c376f6685cfb90c929`
+passed its own actual host/provider useful, denial, response-loss/recovery,
+approval, budget and revocation cases. It supersedes r8 for current qualification.
+
+Cursor source `3a69f4e` moves the bridge, kernel credential and journal into the
+parent and removes the direct kernel TCP route from the guest. Archive SHA256
+`d4b9f71aa73300396d28957e6e75111682274ee617056e23ace88527ae38cc4f` installed offline
+with an empty cache. The actual pinned CLI discovered four tools. Exact retained
+OS-profile probes in a process and descendant denied operator/journal access,
+control writes and direct kernel TCP while allowing isolated state and the
+parent route; the independent positive listener recorded two connections.
+Build, typecheck and 32 tests pass. No authenticated model work is claimed.
+
+Current candidates, the selected kernel, dependency wheelhouse, and exact
+filesystem/OpenClaw Docker images are retained outside temporary directories at
+`/Users/connor/.local/share/chio-required-candidates/20260909`. Its manifest and
+SHA256SUMS identify every selected input. This is local qualification delivery,
+not six accepted integrations or a public release. See CANDIDATE-DELIVERY.md.
+
+The retained bundle passed all 44 file checksums. Both saved image archives
+loaded successfully. From the relocated bundle, an offline-installed bridge
+prepared fresh authority and an offline-installed Codex candidate performed
+write/edit/read/list through the copied kernel. After a same-artifact owner
+restart, the original authority completed a native read of the retained file
+with exactly one new read dispatch and no repeated write. Raw observations are
+in `raw/local-delivery`. This verifies a local installation/restart subset,
+not cross-version upgrade or six-host release acceptance.

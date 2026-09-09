@@ -1,0 +1,22 @@
+[
+  {
+    "case": "useful",
+    "passed": true,
+    "exitCode": 0,
+    "executionOutcome": {
+      "status": "protected_calls_completed",
+      "exitCode": 0,
+      "hostExitCode": 0,
+      "hostSignal": null,
+      "completed": 4,
+      "denied": 0,
+      "notDispatched": 0,
+      "unknown": 0,
+      "toolFailures": 0,
+      "awaitingApproval": 0
+    },
+    "newDispatchRows": 4,
+    "operatorConfigUnchanged": true,
+    "privateState": "/Users/connor/.local/share/chio-required-operators/delivery-install-20260909/codex-useful-eed1ab8f495b401d937ceb3b7f3ab60a"
+  }
+]

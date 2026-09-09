@@ -1,0 +1,11 @@
+{
+  "claim": "bounded real host cases, not I01-I08 acceptance",
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "image": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "volume": "chio-required-delivery-install-20260909",
+  "auditVolume": "chio-required-delivery-install-20260909-audit",
+  "packageDirectory": "/Users/connor/.local/share/chio-required-candidates/20260909/install/codex/node_modules/@chio/codex-plugin",
+  "launcherSha256": "d8ca7989cb41ab9494a8dd759f0c81102101947352d9474d8d77bfff02d3e368",
+  "cases": 1,
+  "skips": 0
+}
