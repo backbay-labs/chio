@@ -355,9 +355,9 @@ impl ChioKernel {
                         "admission receipt store returned a non-advancing page".to_owned(),
                     ));
                 }
-                self.materialize_durable_admission_receipt(receipt)?;
                 previous = Some(receipt.id.as_str());
             }
+            self.materialize_durable_admission_receipts(&page)?;
             reconciled = reconciled.checked_add(page.len()).ok_or_else(|| {
                 KernelError::DurableAdmission("admission receipt count overflow".to_owned())
             })?;

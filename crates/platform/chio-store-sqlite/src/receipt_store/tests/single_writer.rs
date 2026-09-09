@@ -578,6 +578,12 @@ fn reader_pool_never_begins_a_write_transaction() -> Result<(), Box<dyn std::err
     let _links = store.list_receipt_lineage_statement_links("rcpt-ro-pool-0")?;
     let _verification = store.receipt_lineage_verification("rcpt-ro-pool-0")?;
     store.create_next_receipt_checkpoint(2, &keypair)?;
+    let batch = store.load_chio_receipts(&[&receipt.id])?;
+    assert_eq!(batch.len(), 1);
+    assert_eq!(
+        batch[0].as_ref().map(|receipt| &receipt.id),
+        Some(&receipt.id)
+    );
 
     let iou_store = crate::SqliteIouEnvelopeStore::open_alongside(&store)
         .map_err(|error| std::io::Error::other(error.to_string()))?;

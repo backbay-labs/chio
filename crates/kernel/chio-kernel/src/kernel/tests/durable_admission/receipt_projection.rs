@@ -2,10 +2,11 @@ use super::*;
 
 #[derive(Clone, Default)]
 pub(super) struct AdmissionReceiptProjectionStore {
-    receipts:
-        std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, ChioReceipt>>>,
+    receipts: std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, ChioReceipt>>>,
     successful_appends: std::sync::Arc<AtomicU64>,
     fail_next_append: std::sync::Arc<AtomicBool>,
+    batch_lookups: std::sync::Arc<AtomicU64>,
+    point_lookups: std::sync::Arc<AtomicU64>,
 }
 
 impl AdmissionReceiptProjectionStore {
@@ -59,6 +60,7 @@ impl ReceiptStore for AdmissionReceiptProjectionStore {
         &self,
         receipt_id: &str,
     ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        self.point_lookups.fetch_add(1, Ordering::SeqCst);
         Ok(self
             .receipts
             .lock()
@@ -69,6 +71,20 @@ impl ReceiptStore for AdmissionReceiptProjectionStore {
             .cloned())
     }
 
+    fn load_chio_receipts(
+        &self,
+        receipt_ids: &[&str],
+    ) -> Result<Vec<Option<ChioReceipt>>, ReceiptStoreError> {
+        self.batch_lookups.fetch_add(1, Ordering::SeqCst);
+        let stored = self.receipts.lock().map_err(|_| {
+            ReceiptStoreError::Conflict("admission receipt projection lock poisoned".to_owned())
+        })?;
+        Ok(receipt_ids
+            .iter()
+            .map(|id| stored.get(*id).cloned())
+            .collect())
+    }
+
     fn append_child_receipt(
         &self,
         _receipt: &chio_core::receipt::lineage::ChildRequestReceipt,
@@ -77,4 +93,45 @@ impl ReceiptStore for AdmissionReceiptProjectionStore {
             "test child receipt persistence".to_owned(),
         ))
     }
+}
+
+#[test]
+fn existing_admission_projections_use_verified_batch_without_point_reads_or_appends() {
+    let (mut kernel, request, _store, invocations) =
+        durable_admission_fixture("durable-batch-existing-projection");
+    let completed = kernel
+        .evaluate_tool_call_blocking(&request)
+        .expect("complete tool call");
+    let projection = AdmissionReceiptProjectionStore::default();
+    projection
+        .append_chio_receipt(&completed.receipt)
+        .expect("seed existing projection");
+    kernel
+        .set_receipt_store(Box::new(projection.clone()))
+        .expect("install projection store");
+    assert_eq!(
+        kernel
+            .reconcile_durable_admission_receipt_projections()
+            .expect("reconcile existing"),
+        1
+    );
+    assert_eq!(projection.batch_lookups.load(Ordering::SeqCst), 1);
+    assert_eq!(projection.point_lookups.load(Ordering::SeqCst), 0);
+    assert_eq!(projection.successful_appends(), 1);
+    assert_eq!(invocations.load(Ordering::SeqCst), 1);
+
+    projection
+        .receipts
+        .lock()
+        .expect("projection lock")
+        .get_mut(&completed.receipt.id)
+        .expect("projected receipt")
+        .tool_name = "forged".to_owned();
+    let error = kernel
+        .reconcile_durable_admission_receipt_projections()
+        .expect_err("reject changed projection");
+    assert!(error
+        .to_string()
+        .contains("conflicts with the canonical admission receipt"));
+    assert_eq!(invocations.load(Ordering::SeqCst), 1);
 }

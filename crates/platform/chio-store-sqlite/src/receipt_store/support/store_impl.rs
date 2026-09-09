@@ -96,6 +96,64 @@ fn load_chio_receipt_row(
         .transpose()
 }
 
+pub(crate) fn load_chio_receipt_batch_with_snapshot_hook(
+    store: &SqliteReceiptStore,
+    receipt_ids: &[&str],
+    after_verification: impl FnOnce() -> Result<(), ReceiptStoreError>,
+) -> Result<Vec<Option<ChioReceipt>>, ReceiptStoreError> {
+    if receipt_ids.len() > 256 {
+        return Err(ReceiptStoreError::Unsupported(
+            "receipt lookup batch exceeds 256 entries".to_owned(),
+        ));
+    }
+    if receipt_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut connection = store.connection()?;
+    let guard_count: i64 = connection.query_row(
+        "SELECT count(*) FROM sqlite_schema WHERE type = 'trigger' AND name IN (
+            'kernel_checkpoints_reject_update',
+            'kernel_checkpoints_reject_delete',
+            'kernel_checkpoints_enforce_append_only')",
+        [],
+        |row| row.get(0),
+    )?;
+    if guard_count != 3 {
+        // Restoring missing immutability guards is a write. Preserve the point
+        // lookup's repair behavior, but route it through the single writer;
+        // healthy batches must also work with a query-only reader pool.
+        drop(connection);
+        store
+            .writer_handle()
+            .run_write(|connection| ensure_checkpoint_transparency_guards(connection))?;
+        connection = store.connection()?;
+    }
+    // Verification and every lookup share a read snapshot. A writer cannot
+    // substitute receipt or checkpoint bytes between verification and reads.
+    // The next batch starts a new transaction and verifies again.
+    let transaction = connection.transaction()?;
+    verify_latest_checkpoint_integrity(&transaction)?;
+    after_verification()?;
+    let receipts = receipt_ids
+        .iter()
+        .map(|receipt_id| {
+            let receipt =
+                load_chio_receipt_row(&transaction, receipt_id, "persisted tool receipt batch")?;
+            if receipt
+                .as_ref()
+                .is_some_and(|receipt| receipt.id != *receipt_id)
+            {
+                return Err(ReceiptStoreError::Conflict(
+                    "persisted tool receipt batch id differs from the requested receipt".to_owned(),
+                ));
+            }
+            Ok(receipt)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    transaction.commit()?;
+    Ok(receipts)
+}
+
 fn load_chio_receipt_commitment_row(
     connection: &Connection,
     receipt_id: &str,
@@ -561,6 +619,13 @@ impl ReceiptStore for SqliteReceiptStore {
         receipt_id: &str,
     ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
         load_retained_chio_receipt_with_archive_hook(self, receipt_id, || Ok(()))
+    }
+
+    fn load_chio_receipts(
+        &self,
+        receipt_ids: &[&str],
+    ) -> Result<Vec<Option<ChioReceipt>>, ReceiptStoreError> {
+        load_chio_receipt_batch_with_snapshot_hook(self, receipt_ids, || Ok(()))
     }
 
     fn load_retained_chio_receipt_commitment(

@@ -496,6 +496,26 @@ pub trait ReceiptStore: Send + Sync {
     ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
         Ok(None)
     }
+    /// Load at most 256 receipts in request order, retaining missing entries.
+    ///
+    /// Implementations may amortize integrity verification only within this
+    /// call. Database implementations must verify and read from the same
+    /// immutable transaction snapshot, with the same validation as point reads.
+    /// No verified state may be reused across calls without mutation detection.
+    fn load_chio_receipts(
+        &self,
+        receipt_ids: &[&str],
+    ) -> Result<Vec<Option<ChioReceipt>>, ReceiptStoreError> {
+        if receipt_ids.len() > 256 {
+            return Err(ReceiptStoreError::Unsupported(
+                "receipt lookup batch exceeds 256 entries".to_owned(),
+            ));
+        }
+        receipt_ids
+            .iter()
+            .map(|id| self.load_chio_receipt(id))
+            .collect()
+    }
     /// Load a receipt from the store's complete retained history. Stores with
     /// no separate retention tier inherit the live point lookup. A store that
     /// archives receipts must override this method and authenticate the archive

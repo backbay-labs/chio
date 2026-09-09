@@ -1,5 +1,15 @@
 use super::*;
 
+#[cfg(test)]
+thread_local! {
+    static CHECKPOINT_CHAIN_READ_VERIFICATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn checkpoint_chain_read_verifications() -> usize {
+    CHECKPOINT_CHAIN_READ_VERIFICATIONS.with(std::cell::Cell::get)
+}
+
 const CHECKPOINT_TRANSPARENCY_GUARDS_SQL: &str = r#"
 CREATE TRIGGER IF NOT EXISTS kernel_checkpoints_reject_update
 BEFORE UPDATE ON kernel_checkpoints
@@ -460,6 +470,8 @@ pub(crate) fn verify_latest_checkpoint_integrity(
     if load_latest_persisted_checkpoint_row(connection)?.is_none() {
         return Ok(());
     }
+    #[cfg(test)]
+    CHECKPOINT_CHAIN_READ_VERIFICATIONS.with(|count| count.set(count.get() + 1));
     verify_checkpoint_chain_integrity(connection).map(|_| ())
 }
 

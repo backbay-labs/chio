@@ -461,6 +461,41 @@ impl ChioKernel {
         Ok(())
     }
 
+    pub(crate) fn materialize_durable_admission_receipts(
+        &self,
+        receipts: &[ChioReceipt],
+    ) -> Result<(), KernelError> {
+        let receipt_ids = receipts
+            .iter()
+            .map(|receipt| receipt.id.as_str())
+            .collect::<Vec<_>>();
+        let Some(existing) =
+            self.with_receipt_store(|store| Ok(store.load_chio_receipts(&receipt_ids)?))?
+        else {
+            return Ok(());
+        };
+        if existing.len() != receipts.len() {
+            return Err(KernelError::DurableAdmission(
+                "receipt projection store returned an incomplete lookup batch".to_owned(),
+            ));
+        }
+        for (receipt, existing) in receipts.iter().zip(existing) {
+            match existing {
+                Some(existing) if !receipts_match(&existing, receipt)? => {
+                    return Err(KernelError::DurableAdmission(format!(
+                        "receipt projection {} conflicts with the canonical admission receipt",
+                        receipt.id
+                    )));
+                }
+                Some(_) => {}
+                // The append path rechecks absence while holding its write lock,
+                // and preserves atomic settlement observation seeding on repair.
+                None => self.materialize_durable_admission_receipt(receipt)?,
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn materialize_durable_admission_receipt(
         &self,
         receipt: &ChioReceipt,

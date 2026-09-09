@@ -20,6 +20,8 @@ mod lineage;
 mod qualified_finding_pool;
 #[path = "tests/query.rs"]
 mod query;
+#[path = "tests/receipt_batch.rs"]
+mod receipt_batch;
 #[path = "tests/retained_commitments.rs"]
 mod retained_commitments;
 #[path = "tests/retention.rs"]
