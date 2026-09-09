@@ -1,0 +1,1 @@
+Call was unsuccessful: /workspace/hermes-must-stay-fenced.txt was not written. The gateway is fenced due to an unresolved operation and requires operator reconciliation. No further action taken.

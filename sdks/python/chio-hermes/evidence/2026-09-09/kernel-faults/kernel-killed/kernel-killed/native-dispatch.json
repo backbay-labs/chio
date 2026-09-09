@@ -1,0 +1,27 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_Yy7Q3b3EMqqS2l5PJze3oB7o",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/hermes-inflight-f6ce2eec044b.txt",
+        "content": "authorized before in-flight revocation"
+      }
+    },
+    {
+      "id": "call_pNbwpg27HJeE8MXMTYcfI41e",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "content": "forbidden after in-flight revocation",
+        "path": "/workspace/hermes-inflight-f6ce2eec044b.txt"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_Yy7Q3b3EMqqS2l5PJze3oB7o",
+    "call_pNbwpg27HJeE8MXMTYcfI41e"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 2
+}

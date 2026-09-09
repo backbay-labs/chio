@@ -1,0 +1,83 @@
+{
+  "host": "hermes",
+  "sourceRevision": "4b3d3b8a0b4909c4bdbe3a7d7fe0b1c16d788faa",
+  "archiveSha256": "8b600edd80fdbfa91ca976c264d53ad145b79c49b9ac37c376f6685cfb90c929",
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "cases": [
+    {
+      "case": "in-flight-capability",
+      "path": "in-flight-capability",
+      "classification": "native session"
+    },
+    {
+      "case": "in-flight-credential",
+      "path": "in-flight-credential",
+      "classification": "native session"
+    },
+    {
+      "case": "kernel-killed",
+      "path": "kernel-killed",
+      "classification": "native session"
+    },
+    {
+      "case": "kernel-killed-resume",
+      "path": "kernel-killed-resume",
+      "classification": "native session"
+    },
+    {
+      "case": "kernel-malformed",
+      "path": "kernel-malformed",
+      "classification": "native session"
+    },
+    {
+      "case": "kernel-malformed-resume",
+      "path": "kernel-malformed-resume",
+      "classification": "native session"
+    },
+    {
+      "case": "kernel-timeout",
+      "path": "kernel-timeout",
+      "classification": "native session"
+    },
+    {
+      "case": "kernel-timeout-resume",
+      "path": "kernel-timeout-resume",
+      "classification": "native session"
+    },
+    {
+      "case": "preflight-kernel-absent",
+      "path": "preflight-kernel-absent",
+      "classification": "launcher refusal before native startup"
+    },
+    {
+      "case": "preflight-expired-credential",
+      "path": "preflight-expired-credential",
+      "classification": "launcher refusal before native startup"
+    },
+    {
+      "case": "preflight-wrong-principal",
+      "path": "preflight-wrong-principal",
+      "classification": "launcher refusal before native startup"
+    },
+    {
+      "case": "preflight-wrong-session",
+      "path": "preflight-wrong-session",
+      "classification": "launcher refusal before native startup"
+    },
+    {
+      "case": "preflight-wrong-resource",
+      "path": "preflight-wrong-resource",
+      "classification": "launcher refusal before native startup"
+    },
+    {
+      "case": "preflight-scope-escalation",
+      "path": "preflight-scope-escalation",
+      "classification": "launcher refusal before native startup"
+    }
+  ],
+  "nativeRuns": 8,
+  "preflightRefusals": 6,
+  "skips": 0,
+  "claim": "bounded actual provider and native host fault/authority cases; startup refusals are explicitly separate; full I01-I08 acceptance open",
+  "reproducer": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/scripts/acceptance/host-approvals.py"
+}

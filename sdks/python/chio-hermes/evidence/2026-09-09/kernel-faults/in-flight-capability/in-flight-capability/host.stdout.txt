@@ -1,0 +1,3 @@
+First write succeeded: /workspace/hermes-inflight-ff83aa3f6bac.txt was created with "authorized before in-flight revocation".
+Second write failed: forbidden after in-flight revocation. The capability was revoked and the operation was denied.
+No further action will be taken as instructed.

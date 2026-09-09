@@ -1,0 +1,3 @@
+First write succeeded with content "authorized before in-flight revocation".
+
+Second write did not succeed: execution outcome is unknown and no automatic retry occurred. No further write attempts will be made as instructed.

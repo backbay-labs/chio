@@ -1,0 +1,6 @@
+{
+  "error": "actual host did not execute the exact expected tool call; no acceptance claim",
+  "type": "RuntimeError",
+  "privateConfiguration": "/Users/connor/.local/share/chio-required-operators/hermes-host-delivery-20260909/hermes-approvals-3e2903efeb2f4bb18083cc1c1116f15b/gateway.json",
+  "claim": "unresolved; never counted as acceptance"
+}

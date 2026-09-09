@@ -1,0 +1,1 @@
+The write operation did not complete: an unresolved operation has fenced this gateway, and operator intervention is required before further changes can be made. No file was written. Stopping as requested.

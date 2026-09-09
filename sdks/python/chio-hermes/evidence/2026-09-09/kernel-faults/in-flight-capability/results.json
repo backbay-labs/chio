@@ -1,0 +1,32 @@
+[
+  {
+    "case": "in-flight-capability",
+    "exitCode": 3,
+    "command": [
+      "/tmp/chio-hermes-http-transport-cold-consumer-r9-20260909/bin/python",
+      "-m",
+      "chio_hermes.restricted",
+      "--host-python",
+      "/tmp/chio-hermes-20260909/clean-host-venv/bin/python",
+      "--host-root",
+      "/tmp/chio-hermes-20260909/public-upstream-source",
+      "--node",
+      "/opt/homebrew/bin/node",
+      "--gateway-script",
+      "/tmp/chio-bridge-host-delivery-cold-consumer-r2-20260909/node_modules/@chio/bridge/dist/gateway-http.js",
+      "--gateway-config",
+      "/Users/connor/.local/share/chio-required-operators/hermes-host-delivery-20260909/hermes-approvals-ebc613582eb243d28819ff83aa3f6bac/gateway.json",
+      "--state-dir",
+      "/tmp/chio-hermes-approval-runtime-8c4a0282420b418291df8745193f5e0f",
+      "--query-file",
+      "/Users/connor/.local/share/chio-required-operators/hermes-host-delivery-20260909/hermes-approvals-ebc613582eb243d28819ff83aa3f6bac/in-flight-capability.txt",
+      "--model",
+      "gpt-4.1-2025-04-14",
+      "--model-base-url",
+      "https://api.openai.com/v1",
+      "--max-turns",
+      "8"
+    ],
+    "newDispatchRows": 1
+  }
+]
