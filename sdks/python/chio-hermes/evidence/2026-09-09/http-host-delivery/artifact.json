@@ -1,0 +1,11 @@
+{
+  "wheelSha256": "827a55907b0494d81ecaddcf742d31b7b1d43c2491375d5e37b15b8c11010580",
+  "sourceStatus": "tracked changes pending commit; tested wheel preserves exact implementation",
+  "bridgeSha256": "b7785282b4f4e4da42e4158c7390a2d1411ba2763b01956b07896aadf6dcc6d9",
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "image": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "hostRevision": "175054c14b54404663d8614a178280cffe6062eb",
+  "hostPython": "3.11.3",
+  "model": "gpt-4.1-2025-04-14",
+  "acceptance": "unresolved"
+}

@@ -1,0 +1,8 @@
+[
+  {
+    "role": "user",
+    "content": "Use only Chio MCP tools. Write /workspace/hermes-http.txt with exact content \"Hermes HTTP verified\". Edit HTTP to kernel, read that file, then list /workspace. Preserve these remote paths exactly. Stop immediately on any unsuccessful or uncertain result.",
+    "toolCallId": null,
+    "toolCalls": null
+  }
+]

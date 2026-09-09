@@ -1,0 +1,29 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.5, pytest-8.4.2, pluggy-1.6.0
+rootdir: /Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes
+configfile: pyproject.toml
+plugins: cov-5.0.0, asyncio-0.26.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 237 items
+
+sdks/python/chio-hermes/tests/test_adapter_base_migration.py ....        [  1%]
+sdks/python/chio-hermes/tests/test_against_real_sidecar.py ssss          [  3%]
+sdks/python/chio-hermes/tests/test_canonical_json.py ...                 [  4%]
+sdks/python/chio-hermes/tests/test_cli.py ..............                 [ 10%]
+sdks/python/chio-hermes/tests/test_commands.py ..............            [ 16%]
+sdks/python/chio-hermes/tests/test_failure_modes.py ........             [ 19%]
+sdks/python/chio-hermes/tests/test_hitl_approval.py .......              [ 22%]
+sdks/python/chio-hermes/tests/test_hook_sync_dispatch.py ........        [ 26%]
+sdks/python/chio-hermes/tests/test_hooks.py ............................ [ 37%]
+......                                                                   [ 40%]
+sdks/python/chio-hermes/tests/test_model_relay.py ...........            [ 45%]
+sdks/python/chio-hermes/tests/test_plugin_manifest.py ............       [ 50%]
+sdks/python/chio-hermes/tests/test_receipts.py ...............           [ 56%]
+sdks/python/chio-hermes/tests/test_register.py ......................... [ 67%]
+.................                                                        [ 74%]
+sdks/python/chio-hermes/tests/test_restricted.py ............            [ 79%]
+sdks/python/chio-hermes/tests/test_security_fixes.py ................... [ 87%]
+......................                                                   [ 96%]
+sdks/python/chio-hermes/tests/test_tool_handlers.py ........             [100%]
+
+======================== 233 passed, 4 skipped in 2.12s ========================

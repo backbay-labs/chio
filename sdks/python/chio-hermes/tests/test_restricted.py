@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,8 @@ from chio_hermes import restricted
 @pytest.fixture
 def launch_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> argparse.Namespace:
     monkeypatch.setattr(restricted, "sandbox_executable", lambda: Path("/usr/bin/sandbox-exec"))
+    monkeypatch.setattr(restricted, "runtime_libraries", lambda _executable: [])
+    monkeypatch.setattr(restricted, "python_runtime_root", lambda _executable: Path(sys.base_prefix))
     host = tmp_path / "host"
     host.mkdir()
     (host / "hermes").write_text("host test fixture")
@@ -28,9 +31,17 @@ def launch_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> argparse.Nam
     gateway.write_text("// operator gateway fixture\n")
     config = tmp_path / "gateway.json"
     config.write_text(json.dumps({
-        "execution": {"sessionId": "kernel-session", "bearerToken": "never-copy-this-token"},
+        "execution": {"sessionId": "kernel-session", "bearerToken": "never-copy-this-token",
+                      "subjectKey": "subject", "capabilityId": "capability", "serverId": "fs",
+                      "endpoint": "http://127.0.0.1:58483"},
         "sessionId": "agent-session", "journalDir": str(tmp_path / "journal"),
         "tools": [{"name": "read_text_file", "inputSchema": {"type": "object"}}],
+        "sessionCredential": {
+            "schema": "chio.mcp.session-credential.v1", "sessionId": "kernel-session",
+            "subjectKey": "subject", "capabilityIds": ["capability"], "serverId": "fs",
+            "endpointPath": "/mcp", "allowedTools": ["read_text_file"],
+            "issuedAt": int(time.time()), "expiresAt": int(time.time()) + 600,
+        },
     }))
     config.chmod(0o600)
     query = tmp_path / "query.txt"
@@ -40,6 +51,8 @@ def launch_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> argparse.Nam
         gateway_script=gateway, gateway_config=config, state_dir=tmp_path / "state",
         query_file=query, model="test-model", model_base_url="http://127.0.0.1:8000/v1",
         model_key_env="TEST_MODEL_KEY", max_turns=3,
+        model_relay_url="http://127.0.0.1:8000/v1", model_relay_token="local-relay-token",
+        gateway_transport_url="http://127.0.0.1:8001/mcp", gateway_transport_token="local-gateway-token",
     )
 
 
@@ -57,10 +70,13 @@ def test_launcher_excludes_native_routes_and_parent_configuration(
     assert not list(workspace.iterdir())
     assert not {"HERMES_CONFIG", "PYTHONPATH", "ANTHROPIC_API_KEY"}.intersection(env)
     assert env["HERMES_ENABLE_PROJECT_PLUGINS"] == "false"
+    assert env["TIRITH_ENABLED"] == "false"
+    assert env["CHIO_HERMES_MODEL_API_KEY"] == "local-relay-token"
     config_path = launch_args.state_dir / "profile" / "config.yaml"
     config = json.loads(config_path.read_text())
     assert config["plugins"]["enabled"] == []
     assert config["hooks"] == {}
+    assert config["security"]["tirith_enabled"] is False
     assert config["tools"]["tool_search"]["enabled"] == "off"
     assert set(config["mcp_servers"]) == {"chio"}
     assert config["mcp_servers"]["chio"]["tools"]["include"] == ["read_text_file"]
@@ -111,3 +127,20 @@ def test_unsupported_platform_has_no_unsandboxed_fallback(monkeypatch: pytest.Mo
 def test_sandbox_path_cannot_inject_policy(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="control characters"):
         restricted.macos_profile(home=tmp_path / "malicious\npath", read_paths=[], write_paths=[])
+
+
+@pytest.mark.parametrize("fault", ["bootstrap", "other-session", "wider-tools", "expired"])
+def test_legacy_or_mismatched_session_credentials_refuse_before_host_start(
+    launch_args: argparse.Namespace, fault: str,
+) -> None:
+    config = json.loads(launch_args.gateway_config.read_text())
+    if fault == "bootstrap":
+        del config["sessionCredential"]
+    elif fault == "other-session":
+        config["sessionCredential"]["sessionId"] = "other"
+    elif fault == "wider-tools":
+        config["sessionCredential"]["allowedTools"].append("write_file")
+    else:
+        config["sessionCredential"]["expiresAt"] = int(time.time()) - 1
+    with pytest.raises(ValueError, match="session credential"):
+        restricted.gateway_tool_names(config)

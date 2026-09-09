@@ -29,6 +29,7 @@ classifiers = [
 # The plugin only uses the `ctx` object passed into `register(ctx)` and
 # never imports `hermes_agent` at module load.
 dependencies = [
+    "certifi>=2026.7.22,<2027",
     "chio-adapter-base>=0.2.0,<0.3",
     "chio-sdk-python>=0.1.0",
     "chio-code-agent>=0.1.0",

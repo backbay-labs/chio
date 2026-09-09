@@ -16,7 +16,8 @@ leave native tools executable. Do not use that mode as a protected boundary.
 
 `chio-hermes-restricted` launches the pinned Hermes CLI with only `mcp-chio`.
 It creates a fresh isolated profile and empty local working directory, disables
-user/project plugins and shell hooks, disables dynamic tool search, and exposes
+user/project plugins and shell hooks, disables dynamic tool search and the
+native terminal scanner bootstrap, and exposes
 only the exact tool names in an operator-prepared Chio gateway configuration.
 The tested initial workflow is external file reading, writing, and editing.
 Native shell, local file operations, native/custom network tools, browser,
@@ -29,11 +30,16 @@ stdio gateway owns the agent authentication token, trusted signer pins,
 retained kernel session, and durable operation journal. Each effect is sent
 through kernel `tools/call`; the launcher never authorizes a local executor.
 Gateway configuration and journals must be outside the protected resource's
-write scope. On the qualified macOS mode, Seatbelt denies normal-home file contents and
-writes except explicit runtime/state paths. Outbound Unix sockets are denied
-except the exact system DNS resolver socket. Those restrictions are inherited
-by children. This is not a complete default-deny OS sandbox; other operating
-systems are refused until their boundaries are qualified.
+write scope. The macOS candidate uses a default-deny Seatbelt profile: explicit
+runtime libraries, pinned source, own configuration/profile and gateway journal
+are readable; only the profile and journal are writable. Hard links, shell
+execution, Unix sockets, cross-host files and unrelated network endpoints are
+unavailable. Required Python/Node child processes inherit the same restrictions.
+Only the local kernel port and an operator-owned local model relay are reachable.
+The relay accepts inline text and the selected function tools on the fixed
+OpenAI Chat Completions route; the provider key never enters the host process.
+Kernel-owned uncertainty fencing remains required even if a host alters its local
+journal. Other operating systems and providers are refused pending qualification.
 
 ## Installation and launch
 
@@ -49,7 +55,20 @@ hashes and whether each run used source or a packed installation.
    loads and may rewrite `install/.env` despite an isolated `HERMES_HOME`.
    The launcher checks the inspected dispatch/configuration file hashes and
    refuses a different host contract. Machine-managed Hermes configuration
-   requires separate qualification and is refused by this candidate.
+   requires separate qualification and is refused by this candidate. The public
+   source fetch and locked core/MCP install were tested with uv 0.12.11; uv
+   0.9.10 cannot parse that upstream lockfile. Upstream explicitly rejects wheel
+   builds, so keep its supported editable source installation:
+
+   ```bash
+   git init /opt/hermes/pinned-source
+   git -C /opt/hermes/pinned-source fetch --no-tags --depth=1 \
+     https://github.com/NousResearch/hermes-agent.git \
+     175054c14b54404663d8614a178280cffe6062eb
+   git -C /opt/hermes/pinned-source checkout --detach FETCH_HEAD
+   UV_PROJECT_ENVIRONMENT=/opt/hermes/venv uv sync \
+     --project /opt/hermes/pinned-source --locked --extra mcp --no-dev
+   ```
 2. Install the reviewed `chio_hermes-0.1.2` wheel in an isolated environment.
    Install its dependencies from the reviewed wheelhouse. Local qualification
    builds used `chio-sdk-python==0.1.0`, `chio-code-agent==0.1.0`, and
@@ -59,7 +78,15 @@ hashes and whether each run used source or a packed installation.
    `chio-prepare-gateway` with a private operator request to establish a
    retained kernel session, signer/subject/capability binding, a unique
    session identity, a durable journal, and an exact resource tool allowlist.
-   Keep the administrative credential separate from the gateway agent token.
+   The current prepare request requires distinct bootstrap and administrative
+   credentials plus `credentialTtlSeconds` (1 to 3600). It exchanges them for a
+   kernel-scoped session credential and persists only that delegated bearer.
+   The launcher refuses old bootstrap-token configurations, mismatched scope,
+   or expired credential metadata. The kernel must independently enforce the
+   token scope; metadata alone cannot prove authority. The protected-mode kernel
+   endpoint must use an explicit `http://127.0.0.1:PORT` origin. Keep the administrative
+   request and bootstrap credentials outside all host-readable paths. Never
+   mount or include them among runtime read allowances.
 4. Put the model provider credential in an explicitly named environment
    variable and the task in a query file. Invoke:
 
@@ -83,7 +110,8 @@ sibling checkouts. The state directory must not already exist. The launcher
 stores `launch.json` with configuration and gateway script hashes and exact
 command arguments; it does not copy the gateway token or provider credential
 into the profile. The supplied environment must contain the named model
-credential. The gateway configuration is private (mode `0600`); the gateway
+credential in the operator launcher only. The host receives a per-run relay token
+that cannot call another provider route. The gateway configuration is private (mode `0600`); the gateway
 journal is private (mode `0700`).
 
 ## Recovery, upgrade, and removal
@@ -131,3 +159,31 @@ isolated profile. It reproduces the legacy native bypass, loaded-hook denial,
 callback exception, malformed hook response, plugin load failure, and static
 native-tool exclusion. The fixture replaces inference only; it does not
 qualify real-model useful work or substitute for real-kernel testing.
+
+## Current protected HTTP candidate
+
+The required integration candidate now runs the HTTP gateway in a private
+launcher child. Pass the installed bridge's `dist/gateway-http.js` to
+`--gateway-script`. The host receives only ephemeral gateway and model tokens;
+it cannot read the prepared kernel credential or operation journal, or reach
+the kernel port. Its only model route is the operator-owned OpenAI relay.
+
+The qualified candidate uses the pinned public Hermes source and a separately
+installed wheelhouse, including Certifi roots for Python runtimes without a
+system CA bundle. TLS certificate verification remains enabled. The Python
+framework's exact bootstrap executable is allowed on macOS; descendants retain
+the same file/network boundary. Node executes only outside the agent sandbox.
+
+The supported model mode requests one tool call per turn. Multiple unconfirmed
+operations remain fenced. Actual host tool results are decoded from the pinned
+Hermes wrapper and verified against the stored request and signed result before
+the parent acknowledges delivery. Parent pipe loss closes the HTTP gateway.
+Unresolved, denied, pending approval and completed outcomes have distinct exit
+statuses. Do not delete the operator journal or replace authority to recover an
+unknown effect. Use the bridge's explicit delivery export/acknowledgement and
+dead-owner lock recovery procedures.
+
+`evidence/2026-09-09/http-host-delivery` records the actual provider/host useful
+workflow and failed predecessors. This remains an implementation candidate: the
+full host matrix, approvals, budget/revocation and final lifecycle tests remain
+open, as do four legacy opt-in sidecar skips. No accepted release is claimed.
