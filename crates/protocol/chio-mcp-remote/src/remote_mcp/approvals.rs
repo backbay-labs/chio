@@ -1,12 +1,12 @@
 //! Operator-owned approval records. This module never dispatches protected work.
 //! Returned artifacts are admitted only by the ordinary kernel tools/call path.
 use super::*;
-use chio_core::Hash;
 use chio_core::capability::governance::{
     GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody,
     GovernedTransactionIntent, GovernedTransactionIntentBody,
 };
-use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
+use chio_core::Hash;
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

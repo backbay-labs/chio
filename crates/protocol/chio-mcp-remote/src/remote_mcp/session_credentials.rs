@@ -6,6 +6,7 @@
 
 use super::*;
 use rusqlite::{params, OptionalExtension};
+use subtle::ConstantTimeEq;
 
 const SCHEMA: &str = "chio.mcp.session-credential.v1";
 const PREFIX: &str = "chio_session_v1_";
@@ -13,6 +14,18 @@ const TABLE: &str = "remote_session_credentials";
 const MAX_TTL_SECONDS: u64 = 3600;
 const CALL_TABLE: &str = "remote_session_credential_calls";
 const LATCH_TABLE: &str = "remote_session_credential_latches";
+const DELIVERY_SCHEMA: &str = "chio.mcp.delivery-ack.v1";
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DeliveryAcknowledgement {
+    schema: String,
+    request_id: String,
+    request_hash: String,
+    receipt_id: String,
+    result_hash: String,
+    acknowledgement: String,
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -29,6 +42,8 @@ pub(super) struct CredentialCall {
     started_at: u64,
     state: String,
     response: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    delivery_ack: Option<DeliveryAcknowledgement>,
 }
 
 pub(super) enum CallReservation {
@@ -441,9 +456,13 @@ impl SessionCredential {
                 .and_then(|params| params.get("name"))
                 .and_then(Value::as_str)
                 .is_some_and(|name| self.allowed_tools.iter().any(|tool| tool == name)),
-            Some("tools/list" | "chio/execution-context" | "ping" | "notifications/cancelled") => {
-                true
-            }
+            Some(
+                "tools/list"
+                | "chio/execution-context"
+                | "chio/acknowledge"
+                | "ping"
+                | "notifications/cancelled",
+            ) => true,
             _ => false,
         };
         if allowed {
@@ -473,6 +492,7 @@ impl SessionCredential {
         } else if method == "chio/execution-context" {
             if let Some(result) = message.get_mut("result").and_then(Value::as_object_mut) {
                 result.insert("serverId".to_owned(), json!(self.server_id));
+                result.insert("deliveryAcknowledgementVersion".to_owned(), json!("1"));
                 result.insert("sessionCredential".to_owned(), self.public_binding());
             }
         }
@@ -600,11 +620,6 @@ fn reserve_at(
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(storage_error)?;
-    if read_latch(&tx, keypair, &credential.session_id)?
-        .is_some_and(|call| call.state != "completed")
-    {
-        return Err(fence_error());
-    }
     let row: Option<(String,String)> = tx.query_row(
         &format!("SELECT record_json,signature FROM {CALL_TABLE} WHERE session_id=?1 AND request_id=?2"),
         params![credential.session_id,request_id], |row| Ok((row.get(0)?,row.get(1)?)),
@@ -617,8 +632,10 @@ fn reserve_at(
             &encoded,
             &signature,
         )?;
-        if call.state != "completed"
-            || call.request_hash != request_hash
+        if !matches!(
+            call.state.as_str(),
+            "completed_unacknowledged" | "acknowledged" | "fenced"
+        ) || call.request_hash != request_hash
             || call.subject_key != credential.subject_key
             || call.capability_ids != credential.capability_ids
             || call.server_id != credential.server_id
@@ -628,6 +645,14 @@ fn reserve_at(
         let mut response = call.response.ok_or_else(fence_error)?;
         response["id"] = message["id"].clone();
         return Ok(CallReservation::Replay(response));
+    }
+    // Knowing the kernel completed is distinct from the caller having received
+    // its result. Even a new request ID remains fenced until explicit delivery
+    // acknowledgement. Legacy completed records have no such proof and stop.
+    if read_latch(&tx, keypair, &credential.session_id)?
+        .is_some_and(|call| call.state != "acknowledged")
+    {
+        return Err(fence_error());
     }
     let call = CredentialCall {
         schema: "chio.mcp.session-credential-call.v1".to_owned(),
@@ -653,6 +678,7 @@ fn reserve_at(
         started_at: unix_now(),
         state: "pending".to_owned(),
         response: None,
+        delivery_ack: None,
     };
     write_call(&tx, keypair, &call)?;
     tx.commit().map_err(storage_error)?;
@@ -683,6 +709,7 @@ fn verified_completed_response(keypair: &Keypair, call: &CredentialCall, message
     if metadata["receipt_context"]["request_id"] != call.request_id
         || metadata["attribution"]["subject_key"] != call.subject_key
         || admission["schema"] != "chio.admission-receipt.v1"
+        || admission["request_id"] != call.request_id
         || admission["projected_state"] != "completed"
         || admission["projected_dispatch_state"] != "terminal"
         || !admission["tool_outcome_id"].is_string()
@@ -699,13 +726,22 @@ pub(super) fn finish_call(
     state: &RemoteAppState,
     pending: &CredentialCall,
     message: &Value,
-) -> Result<(), Response> {
+) -> Result<Value, Response> {
     let (path, keypair) = operator_runtime(state)?;
+    finish_at(path, &keypair, pending, message)
+}
+
+fn finish_at(
+    path: &FsPath,
+    keypair: &Keypair,
+    pending: &CredentialCall,
+    message: &Value,
+) -> Result<Value, Response> {
     let mut conn = open_db(path).map_err(storage_error)?;
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(storage_error)?;
-    let current = read_latch(&tx, &keypair, &pending.session_id)?.ok_or_else(fence_error)?;
+    let current = read_latch(&tx, keypair, &pending.session_id)?.ok_or_else(fence_error)?;
     if current.request_id != pending.request_id
         || current.request_hash != pending.request_hash
         || current.state != "pending"
@@ -713,14 +749,107 @@ pub(super) fn finish_call(
         return Err(fence_error());
     }
     let mut terminal = pending.clone();
-    terminal.state = if verified_completed_response(&keypair, pending, message) {
-        "completed"
+    let mut response = message.clone();
+    if verified_completed_response(keypair, pending, message) {
+        let receipt = &message["result"]["_meta"]["chioEvidence"]["receipt"];
+        // Bind the acknowledgement to the already verified receipt and raw result.
+        let signed: chio_core::receipt::body::ChioReceipt =
+            serde_json::from_value(receipt.clone()).map_err(storage_error)?;
+        let delivery = DeliveryAcknowledgement {
+            schema: DELIVERY_SCHEMA.to_owned(),
+            request_id: pending.request_id.clone(),
+            request_hash: pending.request_hash.clone(),
+            receipt_id: signed.id,
+            result_hash: signed.content_hash,
+            acknowledgement: URL_SAFE_NO_PAD.encode(Keypair::generate().seed_bytes()),
+        };
+        response["result"]["_meta"]["chioDelivery"] =
+            serde_json::to_value(&delivery).map_err(storage_error)?;
+        terminal.delivery_ack = Some(delivery);
+        terminal.state = "completed_unacknowledged".to_owned();
     } else {
-        "fenced"
+        terminal.state = "fenced".to_owned();
     }
-    .to_owned();
-    terminal.response = Some(message.clone());
-    write_call(&tx, &keypair, &terminal)?;
+    terminal.response = Some(response.clone());
+    write_call(&tx, keypair, &terminal)?;
+    tx.commit().map_err(storage_error)?;
+    Ok(response)
+}
+
+pub(super) fn acknowledge_call(
+    state: &RemoteAppState,
+    credential: &SessionCredential,
+    message: &Value,
+) -> Result<Value, Response> {
+    let (path, keypair) = operator_runtime(state)?;
+    let acknowledgement: DeliveryAcknowledgement =
+        serde_json::from_value(message["params"].clone()).map_err(|_| {
+            plain_http_error(StatusCode::BAD_REQUEST, "invalid delivery acknowledgement")
+        })?;
+    acknowledge_at(path, &keypair, credential, &acknowledgement)?;
+    Ok(json!({"jsonrpc":"2.0","id":message["id"],"result":{
+        "schema":DELIVERY_SCHEMA,"requestId":acknowledgement.request_id,
+        "receiptId":acknowledgement.receipt_id,"acknowledged":true}}))
+}
+
+fn acknowledge_at(
+    path: &FsPath,
+    keypair: &Keypair,
+    credential: &SessionCredential,
+    acknowledgement: &DeliveryAcknowledgement,
+) -> Result<(), Response> {
+    let mut conn = open_db(path).map_err(storage_error)?;
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(storage_error)?;
+    let row: Option<(String,String)> = tx.query_row(
+        &format!("SELECT record_json,signature FROM {CALL_TABLE} WHERE session_id=?1 AND request_id=?2"),
+        params![credential.session_id,acknowledgement.request_id], |row| Ok((row.get(0)?,row.get(1)?)),
+    ).optional().map_err(storage_error)?;
+    let (encoded, signature) = row.ok_or_else(fence_error)?;
+    let mut call = decode_call(
+        keypair,
+        &credential.session_id,
+        &acknowledgement.request_id,
+        &encoded,
+        &signature,
+    )?;
+    let expected = call.delivery_ack.as_ref().ok_or_else(fence_error)?;
+    if acknowledgement.schema != DELIVERY_SCHEMA
+        || acknowledgement.request_hash != call.request_hash
+        || acknowledgement.receipt_id != expected.receipt_id
+        || acknowledgement.result_hash != expected.result_hash
+        || !bool::from(
+            acknowledgement
+                .acknowledgement
+                .as_bytes()
+                .ct_eq(expected.acknowledgement.as_bytes()),
+        )
+        || call.subject_key != credential.subject_key
+        || call.capability_ids != credential.capability_ids
+        || call.server_id != credential.server_id
+    {
+        return Err(plain_http_error(
+            StatusCode::FORBIDDEN,
+            "delivery acknowledgement does not match the original outcome",
+        ));
+    }
+    if call.state == "acknowledged" {
+        return Ok(());
+    }
+    if call.state != "completed_unacknowledged" {
+        return Err(fence_error());
+    }
+    // An acknowledgement for an older request must never clear a newer latch.
+    let active = read_latch(&tx, keypair, &credential.session_id)?.ok_or_else(fence_error)?;
+    if active.request_id != call.request_id
+        || active.request_hash != call.request_hash
+        || active.state != "completed_unacknowledged"
+    {
+        return Err(fence_error());
+    }
+    call.state = "acknowledged".to_owned();
+    write_call(&tx, keypair, &call)?;
     tx.commit().map_err(storage_error)?;
     Ok(())
 }
@@ -768,6 +897,117 @@ mod tests {
             issued_at: 100,
             expires_at: 200,
         }
+    }
+
+    fn completed_response(
+        keypair: &Keypair,
+        call: &CredentialCall,
+        arguments: Value,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
+        use chio_core::receipt::body::{ChioReceipt, ChioReceiptBody};
+        use chio_core::receipt::decision::{Decision, ToolCallAction};
+        use chio_core::receipt::kinds::{
+            BoundaryClass, ReceiptKind, RedactionMode, ToolOrigin, TrustLevel,
+        };
+        let output = json!({"content":[{"type":"text","text":"original completed result"}]});
+        let receipt = ChioReceipt::sign(
+            ChioReceiptBody {
+                id: "delivery-ack-test".to_owned(),
+                timestamp: unix_now(),
+                capability_id: call.capability_ids[0].clone(),
+                tool_server: call.server_id.clone(),
+                tool_name: call.tool_name.clone(),
+                action: ToolCallAction::from_parameters(arguments)?,
+                decision: Some(Decision::Allow),
+                receipt_kind: ReceiptKind::MediatedDecision,
+                boundary_class: BoundaryClass::Prevent,
+                observation_outcome: None,
+                tool_origin: ToolOrigin::CallerExecuted,
+                redaction_mode: RedactionMode::None,
+                actor_chain: Vec::new(),
+                content_hash: sha256_hex(&canonical_json_bytes(&output)?),
+                policy_hash: "policy".to_owned(),
+                evidence: Vec::new(),
+                metadata: Some(json!({
+                    "receipt_context":{"request_id":call.request_id}, "attribution":{"subject_key":call.subject_key},
+                    "admission_operation":{"schema":"chio.admission-receipt.v1","request_id":call.request_id,
+                        "projected_state":"completed","projected_dispatch_state":"terminal","tool_outcome_id":"outcome-1"}
+                })),
+                trust_level: TrustLevel::Mediated,
+                tenant_id: None,
+                kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
+            },
+            keypair,
+        )?;
+        Ok(
+            json!({"jsonrpc":"2.0","id":1,"result":{"_meta":{"chioEvidence":{
+            "receipt":receipt,"outputKind":"value","output":output}},"isError":false}}),
+        )
+    }
+
+    #[test]
+    fn caller_acknowledgement_is_required_after_verified_kernel_completion(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(format!(
+            "chio-delivery-{}.sqlite",
+            Keypair::generate().public_key().to_hex()
+        ));
+        let keypair = Keypair::generate();
+        let mut credential = record();
+        let message = json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+            "name":"write_file","arguments":{"path":"/workspace/one"},"_meta":{"chioRequestId":"logical-one"}}});
+        let Ok(CallReservation::Pending(pending)) =
+            reserve_at(&path, &keypair, &credential, &message)
+        else {
+            return Err("reserve".into());
+        };
+        let completed =
+            completed_response(&keypair, &pending, message["params"]["arguments"].clone())?;
+        assert!(verified_completed_response(&keypair, &pending, &completed));
+        let delivered = finish_at(&path, &keypair, &pending, &completed).map_err(|_| "complete")?;
+        let acknowledgement: DeliveryAcknowledgement =
+            serde_json::from_value(delivered["result"]["_meta"]["chioDelivery"].clone())?;
+        assert_eq!(acknowledgement.acknowledgement.len(), 43);
+        let mut next = message.clone();
+        next["params"]["_meta"]["chioRequestId"] = json!("logical-two");
+        assert!(reserve_at(&path, &keypair, &credential, &next).is_err());
+        credential.token_hash = "rotated".to_owned();
+        assert!(reserve_at(&path, &keypair, &credential, &next).is_err());
+        let Ok(CallReservation::Replay(replayed)) =
+            reserve_at(&path, &keypair, &credential, &message)
+        else {
+            return Err("replay".into());
+        };
+        assert_eq!(delivered, replayed);
+        for field in [
+            "requestId",
+            "requestHash",
+            "receiptId",
+            "resultHash",
+            "acknowledgement",
+        ] {
+            let mut forged = serde_json::to_value(&acknowledgement)?;
+            forged[field] = json!("wrong");
+            let forged = serde_json::from_value(forged)?;
+            assert!(acknowledge_at(&path, &keypair, &credential, &forged).is_err());
+            assert!(reserve_at(&path, &keypair, &credential, &next).is_err());
+        }
+        acknowledge_at(&path, &keypair, &credential, &acknowledgement)
+            .map_err(|_| "acknowledge")?;
+        acknowledge_at(&path, &keypair, &credential, &acknowledgement)
+            .map_err(|_| "idempotent acknowledge")?;
+        assert!(matches!(
+            reserve_at(&path, &keypair, &credential, &next),
+            Ok(CallReservation::Pending(_))
+        ));
+        acknowledge_at(&path, &keypair, &credential, &acknowledgement)
+            .map_err(|_| "old acknowledge")?;
+        let mut third = next.clone();
+        third["params"]["_meta"]["chioRequestId"] = json!("logical-three");
+        assert!(reserve_at(&path, &keypair, &credential, &third).is_err());
+        std::fs::remove_file(path)?;
+        Ok(())
     }
 
     #[test]
@@ -818,7 +1058,7 @@ mod tests {
         else {
             return Err("first call was not reserved".into());
         };
-        pending.state = "completed".to_owned();
+        pending.state = "completed_unacknowledged".to_owned();
         pending.response = Some(json!({"jsonrpc":"2.0","id":1,"result":{"ownerResult":true}}));
         write_call(&open_db(&path)?, &keypair, &pending).map_err(|_| "write completed record")?;
         let mut retry = message.clone();

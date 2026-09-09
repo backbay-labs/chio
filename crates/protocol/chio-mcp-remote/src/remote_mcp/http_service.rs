@@ -443,6 +443,14 @@ async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> R
             return response;
         }
     }
+    if response_method == "chio/acknowledge" {
+        if let Some(credential) = session_credential.as_ref() {
+            return match remote_mcp_session_credentials::acknowledge_call(&state, credential, &message) {
+                Ok(response) => Json(response).into_response(),
+                Err(response) => response,
+            };
+        }
+    }
     let credential_call = if response_method == "tools/call" {
         if let Some(credential) = session_credential.as_ref() {
             match remote_mcp_session_credentials::reserve_call(&state, credential, &message) {
@@ -482,15 +490,19 @@ async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> R
                         );
                     }
 
+                    let mut outgoing = event.message.clone();
                     if is_terminal_response_for_request(&event.message, &request_id) {
                         if let Some(call) = credential_call.as_ref() {
-                            if remote_mcp_session_credentials::finish_call(&state, call, &event.message).is_err() {
-                                // The effect may already exist. Withhold success and
-                                // leave the durable pending fence in place.
-                                let failure = json!({"jsonrpc":"2.0","id":request_id,
-                                    "error":{"code":-32603,"message":"credential outcome persistence failed; effect is uncertain"}});
-                                yield Ok(Event::default().data(failure.to_string()));
-                                break;
+                            match remote_mcp_session_credentials::finish_call(&state, call, &event.message) {
+                                Ok(response) => outgoing = response,
+                                Err(_) => {
+                                    // The effect may already exist. Withhold success
+                                    // and leave the durable pending fence in place.
+                                    let failure = json!({"jsonrpc":"2.0","id":request_id,
+                                        "error":{"code":-32603,"message":"credential outcome persistence failed; effect is uncertain"}});
+                                    yield Ok(Event::default().data(failure.to_string()));
+                                    break;
+                                }
                             }
                         }
                     }
@@ -501,7 +513,7 @@ async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> R
                     );
                     if should_emit && (session_credential.is_none()
                         || is_terminal_response_for_request(&event.message, &request_id)) {
-                        let mut message = event.message.clone();
+                        let mut message = outgoing;
                         if let Some(credential) = session_credential.as_ref() {
                             credential.restrict_response(&response_method, &mut message);
                         }

@@ -22,7 +22,10 @@ pub(super) fn install_admin_routes(router: Router<RemoteAppState>) -> Router<Rem
             get(handle_admin_session_trust).post(handle_admin_revoke_session_trust),
         )
         .route(ADMIN_SESSIONS_PATH, get(handle_admin_sessions))
-        .route("/admin/approvals", post(super::remote_mcp_approvals::submit))
+        .route(
+            "/admin/approvals",
+            post(super::remote_mcp_approvals::submit),
+        )
         .route(
             "/admin/approvals/{id}",
             get(super::remote_mcp_approvals::get_record),

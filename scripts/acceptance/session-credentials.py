@@ -7,6 +7,10 @@ new, explicitly labeled, and retained for independent inspection.
 import argparse
 import hashlib
 import http.client
+import http.server
+import copy
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+import cryptography
 import json
 import os
 from pathlib import Path
@@ -47,6 +51,26 @@ def relay(argv):
     return child.wait()
 
 
+def canonical_test_json(value):
+    """RFC8785-compatible restricted fixture subset; reject floats and non-ASCII keys."""
+    def validate(item):
+        if item is None or isinstance(item, (bool,str)): return
+        if isinstance(item,int) and abs(item) <= 9007199254740991: return
+        if isinstance(item,list):
+            for child in item: validate(child)
+            return
+        if isinstance(item,dict) and all(isinstance(key,str) and key.isascii() for key in item):
+            for child in item.values(): validate(child)
+            return
+        raise ValueError('fixture falls outside the supported canonical JSON subset')
+    validate(value)
+    return json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+
+
+def digest(value):
+    return hashlib.sha256(canonical_test_json(value)).hexdigest()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', required=True)
@@ -61,20 +85,25 @@ def main():
     binary = str(Path(args.binary).resolve(strict=True))
     identity = hashlib.sha256(Path(binary).read_bytes()).hexdigest()
     volume = 'chio-required-credentials-' + secrets.token_hex(6)
+    audit_volume = volume + '-audit'
     operator, admin = secrets.token_hex(32), secrets.token_hex(32)
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
     base = f'http://127.0.0.1:{port}'
     results = []
     timings = []
+    bindings = {}
     def run(argv):
         return subprocess.run(argv, check=True, capture_output=True, text=True).stdout
     run(['docker','volume','create','--label','chio.task=session-credentials',volume])
+    run(['docker','volume','create','--label','chio.task=session-credentials',audit_volume])
     docker = ['docker','run','--rm','-i','--network','none','--read-only','--cap-drop','ALL',
               '--security-opt','no-new-privileges','--mount',f'type=volume,src={volume},dst=/workspace',
+              '--mount',f'type=volume,src={audit_volume},dst=/audit',
               '--tmpfs','/tmp:rw,noexec,nosuid,size=16m',args.image]
     run(['docker','run','--rm','--network','none','--user','0','--mount',f'type=volume,src={volume},dst=/workspace',
-         '--entrypoint','node',args.image,'-e',"const f=require('fs');f.chownSync('/workspace',1000,1000);f.writeFileSync('/workspace/forbidden.txt','original');f.chownSync('/workspace/forbidden.txt',1000,1000)"])
+         '--mount',f'type=volume,src={audit_volume},dst=/audit',
+         '--entrypoint','node',args.image,'-e',"const f=require('fs');f.chownSync('/workspace',1000,1000);f.chownSync('/audit',1000,1000);f.writeFileSync('/workspace/forbidden.txt','original');f.chownSync('/workspace/forbidden.txt',1000,1000)"])
     policy = runtime / 'policy.yaml'
     policy.write_text('''kernel:
   max_capability_ttl: 3600
@@ -145,9 +174,44 @@ capabilities:
         request(operator,'/mcp',{'jsonrpc':'2.0','method':'notifications/initialized'},sid)
         status,grant,_=request(admin,f'/admin/sessions/{sid}/credential',{'ttlSeconds':ttl,'allowedTools':tools or ['write_file','read_text_file','list_directory']})
         assert status==200,(status,grant)
-        return sid,grant['bearerToken'],{k:v for k,v in grant.items() if k!='bearerToken'}
+        public={k:v for k,v in grant.items() if k!='bearerToken'}
+        bindings[sid]=public
+        return sid,grant['bearerToken'],public
+    def verify_and_ack(token,sid,params,response):
+        delivery=response['result']['_meta']['chioDelivery']
+        envelope=response['result']['_meta']['chioEvidence']
+        receipt=envelope['receipt']
+        signer=(runtime/'sessions.sqlite.admission.kernel.pub').read_text().strip()
+        assert receipt['kernel_key']==signer
+        assert 'bbs_signature' not in receipt and receipt.get('algorithm') in [None,'ed25519']
+        body={k:v for k,v in receipt.items() if k not in ['id','signature','algorithm','bbs_signature']}
+        assert digest(body)==receipt['id']
+        Ed25519PublicKey.from_public_bytes(bytes.fromhex(signer)).verify(bytes.fromhex(receipt['signature']),canonical_test_json({'id':receipt['id'],'body':body}))
+        assert receipt['capability_id'] in bindings[sid]['capabilityIds']
+        assert receipt['metadata']['attribution']['subject_key']==bindings[sid]['subjectKey']
+        assert receipt['tool_server']=='fs' and receipt['tool_name']==params['name']
+        assert receipt['action']['parameter_hash']==digest(params['arguments'])
+        assert receipt['metadata']['receipt_context']['request_id']==params['_meta']['chioRequestId']
+        admission=receipt['metadata']['admission_operation']
+        assert admission['request_id']==params['_meta']['chioRequestId'] and admission['projected_state']=='completed' and admission['projected_dispatch_state']=='terminal'
+        assert receipt['decision']['verdict']=='allow' and receipt['content_hash']==digest(envelope['output'])
+        assert delivery['schema']=='chio.mcp.delivery-ack.v1'
+        assert delivery['requestId']==params['_meta']['chioRequestId'] and delivery['requestHash']==digest({'method':'tools/call','params':params})
+        assert delivery['receiptId']==receipt['id'] and delivery['resultHash']==receipt['content_hash']
+        # Acknowledgement follows verified, fsynced caller storage, never just server send.
+        local=runtime/'verified-outcomes';local.mkdir(mode=0o700,exist_ok=True)
+        target=local/(hashlib.sha256((sid+delivery['requestId']).encode()).hexdigest()+'.json')
+        with target.open('w') as stream:
+            os.chmod(target,0o600);json.dump(response,stream);stream.flush();os.fsync(stream.fileno())
+        directory=os.open(local,os.O_RDONLY);os.fsync(directory);os.close(directory)
+        status,ack,_=rpc(token,sid,'chio/acknowledge',delivery)
+        assert status==200 and ack['result']['acknowledged'] and ack['result']['requestId']==delivery['requestId']
     def call(token,sid,path,content,request_id):
-        return rpc(token,sid,'tools/call',{'name':'write_file','arguments':{'path':'/workspace/'+path,'content':content},'_meta':{'chioRequestId':request_id}})
+        params={'name':'write_file','arguments':{'path':'/workspace/'+path,'content':content},'_meta':{'chioRequestId':request_id}}
+        outcome=rpc(token,sid,'tools/call',params)
+        if outcome[0]==200 and not outcome[1]['result'].get('isError'):
+            verify_and_ack(token,sid,params,outcome[1])
+        return outcome
     def observe():
         return json.loads(run(['docker','run','--rm','--network','none','--read-only','--mount',f'type=volume,src={volume},dst=/workspace,readonly',
             '--entrypoint','node',args.image,'-e',"const f=require('fs');console.log(JSON.stringify(Object.fromEntries(f.readdirSync('/workspace').map(n=>[n,f.readFileSync('/workspace/'+n,'utf8')]))))"]))
@@ -164,7 +228,8 @@ capabilities:
             check('forbidden_observer_control_'+content,observe()['forbidden.txt']==content,{'directResourceOwnerWrite':content})
         sid,token,binding=session()
         status,context,_=rpc(token,sid,'chio/execution-context')
-        check('delegated_context',status==200 and context['result']['sessionCredential']==binding,context)
+        check('delegated_context',status==200 and context['result']['sessionCredential']==binding
+              and context['result']['deliveryAcknowledgementVersion']=='1',context)
         status,catalog,_=rpc(token,sid,'tools/list')
         check('inventory_filtered',status==200 and sorted(t['name'] for t in catalog['result']['tools'])==binding['allowedTools'],catalog)
         before=observe()
@@ -224,6 +289,55 @@ capabilities:
         check('retained_session_restart',resumed[0]==200 and observe().get('resumed.txt')=='same retained identity',resumed[:2])
         uncertain=call(unknown_token,unknown_sid,'after-restart.txt','must not dispatch','after-restart')
         check('unknown_fence_survives_restart',uncertain[0]==409 and 'after-restart.txt' not in observe(),uncertain[:2])
+        proxy_sid,proxy_token,proxy_binding=session()
+        upstream_base=base
+        proxy_consumed=threading.Event()
+        class DropAfterResponse(http.server.BaseHTTPRequestHandler):
+            def log_message(self,*args): pass
+            def do_POST(self):
+                payload=self.rfile.read(int(self.headers['Content-Length']))
+                forwarded={k:v for k,v in self.headers.items() if k.lower() not in ['host','connection']}
+                req=urllib.request.Request(upstream_base+self.path,data=payload,headers=forwarded,method='POST')
+                with urllib.request.urlopen(req,timeout=20) as response:
+                    response.read()  # Consume the complete original response, including acknowledgement challenge.
+                proxy_consumed.set()
+                self.connection.shutdown(socket.SHUT_RDWR)
+                self.connection.close()
+        proxy=http.server.ThreadingHTTPServer(('127.0.0.1',0),DropAfterResponse)
+        proxy.daemon_threads=True
+        threading.Thread(target=proxy.serve_forever,daemon=True).start()
+        lost_params={'name':'write_file','arguments':{'path':'/workspace/proxy-lost.txt','content':'one committed external effect'},'_meta':{'chioRequestId':'proxy-original'}}
+        guest_journal=runtime/'guest-uncertainty.json'
+        guest_journal.write_text(json.dumps({'state':'pending','requestId':'proxy-original'}))
+        disconnected=False
+        try:
+            base=f'http://127.0.0.1:{proxy.server_port}'
+            rpc(proxy_token,proxy_sid,'tools/call',lost_params)
+        except (OSError,urllib.error.URLError,http.client.RemoteDisconnected): disconnected=True
+        finally:
+            base=upstream_base;proxy.shutdown();proxy.server_close()
+        assert disconnected and proxy_consumed.wait(2)
+        guest_journal.unlink()  # Deliberately erase only this test agent's local pending record.
+        blocked=call(proxy_token,proxy_sid,'proxy-new-id.txt','must not redispatch','proxy-new-id')
+        check('proxy_lost_completed_response_owner_fence',blocked[0]==409 and observe().get('proxy-lost.txt')=='one committed external effect'
+              and 'proxy-new-id.txt' not in observe(),{'blocked':blocked[:2],'upstreamResponseFullyConsumed':True,'guestJournalDeleted':True})
+        rotated_status,rotated_binding,_=request(admin,f'/admin/sessions/{proxy_sid}/credential',{'ttlSeconds':300,'allowedTools':proxy_binding['allowedTools']})
+        assert rotated_status==200
+        proxy_token=rotated_binding.pop('bearerToken');bindings[proxy_sid]=rotated_binding
+        blocked=call(proxy_token,proxy_sid,'proxy-rotated.txt','must not redispatch','proxy-rotated')
+        check('unacknowledged_rotation_fence',blocked[0]==409 and rotated_binding['capabilityIds']==proxy_binding['capabilityIds'] and 'proxy-rotated.txt' not in observe(),blocked[:2])
+        stop();start()
+        blocked=call(proxy_token,proxy_sid,'proxy-restart.txt','must not redispatch','proxy-restart')
+        check('unacknowledged_restart_fence',blocked[0]==409 and 'proxy-restart.txt' not in observe(),blocked[:2])
+        replay_status,original,_=rpc(proxy_token,proxy_sid,'tools/call',lost_params,rid=100)
+        check('exact_original_response_recovery',replay_status==200 and original['id']==100 and original['result']['_meta']['chioDelivery']['requestId']=='proxy-original',original)
+        for field in ['requestId','requestHash','receiptId','resultHash','acknowledgement']:
+            forged=copy.deepcopy(original['result']['_meta']['chioDelivery']);forged[field]='wrong'
+            rejected=rpc(proxy_token,proxy_sid,'chio/acknowledge',forged)
+            check('ack_rejects_'+field,rejected[0] in [403,409],rejected[:2])
+        verify_and_ack(proxy_token,proxy_sid,lost_params,original)
+        continued=call(proxy_token,proxy_sid,'proxy-continued.txt','useful continuation after verified recovery','proxy-continued')
+        check('verified_durable_replay_ack_allows_continuation',continued[0]==200 and observe().get('proxy-continued.txt')=='useful continuation after verified recovery',continued[:2])
         stop()
         (runtime/'sessions.sqlite').rename(runtime/'sessions-preserved.sqlite')
         start()
@@ -234,8 +348,8 @@ capabilities:
         (evidence/'timings.json').write_text(json.dumps(timings,indent=2)+'\n')
         (evidence/'kernel.log').write_bytes((runtime/'kernel.log').read_bytes())
         (evidence/'identity.json').write_text(json.dumps({'kernelSha256':identity,'source':run(['git','rev-parse','HEAD']).strip(),
-            'sourceDirty':run(['git','status','--short']),'image':args.image,'volume':volume,'runtime':str(runtime),
-            'port':port,'cases':len(results),'passed':sum(r['passed'] for r in results)},indent=2)+'\n')
+            'sourceDirty':run(['git','status','--short']),'image':args.image,'volume':volume,'auditVolume':audit_volume,'runtime':str(runtime),
+            'port':port,'cryptographyVersion':cryptography.__version__,'cases':len(results),'passed':sum(r['passed'] for r in results)},indent=2)+'\n')
     print(json.dumps({'passed':len(results),'evidence':str(evidence),'runtime':str(runtime),'volume':volume}))
 
 
