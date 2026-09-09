@@ -205,6 +205,8 @@ fn execution_context_reports_only_the_ready_session_authority() {
         .unwrap();
     assert_eq!(context["result"]["schema"], "chio.mcp.execution-context.v1");
     assert_eq!(context["result"]["subjectKey"], edge.agent_id);
+    assert_eq!(context["result"]["serverId"], "srv");
+    assert_eq!(context["result"]["serverIds"], json!(["srv"]));
     assert_eq!(
         context["result"]["capabilityIds"],
         json!(edge
@@ -214,4 +216,23 @@ fn execution_context_reports_only_the_ready_session_authority() {
             .collect::<Vec<_>>())
     );
     assert!(!context.to_string().contains("private"));
+}
+
+#[test]
+fn execution_context_does_not_select_one_owner_from_an_ambiguous_inventory() {
+    let mut edge = make_edge(10);
+    initialize_edge(&mut edge);
+    let mut other = edge.tools[0].clone();
+    other.server_id = "other-resource-owner".to_string();
+    edge.tools.push(other);
+    let context = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0", "id": 2, "method": "chio/execution-context", "params": {},
+        }))
+        .unwrap();
+    assert!(context["result"]["serverId"].is_null());
+    assert_eq!(
+        context["result"]["serverIds"],
+        json!(["other-resource-owner", "srv"])
+    );
 }

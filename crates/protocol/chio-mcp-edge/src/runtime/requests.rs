@@ -9,12 +9,25 @@ impl ChioMcpEdge {
                 if !matches!(self.state, EdgeState::Ready { .. }) {
                     return jsonrpc_error(id, JSONRPC_INVALID_REQUEST, "session is not ready");
                 }
+                let server_ids: std::collections::BTreeSet<&str> = self
+                    .tools
+                    .iter()
+                    .map(|binding| binding.server_id.as_str())
+                    .collect();
+                // A single-owner client must refuse an empty or ambiguous tool inventory.
+                let server_id = if server_ids.len() == 1 {
+                    server_ids.iter().next().copied()
+                } else {
+                    None
+                };
                 jsonrpc_result(
                     id,
                     json!({
                         "schema": "chio.mcp.execution-context.v1",
                         "evidenceVersion": "1",
                         "subjectKey": self.agent_id,
+                        "serverId": server_id,
+                        "serverIds": server_ids,
                         "capabilityIds": self.capabilities.iter().map(|cap| &cap.id).collect::<Vec<_>>(),
                     }),
                 )
