@@ -1,0 +1,10 @@
+{
+  "artifact": "/tmp/chio-hermes-http-transport-wheelhouse-r9-20260909/chio_hermes-0.1.2-py3-none-any.whl",
+  "sha256": "8b600edd80fdbfa91ca976c264d53ad145b79c49b9ac37c376f6685cfb90c929",
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "bridgeSha256": "b7785282b4f4e4da42e4158c7390a2d1411ba2763b01956b07896aadf6dcc6d9",
+  "host": "Hermes 0.20.5 at 175054c14b54404663d8614a178280cffe6062eb",
+  "componentTests": 235,
+  "legacyOptInSkips": 4,
+  "acceptance": "all I01-I08 unresolved"
+}

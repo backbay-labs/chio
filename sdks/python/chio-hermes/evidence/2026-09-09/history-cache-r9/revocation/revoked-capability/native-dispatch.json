@@ -1,0 +1,18 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_tVvYdmyPS6kxfsUlnEY7elhH",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/hermes-revoke-e0f45f09b3e0.txt",
+        "content": "forbidden after capability revocation"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_tVvYdmyPS6kxfsUlnEY7elhH"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

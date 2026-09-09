@@ -1,0 +1,1 @@
+Refused: The write was blocked due to an unresolved gateway operation requiring operator reconciliation. No changes were made.

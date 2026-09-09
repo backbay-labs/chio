@@ -1,0 +1,80 @@
+{
+  "files": {
+    "bridge-approval.txt": "actual approval effect\n",
+    "codex-approved-73d155dccae2.txt": "exact operator-approved effect",
+    "forbidden.txt": "independent forbidden observer\n",
+    "hermes-approved-86f3606a8025.txt": "exact operator-approved effect",
+    "hermes-approved-c926ec2318d6.txt": "exact operator-approved effect",
+    "openclaw-approved-9a5abbd30b5c.txt": "exact operator-approved effect",
+    "pi-approved-8bb974cccef7.txt": "exact operator-approved effect",
+    "secret.txt": "sensitive observer\n"
+  },
+  "dispatch": [
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-09T19:46:44.939Z",
+      "upstreamRequestId": 3,
+      "tool": "write_file",
+      "path": "/workspace/bridge-approval.txt",
+      "argumentsSha256": "94a9ded638b773f65e4b8257266451f81bc3655908858f5e5251c95713de8c81",
+      "frameSha256": "05a7af6573f96e2bf8be6d96093980b671d6f45ca292e0ef112e4122e3f11930"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 2,
+      "observedAt": "2026-09-09T21:38:44.083Z",
+      "upstreamRequestId": 4,
+      "tool": "write_file",
+      "path": "/workspace/pi-approved-8bb974cccef7.txt",
+      "argumentsSha256": "408c0802fea0ca415e5ec55c5a28fd2a5bc1702d6c3f8561455d093438dc34eb",
+      "frameSha256": "802ac91022334f2d37547647b54eab053ae053be39d0a593f5772f977ade1faa"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 3,
+      "observedAt": "2026-09-09T21:45:43.685Z",
+      "upstreamRequestId": 5,
+      "tool": "write_file",
+      "path": "/workspace/hermes-approved-c926ec2318d6.txt",
+      "argumentsSha256": "1bfaf889eba429643be9a5b2b52f4384114d79ffae8805d6ecd94a3c70325ccc",
+      "frameSha256": "e60eee53616fac00a3c9ec36a96fdb78375370ac4497153193c557e0ef81868a"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 4,
+      "observedAt": "2026-09-09T21:49:11.503Z",
+      "upstreamRequestId": 6,
+      "tool": "write_file",
+      "path": "/workspace/openclaw-approved-9a5abbd30b5c.txt",
+      "argumentsSha256": "cb6a35c979694c36fdd235116529343a5e22a2150f18cef6b0229fa2db8edd87",
+      "frameSha256": "f35668a484860574fc6732feaef2c94d38f18456934bf33cc2275b38054b62d1"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 5,
+      "observedAt": "2026-09-09T21:51:05.162Z",
+      "upstreamRequestId": 7,
+      "tool": "write_file",
+      "path": "/workspace/codex-approved-73d155dccae2.txt",
+      "argumentsSha256": "e1a0e30160f37315dee82b6398795986980ff2f2a58462572b2d79f12143707f",
+      "frameSha256": "b83f08548adce032fe8ecabb04d54ccf498eb3f3fdb20e821a6c3b3ad08b7044"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 6,
+      "observedAt": "2026-09-09T22:03:59.085Z",
+      "upstreamRequestId": 8,
+      "tool": "write_file",
+      "path": "/workspace/hermes-approved-86f3606a8025.txt",
+      "argumentsSha256": "1b40350911c501edf4cbfe719fa578a7119d9763f7cb06eb6b66ddabf9beb125",
+      "frameSha256": "7b477d3b977be9913295d44fcd28498152a4fa7209ecb5512a4b3c0e9611ed78"
+    }
+  ]
+}

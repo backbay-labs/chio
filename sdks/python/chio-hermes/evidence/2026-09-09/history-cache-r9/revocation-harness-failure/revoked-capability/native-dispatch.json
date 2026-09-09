@@ -1,0 +1,17 @@
+{
+  "calls": [
+    {
+      "id": "call_DDT5e8rxJ00oWEOmh9OUYGZy",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/hermes-revoke-8a231dfbd80a.txt",
+        "content": "forbidden after capability revocation"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_DDT5e8rxJ00oWEOmh9OUYGZy"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

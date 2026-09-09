@@ -1,0 +1,5 @@
+The request was not executed. The result states:
+
+approval missing, expired, substituted or untrusted; proposal remains undispatched
+
+No substitute action was taken. The task is pending and was not performed. If you want to retry, new approval or a different request is required.

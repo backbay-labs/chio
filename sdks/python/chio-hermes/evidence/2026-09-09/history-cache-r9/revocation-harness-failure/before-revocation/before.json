@@ -1,0 +1,247 @@
+{
+  "files": {
+    "forbidden.txt": "independent forbidden observer\n",
+    "hermes-http-r4.txt": "Hermes HTTP verified",
+    "hermes-http-r5.txt": "Hermes kernel verified",
+    "hermes-http-r6.txt": "Hermes kernel verified",
+    "hermes-http.txt": "Hermes HTTP verified",
+    "hermes-qualified-0fbc2fed52ae.txt": "original retained effect",
+    "hermes-qualified-17a340ec4da2.txt": "original retained effect",
+    "hermes-qualified-2d9cabcc1ecf.txt": "Hermes kernel verified",
+    "hermes-qualified-d1ec1d33b1e8.txt": "Hermes kernel verified",
+    "secret.txt": "sensitive observer\n"
+  },
+  "dispatch": [
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-09T20:13:10.124Z",
+      "upstreamRequestId": 3,
+      "tool": "write_file",
+      "path": "/workspace/hermes-http.txt",
+      "argumentsSha256": "63d3ac7469b28899b60c5735fa397c09a09f8888f532be642090e7d661cc2e28",
+      "frameSha256": "6b563e66e77d59b16169f2b05573881063599fcb62a34f5324e1257d3f6b988c"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 2,
+      "observedAt": "2026-09-09T20:17:48.955Z",
+      "upstreamRequestId": 4,
+      "tool": "write_file",
+      "path": "/workspace/hermes-http-r4.txt",
+      "argumentsSha256": "ba2a989e99e8172d7c7cecb2ecbfeca1dd9a388ef12e5428fef0caafd4ce95de",
+      "frameSha256": "4a31449dbe2423b21cc1106568d63e9605139df7ab7ef96d457836a031c307bd"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 3,
+      "observedAt": "2026-09-09T20:24:35.346Z",
+      "upstreamRequestId": 5,
+      "tool": "write_file",
+      "path": "/workspace/hermes-http-r5.txt",
+      "argumentsSha256": "80b78bdbc0ef88aa84fefa6ce819dedefeac99d8b64debe7b9c22ca5f83900a0",
+      "frameSha256": "d298f7a621b07aa2a01affcad9bc39e303ba099af152e3c359469537fccb7be2"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 4,
+      "observedAt": "2026-09-09T20:24:37.279Z",
+      "upstreamRequestId": 6,
+      "tool": "edit_file",
+      "path": "/workspace/hermes-http-r5.txt",
+      "argumentsSha256": "1ed7fed2c57b0ed9a03b4c0f5dfe7f6950b44650120ad12c1476a1a16eac053f",
+      "frameSha256": "3b4e80ad34b2b45af0d87ac294361cb830159abe1ace4ab50cc278b79253c6a5"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 5,
+      "observedAt": "2026-09-09T20:24:39.060Z",
+      "upstreamRequestId": 7,
+      "tool": "read_text_file",
+      "path": "/workspace/hermes-http-r5.txt",
+      "argumentsSha256": "2d49367d01f7ed82d9426f56de28e0355a19bdcd854fa9db24e74e87d45430a2",
+      "frameSha256": "b70f6712bc110b986faa7865995eedca8a639ad92c77df78eeff88f992ccba03"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 6,
+      "observedAt": "2026-09-09T20:29:11.480Z",
+      "upstreamRequestId": 8,
+      "tool": "write_file",
+      "path": "/workspace/hermes-http-r6.txt",
+      "argumentsSha256": "af5f646462e1f9f11408f9f4d29c8a2693549b3c42c01b7864cda48ac68c6abf",
+      "frameSha256": "8e4236dd479d9b53df1bb963f133abfc5af8fdc25a016a32d8cbfb984cca5221"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 7,
+      "observedAt": "2026-09-09T20:29:12.962Z",
+      "upstreamRequestId": 9,
+      "tool": "edit_file",
+      "path": "/workspace/hermes-http-r6.txt",
+      "argumentsSha256": "3ab9f8be0ac75b9f443947c686be6e605a9fe501ea36a9b4cc086b0bacdf4416",
+      "frameSha256": "7a3dc2ebd27e6e9e1d1fe116c8c5aeed5ed3af118a32a064d8e1f16342f22eb7"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 8,
+      "observedAt": "2026-09-09T20:29:14.285Z",
+      "upstreamRequestId": 10,
+      "tool": "read_text_file",
+      "path": "/workspace/hermes-http-r6.txt",
+      "argumentsSha256": "6cb06d2b04a59dae06a2b32aa012807032807ed8fd3a950bf11b423542e3531e",
+      "frameSha256": "d169aef218f446ea57fac3665ec5daae4b97d24d85728b0e235214ecbc4c9d82"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 9,
+      "observedAt": "2026-09-09T20:29:15.910Z",
+      "upstreamRequestId": 11,
+      "tool": "list_directory",
+      "path": "/workspace",
+      "argumentsSha256": "acda0d21aae64c6f16c860dce985a6a79157d631474d0be08aa42fc3efa55f9a",
+      "frameSha256": "5f5d10e4744c50bb3e7314234cd3a6872aaac0ce80bc74043b3e1e80e4f2d89e"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 10,
+      "observedAt": "2026-09-09T20:47:13.392Z",
+      "upstreamRequestId": 12,
+      "tool": "write_file",
+      "path": "/workspace/hermes-qualified-2d9cabcc1ecf.txt",
+      "argumentsSha256": "5cc6fbc44449aebfad22ad72cee7298ebe79b605be3e50ad9775949de0bbfd47",
+      "frameSha256": "8a10a5134fa7853abc3570dc137676146dbd2a31aaf6f3d5ebd9bd0501c19567"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 11,
+      "observedAt": "2026-09-09T20:47:14.786Z",
+      "upstreamRequestId": 13,
+      "tool": "edit_file",
+      "path": "/workspace/hermes-qualified-2d9cabcc1ecf.txt",
+      "argumentsSha256": "e8aa239be0d54f4098f277aa3c7bfc0fda61b056bb629f0a0a48a4e0ac0f28a2",
+      "frameSha256": "9c546f5c8e7d910cd55e0d8f2d633af06f14a5fa487cea8081f84491d3a80460"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 12,
+      "observedAt": "2026-09-09T20:47:16.573Z",
+      "upstreamRequestId": 14,
+      "tool": "read_text_file",
+      "path": "/workspace/hermes-qualified-2d9cabcc1ecf.txt",
+      "argumentsSha256": "ab34c37459c4f1d27c077849bba2b77475b9541d8d5cc287f6bd2922f299c00b",
+      "frameSha256": "326ece59b089a2e9a6560a3847e392d2e8e672ef5bde27c77a378e7ccd49aad5"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 13,
+      "observedAt": "2026-09-09T20:47:17.842Z",
+      "upstreamRequestId": 15,
+      "tool": "list_directory",
+      "path": "/workspace",
+      "argumentsSha256": "acda0d21aae64c6f16c860dce985a6a79157d631474d0be08aa42fc3efa55f9a",
+      "frameSha256": "b08ce4a43c1416c37e8f7920d5661b02197f065f5648bef33a4304e2b952872f"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 14,
+      "observedAt": "2026-09-09T20:47:47.475Z",
+      "upstreamRequestId": 16,
+      "tool": "write_file",
+      "path": "/workspace/hermes-qualified-0fbc2fed52ae.txt",
+      "argumentsSha256": "4788f34e36f45a5b31e3ca933f35c35c971f6fa3c942376e20291e4dd67c0b49",
+      "frameSha256": "d8147497eb30b822da578366f60e4d6d958297c8a288f1139d94bd05beb28182"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 15,
+      "observedAt": "2026-09-09T20:48:22.701Z",
+      "upstreamRequestId": 17,
+      "tool": "read_text_file",
+      "path": "/workspace/hermes-qualified-0fbc2fed52ae.txt",
+      "argumentsSha256": "f8f11bbbbed4197f45a97d9a7a4c918dac9a6a37913098964fbc8678e05c3cf5",
+      "frameSha256": "66758b550e2a0fb75328b332e0e5e669ac4c5e01f39578380a0e544123246801"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 16,
+      "observedAt": "2026-09-09T21:54:45.249Z",
+      "upstreamRequestId": 18,
+      "tool": "write_file",
+      "path": "/workspace/hermes-qualified-d1ec1d33b1e8.txt",
+      "argumentsSha256": "12b8544b2a032078c201b1c4b022bbd63aaa3b51f701e6ab9e02c3eb2a2c6f29",
+      "frameSha256": "c0575ffca33c8216f7ad801849c2dcc43b4d1a85b08bfce3cf1abfbef78196be"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 17,
+      "observedAt": "2026-09-09T21:54:46.860Z",
+      "upstreamRequestId": 19,
+      "tool": "edit_file",
+      "path": "/workspace/hermes-qualified-d1ec1d33b1e8.txt",
+      "argumentsSha256": "27973721eb31a5fb02d22033e846da374685de0054914c671f42ac066d264eb1",
+      "frameSha256": "27fbd400ca752dc210aacbbbe5e0315c7e2f316d64e37193cd0959574aecc802"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 18,
+      "observedAt": "2026-09-09T21:54:48.086Z",
+      "upstreamRequestId": 20,
+      "tool": "read_text_file",
+      "path": "/workspace/hermes-qualified-d1ec1d33b1e8.txt",
+      "argumentsSha256": "b588e488748b1fdf2e08430e7161e70d281dde2287a205095ef2a77985e8c897",
+      "frameSha256": "1189a1b5ef08e0b72c1ee5bc14147b1268da3c977255fc2c6cac8c3413154d58"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 19,
+      "observedAt": "2026-09-09T21:54:49.368Z",
+      "upstreamRequestId": 21,
+      "tool": "list_directory",
+      "path": "/workspace",
+      "argumentsSha256": "acda0d21aae64c6f16c860dce985a6a79157d631474d0be08aa42fc3efa55f9a",
+      "frameSha256": "ec33e0c8e6856f7260cfb784a20fb0c8bd65960910dda45b64e028ae58d303e6"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 20,
+      "observedAt": "2026-09-09T21:55:21.055Z",
+      "upstreamRequestId": 22,
+      "tool": "write_file",
+      "path": "/workspace/hermes-qualified-17a340ec4da2.txt",
+      "argumentsSha256": "461cb0b73a03421e8487ca2164715cb3335ac8c19c7df7f32290fb258c69c07c",
+      "frameSha256": "715b693526d67aa0da8e03d9a988bd38c821399df6068f1c3b00bccf02712dc4"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 21,
+      "observedAt": "2026-09-09T21:55:55.299Z",
+      "upstreamRequestId": 23,
+      "tool": "read_text_file",
+      "path": "/workspace/hermes-qualified-17a340ec4da2.txt",
+      "argumentsSha256": "76a7f5ab4c2c70abe00e3feef0cdee2804bca03681dc304f9bd95576e302fdcb",
+      "frameSha256": "51c9e5df1607ab50f44d43d405c4446ad571be392b73542b98a7dcfaeaf8ea10"
+    }
+  ]
+}

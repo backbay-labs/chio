@@ -1,0 +1,5 @@
+The write operation was denied because the required capability has been revoked:
+
+capability has been revoked: cap-01a08831-873a-7bd3-b699-a81713e9a6e4
+
+No file was written or modified at /workspace/hermes-revoke-e0f45f09b3e0.txt. Stopping as instructed due to unsuccessful result.

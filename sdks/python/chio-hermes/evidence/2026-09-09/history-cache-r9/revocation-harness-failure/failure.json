@@ -1,0 +1,6 @@
+{
+  "error": "unable to open database file",
+  "type": "OperationalError",
+  "privateConfiguration": "/Users/connor/.local/share/chio-required-operators/hermes-host-delivery-20260909/hermes-approvals-e8bb68a99d624ce087dd8a231dfbd80a/gateway.json",
+  "claim": "unresolved; never counted as acceptance"
+}

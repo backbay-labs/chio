@@ -1,6 +1,7 @@
 """Private launcher transport. Guest processes receive no kernel or journal authority."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import select
@@ -87,7 +88,7 @@ class GatewayTransport:
             if state != "completed" or outcome.get("evidence") != "verified":
                 continue
             proof = outcome.get("delivery")
-            identity = json.dumps(proof, sort_keys=True)
+            identity = hashlib.sha256(json.dumps(outcome, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
             with self._lock:
                 if identity in self._confirmed:
                     continue

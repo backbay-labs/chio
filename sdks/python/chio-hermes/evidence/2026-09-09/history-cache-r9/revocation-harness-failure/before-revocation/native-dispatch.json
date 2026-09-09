@@ -1,0 +1,17 @@
+{
+  "calls": [
+    {
+      "id": "call_7D2tzHY9RM4axZGceHxiqvuG",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/hermes-revoke-8a231dfbd80a.txt",
+        "content": "authorized before revocation"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_7D2tzHY9RM4axZGceHxiqvuG"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}
