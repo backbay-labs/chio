@@ -45,7 +45,7 @@ test("ChioClient.initialize returns a ChioSession backed by the transport layer"
   const session = await client.initialize({
     clientInfo: {
       name: "chio-ts-test",
-      version: "0.1.0",
+      version: "0.1.1-rc.1",
     },
   });
 

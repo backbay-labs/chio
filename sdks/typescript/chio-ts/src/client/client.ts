@@ -59,7 +59,7 @@ export class ChioClient {
         capabilities: options.capabilities ?? {},
         clientInfo: options.clientInfo ?? {
           name: "@chio-protocol/sdk",
-          version: "0.1.0",
+          version: "0.1.1-rc.1",
         },
       },
     };

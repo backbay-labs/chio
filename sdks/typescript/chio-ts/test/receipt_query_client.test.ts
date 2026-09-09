@@ -316,9 +316,9 @@ test("package.json name is @chio-protocol/sdk", async () => {
   assert.equal(pkg.name, "@chio-protocol/sdk");
 });
 
-test("package.json version is 0.1.0", async () => {
+test("package.json version is 0.1.1-rc.1", async () => {
   const pkg = await readPackageJson();
-  assert.equal(pkg.version, "0.1.0");
+  assert.equal(pkg.version, "0.1.1-rc.1");
 });
 
 test("package.json private field is absent", async () => {
