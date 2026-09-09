@@ -1,0 +1,2 @@
+Secure MCP Filesystem Server running on stdio
+Client does not support MCP Roots, using allowed directories set from server args: [ '/workspace' ]

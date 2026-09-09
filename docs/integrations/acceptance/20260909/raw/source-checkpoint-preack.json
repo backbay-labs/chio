@@ -1,0 +1,154 @@
+{
+  "schema": "chio.required-integrations.source-checkpoint.v1",
+  "capturedAt": "2026-09-09T16:53:24.684728+00:00",
+  "acceptanceCount": 0,
+  "requiredHosts": 6,
+  "repositories": {
+    "kernel": {
+      "path": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909",
+      "head": "f516b0d1e1a8208bc092cff1a8d9fa199c595d2c",
+      "branch": "codex/required-agent-integrations-20260909",
+      "dirty": "?? docs/integrations/acceptance/20260909/\n?? integrations/required-agents/.gitignore\n?? integrations/required-agents/README.md\n?? integrations/required-agents/filesystem-policy.yaml\n?? integrations/required-agents/filesystem/\n?? integrations/required-agents/qualification/resource_audit.py\n?? integrations/required-agents/serve-filesystem.py",
+      "package": {
+        "name": "chio-workspace",
+        "version": "0.0.0",
+        "dependencies": null,
+        "peerDependencies": null,
+        "engines": {
+          "node": ">=20.0.0"
+        }
+      }
+    },
+    "bridge": {
+      "path": "/Users/connor/Medica/backbay/standalone/chio-bridge/.worktrees/required-agent-integrations-20260909",
+      "head": "ed6d06d1a51cfe5b4853208f23d06cb4d87063b1",
+      "branch": "codex/required-agent-integrations-20260909",
+      "dirty": "M src/execution.ts\n M src/gateway.ts\n M src/index.ts\n M test/execution.test.ts\n?? src/approval.ts",
+      "package": {
+        "name": "@chio/bridge",
+        "version": "0.3.0",
+        "dependencies": {
+          "@chio-protocol/sdk": "file:vendor/chio-protocol-sdk-0.1.1-rc.1-ea8639364db1.tgz",
+          "yaml": "^2.5.0",
+          "zod": "^3.23.8"
+        },
+        "peerDependencies": null,
+        "engines": {
+          "node": ">=22"
+        }
+      }
+    },
+    "claude": {
+      "path": "/Users/connor/Medica/backbay/standalone/chio-claude-code-plugin/.worktrees/required-agent-integrations-20260909",
+      "head": "5fd34c76adcad2f81fe934f2e03e68e3cc7637c2",
+      "branch": "codex/required-agent-integrations-20260909",
+      "dirty": "M dist/gateway.js\n M package-lock.json\n M package.json\n M scripts/restricted.mjs\n D vendor/chio-bridge-0.3.0-68b5c4663844.tgz\n?? acceptance/2026-09-09/raw/sandbox-v1/\n?? acceptance/2026-09-09/raw/sandbox-v2/\n?? acceptance/2026-09-09/raw/sandbox-v3/\n?? delivery/20260909/superseded/\n?? scripts/acceptance/sandbox-process.py\n?? scripts/model-relay.mjs\n?? scripts/sandbox.mjs\n?? vendor/chio-bridge-0.3.0-4f78380c1641.tgz",
+      "package": {
+        "name": "@chio/claude-code-plugin",
+        "version": "0.3.0",
+        "dependencies": {
+          "@chio-protocol/sdk": "file:vendor/chio-protocol-sdk-0.1.1-rc.1-ea8639364db1.tgz",
+          "@chio/bridge": "file:vendor/chio-bridge-0.3.0-4f78380c1641.tgz"
+        },
+        "peerDependencies": null,
+        "engines": {
+          "node": ">=22"
+        }
+      }
+    },
+    "codex": {
+      "path": "/Users/connor/Medica/backbay/standalone/chio-codex-plugin/.worktrees/required-agent-integrations-20260909",
+      "head": "10d7fafe2dacc71ace75c48423fabff9c62aadb8",
+      "branch": "codex/required-agent-integrations-20260909",
+      "dirty": "M package-lock.json\n M package.json\n M src/cli/restricted.ts\n D vendor/chio-bridge-0.3.0-68b5c4663844.tgz\n?? delivery/20260909/superseded/\n?? src/cli/modelRelay.ts\n?? src/cli/sandbox.ts\n?? vendor/chio-bridge-0.3.0-4f78380c1641.tgz",
+      "package": {
+        "name": "@chio/codex-plugin",
+        "version": "0.3.0",
+        "dependencies": {
+          "@chio/bridge": "file:vendor/chio-bridge-0.3.0-4f78380c1641.tgz"
+        },
+        "peerDependencies": null,
+        "engines": {
+          "node": ">=22"
+        }
+      }
+    },
+    "cursor": {
+      "path": "/Users/connor/Medica/backbay/standalone/chio-cursor-plugin/.worktrees/required-agent-integrations-20260909",
+      "head": "16c2959113b3cfc657589c2e5b0f6afb5f940608",
+      "branch": "codex/required-agent-integrations-20260909",
+      "dirty": "M OPERATIONS.md\n M README.md\n M bin/chio-cursor-protected.mjs\n M docs/acceptance-20260909.md\n M package-lock.json\n M package.json\n D vendor/chio-bridge-0.3.0-68b5c4663844.tgz\n?? bin/cursor-runtime-lock.json\n?? bin/protected-boundary.mjs\n?? delivery/20260909/superseded/\n?? evidence/final/cursor-agent-protocol-inspection.json\n?? evidence/final/protected-boundary-components.txt\n?? test/protected-boundary.test.mjs\n?? vendor/chio-bridge-0.3.0-4f78380c1641.tgz",
+      "package": {
+        "name": "chio-cursor",
+        "version": "0.3.0",
+        "dependencies": {
+          "@chio/bridge": "file:vendor/chio-bridge-0.3.0-4f78380c1641.tgz"
+        },
+        "peerDependencies": null,
+        "engines": {
+          "vscode": "^1.90.0",
+          "node": ">=22"
+        }
+      }
+    },
+    "hermes": {
+      "path": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909",
+      "head": "af9fb1d3c6e5b8ec4c68aed63350ef4432311f35",
+      "branch": "codex/hermes-required-integration-20260909",
+      "dirty": "M sdks/python/chio-hermes/ACTION_INVENTORY.md\n M sdks/python/chio-hermes/README.md\n M sdks/python/chio-hermes/scripts/probe_execution_fault.py\n M sdks/python/chio-hermes/scripts/probe_macos_boundary.py\n M sdks/python/chio-hermes/src/chio_hermes/restricted.py\n M sdks/python/chio-hermes/tests/test_restricted.py\n?? sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/\n?? sdks/python/chio-hermes/src/chio_hermes/model_relay.py\n?? sdks/python/chio-hermes/tests/test_model_relay.py",
+      "package": {
+        "name": "chio-workspace",
+        "version": "0.0.0",
+        "dependencies": null,
+        "peerDependencies": null,
+        "engines": {
+          "node": ">=20.0.0"
+        }
+      }
+    },
+    "pi": {
+      "path": "/Users/connor/Medica/backbay/standalone/chio-pi-plugin",
+      "head": "d5197a752132ff935393a7096adeaee93d5bfa1b",
+      "branch": "codex/pi-kernel-integration",
+      "dirty": "",
+      "package": {
+        "name": "@chio/pi-plugin",
+        "version": "0.1.0",
+        "dependencies": {
+          "@chio/bridge": "file:vendor/chio-bridge-0.3.0-68b5c46638449710.tgz",
+          "typebox": "1.3.7"
+        },
+        "peerDependencies": {
+          "@earendil-works/pi-coding-agent": "0.85.1"
+        },
+        "engines": {
+          "node": ">=22.19.0"
+        }
+      }
+    },
+    "openclaw": {
+      "path": "/Users/connor/Medica/backbay/standalone/chio-open-claw-plugin/.worktrees/required-agent-integrations-20260909",
+      "head": "aaf88abdb61de5f3ff60c53664223a68b9d51d86",
+      "branch": "codex/required-agent-integrations-20260909",
+      "dirty": "",
+      "package": {
+        "name": "@chio/openclaw-kernel",
+        "version": "0.1.0",
+        "dependencies": {
+          "@chio/bridge": "file:vendor/chio-bridge-0.3.0-68b5c466.tgz"
+        },
+        "peerDependencies": null,
+        "engines": {
+          "node": ">=22"
+        }
+      }
+    }
+  },
+  "candidateKernel": {
+    "sourceCommit": "25d5717a5bcfd228391dbeee61d8d57f3c5e6177",
+    "equivalentRootCratesCommit": "f516b0d1e1a8208bc092cff1a8d9fa199c595d2c",
+    "sha256": "d0b87623cb3dd227f79cd3178b32bb04e35b48ddcb9dab63c6598d79b8e13b66",
+    "deliveryAcknowledgement": "not included; candidate cannot close I07",
+    "image": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0"
+  }
+}

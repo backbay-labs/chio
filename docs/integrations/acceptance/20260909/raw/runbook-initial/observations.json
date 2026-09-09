@@ -1,0 +1,10 @@
+{
+  "schema": "chio.runbook-observation.v1",
+  "kernelSha256": "e7539855906bd5eb7b4eb2e5a12ca0533889cf61ced3bf4adf5850b792aa6447",
+  "initialEntryPoint": "failed: historical gateway returned exit 0 and no JSON because /var parent symlink entrypoint bug",
+  "canonicalEntryPoint": "actual write completed with verified evidence and independent read control",
+  "restartReplay": "original request returned recorded completed outcome and independently observed operator replay sentinel remained unchanged",
+  "restartNewRead": "not_dispatched: kernel unavailable or malformed handshake before dispatch; required fresh read unresolved",
+  "independentPostReplayContent": "operator replay sentinel\n",
+  "ownerStopped": true
+}

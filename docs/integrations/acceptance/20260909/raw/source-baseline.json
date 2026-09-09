@@ -1,0 +1,67 @@
+{
+  "kernel": {
+    "head": "f5566d9a765c21cb36652a99c79de64968a656bf",
+    "branch": "main",
+    "dirty": "M Cargo.lock\n M crates/platform/chio-sqlite-file-identity/Cargo.toml\n M crates/platform/chio-sqlite-file-identity/src/lib.rs\n M sdks/python/chio-py/uv.lock\n?? examples/hello-spring-boot/.kotlin/\n?? scripts/mirror-to-chio.sh\n?? sdks/jvm/.kotlin/",
+    "git_common_dir": ".git",
+    "path": "/Users/connor/Medica/backbay/standalone/arc"
+  },
+  "planning": {
+    "head": "d1d99f881ed2547367e45d1715f3c41c8c21589d",
+    "branch": "codex/chio-strategy-design-20260908",
+    "dirty": "?? docs/strategy/chio-direction/13-breakthrough-program.md",
+    "git_common_dir": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/chio-swarm-execution/.git",
+    "path": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/chio-strategy-design-20260908"
+  },
+  "chio-bridge": {
+    "head": "f0f21945484b3e2a9ed79a5b2063bda98754ac80",
+    "branch": "main",
+    "dirty": "?? .worktrees/",
+    "git_common_dir": ".git",
+    "path": "/Users/connor/Medica/backbay/standalone/chio-bridge"
+  },
+  "chio-claude-code-plugin": {
+    "head": "db8ce99866aac612578a3378719266484fc6b6eb",
+    "branch": "main",
+    "dirty": "?? .worktrees/",
+    "git_common_dir": ".git",
+    "path": "/Users/connor/Medica/backbay/standalone/chio-claude-code-plugin"
+  },
+  "chio-codex-plugin": {
+    "head": "6841c72e82c982600bf5fb070181c4ab723cf6ed",
+    "branch": "main",
+    "dirty": "?? .worktrees/",
+    "git_common_dir": ".git",
+    "path": "/Users/connor/Medica/backbay/standalone/chio-codex-plugin"
+  },
+  "chio-cursor-plugin": {
+    "head": "2621009246ad94a4f8d42c2ca038a1027ba1f105",
+    "branch": "main",
+    "dirty": "?? .worktrees/",
+    "git_common_dir": ".git",
+    "path": "/Users/connor/Medica/backbay/standalone/chio-cursor-plugin"
+  },
+  "chio-open-claw-plugin": {
+    "head": "e9440c738477cc224c8c3f6257d3d5965cc15fb0",
+    "branch": "main",
+    "dirty": "?? .worktrees/",
+    "git_common_dir": ".git",
+    "path": "/Users/connor/Medica/backbay/standalone/chio-open-claw-plugin"
+  },
+  "environment": {
+    "platform": "macOS-26.4-arm64-arm-64bit",
+    "captured_at": "2026-09-09T14:31:20.661607+00:00"
+  },
+  "/Users/connor/Medica/backbay/standalone/arc/.worktrees/chio-strategy-design-20260908/docs/strategy/chio-direction/19-priority-agent-integrations.md": {
+    "sha256": "716c066323889ce54f0dfe6988dfbc7fa76b0c27c8afc7c8d0287f686b786099",
+    "bytes": 11905
+  },
+  "/Users/connor/Medica/backbay/standalone/arc/.worktrees/chio-strategy-design-20260908/docs/strategy/chio-direction/13-breakthrough-program.md": {
+    "sha256": "b5fc54183f9ffd4387f6ce4ec99fc1e52d00003269c6cb4a59b9330c8c7637e6",
+    "bytes": 10309
+  },
+  "/usr/local/bin/chio": {
+    "sha256": "c8d7ee8dc4ffdbed4a864b5984f931164a2b320e1a3d914adcb61d0636c354c3",
+    "bytes": 71994928
+  }
+}

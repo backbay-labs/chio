@@ -1,0 +1,156 @@
+   Compiling hashbrown v0.16.1
+   Compiling arrayvec v0.7.6
+   Compiling alloy-rlp v0.3.13
+   Compiling ruint v1.20.0
+   Compiling derive_more v2.1.1
+   Compiling k256 v0.13.4
+   Compiling itertools v0.14.0
+   Compiling alloy-primitives v1.5.7
+   Compiling postcard v1.1.3
+   Compiling darling_core v0.23.0
+   Compiling frost-core v3.0.0
+   Compiling alloy-sol-macro-expander v1.5.7
+   Compiling darling_macro v0.23.0
+   Compiling darling v0.23.0
+   Compiling frost-rerandomized v3.0.0
+   Compiling alloy-json-abi v1.5.7
+   Compiling frost-ed25519 v3.0.0
+   Compiling alloy-sol-macro v1.5.7
+   Compiling chio-federation v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/trust/chio-federation)
+   Compiling alloy-sol-types v1.5.7
+   Compiling serde_with_macros v3.18.0
+   Compiling serde_with v3.18.0
+   Compiling chio-credit v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/economy/chio-credit)
+   Compiling tokio-rustls v0.26.4
+   Compiling hyper-rustls v0.27.7
+   Compiling reqwest v0.13.2
+   Compiling alloy-serde v1.8.3
+   Compiling alloy-eip2930 v0.2.3
+   Compiling alloy-eip7702 v0.6.3
+   Compiling alloy-eip2124 v0.2.0
+   Compiling alloy-eip7928 v0.3.3
+   Compiling tokio-stream v0.1.18
+   Compiling nybbles v0.4.8
+   Compiling alloy-trie v0.9.5
+   Compiling strum v0.27.2
+   Compiling alloy-eips v1.8.3
+   Compiling alloy-tx-macros v1.8.3
+   Compiling chio-market v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/economy/chio-market)
+   Compiling chio-web3 v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/economy/chio-web3)
+   Compiling alloy-consensus v1.8.3
+   Compiling chio-autonomy v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/economy/chio-autonomy)
+   Compiling chio-core v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/core/chio-core)
+   Compiling rustix v1.1.4
+   Compiling alloy-json-rpc v1.8.3
+   Compiling futures-utils-wasm v0.1.0
+   Compiling tempfile v3.27.0
+   Compiling alloy-consensus-any v1.8.3
+   Compiling alloy-network-primitives v1.8.3
+   Compiling alloy-transport v1.8.3
+   Compiling alloy-rpc-types-eth v1.8.3
+   Compiling num_enum_derive v0.7.6
+   Compiling num_enum v0.7.6
+   Compiling alloy-rpc-types-any v1.8.3
+   Compiling oci-spec v0.9.0
+   Compiling alloy-transport-http v1.8.3
+   Compiling alloy-signer v1.8.3
+   Compiling hashlink v0.11.0
+   Compiling tough v0.22.0
+   Compiling oci-client v0.17.0
+   Compiling rusqlite v0.39.0
+   Compiling toml_edit v0.22.27
+   Compiling openidconnect v4.0.1
+   Compiling alloy-network v1.8.3
+   Compiling alloy-rpc-client v1.8.3
+   Compiling alloy-chains v0.2.33
+   Compiling alloy-core v1.5.7
+   Compiling lru v0.16.3
+   Compiling sigstore v0.14.0
+   Compiling alloy-provider v1.8.3
+   Compiling alloy v1.8.3
+   Compiling toml v0.8.23
+   Compiling chio-egress-contract v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/protocol/chio-egress-contract)
+   Compiling alloy-dyn-abi v1.5.7
+   Compiling tracing-subscriber v0.3.23
+   Compiling alloy-contract v1.8.3
+   Compiling chio-attest-verify v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/trust/chio-attest-verify)
+   Compiling chio-web3-bindings v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/economy/chio-web3-bindings)
+   Compiling chio-weights v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/trust/chio-weights)
+   Compiling chio-log-redact v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/observability/chio-log-redact)
+   Compiling chio-settle v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/economy/chio-settle)
+   Compiling chio-custody-hw v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/trust/chio-custody-hw)
+   Compiling chio-link v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/economy/chio-link)
+   Compiling sqlx-core v0.8.6
+   Compiling chio-workflow v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-workflow)
+   Compiling chio-kernel v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/kernel/chio-kernel)
+   Compiling bit-vec v0.8.0
+   Compiling sqlx-postgres v0.8.6
+   Compiling bit-set v0.8.0
+   Compiling chio-selective-disclosure v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/trust/chio-selective-disclosure)
+   Compiling sqlx-macros-core v0.8.6
+   Compiling clap_builder v4.6.0
+   Compiling sqlx-macros v0.8.6
+   Compiling chio-attest-buyer-core v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/trust/chio-attest-buyer-core)
+   Compiling chio-finding-verifier v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/trust/chio-finding-verifier)
+   Compiling chio-transaction-passport v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-transaction-passport)
+   Compiling chio-risk-comptroller v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-risk-comptroller)
+   Compiling chio-http-session v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-http-session)
+   Compiling chio-guards v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/guards/chio-guards)
+   Compiling chio-commerce-order v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-commerce-order)
+   Compiling bitcoin-private v0.1.0
+   Compiling chio-manifest v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-manifest)
+   Compiling is-terminal v0.4.17
+   Compiling humantime v2.3.0
+   Compiling referencing v0.46.0
+   Compiling chio-cross-protocol v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/protocol/chio-cross-protocol)
+   Compiling env_logger v0.10.2
+   Compiling clap v4.6.0
+   Compiling bitcoin_hashes v0.12.0
+   Compiling chio-agent-web-interop v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-agent-web-interop)
+   Compiling chio-edge-metrics v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/protocol/chio-edge-metrics)
+   Compiling chio-federation-authority v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/trust/chio-federation-authority)
+   Compiling chio-finding-market-migrations v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-finding-market-migrations)
+   Compiling r2d2_sqlite v0.33.0
+   Compiling fancy-regex v0.17.0
+   Compiling sqlx v0.8.6
+   Compiling chio-sqlite-file-identity v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-sqlite-file-identity)
+   Compiling wait-timeout v0.2.1
+   Compiling quick-error v1.2.3
+   Compiling serde_yaml_ng v0.10.0
+   Compiling jsonschema v0.46.0
+   Compiling rusty-fork v0.3.1
+   Compiling chio-store-sqlite v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-store-sqlite)
+   Compiling chio-finding-market-store-postgres v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-finding-market-store-postgres)
+   Compiling chio-mcp-edge v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/protocol/chio-mcp-edge)
+   Compiling opentimestamps v0.2.0
+   Compiling chio-trace-validate v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/tooling/chio-trace-validate)
+   Compiling rand_xorshift v0.4.0
+   Compiling chio-metering v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/economy/chio-metering)
+   Compiling yasna v0.5.2
+   Compiling unarray v0.1.4
+   Compiling proptest v1.10.0
+   Compiling chio-credentials v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/trust/chio-credentials)
+   Compiling rcgen v0.13.2
+   Compiling chio-conformance v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/tooling/chio-conformance)
+   Compiling chio-data-guards v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/guards/chio-data-guards)
+   Compiling chio-anchor v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/economy/chio-anchor)
+   Compiling chio-mcp-adapter v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/protocol/chio-mcp-adapter)
+   Compiling chio-policy v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/guards/chio-policy)
+   Compiling chio-finding-worker v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-finding-worker)
+   Compiling chio-spec-validate v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/tooling/chio-spec-validate)
+   Compiling chio-finding-hosted-edge v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-finding-hosted-edge)
+   Compiling chio-external-guards v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/guards/chio-external-guards)
+   Compiling chio-trust-market-context v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-trust-market-context)
+   Compiling chio-enterprise-export v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-enterprise-export)
+   Compiling chio-finding-challenge v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/trust/chio-finding-challenge)
+   Compiling chio-signing-remote v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/trust/chio-signing-remote)
+   Compiling chio-test-support v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/tooling/chio-test-support)
+   Compiling chio-control-plane v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-control-plane)
+    Finished `test` profile [unoptimized] target(s) in 2m 05s
+     Running unittests src/lib.rs (/Users/connor/Medica/backbay/standalone/arc/target/debug/deps/chio_control_plane-65d4d632ccddd8ee)
+
+running 1 test
+test policy::tests::native_policy_materializes_signed_invocation_limits_and_hashes_them ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 761 filtered out; finished in 0.01s
+

@@ -1,0 +1,82 @@
+#0 building with "colima" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 387B done
+#1 DONE 0.1s
+
+#2 [internal] load metadata for docker.io/library/node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
+#2 DONE 1.4s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 58B done
+#3 DONE 0.0s
+
+#4 [internal] load build context
+#4 transferring context: 46.78kB done
+#4 DONE 0.0s
+
+#5 [1/4] FROM docker.io/library/node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
+#5 resolve docker.io/library/node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3 0.0s done
+#5 sha256:2d5b9e098e658595324f08a1887bd0e4a4f25da7ce64517166e4e0c695a1a99a 0B / 444B 0.2s
+#5 sha256:2d5b9e098e658595324f08a1887bd0e4a4f25da7ce64517166e4e0c695a1a99a 444B / 444B 0.2s done
+#5 sha256:4a6c1ecf84f2a8e7e77270b7f2d223057290e5c96c0064bcd19e45011d55a07b 0B / 1.71MB 0.3s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 0B / 50.06MB 0.2s
+#5 sha256:f37f2ae06d60c22e837dcfcee1fa0868a7840e6560333772f0196a0dbe4a221b 0B / 3.31kB 0.2s
+#5 sha256:f37f2ae06d60c22e837dcfcee1fa0868a7840e6560333772f0196a0dbe4a221b 3.31kB / 3.31kB 0.3s done
+#5 extracting sha256:f37f2ae06d60c22e837dcfcee1fa0868a7840e6560333772f0196a0dbe4a221b 0.0s done
+#5 sha256:4a6c1ecf84f2a8e7e77270b7f2d223057290e5c96c0064bcd19e45011d55a07b 1.05MB / 1.71MB 0.9s
+#5 sha256:4a6c1ecf84f2a8e7e77270b7f2d223057290e5c96c0064bcd19e45011d55a07b 1.71MB / 1.71MB 1.0s done
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 3.15MB / 50.06MB 1.2s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 6.29MB / 50.06MB 1.5s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 9.44MB / 50.06MB 2.0s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 12.58MB / 50.06MB 2.3s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 15.73MB / 50.06MB 2.7s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 19.92MB / 50.06MB 3.2s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 23.07MB / 50.06MB 3.5s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 26.21MB / 50.06MB 4.2s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 29.36MB / 50.06MB 5.6s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 32.51MB / 50.06MB 6.8s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 35.65MB / 50.06MB 8.3s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 38.80MB / 50.06MB 9.3s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 41.94MB / 50.06MB 10.1s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 45.09MB / 50.06MB 10.7s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 48.23MB / 50.06MB 11.3s
+#5 sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 50.06MB / 50.06MB 11.5s done
+#5 extracting sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536
+#5 extracting sha256:b2bc15716dc9232e0dc3223672fdedb2896c61f14295131b8436d936aaac4536 0.8s done
+#5 DONE 12.4s
+
+#5 [1/4] FROM docker.io/library/node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
+#5 extracting sha256:4a6c1ecf84f2a8e7e77270b7f2d223057290e5c96c0064bcd19e45011d55a07b 0.0s done
+#5 extracting sha256:2d5b9e098e658595324f08a1887bd0e4a4f25da7ce64517166e4e0c695a1a99a done
+#5 DONE 12.4s
+
+#6 [2/4] WORKDIR /opt/resource
+#6 DONE 0.2s
+
+#7 [3/4] COPY package.json package-lock.json ./
+#7 DONE 0.0s
+
+#8 [4/4] RUN npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+#8 2.469 
+#8 2.469 added 103 packages in 2s
+#8 2.470 npm notice
+#8 2.470 npm notice New major version of npm available! 10.9.8 -> 12.0.2
+#8 2.470 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2
+#8 2.470 npm notice To update run: npm install -g npm@12.0.2
+#8 2.470 npm notice
+#8 DONE 2.6s
+
+#9 exporting to image
+#9 exporting layers
+#9 exporting layers 0.9s done
+#9 exporting manifest sha256:285f5b35e2cc1c5e6701c6e897519282c51d13e43e7dcf7b26fc2c87f92ff6aa done
+#9 exporting config sha256:64078b58d51aee9a66f55f71363ac6324f6b51b718afb6b8e59090a558272da5 done
+#9 exporting attestation manifest sha256:82d3eef433c6b65a893c3d4a8a221f4189ab4f7a7b0ebac3fb0f8d9b90c7110d 0.0s done
+#9 exporting manifest list sha256:0106edcb15a1c0d12d914ea0504f0e63ec85f5e6fdd3825b4d7a0d1367af3991 done
+#9 naming to docker.io/library/chio-required-agent-filesystem:20260909 done
+#9 unpacking to docker.io/library/chio-required-agent-filesystem:20260909
+#9 unpacking to docker.io/library/chio-required-agent-filesystem:20260909 0.4s done
+#9 DONE 1.4s
+
+View build details: docker-desktop://dashboard/build/colima/colima/fhl61mcirghwt43we4mw5pkfu

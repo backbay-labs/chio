@@ -1,0 +1,19 @@
+   Compiling chio-sqlite-file-identity v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-sqlite-file-identity)
+    Finished `test` profile [unoptimized] target(s) in 0.48s
+     Running unittests src/lib.rs (/Users/connor/Medica/backbay/standalone/arc/target/debug/deps/chio_sqlite_file_identity-5155ebc55e508613)
+
+running 5 tests
+test tests::transaction_lock_probe ... ignored, invoked in a separate process by preserves_transaction_locks
+test tests::rejects_a_database_without_a_main_file ... ok
+test tests::follows_the_borrowed_file_after_path_replacement ... ok
+test tests::reports_the_borrowed_main_database_file ... ok
+test tests::preserves_transaction_locks ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+   Doc-tests chio_sqlite_file_identity
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

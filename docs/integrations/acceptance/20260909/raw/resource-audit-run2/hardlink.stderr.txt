@@ -1,0 +1,13 @@
+file:///opt/resource/audit-tool-server.mjs:15
+    throw new Error("Resource volume contains a symbolic or hard link");
+          ^
+
+Error: Resource volume contains a symbolic or hard link
+    at validateTree (file:///opt/resource/audit-tool-server.mjs:15:11)
+    at validateTree (file:///opt/resource/audit-tool-server.mjs:18:43)
+    at file:///opt/resource/audit-tool-server.mjs:23:1
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+Node.js v22.23.1

@@ -1,0 +1,2 @@
+{"argv": ["/usr/local/bin/chio", "--version"], "exit": 0}
+chio-cli 0.1.0

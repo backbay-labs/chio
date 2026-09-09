@@ -1,0 +1,95 @@
+{"argv": ["/usr/local/bin/chio", "mcp", "serve-http", "--help"], "exit": 0}
+Wrap an MCP server subprocess and expose a secured MCP edge over Streamable HTTP
+
+Usage: chio mcp serve-http [OPTIONS] --policy <POLICY> --server-id <SERVER_ID> <COMMAND>...
+
+Arguments:
+  <COMMAND>...  The wrapped MCP server command and its arguments
+
+Options:
+      --policy <POLICY>
+          Path to the policy YAML file
+      --server-id <SERVER_ID>
+          Server ID to assign to the wrapped MCP server inside Chio
+      --server-name <SERVER_NAME>
+          Human-readable name for the wrapped MCP server
+      --server-version <SERVER_VERSION>
+          Version string for the wrapped MCP server
+      --manifest-public-key <MANIFEST_PUBLIC_KEY>
+          Override the public key embedded in the synthetic manifest
+      --page-size <PAGE_SIZE>
+          Page size for paginated `tools/list` responses [default: 50]
+      --tools-list-changed
+          Whether the edge should advertise `notifications/tools/list_changed`
+      --shared-hosted-owner
+          Use one shared wrapped MCP subprocess for all remote sessions
+      --listen <LISTEN>
+          Socket address to bind the remote MCP edge to [default: 127.0.0.1:8931]
+      --auth-token <AUTH_TOKEN>
+          Static bearer token required for remote MCP session admission
+      --auth-jwt-public-key <AUTH_JWT_PUBLIC_KEY>
+          Public key used to verify externally issued JWT bearer tokens
+      --auth-jwt-discovery-url <AUTH_JWT_DISCOVERY_URL>
+          OIDC discovery URL used to resolve issuer metadata and JWT JWKS keys
+      --auth-introspection-url <AUTH_INTROSPECTION_URL>
+          OAuth2 token introspection endpoint used to validate opaque bearer tokens
+      --auth-introspection-client-id <AUTH_INTROSPECTION_CLIENT_ID>
+          Client ID used when calling the token introspection endpoint
+      --auth-introspection-client-secret <AUTH_INTROSPECTION_CLIENT_SECRET>
+          Client secret used when calling the token introspection endpoint
+      --json
+          Backward-compatible alias for `--format json`
+      --auth-jwt-provider-profile <AUTH_JWT_PROVIDER_PROFILE>
+          Optional provider profile used for principal mapping and default OIDC discovery behavior [possible values: generic, auth0, okta, azure-ad]
+      --format <FORMAT>
+          Output format for command results and terminal error reporting [default: human] [possible values: human, json]
+      --auth-server-seed-file <AUTH_SERVER_SEED_FILE>
+          Local auth-server signing seed file. When set, `serve-http` can issue JWTs itself
+      --receipt-db <RECEIPT_DB>
+          Optional SQLite database path for durable receipt persistence
+      --identity-federation-seed-file <IDENTITY_FEDERATION_SEED_FILE>
+          Persistent seed file used to derive stable Chio subjects from authenticated OAuth bearer principals
+      --revocation-db <REVOCATION_DB>
+          Optional SQLite database path for durable capability revocation persistence
+      --authority-seed-file <AUTHORITY_SEED_FILE>
+          Optional file path for a persistent capability-authority seed
+      --enterprise-providers-file <ENTERPRISE_PROVIDERS_FILE>
+          Optional file-backed enterprise provider registry shared with trust-control
+      --auth-jwt-issuer <AUTH_JWT_ISSUER>
+          Expected bearer-token issuer for remote MCP session admission
+      --authority-db <AUTHORITY_DB>
+          Optional SQLite database path for shared capability-authority state
+      --auth-jwt-audience <AUTH_JWT_AUDIENCE>
+          Expected bearer-token audience for remote MCP session admission
+      --budget-db <BUDGET_DB>
+          Optional SQLite database path for durable shared capability budget state
+      --admin-token <ADMIN_TOKEN>
+          Optional static bearer token for remote admin APIs
+      --session-db <SESSION_DB>
+          Optional SQLite database path for durable remote MCP session tombstones
+      --control-url <CONTROL_URL>
+          Optional shared trust-control service base URL
+      --public-base-url <PUBLIC_BASE_URL>
+          Public base URL used when constructing protected-resource metadata URLs
+      --auth-server <AUTH_SERVERS>
+          Authorization server URL advertised via protected-resource metadata
+      --control-token <CONTROL_TOKEN>
+          Bearer token used to authenticate to the shared trust-control service
+      --auth-authorization-endpoint <AUTH_AUTHORIZATION_ENDPOINT>
+          OAuth authorization endpoint advertised in colocated auth-server metadata
+      --auth-token-endpoint <AUTH_TOKEN_ENDPOINT>
+          OAuth token endpoint advertised in colocated auth-server metadata
+      --auth-registration-endpoint <AUTH_REGISTRATION_ENDPOINT>
+          Optional dynamic client registration endpoint advertised in auth-server metadata
+      --auth-jwks-uri <AUTH_JWKS_URI>
+          Optional JWKS URI advertised in auth-server metadata
+      --auth-scope <AUTH_SCOPES>
+          Scope hint advertised in protected-resource challenges and metadata
+      --auth-subject <AUTH_SUBJECT>
+          Subject to embed in locally issued auth-server access tokens [default: operator]
+      --auth-code-ttl-secs <AUTH_CODE_TTL_SECS>
+          Authorization-code lifetime for the hosted auth server [default: 300]
+      --auth-access-token-ttl-secs <AUTH_ACCESS_TOKEN_TTL_SECS>
+          Access-token lifetime for the hosted auth server [default: 600]
+  -h, --help
+          Print help

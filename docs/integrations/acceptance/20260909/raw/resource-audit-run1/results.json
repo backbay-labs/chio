@@ -1,0 +1,40 @@
+{
+  "schema": "chio.resource-audit-qualification.v1",
+  "image": "sha256:2905f8b558561e54be2d4f695257af452a672c2e65bad9268902987eb4dda16b",
+  "runnerSha256": "2120056c6747351388b9a34762d1cc547a841ecfc7c48f13a3dcba11741a8bf0",
+  "cases": [
+    {
+      "case": "normal",
+      "passed": true,
+      "exitCode": 0,
+      "volume": "chio-required-audit-20260909-1-normal",
+      "independentObservation": {
+        "exists": true,
+        "content": "independent dispatch observation\n",
+        "audit": "{\"schema\":\"chio.resource-dispatch-observation.v1\",\"processId\":1,\"sequence\":1,\"observedAt\":\"2026-09-09T16:46:21.661Z\",\"upstreamRequestId\":2,\"tool\":\"write_file\",\"path\":\"/workspace/observed.txt\",\"argumentsSha256\":\"227ebdcd172dcd44cd429d30f55da380dc4885c27e4af0803a2323aca43dd10d\",\"frameSha256\":\"c82ce60c5994ac9b1c2ba2e0aba0a4038d3a4cca19b066bdfc3cb1cac18816d4\"}\n"
+      }
+    },
+    {
+      "case": "audit-full",
+      "passed": true,
+      "exitCode": 1,
+      "volume": "chio-required-audit-20260909-1-audit-full",
+      "independentObservation": {
+        "exists": false,
+        "content": null,
+        "audit": null
+      }
+    },
+    {
+      "case": "malformed",
+      "passed": true,
+      "exitCode": 1,
+      "volume": "chio-required-audit-20260909-1-malformed",
+      "independentObservation": {
+        "exists": false,
+        "content": null,
+        "audit": ""
+      }
+    }
+  ]
+}

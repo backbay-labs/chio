@@ -1,0 +1,2 @@
+{"result":{"protocolVersion":"2025-03-26","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"secure-filesystem-server","version":"0.2.0"}},"jsonrpc":"2.0","id":1}
+{"result":{"content":[{"type":"text","text":"Successfully wrote to /workspace/observed.txt"}],"structuredContent":{"content":"Successfully wrote to /workspace/observed.txt"}},"jsonrpc":"2.0","id":2}

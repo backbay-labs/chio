@@ -1,0 +1,5 @@
+{
+  "returncode": 0,
+  "stdout": "{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"chio-mcp-gateway\",\"version\":\"0.3.0\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":91,\"result\":{\"isError\":true,\"content\":[{\"type\":\"text\",\"text\":\"{\\\"state\\\":\\\"not_dispatched\\\",\\\"evidence\\\":\\\"unverified\\\",\\\"requestId\\\":\\\"bridge-qualification-20260909:7f1b9688acb48e25a2a9fb9fbe59140777ac9e7fd2e7af34ffb00616518e50ab\\\",\\\"reason\\\":\\\"cancelled before admission\\\"}\"}]}}\n",
+  "stderr": ""
+}

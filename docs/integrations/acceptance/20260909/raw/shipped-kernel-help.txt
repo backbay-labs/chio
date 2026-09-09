@@ -1,0 +1,47 @@
+{"argv": ["/usr/local/bin/chio", "--help"], "exit": 0}
+CLI binary for the Chio runtime kernel
+
+Usage: chio [OPTIONS] <COMMAND>
+
+Commands:
+  run         Spawn an agent subprocess and enforce policy via the kernel
+  check       Evaluate a single tool call against a policy (no subprocess)
+  init        Scaffold a runnable Chio example project with a governed demo flow
+  api         Protect an HTTP API with Chio using an OpenAPI spec-backed sidecar
+  mcp         Serve an MCP-compatible edge backed by the Chio kernel
+  trust       Manage local trust-plane state such as persisted revocations
+  receipt     Query and list receipts from the receipt store
+  evidence    Export an offline evidence package from the local receipt database
+  certify     Evaluate a conformance corpus and emit a signed certification artifact
+  did         Resolve self-certifying did:chio identifiers into DID Documents
+  passport    Create, verify, and present Agent Passport bundles
+  reputation  Inspect local reputation scorecards from persisted receipts and lineage state
+  cert        Generate, verify, and inspect ACP session compliance certificates
+  guard       Guard development lifecycle: scaffold, build, and inspect WASM guards
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+      --json
+          Backward-compatible alias for `--format json`
+      --format <FORMAT>
+          Output format for command results and terminal error reporting [default: human] [possible values: human, json]
+      --receipt-db <RECEIPT_DB>
+          Optional SQLite database path for durable receipt persistence
+      --revocation-db <REVOCATION_DB>
+          Optional SQLite database path for durable capability revocation persistence
+      --authority-seed-file <AUTHORITY_SEED_FILE>
+          Optional file path for a persistent capability-authority seed
+      --authority-db <AUTHORITY_DB>
+          Optional SQLite database path for shared capability-authority state
+      --budget-db <BUDGET_DB>
+          Optional SQLite database path for durable shared capability budget state
+      --session-db <SESSION_DB>
+          Optional SQLite database path for durable remote MCP session tombstones
+      --control-url <CONTROL_URL>
+          Optional shared trust-control service base URL
+      --control-token <CONTROL_TOKEN>
+          Bearer token used to authenticate to the shared trust-control service
+  -h, --help
+          Print help
+  -V, --version
+          Print version

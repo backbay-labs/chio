@@ -1,0 +1,36 @@
+{"argv": ["/usr/local/bin/chio", "check", "--help"], "exit": 0}
+Evaluate a single tool call against a policy (no subprocess)
+
+Usage: chio check [OPTIONS] --policy <POLICY> --tool <TOOL>
+
+Options:
+      --policy <POLICY>
+          Path to the policy YAML file
+      --tool <TOOL>
+          Tool name to evaluate
+      --params <PARAMS>
+          Tool parameters as a JSON string [default: {}]
+      --server <SERVER>
+          Server ID to use for the evaluation [default: *]
+      --json
+          Backward-compatible alias for `--format json`
+      --format <FORMAT>
+          Output format for command results and terminal error reporting [default: human] [possible values: human, json]
+      --receipt-db <RECEIPT_DB>
+          Optional SQLite database path for durable receipt persistence
+      --revocation-db <REVOCATION_DB>
+          Optional SQLite database path for durable capability revocation persistence
+      --authority-seed-file <AUTHORITY_SEED_FILE>
+          Optional file path for a persistent capability-authority seed
+      --authority-db <AUTHORITY_DB>
+          Optional SQLite database path for shared capability-authority state
+      --budget-db <BUDGET_DB>
+          Optional SQLite database path for durable shared capability budget state
+      --session-db <SESSION_DB>
+          Optional SQLite database path for durable remote MCP session tombstones
+      --control-url <CONTROL_URL>
+          Optional shared trust-control service base URL
+      --control-token <CONTROL_TOKEN>
+          Bearer token used to authenticate to the shared trust-control service
+  -h, --help
+          Print help

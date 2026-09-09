@@ -1,0 +1,29 @@
+   Compiling libc v0.2.189
+   Compiling chio-sqlite-file-identity v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-sqlite-file-identity)
+   Compiling errno v0.3.14
+   Compiling getrandom v0.4.2
+   Compiling rustix v1.1.4
+   Compiling tempfile v3.27.0
+    Finished `test` profile [unoptimized] target(s) in 2.95s
+     Running unittests src/lib.rs (/Users/connor/Medica/backbay/standalone/arc/target/debug/deps/chio_sqlite_file_identity-6038115987b79bbd)
+
+running 1 test
+test tests::reports_the_borrowed_main_database_file ... FAILED
+
+failures:
+
+---- tests::reports_the_borrowed_main_database_file stdout ----
+
+thread 'tests::reports_the_borrowed_main_database_file' (5703192) panicked at crates/platform/chio-sqlite-file-identity/src/lib.rs:144:9:
+assertion `left == right` failed
+  left: 1519051179
+ right: 16777231
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::reports_the_borrowed_main_database_file
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p chio-sqlite-file-identity --lib`

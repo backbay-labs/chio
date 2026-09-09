@@ -1,0 +1,10 @@
+{
+  "sourceCommit": "04b7d366d62c886c39bc202f58ef0d44e8f5aee7",
+  "kernelSha256": "e7539855906bd5eb7b4eb2e5a12ca0533889cf61ced3bf4adf5850b792aa6447",
+  "kernelArtifact": "/private/tmp/chio-required-agent-artifacts-20260909/chio-macos-arm64-e7539855906b",
+  "policySha256": "8c2c732d9115799b13150f7924da0e68fc1f9b2d42a2618912511d407035cc66",
+  "image": "sha256:0106edcb15a1c0d12d914ea0504f0e63ec85f5e6fdd3825b4d7a0d1367af3991",
+  "volume": "chio-required-agents-final-20260909",
+  "port": 58483,
+  "kernelSigner": "3667760322694075a5e31f585dc7f7a3b7656151a338bce1869ec37003f6b0ae"
+}

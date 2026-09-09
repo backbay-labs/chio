@@ -1,0 +1,6 @@
+    Checking libsqlite3-sys v0.37.0
+    Checking smallvec v1.15.1
+    Checking bitflags v2.11.0
+    Checking rusqlite v0.39.0
+    Checking chio-sqlite-file-identity v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-sqlite-file-identity)
+    Finished `dev` profile [unoptimized] target(s) in 0.94s

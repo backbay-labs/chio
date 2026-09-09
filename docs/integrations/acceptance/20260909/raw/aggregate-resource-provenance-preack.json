@@ -1,0 +1,95 @@
+{
+  "kernelSha256": "d0b87623cb3dd227f79cd3178b32bb04e35b48ddcb9dab63c6598d79b8e13b66",
+  "port": 58486,
+  "image": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "volume": "chio-required-aggregate-preack-20260909",
+  "auditVolume": "chio-required-aggregate-preack-20260909-audit",
+  "stateDir": "/Users/connor/.local/share/chio-required-operators/aggregate-preack-20260909",
+  "schema": "chio.required-integrations.resource-provenance.v1",
+  "kernelSourceCommit": "25d5717a5bcfd228391dbeee61d8d57f3c5e6177",
+  "trustedSigner": "95a2f48ef0431e8cb556281df003044423c6323dd127a323122eb0e5c04eee3b",
+  "policySha256": "8c2c732d9115799b13150f7924da0e68fc1f9b2d42a2618912511d407035cc66",
+  "auditPath": "/audit/dispatch.jsonl",
+  "auditSchema": "chio.resource-dispatch-observation.v1",
+  "deliveryAcknowledgement": "not included; I07 remains unresolved",
+  "hosts": {
+    "claude": {
+      "configurationSha256": "23a0c612a3718ee89c669b21632bcde41b217d5567e8623e0a648869b3f98fff",
+      "kernelSessionId": "87a84d8aff8df2b048ed19711b60ab1eb0a2afdc07afb03cfa555afdc549b77c",
+      "hostSessionId": "f29039b4-df60-4cc6-88fc-d5275f3537c2",
+      "subjectKey": "fd52ce0f0452a9b9ebd3a338e5832861c8fddfacfa41c3bb5048eb8eb4e6cfaa",
+      "capabilityId": "cap-01a08715-1ceb-7c51-b016-6e9ef5385c7a",
+      "tools": [
+        "read_text_file",
+        "write_file",
+        "edit_file",
+        "list_directory"
+      ]
+    },
+    "codex": {
+      "configurationSha256": "de6fa623662cd412981b32d981568011ad3974f6e7c0a1bd22f1a7aa7e57cb5b",
+      "kernelSessionId": "97438c569724634461c239547218374aca12714fb5b020d48edf9561b4e56513",
+      "hostSessionId": "9ebd24a5-a748-4124-8be0-c67666504d1d",
+      "subjectKey": "1f0de73957b28115260f26adb2531d75e62573905fa430102955913314a78109",
+      "capabilityId": "cap-01a08715-d01d-71e3-bc6a-e78972b8da3d",
+      "tools": [
+        "read_text_file",
+        "write_file",
+        "edit_file",
+        "list_directory"
+      ]
+    },
+    "cursor": {
+      "configurationSha256": "4d13d6492bb41b73caca1e2608428654e4d872364f457b08b2c21e375c6ced92",
+      "kernelSessionId": "8e91ee5121da9e94dfdfdd0c49b953c6145e0ccf24bcec5363a38ec8b4ce4678",
+      "hostSessionId": "6387c30b-cbd6-46ba-90f0-cab264c8d06a",
+      "subjectKey": "f6e629fd0f9d4130f0851e26fed77bb1630eb3fd28ee31214ef292c4649a0c28",
+      "capabilityId": "cap-01a08715-d1ad-7b52-bdcd-a2dac6c23dfb",
+      "tools": [
+        "read_text_file",
+        "write_file",
+        "edit_file",
+        "list_directory"
+      ]
+    },
+    "hermes": {
+      "configurationSha256": "f8d81e86e2bd09f8e7b275221d7d635c3fc1353a4071007aed5edbe216ee0cbe",
+      "kernelSessionId": "e1517c0894eefab534ce8f0fcde5f7ad608d80cc3764d7ebb8b416f8d6a5006c",
+      "hostSessionId": "52175549-62fc-43c0-987f-1d402a1a2b07",
+      "subjectKey": "43f9e7b7e5a2ba697c4245829f39828edfc062f8aa7c5910e05fa92422620721",
+      "capabilityId": "cap-01a08715-d339-7cd2-910b-d0aa65eb8cbd",
+      "tools": [
+        "read_text_file",
+        "write_file",
+        "edit_file",
+        "list_directory"
+      ]
+    },
+    "pi": {
+      "configurationSha256": "c6fa9a267220b15073f7b8c027bf6d39e0dd6af3bab5f2c37d3e5a8b6b920c06",
+      "kernelSessionId": "79eab08124d1afb55d40b51610a717336fe60eec1d93694ac08bc362c1dc8238",
+      "hostSessionId": "38ab6896-acaa-4e6b-8369-a197b747c914",
+      "subjectKey": "be95475ee2341b4c45c930ac47b0d1f2e232442ee0d85bf1f06ef693ef12e541",
+      "capabilityId": "cap-01a08715-d4d0-7e83-b7db-6d72631bd66c",
+      "tools": [
+        "read_text_file",
+        "write_file",
+        "edit_file",
+        "list_directory"
+      ]
+    },
+    "openclaw": {
+      "configurationSha256": "56ca4d8271d9a2da50648a71723f8f9cf77e36094fd44cd9e9ec473da5d61008",
+      "kernelSessionId": "f0fe32ba603520ec9da7a94f07b07c483dcce5f55031b77d86ebe56d4fd7720c",
+      "hostSessionId": "7be597b7-711c-46a6-8f24-072ac9d67c60",
+      "subjectKey": "1de6d9353d566cc6b1e54fd7ed8254b246a7beb07fc87594c8e66966cfd296a4",
+      "capabilityId": "cap-01a08715-d664-7930-ab7d-5afe1591561a",
+      "tools": [
+        "read_text_file",
+        "write_file",
+        "edit_file",
+        "list_directory"
+      ]
+    }
+  }
+}

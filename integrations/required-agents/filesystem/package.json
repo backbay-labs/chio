@@ -1,0 +1,13 @@
+{
+  "name": "chio-required-agent-filesystem",
+  "version": "1.0.0",
+  "description": "Pinned filesystem resource for isolated required-agent qualification",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@modelcontextprotocol/server-filesystem": "2026.8.31"
+  },
+  "private": true
+}

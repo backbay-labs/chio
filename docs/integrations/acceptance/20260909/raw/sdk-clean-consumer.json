@@ -1,0 +1,33 @@
+{
+  "consumer_directory": "/var/folders/jy/95wms_mn265f0bpj_v6wc4zh0000gn/T/chio-sdk-final-consumer-q5lyjt6m",
+  "artifact": "chio-protocol-sdk-0.1.1-rc.1.tgz",
+  "sha256": "ea8639364db147ed0a9d590f58d532f93c84200a47c3245b1facdaf8f776eb90",
+  "source_commit": "3335a1181",
+  "commands": [
+    {
+      "argv": [
+        "npm",
+        "install",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund",
+        "--offline",
+        "--save-exact",
+        "./chio-protocol-sdk-0.1.1-rc.1.tgz"
+      ],
+      "exit": 0,
+      "stdout": "\nadded 1 package in 783ms\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "node",
+        "verify.mjs"
+      ],
+      "exit": 0,
+      "stdout": "Independent packed SDK install: exports and 4 receipt controls passed; version 0.1.1-rc.1\n",
+      "stderr": ""
+    }
+  ],
+  "scope": "SDK packaging and fixture verifier controls only; no real host or kernel acceptance"
+}

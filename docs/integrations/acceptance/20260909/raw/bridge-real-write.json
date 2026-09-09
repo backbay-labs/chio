@@ -1,0 +1,92 @@
+{
+  "state": "completed",
+  "evidence": "verified",
+  "requestId": "bridge-real-write-20260909-1",
+  "receipt": {
+    "action": {
+      "parameter_hash": "4628b6b0ad3d8fea6e5246faf326c99a855903e9d6f66f7bd0f661e7abfbdfb6",
+      "parameters": {
+        "content": "kernel-mediated bridge write 20260909\n",
+        "path": "/workspace/bridge-allowed.txt"
+      }
+    },
+    "boundary_class": "prevent",
+    "capability_id": "cap-01a086c1-cec4-7341-82ff-03b27ecb25db",
+    "content_hash": "508d683f911c268a6bba09846c1f4db040dcfd3bf9cabbd608319f7089fd331d",
+    "decision": {
+      "verdict": "allow"
+    },
+    "id": "55a3d07d8ca3e6d18f2829cb5321e08fb97b1575ac783b1d9d761ec9792f9af4",
+    "kernel_key": "fdd1d3e5702ccb18232cf353b365e17a5ce8ad4249cade41fdcde2b7e8d3dc4b",
+    "metadata": {
+      "admission_operation": {
+        "compensation_status": "not_compensated",
+        "coordinator_lease_epoch": 2,
+        "coordinator_lease_id": "01a086bf-77f5-7bb0-803c-d0d36983cb0f",
+        "operation_id": "f338878523165c04cff457d1d0cf7c90fef1e700b94a989069a82994d67e2934",
+        "projected_dispatch_state": "terminal",
+        "projected_operation_version": 8,
+        "projected_state": "completed",
+        "request_binding_hash": "0a5b84428fd1133f95d3d7215b463ffc8eaf2d9471c47f98104f76e68481f8d2",
+        "request_id": "bridge-real-write-20260909-1",
+        "request_namespace_digest": "317b6ced64e709063b924446f3b32b82f43134b8ad0723133ef67eb4bad08fd4",
+        "retained_dispatch_commit": {
+          "committed_version": 6,
+          "coordinator_lease_epoch": 2,
+          "coordinator_lease_id": "01a086bf-77f5-7bb0-803c-d0d36983cb0f",
+          "provider_attempt": {
+            "attempt_id": "attempt:f338878523165c04cff457d1d0cf7c90fef1e700b94a989069a82994d67e2934",
+            "operation_id": "f338878523165c04cff457d1d0cf7c90fef1e700b94a989069a82994d67e2934",
+            "transport_id": "kernel-tool-server:fs",
+            "transport_key_epoch": 2
+          },
+          "store_fence": {
+            "lease_id": "01a086bf-77f5-7bb0-803c-d0d36983cb0f",
+            "owner_epoch": 2,
+            "store_uuid": "01a086b1-e802-77f1-be74-f58fc6efbbb3"
+          }
+        },
+        "schema": "chio.admission-receipt.v1",
+        "store_fence": {
+          "lease_id": "01a086bf-77f5-7bb0-803c-d0d36983cb0f",
+          "owner_epoch": 2,
+          "store_uuid": "01a086b1-e802-77f1-be74-f58fc6efbbb3"
+        },
+        "tool_outcome_id": "3ce95755ace04406e4d67daed62fcb7f12543764a09e14c3dd7605af3f1c985d",
+        "tool_outcome_version": 2,
+        "trusted_time_unix_ms": 1788967293995
+      },
+      "attribution": {
+        "delegation_depth": 0,
+        "grant_index": 1,
+        "issuer_key": "6da6aad8e003689f72f9879a9cd2a14ddd859a2d197e33854a313fcc05532dfb",
+        "subject_key": "4442e8bdfa9684418714582d599c338ddf15ab0745a6dc120a0423d34938ea10"
+      },
+      "chio_receipt_signing_nonce": "rcpt-01a086c2-94b0-7533-8599-6d1f8e077aa1",
+      "receipt_context": {
+        "request_id": "bridge-real-write-20260909-1"
+      }
+    },
+    "policy_hash": "a397798b04d1b93737ec46f21bb62be358bc16532abd7770fb2eaef5cd6b4cf9",
+    "receipt_kind": "mediated_decision",
+    "redaction_mode": "none",
+    "signature": "3f27ea5601c48256ab422bc05e0c9fc7d187bba52b915bcecb8b5a9b7fa16b003fce1fe179671d131ace23932e287552e8aaab4c9d9fb05cd11a324a01bd2f0c",
+    "timestamp": 1788967293,
+    "tool_name": "write_file",
+    "tool_origin": "caller_executed",
+    "tool_server": "fs",
+    "trust_level": "mediated"
+  },
+  "result": {
+    "content": [
+      {
+        "text": "Successfully wrote to /workspace/bridge-allowed.txt",
+        "type": "text"
+      }
+    ],
+    "isError": false,
+    "structuredContent": {
+      "content": "Successfully wrote to /workspace/bridge-allowed.txt"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+   Compiling chio-sqlite-file-identity v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-sqlite-file-identity)
+   Compiling chio-store-sqlite v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-store-sqlite)
+   Compiling chio-conformance v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/tooling/chio-conformance)
+   Compiling chio-control-plane v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/platform/chio-control-plane)
+   Compiling chio-tee v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/trust/chio-tee)
+   Compiling chio-replay-corpus v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/trust/chio-replay-corpus)
+   Compiling chio-arena v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/core/chio-arena)
+   Compiling chio-runtime-harness v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/kernel/chio-runtime-harness)
+   Compiling chio-mcp-remote v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/protocol/chio-mcp-remote)
+   Compiling chio-hosted-mcp v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/protocol/chio-hosted-mcp)
+   Compiling chio-api-protect v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/products/chio-api-protect)
+   Compiling chio-cli v0.1.0 (/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/crates/products/chio-cli)
+    Finished `dev` profile [unoptimized] target(s) in 1m 05s

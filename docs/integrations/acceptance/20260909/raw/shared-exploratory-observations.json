@@ -1,0 +1,22 @@
+{
+  "scope": "shared bridge/kernel components; no host acceptance inferred",
+  "beforeFix": {
+    "file": "bridge-cancelled-before-dispatch.txt",
+    "observedExists": true,
+    "outcome": "completed"
+  },
+  "afterFix": {
+    "file": "bridge-cancelled-after-fix.txt",
+    "observedExists": false,
+    "outcome": "not_dispatched"
+  },
+  "observer": "operator-only Docker container, read-only chio-required-agents-20260909 volume mounted at /observe",
+  "originalKernelSource": "1898aa9d5",
+  "originalKernelArtifactSha256": null,
+  "missingIdentityReason": "Binary hash was not captured before cargo replaced the artifact; final runtime is independently pinned.",
+  "originalPolicyRuntimeHash": "a397798b04d1b93737ec46f21bb62be358bc16532abd7770fb2eaef5cd6b4cf9",
+  "sqliteFixProvenance": {
+    "preservedOriginalDirtyWork": true,
+    "copiedPatchSha256": "5b420ec6506e42742c62905e80ecec66713ef355d6fb591c9ac13d96fb5d991e"
+  }
+}
