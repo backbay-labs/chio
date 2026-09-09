@@ -36,6 +36,18 @@ are bounded to their recorded source, artifact and configuration. Counts from
 different builds cannot be combined into a final passing host matrix. No result
 from one host substitutes for another host's missing case.
 
+## Current delivery blocker
+
+The bridge could acknowledge a completed result before the host received its
+HTTP response. A dropped-response regression caused a replacement request to
+execute. This is an I07 failure in the prior packaged HTTP candidates. The
+repair retains the fence until an actual host returns the exact delivery proof.
+Codex and Claude launchers consume host tool-result events; Pi returns the proof
+from its native extension. Component tests passed, but real host qualification
+is in progress. The first repaired artifact had a malformed MCP capability
+announcement and failed Codex and Claude initialization with zero dispatches.
+Both failures are retained; no older passing host result closes this gap.
+
 ## Demonstrated shared repairs
 
 - The shipped CLI reports `0.1.0` and has SHA256
