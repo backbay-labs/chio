@@ -1,0 +1,1 @@
+Call to mcp__chio__chio_resume cannot proceed: the write_file request did not succeed. The tool returned an error stating: "an unresolved operation fences this gateway; operator reconciliation required." No further action will be taken until this issue is resolved.

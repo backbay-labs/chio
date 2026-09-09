@@ -1,0 +1,1 @@
+Stopped: The directory listing of /workspace was denied due to invocation budget exhaustion. All previous steps completed successfully, but cannot proceed further.

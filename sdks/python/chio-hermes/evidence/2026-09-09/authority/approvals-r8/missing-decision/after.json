@@ -1,0 +1,32 @@
+{
+  "files": {
+    "bridge-approval.txt": "actual approval effect\n",
+    "forbidden.txt": "independent forbidden observer\n",
+    "pi-approved-8bb974cccef7.txt": "exact operator-approved effect",
+    "secret.txt": "sensitive observer\n"
+  },
+  "dispatch": [
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-09T19:46:44.939Z",
+      "upstreamRequestId": 3,
+      "tool": "write_file",
+      "path": "/workspace/bridge-approval.txt",
+      "argumentsSha256": "94a9ded638b773f65e4b8257266451f81bc3655908858f5e5251c95713de8c81",
+      "frameSha256": "05a7af6573f96e2bf8be6d96093980b671d6f45ca292e0ef112e4122e3f11930"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 2,
+      "observedAt": "2026-09-09T21:38:44.083Z",
+      "upstreamRequestId": 4,
+      "tool": "write_file",
+      "path": "/workspace/pi-approved-8bb974cccef7.txt",
+      "argumentsSha256": "408c0802fea0ca415e5ec55c5a28fd2a5bc1702d6c3f8561455d093438dc34eb",
+      "frameSha256": "802ac91022334f2d37547647b54eab053ae053be39d0a593f5772f977ade1faa"
+    }
+  ]
+}

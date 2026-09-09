@@ -1,0 +1,17 @@
+{
+  "calls": [
+    {
+      "id": "call_F6R01ZYEXsDOra5IuicDl2D4",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/hermes-rejected-c926ec2318d6.txt",
+        "content": "must never appear"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_F6R01ZYEXsDOra5IuicDl2D4"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

@@ -22,7 +22,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 for name in ["operator-state", "launcher-python", "host-python", "host-root", "bridge", "output"]:
     parser.add_argument("--" + name, type=Path, required=True)
 parser.add_argument("--fault-injector", type=Path)
-parser.add_argument("--cases", nargs="+", choices=["useful", "secret", "forbidden-write", "host-response-loss"], default=["useful", "secret", "forbidden-write"])
+parser.add_argument("--cases", nargs="+", choices=["useful", "secret", "forbidden-write", "host-response-loss", "aggregate-budget"], default=["useful", "secret", "forbidden-write"])
 a = parser.parse_args()
 a.output.mkdir(mode=0o700)
 operator = json.loads((a.operator_state / "operator.json").read_text())
@@ -80,6 +80,7 @@ for case in a.cases:
         save(target / "command.json", {"command": command, "exitCode": completed.returncode})
         return completed.returncode, terminal
 
+    if case == "aggregate-budget": prompts[case] = prompts["useful"]
     before = observe()
     code, terminal = run("initial", prompts[case], case == "host-response-loss")
     after = observe(); save(evidence / "before.json", before); save(evidence / "after.json", after)
@@ -87,7 +88,10 @@ for case in a.cases:
     acknowledgements = [{"state": value.get("state"), "acknowledged": value.get("acknowledged"), "hostDeliveryConfirmed": value.get("hostDeliveryConfirmed")} for value in journal]
     delta = after["dispatch"][len(before["dispatch"]):]
     passed = hashlib.sha256(config.read_bytes()).hexdigest() == digest
-    if case == "useful":
+    if case == "aggregate-budget":
+        passed &= code == 3 and terminal.get("confirmedDeliveries") == 3 and len(delta) == 3 and after["files"].get(name) == "Hermes kernel verified"
+        passed &= len(journal) == 4 and sum(v.get("state") == "denied" for v in journal) == 1
+    elif case == "useful":
         passed &= code == 0 and terminal.get("confirmedDeliveries") == 4 and len(delta) == 4 and after["files"].get(name) == "Hermes kernel verified"
         passed &= len(acknowledgements) == 4 and all(v["acknowledged"] and v["hostDeliveryConfirmed"] for v in acknowledgements)
     elif case != "host-response-loss":

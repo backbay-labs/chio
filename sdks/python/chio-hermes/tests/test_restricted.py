@@ -90,6 +90,17 @@ def test_existing_profile_cannot_silently_change_configuration(launch_args: argp
         restricted.prepare(launch_args)
 
 
+def test_approval_mode_exposes_resume_without_widening_kernel_credential(launch_args: argparse.Namespace) -> None:
+    config = json.loads(launch_args.gateway_config.read_text())
+    config["approval"] = {"requiredTools": ["read_text_file"], "purpose": "Exact local action", "ttlSeconds": 300}
+    launch_args.gateway_config.write_text(json.dumps(config))
+    assert restricted.gateway_tool_names(config) == ["read_text_file", "chio_resume"]
+    restricted.prepare(launch_args)
+    profile = json.loads((launch_args.state_dir / "profile/config.yaml").read_text())
+    assert profile["mcp_servers"]["chio"]["tools"]["include"] == ["read_text_file", "chio_resume"]
+    assert config["sessionCredential"]["allowedTools"] == ["read_text_file"]
+
+
 def test_host_contract_change_refuses_before_profile_creation(launch_args: argparse.Namespace) -> None:
     (launch_args.host_root / "hermes").write_text("changed tool dispatch")
     with pytest.raises(ValueError, match="contract mismatch"):

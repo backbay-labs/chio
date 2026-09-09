@@ -102,7 +102,9 @@ def gateway_tool_names(config: dict[str, Any]) -> list[str]:
         raise ValueError("session credential metadata must match live identity, scope and bounded lifetime")
     # Metadata is a compatibility check. The kernel and gateway must enforce
     # the actual bearer scope and confirm it in the live execution context.
-    return names
+    # Resume is a gateway control tool, not an additional kernel capability.
+    # Expose it only after checking the issued four-tool credential unchanged.
+    return names + (["chio_resume"] if config.get("approval") is not None else [])
 
 
 def macos_profile(*, home: Path, read_paths: list[Path], write_paths: list[Path],

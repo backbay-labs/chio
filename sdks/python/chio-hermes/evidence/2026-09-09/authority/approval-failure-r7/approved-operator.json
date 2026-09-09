@@ -1,0 +1,15 @@
+{
+  "submission": {
+    "output": "/Users/connor/.local/share/chio-required-operators/bridge-host-delivery-approval-20260909/hermes-approvals-669050701f984037ae677e8cbb14b37f/approved-submission.json",
+    "status": "pending",
+    "approvalId": "approval-bc01382f5a432a1e5278cd2b5af7160f75eed91197f64948b46ca17a5d1935aa",
+    "protectedDispatch": false
+  },
+  "decision": {
+    "output": "/Users/connor/.local/share/chio-required-operators/bridge-host-delivery-approval-20260909/hermes-approvals-669050701f984037ae677e8cbb14b37f/journal/approvals/5ec7edb39068f157e715f5593d614c944d82230598c3f5068a3d4c1feed800d3.json",
+    "status": "approved",
+    "approvalId": "approval-bc01382f5a432a1e5278cd2b5af7160f75eed91197f64948b46ca17a5d1935aa",
+    "protectedDispatch": false
+  },
+  "protectedDispatch": false
+}

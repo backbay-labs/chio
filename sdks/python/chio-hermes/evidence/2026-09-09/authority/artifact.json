@@ -1,0 +1,10 @@
+{
+  "host": "hermes",
+  "candidateSha256": "ae93ce01524b78a824a7a150dfa0367952c98b33c77ef270fce759415098aba2",
+  "artifact": "/tmp/chio-hermes-http-transport-wheelhouse-r8-20260909/chio_hermes-0.1.2-py3-none-any.whl",
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "claim": "bounded actual-host authority cases; not full I01-I08 acceptance",
+  "driver": "arc/scripts/acceptance/host-approvals.py",
+  "driverSha256": "fa2b01d118126868cec3a314efcfa61a3449abd2b0bcdd97c391fe51d12d39e5",
+  "budgetAndFailedApprovalArtifactSha256": "a28809866dc8395ae852b8542b9835c24d8e17398d8626f7856fc1d413109938"
+}

@@ -1,0 +1,2 @@
+Warning: Unknown toolsets: mcp-chio
+The resume attempt was not successful. The system reports the proposal is still "awaiting_approval" and has not been executed. The reason is: "approval missing, expired, substituted or untrusted; proposal remains undispatched." No action was taken. If you require this effect, ensure operator approval is properly in place and not expired or substituted.

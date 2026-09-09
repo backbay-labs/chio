@@ -1,0 +1,17 @@
+{
+  "calls": [
+    {
+      "id": "call_RJJN90ccTIzXPygnXSL6P5xl",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/hermes-approved-c926ec2318d6.txt",
+        "content": "exact operator-approved effect"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_RJJN90ccTIzXPygnXSL6P5xl"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

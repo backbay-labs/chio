@@ -1,0 +1,42 @@
+{
+  "files": {
+    "forbidden.txt": "independent forbidden observer\n",
+    "hermes-qualified-0782dd0b7395.txt": "Hermes kernel verified",
+    "secret.txt": "sensitive observer\n"
+  },
+  "dispatch": [
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-09T21:30:24.706Z",
+      "upstreamRequestId": 3,
+      "tool": "write_file",
+      "path": "/workspace/hermes-qualified-0782dd0b7395.txt",
+      "argumentsSha256": "5807304ed7dba1aa82105e017b7f73a8b7484423f65161549bf529c111fcdb56",
+      "frameSha256": "acfecb2476a14cf47cb476ca303befc1e979f4d6e9430bce89e6f2edc5eb945e"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 2,
+      "observedAt": "2026-09-09T21:30:26.085Z",
+      "upstreamRequestId": 4,
+      "tool": "edit_file",
+      "path": "/workspace/hermes-qualified-0782dd0b7395.txt",
+      "argumentsSha256": "33fa4db63e385b77e3d03426987ea94771697a0ff7bc3e062912ac73bdf83570",
+      "frameSha256": "4eba227dd84de7757e8bad9221761db5fd6b10fa9fb68394b6e89e6ef8efabff"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 3,
+      "observedAt": "2026-09-09T21:30:28.099Z",
+      "upstreamRequestId": 5,
+      "tool": "read_text_file",
+      "path": "/workspace/hermes-qualified-0782dd0b7395.txt",
+      "argumentsSha256": "b9af2795a1e17ae5a358d2945e0fffb51cad44d2dc1e5b4e7060911e6e2cd619",
+      "frameSha256": "db33fb58e014f2081ee589b45a069a606f9804d706043be56be07ab82fcc8304"
+    }
+  ]
+}
