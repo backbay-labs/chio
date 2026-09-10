@@ -31,10 +31,13 @@ globalThis.fetch=async function(input,init){
  const expected=binding.nativeRequests[index-1];
  const requestId=frame.params?._meta?.chioRequestId;
  const headers=new Headers(init?.headers);
- if(!expected||frame.params?.name!==expected.tool||!isDeepStrictEqual(frame.params?.arguments,expected.arguments)||typeof requestId!=='string'||headers.get('authorization')!==`Bearer ${config.execution.bearerToken}`||!(init.signal instanceof AbortSignal))throw Error('Actual native request differs from bound expiry case');
+ const headerSnapshot=Array.from(headers.entries()).sort(([a],[b])=>a.localeCompare(b));
+ const observedSessionId=headers.get('mcp-session-id');
+ const observedProtocolVersion=headers.get('mcp-protocol-version');
+ if(init.method!=='POST'||observedSessionId!==config.execution.sessionId||observedProtocolVersion!=='2025-11-25'||!expected||frame.params?.name!==expected.tool||!isDeepStrictEqual(frame.params?.arguments,expected.arguments)||typeof requestId!=='string'||headers.get('authorization')!==`Bearer ${config.execution.bearerToken}`||!(init.signal instanceof AbortSignal))throw Error('Actual native request differs from bound expiry case');
  const originalSignal=init.signal;
  const requestBodySha256=hash(init.body);
- const identity={index,requestId,requestBodySha256,tool:frame.params.name,arguments:frame.params.arguments,sessionId:config.execution.sessionId,subjectKey:cap.subject,capabilityId:cap.id,capabilityExpiresAt:cap.expires_at,credentialExpiresAt:config.sessionCredential.expiresAt};
+ const identity={index,requestId,requestBodySha256,method:init.method,protocolVersion:observedProtocolVersion,tool:frame.params.name,arguments:frame.params.arguments,sessionId:observedSessionId,subjectKey:cap.subject,capabilityId:cap.id,capabilityExpiresAt:cap.expires_at,credentialExpiresAt:config.sessionCredential.expiresAt};
  const heldAtMs=Date.now();
  if(heldAtMs>=cap.expires_at*1000||init.signal?.aborted)throw Error('Native request missed its valid authority window');
  record({event:'native-request',...identity,heldAtMs,signalAborted:false,callerHeaderMatches:true,firstSucceeded});
@@ -46,7 +49,8 @@ globalThis.fetch=async function(input,init){
    if(init.signal?.aborted){record({event:'client-aborted',...identity,observedAtMs:Date.now()});throw Error('Client aborted before actual kernel expiry response');}
    await new Promise(resolve=>setTimeout(resolve,Math.min(25,releaseAtMs-Date.now())));
   }
-  if(init.signal!==originalSignal||init.signal.aborted||hash(init.body)!==requestBodySha256||new Headers(init.headers).get('authorization')!==headers.get('authorization')||hash(readFileSync(configPath))!==binding.configurationSha256)throw Error('Original request signal or authority changed during hold');
+  const releasedHeaders=Array.from(new Headers(init.headers).entries()).sort(([a],[b])=>a.localeCompare(b));
+  if(init.method!=='POST'||init.signal!==originalSignal||init.signal.aborted||hash(init.body)!==requestBodySha256||!isDeepStrictEqual(releasedHeaders,headerSnapshot)||hash(readFileSync(configPath))!==binding.configurationSha256)throw Error('Original request signal or authority changed during hold');
   record({event:'released-to-kernel',...identity,releasedAtMs:Date.now(),holdMilliseconds:Date.now()-heldAtMs,signalAborted:false,originalTransportUnchanged:true});
  }
  let response;

@@ -118,30 +118,32 @@ def run(label,tool,arguments,first_arguments=None):
  for name in ['terminal.json','launch.json','model-relay.json','host-delivery.json']:
   if (root/name).is_file():shutil.copy2(root/name,out/name)
  save(out/'before.json',before);save(out/'after.json',after)
- calls=[];returned=[]
+ calls=[];returned=[];tool_results=[]
  if a.host=='pi':
   events=[json.loads(line) for line in completed.stdout.splitlines() if line.startswith('{')]
   calls=[{'id':v.get('toolCallId'),'name':v.get('toolName'),'arguments':v.get('args')} for v in events if v.get('type')=='tool_execution_start']
   returned=[v.get('toolCallId') for v in events if v.get('type')=='tool_execution_end']
+  tool_results=[{'id':v.get('toolCallId'),'value':v.get('result'),'isError':v.get('isError')} for v in events if v.get('type')=='tool_execution_end']
  elif a.host=='claude':
   events=[json.loads(line) for line in completed.stdout.splitlines() if line.startswith('{')]
   for event in events:
    message=event.get('message',{})
    for block in message.get('content',[]) if isinstance(message.get('content'),list) else []:
     if block.get('type')=='tool_use':calls.append({'id':block['id'],'name':block['name'],'arguments':block['input']})
-    if block.get('type')=='tool_result':returned.append(block['tool_use_id'])
+    if block.get('type')=='tool_result':
+     returned.append(block['tool_use_id']);tool_results.append({'id':block['tool_use_id'],'value':block.get('content'),'isError':block.get('is_error')})
  elif a.host=='codex':
   events=[json.loads(line) for line in completed.stdout.splitlines() if line.startswith('{')]
   for event in events:
    item=event.get('item',{})
    if item.get('type')=='mcp_tool_call' and item.get('server')=='chio' and event.get('type')=='item.completed':
-    calls.append({'id':item['id'],'name':item['tool'],'arguments':item['arguments']});returned.append(item['id'])
+    calls.append({'id':item['id'],'name':item['tool'],'arguments':item['arguments']});returned.append(item['id']);tool_results.append({'id':item['id'],'value':item.get('result'),'error':item.get('error')})
  elif a.host=='hermes' and (root/'profile/state.db').is_file():
   with sqlite3.connect('file:'+str(root/'profile/state.db')+'?mode=ro',uri=True) as db:
-   for role,raw,identity in db.execute('SELECT role,tool_calls,tool_call_id FROM messages'):
+   for role,raw,identity,content in db.execute('SELECT role,tool_calls,tool_call_id,content FROM messages'):
     if role=='assistant' and raw:
      for v in json.loads(raw):calls.append({'id':v['id'],'name':v['function']['name'],'arguments':json.loads(v['function']['arguments'])})
-    if role=='tool':returned.append(identity)
+    if role=='tool':returned.append(identity);tool_results.append({'id':identity,'value':content})
  elif a.host=='openclaw' and (root/'launch.json').is_file():
   launch=json.loads((root/'launch.json').read_text())
   code="const f=require('fs');console.log(JSON.stringify(f.readFileSync('/state/openclaw/agents/main/sessions/"+launch['sessionId']+".jsonl','utf8').trim().split('\\n').map(JSON.parse).filter(v=>v.type==='message').map(v=>v.message)))"
@@ -150,7 +152,8 @@ def run(label,tool,arguments,first_arguments=None):
    if message['role']=='assistant':
     for v in message.get('content',[]):
      if v['type']=='toolCall':calls.append({'id':v['id'],'name':v['name'],'arguments':v['arguments']})
-   if message['role']=='toolResult':returned.append(message['toolCallId'])
+   if message['role']=='toolResult':returned.append(message['toolCallId']);tool_results.append({'id':message['toolCallId'],'value':message.get('content'),'isError':message.get('isError')})
+ if a.suite=='in-flight-expiry':save(out/'native-results.json',tool_results)
  expected={'name':'mcp__chio__'+tool,'arguments':arguments} if a.host in ['hermes','claude'] else {'name':'chio_execute' if a.host=='pi' else 'chio_call','arguments':{'tool':tool,'arguments':arguments}}
  if a.host=='codex':expected={'name':tool,'arguments':arguments}
  native_attempt=any(call['id'] in returned and call['name']==expected['name'] and call['arguments']==expected['arguments'] for call in calls)
@@ -326,6 +329,23 @@ try:
   assert positive['state']=='completed' and positive.get('acknowledged') and positive.get('hostDeliveryConfirmed') and not positive['outcome']['result'].get('isError')
   assert expired['state']=='unknown' and expired['outcome']['evidence']=='unverified' and not expired.get('acknowledged') and not expired.get('hostDeliveryConfirmed')
   assert expired['request']['arguments']==second
+  native_dispatch=json.loads((a.output/'in-flight-expiry/native-dispatch.json').read_text())
+  native_results=json.loads((a.output/'in-flight-expiry/native-results.json').read_text())
+  assert len(native_dispatch['calls'])==len(native_results)==2
+  second_tool_id=native_dispatch['calls'][1]['id'];native_result=next(r for r in native_results if r['id']==second_tool_id)
+  def envelopes(value):
+   if isinstance(value,str):
+    try:return envelopes(json.loads(value))
+    except ValueError:return []
+   if isinstance(value,list):return [entry for item in value for entry in envelopes(item)]
+   if isinstance(value,dict):
+    if value.get('requestId')==held['requestId'] and 'state' in value:return [value]
+    return [entry for key,item in value.items() if key in ['content','text','result','details','outcome'] for entry in envelopes(item)]
+   return []
+  delivered=envelopes(native_result['value']);assert len(delivered)==1
+  assert delivered[0]['state']=='unknown' and delivered[0]['evidence']=='unverified'
+  if a.host=='claude':assert native_result['isError'] is True
+  save(a.output/'native-expiry-outcome.json',{'toolCallId':second_tool_id,'requestId':held['requestId'],'outcome':delivered[0],'nativeToolError':native_result.get('isError')})
   save(a.output/'journal-states.json',[{key:r.get(key) for key in ['requestId','request','state','acknowledged','hostDeliveryConfirmed','outcome']} for r in retained])
   save(a.output/'in-flight-expiry-result.json',{'passed':True,'realNativeCalls':2,'positiveResourceDispatches':1,'expiredRequestDispatches':0,'sameActualRequestReachedKernel':True,'kernelHttpStatus':response['status'],'clientSignalAborted':False,'expiredResultAcknowledged':False,'originalAuthorityUnchanged':True,'capabilityExpiresAt':cap['expires_at'],'heldAtMs':held['heldAtMs'],'releasedAtMs':released['releasedAtMs'],'kernelResponseAtMs':response['receivedAtMs'],'claim':'Actual live native request refused by kernel HTTP authority authentication after its owner-issued capability and clamped credential expired; not a signed CapabilityExpired admission receipt'})
  elif a.suite.startswith(('in-flight-','kernel-','evidence-')):

@@ -62,7 +62,9 @@ try{
   if(index===1)setTimeout(()=>{clock=binding.capability.expires_at*1000+1001;},50);
   const args=binding.nativeRequests[index].arguments;
   const body=JSON.stringify({jsonrpc:'2.0',id:index+1,method:'tools/call',params:{name:'write_file',arguments:{content:args.content,path:args.path},_meta:{chioRequestId:'fixture-request-'+index}}});
-  const response=await globalThis.fetch('http://127.0.0.1:12345/mcp',{method:'POST',headers:{authorization:'Bearer synthetic-fixture-only'},body,signal:controller.signal});
+  const headers={authorization:'Bearer synthetic-fixture-only','MCP-Session-Id':mode==='wrong-session'?'different-session':'fixture-session','MCP-Protocol-Version':'2025-11-25'};
+  if(index===1&&mode==='mutated-header')setTimeout(()=>{headers['MCP-Session-Id']='different-session';},10);
+  const response=await globalThis.fetch('http://127.0.0.1:12345/mcp',{method:'POST',headers,body,signal:controller.signal});
   responseStatuses.push(response.status);
  }
 }catch(value){error=value.message;}
@@ -107,6 +109,16 @@ console.log(JSON.stringify({forwarded,responseStatuses,error}));
         value, _ = self.exercise("missed-window")
         self.assertEqual(value["forwarded"], 0)
         self.assertIn("missed its valid authority window", value["error"])
+
+    def test_wrong_actual_session_header_fails_before_transport(self):
+        value, _ = self.exercise("wrong-session")
+        self.assertEqual(value["forwarded"], 0)
+        self.assertIn("Actual native request differs", value["error"])
+
+    def test_mutated_header_during_hold_never_reaches_transport(self):
+        value, _ = self.exercise("mutated-header")
+        self.assertEqual(value["forwarded"], 1)
+        self.assertIn("changed during hold", value["error"])
 
 
 if __name__ == "__main__":
