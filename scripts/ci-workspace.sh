@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 ./scripts/check-release-inputs.sh
 python3 scripts/tests/check-release-source-gates.test.py
 python3 scripts/tests/check-release-draft-assets.test.py
+python3 scripts/tests/release-provenance.test.py
 python3 scripts/tests/check-release-binary-sbom.test.py
 python3 scripts/tests/release-sbom-rescan.test.py
 python3 scripts/tests/macos-release-portability.test.py

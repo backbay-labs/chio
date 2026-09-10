@@ -1,36 +1,8 @@
-# slsa.yml - SLSA L2 provenance generation for release binaries.
-#
-# Owned by the release-engineering lane. Triggered on
-# successful completion of release-binaries.yml. Consumes the
-# per-target binary digests from that workflow's uploaded artifacts
-# and emits a signed provenance attestation alongside each release.
-#
-# The workflow_run trigger fires after release-binaries.yml succeeds
-# (which itself runs on `v*.*.*` tag pushes or workflow_dispatch). The SLSA
-# generator step is kept out of release-binaries.yml because the reusable
-# slsa-github-generator workflow needs `id-token: write` and
-# `contents: write` and is easier to audit when isolated from the build
-# matrix.
-
+# Generate provenance in the original tagged release workflow context.
 name: slsa
 
-# `workflow_run` does NOT support a `tags:` filter, and `branches:`
-# matches only branch refs. release-binaries.yml's primary path is
-# `push: tags: v*.*.*`, whose triggering ref is `refs/tags/v...` and
-# matches no branch pattern, so a `branches:` filter here would drop every
-# tag-driven release.
-#
-# This workflow triggers on every successful `Release Binaries` run
-# regardless of ref shape. The `collect-digests` job below performs
-# the release-vs-non-release branching by reading the tag-bound
-# release-metadata.json emitted by release-binaries.yml. The
-# workflow_run event's head_branch is branch-shaped for dispatched
-# rebuilds, so it is not used as release provenance.
-
 on:
-  workflow_run:
-    workflows: ["Release Binaries"]
-    types: [completed]
+  workflow_call:
 
 permissions:
   id-token: write
@@ -42,86 +14,60 @@ jobs:
     name: Collect binary digests from release-binaries
     # owner: Chio maintainers
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     outputs:
       subjects: ${{ steps.compute.outputs.subjects }}
       release_tag: ${{ steps.compute.outputs.release_tag }}
       source_sha: ${{ steps.compute.outputs.source_sha }}
-      draft_release: ${{ steps.compute.outputs.draft_release }}
+    permissions:
+      contents: read
+      actions: read
     steps:
-      - name: Download artifacts from release-binaries.yml
+      - name: Checkout original release source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+      - name: Download this run's release matrix artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ github.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          pattern: chio-*
+          pattern: chio-*-*-*
           path: artifacts/
-      - name: Compute base64-encoded subjects and resolve release tag
+      - name: Bind all subjects to the original release context
         id: compute
         shell: bash
         env:
-          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          cd artifacts
-          SUBJECTS=$(find . -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec sha256sum {} \; | base64 -w0)
-          echo "subjects=${SUBJECTS}" >> "${GITHUB_OUTPUT}"
-          mapfile -t metadata_files < <(find . -type f -name release-metadata.json | sort)
-          if [[ "${#metadata_files[@]}" -eq 0 ]]; then
-            echo "::error::release-binaries artifacts did not include release-metadata.json" >&2
+          if [[ "${GITHUB_EVENT_NAME}" != "push" && "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]]; then
+            echo "::error::provenance requires the original push or dispatch release context" >&2
             exit 1
           fi
-          release_tag=""
-          source_ref=""
-          source_sha=""
-          for metadata_file in "${metadata_files[@]}"; do
-            current_tag="$(jq -r '.release_tag // empty' "${metadata_file}")"
-            current_ref="$(jq -r '.source_ref // empty' "${metadata_file}")"
-            current_sha="$(jq -r '.source_sha // empty' "${metadata_file}")"
-            if [[ -z "${current_tag}" || -z "${current_ref}" || -z "${current_sha}" ]]; then
-              echo "::error::${metadata_file} is missing release_tag, source_ref, or source_sha" >&2
-              exit 1
-            fi
-            if [[ "${current_sha}" != "${WORKFLOW_RUN_HEAD_SHA}" ]]; then
-              echo "::error::${metadata_file} source_sha ${current_sha} does not match workflow_run.head_sha ${WORKFLOW_RUN_HEAD_SHA}" >&2
-              exit 1
-            fi
-            if [[ -z "${release_tag}" ]]; then
-              release_tag="${current_tag}"
-              source_ref="${current_ref}"
-              source_sha="${current_sha}"
-            elif [[ "${release_tag}" != "${current_tag}" || "${source_ref}" != "${current_ref}" || "${source_sha}" != "${current_sha}" ]]; then
-              echo "::error::release metadata differs across matrix artifacts" >&2
-              exit 1
-            fi
-          done
-          semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
-          if ! [[ "${release_tag}" =~ ^v${semver_re}$ ]]; then
-            echo "::error::release tag '${release_tag}' does not match v<semver>" >&2
+          if [[ "${GITHUB_REF}" != refs/tags/v* ]]; then
+            echo "::error::provenance requires the original release tag context" >&2
             exit 1
           fi
-          if [[ "${source_ref}" != "refs/tags/${release_tag}" ]]; then
-            echo "::error::release metadata source_ref '${source_ref}' is not refs/tags/${release_tag}" >&2
-            exit 1
-          fi
-          if ! [[ "${source_sha}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::release metadata source_sha '${source_sha}' is not a 40-character git SHA" >&2
-            exit 1
-          fi
-          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
-          echo "source_sha=${source_sha}" >> "${GITHUB_OUTPUT}"
-          tag_core="${release_tag%%+*}"
+          python3 scripts/verify-release-provenance.py subjects \
+            --artifacts artifacts --repository "${GITHUB_REPOSITORY}" --tag "${GITHUB_REF_NAME}" \
+            --source-sha "${GITHUB_SHA}" --run-id "${GITHUB_RUN_ID}" --run-attempt "${GITHUB_RUN_ATTEMPT}" \
+            --report subjects.json --github-output "${GITHUB_OUTPUT}"
+          tag_core="${GITHUB_REF_NAME%%+*}"
           if [[ "${tag_core}" == *-* ]]; then
-            draft_state="$(gh release view "${release_tag}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+            draft_state="$(gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
             if [[ "${draft_state}" != "true" ]]; then
-              echo "::error::candidate provenance requires an existing draft; do not reopen published releases" >&2
+              echo "::error::candidate provenance requires an existing draft; never reopen a published release" >&2
               exit 1
             fi
-            echo "draft_release=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "draft_release=false" >> "${GITHUB_OUTPUT}"
           fi
+      - name: Retain provenance subject binding
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-provenance-subjects-${{ github.run_attempt }}
+          path: subjects.json
+          if-no-files-found: error
+
 
   provenance:
     name: SLSA L2 provenance
@@ -131,15 +77,84 @@ jobs:
       id-token: write
       contents: write
       actions: read
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a
     with:
       base64-subjects: ${{ needs.collect-digests.outputs.subjects }}
       provenance-name: chio-${{ needs.collect-digests.outputs.source_sha }}.intoto.jsonl
-      upload-assets: true
-      # Explicitly preserve RC draft status when provenance is attached.
-      draft-release: ${{ needs.collect-digests.outputs.draft_release }}
-      # Populated from release-metadata.json after source_sha is checked
-      # against workflow_run.head_sha. Dispatch rebuilds are tag-ref
-      # gated and upload provenance to that exact release tag.
-      upload-tag-name: ${{ needs.collect-digests.outputs.release_tag }}
+      # The supported source-build mode accepts the immutable workflow SHA.
+      compile-generator: true
+      # Verify the authenticated source/builder policy before attaching the bundle.
+      upload-assets: false
+
+  verify-and-attach:
+    name: Verify pinned provenance before attachment
+    needs: [collect-digests, provenance]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Checkout original release source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+      - name: Install supported cryptographic verifier
+        uses: sigstore/cosign-installer@1aa8e0f2454b781fbf0fbf306a4c9533a0c57409
+        with:
+          cosign-release: v2.4.1
+      - name: Download this run's release matrix artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: ${{ github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: chio-*-*-*
+          path: artifacts/
+      - name: Download signed provenance from the isolated generator
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: chio-${{ github.sha }}.intoto.jsonl
+          path: provenance/
+      - name: Verify exact artifact, builder, source and caller identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-release-provenance.py subjects \
+            --artifacts artifacts --repository "${GITHUB_REPOSITORY}" --tag "${GITHUB_REF_NAME}" \
+            --source-sha "${GITHUB_SHA}" --run-id "${GITHUB_RUN_ID}" --run-attempt "${GITHUB_RUN_ATTEMPT}" \
+            --report subjects.json
+          mapfile -t archives < <(find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) | sort)
+          python3 scripts/verify-release-provenance.py verify \
+            --bundle "provenance/chio-${GITHUB_SHA}.intoto.jsonl" --evidence verification-evidence \
+            --repository "${GITHUB_REPOSITORY}" --tag "${GITHUB_REF_NAME}" --source-sha "${GITHUB_SHA}" \
+            --run-id "${GITHUB_RUN_ID}" --run-attempt "${GITHUB_RUN_ATTEMPT}" "${archives[@]}" \
+            >provenance-verification.stdout 2> >(tee provenance-verification.stderr >&2)
+      - name: Attach verified provenance without changing release state or replacing bytes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag_core="${GITHUB_REF_NAME%%+*}"
+          if [[ "${tag_core}" == *-* ]]; then
+            draft_state="$(gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+            if [[ "${draft_state}" != "true" ]]; then
+              echo "::error::refusing to attach candidate provenance after publication" >&2
+              exit 1
+            fi
+          fi
+          # No --clobber: an existing immutable provenance asset must not be replaced.
+          gh release upload "${GITHUB_REF_NAME}" "provenance/chio-${GITHUB_SHA}.intoto.jsonl" \
+            --repo "${GITHUB_REPOSITORY}"
+      - name: Retain provenance verification evidence on success or refusal
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-provenance-verification-${{ github.run_attempt }}
+          path: |
+            subjects.json
+            provenance/
+            verification-evidence/
+            provenance-verification.stdout
+            provenance-verification.stderr
+          if-no-files-found: error
+          retention-days: 90

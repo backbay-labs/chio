@@ -1,0 +1,656 @@
+{
+  "schema": "chio.release-provenance-contract-evidence.v1",
+  "sourceBaseCommit": "1a79792a956e863c17b9c244c0154c8dbd9a73eb",
+  "scope": "Actual upstream public signed fixture cryptographic compatibility and negative controls, plus synthetic release policy/workflow tests. Chio SHA-pinned hosted release acceptance remains pending.",
+  "operatingEnvironment": "macOS-26.4-arm64-arm-64bit",
+  "tool": {
+    "name": "cosign",
+    "version": "v2.4.1",
+    "binarySha256": "13343856b69f70388c4fe0b986a31dde5958e444b41be22d785d3dc5e1a9cc62",
+    "url": "https://github.com/sigstore/cosign/releases/download/v2.4.1/cosign-darwin-arm64"
+  },
+  "actualPositive": {
+    "record": "actual-upstream-cosign.json.gz",
+    "exitCode": 0,
+    "fixtureSource": "https://github.com/slsa-framework/slsa-verifier/tree/v2.7.1/cli/slsa-verifier/testdata/gha_generic/v2.1.0",
+    "fixtureBuilder": "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0",
+    "fixtureSourceCommit": "4d329c75e7ec1725f7c9ce917a8799d408d06be3",
+    "binarySha256": "376e7e01348585b6e6643bc6663146b9d525d9b41228bf180eaeb4d4a3706caa"
+  },
+  "actualNegativeControls": {
+    "scope": "Actual official upstream signed fixture only; no Chio hosted positive claimed.",
+    "results": [
+      {
+        "name": "foreign-builder",
+        "args": [
+          "/tmp/chio-slsa-contract-20260910/cosign-darwin-arm64",
+          "verify-blob-attestation",
+          "--new-bundle-format",
+          "--bundle",
+          "/tmp/chio-slsa-contract-20260910/upstream-generic-example.intoto.jsonl",
+          "--certificate-identity",
+          "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--certificate-github-workflow-sha",
+          "4d329c75e7ec1725f7c9ce917a8799d408d06be3",
+          "--certificate-github-workflow-repository",
+          "slsa-framework/example-package",
+          "--certificate-github-workflow-ref",
+          "refs/heads/main",
+          "/tmp/chio-slsa-contract-20260910/upstream-generic-binary"
+        ],
+        "exitCode": 1,
+        "expectedRejection": true
+      },
+      {
+        "name": "foreign-source",
+        "args": [
+          "/tmp/chio-slsa-contract-20260910/cosign-darwin-arm64",
+          "verify-blob-attestation",
+          "--new-bundle-format",
+          "--bundle",
+          "/tmp/chio-slsa-contract-20260910/upstream-generic-example.intoto.jsonl",
+          "--certificate-identity",
+          "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--certificate-github-workflow-sha",
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "--certificate-github-workflow-repository",
+          "slsa-framework/example-package",
+          "--certificate-github-workflow-ref",
+          "refs/heads/main",
+          "/tmp/chio-slsa-contract-20260910/upstream-generic-binary"
+        ],
+        "exitCode": 1,
+        "expectedRejection": true
+      },
+      {
+        "name": "foreign-repository",
+        "args": [
+          "/tmp/chio-slsa-contract-20260910/cosign-darwin-arm64",
+          "verify-blob-attestation",
+          "--new-bundle-format",
+          "--bundle",
+          "/tmp/chio-slsa-contract-20260910/upstream-generic-example.intoto.jsonl",
+          "--certificate-identity",
+          "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--certificate-github-workflow-sha",
+          "4d329c75e7ec1725f7c9ce917a8799d408d06be3",
+          "--certificate-github-workflow-repository",
+          "backbay-labs/chio",
+          "--certificate-github-workflow-ref",
+          "refs/heads/main",
+          "/tmp/chio-slsa-contract-20260910/upstream-generic-binary"
+        ],
+        "exitCode": 1,
+        "expectedRejection": true
+      },
+      {
+        "name": "foreign-ref",
+        "args": [
+          "/tmp/chio-slsa-contract-20260910/cosign-darwin-arm64",
+          "verify-blob-attestation",
+          "--new-bundle-format",
+          "--bundle",
+          "/tmp/chio-slsa-contract-20260910/upstream-generic-example.intoto.jsonl",
+          "--certificate-identity",
+          "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--certificate-github-workflow-sha",
+          "4d329c75e7ec1725f7c9ce917a8799d408d06be3",
+          "--certificate-github-workflow-repository",
+          "slsa-framework/example-package",
+          "--certificate-github-workflow-ref",
+          "refs/tags/v0.1.1-rc.1",
+          "/tmp/chio-slsa-contract-20260910/upstream-generic-binary"
+        ],
+        "exitCode": 1,
+        "expectedRejection": true
+      },
+      {
+        "name": "foreign-issuer",
+        "args": [
+          "/tmp/chio-slsa-contract-20260910/cosign-darwin-arm64",
+          "verify-blob-attestation",
+          "--new-bundle-format",
+          "--bundle",
+          "/tmp/chio-slsa-contract-20260910/upstream-generic-example.intoto.jsonl",
+          "--certificate-identity",
+          "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0",
+          "--certificate-oidc-issuer",
+          "https://issuer.invalid",
+          "--certificate-github-workflow-sha",
+          "4d329c75e7ec1725f7c9ce917a8799d408d06be3",
+          "--certificate-github-workflow-repository",
+          "slsa-framework/example-package",
+          "--certificate-github-workflow-ref",
+          "refs/heads/main",
+          "/tmp/chio-slsa-contract-20260910/upstream-generic-binary"
+        ],
+        "exitCode": 1,
+        "expectedRejection": true
+      },
+      {
+        "name": "modified-artifact",
+        "args": [
+          "/tmp/chio-slsa-contract-20260910/cosign-darwin-arm64",
+          "verify-blob-attestation",
+          "--new-bundle-format",
+          "--bundle",
+          "/tmp/chio-slsa-contract-20260910/upstream-generic-example.intoto.jsonl",
+          "--certificate-identity",
+          "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--certificate-github-workflow-sha",
+          "4d329c75e7ec1725f7c9ce917a8799d408d06be3",
+          "--certificate-github-workflow-repository",
+          "slsa-framework/example-package",
+          "--certificate-github-workflow-ref",
+          "refs/heads/main",
+          "/tmp/chio-slsa-contract-20260910/modified-artifact"
+        ],
+        "exitCode": 1,
+        "expectedRejection": true
+      },
+      {
+        "name": "modified-signature",
+        "args": [
+          "/tmp/chio-slsa-contract-20260910/cosign-darwin-arm64",
+          "verify-blob-attestation",
+          "--new-bundle-format",
+          "--bundle",
+          "/tmp/chio-slsa-contract-20260910/modified-signature.json",
+          "--certificate-identity",
+          "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--certificate-github-workflow-sha",
+          "4d329c75e7ec1725f7c9ce917a8799d408d06be3",
+          "--certificate-github-workflow-repository",
+          "slsa-framework/example-package",
+          "--certificate-github-workflow-ref",
+          "refs/heads/main",
+          "/tmp/chio-slsa-contract-20260910/upstream-generic-binary"
+        ],
+        "exitCode": 1,
+        "expectedRejection": true
+      },
+      {
+        "name": "modified-payload",
+        "args": [
+          "/tmp/chio-slsa-contract-20260910/cosign-darwin-arm64",
+          "verify-blob-attestation",
+          "--new-bundle-format",
+          "--bundle",
+          "/tmp/chio-slsa-contract-20260910/modified-payload.json",
+          "--certificate-identity",
+          "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--certificate-github-workflow-sha",
+          "4d329c75e7ec1725f7c9ce917a8799d408d06be3",
+          "--certificate-github-workflow-repository",
+          "slsa-framework/example-package",
+          "--certificate-github-workflow-ref",
+          "refs/heads/main",
+          "/tmp/chio-slsa-contract-20260910/upstream-generic-binary"
+        ],
+        "exitCode": 1,
+        "expectedRejection": true
+      }
+    ]
+  },
+  "requiredHostedPositive": "Original tagged Release Binaries caller, exact SHA-pinned generator, all five hosted archives, official cosign bundle verification, exact authenticated source/builder/caller/run/attempt policy, attachment only after pass.",
+  "files": [
+    {
+      "name": "actual-upstream-cosign.json",
+      "originalSha256": "2fd19f1d35531f2c66973b84300388b3aa739ec28dac01f73d30950fb532dc7b",
+      "storedFile": "actual-upstream-cosign.json.gz",
+      "storedSha256": "346848d27a51f80f9b836769f537550c57fef3348e7b8a47145bd5b2742655c6",
+      "originalBytes": 791
+    },
+    {
+      "name": "actual-upstream-cosign.stderr",
+      "originalSha256": "80a53f76c7ed6969dade3b6ee47cdb753162db7c00be625448999d08bae77ed8",
+      "storedFile": "actual-upstream-cosign.stderr.gz",
+      "storedSha256": "e8d4b5cd2de92be88e795bb8e2344f07175dee2643567c4a92eb63025ec13bd1",
+      "originalBytes": 12
+    },
+    {
+      "name": "actual-upstream-cosign.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "actual-upstream-cosign.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "cosign-release.json",
+      "originalSha256": "2af6b436e2d2df4c505c9507219799fd88bbaa7abfee2f0e7f40e99c88d661eb",
+      "storedFile": "cosign-release.json.gz",
+      "storedSha256": "1c351de49fa4f5910bc11ade3c8c6e7fe5d6643f749c1d77d3c81aafb6437222",
+      "originalBytes": 208771
+    },
+    {
+      "name": "cosign-verify_bundle.go",
+      "originalSha256": "725446ea2ee2b48012e80dde1d62ef05a81fe89eb7fe5d6c47fad5d030659a8e",
+      "storedFile": "cosign-verify_bundle.go.gz",
+      "storedSha256": "c24870de6dfde73c9bf4a7394b26c58944863d3ff25c17cdbd57e0b12c606cac",
+      "originalBytes": 5113
+    },
+    {
+      "name": "cosign_checksums.txt",
+      "originalSha256": "5020625e52f7041b9e4a21ee7ef4e2d085d767e72f86e2458443b012b0200362",
+      "storedFile": "cosign_checksums.txt.gz",
+      "storedSha256": "3a6eef8589343f37c30b36911f96a396d8d183165e3edf740fc325bb016c7bb8",
+      "originalBytes": 3906
+    },
+    {
+      "name": "focused-check-0.stderr",
+      "originalSha256": "58e682ccfe01fd21725a4aaf2ff791d5f5fec592f40624563568c4e7059d77f9",
+      "storedFile": "focused-check-0.stderr.gz",
+      "storedSha256": "67cee8db431267823990e0446ab6dfbcfd5e7f301c386c66349ce1d930e4400e",
+      "originalBytes": 112
+    },
+    {
+      "name": "focused-check-0.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "focused-check-0.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "focused-check-1.stderr",
+      "originalSha256": "c45fcc4d9196dc95af20c1ccc2cdd4774f975d31fb59652e631a10364d9b3745",
+      "storedFile": "focused-check-1.stderr.gz",
+      "storedSha256": "64d95615324fbf1002a80323ba1aea4dca45d6446d400ae8609459eee9a60c9e",
+      "originalBytes": 112
+    },
+    {
+      "name": "focused-check-1.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "focused-check-1.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "focused-check-2.stderr",
+      "originalSha256": "34ee65a7a10dfddef95a05fed514a499a0d9977a2000455ba629e980db713fd0",
+      "storedFile": "focused-check-2.stderr.gz",
+      "storedSha256": "aeabf993907b043a35a6e63e8fd039f160913616f29b2a6e1ca9cddc4aa6fb8f",
+      "originalBytes": 112
+    },
+    {
+      "name": "focused-check-2.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "focused-check-2.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "focused-check-3.stderr",
+      "originalSha256": "1d768dab89bd48b0b924fa0076d08be523c192c2f02de14532becdd91f6f5617",
+      "storedFile": "focused-check-3.stderr.gz",
+      "storedSha256": "d90f770f6aa4937577821c8b916c627437deb6c3638d1c869b75e7ddf20fa235",
+      "originalBytes": 112
+    },
+    {
+      "name": "focused-check-3.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "focused-check-3.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "focused-check-4.stderr",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "focused-check-4.stderr.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "focused-check-4.stdout",
+      "originalSha256": "571a4e619d6434fe564f987264db0d99f1b69fd2ba97be9e449acb8d601624ba",
+      "storedFile": "focused-check-4.stdout.gz",
+      "storedSha256": "c2094c99b10ab80a863b39d98495b7b4b969cca37bdb496f20459ed1b35265b3",
+      "originalBytes": 30
+    },
+    {
+      "name": "focused-check-5.stderr",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "focused-check-5.stderr.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "focused-check-5.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "focused-check-5.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "focused-check-6.stderr",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "focused-check-6.stderr.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "focused-check-6.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "focused-check-6.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "focused-checks.json",
+      "originalSha256": "571c0a79caa58888a2e3ea62d4870c71a81ffa5da60c8e557bb961b7c09f1161",
+      "storedFile": "focused-checks.json.gz",
+      "storedSha256": "04dc639fa24a76e0e237b5c84b9184d8bfdf8c894705fa98f6d823c1f7565763",
+      "originalBytes": 860
+    },
+    {
+      "name": "generate-builder.yml",
+      "originalSha256": "6771df8f73d2d98327da24cf773209695d574521a4c086c101e1cfd0e69ecdac",
+      "storedFile": "generate-builder.yml.gz",
+      "storedSha256": "ea4f54feb34b7ca33cc3db4f43b4530f8e59ff07c4cb0db0eaf5807dc809942a",
+      "originalBytes": 5239
+    },
+    {
+      "name": "generator.yml",
+      "originalSha256": "1a81568c11f5cb36c4c25822f1ddde4c93ba555a19f8c494586b2f54226f2fac",
+      "storedFile": "generator.yml.gz",
+      "storedSha256": "543eb6eba2e5e5bda3ffb75ec41ab4fa0c55c62040360fc4d8bb4e0a802c44e2",
+      "originalBytes": 14302
+    },
+    {
+      "name": "modified-payload.json",
+      "originalSha256": "f77faa99ec6e2723e9004427516b2ca4f7899f0767583f7fb398aac7c96e7d26",
+      "storedFile": "modified-payload.json.gz",
+      "storedSha256": "d2aae9398ab7af50eaad9e659bf9200c3df1169ded4bffe0813336b31908c802",
+      "originalBytes": 22490
+    },
+    {
+      "name": "modified-signature.json",
+      "originalSha256": "f0a7692a3a0a61522fe0726ae9e55ab65be88e24472695fe91ac8bbc4c145d60",
+      "storedFile": "modified-signature.json.gz",
+      "storedSha256": "a4f27b91faca0a659f754176b52f39553a28085beba68193509cbfbd7d704084",
+      "originalBytes": 22490
+    },
+    {
+      "name": "negative-controls.json",
+      "originalSha256": "6d8636f717c90e7de4d1cd392cb9bc36612c2a648f249990df1228483681d04d",
+      "storedFile": "negative-controls.json.gz",
+      "storedSha256": "2074c32e70bb6864475032cf6e74c9c04332dd50221e941c942fe202876c5ebb",
+      "originalBytes": 7614
+    },
+    {
+      "name": "negative-foreign-builder.json",
+      "originalSha256": "8fe808c36ff36288fa14357af7f0a052d362de3d973a31c078b29cb4c3ff800e",
+      "storedFile": "negative-foreign-builder.json.gz",
+      "storedSha256": "9fb9151f8ac8dd1e3e6cbc079745e06764740fa649122def6ba32d811a3d97cb",
+      "originalBytes": 873
+    },
+    {
+      "name": "negative-foreign-builder.stderr",
+      "originalSha256": "e7a9f33742a754d8ed21dd4a140f31e0897d3ebb41e04a880399a9f22707b188",
+      "storedFile": "negative-foreign-builder.stderr.gz",
+      "storedSha256": "f71cadbc3347a58c805b35d2df0f52b9be31736576d77be50f4244ea39336c6b",
+      "originalBytes": 811
+    },
+    {
+      "name": "negative-foreign-builder.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "negative-foreign-builder.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "negative-foreign-issuer.json",
+      "originalSha256": "4684708a283c82f578cfd82483719be562092539e7a12a748166ce8aa310b90d",
+      "storedFile": "negative-foreign-issuer.json.gz",
+      "storedSha256": "e12988057b701f199ac3d26baaa736fb719c3b6111a361637a96b22600e1d982",
+      "originalBytes": 827
+    },
+    {
+      "name": "negative-foreign-issuer.stderr",
+      "originalSha256": "b3d1795ec8b0b638e42b3821023278b000a52b2dd3512bdc8ad0d2bcd1dda4d9",
+      "storedFile": "negative-foreign-issuer.stderr.gz",
+      "storedSha256": "c5a19efe2cef51d5a7b03b7c84525e11e4b50004b45167958d699a73ba2709a3",
+      "originalBytes": 427
+    },
+    {
+      "name": "negative-foreign-issuer.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "negative-foreign-issuer.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "negative-foreign-ref.json",
+      "originalSha256": "8b8c590e219a2aadef266930e29ff872dc4388b23ce871abc45b8822760880c3",
+      "storedFile": "negative-foreign-ref.json.gz",
+      "storedSha256": "50a31368fa419642607a9b37154e20a6a700172dbabef3dce047235c563a35b4",
+      "originalBytes": 851
+    },
+    {
+      "name": "negative-foreign-ref.stderr",
+      "originalSha256": "8b64593dcad235456a83f13daf4d021c54a68bee3e0ce12d1b99ad30cd49b012",
+      "storedFile": "negative-foreign-ref.stderr.gz",
+      "storedSha256": "9bf1cf2c6a125d1d76bef28150f08a9ac453102e5769ddc2cd7d6076b93310db",
+      "originalBytes": 391
+    },
+    {
+      "name": "negative-foreign-ref.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "negative-foreign-ref.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "negative-foreign-repository.json",
+      "originalSha256": "1c3076bf13d8e3c3e487f1d4f280676ea59a6e25658469f85dfa47cd71d89713",
+      "storedFile": "negative-foreign-repository.json.gz",
+      "storedSha256": "e3a2e207bac967ec6fa6f051a05b626f4287baa5dc2f53fc15aea44c5ca0263e",
+      "originalBytes": 839
+    },
+    {
+      "name": "negative-foreign-repository.stderr",
+      "originalSha256": "b22b26bca5d33c3fc5828672f9616f919ac454b3a05ee53614ea9797a9b642eb",
+      "storedFile": "negative-foreign-repository.stderr.gz",
+      "storedSha256": "87329def52d399cbdc0fe447cf90b613470e804e896957efd6faac4aafe6b78c",
+      "originalBytes": 427
+    },
+    {
+      "name": "negative-foreign-repository.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "negative-foreign-repository.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "negative-foreign-source.json",
+      "originalSha256": "b7bdc67ec76d87f27b1863df2323b3ced2daab2f9155abedf9701ab02444eeb7",
+      "storedFile": "negative-foreign-source.json.gz",
+      "storedSha256": "582d35051ca456d7985fc1f27c2e0bb09186498bd92f5873929584f08f2547a4",
+      "originalBytes": 848
+    },
+    {
+      "name": "negative-foreign-source.stderr",
+      "originalSha256": "75ed7a1b7f16af65c56685744ba9c2bee64c4450336ffd5e47b7ea91955231b9",
+      "storedFile": "negative-foreign-source.stderr.gz",
+      "storedSha256": "03931d1400c9789188e620a2836a6298956a0a1fa9ccc842ebb98250f63b68cf",
+      "originalBytes": 479
+    },
+    {
+      "name": "negative-foreign-source.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "negative-foreign-source.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "negative-modified-artifact.json",
+      "originalSha256": "bfa319b32b5ff5e285a15b59dc1e2ec28723b88bdf5877702e12e07403957eeb",
+      "storedFile": "negative-modified-artifact.json.gz",
+      "storedSha256": "fadfc1c7761157fb1c1b20265014fe9fb8b0d1f74fb0407a5b21d48648f5904b",
+      "originalBytes": 845
+    },
+    {
+      "name": "negative-modified-artifact.stderr",
+      "originalSha256": "40d889961339228b8dc4c3084ffaa5288346fef26f5c81b43b259904de15bdc6",
+      "storedFile": "negative-modified-artifact.stderr.gz",
+      "storedSha256": "550bd47c7ada304e9f5e5814d5c46966e05c4c21f92a634f2b6622dabfad3e97",
+      "originalBytes": 313
+    },
+    {
+      "name": "negative-modified-artifact.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "negative-modified-artifact.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "negative-modified-payload.json",
+      "originalSha256": "d32825304a79da6923af76a5220539d928d85cf174ade9c0573b955c3e3b03e1",
+      "storedFile": "negative-modified-payload.json.gz",
+      "storedSha256": "c170e7aebb89a286584edd8fdfa72b3a06ae4be54575fa8509361222e7ffaa61",
+      "originalBytes": 834
+    },
+    {
+      "name": "negative-modified-payload.stderr",
+      "originalSha256": "db9b37a31edf05f13f6743326109ca84da151b652683b0196cfccdef6bb7e272",
+      "storedFile": "negative-modified-payload.stderr.gz",
+      "storedSha256": "d9200b34933dc2b6540a1bffb9296f01fcdbc3b70dce792fedb9e4385fdca113",
+      "originalBytes": 291
+    },
+    {
+      "name": "negative-modified-payload.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "negative-modified-payload.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "negative-modified-signature.json",
+      "originalSha256": "2a047c44f4c6cbefa92c160faa7660b84bc8d3c7c76af4a4b3d5ae2fec8e0855",
+      "storedFile": "negative-modified-signature.json.gz",
+      "storedSha256": "80adbb7b72bfa15e3b28d7d2b5e9d49ac6679c0e0868e9a4f6c719b5fbf68840",
+      "originalBytes": 838
+    },
+    {
+      "name": "negative-modified-signature.stderr",
+      "originalSha256": "c97f644b5d34eb525612ef9153580b13bd753eb528340bc63a73486d8ff9bd6f",
+      "storedFile": "negative-modified-signature.stderr.gz",
+      "storedSha256": "8b6e12659fdaa8012496f8ccfd81065a955c6b612c9b03eec3386b34c5f57044",
+      "originalBytes": 199
+    },
+    {
+      "name": "negative-modified-signature.stdout",
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedFile": "negative-modified-signature.stdout.gz",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+      "originalBytes": 0
+    },
+    {
+      "name": "run-negative-controls.py",
+      "originalSha256": "7ede1757fd9a9c01c37f9815e20898ae804f0b3768857bdaaaf3e1482657f725",
+      "storedFile": "run-negative-controls.py.gz",
+      "storedSha256": "450d7ea867e251dfb1f319825f3866136719e4398890a682bb72e62be7f14a00",
+      "originalBytes": 2436
+    },
+    {
+      "name": "upstream-generic-binary",
+      "originalSha256": "376e7e01348585b6e6643bc6663146b9d525d9b41228bf180eaeb4d4a3706caa",
+      "storedFile": "upstream-generic-binary.gz",
+      "storedSha256": "0016df8cbf5c91d09a7cefcab08307906428ca12dec4fee3284f2b18e41d8df7",
+      "originalBytes": 1430712
+    },
+    {
+      "name": "upstream-generic-example.intoto.jsonl",
+      "originalSha256": "3f37ddbfa4ecd525ddea7cf195cba8d4f9d990b30088c476c85d69dea1ce90ea",
+      "storedFile": "upstream-generic-example.intoto.jsonl.gz",
+      "storedSha256": "968d6eb9c7da262556a68c9efc1c232b39552a02e7f2245464133be0e1445e1f",
+      "originalBytes": 22460
+    },
+    {
+      "name": "upstream-provenance.go",
+      "originalSha256": "ac4626c952e02ef4d11a46b6ec41fdf230e581ccca30d5692f56da767c98f7aa",
+      "storedFile": "upstream-provenance.go.gz",
+      "storedSha256": "63bf4e42c1b57d6e6aa0eec002151836d6b8097cefd2bb3ce6b83faeac316fcf",
+      "originalBytes": 3770
+    },
+    {
+      "name": "verifiers-internal-gha-builder.go",
+      "originalSha256": "6bb63bbff0ef85803ed691d166f7eca57236c7d18793eedec8464104cca0a289",
+      "storedFile": "verifiers-internal-gha-builder.go.gz",
+      "storedSha256": "f17742485735ff5b92780cde17c880fe880ab3cbeb9b9b5ad144ac32d0465c7e",
+      "originalBytes": 17656
+    },
+    {
+      "name": "verifiers-internal-gha-slsaprovenance-common-builders.go",
+      "originalSha256": "9da251c9f50180ba91d0ae094d4772d831685a9c8fec1d20c00322d41c5facae",
+      "storedFile": "verifiers-internal-gha-slsaprovenance-common-builders.go.gz",
+      "storedSha256": "74c194cf5ff8490fe7c9ff80e48cc2c86f818ba3424dd7aae81a1614bb7ddcb3",
+      "originalBytes": 2161
+    },
+    {
+      "name": "verifiers-utils-builder.go",
+      "originalSha256": "67d6ba1c0f159e74e1c3408a232eb7f6e247a028fefc8cef832825bb19cf6be1",
+      "storedFile": "verifiers-utils-builder.go.gz",
+      "storedSha256": "d934bc9c56a009969645cbe016f11b193631e8e66aa4cf6df9caf4ddbe3fd491",
+      "originalBytes": 4818
+    }
+  ],
+  "implementationInputs": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "262813b5a0369cdb2143579895333f58f18a8a57b6eadeef9238ba82758841f8"
+    },
+    {
+      "path": ".github/workflows/release-binaries.yml",
+      "sha256": "5afedd6327c0ad74ef9a443e7ef58e75cb06468d2b407c19fba56802dc2075fd"
+    },
+    {
+      "path": ".github/workflows/slsa.yml",
+      "sha256": "5a66a3de0d1e0e7eacd19fbae8cc28274f2e1885631a66cbd12060b7194d1ebe"
+    },
+    {
+      "path": "scripts/ci-workspace.sh",
+      "sha256": "5208d9b19d269b4193a906279da9820be6e09f8858d725ea836a52c2c3676161"
+    },
+    {
+      "path": "scripts/verify-release-provenance.py",
+      "sha256": "7546c21db2ddd392f075aded5a664f6e35a261f1be4af5f0b6beae0c35d4a2d7"
+    },
+    {
+      "path": "scripts/tests/release-provenance.test.py",
+      "sha256": "d32e652a541b9a79643cabc99ee63955f9184685dd6d419b990fde329a75c43a"
+    },
+    {
+      "path": "scripts/tests/check-release-draft-assets.test.py",
+      "sha256": "3a4ac70884b99e84824f922ff82974e505196cbd3042b1eba747adc432d9f354"
+    },
+    {
+      "path": "docs/install/PUBLISHING.md",
+      "sha256": "0aa12c618c31cfe1189f8d2b8956e4c5d06a47f7738db464266c7f2eed8c90d5"
+    }
+  ],
+  "credentialExclusion": {
+    "credentialValuesChecked": 1289,
+    "evidenceFilesChecked": 59,
+    "matchingFiles": 0,
+    "scope": "Scoped new evidence including decompressed raw bytes; values not recorded."
+  },
+  "independentReview": {
+    "agent": "sanitizer_host_failure",
+    "result": "No actionable producer-format or authenticated-policy blocker found; 13 provenance controls independently passed.",
+    "scope": "Primary-source and current-code review; hosted Chio SHA-builder positive remains pending."
+  }
+}

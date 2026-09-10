@@ -1,8 +1,7 @@
 name: Release Binaries
 
-# A successful run of this workflow triggers .github/workflows/slsa.yml
-# (workflow_run), which downloads the chio-<target> archive artifacts
-# and emits a SLSA L3 provenance attestation per release.
+# Provenance runs through a local reusable workflow in this same tagged context.
+# Its independently signed bundle is verified before attachment to the release.
 
 on:
   push:
@@ -460,6 +459,7 @@ jobs:
       - name: Write release metadata
         shell: bash
         env:
+          CHIO_TARGET: ${{ matrix.target }}
           CHIO_RELEASE_TAG: ${{ steps.version.outputs.tag }}
           CHIO_VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -472,7 +472,9 @@ jobs:
             "source_ref": "refs/tags/${CHIO_RELEASE_TAG}",
             "source_sha": "${source_sha}",
             "version": "${CHIO_VERSION}",
-            "workflow_run_id": "${GITHUB_RUN_ID}"
+            "workflow_run_id": "${GITHUB_RUN_ID}",
+            "workflow_run_attempt": "${GITHUB_RUN_ATTEMPT}",
+            "target": "${CHIO_TARGET}"
           }
           JSON
 
@@ -829,6 +831,16 @@ jobs:
             release/*.native-openssl-scan.json
             release/SHA256SUMS
             release/chio.rb
+
+  provenance:
+    name: Generate and verify tagged release provenance
+    needs: release
+    permissions:
+      id-token: write
+      contents: write
+      actions: read
+    uses: ./.github/workflows/slsa.yml
+
 
   checksum-index:
     # Publishes an in-repo checksum index for external reviewers after

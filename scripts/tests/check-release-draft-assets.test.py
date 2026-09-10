@@ -190,7 +190,9 @@ class DraftAssets(unittest.TestCase):
         self.assertIn("name: Candidate checksum review remains pending with the operator", source)
         self.assertIn("name: Open checksum index PR\n        if: steps.checksum_release.outputs.prerelease != 'true'", source)
         slsa = (ROOT / ".github/workflows/slsa.yml").read_text()
-        self.assertIn("draft-release: ${{ needs.collect-digests.outputs.draft_release }}", slsa)
+        self.assertIn("upload-assets: false", slsa)
+        self.assertIn("Verify pinned provenance before attachment", slsa)
+        self.assertIn("gh release upload", slsa)
         self.assertIn('if [[ "${draft_state}" != "true" ]]', slsa)
 
 

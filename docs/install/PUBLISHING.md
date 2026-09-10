@@ -256,8 +256,9 @@ checks, auditable build, SBOM validation and cosign signing still run before
 release assets are attached. A hyphen in build metadata alone, such as
 `v1.2.3+build-42`, does not select prerelease mode.
 
-The separate SLSA workflow explicitly keeps candidate provenance uploads in draft
-mode and refuses to reopen an already published candidate. Archive uploads do not
+The SLSA jobs run inside the original tagged release invocation, verify the
+provenance before attaching it, and require candidates to remain drafts. They
+refuse to reopen an already published candidate. Archive uploads do not
 overwrite an existing asset. Never rebuild a tag to replace bytes that have already
 been qualified. A changed binary needs a new candidate and fresh acceptance.
 
@@ -265,12 +266,12 @@ GitHub restricts draft release listings to users with push access. Authenticate
 `gh` as an authorized maintainer to download the draft. Draft status does not hide
 public Actions logs/artifacts or Sigstore transparency records. Do not include
 credentials in release artifacts. See [GitHub's release API](https://docs.github.com/en/rest/releases/releases)
-and [the pinned generator's draft input](https://github.com/slsa-framework/slsa-github-generator/blob/f7dd8c54c2067bafc12ca7a55595d5ee9b75204a/.github/workflows/generator_generic_slsa3.yml).
+and [the pinned generator's workflow contract](https://github.com/slsa-framework/slsa-github-generator/blob/f7dd8c54c2067bafc12ca7a55595d5ee9b75204a/.github/workflows/generator_generic_slsa3.yml).
 
 ### Retrieve the hosted candidate
 
-Wait for the exact tag's Release Binaries run and its triggered SLSA run to finish
-successfully. Retain their run IDs, attempts, source SHA and artifact identities.
+Wait for the exact tag's Release Binaries run, including its provenance jobs,
+to finish successfully. Retain its run ID, attempt, source SHA and artifact identities.
 The provenance asset must be present before freezing the acceptance inventory.
 Use Python 3.11 or newer, a clean checkout at the reviewed release tag and an
 empty download directory:
@@ -297,9 +298,10 @@ replace the source gates or publish anything.
 Before executing a downloaded binary, perform the cosign and SLSA verification
 recipes below for its exact archive. Pin the exact certificate identity, for
 example `https://github.com/backbay-labs/chio/.github/workflows/release-binaries.yml@refs/tags/v0.1.1-rc.1`,
-and the GitHub OIDC issuer. Use `slsa-verifier --print-provenance` and check the
-verified config-source or material commit against `$SOURCE`; a matching tag name
-alone is insufficient. Compare the attached SBOM/native reports to the copies
+and the GitHub OIDC issuer. Run `scripts/verify-release-provenance.py verify`
+with the intended source SHA, run ID and attempt as shown below. It verifies the
+signed source commit, tag, original workflow and immutable upstream builder
+identity. Compare the attached SBOM/native reports to the copies
 inside the signed archive and run the existing binary inventory/linkage validators.
 Retain those verification outputs with the acceptance record.
 
@@ -616,63 +618,91 @@ run via Rekor; there is no long-lived key to rotate.
 
 ## SLSA L2 provenance
 
-[`.github/workflows/slsa.yml`](../../.github/workflows/slsa.yml) wires the upstream
-[`slsa-framework/slsa-github-generator`](https://github.com/slsa-framework/slsa-github-generator)
-reusable workflow at the pinned tag `v2.1.0` to produce a signed
-[SLSA](https://slsa.dev) Level 2 provenance attestation for every
-release built by `release-binaries.yml`.
+[`.github/workflows/release-binaries.yml`](../../.github/workflows/release-binaries.yml)
+calls the local [SLSA workflow](../../.github/workflows/slsa.yml) after the release
+matrix succeeds. This nested `workflow_call` retains the original tagged push or
+operator dispatch context. A separate `workflow_run` listener would instead
+supply its default-branch ref and SHA to the generator, so archive metadata alone
+could not establish the signed source identity.
 
-### Trigger model
-
-The provenance lane runs as a `workflow_run` listener on a successful
-`Release Binaries` invocation rather than as an inline job. This keeps
-the release matrix lean and confines the elevated permissions
-(`id-token: write` and `contents: write`, required by the upstream
-generator) to a single, auditable workflow file. A failed release
-build short-circuits the listener via
-`if: github.event.workflow_run.conclusion == 'success'`, so the
-generator never runs against a half-built release.
+The isolated upstream generator is pinned to commit
+`f7dd8c54c2067bafc12ca7a55595d5ee9b75204a` (reviewed upstream `v2.1.0`). Its supported
+`compile-generator: true` mode builds the generator from that revision; the
+precompiled download mode requires a tag. See the
+[pinned producer contract](https://github.com/slsa-framework/slsa-github-generator/blob/f7dd8c54c2067bafc12ca7a55595d5ee9b75204a/.github/workflows/generator_generic_slsa3.yml).
+The lane produces SLSA v0.2 build provenance for the Level 2 release requirement.
+It does not claim complete build-material inventory, reproducible builds or
+real-host integration acceptance.
 
 ### What gets attested
 
-`collect-digests` downloads the per-target `chio-<target>` artifacts
-that `release-binaries.yml` uploaded, validates the embedded
-`release-metadata.json` across every matrix leg, computes one SHA-256
-digest per archive (`*.tar.gz` and `*.zip`), and emits the digests as a
-base64-encoded subjects list. The metadata pins the release tag,
-`refs/tags/<tag>` source ref, and checked-out source commit, including
-operator-dispatched rebuilds. The reusable
-`generator_generic_slsa3.yml` job consumes that list and emits an
-in-toto attestation named
-`chio-<head_sha>.intoto.jsonl`. With `upload-assets: true` the
-attestation is uploaded to the GitHub Release that the build job
-already created, so the provenance ships next to the binaries it
-covers.
+`collect-digests` requires exactly the five platform artifacts from the current
+run. Each archive's metadata must match its target, source commit, tag, version,
+run ID and attempt. It hashes the actual archives and passes those five named
+subjects to the isolated generator. Missing targets, old attempts and relabelled
+source metadata fail before signing.
+
+A retry of only the provenance jobs has a new attempt and cannot relabel archives
+from an older attempt. If a run fails after candidate assets have been attached,
+preserve that failed candidate and its evidence, correct the cause, and build a
+fresh reviewed candidate tag. Do not edit metadata or overwrite staged bytes to
+make the failed run appear qualified.
+
+The generator emits `chio-<source_sha>.intoto.jsonl` as a Sigstore v0.3 bundle and
+retains it as an Actions artifact with `upload-assets: false`. A separate job
+verifies each archive against that bundle, then applies the exact authenticated
+builder/source/caller policy. Only a passing bundle is attached to the release.
+Attachment preserves draft status and never overwrites an existing asset. Raw
+verification output and the original bundle are retained on success or refusal.
 
 ### Verification
 
-A consumer with `slsa-verifier` installed can verify any release
-archive against its provenance:
+Use Python 3.11 or newer, cosign `v2.4.1`, and the verifier script from the reviewed
+release source. Establish the intended tag, commit and Release Binaries run ID
+and attempt from the reviewed release and Actions run. Do not derive those
+expected values from an unverified statement. For a downloaded archive:
 
-```bash
-slsa-verifier verify-artifact \
-  --provenance-path chio-<head_sha>.intoto.jsonl \
-  --source-uri github.com/<owner>/chio \
-  --source-tag <release-tag> \
-  chio-<version>-<target>.tar.gz
+```sh
+python3 scripts/verify-release-provenance.py verify \
+  --repository "$REPO" --tag "$TAG" --source-sha "$SOURCE" \
+  --run-id "$RELEASE_RUN_ID" --run-attempt "$RELEASE_RUN_ATTEMPT" \
+  --bundle "$CANDIDATE_ROOT/assets/chio-${SOURCE}.intoto.jsonl" \
+  --evidence "$CANDIDATE_ROOT/provenance-verification" \
+  "$CANDIDATE_ROOT/assets/chio-${TAG#v}-aarch64-apple-darwin.tar.gz"
 ```
 
-The verifier confirms the artifact digest is listed in the signed
-attestation, that the attestation was produced by the pinned
-`slsa-github-generator` workflow, and that the source repo and tag
-match the build's claimed origin.
+The evidence directory must be fresh. Additional archive paths verify additional
+platforms in the same invocation. `verification.json` lists the archives actually
+verified separately from the full authenticated subject list; a consumer's
+single-platform check supplies no runtime qualification for the other platforms.
+
+The script first runs the official `cosign verify-blob-attestation` new-bundle
+path using the public Sigstore trusted root, certificate chain, SCT and Rekor
+verification. It requires the literal SHA-pinned builder certificate identity,
+GitHub OIDC issuer, repository, source commit and tag ref, and authenticates the
+actual archive bytes. Only then does it enforce the signed SLSA statement's five
+subjects, exact builder ID, build type, source/material commit, original
+`release-binaries.yml` entry point, event, run ID and attempt. It records the
+verified statement and a passing report only after every check succeeds. See the
+[pinned cryptographic verifier](https://github.com/sigstore/cosign/blob/v2.4.1/cmd/cosign/cli/verify/verify_bundle.go)
+and the [release policy implementation](../../scripts/verify-release-provenance.py).
+
+Stock `slsa-verifier v2.7.1` requires a SemVer-tagged upstream builder identity,
+even with an explicit `--builder-id`; it cannot accept this immutable workflow
+SHA. The supported recipe above uses cosign's standard bundle verification and an
+explicit trusted SHA policy. Do not use testing flags, skip transparency or
+certificate checks, switch to a mutable builder tag, or edit signed statements
+to make a verification command pass. The restriction is implemented in the
+[pinned stock verifier](https://github.com/slsa-framework/slsa-verifier/blob/v2.7.1/verifiers/internal/gha/builder.go).
 
 ### Pinning policy
 
-`slsa.yml` pins the generator to commit `f7dd8c54c2067bafc12ca7a55595d5ee9b75204a`, the
-reviewed `v2.1.0` release. Bumping that revision requires a manual review because
-the upstream workflow identity is part of verification. Do not replace it with
-`@main` or an unaudited revision.
+The upstream workflow SHA, authenticated builder ID and cosign version are part
+of the reviewed release contract. Upgrades require reviewing the producer and
+verifier together, updating their pins and adversarial controls, and obtaining a
+new hosted positive against the exact candidate archives. The upstream public
+signed fixture confirms bundle-format compatibility; it does not replace that
+Chio release test.
 
 ---
 
