@@ -1,0 +1,63 @@
+{
+  "environment": {
+    "system": "macOS-26.4-arm64-arm-64bit-Mach-O",
+    "architecture": "arm64"
+  },
+  "source_baseline": "0599e9fa3ee337719986f6fd88466f75ba0290dd",
+  "files": [
+    {
+      "path": "loader-comparison.json.gz",
+      "sha256": "c5f2b7a9c03e8236f430658187ba0451bb0486b2ed065c41d9a34796666afeb1",
+      "raw_sha256": "09cfa38a7a4263de2bb71b5b42fd9161681f62dee309e15f1d5d31fdbcaf0eae"
+    },
+    {
+      "path": "deny-homebrew-openssl.sb.gz",
+      "sha256": "4b18a70c34eece48a0e05de4bc7dda582a4295d23a2805af92572b0de0fbbe11",
+      "raw_sha256": "5fb7bb06c4e30b66537857c1e0e669d476d3f85d350d26f2712ac18b6b91e654"
+    },
+    {
+      "path": "public-linkage-gate.json.gz",
+      "sha256": "924507d5408735675644afff2bc17b6a168f854d77a935a94c922dac8be17acf",
+      "raw_sha256": "92ca246306c8435b46e887b1e1a063c9ecf31cb78cc9281a513ce5796dce0709"
+    },
+    {
+      "path": "candidate-linkage-gate.json.gz",
+      "sha256": "39d4eeba41505581f1073a9da46bb6c15abadad0a8016f664c97cb2b5c965be6",
+      "raw_sha256": "46e58648712eebf5ee78f72c2c100042f51ff6a7ec3fc11a1a25984e1399dcc0"
+    },
+    {
+      "path": "openssl-3.6.4.tar.gz.sha256.gz",
+      "sha256": "5294e7d12a8fb11028a67ee8ed3260084e1b6f7167809c81c54932eb9083e2af",
+      "raw_sha256": "cfd087b437e6439d8bba8b149236544dc7c95cf31aebf2313e6f3ed3a1245d46"
+    },
+    {
+      "path": "homebrew-openssl3.json.gz",
+      "sha256": "746f12beb642c28f141d90e30df03c0a98b5b112be06203b5b0685c0b89083e2",
+      "raw_sha256": "f92b2103f0312f3122dcb09d11af0338037db183349bac185f844fe031012d88"
+    },
+    {
+      "path": "homebrew-formula-pinned.rb.gz",
+      "sha256": "e7d202f84d46d0e492f0eb6f71fa7c6fe7962c6e481725cb793d1b543fa13ec2",
+      "raw_sha256": "73888fb52f29a58de40f98a52c7bca601dcd5ef478f9b83a845e79b5e9b3aff2"
+    },
+    {
+      "path": "openssl-advisory-20260825.txt.gz",
+      "sha256": "12b8d413c1519aeea8d967854c863bdab82791a4af63ba2a65720001f50cf493",
+      "raw_sha256": "eb8914d564766f1cbf1e5a77a4262bc07729c2d3dcb22d272041d6db61e5bd4e"
+    },
+    {
+      "path": "unit-tests.log.gz",
+      "sha256": "dec902ed23807fddfa7c9d364fa658d4e7797498def77ba9b331bf2b82e9acad",
+      "raw_sha256": "e586fc0f3bb2a05f4c80f07d1b4c6171e830592f6c7aaf70d4af3b0aa3ebd072"
+    }
+  ],
+  "claims": {
+    "loader_regression_reproduced": true,
+    "new_static_openssl_build_completed": false,
+    "new_kernel_build_completed": false,
+    "new_host_acceptance": false
+  },
+  "unit_test_exit": 0,
+  "unit_test_count": 7,
+  "unit_test_skips": 0
+}
