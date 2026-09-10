@@ -25,6 +25,12 @@ pub struct ToolGovernance {
 pub enum OpenAiManifestError {
     #[error("OpenAI tool {index} has an invalid or missing {field}")]
     InvalidTool { index: usize, field: &'static str },
+    #[error("OpenAI tool {index} has an invalid {field} schema: {reason}")]
+    InvalidSchema {
+        index: usize,
+        field: &'static str,
+        reason: String,
+    },
     #[error("declare side effects and pricing for OpenAI tool {0}")]
     MissingGovernance(String),
     #[error("governance declaration has no matching OpenAI tool: {0}")]
@@ -39,7 +45,12 @@ impl ToolManifest {
     /// Accepts Chat Completions' nested `function` object and Responses' flat
     /// function definition. Provider-native tools are refused. Every tool must
     /// have an exact-name governance declaration; extra declarations are refused
-    /// as likely misspellings. Missing parameters mean an empty object schema.
+    /// as likely misspellings. Missing or null parameters mean an empty object
+    /// schema; missing or null descriptions mean an empty description. An
+    /// optional output schema is preserved. Schemas are checked against their
+    /// bundled JSON Schema meta-schema (2020-12 when `$schema` is absent).
+    /// Custom meta-schemas are refused; external `$ref` targets are not fetched
+    /// or checked by this import step.
     ///
     /// The server name initially equals its ID. The result is unsigned: register
     /// and sign it using the normal host lifecycle. This does not authenticate the
@@ -66,20 +77,30 @@ impl ToolManifest {
                 .and_then(Value::as_str)
                 .ok_or_else(|| invalid("name"))?;
             let description = match function.get("description") {
+                Some(Value::Null) | None => "",
                 Some(value) => value.as_str().ok_or_else(|| invalid("description"))?,
-                None => "",
             };
             let declaration = governance
                 .get(name)
                 .ok_or_else(|| OpenAiManifestError::MissingGovernance(name.to_owned()))?;
+            let input_schema = function
+                .get("parameters")
+                .filter(|value| !value.is_null())
+                .cloned()
+                .unwrap_or_else(|| json!({"type": "object", "properties": {}}));
+            let output_schema = function
+                .get("output_schema")
+                .filter(|value| !value.is_null())
+                .cloned();
+            validate_provider_schema(index, "parameters", &input_schema)?;
+            if let Some(schema) = &output_schema {
+                validate_provider_schema(index, "output_schema", schema)?;
+            }
             tools.push(ToolDefinition {
                 name: name.to_owned(),
                 description: description.to_owned(),
-                input_schema: function
-                    .get("parameters")
-                    .cloned()
-                    .unwrap_or_else(|| json!({"type": "object", "properties": {}})),
-                output_schema: None,
+                input_schema,
+                output_schema,
                 pricing: declaration.pricing.clone(),
                 has_side_effects: declaration.has_side_effects,
                 latency_hint: None,
@@ -105,4 +126,27 @@ impl ToolManifest {
         validate_manifest(&manifest)?;
         Ok(manifest)
     }
+}
+
+fn validate_provider_schema(
+    index: usize,
+    field: &'static str,
+    schema: &Value,
+) -> Result<(), OpenAiManifestError> {
+    if !schema.is_object() {
+        return Err(OpenAiManifestError::InvalidSchema {
+            index,
+            field,
+            reason: "expected a JSON Schema object".to_owned(),
+        });
+    }
+    // Meta-validation checks schema syntax, including nested schemas, without
+    // compiling the application's references or retrieving remote resources.
+    jsonschema::meta::options()
+        .validate(schema)
+        .map_err(|error| OpenAiManifestError::InvalidSchema {
+            index,
+            field,
+            reason: error.to_string(),
+        })
 }

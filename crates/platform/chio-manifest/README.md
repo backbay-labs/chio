@@ -112,8 +112,16 @@ let manifest = ToolManifest::from_openai_tools(
 `pricing: None` explicitly declares no advertised metering. Use `Some(ToolPricing)`
 for a priced tool. Missing or extra declarations, duplicate names, invalid
 pricing, malformed schemas, and provider-native tool types are rejected.
-The builder copies function names, descriptions, and parameter schemas; provider
-execution options such as `strict` are not manifest fields.
+The builder preserves function names, descriptions, parameter schemas, and optional
+Responses `output_schema` definitions. Omitted or null descriptions become empty
+strings; omitted or null parameters become an empty object schema. An omitted or
+null output schema remains absent. Empty and populated schema objects are preserved.
+
+Schema syntax is checked against the declared bundled JSON Schema draft, defaulting
+to 2020-12 when `$schema` is absent. Custom meta-schemas are refused. Import does not
+resolve external `$ref` targets or validate runtime input/output values; references
+are preserved for the host to resolve. Provider execution options such as `strict`
+are not manifest fields.
 
 The returned manifest is unsigned. Sign and register it through the usual host
 lifecycle. Importing a schema neither authenticates its signer nor grants a
