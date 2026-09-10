@@ -1,0 +1,8 @@
+{
+  "database": "/Users/connor/.local/share/chio-required-operators/kernel-storage-fault-20260909/hermes-final-r15-after-receipt/receipts.sqlite",
+  "cutpoint": "after-receipt",
+  "lockedAtEpoch": 1789010122.9411032,
+  "mutation": "none; BEGIN IMMEDIATE held, then ROLLBACK",
+  "holdSeconds": 600,
+  "pid": 8361
+}

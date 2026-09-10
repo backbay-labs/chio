@@ -1,0 +1,12 @@
+{
+  "command": [
+    "python3",
+    "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/integrations/required-agents/serve-filesystem.py",
+    "restart",
+    "--state-dir",
+    "/Users/connor/.local/share/chio-required-operators/kernel-storage-fault-20260909/hermes-final-r15-after-receipt"
+  ],
+  "stdout": "Kernel process 12990 started. Complete authenticated MCP preparation before use.\n",
+  "stderr": "",
+  "sameOwner": true
+}

@@ -1,0 +1,16 @@
+{
+  "calls": [
+    {
+      "id": "call_2ziWReFO7HmkbATbMXIWaitj",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/before-fault.txt",
+        "content": "original storage fault effect"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_2ziWReFO7HmkbATbMXIWaitj"
+  ],
+  "expectedAttemptObserved": true
+}

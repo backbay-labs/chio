@@ -1,0 +1,37 @@
+{
+  "schema": "chio.hermes.restricted-run.v1",
+  "hostRevision": "175054c14b54404663d8614a178280cffe6062eb",
+  "gatewayConfigSha256": "01380787ec564eefeacfd252a33e706759a7c87b1f43e8c96b674c7867611282",
+  "gatewayScriptSha256": "753e9e168417fb82261a55d60046d34f8e50233ebaedcccfc32dcb0167394ddc",
+  "configSha256": "c357bc6ff6ad3465369011e591171e96ba839d01175091546d399b04809ffdc0",
+  "sandboxSha256": "9e5ca5c62860d201faf6ebea4660b021187496cca614f30c6b5ce4f38ed75559",
+  "tools": [
+    "read_text_file",
+    "write_file",
+    "edit_file",
+    "list_directory"
+  ],
+  "command": [
+    "/usr/bin/sandbox-exec",
+    "-f",
+    "/tmp/chio-hermes-storage-e8727e63445b43ceab150201b2eb3718/host.sb",
+    "/tmp/chio-hermes-20260909/clean-host-venv/bin/python",
+    "/private/tmp/chio-hermes-20260909/public-upstream-source/hermes",
+    "chat",
+    "--cli",
+    "--ignore-rules",
+    "--provider",
+    "chio-model",
+    "-m",
+    "gpt-5.5",
+    "-t",
+    "mcp-chio",
+    "--max-turns",
+    "5",
+    "-Q",
+    "--query-file",
+    "/Users/connor/.local/share/chio-required-operators/kernel-storage-fault-20260909/hermes-final-r15-after-admission/same-action-after-restart.txt"
+  ],
+  "supportedMode": "one-shot external resource tools only",
+  "acceptance": "candidate; see ACCEPTANCE.md"
+}

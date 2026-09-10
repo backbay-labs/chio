@@ -71,8 +71,84 @@ permits one actual native read with unchanged resource bytes and no repeated
 write. The separate driver and exact commands are retained.
 
 These failures target **bridge operation-journal persistence**. They do not
-establish kernel receipt-store or signing-failure behavior. Those distinct
-shared-kernel acceptance cutpoints require separate evidence.
+establish kernel receipt-store or signing-failure behavior. Actual kernel
+receipt/admission-store contention is tested separately below. Signing-failure
+behavior is not inferred from write-contention results.
+
+## Actual kernel storage faults with retained authority
+
+`kernel-storage` runs the frozen kernel and current r15 wheel on three fresh,
+dedicated owners at ports 58520, 58521 and 58522. The test controller holds
+`BEGIN IMMEDIATE` on the actual selected SQLite database, then releases it with
+`ROLLBACK`; it changes no row, schema, clock or kernel code. For post-effect
+cases, an explicit test-only stdio barrier first holds the actual resource reply.
+The controller independently observes the file and audited write, acquires the
+database lock, and only then forwards the unchanged reply. Source and artifact
+hashes, raw commands, lock/release markers and snapshots are retained per owner.
+
+Each owner first completes one real native write with one verified delivery
+ACK. The fault then receives an exact native write and produces an unresolved
+caller result with zero ACKs. After unlock, both the same action and a new
+action are requested through Hermes; after supported restart of that exact
+owner, both requests are made again. All twelve retry calls have returned
+native tool results and cause zero additional dispatches. No configuration,
+session, credential, journal or owner database is replaced to recover work.
+`native-check-summary.json` confirms eighteen exact native calls in total.
+
+| Case | Independently observed fault effects | Retained kernel state and caller outcome |
+| --- | --- | --- |
+| `after-receipt` (58520) | One effect before receipt-store append fails | The durable kernel outcome is completed, but the caller has an unresolved result and no delivery ACK. Unlock and same-owner restart do not bypass the retained fence. |
+| `before-admission` (58521) | Zero effects while admission storage is locked | Only the prior positive control has an admission operation and durable outcome. The fault is conservatively classified unknown despite the independent observer establishing no dispatch. The delegated call/latch and host journal remain fenced. |
+| `after-admission` (58522) | One effect before completion persistence fails | Fault operation is `dispatch_committed` with no durable outcome; same-owner restart changes it to `outcome_unknown_after_dispatch`. Only the prior positive control has a completed durable outcome. No false completed result or ACK is produced. |
+
+These observations establish truthful uncertainty and safe refusal after genuine
+storage failures. They do not claim automatic administrative reconciliation of
+the unknown cases. Original owner volumes, DBs and unresolved authority remain
+preserved. Creating a fresh authority was not used as recovery.
+
+## Bounded operating cost and interventions
+
+`operational-timing` records three sequential pairs of identical `read_text_file`
+arguments against an existing completed-approval file on separate healthy owner
+58503. Both paths use the same installed bridge, kernel, resource and exact
+path, with fresh scoped sessions for measurement isolation. Direct operator
+calls are a timing baseline only, never native-host acceptance. Independent
+observations show exactly six reads and unchanged resource bytes.
+
+| Pair | Direct bridge execute (ms) | Hermes logged tool interval (ms) | Paired difference (ms) | Native total process (s) |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 493.979 | 490 | -3.979 | 13.519 |
+| 1 | 493.591 | 590 | 96.409 | 12.422 |
+| 2 | 446.094 | 510 | 63.906 | 12.325 |
+
+Native intervals come from the pinned host's `agent.tool_executor` log, using
+its `time.time()` interval rounded to 10 ms. They include native dispatch, HTTP
+gateway transport and gateway journal writes. Direct bridge intervals use a
+monotonic timer around `execute()` through its verified result; their explicit
+reservation/completion persistence and later ACK are outside that timer. Both
+paths include common bridge verification, kernel and resource work. Differences
+are noisy and do not isolate kernel cost or establish a general latency bound.
+All raw logs, monotonic process endpoints, preparation times and individual
+samples are retained. Native process wall time includes startup, model traffic,
+later delivery acknowledgment and shutdown. **Separate startup and model latency
+are unknown** from this observation; they are not estimated by subtracting the
+tool interval. No load benchmark or further timing expansion was performed.
+
+The initial `operational-timing-first` attempt expected an absent `approved.txt`
+and stopped before session preparation or any tool call. Its observer snapshot
+and failure are retained. The successful run selects an already existing
+completed-approval resource; no fixture write was added for timing.
+
+For routine useful work the operator prepares a bounded session and launches
+the host; the four-tool useful workflow required no subsequent intervention.
+The timing procedure deliberately prepares one session per native/baseline run,
+which is measurement isolation, not a requirement to prepare on every tool call.
+The three native timing reads need no manual approval, retry or repair. The
+storage qualification adds a deliberate lock controller, explicit unlock and
+same-owner restart for each fault. Those actions test retention and refusal;
+they do not resolve an unknown result. Earlier verified owner-result recovery
+uses explicit import/export and delivery ACK, with its interventions separately
+retained. The protected guest never receives operator/admin or provider secrets.
 
 ## Current action boundary
 

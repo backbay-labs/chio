@@ -1,0 +1,16 @@
+{
+  "calls": [
+    {
+      "id": "call_Cv7g3CnPlWyL6bW5cRvXatT6",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/must-not-redispatch.txt",
+        "content": "must remain absent"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_Cv7g3CnPlWyL6bW5cRvXatT6"
+  ],
+  "expectedAttemptObserved": true
+}

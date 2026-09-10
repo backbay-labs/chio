@@ -1,0 +1,13 @@
+[
+  "python3",
+  "/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-execution-evidence-20260909/integrations/required-agents/qualification/storage_fault.py",
+  "fault",
+  "--name",
+  "hermes-final-r15-after-admission",
+  "--cutpoint",
+  "after-admission",
+  "--wait-seconds",
+  "600",
+  "--hold-seconds",
+  "600"
+]

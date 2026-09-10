@@ -1,0 +1,37 @@
+{
+  "owner": "/Users/connor/.local/share/chio-required-operators/kernel-storage-fault-20260909/hermes-final-r15-after-admission",
+  "gatewayConfig": "/Users/connor/.local/share/chio-required-operators/kernel-storage-fault-20260909/hermes-final-r15-after-admission/gateway.json",
+  "output": "/private/tmp/chio-kernel-storage-fault-20260909/hermes-final-r15-after-admission",
+  "endpoint": "http://127.0.0.1:58522",
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "image": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "volume": "chio-required-kernel-store-hermes-final-r15-after-admission",
+  "auditVolume": "chio-required-kernel-store-hermes-final-r15-after-admission-audit",
+  "policySha256": "8c2c732d9115799b13150f7924da0e68fc1f9b2d42a2618912511d407035cc66",
+  "ownerLauncher": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/integrations/required-agents/serve-filesystem.py",
+  "ownerLauncherSha256": "24187dd47e497d226fb0b1f6652a006a2514cff6bc84fea9b35361e948ed6399",
+  "barrierSha256": "a690f141d14fb3b9a18a8541e89bb5eabf76a18f71e504ad16cd2878bec398b6",
+  "helperSha256": "7de25889696ee9c1cca324130c6f10e34a41bdce555495a118673ad1336dd8d5",
+  "prepareGatewaySha256": "9dacf32a85c2083f0d3804771dc8a648d0eeff9c6faa5440b44f008bc1c43892",
+  "hostSessionId": "47340563-5cda-4fb2-b84d-9d8926deeb5a",
+  "sessionCredential": {
+    "schema": "chio.mcp.session-credential.v1",
+    "sessionId": "975cc97fdc140f61e281a6f8da3d0d02effe4584208b4509b989d8c8e638fd6a",
+    "subjectKey": "4ef55ab7c46272fdc91465b7ad036301c966ecad77aea2ce52b17387e4539c06",
+    "capabilityIds": [
+      "cap-01a08952-c033-7e81-be74-3b64a9d45a91"
+    ],
+    "serverId": "fs",
+    "endpointPath": "/mcp",
+    "allowedTools": [
+      "edit_file",
+      "list_directory",
+      "read_text_file",
+      "write_file"
+    ],
+    "issuedAt": 1789010297,
+    "expiresAt": 1789013896
+  },
+  "createdAtEpoch": 1789010297.1422698,
+  "testOnlyTransportCutpoint": "/workspace/uncertain.txt reply held after resource returns"
+}

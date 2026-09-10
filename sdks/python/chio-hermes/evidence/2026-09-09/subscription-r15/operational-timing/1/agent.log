@@ -1,0 +1,52 @@
+2026-09-09 23:24:55,799 INFO hermes_cli.plugins: Plugin 'browser-browser-use' registered browser provider: browser-use
+2026-09-09 23:24:55,803 INFO hermes_cli.plugins: Plugin 'browser-browserbase' registered browser provider: browserbase
+2026-09-09 23:24:55,805 INFO hermes_cli.plugins: Plugin 'browser-firecrawl' registered browser provider: firecrawl
+2026-09-09 23:24:56,116 INFO hermes_cli.plugins: Plugin 'deepinfra' registered image_gen provider: deepinfra
+2026-09-09 23:24:56,119 INFO hermes_cli.plugins: Plugin 'fal' registered image_gen provider: fal
+2026-09-09 23:24:56,132 INFO hermes_cli.plugins: Plugin 'krea' registered image_gen provider: krea
+2026-09-09 23:24:56,135 INFO hermes_cli.plugins: Plugin 'openai' registered image_gen provider: openai
+2026-09-09 23:24:56,139 INFO hermes_cli.plugins: Plugin 'openai-codex' registered image_gen provider: openai-codex
+2026-09-09 23:24:56,146 INFO hermes_cli.plugins: Plugin 'openrouter' registered image_gen provider: openrouter
+2026-09-09 23:24:56,146 INFO hermes_cli.plugins: Plugin 'openrouter' registered image_gen provider: nous
+2026-09-09 23:24:56,151 INFO hermes_cli.plugins: Plugin 'xai' registered image_gen provider: xai
+2026-09-09 23:24:56,163 INFO hermes_cli.plugins: Plugin 'deepinfra' registered video_gen provider: deepinfra
+2026-09-09 23:24:56,167 INFO hermes_cli.plugins: Plugin 'fal' registered video_gen provider: fal
+2026-09-09 23:24:56,171 INFO hermes_cli.plugins: Plugin 'xai' registered video_gen provider: xai
+2026-09-09 23:24:56,192 INFO hermes_cli.plugins: Plugin 'web-brave-free' registered web provider: brave-free
+2026-09-09 23:24:56,195 INFO hermes_cli.plugins: Plugin 'web-ddgs' registered web provider: ddgs
+2026-09-09 23:24:56,198 INFO hermes_cli.plugins: Plugin 'web-exa' registered web provider: exa
+2026-09-09 23:24:56,207 INFO hermes_cli.plugins: Plugin 'web-firecrawl' registered web provider: firecrawl
+2026-09-09 23:24:56,210 INFO hermes_cli.plugins: Plugin 'web-keenable' registered web provider: keenable
+2026-09-09 23:24:56,213 INFO hermes_cli.plugins: Plugin 'web-parallel' registered web provider: parallel
+2026-09-09 23:24:56,216 INFO hermes_cli.plugins: Plugin 'web-searxng' registered web provider: searxng
+2026-09-09 23:24:56,218 INFO hermes_cli.plugins: Plugin 'web-tavily' registered web provider: tavily
+2026-09-09 23:24:56,222 INFO hermes_cli.plugins: Plugin 'web-xai' registered web provider: xai
+2026-09-09 23:24:56,365 INFO hermes_cli.plugins: Plugin discovery complete: 55 found, 49 enabled
+2026-09-09 23:24:56,911 INFO httpx2: HTTP Request: POST http://127.0.0.1:57222/mcp "HTTP/1.1 200 OK"
+2026-09-09 23:24:56,911 INFO mcp.client.streamable_http: Received session ID: E-UT_9MS-pdLIyg9ZfdymTe8dq50yCshy4-7vnaNOxM
+2026-09-09 23:24:56,914 INFO httpx2: HTTP Request: POST http://127.0.0.1:57222/mcp "HTTP/1.1 202 Accepted"
+2026-09-09 23:24:56,915 INFO httpx2: HTTP Request: GET http://127.0.0.1:57222/mcp "HTTP/1.1 405 Method Not Allowed"
+2026-09-09 23:24:56,915 INFO mcp.client.streamable_http: GET stream disconnected, reconnecting in 1000ms...
+2026-09-09 23:24:56,918 INFO httpx2: HTTP Request: POST http://127.0.0.1:57222/mcp "HTTP/1.1 200 OK"
+2026-09-09 23:24:56,922 INFO tools.mcp_tool: MCP server 'chio' (HTTP): registered 4 tool(s): mcp__chio__read_text_file, mcp__chio__write_file, mcp__chio__edit_file, mcp__chio__list_directory
+2026-09-09 23:24:56,923 INFO tools.mcp_tool: MCP: registered 4 tool(s) from 1 server(s)
+2026-09-09 23:24:56,923 INFO tools.mcp_tool:   MCP: 4 tool(s) from 1 server(s)
+2026-09-09 23:24:57,461 WARNING hermes_state: state.db: linked SQLite 3.40.1 is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) — using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.
+2026-09-09 23:24:57,668 INFO run_agent: Loaded environment variables from /tmp/chio-hermes-timing-8ac999ad80d34a629ef462141429f412/profile/.env
+2026-09-09 23:24:57,920 INFO httpx2: HTTP Request: GET http://127.0.0.1:57222/mcp "HTTP/1.1 405 Method Not Allowed"
+2026-09-09 23:24:58,121 WARNING hermes_state: state.db (async_delegation): linked SQLite 3.40.1 is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) — using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.
+2026-09-09 23:24:58,348 INFO tools.lazy_deps: Lazy-installing boto3==1.42.89 for feature 'provider.bedrock'
+2026-09-09 23:25:00,148 INFO run_agent: OpenAI client created (agent_init, shared=True) thread=MainThread:8400148672 provider=custom base_url=http://127.0.0.1:57223/v1 model=gpt-5.5
+2026-09-09 23:25:00,201 INFO agent.model_metadata: Could not detect context length for model 'gpt-5.5' at http://127.0.0.1:57223/v1 — defaulting to 256,000 tokens (probe-down). Set model.context_length in config.yaml to override.
+2026-09-09 23:25:00,201 INFO agent.model_metadata: Using hardcoded context length 1,050,000 for model 'gpt-5.5' (custom endpoint, catalog match on 'gpt-5.5')
+2026-09-09 23:25:00,536 INFO [20260909_232457_fedb60] agent.turn_context: conversation turn: session=20260909_232457_fedb60 model=gpt-5.5 provider=custom platform=cli history=0 msg='Call mcp__chio__read_text_file exactly once with path /workspace/hermes-approved...'
+2026-09-09 23:25:01,048 INFO agent.auxiliary_client: Auxiliary auto-detect: using main provider custom (gpt-5.5)
+2026-09-09 23:25:01,049 INFO agent.auxiliary_client: Auxiliary title_generation: using custom (gpt-5.5) at http://127.0.0.1:57223/v1/
+2026-09-09 23:25:01,081 INFO run_agent: OpenAI client created (codex_stream_request, shared=False) thread=Thread-5 (<lambda>):6267383808 provider=custom base_url=http://127.0.0.1:57223/v1 model=gpt-5.5
+2026-09-09 23:25:03,997 INFO [20260909_232457_fedb60] agent.conversation_loop: API call #1: model=gpt-5.5 provider=custom in=2629 out=38 total=2667 latency=3.0s cache=1792/2629 (68%)
+2026-09-09 23:25:04,605 INFO httpx2: HTTP Request: POST http://127.0.0.1:57222/mcp "HTTP/1.1 200 OK"
+2026-09-09 23:25:04,607 INFO [20260909_232457_fedb60] agent.tool_executor: tool mcp__chio__read_text_file completed (0.59s, 3918 chars)
+2026-09-09 23:25:06,480 INFO [20260909_232457_fedb60] agent.conversation_loop: API call #2: model=gpt-5.5 provider=custom in=4323 out=8 total=4331 latency=1.9s cache=1792/4323 (41%)
+2026-09-09 23:25:06,486 INFO [20260909_232457_fedb60] agent.conversation_loop: Turn ended: reason=text_response(finish_reason=stop) model=gpt-5.5 api_calls=2/5 budget=2/5 tool_turns=1 last_msg_role=assistant response_len=30 session=20260909_232457_fedb60
+2026-09-09 23:25:06,559 INFO httpx2: HTTP Request: DELETE http://127.0.0.1:57222/mcp "HTTP/1.1 405 Method Not Allowed"
+2026-09-09 23:25:06,560 INFO [20260909_232457_fedb60] cli: CLI cleanup calling memory shutdown for session 20260909_232457_fedb60 with 4 message(s)

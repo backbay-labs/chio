@@ -1,0 +1,19 @@
+[
+  "/Users/connor/.pyenv/versions/3.11.4/bin/python3",
+  "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/integrations/required-agents/serve-filesystem.py",
+  "start",
+  "--state-dir",
+  "/Users/connor/.local/share/chio-required-operators/kernel-storage-fault-20260909/hermes-final-r15-after-admission",
+  "--kernel",
+  "/private/tmp/chio-tool-error-ack-candidate-20260909/chio-33dd1dea21a4",
+  "--kernel-sha256",
+  "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "--image",
+  "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "--volume",
+  "chio-required-kernel-store-hermes-final-r15-after-admission",
+  "--port",
+  "58522",
+  "--policy",
+  "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/integrations/required-agents/filesystem-policy.yaml"
+]

@@ -1,0 +1,178 @@
+[
+  {
+    "requestId": "storage-fault-hermes-final-r15-before-admission:a8ec94fb909af64c4c427e4a4c72f5d1bf41b7eb201b0112f3319d65a1d80099",
+    "digest": "f1ef39696b1639a539dccd6581695a81b9fa3fd602b9a81829154e84090014c5",
+    "state": "unknown",
+    "outcome": {
+      "state": "unknown",
+      "evidence": "verified",
+      "requestId": "storage-fault-hermes-final-r15-before-admission:a8ec94fb909af64c4c427e4a4c72f5d1bf41b7eb201b0112f3319d65a1d80099",
+      "receipt": {
+        "action": {
+          "parameter_hash": "9aab4c7ee0e81d7a0e943b2da886fbac88847282d0d01f2434602effd83856ec",
+          "parameters": {
+            "content": "original storage fault effect",
+            "path": "/workspace/before-fault.txt"
+          }
+        },
+        "boundary_class": "prevent",
+        "capability_id": "cap-01a08951-25e1-7343-b5d9-c342456328e4",
+        "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "decision": {
+          "guard": "kernel",
+          "reason": "durable admission failed: admission operation store is unavailable: database is locked",
+          "verdict": "deny"
+        },
+        "id": "7758e5665c991d1a12bbda4d034fee5df1ef2f65a25416459ea8e77b763efa79",
+        "kernel_key": "5c58c9bd34a4aca64af9ac5c3968b07551354294aa67f5e31588ae1a4f34d08b",
+        "metadata": {
+          "attribution": {
+            "delegation_depth": 0,
+            "issuer_key": "e9141960434d3553185e4fa11aaf1cb26a38701dcca86c223181f720a7ca38ca",
+            "subject_key": "7ebaeb9c70774ab0104ba91ba8e2485d08333c9e217b1af19558eda769be111c"
+          },
+          "chio_receipt_signing_nonce": "rcpt-01a08951-a507-7e81-8937-a159a966f18a",
+          "receipt_context": {
+            "request_id": "storage-fault-hermes-final-r15-before-admission:a8ec94fb909af64c4c427e4a4c72f5d1bf41b7eb201b0112f3319d65a1d80099"
+          }
+        },
+        "policy_hash": "057b9a8160375e7d90841325639bdd66050a454f393dae23e8c813b8df74b84e",
+        "receipt_kind": "mediated_decision",
+        "redaction_mode": "none",
+        "signature": "d86af58e7094fa9406c09a348f3f433f4e4bdfe0599b859aabf051449de25a3fb0c4c33ca13066375030e2bc3fb0f7445e9ea24fe014711e502b1bb347940d00",
+        "timestamp": 1789010219,
+        "tool_name": "write_file",
+        "tool_origin": "caller_executed",
+        "tool_server": "fs",
+        "trust_level": "mediated"
+      },
+      "reason": "durable admission rejected this attempt; the original operation requires reconciliation"
+    },
+    "acknowledged": false,
+    "hostDeliveryRequired": true,
+    "request": {
+      "tool": "write_file",
+      "arguments": {
+        "path": "/workspace/before-fault.txt",
+        "content": "original storage fault effect"
+      },
+      "requestId": "storage-fault-hermes-final-r15-before-admission:a8ec94fb909af64c4c427e4a4c72f5d1bf41b7eb201b0112f3319d65a1d80099"
+    }
+  },
+  {
+    "requestId": "storage-fault-hermes-final-r15-before-admission:b11fb9aa6606a7cbcc7004b909d46f7b3fb3554bee646bc750554c9d3d17baad",
+    "digest": "5fe129c9d8dbda3eacc4e52f352a763d7df415fe359e04252395b332675984d7",
+    "state": "completed",
+    "outcome": {
+      "state": "completed",
+      "evidence": "verified",
+      "requestId": "storage-fault-hermes-final-r15-before-admission:b11fb9aa6606a7cbcc7004b909d46f7b3fb3554bee646bc750554c9d3d17baad",
+      "receipt": {
+        "action": {
+          "parameter_hash": "988e0ce3d7770545a46c19f149a8665b61365c787089e1b7670444a86563110c",
+          "parameters": {
+            "content": "fully acknowledged native positive",
+            "path": "/workspace/hermes-storage-positive.txt"
+          }
+        },
+        "boundary_class": "prevent",
+        "capability_id": "cap-01a08951-25e1-7343-b5d9-c342456328e4",
+        "content_hash": "dd87f933eff4f310dbbe5ddde17d9070acb9c72d80f779abb3903e03e882e98e",
+        "decision": {
+          "verdict": "allow"
+        },
+        "id": "0b21de9701caf711c61fb3dd2f4f9acca265ff194d066fd6f79ae59ba391005a",
+        "kernel_key": "5c58c9bd34a4aca64af9ac5c3968b07551354294aa67f5e31588ae1a4f34d08b",
+        "metadata": {
+          "admission_operation": {
+            "compensation_status": "not_compensated",
+            "coordinator_lease_epoch": 2,
+            "coordinator_lease_id": "01a08951-20be-7750-b44b-db6bfb95860f",
+            "operation_id": "e43a72b07d02686a4fb46fef349ec727c0411e76b991dc83c7e95fdc84e88cde",
+            "projected_dispatch_state": "terminal",
+            "projected_operation_version": 8,
+            "projected_state": "completed",
+            "request_binding_hash": "adfdcc179caaa0553b2a36bdef08a69e50d5c7d27d2bfdbcb6a8c5bbab77f5ac",
+            "request_id": "storage-fault-hermes-final-r15-before-admission:b11fb9aa6606a7cbcc7004b909d46f7b3fb3554bee646bc750554c9d3d17baad",
+            "request_namespace_digest": "70fb1cbde49329e39806491a7fe8f0f1a32fb6ea119a9e662ebf9067c356c0ac",
+            "retained_dispatch_commit": {
+              "committed_version": 6,
+              "coordinator_lease_epoch": 2,
+              "coordinator_lease_id": "01a08951-20be-7750-b44b-db6bfb95860f",
+              "provider_attempt": {
+                "attempt_id": "attempt:e43a72b07d02686a4fb46fef349ec727c0411e76b991dc83c7e95fdc84e88cde",
+                "operation_id": "e43a72b07d02686a4fb46fef349ec727c0411e76b991dc83c7e95fdc84e88cde",
+                "transport_id": "kernel-tool-server:fs",
+                "transport_key_epoch": 2
+              },
+              "store_fence": {
+                "lease_id": "01a08951-20be-7750-b44b-db6bfb95860f",
+                "owner_epoch": 2,
+                "store_uuid": "01a08951-1aa9-7883-a76d-e0434237dee7"
+              }
+            },
+            "schema": "chio.admission-receipt.v1",
+            "store_fence": {
+              "lease_id": "01a08951-20be-7750-b44b-db6bfb95860f",
+              "owner_epoch": 2,
+              "store_uuid": "01a08951-1aa9-7883-a76d-e0434237dee7"
+            },
+            "tool_outcome_id": "8618fcd459f4fd044a0216f87067092d767c3194451eaa23e9d3a68cb8adc6a1",
+            "tool_outcome_version": 2,
+            "trusted_time_unix_ms": 1789010204071
+          },
+          "attribution": {
+            "delegation_depth": 0,
+            "grant_index": 0,
+            "issuer_key": "e9141960434d3553185e4fa11aaf1cb26a38701dcca86c223181f720a7ca38ca",
+            "subject_key": "7ebaeb9c70774ab0104ba91ba8e2485d08333c9e217b1af19558eda769be111c"
+          },
+          "chio_receipt_signing_nonce": "rcpt-01a08951-5640-7583-8ae0-3ec187e6ffbc",
+          "receipt_context": {
+            "request_id": "storage-fault-hermes-final-r15-before-admission:b11fb9aa6606a7cbcc7004b909d46f7b3fb3554bee646bc750554c9d3d17baad"
+          }
+        },
+        "policy_hash": "057b9a8160375e7d90841325639bdd66050a454f393dae23e8c813b8df74b84e",
+        "receipt_kind": "mediated_decision",
+        "redaction_mode": "none",
+        "signature": "6c8ab63aadaa4769b56f276a7f8e253e75c01330effcb59a3d366e4ee0316ed3309077b516c0b56aa578b5f35d4b4dc77f078d75ef3a8825aa574c713825c40b",
+        "timestamp": 1789010204,
+        "tool_name": "write_file",
+        "tool_origin": "caller_executed",
+        "tool_server": "fs",
+        "trust_level": "mediated"
+      },
+      "result": {
+        "content": [
+          {
+            "text": "Successfully wrote to /workspace/hermes-storage-positive.txt",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "Successfully wrote to /workspace/hermes-storage-positive.txt"
+        }
+      },
+      "delivery": {
+        "acknowledgement": "X-PJUFv6fzoE6SssnnoH1rpgII4bH82R9VuuDWkNXgQ",
+        "receiptId": "0b21de9701caf711c61fb3dd2f4f9acca265ff194d066fd6f79ae59ba391005a",
+        "requestHash": "161ef9e470ae7306164e594656f3bf149a19c82894175664f5b07f6a3d9335e4",
+        "requestId": "storage-fault-hermes-final-r15-before-admission:b11fb9aa6606a7cbcc7004b909d46f7b3fb3554bee646bc750554c9d3d17baad",
+        "resultHash": "dd87f933eff4f310dbbe5ddde17d9070acb9c72d80f779abb3903e03e882e98e",
+        "schema": "chio.mcp.delivery-ack.v1"
+      }
+    },
+    "acknowledged": true,
+    "hostDeliveryRequired": true,
+    "request": {
+      "tool": "write_file",
+      "arguments": {
+        "path": "/workspace/hermes-storage-positive.txt",
+        "content": "fully acknowledged native positive"
+      },
+      "requestId": "storage-fault-hermes-final-r15-before-admission:b11fb9aa6606a7cbcc7004b909d46f7b3fb3554bee646bc750554c9d3d17baad"
+    },
+    "hostDeliveryConfirmed": true
+  }
+]

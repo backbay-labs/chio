@@ -69,8 +69,9 @@ bridge journal write failures before reservation and after the resource effect.
 A separately labeled provider fixture delivered two calls in one actual Hermes
 assistant turn: one verified effect completed, the second was not dispatched,
 and the launcher reported incomplete work. These bridge journal tests do not
-establish behavior under kernel receipt-store or signing failure; those shared
-faults require their own evidence.
+establish behavior under kernel receipt-store or signing failure. The separate
+kernel storage tests below establish actual SQLite write-contention behavior;
+signing-failure behavior is not inferred from either set of storage tests.
 
 The same r15 host also passed five exact alternate-path/tool denials: forbidden
 `edit_file`, secret `edit_file` with `dryRun: true`, `list_directory` on the
@@ -78,6 +79,26 @@ secret file, normalized secret read and normalized forbidden write. Every case
 records the exact native arguments and returned tool call, a verified denial,
 zero dispatches and an unchanged independent resource snapshot. See
 [all five runs](evidence/2026-09-09/subscription-r15/alternate-paths/).
+
+Three fresh dedicated owners now have real kernel storage-failure evidence
+under the same r15 wheel. Each first completed and acknowledged one native
+positive write. Locks on the receipt store after an effect, admission store
+before dispatch, and admission store after an effect yielded respectively
+one, zero and one effects, with no delivery ACK. Twelve exact native same/new
+action retries across unlock and same-owner restart produced no further
+dispatch. Original configuration, session, journal and databases were retained.
+[Kernel storage evidence](evidence/2026-09-09/subscription-r15/kernel-storage/)
+includes read-only DB snapshots and independent resource observations.
+
+A separate healthy owner supplied three paired read-only timing observations.
+Native logged tool intervals were 490, 590 and 510 ms (10 ms resolution), versus
+direct installed-bridge execution intervals of 493.979, 493.591 and 446.094 ms.
+Total native process times were 13.519, 12.422 and 12.325 seconds. Startup and
+model latency cannot be separated from these observations. All six reads are
+independently audited and bytes stayed unchanged. See the
+[timing evidence](evidence/2026-09-09/subscription-r15/operational-timing/) and
+coverage record for the method, all differences, operator interventions and
+limits; these are not a general overhead or performance guarantee.
 
 ## Candidate and baseline identities
 

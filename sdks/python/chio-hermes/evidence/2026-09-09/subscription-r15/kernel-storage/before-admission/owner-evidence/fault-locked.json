@@ -1,0 +1,8 @@
+{
+  "database": "/Users/connor/.local/share/chio-required-operators/kernel-storage-fault-20260909/hermes-final-r15-before-admission/sessions.sqlite.admission",
+  "cutpoint": "before-admission",
+  "lockedAtEpoch": 1789010208.221992,
+  "mutation": "none; BEGIN IMMEDIATE held, then ROLLBACK",
+  "holdSeconds": 600,
+  "pid": 17790
+}

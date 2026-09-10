@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/scripts/measure_tool_interval.py", line 122, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/scripts/measure_tool_interval.py", line 64, in main
+    assert Path(args.resource).name in before["files"]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

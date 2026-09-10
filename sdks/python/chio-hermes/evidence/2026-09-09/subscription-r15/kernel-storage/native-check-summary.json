@@ -1,0 +1,138 @@
+{
+  "cases": [
+    {
+      "case": "after-receipt",
+      "runs": [
+        {
+          "label": "fault",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "new-action-after-restart",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "new-action-after-unlock",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "positive",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "same-action-after-restart",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "same-action-after-unlock",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        }
+      ],
+      "faultNewDispatches": 1,
+      "retriesNewDispatches": 0
+    },
+    {
+      "case": "before-admission",
+      "runs": [
+        {
+          "label": "fault",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "new-action-after-restart",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "new-action-after-unlock",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "positive",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "same-action-after-restart",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "same-action-after-unlock",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        }
+      ],
+      "faultNewDispatches": 0,
+      "retriesNewDispatches": 0
+    },
+    {
+      "case": "after-admission",
+      "runs": [
+        {
+          "label": "fault",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "new-action-after-restart",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "new-action-after-unlock",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "positive",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "same-action-after-restart",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        },
+        {
+          "label": "same-action-after-unlock",
+          "attempts": 1,
+          "returned": 1,
+          "exact": true
+        }
+      ],
+      "faultNewDispatches": 1,
+      "retriesNewDispatches": 0
+    }
+  ],
+  "totalActualNativeCalls": 18,
+  "positiveDeliveryAcknowledgments": 3,
+  "faultDeliveryAcknowledgments": 0,
+  "faultResourceDispatches": 2,
+  "retryResourceDispatches": 0
+}

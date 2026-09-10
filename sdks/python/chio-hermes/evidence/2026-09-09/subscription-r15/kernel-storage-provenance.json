@@ -1,0 +1,24 @@
+{
+  "wheelSha256": "625979d5331796e7aef5906e69e3e2c746796aa570291af026c305ed4227c818",
+  "runtimeChanged": false,
+  "sources": {
+    "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/scripts/probe_kernel_storage.py": "3bbd0a820f9721d1a26061c5efdcc321c387e492694249be33814e5956ef56b4",
+    "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/scripts/measure_tool_interval.py": "10004e068ea7e55d5b9eb6314b902ce56cf239527067951be74f7299911a57ec",
+    "/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-execution-evidence-20260909/integrations/required-agents/qualification/storage_fault.py": "7de25889696ee9c1cca324130c6f10e34a41bdce555495a118673ad1336dd8d5",
+    "/Users/connor/Medica/backbay/standalone/arc/.worktrees/mcp-execution-evidence-20260909/integrations/required-agents/qualification/stdio_response_barrier.py": "a690f141d14fb3b9a18a8541e89bb5eabf76a18f71e504ad16cd2878bec398b6"
+  },
+  "cases": [
+    "actual receipt-store contention after effect",
+    "actual admission-store contention before dispatch",
+    "actual admission-store contention after effect"
+  ],
+  "nativeCallsInFaultSuite": 18,
+  "freshAuthorityUsedAsRecovery": false,
+  "signingFailureClaim": false,
+  "timingScope": "3 paired reads on different healthy owner; direct calls only timing baseline; no startup/model breakdown",
+  "validation": {
+    "ruff": "two new owned scripts passed",
+    "pythonCompile": "two new owned scripts passed",
+    "runtimeModulesMatchingFrozenWheel": 16
+  }
+}

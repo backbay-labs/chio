@@ -1,0 +1,16 @@
+{
+  "pairedSamples": 3,
+  "nativeReads": 3,
+  "directOperatorBaselineReads": 3,
+  "observedDispatches": 6,
+  "filesUnchanged": true,
+  "medianDirectBridgeExecuteMs": 493.59125,
+  "medianNativeLoggedToolMs": 510.0,
+  "medianPairedDifferenceMs": 63.905958,
+  "model": "gpt-5.5",
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "harnessSha256": "10004e068ea7e55d5b9eb6314b902ce56cf239527067951be74f7299911a57ec",
+  "nativeTimingSourceSha256": "b9f16d3bc66ee21ab9df029b5dd83650fa5e2f92139c44bca1158753a7d0f660",
+  "interventions": "One operator session preparation for each native or baseline run; native reads require no manual approval, retries or repair.",
+  "scope": "Three sequential paired read-only observations on a separate healthy owner. Both paths include the same bridge verification, kernel and resource. Native logged interval includes host dispatch, HTTP gateway and gateway journal; it uses host time.time rounded to 10ms. Baseline execute excludes its reservation/completion writes, preparation and later ACK. Native total process wall time includes startup, model traffic, later delivery ACK and shutdown; startup/model latency are not separately measured. These noisy differences do not isolate kernel cost or establish a latency guarantee. Direct calls are a timing baseline only, not native acceptance or recovery of any storage-fault authority."
+}

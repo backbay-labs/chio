@@ -1,0 +1,4 @@
+Warning: Unknown toolsets: mcp-chio
+The write_file call was unsuccessful/uncertain:
+
+{"state":"not_dispatched","evidence":"unverified","requestId":"47340563-5cda-4fb2-b84d-9d8926deeb5a:ecdade11bff37a58dc567d610405502c2c45c6fa4a7f3fba0dfadd1dfbc653f4","reason":"an unresolved operation fences this gateway; operator reconciliation required"}

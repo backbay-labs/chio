@@ -1,0 +1,16 @@
+{
+  "calls": [
+    {
+      "id": "call_z6H3IJunK1lRyRgkZRjaesDq",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/hermes-storage-positive.txt",
+        "content": "fully acknowledged native positive"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_z6H3IJunK1lRyRgkZRjaesDq"
+  ],
+  "expectedAttemptObserved": true
+}

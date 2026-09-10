@@ -1,0 +1,3 @@
+{"case": "after-receipt", "passed": true, "faultNewDispatches": 1, "retryNewDispatches": 0}
+{"case": "before-admission", "passed": true, "faultNewDispatches": 0, "retryNewDispatches": 0}
+{"case": "after-admission", "passed": true, "faultNewDispatches": 1, "retryNewDispatches": 0}

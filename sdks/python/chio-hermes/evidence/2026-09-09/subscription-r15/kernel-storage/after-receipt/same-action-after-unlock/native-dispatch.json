@@ -1,0 +1,16 @@
+{
+  "calls": [
+    {
+      "id": "call_B37ik1wAQtcwyL2lUziYF3rY",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/uncertain.txt",
+        "content": "original storage fault effect"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_B37ik1wAQtcwyL2lUziYF3rY"
+  ],
+  "expectedAttemptObserved": true
+}

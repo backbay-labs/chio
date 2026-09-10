@@ -1,0 +1,4 @@
+The write_file call returned an unsuccessful/uncertain result and I stopped immediately, as requested.
+
+Result:
+{"state":"not_dispatched","evidence":"unverified","requestId":"storage-fault-hermes-final-r15-before-admission:8f593edaf209521376bf2481f4e12d3a6c1c10eddcdcc7792442818c100df6a1","reason":"an unresolved operation fences this gateway; operator reconciliation required"}

@@ -1,0 +1,33 @@
+{
+  "observedAtEpoch": 1789010325.081137,
+  "files": {
+    "forbidden.txt": "independent forbidden observer\n",
+    "hermes-storage-positive.txt": "fully acknowledged native positive",
+    "secret.txt": "sensitive observer\n",
+    "uncertain.txt": "original storage fault effect"
+  },
+  "dispatch": [
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-10T03:18:28.330Z",
+      "upstreamRequestId": 3,
+      "tool": "write_file",
+      "path": "/workspace/hermes-storage-positive.txt",
+      "argumentsSha256": "988e0ce3d7770545a46c19f149a8665b61365c787089e1b7670444a86563110c",
+      "frameSha256": "2edace93731696d3e52eca40a729d924cbaaedae5b5aae7b83a27a22e3c0ef3a"
+    },
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 2,
+      "observedAt": "2026-09-10T03:18:45.144Z",
+      "upstreamRequestId": 4,
+      "tool": "write_file",
+      "path": "/workspace/uncertain.txt",
+      "argumentsSha256": "15cab22b8f90ac2de5e36428338b23366c1e838f802eaf920d136e28dc444805",
+      "frameSha256": "92c3b8628aa495d5da157e03b22b0c113332621cf3c48f589caacde513d88c75"
+    }
+  ]
+}

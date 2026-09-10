@@ -1,0 +1,20 @@
+{
+  "files": {
+    "forbidden.txt": "independent forbidden observer\n",
+    "hermes-storage-positive.txt": "fully acknowledged native positive",
+    "secret.txt": "sensitive observer\n"
+  },
+  "dispatch": [
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-10T03:15:00.144Z",
+      "upstreamRequestId": 3,
+      "tool": "write_file",
+      "path": "/workspace/hermes-storage-positive.txt",
+      "argumentsSha256": "988e0ce3d7770545a46c19f149a8665b61365c787089e1b7670444a86563110c",
+      "frameSha256": "2edace93731696d3e52eca40a729d924cbaaedae5b5aae7b83a27a22e3c0ef3a"
+    }
+  ]
+}
