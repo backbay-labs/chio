@@ -1,5 +1,41 @@
 # Local candidate delivery
 
+## Current static candidate, 2026-09-10
+
+The current local bundle is
+`/Users/connor/.local/share/chio-required-candidates/required-agents-static-rc-local-20260910-r3.tar.gz`,
+518,088,554 bytes, SHA256
+`25750f19f27ad49793df9a0ae72ab55b920ffb544cb0fa426e9e80ee453de5b9`.
+It selects kernel `0.1.1-rc.1`, SHA256
+`c03a8a711dbbd15da2c59655d9ab6d8f0068a20187363db7a78f4b5422ded93e`,
+and Claude `0.3.1-rc.1`, SHA256
+`1258385647d228ebeed32662091ed721aeda3b60450cabae480ca0d4292fbe0a`.
+Its manifest binds the other integration, SDK, bridge and image identities.
+
+Extract with system `tar` into a new directory to preserve the archive's recorded
+file modes. Python 3.14's default data extraction filter changes those modes and
+the bundle verifier correctly refuses that extraction. Follow the extracted
+`README.md`; its source and local verification are retained at harness commit
+[`6d49d48c478967e518c052c628e59a7183ff9814`](https://github.com/backbay-labs/chio-test-harness/blob/6d49d48c478967e518c052c628e59a7183ff9814/delivery/OPERATOR.md).
+
+Cold installation, useful resource work, explicit credential/capability revocation
+and zero subsequent dispatch passed using the shipped procedures. The final r3
+archive changes only the README's session-expiry recovery explanation relative
+to that operationally tested r2 archive; the other 48 selected entries and the
+executed revocation snippet are byte-identical. The r3 archive itself passed cold
+extraction, checksum, image and CLI identity checks. The
+[readiness record](../prepare-session-readiness-20260910/actual-cold-successor/README.md) retains the
+original startup failure and the corrected operation. No private operator state
+is included in the bundle.
+
+Status remains **0/6 accepted**: Cursor's server enforcement contract is unresolved,
+and compatible public artifact delivery and final release qualification remain
+open. This local archive is usable qualification delivery, not a published release.
+The older bundle and commands below are historical evidence and do not select
+the current kernel or Claude archive.
+
+## Historical candidate delivery, 2026-09-09
+
 Status: **0/6 integrations accepted**. This directory provides the exact local
 qualification artifacts, not a public release. Do not install the historical
 public CLI and assume its `0.1.0` label identifies this kernel. Select the hash.

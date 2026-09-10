@@ -30,10 +30,34 @@ Claude Code, Codex, Hermes, Pi and native OpenClaw each completed the new binary
 useful four-tool workflow and 33-command authority, denial, kernel-failure,
 evidence-substitution and recovery matrix. Each host ran 37 commands: three setup
 commands, one useful workflow and 33 matrix commands. These are 185 driver
-commands across five hosts, not 185 distinct acceptance tests. Their separate
-lifecycle, storage, installation and timing records remain necessary. Supplemental
-expiry testing must distinguish launch-time rejection from expiry during a live
-native tool request. No full host acceptance is claimed.
+commands across five hosts, not 185 distinct acceptance tests. The
+[five-host matrix record](../kernel-rc-static-host-matrix-20260910/README.md)
+retains the raw commands, resource observations and precise source-pinning scope.
+Their additional native lifecycle, storage, confinement, installation and timing
+observations are retained separately:
+
+| Host | Current static-kernel local observations |
+|---|---|
+| Claude Code | [Initial cases](https://github.com/backbay-labs/chio-claude-code-plugin/blob/00a0ad130cf13fbe434ab08616fe2f2483187c77/acceptance/2026-09-10/final-static-initial/README.md) and [continuation](https://github.com/backbay-labs/chio-claude-code-plugin/blob/00a0ad130cf13fbe434ab08616fe2f2483187c77/acceptance/2026-09-10/final-static-continuation/README.md), including original failures and subsequent bound reruns |
+| Codex | [Native qualification](https://github.com/backbay-labs/chio-codex-plugin/blob/97a1d98414004a04f41f607cfbe74663e381499a/docs/STATIC-KERNEL-QUALIFICATION.md) and [successful-startup silent omission](https://github.com/backbay-labs/chio-codex-plugin/blob/97a1d98414004a04f41f607cfbe74663e381499a/acceptance/2026-09-10/silent-omission/README.md) |
+| Hermes | [Native qualification](../../../../sdks/python/chio-hermes/evidence/2026-09-10/static-kernel-native/README.md), including public upstream installation, storage, lifecycle and scoped owner shutdown |
+| Pi Agent | [Native qualification](https://github.com/backbay-labs/chio-pi-plugin/blob/cee55d79bf159e51fa7f70b986a8d8f5979a4f3f/docs/STATIC-KERNEL-QUALIFICATION.md), including disabled-path coverage and explicit watchdog scope |
+| OpenClaw | [Native qualification](https://github.com/backbay-labs/chio-open-claw-plugin/blob/ec4267779ff180b2a58cfc5d2f86c36197a99fb9/native/evidence/2026-09-10/static-kernel-native/README.md), including two native storage retries per case and controlled unverified substituted results |
+
+The supported work is remote read/write/edit/list through the kernel-owned
+filesystem. Unsupported shell, network, delegation and background routes remain
+disabled or confined. These records do not qualify unrestricted native development.
+The additional [Claude live-expiry record](../claude-live-authority-expiry-20260910/README.md)
+and [four-host live-expiry record](../kernel-rc-static-live-expiry-20260910/README.md)
+each establish a successful first native write, followed by the original native
+request reaching the real kernel after its authority expires. The second request
+receives HTTP 401 with no additional dispatch, unchanged resource content and no
+acknowledgement or automatic retry. This is authentication refusal for the expired
+capability-bound credential, not a signed `CapabilityExpired` admission receipt.
+Pi's plain native error remains distinct from its journal-qualified unknown state;
+OpenClaw's native guest ID is bound through the observed HTTP session to the kernel
+request ID. Original parser/identity assertion failures remain failures alongside
+their fresh successful reruns. No full host acceptance is claimed.
 
 All 11 shared kernel suites passed on the immutable audited filesystem image
 `sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0`.
@@ -64,7 +88,14 @@ unexecuted cases remain open until their own successful, bound rerun.
 The delivery bundle's cold installation and explicit revocation procedure have
 real local observations. The operator preparation helper now waits for the
 intended live kernel's signer before allocating a new session. Its updated
-bundle procedure still needs its own final qualification. Source repairs also
+procedure passed the [actual cold operation](../prepare-session-readiness-20260910/actual-cold-successor/README.md).
+The [current local bundle](CANDIDATE-DELIVERY.md) has SHA256
+`25750f19f27ad49793df9a0ae72ab55b920ffb544cb0fa426e9e80ee453de5b9`.
+Its final README-only successor and the operationally tested archive are explicitly
+distinguished; the selected executable and package bytes are unchanged. The
+[native-process fixture repair](../native-process-fixture-20260910/README.md)
+preserves the production executable/argv check and its original test failure.
+Source repairs also
 bind release provenance to the original tagged run and authenticate the exact
 builder, source and subjects before attachment. An actual upstream signed fixture
 and rejection controls establish compatibility; the actual Chio hosted release

@@ -6,6 +6,39 @@ cleanup. It promotes no archive, npm package, release tag or public kernel.
 Confidence is high in the captured identities and command results; pending or
 failed hosted checks remain unresolved.
 
+## Current static-candidate source snapshot, 2026-09-10
+
+The [current source checkpoint](../static-public-source-ci-20260910/README.md)
+supersedes the earlier head/check table below. All seven standalone plugin,
+bridge and harness draft PRs have successful source checks on their recorded
+latest heads, including native OpenClaw `ec4267779ff180b2a58cfc5d2f86c36197a99fb9`.
+Actual workflow checkout identities and source-tree comparisons are retained
+separately from topic heads and frozen runtime archives.
+
+The snapshot's Linux jobs each skip one platform-specific Claude/Cursor test.
+Those skip outcomes remain unchanged. Later local macOS records execute the
+exact applicable tests: [Claude supervisor](https://github.com/backbay-labs/chio-claude-code-plugin/blob/c84da4a446c57b287777124b916110f8ba15f13e/acceptance/2026-09-10/supervisor-platform-qualification/README.md)
+passes one test with zero skips; [Cursor process boundary](https://github.com/backbay-labs/chio-cursor-plugin/blob/2549e53255160273d890ed6992eb8ab98a2cb6c9/evidence/final/macos-boundary-20260910/README.md)
+passes three with zero skips. Both records bind tested module bytes to the selected
+archives. They are component observations, not another real-host matrix or proof
+of Cursor's unresolved server boundary. Their evidence-only commits postdate the
+source snapshot and require their own reported hosted status.
+
+Canonical [Chio draft PR 2](https://github.com/backbay-labs/chio/pull/2) remains at
+`bafa02b06de93553cecb6f60b340f3dd8fd9b401` while its hosted workspace/MSRV checks
+complete. At the captured checkpoint, 87 checks succeeded, 11 were skipped by
+their workflow conditions and two remained in progress. Those skipped contexts
+are not promoted to required-test passes. Later local source/evidence commits
+are not yet qualified by this older source run. Chio Actions is enabled; the
+earlier disabled-Actions statement below is historical.
+
+The final consolidated source still requires its own applicable checks, followed
+by the exact canonical-main release qualifier, release artifact/provenance checks
+and compatible public delivery. No green plugin source check accepts a host or
+transfers an older kernel result to another binary.
+
+## Historical source checkpoint below
+
 ## Draft PRs and exact check snapshot
 
 Initial GitHub API snapshots were captured on 2026-09-10 at 04:01:04 UTC;
