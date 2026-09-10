@@ -1,0 +1,46 @@
+{
+  "claim": "supplemental actual native batch with local provider response fixture; not live inference acceptance",
+  "liveInference": false,
+  "installedLauncher": "/private/tmp/chio-hermes-subscription-consumer-r15-20260909/lib/python3.11/site-packages/chio_hermes/restricted.py",
+  "launcherSha256": "e1fe2be691cdb9a87e9090f32b1cb1e053b8bfc43f26fe75b0f0071cabce0ea7",
+  "harnessSha256": "5043750a926afecccfe2d9163dea5d5029e5f86b1e19e4e9a08bd0e3315778ed",
+  "preparedConfigurationSha256": "4eccd1fe0bc220fb03caeae21b270449d9853587b7d766048f33f0b2b4e03b66",
+  "privateConfiguration": "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-parallel-e40ca009c7c042d680ac0f32f6141806/gateway.json",
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "image": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "calls": [
+    {
+      "path": "/workspace/hermes-parallel-0f32f6141806-a.txt",
+      "content": "native batch a"
+    },
+    {
+      "path": "/workspace/hermes-parallel-0f32f6141806-b.txt",
+      "content": "native batch b"
+    }
+  ],
+  "command": [
+    "chio-hermes-restricted",
+    "--host-python",
+    "/tmp/chio-hermes-20260909/clean-host-venv/bin/python",
+    "--host-root",
+    "/tmp/chio-hermes-20260909/public-upstream-source",
+    "--node",
+    "/opt/homebrew/bin/node",
+    "--gateway-script",
+    "/tmp/chio-bridge-host-delivery-cold-consumer-r2-20260909/node_modules/@chio/bridge/dist/gateway-http.js",
+    "--gateway-config",
+    "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-parallel-e40ca009c7c042d680ac0f32f6141806/gateway.json",
+    "--state-dir",
+    "/tmp/chio-hermes-parallel-f13c9549553f4bdc9882e564b05746ad",
+    "--query-file",
+    "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-parallel-e40ca009c7c042d680ac0f32f6141806/query.txt",
+    "--model",
+    "gpt-5.5",
+    "--model-auth",
+    "codex-subscription",
+    "--codex-auth-file",
+    "/Users/connor/.local/share/chio-required-operators/native-subscription-auth-20260909/codex/profile/auth.json",
+    "--max-turns",
+    "4"
+  ]
+}

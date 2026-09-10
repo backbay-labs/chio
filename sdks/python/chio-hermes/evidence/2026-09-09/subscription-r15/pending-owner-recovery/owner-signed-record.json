@@ -1,0 +1,146 @@
+{
+  "schema": "chio.gateway.owner-outcome.v1",
+  "record": {
+    "schema": "chio.mcp.session-credential-call.v1",
+    "sessionId": "6332d0e1c6cd1b09b90636861cf5e8c3fb09bd60d2e2f3f1d539674932e94ed6",
+    "subjectKey": "6de9b57a384f1fd6f80f3943407859d885cd16215676d3f3e1a62858debcafb6",
+    "capabilityIds": [
+      "cap-01a08933-dde8-7231-85fc-3271e62670cb"
+    ],
+    "serverId": "fs",
+    "requestId": "04a7a64c-5110-4c9f-a6c9-b5282b08ee3b:5f33ad9548ba33774b8e1f88fe0ac456b5fca0606b904aedfcc6bedd07c2c543",
+    "requestHash": "9e3e40f01ae6b53b724e27f8c890696cf2cc6e342751bb9e0b62eb6c50ccd04a",
+    "toolName": "write_file",
+    "parameterHash": "570745eabc93aa9c9014b7deac0412c27700529fbd4bed18cd8229cdf3c5ae96",
+    "startedAt": 1789008284,
+    "state": "completed_unacknowledged",
+    "response": {
+      "id": 3,
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioDelivery": {
+            "acknowledgement": "yrhZ6226mNKhhaOnG09DUFZrg3CxNDk-5VgeEWvwnX0",
+            "receiptId": "42ca00dda6c529ff3838de01c276e34a3637a6bed53ba3ab1d64ea40dc539f05",
+            "requestHash": "9e3e40f01ae6b53b724e27f8c890696cf2cc6e342751bb9e0b62eb6c50ccd04a",
+            "requestId": "04a7a64c-5110-4c9f-a6c9-b5282b08ee3b:5f33ad9548ba33774b8e1f88fe0ac456b5fca0606b904aedfcc6bedd07c2c543",
+            "resultHash": "639c29cd612b183a14c2b77ec0106fd2cd45077ddd9d152684f75e782f2b43cd",
+            "schema": "chio.mcp.delivery-ack.v1"
+          },
+          "chioEvidence": {
+            "output": {
+              "content": [
+                {
+                  "text": "Successfully wrote to /workspace/hermes-cutpoint-4e45257277a9.txt",
+                  "type": "text"
+                }
+              ],
+              "isError": false,
+              "structuredContent": {
+                "content": "Successfully wrote to /workspace/hermes-cutpoint-4e45257277a9.txt"
+              }
+            },
+            "outputKind": "value",
+            "receipt": {
+              "action": {
+                "parameter_hash": "570745eabc93aa9c9014b7deac0412c27700529fbd4bed18cd8229cdf3c5ae96",
+                "parameters": {
+                  "content": "original Hermes cutpoint effect",
+                  "path": "/workspace/hermes-cutpoint-4e45257277a9.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a08933-dde8-7231-85fc-3271e62670cb",
+              "content_hash": "639c29cd612b183a14c2b77ec0106fd2cd45077ddd9d152684f75e782f2b43cd",
+              "decision": {
+                "verdict": "allow"
+              },
+              "id": "42ca00dda6c529ff3838de01c276e34a3637a6bed53ba3ab1d64ea40dc539f05",
+              "kernel_key": "9fcdc4bb7167d78cf76e1216062215630e1287ae8c8fb94bf3783923b5b36a51",
+              "metadata": {
+                "admission_operation": {
+                  "compensation_status": "not_compensated",
+                  "coordinator_lease_epoch": 7,
+                  "coordinator_lease_id": "01a08919-6eec-7972-9808-87aa5675d7de",
+                  "operation_id": "7e97ab47ba861237ebfa859f8b0015f4eae608ea49746c11ae615db0a800b3f0",
+                  "projected_dispatch_state": "terminal",
+                  "projected_operation_version": 8,
+                  "projected_state": "completed",
+                  "request_binding_hash": "de7cfdec4fc3df5d9c5cd956a1c26a9178593221b54958d9c3606c3e7a92df0a",
+                  "request_id": "04a7a64c-5110-4c9f-a6c9-b5282b08ee3b:5f33ad9548ba33774b8e1f88fe0ac456b5fca0606b904aedfcc6bedd07c2c543",
+                  "request_namespace_digest": "bec7aa820118d077f6fad76ec3265b6e24e5e104e97a9b46bdad36b81915a9f4",
+                  "retained_dispatch_commit": {
+                    "committed_version": 6,
+                    "coordinator_lease_epoch": 7,
+                    "coordinator_lease_id": "01a08919-6eec-7972-9808-87aa5675d7de",
+                    "provider_attempt": {
+                      "attempt_id": "attempt:7e97ab47ba861237ebfa859f8b0015f4eae608ea49746c11ae615db0a800b3f0",
+                      "operation_id": "7e97ab47ba861237ebfa859f8b0015f4eae608ea49746c11ae615db0a800b3f0",
+                      "transport_id": "kernel-tool-server:fs",
+                      "transport_key_epoch": 7
+                    },
+                    "store_fence": {
+                      "lease_id": "01a08919-6eec-7972-9808-87aa5675d7de",
+                      "owner_epoch": 7,
+                      "store_uuid": "01a0886a-2df1-7063-b0d0-110eb5f2a904"
+                    }
+                  },
+                  "schema": "chio.admission-receipt.v1",
+                  "store_fence": {
+                    "lease_id": "01a08919-6eec-7972-9808-87aa5675d7de",
+                    "owner_epoch": 7,
+                    "store_uuid": "01a0886a-2df1-7063-b0d0-110eb5f2a904"
+                  },
+                  "tool_outcome_id": "8ffeba1dc000dd0d01f7931cf1684d7d903160238a5d2cff51050c2f4637ff7b",
+                  "tool_outcome_version": 2,
+                  "trusted_time_unix_ms": 1789008284387
+                },
+                "attribution": {
+                  "delegation_depth": 0,
+                  "grant_index": 0,
+                  "issuer_key": "a7e7bf989bdf88e05f06771ca8da5368ebe0afd668f54a82d7528b518d92fbbb",
+                  "subject_key": "6de9b57a384f1fd6f80f3943407859d885cd16215676d3f3e1a62858debcafb6"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a08934-0ba0-7963-bdca-b850c2e70161",
+                "receipt_context": {
+                  "request_id": "04a7a64c-5110-4c9f-a6c9-b5282b08ee3b:5f33ad9548ba33774b8e1f88fe0ac456b5fca0606b904aedfcc6bedd07c2c543"
+                }
+              },
+              "policy_hash": "057b9a8160375e7d90841325639bdd66050a454f393dae23e8c813b8df74b84e",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "5c3a1040e7ec19e9ad72933f09f298996757473b4a91d18e8ab28ddae7c21ccf36c629f9a28b9b0ccc598ac37f5697242ada02e75699e9b35d4587a55a742c0e",
+              "timestamp": 1789008284,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "04a7a64c-5110-4c9f-a6c9-b5282b08ee3b:5f33ad9548ba33774b8e1f88fe0ac456b5fca0606b904aedfcc6bedd07c2c543",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "Successfully wrote to /workspace/hermes-cutpoint-4e45257277a9.txt",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "Successfully wrote to /workspace/hermes-cutpoint-4e45257277a9.txt"
+        }
+      }
+    },
+    "deliveryAck": {
+      "schema": "chio.mcp.delivery-ack.v1",
+      "requestId": "04a7a64c-5110-4c9f-a6c9-b5282b08ee3b:5f33ad9548ba33774b8e1f88fe0ac456b5fca0606b904aedfcc6bedd07c2c543",
+      "requestHash": "9e3e40f01ae6b53b724e27f8c890696cf2cc6e342751bb9e0b62eb6c50ccd04a",
+      "receiptId": "42ca00dda6c529ff3838de01c276e34a3637a6bed53ba3ab1d64ea40dc539f05",
+      "resultHash": "639c29cd612b183a14c2b77ec0106fd2cd45077ddd9d152684f75e782f2b43cd",
+      "acknowledgement": "yrhZ6226mNKhhaOnG09DUFZrg3CxNDk-5VgeEWvwnX0"
+    }
+  },
+  "signature": "3eae6bfef75faf08858921f5b1c397f59d3b563fcd5d610a9cbdcc3ade95c077f633c3f3ae2d85d6b78d1db0b322f09339f3eaf12a834bc6a606de779e2dc809"
+}

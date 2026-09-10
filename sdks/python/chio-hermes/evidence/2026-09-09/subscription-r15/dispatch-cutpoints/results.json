@@ -1,0 +1,70 @@
+[
+  {
+    "case": "cancel-before-dispatch",
+    "passed": true,
+    "initialExitCode": 2,
+    "initialNewDispatchRows": 0,
+    "terminal": {
+      "hostExitCode": 130,
+      "exitCode": 2,
+      "outcome": "unresolved",
+      "operatorInterrupt": "SIGTERM",
+      "confirmedDeliveries": 0
+    },
+    "privateConfiguration": "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-cutpoint-5c56ea20911f474a9a7e66c78e452f49/gateway.json",
+    "configurationSha256": "22dbd6595a81ed6269e055f28a669dfb310050fdad359a27c0c8e06b39505fcd",
+    "faultInjectorSha256": "cb23f444647929bb265c9cb6f7531545b25e06e851b00ad09881b957df5840e3",
+    "scope": "actual pinned Hermes and live subscription inference; operator-only narrow transport or journal fault"
+  },
+  {
+    "case": "kernel-network-refused",
+    "passed": true,
+    "initialExitCode": 2,
+    "initialNewDispatchRows": 1,
+    "terminal": {
+      "hostExitCode": 0,
+      "exitCode": 2,
+      "outcome": "unresolved",
+      "operatorInterrupt": null,
+      "confirmedDeliveries": 1
+    },
+    "privateConfiguration": "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-cutpoint-1417ee7801594acfbdcdbecbaba3fae5/gateway.json",
+    "configurationSha256": "be5cda6b5b3f3a3cbf0c2bd266b14236d4c2a06433c8fa2083763333361354e4",
+    "faultInjectorSha256": "cb23f444647929bb265c9cb6f7531545b25e06e851b00ad09881b957df5840e3",
+    "scope": "actual pinned Hermes and live subscription inference; operator-only narrow transport or journal fault"
+  },
+  {
+    "case": "journal-before-dispatch",
+    "passed": true,
+    "initialExitCode": 2,
+    "initialNewDispatchRows": 0,
+    "terminal": {
+      "hostExitCode": 0,
+      "exitCode": 2,
+      "outcome": "unresolved",
+      "operatorInterrupt": null,
+      "confirmedDeliveries": 0
+    },
+    "privateConfiguration": "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-cutpoint-5e81d8aa013842058e23cab47d9a0a3a/gateway.json",
+    "configurationSha256": "69132fcb4d55bfe1d71224e4a18cc62bbc98b240791cd25534e0e5aabbf7870b",
+    "faultInjectorSha256": "cb23f444647929bb265c9cb6f7531545b25e06e851b00ad09881b957df5840e3",
+    "scope": "actual pinned Hermes and live subscription inference; operator-only narrow transport or journal fault"
+  },
+  {
+    "case": "journal-after-effect",
+    "passed": true,
+    "initialExitCode": 2,
+    "initialNewDispatchRows": 1,
+    "terminal": {
+      "hostExitCode": 0,
+      "exitCode": 2,
+      "outcome": "unresolved",
+      "operatorInterrupt": null,
+      "confirmedDeliveries": 0
+    },
+    "privateConfiguration": "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-cutpoint-73c52f5ef1d7422b9e074e45257277a9/gateway.json",
+    "configurationSha256": "799cc9295f15959d790654875db4515b98fe6c2827c06f146e1b0ccb97352b23",
+    "faultInjectorSha256": "cb23f444647929bb265c9cb6f7531545b25e06e851b00ad09881b957df5840e3",
+    "scope": "actual pinned Hermes and live subscription inference; operator-only narrow transport or journal fault"
+  }
+]

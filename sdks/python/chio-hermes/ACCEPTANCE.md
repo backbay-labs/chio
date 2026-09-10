@@ -62,6 +62,16 @@ publication**: I08 still requires publication of the compatible artifact set
 and the applicable release checks. These observations do not accept other
 hosts or the six-host program.
 
+An additional narrow review closed five previously untested cutpoints on the
+same installed r15 artifact. Live subscription runs confirm cancellation before
+kernel dispatch, a refused gateway route while the kernel remains live, and
+bridge journal write failures before reservation and after the resource effect.
+A separately labeled provider fixture delivered two calls in one actual Hermes
+assistant turn: one verified effect completed, the second was not dispatched,
+and the launcher reported incomplete work. These bridge journal tests do not
+establish behavior under kernel receipt-store or signing failure; those shared
+faults require their own evidence.
+
 ## Candidate and baseline identities
 
 - Chio base: `f5566d9a765c21cb36652a99c79de64968a656bf`.

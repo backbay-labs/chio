@@ -1,0 +1,1 @@
+Refused by tool/gateway: unresolved operation fences this gateway; operator reconciliation required. Stopping as requested.

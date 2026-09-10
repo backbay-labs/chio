@@ -24,6 +24,39 @@ See `provenance.json`, `cold-installed-runtime-identity.json`, per-suite
 | I07 | `matrix-r15`: real launcher SIGKILL, response loss and gateway crash preserve original unacknowledged effects; supervisor/native/gateway disappearance observed. `matrix-r15b`: SIGTERM cancellation and same-authority recovery; concurrent owner refused while first native call held; second owner causes no effect; explicit reconciliation restores a native read. Kernel death preserves owner DB and resource volume across restart. | Unknown cases lacking a completed owner record remain fenced. No new session is substituted as recovery of an old result. General autonomous background work and delegation are disabled. |
 | I08 | `lifecycle`: isolated offline r11-to-r15 candidate replacement, dependency/entrypoint/import verification, uninstall and verified removal. Runbook documents fixed model auth, operator boundaries and explicit recovery. Host log records ordinary tool durations of 0.51-0.55 seconds; these include the gateway and tool transport, not isolated kernel overhead. | Compatible artifact publication and applicable shared security/release checks remain open. Four legacy sidecar tests are skipped and explicitly unresolved below. |
 
+## Additional dispatch, persistence and batch cutpoints
+
+`dispatch-cutpoints` and `native-parallel` use the same r15 wheel and kernel.
+`supplemental-provenance.json` identifies the exact operator-only injector and
+owned harnesses. No product runtime source changed. The narrow injector is
+loaded only in the trusted Node gateway; the native guest environment drops
+`NODE_OPTIONS` and fault-control variables. It neither changes kernel database
+files nor filesystem permissions.
+
+| Case | Independently observed result |
+| --- | --- |
+| Live inference, cancel before kernel dispatch | Actual native tool request reaches the held gateway fetch with a stable operation ID. SIGTERM is delivered to the created launcher after that barrier. No resource effect or dispatch row; same-authority restart remains fenced. |
+| Live inference, kernel route refused | First native write completes and is acknowledged. Only the second tool call is redirected to an explicitly bound non-listening loopback port. Kernel PID and TCP liveness are unchanged before and after. The second effect never occurs; original contents remain and restart stays fenced. |
+| Live inference, journal reservation write EIO | The dedicated pending-record temporary-file write fails before dispatch. Zero effects and zero acknowledgments. Removing the injected fault allows one first write under the same authority, with one verified native-history ACK. |
+| Live inference, completion journal write EIO | One effect completes before its verified completion cannot be persisted. Durable state remains `pending`, launcher reports unresolved with zero ACKs, and same-authority restart produces no further dispatch. This proves truthful uncertainty, not prevention of the effect that already occurred. |
+| Local provider fixture, real native two-call batch | One Responses reply deliberately contains two function calls while the unchanged request says `parallel_tool_calls=false`. Actual Hermes history records one assistant message with both calls and two tool results. One target is written exactly once and acknowledged; the other remains absent with `not_dispatched`. Launcher exit 3 reports incomplete work. This is supplemental native protocol evidence, not live-model inference acceptance. |
+
+The first attempt to reuse the shared owner-recovery harness for the completion
+EIO record rejected its `pending` state before taking operator action: that
+harness initially selected only `unknown`. `journal-owner-recovery-first`
+retains the failure. No record is relabeled to satisfy a test. The installed
+operator bridge explicitly supports both pending and unknown records.
+`pending-owner-recovery` then exercises that installed operator procedure on
+the original authority. A forged owner signature is rejected without journal
+or resource change. Import of the trusted owner result preserves
+`previousState: pending` and `previousOutcome: null`; explicit delivery ACK
+permits one actual native read with unchanged resource bytes and no repeated
+write. The separate driver and exact commands are retained.
+
+These failures target **bridge operation-journal persistence**. They do not
+establish kernel receipt-store or signing-failure behavior. Those distinct
+shared-kernel acceptance cutpoints require separate evidence.
+
 ## Current action boundary
 
 | Action surface | Supported disposition and enforcement |

@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "previousState": "pending",
+  "previousOutcome": null,
+  "forgedOwnerRejected": true,
+  "explicitOriginalDeliveryAcknowledged": true,
+  "nativeReadDispatches": 1,
+  "newWrites": 0,
+  "nativeExitCode": 0,
+  "originalAuthorityPreserved": true
+}

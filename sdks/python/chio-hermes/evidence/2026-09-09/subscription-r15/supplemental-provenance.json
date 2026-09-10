@@ -1,0 +1,24 @@
+{
+  "claim": "Five precise supplemental native-host cutpoints; same r15 runtime artifact",
+  "wheelSha256": "625979d5331796e7aef5906e69e3e2c746796aa570291af026c305ed4227c818",
+  "faultInjector": {
+    "source": "/Users/connor/Medica/backbay/standalone/chio-codex-plugin/.worktrees/required-agent-integrations-20260909/scripts/subscription-faults.mjs",
+    "sha256": "cb23f444647929bb265c9cb6f7531545b25e06e851b00ad09881b957df5840e3"
+  },
+  "probeFiles": {
+    "scripts/probe_dispatch_cutpoints.py": "505152810e1d97515f9e2c508bff308cb0fd7c69e878c06e66f0defe3dd3ae82",
+    "scripts/probe_native_parallel.py": "5043750a926afecccfe2d9163dea5d5029e5f86b1e19e4e9a08bd0e3315778ed"
+  },
+  "validation": {
+    "ruff": "pass",
+    "pythonCompile": "pass"
+  },
+  "liveProviderCases": [
+    "cancel-before-dispatch",
+    "kernel-network-refused",
+    "journal-before-dispatch",
+    "journal-after-effect"
+  ],
+  "fixtureOnlyCase": "native-parallel",
+  "kernelReceiptStorageOrSigningFaultClaim": false
+}

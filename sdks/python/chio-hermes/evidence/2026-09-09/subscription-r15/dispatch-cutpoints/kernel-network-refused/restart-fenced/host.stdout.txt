@@ -1,0 +1,4 @@
+Refusal/blocker: the write was not dispatched.
+
+Tool returned:
+{"state":"not_dispatched","evidence":"unverified","requestId":"67e9ce80-7627-4f64-90af-5fa0f740048a:6d2b8550cedac16d7c77cab28ee1aa3aec196bae261947fef813b05982cc97f4","reason":"an unresolved operation fences this gateway; operator reconciliation required"}

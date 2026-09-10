@@ -1,0 +1,4 @@
+Stopped: the single write_file call returned an unsuccessful/uncertain result.
+
+Result:
+{"state":"unknown","evidence":"unverified","requestId":"a9a7be72-7964-4931-bd5a-fc14405d4c79:37de311380283d56052404183154d06f69a381afdb80fc971725e6fc865ab636","reason":"dispatch or persistence interrupted; no automatic retry"}

@@ -1,0 +1,3 @@
+Unsuccessful/uncertain result. I called mcp__chio__write_file exactly once and did not retry.
+
+Result: state unknown / unverified; dispatch or persistence interrupted.

@@ -1,0 +1,6 @@
+{
+  "exitCode": 1,
+  "stderr": "Gateway operator action failed: owner record lacks a trusted valid signature. No protected tool was dispatched.\n",
+  "journalUnchanged": true,
+  "protectedDispatch": false
+}

@@ -1,0 +1,23 @@
+[
+  {
+    "role": "user",
+    "content": "Call mcp__chio__write_file exactly once to write /workspace/hermes-cutpoint-66c78e452f49.txt with content \"original Hermes cutpoint effect\". Stop on any unsuccessful or uncertain result. Never retry.",
+    "tool_calls": null
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_5dostZaRuUrNgGDBKGdPJ6qF",
+        "call_id": "call_5dostZaRuUrNgGDBKGdPJ6qF",
+        "response_item_id": "fc_0a8b59ee1c3b67fc016aa2193ae47087d1b4881d26f95148f5",
+        "type": "function",
+        "function": {
+          "name": "mcp__chio__write_file",
+          "arguments": "{\"path\":\"/workspace/hermes-cutpoint-66c78e452f49.txt\",\"content\":\"original Hermes cutpoint effect\"}"
+        }
+      }
+    ]
+  }
+]

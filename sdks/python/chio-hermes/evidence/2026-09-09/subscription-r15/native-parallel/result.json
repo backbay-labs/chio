@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "liveInference": false,
+  "nativeToolCallsInOneAssistantMessage": 2,
+  "nativeToolResults": 2,
+  "newResourceDispatchRows": 1,
+  "oneTargetAbsent": true,
+  "completedVerifiedAndAcknowledged": 1,
+  "secondNotDispatched": true,
+  "launcherExitCode": 3,
+  "claim": "real native host processes an injected two-call batch; delivery fence permits only one effect"
+}

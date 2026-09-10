@@ -1,0 +1,3 @@
+Stopped immediately: the second write result was unsuccessful/uncertain.
+
+First write succeeded. Second write returned state="unknown", evidence="unverified", reason="execution outcome unknown; no automatic retry".
