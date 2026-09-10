@@ -242,9 +242,9 @@
       "bytes": 0
     },
     {
-      "path": "bb-connor--arc--binaries.stdout.json",
-      "sha256": "14b296f317e8748a300599faf086bae6bd9a545d42302f6f8426c63a1242f8f2",
-      "bytes": 75502
+      "path": "bb-connor--arc--binaries.stdout.json.gz",
+      "sha256": "e34400061b2b0bc6582059ade4f04aaf33a01b5b36cfe5b8bec2471965047a56",
+      "bytes": 14652
     },
     {
       "path": "bb-connor--arc--checks.meta.json",

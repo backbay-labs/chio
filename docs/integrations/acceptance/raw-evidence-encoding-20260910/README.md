@@ -49,3 +49,5 @@ PostgreSQL or runtime failure is inferred from these retained historical logs.
 Confidence: high in the exact failure cause and byte-preserving representation
 repair. Neither this packaging check nor the job's title establishes PostgreSQL
 test success.
+
+The historical binary-workflow API snapshot is also stored losslessly as gzip. Its old branch identifiers were being interpreted as current owned protocol versions by the unchanged version guard. The snapshot remains historical evidence; no guard exclusion was added.

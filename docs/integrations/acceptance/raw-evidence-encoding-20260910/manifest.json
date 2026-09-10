@@ -430,6 +430,19 @@
       "encoding": "gzip",
       "gzipMtime": 0,
       "roundTripMatchesOriginalGitBlob": true
+    },
+    {
+      "originalPath": "docs/integrations/acceptance/kernel-release-readiness-20260909/raw/hosted/bb-connor--arc--binaries.stdout.json",
+      "originalSourceCommit": "e60e03a993fece458aae314fbf3ab5c29f1b71bf",
+      "originalGitBlob": "99f853bc3a74632c26bff62ee0ecb4b3a735e398",
+      "originalBytes": 75502,
+      "originalSha256": "14b296f317e8748a300599faf086bae6bd9a545d42302f6f8426c63a1242f8f2",
+      "storedPath": "docs/integrations/acceptance/kernel-release-readiness-20260909/raw/hosted/bb-connor--arc--binaries.stdout.json.gz",
+      "storedBytes": 14652,
+      "storedSha256": "e34400061b2b0bc6582059ade4f04aaf33a01b5b36cfe5b8bec2471965047a56",
+      "encoding": "gzip",
+      "gzipMtime": 0,
+      "roundTripMatchesOriginalGitBlob": true
     }
   ],
   "originalChecksumManifests": [
