@@ -15,7 +15,7 @@ from nacl.signing import SigningKey, VerifyKey
 # -- Canonical JSON -----------------------------------------------------------
 
 def _canonical(obj: dict[str, Any]) -> bytes:
-    return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
 
 
 # -- Identities ---------------------------------------------------------------
@@ -63,13 +63,35 @@ def verify_sig(pk_hex: str, body: dict[str, Any], sig_hex: str) -> bool:
 
 # -- Capability body extraction -----------------------------------------------
 
+def wire_scope(scope: dict[str, Any]) -> dict[str, Any]:
+    """Use the Rust scope wire representation before signing a legacy v1 body.
+
+    Rust omits empty scope families and empty constraints. Signing their input
+    spelling instead causes signature verification to fail after typed decoding.
+    This adapter only normalizes serialization; it does not authorize delegation.
+    """
+    result = {}
+    for family, grants in scope.items():
+        if family not in {"grants", "resource_grants", "prompt_grants"}:
+            raise ValueError(f"Unknown scope family: {family}")
+        if grants:
+            result[family] = [
+                {key: value for key, value in grant.items()
+                 if value is not None and not (key == "constraints" and value == [])}
+                for grant in grants
+            ]
+    return result
+
+
 def cap_body(cap: dict[str, Any]) -> dict[str, Any]:
     b = {
         "id": cap["id"], "issuer": cap["issuer"], "subject": cap["subject"],
-        "scope": cap["scope"], "issued_at": cap["issued_at"], "expires_at": cap["expires_at"],
+        "scope": wire_scope(cap["scope"]), "issued_at": cap["issued_at"], "expires_at": cap["expires_at"],
     }
     if cap.get("delegation_chain"):
-        b["delegation_chain"] = cap["delegation_chain"]
+        b["delegation_chain"] = [{key: value for key, value in link.items()
+                                  if not (key == "attenuations" and value == [])}
+                                 for link in cap["delegation_chain"]]
     return b
 
 
@@ -95,7 +117,13 @@ def delegate(
     attenuations: list[dict] | None = None,
     cap_id: str | None = None,
 ) -> dict[str, Any]:
+    if parent["subject"] != delegator.pk:
+        raise ValueError("The delegator must be the parent capability subject")
+    if ttl <= 0:
+        raise ValueError("Delegation lifetime must be positive")
     now = int(time.time())
+    if now >= parent["expires_at"]:
+        raise ValueError("The parent capability expired")
     link = {
         "capability_id": parent["id"],
         "delegator": delegator.pk,
@@ -108,7 +136,7 @@ def delegate(
         "id": cap_id or f"cap-{uuid.uuid4().hex[:12]}",
         "issuer": delegator.pk,
         "subject": delegatee.pk,
-        "scope": scope,
+        "scope": wire_scope(scope),
         "issued_at": now,
         "expires_at": min(parent["expires_at"], now + ttl),
         "delegation_chain": [*parent.get("delegation_chain", []), link],

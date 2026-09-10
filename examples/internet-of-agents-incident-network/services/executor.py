@@ -140,9 +140,9 @@ def create_app() -> FastAPI:
             trust = TrustControl(payload.control_url, payload.service_token)
             budget = trust.charge_budget(
                 cap["id"], _grant_index(cap, "provider-ops", "disable_edge_rule"), cost,
-                max_invocations=grant.get("maxInvocations"),
-                max_cost_per_invocation=grant.get("maxCostPerInvocation", {}).get("units"),
-                max_total_cost_units=grant.get("maxTotalCost", {}).get("units"),
+                max_invocations=grant.get("max_invocations"),
+                max_cost_per_invocation=grant.get("max_cost_per_invocation", {}).get("units"),
+                max_total_cost_units=grant.get("max_total_cost", {}).get("units"),
             )
             if not budget.get("allowed", True):
                 return {"verdict": "deny", "reason": "budget_exceeded",

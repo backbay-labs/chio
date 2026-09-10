@@ -66,11 +66,11 @@ def _grant(
 ) -> dict:
     g: dict[str, Any] = {"server_id": server, "tool_name": tool, "operations": ops, "constraints": []}
     if max_invocations is not None:
-        g["maxInvocations"] = max_invocations
+        g["max_invocations"] = max_invocations
     if max_cost is not None:
-        g["maxTotalCost"] = _usd(max_cost)
+        g["max_total_cost"] = _usd(max_cost)
     if max_per_call is not None:
-        g["maxCostPerInvocation"] = _usd(max_per_call)
+        g["max_cost_per_invocation"] = _usd(max_per_call)
     return g
 
 
@@ -306,8 +306,8 @@ def main(argv: list[str] | None = None) -> int:
     sidecar_cap = trust.issue_capability(
         ids["commander-agent"].pk,
         _scope(
-            _grant("http-sidecar-client", "process_task", ["invoke"], max_cost=500, max_per_call=500),
-            _grant("http-sidecar-client", "execute", ["invoke"], max_cost=500, max_per_call=500),
+            {**_grant("chio_http_authority", "authorize_http_request", ["invoke"], max_invocations=1),
+             "constraints": [{"type": "path_prefix", "value": "/process-task"}]},
         ),
         ttl=1800,
     )
@@ -408,14 +408,16 @@ def _run_scenario(args, coord_req, task, vendor_cap, trust, out, cap_header=""):
 
     if args.mode == "happy-path":
         r = httpx.post(f"{coord_url}/process-task", json=coord_req, headers=hdr, timeout=30.0)
-        r.raise_for_status()
+        if not r.is_success:
+            raise RuntimeError(f"Provider request failed ({r.status_code}): {r.text[:2000]}")
         return r.json()
 
     if args.mode == "attenuation-deny":
         r = httpx.post(f"{coord_url}/process-task", json={
             **coord_req, "requested_service": "admin-api", "requested_rule": "global-rollback-v1",
         }, headers=hdr, timeout=30.0)
-        r.raise_for_status()
+        if not r.is_success:
+            raise RuntimeError(f"Provider request failed ({r.status_code}): {r.text[:2000]}")
         return r.json()
 
     # Deferred execution modes (revoke, expiry, approval)
