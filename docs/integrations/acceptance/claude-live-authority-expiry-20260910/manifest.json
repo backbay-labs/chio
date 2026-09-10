@@ -1,0 +1,328 @@
+{
+  "schema": "chio.qualification.raw-manifest.v1",
+  "fixtureSource": "7df0bd46d841e20f1e767e5ff79d9fdfb5937dc6",
+  "members": [
+    {
+      "path": "native/case/expiry-cutpoint.jsonl.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/expiry-cutpoint.jsonl",
+      "originalBytes": 9064,
+      "originalSha256": "a01c50418058f05eadf196803f980b1312ac64bc897b7c128fb1e596fb42753e",
+      "compressedSha256": "5bb947c494a762354c3875b2e19f9178d1c8a90200253f25525478294339192f"
+    },
+    {
+      "path": "native/case/identity.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/identity.json",
+      "originalBytes": 773,
+      "originalSha256": "c3960ec808511871b1c4656b123fbb5cabd6019daee6cdd1d805c8063e3f3ad6",
+      "compressedSha256": "631f316eda2605500d8e0d4d79ec106f17e31643109409a77321b7f240d2dedb"
+    },
+    {
+      "path": "native/case/in-flight-expiry/after.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/in-flight-expiry/after.json",
+      "originalBytes": 698,
+      "originalSha256": "f5ebac101b9e8d1bf24360f81c4d88f768d15dd12e556f70011ffc334b9ac61a",
+      "compressedSha256": "a014f8bf76e6cde52a00891f4aa3ac3df0f7d49c3bd385f8198558968813dcef"
+    },
+    {
+      "path": "native/case/in-flight-expiry/before.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/in-flight-expiry/before.json",
+      "originalBytes": 137,
+      "originalSha256": "096fe7ac523c61c768f3241237d0fea4ec7db0db70996514ffb570e6158c742b",
+      "compressedSha256": "bdf16a58650c4b500bd7bc45f83516d4a77fce227d10c65af2000f1b4aff4429"
+    },
+    {
+      "path": "native/case/in-flight-expiry/exit.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/in-flight-expiry/exit.json",
+      "originalBytes": 191,
+      "originalSha256": "ae206180e3dcd6f9fd9f1565687eb65076709818e479431a83fa269e4f3eaac3",
+      "compressedSha256": "a44df4057cc60c7389ba67d5c6062ae7d9248d4bc61e94fd9f23a5a6c0c57977"
+    },
+    {
+      "path": "native/case/in-flight-expiry/host.stderr.txt.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/in-flight-expiry/host.stderr.txt",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compressedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "native/case/in-flight-expiry/host.stdout.txt.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/in-flight-expiry/host.stdout.txt",
+      "originalBytes": 16864,
+      "originalSha256": "20b5202d1ddbfa29969490a2c3e89d8a5d49081736526cb9e62663b30678ce07",
+      "compressedSha256": "c61619121e96044111b85fa80781d8e594ad11b73e867ae951976789ff51c520"
+    },
+    {
+      "path": "native/case/in-flight-expiry/launch.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/in-flight-expiry/launch.json",
+      "originalBytes": 929,
+      "originalSha256": "e0fda6fd427896ebd704deabc4d5fafb693c0a600dde3e42f7a70e2cb2a7b94a",
+      "compressedSha256": "49bea42343164065563518f9f77aba17bc5ab6de186b8ce9a4352b3208c1bb53"
+    },
+    {
+      "path": "native/case/in-flight-expiry/model-relay.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/in-flight-expiry/model-relay.json",
+      "originalBytes": 1188,
+      "originalSha256": "e22539578f1492d215b7e1d773cc364ef126fb9eb48b9983049b732f04dfe5f0",
+      "compressedSha256": "3fa33400dd11408634f3d55da7161bcc1ba713ad296a0f1fac6a946872af9c9f"
+    },
+    {
+      "path": "native/case/in-flight-expiry/native-dispatch.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/in-flight-expiry/native-dispatch.json",
+      "originalBytes": 738,
+      "originalSha256": "135a8efb3291deb888710a6b5906c22f0184512e6910c4ae408e7d2eb1e60d6b",
+      "compressedSha256": "483288d5a81af200d80455a4b8e3d78c432fc4c00926a8f77f9f2dfebc51d923"
+    },
+    {
+      "path": "native/case/in-flight-expiry/native-results.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/in-flight-expiry/native-results.json",
+      "originalBytes": 4696,
+      "originalSha256": "91025ed3205a4aba181037f646d409a22277e0f3181a445d1fed63fbc56b6460",
+      "compressedSha256": "c93512cbc9b2195fff86ca8ee6731322d0258ba91d293c176e6a5287ebd29db8"
+    },
+    {
+      "path": "native/case/in-flight-expiry/prompt.txt.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/in-flight-expiry/prompt.txt",
+      "originalBytes": 609,
+      "originalSha256": "73c543802992508eae584884ed17ba94abb3f2a95bde1c3ca3c04454ccd2c369",
+      "compressedSha256": "3066b9e0a4217c921b9ec0ccb24a86e7ccb7ee5e7a06d830c8ed253cfd5a01c6"
+    },
+    {
+      "path": "native/case/in-flight-expiry-result.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/in-flight-expiry-result.json",
+      "originalBytes": 632,
+      "originalSha256": "3199572a3659326c856c88410e255d4bde48a42e8cad1bb500fe426393a90131",
+      "compressedSha256": "3e29fd4b695b59482afcd4f36bc5b6359ca0569d7df49de7de1684f96e128643"
+    },
+    {
+      "path": "native/case/journal-states.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/journal-states.json",
+      "originalBytes": 6659,
+      "originalSha256": "622a040a8414f2c79a8c3518b3c2d47a966005b85ae709d15fae5ce605e09f05",
+      "compressedSha256": "f23e4f7f11fffcd3aec5836834d9b6e3b695d17b59baf938d77fa9a3691a84d2"
+    },
+    {
+      "path": "native/case/live-expiry-binding.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/live-expiry-binding.json",
+      "originalBytes": 2264,
+      "originalSha256": "f44ef378cf693e85645e155554ec209e4e76f8f93c05df1453dbae7ca9c9c1de",
+      "compressedSha256": "80fb369c2c990bac73c4ca78403226ab738705871d1599eaac5d36a1948d5f90"
+    },
+    {
+      "path": "native/case/native-expiry-outcome.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/native-expiry-outcome.json",
+      "originalBytes": 458,
+      "originalSha256": "7fef9c12f4da2b280d08fc7214d41236877042b918fad7ae7cc78251afc44669",
+      "compressedSha256": "851aeebeb404d1edfead94db1c1ef5bd730d002967a13a0bbdfb700150adf1f2"
+    },
+    {
+      "path": "native/case/results.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/case/results.json",
+      "originalBytes": 996,
+      "originalSha256": "1d3616fe8bae3ca5a0c79cd697c0f26294cb4940e01fb31dbe34dc6397badd69",
+      "compressedSha256": "895dc35c4f242d11bfb57fae2c718a844f73a6463ffab54ff65ef78e82859bc0"
+    },
+    {
+      "path": "native/environment.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/environment.json",
+      "originalBytes": 1480,
+      "originalSha256": "071941cbc033fe428a016aa97de2e60d5e2dcf1749ec0e795dbaef9c7e29b49a",
+      "compressedSha256": "552585e0da916927bae3d6fdbc1d407e31a9597ddd46885639de5faaf69ae460"
+    },
+    {
+      "path": "native/installed-files.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/installed-files.json",
+      "originalBytes": 207958,
+      "originalSha256": "343cbb2559223a0c863976807f1c85d602738f1be22b04f165d8dfb2a731163a",
+      "compressedSha256": "8b34a9b2612e7ba9f7e71c42a7b85339f0a1cbe612b7b99f52470c589c1dba09"
+    },
+    {
+      "path": "native/owner-stop/after-stop-observation.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/owner-stop/after-stop-observation.json",
+      "originalBytes": 583,
+      "originalSha256": "093cff773a9231c51337e36695425f98522a8c82e873877dbc4036a81c20519c",
+      "compressedSha256": "6af3f399d2a648a9136214f6d70185174b6e81b0ebf696e8a5d18669c8f990b6"
+    },
+    {
+      "path": "native/owner-stop/observation.stderr.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/owner-stop/observation.stderr",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compressedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "native/owner-stop/record.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/owner-stop/record.json",
+      "originalBytes": 20589,
+      "originalSha256": "46e4246101ada14782f463a0d067685cea15c4e00c8b711d63bf79d26d40032b",
+      "compressedSha256": "c876325ea5112521316c150e7233e59126f4806e49bda9945e06cce825134ba2"
+    },
+    {
+      "path": "native/owner-stop/settled-result.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/owner-stop/settled-result.json",
+      "originalBytes": 439,
+      "originalSha256": "89cbfce05faf5a05bb306d012129f9a99ff2af028525b2875d75324264af7c3f",
+      "compressedSha256": "4f59e03494d28fa8db52e1b1e469663ab0c477fc43246fad941fc7f46035925f"
+    },
+    {
+      "path": "native/owner-stop/stop.stderr.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/owner-stop/stop.stderr",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compressedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "native/owner-stop/stop.stdout.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/owner-stop/stop.stdout",
+      "originalBytes": 67,
+      "originalSha256": "3f19de6969ec8dc13c43ac6f7d88bf9fca055b9e02093d978971aacf6285dff0",
+      "compressedSha256": "ff780f36d1094c747100514b9ca79291cc56fc9b8a7c5a94ca969b6e825ea20a"
+    },
+    {
+      "path": "native/policy.yaml.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/policy.yaml",
+      "originalBytes": 627,
+      "originalSha256": "e18402bad93bf4f9ba5d8aef4d6d5791d0e8edbab4395376e6fc483f58b25e5b",
+      "compressedSha256": "7948ddd37edc16116332a80598dc465b5a70db19d8043a3a082d41c12ab2f038"
+    },
+    {
+      "path": "native/qualification-inputs.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/qualification-inputs.json",
+      "originalBytes": 1212,
+      "originalSha256": "4befe21888738cd44f76db6292831386dec22ffe450ef32b01a2da157c3c04a3",
+      "compressedSha256": "39dfea8cf1bd29a9b746fca43cd143e00833ec24ade09493ee22667985d96e8e"
+    },
+    {
+      "path": "native/qualification-result.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/qualification-result.json",
+      "originalBytes": 121,
+      "originalSha256": "28f63dcf71b835c3eef4c4d97eab8fee337e0f8d13b6258d763f2553b2497a01",
+      "compressedSha256": "cd0d167b3140833e91c031d78578a12541a655df96eef37f4c8822afa2e71e36"
+    },
+    {
+      "path": "native/qualification.stderr.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/qualification.stderr",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compressedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "native/qualification.stdout.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/qualification.stdout",
+      "originalBytes": 66,
+      "originalSha256": "4e0ef031e0941a23ac33716774ede89ceb66e32b247b8e913dbc4c8080657930",
+      "compressedSha256": "c4c3544f8d5bcc428cb4ce057d033e7445d529d304b195c320b53531508c1b7e"
+    },
+    {
+      "path": "native/start-command.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/start-command.json",
+      "originalBytes": 723,
+      "originalSha256": "31acb033cb4f78adb6cc83805c7d1d3b0427ac2f9cab15b984591ee98a1d7c8d",
+      "compressedSha256": "74d64e7347357489593126ff0f37536605e226f605f5a006e5f33215810b91e3"
+    },
+    {
+      "path": "native/start-result.json.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/start-result.json",
+      "originalBytes": 59,
+      "originalSha256": "e3eaeb3c017fff7108a8f9ab91acee2e05f70c5967010fc6ec57f3da383ec5a7",
+      "compressedSha256": "97559d17742501666ce1fbad4e541492e6a155a5eb49e68978d785c023a731c0"
+    },
+    {
+      "path": "native/start.stderr.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/start.stderr",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compressedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "native/start.stdout.gz",
+      "source": "/tmp/chio-claude-live-expiry-20260910/start.stdout",
+      "originalBytes": 81,
+      "originalSha256": "1d5849e8b8e6e24894bd07efe464ab4e8887bab764819a61305e22aeb94924e1",
+      "compressedSha256": "cb22ce1464effa240561f34b2bc85ee99658e953416445283c1e9b117edac5c9"
+    },
+    {
+      "path": "controls/expiry-only.stderr.gz",
+      "source": "/tmp/chio-live-expiry-controls-20260910/expiry-only.stderr",
+      "originalBytes": 105,
+      "originalSha256": "132a9e53a6d6e534b6043d523d29435e02968cc104b086b09b9eb4702d3a39c5",
+      "compressedSha256": "b9f17dcf8c6155123e4c494b4b0a08577e9c2a0764912adb206acaaa6e8fe86c"
+    },
+    {
+      "path": "controls/expiry-only.stdout.gz",
+      "source": "/tmp/chio-live-expiry-controls-20260910/expiry-only.stdout",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compressedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "controls/result.json.gz",
+      "source": "/tmp/chio-live-expiry-controls-20260910/result.json",
+      "originalBytes": 183,
+      "originalSha256": "fdabd2601cf722276360fa0089f7583cd5cd92df2c9bf4e49438f41988b45eb8",
+      "compressedSha256": "7152afdd0a503339e2538855cf97b434124aae41472f69d897ec3d3ed0fb473e"
+    },
+    {
+      "path": "controls/unittest.stderr.gz",
+      "source": "/tmp/chio-live-expiry-controls-20260910/unittest.stderr",
+      "originalBytes": 1254,
+      "originalSha256": "1c9a2127c8a848882eeb99ed072e4cd39a5d6a938e1767ceb3475df832af5688",
+      "compressedSha256": "102553b860c6a94bbc27cff1ac85ad88c4b9028c8e36b5d6d48b7e0374cb5d0c"
+    },
+    {
+      "path": "controls/unittest.stdout.gz",
+      "source": "/tmp/chio-live-expiry-controls-20260910/unittest.stdout",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compressedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "source/scripts/acceptance/host-approvals.py.gz",
+      "source": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/live-host-capability-expiry-20260910/scripts/acceptance/host-approvals.py",
+      "originalBytes": 39583,
+      "originalSha256": "34d377ca421e487975136ae8d4f54eb0a7b42ce8d038d05e229d45690579f1f0",
+      "compressedSha256": "b4a5e7ba8ca695fd84de3c686afbec951d7de10ba88f8d8d22c2b597d4743ae2"
+    },
+    {
+      "path": "source/scripts/acceptance/expire-during-host.mjs.gz",
+      "source": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/live-host-capability-expiry-20260910/scripts/acceptance/expire-during-host.mjs",
+      "originalBytes": 5074,
+      "originalSha256": "1d6239ce9966b8cb44b05861cfb86a9ed2d445b0c398deb3e33e23d523f29bf1",
+      "compressedSha256": "3e7bd87ba261e29f8cb58a1e1d53c226654a16a8fd39b6ee9b6f0d7633907fd0"
+    },
+    {
+      "path": "source/integrations/required-agents/qualification/test_live_expiry_fixture.py.gz",
+      "source": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/live-host-capability-expiry-20260910/integrations/required-agents/qualification/test_live_expiry_fixture.py",
+      "originalBytes": 7016,
+      "originalSha256": "8a3f35ea1fb1274987d895dbddb3de21b7f2771bb6fac4cba54bad8be2414008",
+      "compressedSha256": "e67e889a4282a561a8730afa00c7779f5b2b63d00d5d530f4a022340d41a5068"
+    },
+    {
+      "path": "source/integrations/required-agents/serve-filesystem.py.gz",
+      "source": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/live-host-capability-expiry-20260910/integrations/required-agents/serve-filesystem.py",
+      "originalBytes": 7273,
+      "originalSha256": "24187dd47e497d226fb0b1f6652a006a2514cff6bc84fea9b35361e948ed6399",
+      "compressedSha256": "2e9e06ae17bc23f65544f397d89f16ff6f508bec2e1d582b60180d1907552504"
+    },
+    {
+      "path": "source/integrations/required-agents/prepare-session.py.gz",
+      "source": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/live-host-capability-expiry-20260910/integrations/required-agents/prepare-session.py",
+      "originalBytes": 10369,
+      "originalSha256": "efb4cbde3d032a461d804dc40e2bae32e179219f95ecddf0d112e37cfa14dd6c",
+      "compressedSha256": "b0fbb0cc0784eee5e0450d31371dfd0daf55e300880a6d1313f810b941db8f01"
+    },
+    {
+      "path": "source/integrations/required-agents/qualification/test_prepare_session_readiness.py.gz",
+      "source": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/live-host-capability-expiry-20260910/integrations/required-agents/qualification/test_prepare_session_readiness.py",
+      "originalBytes": 10466,
+      "originalSha256": "3438f2ee8381866709bb78b2cc301edcbcd7b39633bd6c7c71f073362103d8ff",
+      "compressedSha256": "f54f262646361a38d5eec14cc75e9b79fa7d5103cc8f0c34baf347f68e5e4b28"
+    },
+    {
+      "path": "source/owner-stop-record-driver.py.gz",
+      "source": "/tmp/chio-live-expiry-stop-20260910.py",
+      "originalBytes": 4210,
+      "originalSha256": "8357a15635b9edd841e682a1b7f69263ed800037422776d65aa02b17dca41942",
+      "compressedSha256": "ca5e118e8ffeed0bb3f91a862c5d5ac5c3f05d1b376bfb051549de3ebe96613e"
+    }
+  ]
+}
