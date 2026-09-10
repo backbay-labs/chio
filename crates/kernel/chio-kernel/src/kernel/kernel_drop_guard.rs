@@ -181,6 +181,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
         self.post_dispatch_reason = POST_DISPATCH_URL_ELICITATION_REASON;
         self.record_buffered_child_receipts()?;
         let receipt_metadata = self.kernel.ambiguous_dispatch_receipt_metadata(
+            self.request,
             self.budget_mutation,
             self.payment_authorization,
             self.receipt_context.extra_metadata.clone(),
@@ -481,6 +482,7 @@ impl Drop for PostAdmissionDropGuard<'_> {
         // log. The retained reservations are marked in the receipt metadata
         // so the burned lease is auditable and operator-recoverable.
         let receipt_metadata = self.kernel.ambiguous_dispatch_receipt_metadata(
+            self.request,
             self.budget_mutation,
             self.payment_authorization,
             self.receipt_context.extra_metadata.clone(),
