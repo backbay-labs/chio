@@ -1,0 +1,33 @@
+{
+  "recordedAt": "2026-09-10T04:10:35.833259+00:00",
+  "failedSource": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+  "failedRun": 34434603153,
+  "failedJob": 102736959077,
+  "localSourceBeforeLockRefresh": "379c7f825868c9be61215996872f3bbfb3091202",
+  "command": "bash deploy/docker/chio-workspace/regenerate.sh --check",
+  "exitCode": 0,
+  "change": "Generated Docker lockfile adds existing libc dependency of chio-sqlite-file-identity; no crate version or production source change.",
+  "records": [
+    {
+      "original": "/tmp/chio-main-ci-failure-20260910.log",
+      "rawBytes": 365228,
+      "rawSha256": "737ef0a81ef175e163dc9cc168eaa57ebc4ed83d27cb48677b2827d2e762242a",
+      "archive": "hosted-main-failure.log.gz",
+      "archiveSha256": "c2348f17a26a81c2415d60f84e810ec1769aed3a83314e0924a9f7ab3dfeba34"
+    },
+    {
+      "original": "/tmp/chio-docker-workspace-refresh-20260910.log",
+      "rawBytes": 0,
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archive": "regenerate-write.log.gz",
+      "archiveSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+    },
+    {
+      "original": "/tmp/chio-docker-workspace-check-20260910.log",
+      "rawBytes": 0,
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archive": "regenerate-check.log.gz",
+      "archiveSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+    }
+  ]
+}
