@@ -21,6 +21,9 @@ import urllib.request
 IMAGE = "chio-required-agent-filesystem:20260909"
 PROTOCOL = "2025-11-25"
 NATIVE_APPROVAL_POLICY = Path(__file__).with_name("approval-policy.yaml").read_text()
+AUDIT_WRAPPER_SOURCE = Path(__file__).with_name("audit-tool-server.mjs")
+if not AUDIT_WRAPPER_SOURCE.is_file():
+    AUDIT_WRAPPER_SOURCE = Path(__file__).parent.parent / "filesystem" / "audit-tool-server.mjs"
 POLICY = """kernel:
   max_capability_ttl: 3600
   delegation_depth_limit: 0
@@ -73,6 +76,18 @@ def run(command, **kwargs):
     return result.stdout.strip()
 
 
+def validate_resource_image(image):
+    config = json.loads(run(["docker", "image", "inspect", "--format", "{{json .Config}}", image]))
+    if config.get("Entrypoint") != ["node", "/opt/resource/audit-tool-server.mjs"] or config.get("Cmd"):
+        raise ValueError("resource image must start the independent dispatch audit wrapper")
+    expected = hashlib.sha256(AUDIT_WRAPPER_SOURCE.read_bytes()).hexdigest()
+    actual = run(["docker", "run", "--rm", "--network", "none", "--read-only", "--entrypoint", "node", image,
+                  "-e", "const fs=require('fs'),crypto=require('crypto');process.stdout.write(crypto.createHash('sha256').update(fs.readFileSync('/opt/resource/audit-tool-server.mjs')).digest('hex'));"])
+    if actual != expected:
+        raise ValueError("resource image dispatch audit wrapper differs from the selected source")
+    return {"entrypoint": config["Entrypoint"], "auditWrapperSha256": actual}
+
+
 class Runtime:
     def __init__(self, binary, directory, ttl=3600, policy=None, barrier=False):
         self.binary, self.directory = binary, directory
@@ -84,6 +99,7 @@ class Runtime:
         self.policy.write_text(policy or POLICY.format(ttl=ttl))
         self.volume = "chio-qualification-" + secrets.token_hex(6)
         self.audit_volume = self.volume + "-audit"
+        self.remaining_volumes = [self.volume, self.audit_volume]
         self.agent_token, self.admin_token = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         self.log = (directory / "kernel.log").open("a")
         self.evidence = [{"runtime": {"volume": self.volume, "auditVolume": self.audit_volume,
@@ -214,12 +230,20 @@ class Runtime:
         return value
 
     def finish(self):
-        self.stop()
-        if self.preserve_volumes:
-            self.evidence.append({"retainedVolumes": [self.volume, self.audit_volume],
-                "reason": "preserve resource state for unresolved outcome or failed qualification; operator reconciliation required before removal"})
-        (self.directory / "raw.json").write_text(json.dumps(self.evidence, indent=2) + "\n")
-        self.log.close()
+        try:
+            self.stop()
+            self._finish_resource()
+        except Exception:
+            self.preserve_volumes = True
+            raise
+        finally:
+            if self.preserve_volumes:
+                self.evidence.append({"retainedVolumes": self.remaining_volumes,
+                    "reason": "preserve resource state for unresolved outcome or failed qualification; operator reconciliation required before removal"})
+            (self.directory / "raw.json").write_text(json.dumps(self.evidence, indent=2) + "\n")
+            self.log.close()
+
+    def _finish_resource(self):
         # Only this run's randomly named disposable owners and volumes are used.
         containers = run(["docker", "ps", "-aq", "--filter", f"volume={self.volume}"]).splitlines()
         if containers:
@@ -239,13 +263,14 @@ class Runtime:
                       (json.loads(line) for line in audit.splitlines() if line)]
             if actual != expected:
                 self.preserve_volumes = True
-                raise AssertionError("independent resource dispatch differs from the approved calls")
+                raise AssertionError(f"independent resource dispatch differs from the approved calls: expected {expected!r}, observed {actual!r}")
         if self.preserve_volumes:
             return
         for volume in [self.volume, self.audit_volume]:
             for attempt in range(30):
                 result = subprocess.run(["docker", "volume", "rm", volume], capture_output=True)
                 if result.returncode == 0:
+                    self.remaining_volumes.remove(volume)
                     break
                 time.sleep(0.1)
             else:
@@ -651,10 +676,11 @@ def main():
     if unknown:
         parser.error("unknown qualification cases: " + ", ".join(sorted(unknown)))
     IMAGE = run(["docker", "image", "inspect", "--format", "{{.Id}}", args.image])
+    resource_image = validate_resource_image(IMAGE)
     args.output.mkdir(parents=True, exist_ok=False)
     # Retain the exact tested driver source beside its hashes, so later
     # qualification-runner improvements cannot obscure historical evidence.
-    for source in [Path(__file__), Path(__file__).with_name("stdio_response_barrier.py"), Path(__file__).with_name("approval-policy.yaml")]:
+    for source in [Path(__file__), Path(__file__).with_name("stdio_response_barrier.py"), Path(__file__).with_name("approval-policy.yaml"), AUDIT_WRAPPER_SOURCE]:
         (args.output / source.name).write_bytes(source.read_bytes())
     manifest = {"startedAt": datetime.now(timezone.utc).isoformat(),
                 "sourceRevision": args.source_revision,
@@ -663,6 +689,7 @@ def main():
                 "binary": str(args.binary), "binarySha256": hashlib.sha256(args.binary.read_bytes()).hexdigest(),
                 "kernelVersion": run([str(args.binary), "--version"]),
                 "image": run(["docker", "image", "inspect", "--format", "{{.Id}}", IMAGE]),
+                "resourceImageValidation": resource_image,
                 "os": run(["sw_vers"]), "docker": run(["docker", "version", "--format", "{{.Client.Version}}"]),
                 "claim": "shared kernel qualification only, no host acceptance", "cases": []}
     for name, function, options in cases:
@@ -683,6 +710,7 @@ def main():
                         runtime.preserve_volumes = True
                     runtime.finish()
                 except Exception as error:
+                    result["status"] = "failed"
                     result["cleanupError"] = str(error)
         manifest["cases"].append(result)
         (args.output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

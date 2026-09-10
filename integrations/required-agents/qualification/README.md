@@ -15,8 +15,15 @@ responses and independent resource observations.
 python3 shared_kernel.py \
   --binary /absolute/path/to/qualified/chio \
   --source-revision FULL_SOURCE_COMMIT \
+  --image sha256:FULL_QUALIFIED_RESOURCE_IMAGE_ID \
   --output /tmp/chio-shared-qualification-UNIQUE
 ```
+
+Pin the qualified resource image explicitly. A mutable local tag can select an
+older server without the independent dispatch observer. Before starting any
+kernel or creating resource volumes, the runner requires the audit wrapper as
+the image entrypoint and verifies its bytes against the adjacent delivery
+source. This identity check does not replace the actual dispatch observations.
 
 Use `--cases grant-budget,parallel-grant-budget` to rerun specific cases.
 The output directory must not already exist. Each case creates its own port,
@@ -28,6 +35,9 @@ modify agent profiles or stop other kernel processes.
 Unknown case names are errors. Assertion or cleanup failure, or replacement
 of the tested binary during the run, makes the runner exit nonzero. The exact
 driver and barrier source are retained beside each run's manifest.
+An independent-observer or cleanup failure also sets that case's manifest
+status to `failed`, even when its earlier request assertions passed. Failure
+records name the retained disposable volumes for operator reconciliation.
 
 Cases:
 

@@ -1,0 +1,324 @@
+[
+  {
+    "path": "raw/audited-resource-reproduction/approval-policy.yaml.gz",
+    "sha256": "8b65a8e035331c98c30e935bfa7ccdc6e7886956a34145adc89bc9303a665b96",
+    "decompressedSha256": "949ed40e3dce6f2f02b5a5246ea9d0adc7d4bfd45faeff0e18d748a6f0314650",
+    "decompressedBytes": 506,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/audited-resource-reproduction/approval-policy.yaml"
+  },
+  {
+    "path": "raw/audited-resource-reproduction/approved-grant-budget/kernel.log.gz",
+    "sha256": "89a27ce5ad702b2f39ac6a3678c76f92128d514f9944c8923c87e9f8a9f411d3",
+    "decompressedSha256": "9a830f2f374ae04db8a78db70d7820498f04dcddd23379d4f2432409f571d118",
+    "decompressedBytes": 446,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/audited-resource-reproduction/approved-grant-budget/kernel.log"
+  },
+  {
+    "path": "raw/audited-resource-reproduction/approved-grant-budget/policy.yaml.gz",
+    "sha256": "70d8d25b5d97d2bc5639365782c002e69e008d68cc64fcc481d785cb7807122b",
+    "decompressedSha256": "6c6b1b00180aec1b23dc80fdab660664130771f888ed94ee9c1fbfc2889d06fd",
+    "decompressedBytes": 505,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/audited-resource-reproduction/approved-grant-budget/policy.yaml"
+  },
+  {
+    "path": "raw/audited-resource-reproduction/approved-grant-budget/raw.json.gz",
+    "sha256": "41f43f7a56bf156c0d0ef405a661fced52ff435f9b02f2f40914603005733536",
+    "decompressedSha256": "ea026e5e94a8cc5aeb3a9555e239626fc9eb2221bce3add45735e3af74c7656e",
+    "decompressedBytes": 52832,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/audited-resource-reproduction/approved-grant-budget/raw.json"
+  },
+  {
+    "path": "raw/audited-resource-reproduction/approved-grant-budget/resource-dispatch.jsonl.gz",
+    "sha256": "23cf85ce38f749aa66777db91461ff3a176f6179ba088cfc97a9dc650d58e9d8",
+    "decompressedSha256": "dc08af14f2eadb5d7e50b91a54098f39e5e6e2cce07a6f5172dfe300506a5d9a",
+    "decompressedBytes": 740,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/audited-resource-reproduction/approved-grant-budget/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/audited-resource-reproduction/bounded-approval-workflow/kernel.log.gz",
+    "sha256": "aee1ecbb05503c8b1ef34edd31952d34ab3e161788e3299416c1b76de5a65fca",
+    "decompressedSha256": "535ecd7f941f9adcc53b4df4115d86ab9e9fc35ba950de1425a81ef789836f43",
+    "decompressedBytes": 56,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/audited-resource-reproduction/bounded-approval-workflow/kernel.log"
+  },
+  {
+    "path": "raw/audited-resource-reproduction/bounded-approval-workflow/policy.yaml.gz",
+    "sha256": "8b65a8e035331c98c30e935bfa7ccdc6e7886956a34145adc89bc9303a665b96",
+    "decompressedSha256": "949ed40e3dce6f2f02b5a5246ea9d0adc7d4bfd45faeff0e18d748a6f0314650",
+    "decompressedBytes": 506,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/audited-resource-reproduction/bounded-approval-workflow/policy.yaml"
+  },
+  {
+    "path": "raw/audited-resource-reproduction/bounded-approval-workflow/raw.json.gz",
+    "sha256": "afb4ee30bbb0ebe47964a764598b55065c8045557f109e152a98375178a2f449",
+    "decompressedSha256": "8174edfebee501846da20d75266fd3e3587af61c5cd0515e234d4ec2f9b0e13a",
+    "decompressedBytes": 2526,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/audited-resource-reproduction/bounded-approval-workflow/raw.json"
+  },
+  {
+    "path": "raw/audited-resource-reproduction/bounded-approval-workflow/resource-dispatch.jsonl.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/audited-resource-reproduction/bounded-approval-workflow/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/audited-resource-reproduction/manifest.json.gz",
+    "sha256": "6fcf10df7977bdba284b326f9fa5ed9c93d51c7f0cd1a545fdc628d13c2f42a0",
+    "decompressedSha256": "3d7561c5b3020f8d4735ab648618c208643d268b7079cbe949c2563a9032c9de",
+    "decompressedBytes": 1127,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/audited-resource-reproduction/manifest.json"
+  },
+  {
+    "path": "raw/audited-resource-reproduction/shared_kernel.py.gz",
+    "sha256": "dea84046329e5faeb5ca1c33b3b15b9438e7758bdbaa149f653dc497cb14f27e",
+    "decompressedSha256": "0d100b8836de951c3e3ac5f6c0830c71c8d25eb50f0bfef20443832246a49e22",
+    "decompressedBytes": 38395,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/audited-resource-reproduction/shared_kernel.py"
+  },
+  {
+    "path": "raw/audited-resource-reproduction/stdio_response_barrier.py.gz",
+    "sha256": "d056bdbe850a320c41e1ae5dedc1a1ffa3b4f6024783c1161cfd101cd1694aff",
+    "decompressedSha256": "a690f141d14fb3b9a18a8541e89bb5eabf76a18f71e504ad16cd2878bec398b6",
+    "decompressedBytes": 1775,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/audited-resource-reproduction/stdio_response_barrier.py"
+  },
+  {
+    "path": "raw/investigation/approved-grant-budget-original-reinspection.json.gz",
+    "sha256": "f8a37e2c644e2f74a6dffb92cfb452c7b6572fb114a14fc8b0cb2860c59499ad",
+    "decompressedSha256": "77a57f7ec36a2fac939aebf64c80cbf7b2e2afd7712fc8636cd024859b284d5d",
+    "decompressedBytes": 523,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/approved-grant-budget-original-reinspection.json"
+  },
+  {
+    "path": "raw/investigation/bounded-approval-workflow-original-reinspection.json.gz",
+    "sha256": "0bba89ee639855bea8b0cd0f797c95ef079624990a759653c9f224da6e4a971f",
+    "decompressedSha256": "f17c5e583a95b9ac60ebbbe7fb8ca30035935adbdd7680ded3f2bdae6ccc316f",
+    "decompressedBytes": 526,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/bounded-approval-workflow-original-reinspection.json"
+  },
+  {
+    "path": "raw/investigation/image-identities.json.gz",
+    "sha256": "d3127feb349ab494ff9cd0c4896aff6cc5c5f41e630a24641d20e3262fac9613",
+    "decompressedSha256": "6d95928cb3c964de62eef4d8d8dc5355957fcc2a0a7695082130fdc78f33b248",
+    "decompressedBytes": 458,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/image-identities.json"
+  },
+  {
+    "path": "raw/investigation/repaired-driver-reproduction.stderr.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction.stderr"
+  },
+  {
+    "path": "raw/investigation/repaired-driver-reproduction.stdout.gz",
+    "sha256": "0d28f0d8486a5f84c7049daa91795d945d05ba8bbae89e6c21dacb9362d512fc",
+    "decompressedSha256": "756fc59c212bcd63365233837325fa546bf1f98db0eb1df04e77ba69988ac4ff",
+    "decompressedBytes": 112,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction.stdout"
+  },
+  {
+    "path": "raw/investigation/reporting-tests.log.gz",
+    "sha256": "0e586a2409efea559b0089d154598d97c7181281a38f92cccee366650c892632",
+    "decompressedSha256": "77a6cd2848cb7cfbe323ad951a993de4986ae861c4e3ade14f9a6ea53c048f53",
+    "decompressedBytes": 829,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/reporting-tests.log"
+  },
+  {
+    "path": "raw/investigation/unaudited-refusal.json.gz",
+    "sha256": "4c57b055e9e2416bc459dc9e4fd468f41a32f22d55d8d827368a0c43d3c0eb9d",
+    "decompressedSha256": "4922b2a038ae62ecc56417271b9aa40bdf59c413939c813c813fedc990154c51",
+    "decompressedBytes": 732,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/unaudited-refusal.json"
+  },
+  {
+    "path": "raw/investigation/unaudited-refusal.stderr.gz",
+    "sha256": "c5357b085cf7d5281bd59334c2819cd6f02f5304a826c3c0a6ecf1bb51494cb1",
+    "decompressedSha256": "743136c6a9f614ea5de84bf4f2967703dd2c5358cf21b9230ec97ac3a24d1396",
+    "decompressedBytes": 871,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/unaudited-refusal.stderr"
+  },
+  {
+    "path": "raw/investigation/unaudited-refusal.stdout.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/unaudited-refusal.stdout"
+  },
+  {
+    "path": "raw/original-unaudited/approval-policy.yaml.gz",
+    "sha256": "8b65a8e035331c98c30e935bfa7ccdc6e7886956a34145adc89bc9303a665b96",
+    "decompressedSha256": "949ed40e3dce6f2f02b5a5246ea9d0adc7d4bfd45faeff0e18d748a6f0314650",
+    "decompressedBytes": 506,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approval-policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited/approved-grant-budget/kernel.log.gz",
+    "sha256": "475d442e260f5224d70e5e659e82d431221416a74707f19682cdf5a18ce2095c",
+    "decompressedSha256": "30ba0b38ed72e1aff4cb9602ba85d623f0cb6f3850f9b9e438c2352f3370a624",
+    "decompressedBytes": 446,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approved-grant-budget/kernel.log"
+  },
+  {
+    "path": "raw/original-unaudited/approved-grant-budget/policy.yaml.gz",
+    "sha256": "70d8d25b5d97d2bc5639365782c002e69e008d68cc64fcc481d785cb7807122b",
+    "decompressedSha256": "6c6b1b00180aec1b23dc80fdab660664130771f888ed94ee9c1fbfc2889d06fd",
+    "decompressedBytes": 505,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approved-grant-budget/policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited/approved-grant-budget/raw.json.gz",
+    "sha256": "c1d0e70093cc817894b1e9eca0fc5466d94d7fefaaa141395224b7894813a08a",
+    "decompressedSha256": "61b6c4019b86255ba5d555bd1e136ec7c08a09d1a8029b75f8304129a26f03cc",
+    "decompressedBytes": 52832,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approved-grant-budget/raw.json"
+  },
+  {
+    "path": "raw/original-unaudited/approved-grant-budget/resource-dispatch.jsonl.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approved-grant-budget/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/original-unaudited/bounded-approval-workflow/kernel.log.gz",
+    "sha256": "30330ec3f37c6d1a8ec6b480dfdbf7fa1346a32ce0c791935e14b76dd0c28e83",
+    "decompressedSha256": "fd24b331d0d3ddaea05b8bdc59d08b06be6a88cfdadce3c631c3fcd6b47262e4",
+    "decompressedBytes": 863,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/bounded-approval-workflow/kernel.log"
+  },
+  {
+    "path": "raw/original-unaudited/bounded-approval-workflow/policy.yaml.gz",
+    "sha256": "8b65a8e035331c98c30e935bfa7ccdc6e7886956a34145adc89bc9303a665b96",
+    "decompressedSha256": "949ed40e3dce6f2f02b5a5246ea9d0adc7d4bfd45faeff0e18d748a6f0314650",
+    "decompressedBytes": 506,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/bounded-approval-workflow/policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited/bounded-approval-workflow/raw.json.gz",
+    "sha256": "76801eb78409440a1e255fab2bfa492d63e1e79a22237ccad61499589ef77c62",
+    "decompressedSha256": "3d8fb827691dfb2e6f2b1cc434a0445ed932596503d11725109a61bc99db964e",
+    "decompressedBytes": 97969,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/bounded-approval-workflow/raw.json"
+  },
+  {
+    "path": "raw/original-unaudited/bounded-approval-workflow/resource-dispatch.jsonl.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/bounded-approval-workflow/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/original-unaudited/manifest.json.gz",
+    "sha256": "7eece2d59681079fda42f5c35fed1cf05e921d8de602d7798350809286c8a6b0",
+    "decompressedSha256": "ead7697dc164ff48d513bdffb64d136a40eaed3e8d93b361968d7128e2a15d7c",
+    "decompressedBytes": 1870,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/manifest.json"
+  },
+  {
+    "path": "raw/original-unaudited/shared_kernel.py.gz",
+    "sha256": "dea84046329e5faeb5ca1c33b3b15b9438e7758bdbaa149f653dc497cb14f27e",
+    "decompressedSha256": "0d100b8836de951c3e3ac5f6c0830c71c8d25eb50f0bfef20443832246a49e22",
+    "decompressedBytes": 38395,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/shared_kernel.py"
+  },
+  {
+    "path": "raw/original-unaudited/stdio_response_barrier.py.gz",
+    "sha256": "d056bdbe850a320c41e1ae5dedc1a1ffa3b4f6024783c1161cfd101cd1694aff",
+    "decompressedSha256": "a690f141d14fb3b9a18a8541e89bb5eabf76a18f71e504ad16cd2878bec398b6",
+    "decompressedBytes": 1775,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/stdio_response_barrier.py"
+  },
+  {
+    "path": "raw/repaired-driver-reproduction/approval-policy.yaml.gz",
+    "sha256": "8b65a8e035331c98c30e935bfa7ccdc6e7886956a34145adc89bc9303a665b96",
+    "decompressedSha256": "949ed40e3dce6f2f02b5a5246ea9d0adc7d4bfd45faeff0e18d748a6f0314650",
+    "decompressedBytes": 506,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction/approval-policy.yaml"
+  },
+  {
+    "path": "raw/repaired-driver-reproduction/approved-grant-budget/kernel.log.gz",
+    "sha256": "72bedd2de6d4863f94358c0c6ce03d8211f119ce4f5385e7071237ba4b04d5cb",
+    "decompressedSha256": "6bd61542bcdf2183375eb1bc8d1fd467039ba202bca75c9c372dbb2e5cab20fd",
+    "decompressedBytes": 446,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction/approved-grant-budget/kernel.log"
+  },
+  {
+    "path": "raw/repaired-driver-reproduction/approved-grant-budget/policy.yaml.gz",
+    "sha256": "70d8d25b5d97d2bc5639365782c002e69e008d68cc64fcc481d785cb7807122b",
+    "decompressedSha256": "6c6b1b00180aec1b23dc80fdab660664130771f888ed94ee9c1fbfc2889d06fd",
+    "decompressedBytes": 505,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction/approved-grant-budget/policy.yaml"
+  },
+  {
+    "path": "raw/repaired-driver-reproduction/approved-grant-budget/raw.json.gz",
+    "sha256": "d00e4eea896e124be500c80b194678390fce20b3fa99019cc8a4b38dafd4babe",
+    "decompressedSha256": "c847dc7a6e35ad85517da1321fabc8472118cc89d2b25e629ad86d033f821ba3",
+    "decompressedBytes": 52832,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction/approved-grant-budget/raw.json"
+  },
+  {
+    "path": "raw/repaired-driver-reproduction/approved-grant-budget/resource-dispatch.jsonl.gz",
+    "sha256": "78cf9e5cbaf49cda9501a0bf55d81341dda5096a36b828fc38f75da38c891294",
+    "decompressedSha256": "a7dc7dce1f702387dfce3a43dc044ecc652646c1ec7dd882a14283492694054d",
+    "decompressedBytes": 740,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction/approved-grant-budget/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/repaired-driver-reproduction/audit-tool-server.mjs.gz",
+    "sha256": "7ea3b0b90e4643752ba79d768df5fd2f18714d1ed48eb04425d14ddf1ddbcfa5",
+    "decompressedSha256": "23c83a3568a5d42af9a99e8bc837d4f17ef5b5bb18efeec4af502b5f7779c2ef",
+    "decompressedBytes": 3242,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction/audit-tool-server.mjs"
+  },
+  {
+    "path": "raw/repaired-driver-reproduction/bounded-approval-workflow/kernel.log.gz",
+    "sha256": "a67f067008a048c15e8a481c5c976dd8abda877f0230f838b5e967fe03d8e969",
+    "decompressedSha256": "f35415c7d0630ea4f499e5c59e97e48911004089d280843a8da157e8ac9ba3a7",
+    "decompressedBytes": 863,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction/bounded-approval-workflow/kernel.log"
+  },
+  {
+    "path": "raw/repaired-driver-reproduction/bounded-approval-workflow/policy.yaml.gz",
+    "sha256": "8b65a8e035331c98c30e935bfa7ccdc6e7886956a34145adc89bc9303a665b96",
+    "decompressedSha256": "949ed40e3dce6f2f02b5a5246ea9d0adc7d4bfd45faeff0e18d748a6f0314650",
+    "decompressedBytes": 506,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction/bounded-approval-workflow/policy.yaml"
+  },
+  {
+    "path": "raw/repaired-driver-reproduction/bounded-approval-workflow/raw.json.gz",
+    "sha256": "ae387c796e236262ceeb985b790f77e766d80b98ddb04e8a10cbee37a32c73a4",
+    "decompressedSha256": "bb0c4c643c0d755654fa38b581758cd222d055a6319c788a205f75dfc49d65e7",
+    "decompressedBytes": 97969,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction/bounded-approval-workflow/raw.json"
+  },
+  {
+    "path": "raw/repaired-driver-reproduction/bounded-approval-workflow/resource-dispatch.jsonl.gz",
+    "sha256": "888469fc691414fdf2e114e1c93aa557de466dbcacd0dad1ff043ee19d5499e0",
+    "decompressedSha256": "523fa87c098afcf92160303f9c840dfb3e46dab55823799f4d9ddeafc4138b7e",
+    "decompressedBytes": 356,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction/bounded-approval-workflow/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/repaired-driver-reproduction/manifest.json.gz",
+    "sha256": "8b09b456f42465bc7c38ddf3e1da3a67a0aa02380d0ff98022e1bf9ad81a129f",
+    "decompressedSha256": "a4a8a1da4c2b332d988f29bbf4d07c2b3df1d0c2c61e361052f1b9858c4fc166",
+    "decompressedBytes": 1212,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction/manifest.json"
+  },
+  {
+    "path": "raw/repaired-driver-reproduction/shared_kernel.py.gz",
+    "sha256": "57570c8d158d1718b1bc10b916085d539582551cec2e673c449b2a24e198e0dc",
+    "decompressedSha256": "7576929ba3f28e2115216803898e5304d7dfce274805d7e745d8d376f471d92b",
+    "decompressedBytes": 40083,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction/shared_kernel.py"
+  },
+  {
+    "path": "raw/repaired-driver-reproduction/stdio_response_barrier.py.gz",
+    "sha256": "d056bdbe850a320c41e1ae5dedc1a1ffa3b4f6024783c1161cfd101cd1694aff",
+    "decompressedSha256": "a690f141d14fb3b9a18a8541e89bb5eabf76a18f71e504ad16cd2878bec398b6",
+    "decompressedBytes": 1775,
+    "sourcePath": "/tmp/chio-static-approval-dispatch-investigation-20260910/repaired-driver-reproduction/stdio_response_barrier.py"
+  }
+]
