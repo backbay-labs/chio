@@ -31,8 +31,10 @@ single retained failed preparation. Earlier 10-test source observations remain
 separate. The recorded intermediate 11-test failure was fixture state leaking
 between independent negative subcases; its fix did not change runtime validation.
 
-Real final-kernel retesting remains pending while the program's Docker capacity
-lane is held. No host acceptance, public delivery or new kernel binary is claimed
-by this helper repair. The assigned resource-owner README now selects the
+The actual cold local successor observation is now retained separately in
+`actual-cold-successor/`. The exact repaired helper prepared one session on its
+first invocation against the final local static kernel; the owner was then
+stopped with durable state retained. No host acceptance, public delivery or new
+kernel binary is claimed by this helper repair. The assigned resource-owner README now selects the
 explicit local RC provenance and immutable observer image while retaining
 publication and final artifact qualification gates.

@@ -1,0 +1,56 @@
+[
+  {
+    "path": "identity.json.gz",
+    "sourceSha256": "77614241f8efcfedaf15f0da035fa60a72be979f6341b1ae539f07fa8b094bfb",
+    "sourceBytes": 1702,
+    "sha256": "0ebfefb55b8ba15e0abdc9a2860ad319add2781f3d00a5863fcf42d6e8a8beda"
+  },
+  {
+    "path": "installed-identity.json.gz",
+    "sourceSha256": "c31f6c19297e8b76e226a642d6ea5b0ea7b3549c018473878b41c6c49c55396c",
+    "sourceBytes": 249,
+    "sha256": "e68bb4ea011954458435b2531f3eb6cfd613375f4399dc7b486db0d691791b30"
+  },
+  {
+    "path": "owner-commands.json.gz",
+    "sourceSha256": "4c6c5944822be17c03dfa95dc2b35e4c6cfcc5d0f43132b20d99f926a7642914",
+    "sourceBytes": 1842,
+    "sha256": "2642e40a00bdff90c8d4bc88f42e3280801d9d5eebafb0c3697baeefd035aaef"
+  },
+  {
+    "path": "owner-start.stdout.txt.gz",
+    "sourceSha256": "c820613b2ea361858701c1338ed25e545965e7dbfafdfd4a522f8f2f5d382ef7",
+    "sourceBytes": 81,
+    "sha256": "7828172b7deff85ad8abbb9c5fdf6cb9e2c5bcd3814ce9bf96060a8a4f50c0ef"
+  },
+  {
+    "path": "owner-start.stderr.txt.gz",
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sourceBytes": 0,
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+  },
+  {
+    "path": "prepare.stdout.txt.gz",
+    "sourceSha256": "7e06e8c1c443fc54e91ce2f5da174b9e025cfd89c488b08f2cf09da5bc17465f",
+    "sourceBytes": 136,
+    "sha256": "2d54c3df956f37924d69dd906ae7f4c0cf09c3cb751f56b15348a9979253ebd9"
+  },
+  {
+    "path": "prepare.stderr.txt.gz",
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sourceBytes": 0,
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+  },
+  {
+    "path": "operation-result.json.gz",
+    "sourceSha256": "0658345a14002add4ed66d30a717e57ce5858be50263393267733d5227d8849c",
+    "sourceBytes": 861,
+    "sha256": "76de266ddf61fae1c78ca000e7e0e524035451ae09fa37cabdc4fd80e31a0216"
+  },
+  {
+    "path": "owner-stop.json.gz",
+    "sourceSha256": "f3da1b47ed0fbc887f78d0d3982e283a67ec1b07636c7cd4856826f263f59d78",
+    "sourceBytes": 269,
+    "sha256": "1395fb16e81330a215b798b97cec5dd12630fd0033d5d15008ef1101e1bc5513"
+  }
+]
