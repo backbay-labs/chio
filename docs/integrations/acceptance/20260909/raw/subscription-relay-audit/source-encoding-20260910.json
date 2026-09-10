@@ -1,0 +1,19 @@
+{
+  "encoding": "gzip",
+  "compressionLevel": 9,
+  "gzipFilename": "",
+  "gzipMtime": 0,
+  "originalCommit": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+  "files": [
+    {
+      "logicalPath": "sources/claude/scripts/restricted.mjs",
+      "originalGitBlob": "d936f3c0fc640e071a649334e516ebce9d3d048f",
+      "originalBytes": 13641,
+      "originalSha256": "dc13f8ea597ec41522fff2dc6101aad5e74a29aacf413540e017f83825479608",
+      "storedPath": "sources/claude/scripts/restricted.mjs.gz",
+      "storedBytes": 4870,
+      "storedSha256": "e0372a6c16a2fe438313ccee1104f630c47e473ad5727b37ebfef13b0c75be8b"
+    }
+  ],
+  "verification": "Decompressed content compared byte-for-byte with the named Git blob. The audit snapshot metadata continues to identify the original logical path and decoded bytes."
+}
