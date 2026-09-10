@@ -1,0 +1,1090 @@
+[
+  {
+    "path": "raw/initial/chio-bridge.stderr.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio-bridge.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/initial/chio-bridge.stdout.json.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio-bridge.stdout.json",
+    "sourceBytes": 608,
+    "sourceSha256": "27302b21ab6ae753fe9046a7cac3ae3797306a2e63331e2dabab6251972a4f83",
+    "sha256": "3155765f96ad7dba0b1a0189e7c91062258a5bfadb3844c80ed406f8a231d382",
+    "compressedBytes": 404
+  },
+  {
+    "path": "raw/initial/chio-claude-code-plugin.stderr.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio-claude-code-plugin.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/initial/chio-claude-code-plugin.stdout.json.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio-claude-code-plugin.stdout.json",
+    "sourceBytes": 642,
+    "sourceSha256": "6dfd7bd6acd01ac60e0d8418c1d57f1b6abebd5640cb6ee526316017754284f0",
+    "sha256": "babd633d4b27bf872b113f4380fbf7a6fbf912258a566d029d6e4ca22dab2460",
+    "compressedBytes": 417
+  },
+  {
+    "path": "raw/initial/chio-codex-plugin.stderr.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio-codex-plugin.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/initial/chio-codex-plugin.stdout.json.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio-codex-plugin.stdout.json",
+    "sourceBytes": 620,
+    "sourceSha256": "142697820c63457759c3bd66b5af25a87ce9d3819d037650b43718cf15d57f53",
+    "sha256": "0b9ce8905eaf7ff2a8e07f521c83e1411e0ad9cac92a271a222065207d5d26f1",
+    "compressedBytes": 406
+  },
+  {
+    "path": "raw/initial/chio-cursor-plugin.stderr.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio-cursor-plugin.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/initial/chio-cursor-plugin.stdout.json.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio-cursor-plugin.stdout.json",
+    "sourceBytes": 622,
+    "sourceSha256": "9a70803fe1a4197051f598cec61e356284c3e76d893a933a195fff6408939b77",
+    "sha256": "200874c4a51ae9485b962cf4db117345b52598f64c2dd638048fa32f9f686171",
+    "compressedBytes": 407
+  },
+  {
+    "path": "raw/initial/chio-open-claw-plugin.stderr.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio-open-claw-plugin.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/initial/chio-open-claw-plugin.stdout.json.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio-open-claw-plugin.stdout.json",
+    "sourceBytes": 628,
+    "sourceSha256": "ee4da1966e180f2e94b60885a0adae97b536f50cebebb5716b9e584e11c975de",
+    "sha256": "5d3d09e5ddfe1b4c5e7ffefd2ba71cce94c6517102d45b2537b6d324cf188361",
+    "compressedBytes": 408
+  },
+  {
+    "path": "raw/initial/chio-pi-plugin.stderr.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio-pi-plugin.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/initial/chio-pi-plugin.stdout.json.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio-pi-plugin.stdout.json",
+    "sourceBytes": 599,
+    "sourceSha256": "3fb75078fa30a171c50e31d8ad430998ba07f1b7215468c76b8d5fbce5657b7e",
+    "sha256": "1a58ee35310e451909293c065a337c8d9680941f2b602d73a16b1d3572762d22",
+    "compressedBytes": 395
+  },
+  {
+    "path": "raw/initial/chio-test-harness.stderr.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio-test-harness.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/initial/chio-test-harness.stdout.json.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio-test-harness.stdout.json",
+    "sourceBytes": 910,
+    "sourceSha256": "8fa739211314f8f84f1f5348bf0e0768298643c3de22321e847c089667e0cc03",
+    "sha256": "56e4e72f72370e631d09fd959a83c091746d6254732afb2fc7ffa417276dded5",
+    "compressedBytes": 431
+  },
+  {
+    "path": "raw/initial/chio.stderr.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/initial/chio.stdout.json.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/chio.stdout.json",
+    "sourceBytes": 31477,
+    "sourceSha256": "cdb613d9396663d8971cd495b565309d93da7df5fe28810a4acdfb6c73ca1c48",
+    "sha256": "21addccc98753efb21f69fd36b590a8cd8ba032015b0afa816168b80a5479522",
+    "compressedBytes": 3894
+  },
+  {
+    "path": "raw/initial/summary.json.gz",
+    "originalPath": "/tmp/chio-static-source-ci-checkpoint-20260910/summary.json",
+    "sourceBytes": 2686,
+    "sourceSha256": "7397df1f2df61e14edb2a14356bf8fda3651d243764d896c944c3cb19963ebfa",
+    "sha256": "326e176433f337d967d27bdf209591a02ce868eb75d5c9149a7e84cf098318e0",
+    "compressedBytes": 630
+  },
+  {
+    "path": "raw/current/bind-ci-source.py.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/bind-ci-source.py",
+    "sourceBytes": 2179,
+    "sourceSha256": "62244acbd9ba06f3579f9d4a9da49f38fdd9918c6ee90110e7e47d9f312b7e25",
+    "sha256": "5ad1b9d03d0b314f46df6046a2486d9fac53f2027002b1980382f78e13560c13",
+    "compressedBytes": 1007
+  },
+  {
+    "path": "raw/current/chio-bridge-ci-commands.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-bridge-ci-commands.json",
+    "sourceBytes": 317,
+    "sourceSha256": "7f416490c8c032238032796abd72eaf2307aa1895ed488100eead3dc87913757",
+    "sha256": "eba0a99f6e84b76bbf8d0b680c92b597df036922193bca8dd841185cfb339692",
+    "compressedBytes": 229
+  },
+  {
+    "path": "raw/current/chio-bridge-commit-75d598ef43ed685480fb65961cbf63f3816b36b1.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-bridge-commit-75d598ef43ed685480fb65961cbf63f3816b36b1.json",
+    "sourceBytes": 2637,
+    "sourceSha256": "b2bb6b6d9bda9324bc97d7ca0b79611e6701f1fc3236476fedb76d32433050cc",
+    "sha256": "2bd32e2911f122904fbad4e8d2c005ce2e28b49cc10542510cd34a24bec9b1b6",
+    "compressedBytes": 1238
+  },
+  {
+    "path": "raw/current/chio-bridge-commit-75d598ef43ed685480fb65961cbf63f3816b36b1.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-bridge-commit-75d598ef43ed685480fb65961cbf63f3816b36b1.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-bridge-commit-e3a9ab685f901c4fa54f31551ff7484a47e673d4.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-bridge-commit-e3a9ab685f901c4fa54f31551ff7484a47e673d4.json",
+    "sourceBytes": 1201,
+    "sourceSha256": "398c75db5ae604856ca5a0f0a5e3073ca4cb6c9ead654203d26d1f2bb24f69d2",
+    "sha256": "a55862a5ef559cc05c59bb2fb48271a019264bfd26b89d9f77db67af2e710767",
+    "compressedBytes": 514
+  },
+  {
+    "path": "raw/current/chio-bridge-commit-e3a9ab685f901c4fa54f31551ff7484a47e673d4.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-bridge-commit-e3a9ab685f901c4fa54f31551ff7484a47e673d4.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-bridge-executed-source.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-bridge-executed-source.json",
+    "sourceBytes": 2880,
+    "sourceSha256": "c4cae7ae3c6fbfa9766bc9e840683eeb563c0d248c1ee71a880ea66aa59aa3b3",
+    "sha256": "e23844049840cce13aa206e2881d8fc300601e7b582fdc280614a8b0beb30581",
+    "compressedBytes": 1101
+  },
+  {
+    "path": "raw/current/chio-bridge-git-commands.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-bridge-git-commands.json",
+    "sourceBytes": 453,
+    "sourceSha256": "9c8c03cf4b1ccc9a32f82481a05b0922ad4a7d6c21c7348003acc1f323a712fe",
+    "sha256": "8dbfc83b24574c8737ea6b824e52d726248c6a7d309ae6a6d3b1613935d412ca",
+    "compressedBytes": 236
+  },
+  {
+    "path": "raw/current/chio-bridge-job-102740489703.log.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-bridge-job-102740489703.log.gz",
+    "sourceBytes": 282584,
+    "sourceSha256": "a594a7c7e2b278328c0c0246f98baaa0e96b4f69243a51979db596a2cc5a5f3d",
+    "sha256": "b929310a7a6949715f46953c8e4b1516a171593c1da2c09cf294b4b865a44ee5",
+    "compressedBytes": 55970
+  },
+  {
+    "path": "raw/current/chio-bridge-pr-command.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-bridge-pr-command.json",
+    "sourceBytes": 322,
+    "sourceSha256": "660b7670f7a0bd468b8bef4a97f772d03dd9078fe68e09edf01d08d4f60d7c47",
+    "sha256": "ab0d9d6aeb54ffab6a1fd6764a4b84346e75d3678774a2f5abe63eaa588d4550",
+    "compressedBytes": 236
+  },
+  {
+    "path": "raw/current/chio-bridge-pr.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-bridge-pr.json",
+    "sourceBytes": 608,
+    "sourceSha256": "27302b21ab6ae753fe9046a7cac3ae3797306a2e63331e2dabab6251972a4f83",
+    "sha256": "3155765f96ad7dba0b1a0189e7c91062258a5bfadb3844c80ed406f8a231d382",
+    "compressedBytes": 404
+  },
+  {
+    "path": "raw/current/chio-bridge-pr.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-bridge-pr.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-bridge-run-34435801997.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-bridge-run-34435801997.json",
+    "sourceBytes": 5405,
+    "sourceSha256": "882b994e0751314d5548718d87587a69372c63bd8a3709b7c17a9d92a2f47eed",
+    "sha256": "d486b12b4bab84eee5d94d547d826916c03b599b373cdec870ed454dbc2c32d5",
+    "compressedBytes": 1014
+  },
+  {
+    "path": "raw/current/chio-bridge-run-34435801997.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-bridge-run-34435801997.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-bridge-source-tree-binding.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-bridge-source-tree-binding.json",
+    "sourceBytes": 2474,
+    "sourceSha256": "8570a19e99648d9d3d59249968745c7e76be16d33d625d2a08f30046b14bd1f2",
+    "sha256": "e4afdd5723a54a27840d7b45818b6404330fa3352b3cdfaeacfff2aed0153f4a",
+    "compressedBytes": 1028
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-ci-commands.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-ci-commands.json",
+    "sourceBytes": 544,
+    "sourceSha256": "ef94bd51b932aa7084dac6ded37938297e95eb97f4396df4d93cd83187a5a5cc",
+    "sha256": "0b7ce6ce722695a98ab6bcdbe99b8f54b1667323707bb0f345045b42da11b3ab",
+    "compressedBytes": 283
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-commit-00a0ad130cf13fbe434ab08616fe2f2483187c77.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-commit-00a0ad130cf13fbe434ab08616fe2f2483187c77.json",
+    "sourceBytes": 1271,
+    "sourceSha256": "d949ffd715ff673d48dfa5dc79c7dc48cfcf43486ba82fdb6ad59d12d4970a7e",
+    "sha256": "36a30d80d6fa6a835172bed7976252a11e6f01151a755bec226c965a2f3b9c89",
+    "compressedBytes": 519
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-commit-00a0ad130cf13fbe434ab08616fe2f2483187c77.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-commit-00a0ad130cf13fbe434ab08616fe2f2483187c77.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-commit-102ff834b9309b4e9254b270bdb00e15b97452ce.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-commit-102ff834b9309b4e9254b270bdb00e15b97452ce.json",
+    "sourceBytes": 2721,
+    "sourceSha256": "f9244ed7811f02e23676b4afdc2eb65700182e9d6ef6bec87540f7f77f8cc36b",
+    "sha256": "c5d254a8a07cab48a0917c19c4602bb60e288cce165268c2645cbe7af3da3027",
+    "compressedBytes": 1249
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-commit-102ff834b9309b4e9254b270bdb00e15b97452ce.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-commit-102ff834b9309b4e9254b270bdb00e15b97452ce.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-executed-source.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-executed-source.json",
+    "sourceBytes": 1563,
+    "sourceSha256": "4c193ea3fb7b71b100ba0d30fd31c18ff2200f62424b11381585d725d17578bc",
+    "sha256": "36c0d23c2f666067dde1b98755e784ee0d92eb5c8a138554ad89b145b1bc51f5",
+    "compressedBytes": 716
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-git-commands.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-git-commands.json",
+    "sourceBytes": 477,
+    "sourceSha256": "5ccae38cd494f41077eab8c793e31a639cfd83250cb0d50f8589c2a61e05deb3",
+    "sha256": "7ec320094d5615c062eb1e98c0e7f80b964e7caab2863423fb5b2f23422cfc86",
+    "compressedBytes": 244
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-job-102784660550.log.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-job-102784660550.log.gz",
+    "sourceBytes": 47289,
+    "sourceSha256": "75ac29499036915d91bccfd6fad0ffcc54e4c778482d0146e0cdda6b72639102",
+    "sha256": "d8fcf40cba9b07b24df464fa9b36e3c62f3be3c4da850b1c0002bcbd2b726408",
+    "compressedBytes": 11446
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-job-102784660550.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-job-102784660550.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-pr-command.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-pr-command.json",
+    "sourceBytes": 334,
+    "sourceSha256": "7e03b46cede5e18139aa1d5950853a6aff8237510802aabd33af4a2ff09b2210",
+    "sha256": "0c69b144db55eaf54576d97cfae3be84a7713bee09ee5fb8eb05923d5b5028aa",
+    "compressedBytes": 243
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-pr.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-pr.json",
+    "sourceBytes": 642,
+    "sourceSha256": "6dfd7bd6acd01ac60e0d8418c1d57f1b6abebd5640cb6ee526316017754284f0",
+    "sha256": "babd633d4b27bf872b113f4380fbf7a6fbf912258a566d029d6e4ca22dab2460",
+    "compressedBytes": 417
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-pr.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-pr.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-run-34450420952.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-run-34450420952.json",
+    "sourceBytes": 2734,
+    "sourceSha256": "d16ec4c002e855f213035bf81185c2f1a8305212a9babdfad5993a4c81173bbb",
+    "sha256": "85dbd8891adadb60f99214fcbeb52546589c8bffcdcaf8b4d81a7ee5f09dff54",
+    "compressedBytes": 662
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-run-34450420952.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-run-34450420952.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-claude-code-plugin-source-tree-binding.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-claude-code-plugin-source-tree-binding.json",
+    "sourceBytes": 1306,
+    "sourceSha256": "82c032d64fda8129264bb97b3e2e6802eaf3c04e0fad7993a3969a1420f6b976",
+    "sha256": "05d68f4d208e2869199b4103f741d2c13b1ad8966cde2a90632dfc77036e4f2e",
+    "compressedBytes": 663
+  },
+  {
+    "path": "raw/current/chio-codex-plugin-ci-commands.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-codex-plugin-ci-commands.json",
+    "sourceBytes": 323,
+    "sourceSha256": "560b97c2433c9cfd66502528fdd88ad63026124012508b466bbd1dcec3fb1a0e",
+    "sha256": "6925bad451c42266cb47a749a94f20813d280ea1cae18ca5436886680ee1ed79",
+    "compressedBytes": 234
+  },
+  {
+    "path": "raw/current/chio-codex-plugin-commit-850d69c99811834a4aff7d157ea9b26b7344b04d.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-codex-plugin-commit-850d69c99811834a4aff7d157ea9b26b7344b04d.json",
+    "sourceBytes": 2679,
+    "sourceSha256": "f86a4aac7df11333b52a4071dabbbef6108eeb7d47b521963e99d1024a17b644",
+    "sha256": "c19e0df1927f258a92657355c62f46f9bbab52444e0439eee03d0da87ad5edfd",
+    "compressedBytes": 1250
+  },
+  {
+    "path": "raw/current/chio-codex-plugin-commit-850d69c99811834a4aff7d157ea9b26b7344b04d.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-codex-plugin-commit-850d69c99811834a4aff7d157ea9b26b7344b04d.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-codex-plugin-commit-97a1d98414004a04f41f607cfbe74663e381499a.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-codex-plugin-commit-97a1d98414004a04f41f607cfbe74663e381499a.json",
+    "sourceBytes": 1215,
+    "sourceSha256": "ef0e91f488bec6d3732dec5500b6b7e765c6d566ef96d1fa3d4c07188fb0b1d8",
+    "sha256": "16fef29b3e18bc85cbb111b193945e74e5df8d630365e1069400026e617d7d5f",
+    "compressedBytes": 498
+  },
+  {
+    "path": "raw/current/chio-codex-plugin-commit-97a1d98414004a04f41f607cfbe74663e381499a.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-codex-plugin-commit-97a1d98414004a04f41f607cfbe74663e381499a.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-codex-plugin-executed-source.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-codex-plugin-executed-source.json",
+    "sourceBytes": 1924,
+    "sourceSha256": "c5885ac2bca7cca8a8ae7821bd3da36d1e5fd27b57414f907fb192cdc5239681",
+    "sha256": "3c181f0ea504946c9a459f1e6411ed1e752b09c200a99370c7ac1f478796e613",
+    "compressedBytes": 774
+  },
+  {
+    "path": "raw/current/chio-codex-plugin-git-commands.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-codex-plugin-git-commands.json",
+    "sourceBytes": 465,
+    "sourceSha256": "9b6ed6983f2034b3b8da6f0f2a5a35590878c44bf42ef59005ed603d5005f7e2",
+    "sha256": "72d6f33769262c560740e818bf862d39bc4a84fc8106fd1139672e3e0e030cd5",
+    "compressedBytes": 242
+  },
+  {
+    "path": "raw/current/chio-codex-plugin-job-102790439048.log.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-codex-plugin-job-102790439048.log.gz",
+    "sourceBytes": 555901,
+    "sourceSha256": "ac6045933b1624685d36ee414ee2eb4782dd9864fdcce243077ba0a1e53356f8",
+    "sha256": "b1768ca7cd0d365addd7413cd513dd978f60c6871ee5f8a2ce0e9c832c22bfb8",
+    "compressedBytes": 44584
+  },
+  {
+    "path": "raw/current/chio-codex-plugin-pr-command.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-codex-plugin-pr-command.json",
+    "sourceBytes": 328,
+    "sourceSha256": "23c782208b5be9ea0fee4732ce32d02390408c0f9079e63aa715720087dd1c7f",
+    "sha256": "2c4b68230ed2e72f2fb9e291da347576803a15162bb75f8bca2fdae6f917380c",
+    "compressedBytes": 240
+  },
+  {
+    "path": "raw/current/chio-codex-plugin-pr.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-codex-plugin-pr.json",
+    "sourceBytes": 620,
+    "sourceSha256": "142697820c63457759c3bd66b5af25a87ce9d3819d037650b43718cf15d57f53",
+    "sha256": "0b9ce8905eaf7ff2a8e07f521c83e1411e0ad9cac92a271a222065207d5d26f1",
+    "compressedBytes": 406
+  },
+  {
+    "path": "raw/current/chio-codex-plugin-pr.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-codex-plugin-pr.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-codex-plugin-run-34452257763.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-codex-plugin-run-34452257763.json",
+    "sourceBytes": 2712,
+    "sourceSha256": "09c68f9faa63f68c543aaddc44847ccd44e2a68dafc172b4b4139e94cfdff78e",
+    "sha256": "89f1dac3ff3ac0277e1e77bab66e33ce75a02811c05e1a8ec7c21f7bb7836252",
+    "compressedBytes": 656
+  },
+  {
+    "path": "raw/current/chio-codex-plugin-run-34452257763.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-codex-plugin-run-34452257763.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-codex-plugin-source-tree-binding.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-codex-plugin-source-tree-binding.json",
+    "sourceBytes": 1278,
+    "sourceSha256": "4c4e5e10cb00dc97292f19daa119882fe22c9159ea088e5753927e68e5d60444",
+    "sha256": "733a844864bddc88a31610a343b42a55982db4ac8654ad3681dafcb97a053381",
+    "compressedBytes": 657
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-ci-commands.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-ci-commands.json",
+    "sourceBytes": 534,
+    "sourceSha256": "5963d5e6fb79b1f17ee85dbadcc690907100fd03b5ee0097406b6c9403658306",
+    "sha256": "436f11756e4ee876e8e8b0470f86db09cbfad2af3cfb7d3daf420e4dafb61e5e",
+    "compressedBytes": 279
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-commit-16c213afec93d63aeea7112681084f4336f3766a.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-commit-16c213afec93d63aeea7112681084f4336f3766a.json",
+    "sourceBytes": 1240,
+    "sourceSha256": "5c00b0186a1d5ffac2e4d9308c5bf6ac5c87065efca1a4b0ec86d36d4dfb785c",
+    "sha256": "cb6a71b7dd2d4d96b19239fddf533360e172b12d127f4d335b7fea0a4dfb33cc",
+    "compressedBytes": 515
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-commit-16c213afec93d63aeea7112681084f4336f3766a.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-commit-16c213afec93d63aeea7112681084f4336f3766a.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-commit-b3ab622bdeb22b1524053e56856f9837767886fa.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-commit-b3ab622bdeb22b1524053e56856f9837767886fa.json",
+    "sourceBytes": 2686,
+    "sourceSha256": "544329b0e593ba4ffc3240749530d5c42421edae1d823cd67856bca1f916db0c",
+    "sha256": "985686e836eb904db63e7876080c9f3a71e93a2f52ab636d9475e00728eb2d85",
+    "compressedBytes": 1246
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-commit-b3ab622bdeb22b1524053e56856f9837767886fa.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-commit-b3ab622bdeb22b1524053e56856f9837767886fa.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-executed-source.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-executed-source.json",
+    "sourceBytes": 1533,
+    "sourceSha256": "dea065fc2eaf675f0e02e6ce7620e642f26989b10d0134a2bf8fc548b171960d",
+    "sha256": "9f1e81af52c785a10a784ef3d96b793f8d376ac0b6f4d5254d3c029d5fadd99e",
+    "compressedBytes": 707
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-git-commands.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-git-commands.json",
+    "sourceBytes": 467,
+    "sourceSha256": "33d4182e256089a6546002f38d3c3388483b704bf8611d58cd43df662128c0cd",
+    "sha256": "16121fdda2ee2a98cc44d272430fba3f8c1a497deb9bd9441732f04b7bba53e6",
+    "compressedBytes": 241
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-job-102774457676.log.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-job-102774457676.log.gz",
+    "sourceBytes": 50758,
+    "sourceSha256": "1d42ec021c7499569a8167e586e096fc929368b2f15fc4745c033ee002179650",
+    "sha256": "6393a3430558a78202613d1b500c2cf6582190779a5be5530129281501df0faf",
+    "compressedBytes": 12573
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-job-102774457676.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-job-102774457676.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-pr-command.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-pr-command.json",
+    "sourceBytes": 329,
+    "sourceSha256": "cbe155ff3cf57553a8ca8c770a383fe14913f0b8176299affda306c1f4954d9b",
+    "sha256": "a2bc222ac703159bb569cf6ef8b842417661e3417c649ab80dcd55eccf8d9cb1",
+    "compressedBytes": 240
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-pr.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-pr.json",
+    "sourceBytes": 622,
+    "sourceSha256": "9a70803fe1a4197051f598cec61e356284c3e76d893a933a195fff6408939b77",
+    "sha256": "200874c4a51ae9485b962cf4db117345b52598f64c2dd638048fa32f9f686171",
+    "compressedBytes": 407
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-pr.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-pr.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-run-34447190158.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-run-34447190158.json",
+    "sourceBytes": 2714,
+    "sourceSha256": "9772d6b701e1b9ed96663d40f65c969a402b989c1831ee23516416f5dac359d5",
+    "sha256": "8ff0f225b5d2269b58ad3bbabeb492c32dad4270403dbe08e32212638a9a8fcf",
+    "compressedBytes": 653
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-run-34447190158.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-run-34447190158.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-cursor-plugin-source-tree-binding.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-cursor-plugin-source-tree-binding.json",
+    "sourceBytes": 1281,
+    "sourceSha256": "a4345402d087683130ccfbc10dc554e25aec1dfd1304cc010b3c03c63fe3aa40",
+    "sha256": "40c7261fe14fb10bd314e9479798c5f714f4a268c04a22e3418cfc204bb97d4d",
+    "compressedBytes": 655
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-ci-commands.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-ci-commands.json",
+    "sourceBytes": 540,
+    "sourceSha256": "56726a607c7648295ae368cda5f65bbad93ef3cb77dc24c96bb083098fad0c86",
+    "sha256": "326e4181425921226dc678fa8b3e83b185428ffcea205955630583a0164329df",
+    "compressedBytes": 284
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-commit-15718f8d9f98aa980e60b353d54b4e3e65ff525a.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-commit-15718f8d9f98aa980e60b353d54b4e3e65ff525a.json",
+    "sourceBytes": 2707,
+    "sourceSha256": "2af44f76beba3d028bcfa4cb003fd0a89edd588bd60b3ca6cac721e2c4db3286",
+    "sha256": "6a602b3b5f114a4fd6cfb5318f7b64366755afa4e7e902c404bb3d7452b0df9a",
+    "compressedBytes": 1251
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-commit-15718f8d9f98aa980e60b353d54b4e3e65ff525a.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-commit-15718f8d9f98aa980e60b353d54b4e3e65ff525a.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-commit-ec4267779ff180b2a58cfc5d2f86c36197a99fb9.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-commit-ec4267779ff180b2a58cfc5d2f86c36197a99fb9.json",
+    "sourceBytes": 1250,
+    "sourceSha256": "701a1ad9cb5b9276964928122541f719c5e5c73ad09c77e535409f67a7dbc6ff",
+    "sha256": "5219c32ca360b8b272e3e9e9cef9b1b441ebedf9f691bf7b56e467fb3432f296",
+    "compressedBytes": 516
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-commit-ec4267779ff180b2a58cfc5d2f86c36197a99fb9.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-commit-ec4267779ff180b2a58cfc5d2f86c36197a99fb9.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-executed-source.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-executed-source.json",
+    "sourceBytes": 1545,
+    "sourceSha256": "8196f4875cead404a95f74fcc1e109bc549f92852a13eedae641c06ebdd7ef12",
+    "sha256": "8589fadcde919f48093c086108bf8d8a3cd1403a2eaee5b017ddd27ba3668c4e",
+    "compressedBytes": 711
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-git-commands.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-git-commands.json",
+    "sourceBytes": 473,
+    "sourceSha256": "fbcfb788ae1bd41814a79921ff2695fe0b0ff25cb292aefbad350a4392e6e689",
+    "sha256": "5dfce19e1dbf2a17a4b2d7ec39d3589af004fd3ea0b04c106d899ec60ce01b17",
+    "compressedBytes": 246
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-job-102795584401.log.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-job-102795584401.log.gz",
+    "sourceBytes": 38467,
+    "sourceSha256": "3cedd47f8d570c96565e1dbc5b5899409588fcee71455a0a440e9dcc4ffe1415",
+    "sha256": "81026dd1da806b94e03308f56012b65ff1b86bad7d3ae86c2c0339ee82843219",
+    "compressedBytes": 9526
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-job-102795584401.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-job-102795584401.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-pr-command.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-pr-command.json",
+    "sourceBytes": 332,
+    "sourceSha256": "eff97a2b2ee919ca56d029e2802991b9a36a8d9cc06671f4b35d3606d991a9e3",
+    "sha256": "3044ef89176fbc492d34506fede35480df4ac5a6b1a8f25ee1fe12352cf09536",
+    "compressedBytes": 243
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-pr.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-pr.json",
+    "sourceBytes": 628,
+    "sourceSha256": "48343b92e011ce72bc793315eae89f5b4c6bec4acfabe521cd9deffa48f4583c",
+    "sha256": "a8461f278c58f54a0cf691bb52258da42a7864d09d83c2402b440a516b57e638",
+    "compressedBytes": 410
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-pr.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-pr.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-run-34453867292.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-run-34453867292.json",
+    "sourceBytes": 2720,
+    "sourceSha256": "fddb7d379f6c0781f48a5342acbc97dd5e4ac214de45dd6bfb9f969900e97f5b",
+    "sha256": "b8cf3c5cc4dbe2dd00dd6dc77a680a7182ff946ecea1b756bb0b48d3eec1a43f",
+    "compressedBytes": 655
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-run-34453867292.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-run-34453867292.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-open-claw-plugin-source-tree-binding.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-open-claw-plugin-source-tree-binding.json",
+    "sourceBytes": 1290,
+    "sourceSha256": "0cce2b3ca7915d50f3a905b4d5c8a227d130ca5b718c6a6cec591d82538c9b22",
+    "sha256": "e0213048c6b1774097ccb5ac95ef59b778f4f78b48455cdb842b824e5de267c4",
+    "compressedBytes": 661
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-ci-commands.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-ci-commands.json",
+    "sourceBytes": 526,
+    "sourceSha256": "50e908a2e5f1471a8298c94c385cc580b9a384f1b3a452f55eab2e7bdc500c38",
+    "sha256": "1736adadefaf82b4fb43c6fe640cc79164f5b370a686d24afd38bd372aa958ef",
+    "compressedBytes": 279
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-commit-679f469ad9afdcc97503bd34b484911cc5db3cc0.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-commit-679f469ad9afdcc97503bd34b484911cc5db3cc0.json",
+    "sourceBytes": 2658,
+    "sourceSha256": "a10f957b8f8d60a035aab230f66d37b3b5304bd72f44f6a516012f25bd6eed81",
+    "sha256": "10c0fd59b0f718dc8c1bb62bfe2598878994de20794b372f5011a07fd41ca1bb",
+    "compressedBytes": 1243
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-commit-679f469ad9afdcc97503bd34b484911cc5db3cc0.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-commit-679f469ad9afdcc97503bd34b484911cc5db3cc0.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-commit-cee55d79bf159e51fa7f70b986a8d8f5979a4f3f.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-commit-cee55d79bf159e51fa7f70b986a8d8f5979a4f3f.json",
+    "sourceBytes": 1209,
+    "sourceSha256": "006ac8bbdb3c42652357cce04064a128591db8b81ecc33f7a7318541933b75a2",
+    "sha256": "a49385182b4694324bd764c6bfc592761b361fa934c1a9adc4a1b7504532030f",
+    "compressedBytes": 497
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-commit-cee55d79bf159e51fa7f70b986a8d8f5979a4f3f.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-commit-cee55d79bf159e51fa7f70b986a8d8f5979a4f3f.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-executed-source.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-executed-source.json",
+    "sourceBytes": 1517,
+    "sourceSha256": "228d1f533b62f10c7be43b1c71ae35dfe5ee1f45b5887c7b783b3ac8b6fdedfa",
+    "sha256": "a0e7d9d60a36a5a605e7aa4d6e8b99897a9f9f1ae96d0e06d71b9feed6f25c03",
+    "compressedBytes": 706
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-git-commands.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-git-commands.json",
+    "sourceBytes": 459,
+    "sourceSha256": "286e2c6c3e8ce98a2248a3a1c8ec16168c1317f9742055dff1fe76ea0e8cd66f",
+    "sha256": "dca893ce78f71b73a5a97c6cc501a39f4d8e6eddab2b492c5457152e3784a0c5",
+    "compressedBytes": 239
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-job-102785368297.log.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-job-102785368297.log.gz",
+    "sourceBytes": 40552,
+    "sourceSha256": "ed10ee1bd3bb92a5800fa2e23dc1bbf9f523014dda4b766259302858cc51b564",
+    "sha256": "d435a9f7f9f71c9c774b0a02d3cbf250045c41282584afbec76d0685582573bd",
+    "compressedBytes": 10290
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-job-102785368297.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-job-102785368297.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-pr-command.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-pr-command.json",
+    "sourceBytes": 325,
+    "sourceSha256": "a7d53dbb18a1b9475b71a1b282dcfec0924f4276d3435864cd223daf02ebe12c",
+    "sha256": "9bde3f11af177266d1bc63c0b8529da04b41125458cc42eb4cea70898b5ca0f3",
+    "compressedBytes": 237
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-pr.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-pr.json",
+    "sourceBytes": 599,
+    "sourceSha256": "3fb75078fa30a171c50e31d8ad430998ba07f1b7215468c76b8d5fbce5657b7e",
+    "sha256": "1a58ee35310e451909293c065a337c8d9680941f2b602d73a16b1d3572762d22",
+    "compressedBytes": 395
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-pr.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-pr.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-run-34450646300.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-run-34450646300.json",
+    "sourceBytes": 2706,
+    "sourceSha256": "4cfc27496981e448cbc3bcf08fb553e1da3259d7d64729ade546c0c396850fe6",
+    "sha256": "8b1ef8802b22a75ede0c16f07331740b15e7095f2b93b4fcf7074114149bc897",
+    "compressedBytes": 657
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-run-34450646300.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-run-34450646300.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-pi-plugin-source-tree-binding.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pi-plugin-source-tree-binding.json",
+    "sourceBytes": 1269,
+    "sourceSha256": "2b930d63dd4d002eee7197e02beb62435e60923f0c016bc01b291cc222012cf2",
+    "sha256": "5328fa3777ba54a9fb9775d9bf6bcc3377080cf5d697b794e62bd11e2a8cba7a",
+    "compressedBytes": 657
+  },
+  {
+    "path": "raw/current/chio-pr-command.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pr-command.json",
+    "sourceBytes": 315,
+    "sourceSha256": "cfc36442a6de3707e589993a899edab2ed6d5f24ab6b02a669839a14d49ec271",
+    "sha256": "5e3354b9004ed04ebef75422959a4cc62973ae5f051b706dd8b29ed7bbcefc9a",
+    "compressedBytes": 231
+  },
+  {
+    "path": "raw/current/chio-pr.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pr.json",
+    "sourceBytes": 31477,
+    "sourceSha256": "cdb613d9396663d8971cd495b565309d93da7df5fe28810a4acdfb6c73ca1c48",
+    "sha256": "21addccc98753efb21f69fd36b590a8cd8ba032015b0afa816168b80a5479522",
+    "compressedBytes": 3894
+  },
+  {
+    "path": "raw/current/chio-pr.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-pr.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-test-harness-ci-commands.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-ci-commands.json",
+    "sourceBytes": 741,
+    "sourceSha256": "167a64f42a606114b7ee1416418741c7441881764365af93495f43d56f8f6f78",
+    "sha256": "d145f0b3bbea89a67ad1a5428c428cea29e72b87920e37231638e202cabb3932",
+    "compressedBytes": 296
+  },
+  {
+    "path": "raw/current/chio-test-harness-commit-6d49d48c478967e518c052c628e59a7183ff9814.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-commit-6d49d48c478967e518c052c628e59a7183ff9814.json",
+    "sourceBytes": 1231,
+    "sourceSha256": "5ca55b1b6c8fa28940e9937dbaf8bf2e61b4d4c19561fdb95da99184089b1af0",
+    "sha256": "8ccd92babeb10a531ef7061686739721ff0f77955e9cf9189bddb7abfbf662c9",
+    "compressedBytes": 511
+  },
+  {
+    "path": "raw/current/chio-test-harness-commit-6d49d48c478967e518c052c628e59a7183ff9814.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-commit-6d49d48c478967e518c052c628e59a7183ff9814.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-test-harness-commit-bff82981dee2edacd62c36a10d17c134791a6861.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-commit-bff82981dee2edacd62c36a10d17c134791a6861.json",
+    "sourceBytes": 2679,
+    "sourceSha256": "878bedf322bd3c381e617337cb5b1ef864d29e630d0676474252b1f7d2f8a741",
+    "sha256": "000158a06db8c1057e97361b136164a465c9b7f4c31f8764748b45452db6245d",
+    "compressedBytes": 1246
+  },
+  {
+    "path": "raw/current/chio-test-harness-commit-bff82981dee2edacd62c36a10d17c134791a6861.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-commit-bff82981dee2edacd62c36a10d17c134791a6861.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-test-harness-executed-source.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-executed-source.json",
+    "sourceBytes": 3566,
+    "sourceSha256": "01f0d12ece6fc925ae6bca28ade705ce6205df41dc81fbb18c464501497797fa",
+    "sha256": "669461a8ef5a50221c4ba2f2090cd4cfde09a1b55190b64181fb3960fe9b7d3d",
+    "compressedBytes": 1049
+  },
+  {
+    "path": "raw/current/chio-test-harness-git-commands.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-git-commands.json",
+    "sourceBytes": 465,
+    "sourceSha256": "1f93991155e3e65909b5ff414b1d69deb5e1ae456e06ee8ef6f8247d32d66bb0",
+    "sha256": "24cad0be84e271f781ee0aff4f9217b71634db5b83c53fce483945840f92922f",
+    "compressedBytes": 241
+  },
+  {
+    "path": "raw/current/chio-test-harness-job-102787919303.log.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-job-102787919303.log.gz",
+    "sourceBytes": 95931,
+    "sourceSha256": "223f0072cfe5ad920ce1f3877c575740b5b7f87e0597333c90c0f38fd99d5834",
+    "sha256": "75d7365f1102a7f9c2934d96c5b8aab1c29ab660ac4cfd9055dae49e3a0412f1",
+    "compressedBytes": 16812
+  },
+  {
+    "path": "raw/current/chio-test-harness-job-102787919303.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-job-102787919303.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-test-harness-job-102787919614.log.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-job-102787919614.log.gz",
+    "sourceBytes": 15475,
+    "sourceSha256": "bb1877e4fcecba8c7f191b188842002392864e8b3a564cd4093768bed69695c6",
+    "sha256": "a2206009fccac44427a79072a79802a8f62ad8807d9dec66808d88d93fb33e14",
+    "compressedBytes": 3974
+  },
+  {
+    "path": "raw/current/chio-test-harness-job-102787919614.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-job-102787919614.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-test-harness-pr-command.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-pr-command.json",
+    "sourceBytes": 328,
+    "sourceSha256": "18e8da2e4d83081b025343ff81340530f1348737d72814a6582d86cfeb4e244d",
+    "sha256": "ec367b8491655c42a99707af6a985460bbad13529ef32d2dc0a521dead3a89dc",
+    "compressedBytes": 239
+  },
+  {
+    "path": "raw/current/chio-test-harness-pr.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-pr.json",
+    "sourceBytes": 910,
+    "sourceSha256": "8fa739211314f8f84f1f5348bf0e0768298643c3de22321e847c089667e0cc03",
+    "sha256": "56e4e72f72370e631d09fd959a83c091746d6254732afb2fc7ffa417276dded5",
+    "compressedBytes": 431
+  },
+  {
+    "path": "raw/current/chio-test-harness-pr.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-pr.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-test-harness-run-34451459259.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-run-34451459259.json",
+    "sourceBytes": 5704,
+    "sourceSha256": "64acffc12534f016722636276c5cef03dd2443d393b654b8a1512ca4d6057a65",
+    "sha256": "eda2d864676550b66fea7f10e395c79611a15b25b24de7f0b54c0d5432cf43c7",
+    "compressedBytes": 941
+  },
+  {
+    "path": "raw/current/chio-test-harness-run-34451459259.stderr.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-run-34451459259.stderr",
+    "sourceBytes": 0,
+    "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "compressedBytes": 20
+  },
+  {
+    "path": "raw/current/chio-test-harness-source-tree-binding.json.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/chio-test-harness-source-tree-binding.json",
+    "sourceBytes": 2796,
+    "sourceSha256": "b4ed35fea274f24eb77414a63d5872f8a9d3715715858d86a8ec1820417a21ae",
+    "sha256": "29147418a526f1644a3963a502d029fd819336e960a6a76313dcb739f30e4844",
+    "compressedBytes": 1000
+  },
+  {
+    "path": "raw/current/collect-ci.py.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/collect-ci.py",
+    "sourceBytes": 3090,
+    "sourceSha256": "b146a3cdee0a7d7b1eef36460beca48ca9aef1081e8b7a1d9ac7f910c039bd5e",
+    "sha256": "63390fe8f1cdef63a7c9e4437861d9f58996d91a38f3f1825a0f9ba32f3b3323",
+    "compressedBytes": 1480
+  },
+  {
+    "path": "raw/current/write-record.py.gz",
+    "originalPath": "/tmp/chio-static-public-source-ci-final-20260910/write-record.py",
+    "sourceBytes": 8600,
+    "sourceSha256": "98ed0d1683901856f82fd4f2735f0e045b256862e5dbf829794f4964189df746",
+    "sha256": "10c2cd87205a602465da9e369abde62e5718b7b50a61173e2a5dcfaa77e48a18",
+    "compressedBytes": 3768
+  },
+  {
+    "path": "raw/openclaw-public/anonymous-commit.json.gz",
+    "originalPath": "/tmp/chio-openclaw-public-draft-20260910/anonymous-commit.json",
+    "sourceBytes": 1250,
+    "sourceSha256": "701a1ad9cb5b9276964928122541f719c5e5c73ad09c77e535409f67a7dbc6ff",
+    "sha256": "5219c32ca360b8b272e3e9e9cef9b1b441ebedf9f691bf7b56e467fb3432f296",
+    "compressedBytes": 516
+  },
+  {
+    "path": "raw/openclaw-public/anonymous-evidence-readme.md.gz",
+    "originalPath": "/tmp/chio-openclaw-public-draft-20260910/anonymous-evidence-readme.md",
+    "sourceBytes": 14848,
+    "sourceSha256": "cead2db5b600be4c55e66c02bf2111ddf238b9aefd6c2f7eb90438d416075c4a",
+    "sha256": "98a22633eb058a43c63b3a7f4bd69e5cff4ed2c5784319baacf692eef5a74529",
+    "compressedBytes": 5960
+  },
+  {
+    "path": "raw/openclaw-public/anonymous-pr-merge-commit.json.gz",
+    "originalPath": "/tmp/chio-openclaw-public-draft-20260910/anonymous-pr-merge-commit.json",
+    "sourceBytes": 2707,
+    "sourceSha256": "2af44f76beba3d028bcfa4cb003fd0a89edd588bd60b3ca6cac721e2c4db3286",
+    "sha256": "6a602b3b5f114a4fd6cfb5318f7b64366755afa4e7e902c404bb3d7452b0df9a",
+    "compressedBytes": 1251
+  },
+  {
+    "path": "raw/openclaw-public/anonymous-pr.json.gz",
+    "originalPath": "/tmp/chio-openclaw-public-draft-20260910/anonymous-pr.json",
+    "sourceBytes": 19147,
+    "sourceSha256": "b511984fc25700e195f117a41ff2cfbda126e8f1240f572fcb3d10fb088abf6e",
+    "sha256": "22fdb4df861df3ab4feab9ef620fc4f6c88cb37c21c2867d01a0bdb0524d0e46",
+    "compressedBytes": 3047
+  },
+  {
+    "path": "raw/openclaw-public/anonymous-repository.json.gz",
+    "originalPath": "/tmp/chio-openclaw-public-draft-20260910/anonymous-repository.json",
+    "sourceBytes": 6938,
+    "sourceSha256": "d8bfb365aed54d3c2c4893ad51ebc0c7bbe4de82a5843a1b9b97b4d8c24a960f",
+    "sha256": "8c0f3a0b084b6c3139f7d4428240aa1e16904327bb9024b169b90c399f8b9d10",
+    "compressedBytes": 1317
+  },
+  {
+    "path": "raw/openclaw-public/public-verification.json.gz",
+    "originalPath": "/tmp/chio-openclaw-public-draft-20260910/public-verification.json",
+    "sourceBytes": 1497,
+    "sourceSha256": "b47aeea4b0630bb6febf438d4c1c4c538b0483ec4b544e38ed3b84926c463293",
+    "sha256": "a8a96719eca809648327d53828c83eb24a0f2a0a7360ffbe5c4f5c717fc6c502",
+    "compressedBytes": 598
+  },
+  {
+    "path": "raw/openclaw-public/summary.json.gz",
+    "originalPath": "/tmp/chio-openclaw-public-draft-20260910/summary.json",
+    "sourceBytes": 1140,
+    "sourceSha256": "1512d124a45e9be08d5142e5a79f56aa91f5fc85f928c3fa19172543036aada8",
+    "sha256": "0cee50f23be4cea54d04c4fdcd1821c8da9e2fe3d8d875b30ccf2e7a835cdb58",
+    "compressedBytes": 582
+  },
+  {
+    "path": "raw/openclaw-public/SHA256SUMS.json.gz",
+    "originalPath": "/tmp/chio-openclaw-public-draft-20260910/SHA256SUMS.json",
+    "sourceBytes": 1644,
+    "sourceSha256": "75412ddc790eae2899b341853b8d940d69621fe960300dc2e44de5716d299801",
+    "sha256": "0d62c5782f67f1f8350d4b7f3ae3c6f1af8646b00701053b7cfcc6607219d832",
+    "compressedBytes": 760
+  }
+]

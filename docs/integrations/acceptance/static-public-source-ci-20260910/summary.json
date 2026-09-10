@@ -1,0 +1,1478 @@
+{
+  "recordedAtUtc": "2026-09-10T08:18:21.034671+00:00",
+  "scope": "Public draft source and bounded hosted source checks only; no artifact publication or host acceptance.",
+  "pullRequests": [
+    {
+      "component": "Claude Code",
+      "repository": "backbay-labs/chio-claude-code-plugin",
+      "url": "https://github.com/backbay-labs/chio-claude-code-plugin/pull/1",
+      "number": 1,
+      "head": "00a0ad130cf13fbe434ab08616fe2f2483187c77",
+      "headRef": "codex/required-agent-integrations-20260909",
+      "state": "OPEN",
+      "draft": true,
+      "mergeState": "CLEAN",
+      "observedAtUtc": "2026-09-10T08:14:10.804145+00:00",
+      "checks": {
+        "SUCCESS": 1
+      },
+      "jobs": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T07:32:34Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio-claude-code-plugin/actions/runs/34450420952/job/102784660550",
+          "name": "source-package",
+          "startedAt": "2026-09-10T07:31:59Z",
+          "status": "COMPLETED",
+          "workflowName": "ci"
+        }
+      ],
+      "sourceBinding": {
+        "repository": "backbay-labs/chio-claude-code-plugin",
+        "prHead": "00a0ad130cf13fbe434ab08616fe2f2483187c77",
+        "topicHeadTree": "30c659f1c3f4a9adbe5e3a47602e4564401672a4",
+        "jobs": [
+          {
+            "jobId": 102784660550,
+            "runId": 34450420952,
+            "jobUrl": "https://github.com/backbay-labs/chio-claude-code-plugin/actions/runs/34450420952/job/102784660550",
+            "name": "source-package",
+            "completedAt": "2026-09-10T07:32:34Z",
+            "conclusion": "SUCCESS",
+            "actualJobCheckout": "102ff834b9309b4e9254b270bdb00e15b97452ce",
+            "actualJobTree": "30c659f1c3f4a9adbe5e3a47602e4564401672a4",
+            "topicHeadTree": "30c659f1c3f4a9adbe5e3a47602e4564401672a4",
+            "treeEquivalent": true,
+            "mergeParentShas": [
+              "db8ce99866aac612578a3378719266484fc6b6eb",
+              "00a0ad130cf13fbe434ab08616fe2f2483187c77"
+            ],
+            "topicHeadIsMergeParent": true,
+            "rawLogPath": "chio-claude-code-plugin-job-102784660550.log.gz",
+            "rawLogSha256": "75ac29499036915d91bccfd6fad0ffcc54e4c778482d0146e0cdda6b72639102",
+            "otherRecordedCheckouts": []
+          }
+        ],
+        "scope": "Successful source/package CI at the exact recorded synthetic merge checkout. Equal source trees do not equate commits or establish host acceptance, final frozen archive qualification or release."
+      }
+    },
+    {
+      "component": "Codex",
+      "repository": "backbay-labs/chio-codex-plugin",
+      "url": "https://github.com/backbay-labs/chio-codex-plugin/pull/1",
+      "number": 1,
+      "head": "97a1d98414004a04f41f607cfbe74663e381499a",
+      "headRef": "codex/required-agent-integrations-20260909",
+      "state": "OPEN",
+      "draft": true,
+      "mergeState": "CLEAN",
+      "observedAtUtc": "2026-09-10T08:14:10.862365+00:00",
+      "checks": {
+        "SUCCESS": 1
+      },
+      "jobs": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T07:54:25Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio-codex-plugin/actions/runs/34452257763/job/102790439048",
+          "name": "test",
+          "startedAt": "2026-09-10T07:53:37Z",
+          "status": "COMPLETED",
+          "workflowName": "ci"
+        }
+      ],
+      "sourceBinding": {
+        "repository": "backbay-labs/chio-codex-plugin",
+        "prHead": "97a1d98414004a04f41f607cfbe74663e381499a",
+        "topicHeadTree": "9539eeb3aec7516542838bf4245c7fb4ec3f94b8",
+        "jobs": [
+          {
+            "jobId": 102790439048,
+            "runId": 34452257763,
+            "jobUrl": "https://github.com/backbay-labs/chio-codex-plugin/actions/runs/34452257763/job/102790439048",
+            "name": "test",
+            "completedAt": "2026-09-10T07:54:25Z",
+            "conclusion": "SUCCESS",
+            "actualJobCheckout": "850d69c99811834a4aff7d157ea9b26b7344b04d",
+            "actualJobTree": "9539eeb3aec7516542838bf4245c7fb4ec3f94b8",
+            "topicHeadTree": "9539eeb3aec7516542838bf4245c7fb4ec3f94b8",
+            "treeEquivalent": true,
+            "mergeParentShas": [
+              "6841c72e82c982600bf5fb070181c4ab723cf6ed",
+              "97a1d98414004a04f41f607cfbe74663e381499a"
+            ],
+            "topicHeadIsMergeParent": true,
+            "rawLogPath": "chio-codex-plugin-job-102790439048.log.gz",
+            "rawLogSha256": "ac6045933b1624685d36ee414ee2eb4782dd9864fdcce243077ba0a1e53356f8",
+            "otherRecordedCheckouts": []
+          }
+        ],
+        "scope": "Successful source/package CI at the exact recorded synthetic merge checkout. Equal source trees do not equate commits or establish host acceptance, final frozen archive qualification or release."
+      }
+    },
+    {
+      "component": "Cursor",
+      "repository": "backbay-labs/chio-cursor-plugin",
+      "url": "https://github.com/backbay-labs/chio-cursor-plugin/pull/1",
+      "number": 1,
+      "head": "16c213afec93d63aeea7112681084f4336f3766a",
+      "headRef": "codex/required-agent-integrations-20260909",
+      "state": "OPEN",
+      "draft": true,
+      "mergeState": "CLEAN",
+      "observedAtUtc": "2026-09-10T08:14:10.958668+00:00",
+      "checks": {
+        "SUCCESS": 1
+      },
+      "jobs": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:54:40Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio-cursor-plugin/actions/runs/34447190158/job/102774457676",
+          "name": "test",
+          "startedAt": "2026-09-10T06:54:04Z",
+          "status": "COMPLETED",
+          "workflowName": "ci"
+        }
+      ],
+      "sourceBinding": {
+        "repository": "backbay-labs/chio-cursor-plugin",
+        "prHead": "16c213afec93d63aeea7112681084f4336f3766a",
+        "topicHeadTree": "14b90b8e9e7257f39f21ee635eef9da43fae2aee",
+        "jobs": [
+          {
+            "jobId": 102774457676,
+            "runId": 34447190158,
+            "jobUrl": "https://github.com/backbay-labs/chio-cursor-plugin/actions/runs/34447190158/job/102774457676",
+            "name": "test",
+            "completedAt": "2026-09-10T06:54:40Z",
+            "conclusion": "SUCCESS",
+            "actualJobCheckout": "b3ab622bdeb22b1524053e56856f9837767886fa",
+            "actualJobTree": "14b90b8e9e7257f39f21ee635eef9da43fae2aee",
+            "topicHeadTree": "14b90b8e9e7257f39f21ee635eef9da43fae2aee",
+            "treeEquivalent": true,
+            "mergeParentShas": [
+              "2621009246ad94a4f8d42c2ca038a1027ba1f105",
+              "16c213afec93d63aeea7112681084f4336f3766a"
+            ],
+            "topicHeadIsMergeParent": true,
+            "rawLogPath": "chio-cursor-plugin-job-102774457676.log.gz",
+            "rawLogSha256": "1d42ec021c7499569a8167e586e096fc929368b2f15fc4745c033ee002179650",
+            "otherRecordedCheckouts": []
+          }
+        ],
+        "scope": "Successful source/package CI at the exact recorded synthetic merge checkout. Equal source trees do not equate commits or establish host acceptance, final frozen archive qualification or release."
+      }
+    },
+    {
+      "component": "OpenClaw",
+      "repository": "backbay-labs/chio-open-claw-plugin",
+      "url": "https://github.com/backbay-labs/chio-open-claw-plugin/pull/1",
+      "number": 1,
+      "head": "ec4267779ff180b2a58cfc5d2f86c36197a99fb9",
+      "headRef": "codex/required-agent-integrations-20260909",
+      "state": "OPEN",
+      "draft": true,
+      "mergeState": "CLEAN",
+      "observedAtUtc": "2026-09-10T08:14:10.892190+00:00",
+      "checks": {
+        "SUCCESS": 1
+      },
+      "jobs": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T08:12:24Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio-open-claw-plugin/actions/runs/34453867292/job/102795584401",
+          "name": "test",
+          "startedAt": "2026-09-10T08:11:56Z",
+          "status": "COMPLETED",
+          "workflowName": "ci"
+        }
+      ],
+      "sourceBinding": {
+        "repository": "backbay-labs/chio-open-claw-plugin",
+        "prHead": "ec4267779ff180b2a58cfc5d2f86c36197a99fb9",
+        "topicHeadTree": "f984e3820e603281091a73e86c0f8c2853df6c7a",
+        "jobs": [
+          {
+            "jobId": 102795584401,
+            "runId": 34453867292,
+            "jobUrl": "https://github.com/backbay-labs/chio-open-claw-plugin/actions/runs/34453867292/job/102795584401",
+            "name": "test",
+            "completedAt": "2026-09-10T08:12:24Z",
+            "conclusion": "SUCCESS",
+            "actualJobCheckout": "15718f8d9f98aa980e60b353d54b4e3e65ff525a",
+            "actualJobTree": "f984e3820e603281091a73e86c0f8c2853df6c7a",
+            "topicHeadTree": "f984e3820e603281091a73e86c0f8c2853df6c7a",
+            "treeEquivalent": true,
+            "mergeParentShas": [
+              "e9440c738477cc224c8c3f6257d3d5965cc15fb0",
+              "ec4267779ff180b2a58cfc5d2f86c36197a99fb9"
+            ],
+            "topicHeadIsMergeParent": true,
+            "rawLogPath": "chio-open-claw-plugin-job-102795584401.log.gz",
+            "rawLogSha256": "3cedd47f8d570c96565e1dbc5b5899409588fcee71455a0a440e9dcc4ffe1415",
+            "otherRecordedCheckouts": []
+          }
+        ],
+        "scope": "Successful source/package CI at the exact recorded synthetic merge checkout. Equal source trees do not equate commits or establish host acceptance, final frozen archive qualification or release."
+      }
+    },
+    {
+      "component": "Pi",
+      "repository": "backbay-labs/chio-pi-plugin",
+      "url": "https://github.com/backbay-labs/chio-pi-plugin/pull/1",
+      "number": 1,
+      "head": "cee55d79bf159e51fa7f70b986a8d8f5979a4f3f",
+      "headRef": "codex/pi-kernel-integration",
+      "state": "OPEN",
+      "draft": true,
+      "mergeState": "CLEAN",
+      "observedAtUtc": "2026-09-10T08:14:11.092001+00:00",
+      "checks": {
+        "SUCCESS": 1
+      },
+      "jobs": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T07:35:33Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio-pi-plugin/actions/runs/34450646300/job/102785368297",
+          "name": "test",
+          "startedAt": "2026-09-10T07:34:39Z",
+          "status": "COMPLETED",
+          "workflowName": "ci"
+        }
+      ],
+      "sourceBinding": {
+        "repository": "backbay-labs/chio-pi-plugin",
+        "prHead": "cee55d79bf159e51fa7f70b986a8d8f5979a4f3f",
+        "topicHeadTree": "4ba17d707bbb6c6e768f28d742133529e293bd9d",
+        "jobs": [
+          {
+            "jobId": 102785368297,
+            "runId": 34450646300,
+            "jobUrl": "https://github.com/backbay-labs/chio-pi-plugin/actions/runs/34450646300/job/102785368297",
+            "name": "test",
+            "completedAt": "2026-09-10T07:35:33Z",
+            "conclusion": "SUCCESS",
+            "actualJobCheckout": "679f469ad9afdcc97503bd34b484911cc5db3cc0",
+            "actualJobTree": "4ba17d707bbb6c6e768f28d742133529e293bd9d",
+            "topicHeadTree": "4ba17d707bbb6c6e768f28d742133529e293bd9d",
+            "treeEquivalent": true,
+            "mergeParentShas": [
+              "900c7d7833e6b5eb829a75072d053a4d2339ef9a",
+              "cee55d79bf159e51fa7f70b986a8d8f5979a4f3f"
+            ],
+            "topicHeadIsMergeParent": true,
+            "rawLogPath": "chio-pi-plugin-job-102785368297.log.gz",
+            "rawLogSha256": "ed10ee1bd3bb92a5800fa2e23dc1bbf9f523014dda4b766259302858cc51b564",
+            "otherRecordedCheckouts": []
+          }
+        ],
+        "scope": "Successful source/package CI at the exact recorded synthetic merge checkout. Equal source trees do not equate commits or establish host acceptance, final frozen archive qualification or release."
+      }
+    },
+    {
+      "component": "Shared harness",
+      "repository": "backbay-labs/chio-test-harness",
+      "url": "https://github.com/backbay-labs/chio-test-harness/pull/1",
+      "number": 1,
+      "head": "6d49d48c478967e518c052c628e59a7183ff9814",
+      "headRef": "codex/durable-harness-20260909",
+      "state": "OPEN",
+      "draft": true,
+      "mergeState": "CLEAN",
+      "observedAtUtc": "2026-09-10T08:14:11.076736+00:00",
+      "checks": {
+        "SUCCESS": 2
+      },
+      "jobs": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T07:44:25Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio-test-harness/actions/runs/34451459259/job/102787919614",
+          "name": "delivery-integrity",
+          "startedAt": "2026-09-10T07:44:19Z",
+          "status": "COMPLETED",
+          "workflowName": "ci"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T07:47:51Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio-test-harness/actions/runs/34451459259/job/102787919303",
+          "name": "self-test",
+          "startedAt": "2026-09-10T07:44:18Z",
+          "status": "COMPLETED",
+          "workflowName": "ci"
+        }
+      ],
+      "sourceBinding": {
+        "repository": "backbay-labs/chio-test-harness",
+        "prHead": "6d49d48c478967e518c052c628e59a7183ff9814",
+        "topicHeadTree": "43886f00eadc653564478e6f4685fe9f1e7ff65d",
+        "jobs": [
+          {
+            "jobId": 102787919614,
+            "runId": 34451459259,
+            "jobUrl": "https://github.com/backbay-labs/chio-test-harness/actions/runs/34451459259/job/102787919614",
+            "name": "delivery-integrity",
+            "completedAt": "2026-09-10T07:44:25Z",
+            "conclusion": "SUCCESS",
+            "actualJobCheckout": "bff82981dee2edacd62c36a10d17c134791a6861",
+            "actualJobTree": "43886f00eadc653564478e6f4685fe9f1e7ff65d",
+            "topicHeadTree": "43886f00eadc653564478e6f4685fe9f1e7ff65d",
+            "treeEquivalent": true,
+            "mergeParentShas": [
+              "c92c1d916f7e4ae30fdc34c8fc350b8647ae4b3a",
+              "6d49d48c478967e518c052c628e59a7183ff9814"
+            ],
+            "topicHeadIsMergeParent": true,
+            "rawLogPath": "chio-test-harness-job-102787919614.log.gz",
+            "rawLogSha256": "bb1877e4fcecba8c7f191b188842002392864e8b3a564cd4093768bed69695c6",
+            "otherRecordedCheckouts": []
+          },
+          {
+            "jobId": 102787919303,
+            "runId": 34451459259,
+            "jobUrl": "https://github.com/backbay-labs/chio-test-harness/actions/runs/34451459259/job/102787919303",
+            "name": "self-test",
+            "completedAt": "2026-09-10T07:47:51Z",
+            "conclusion": "SUCCESS",
+            "actualJobCheckout": "bff82981dee2edacd62c36a10d17c134791a6861",
+            "actualJobTree": "43886f00eadc653564478e6f4685fe9f1e7ff65d",
+            "topicHeadTree": "43886f00eadc653564478e6f4685fe9f1e7ff65d",
+            "treeEquivalent": true,
+            "mergeParentShas": [
+              "c92c1d916f7e4ae30fdc34c8fc350b8647ae4b3a",
+              "6d49d48c478967e518c052c628e59a7183ff9814"
+            ],
+            "topicHeadIsMergeParent": true,
+            "rawLogPath": "chio-test-harness-job-102787919303.log.gz",
+            "rawLogSha256": "223f0072cfe5ad920ce1f3877c575740b5b7f87e0597333c90c0f38fd99d5834",
+            "otherRecordedCheckouts": [
+              {
+                "sha": "d8c5f53705173e614a853bad6c0a85acfdf1212b",
+                "commandLine": 243,
+                "valueLine": 244,
+                "context": [
+                  "2026-09-10T07:44:27.8968888Z HEAD is now at d8c5f53 fix(mcp): acknowledge verified terminal tool errors without claiming success",
+                  "2026-09-10T07:44:27.8970698Z ##[endgroup]",
+                  "2026-09-10T07:44:27.9018164Z [command]/usr/bin/git log -1 --format=%H",
+                  "2026-09-10T07:44:27.9048011Z d8c5f53705173e614a853bad6c0a85acfdf1212b",
+                  "2026-09-10T07:44:27.9059592Z ##[group]Removing auth"
+                ]
+              }
+            ]
+          }
+        ],
+        "scope": "Successful source/package CI at the exact recorded synthetic merge checkout. Equal source trees do not equate commits or establish host acceptance, final frozen archive qualification or release."
+      }
+    },
+    {
+      "component": "Shared bridge",
+      "repository": "backbay-labs/chio-bridge",
+      "url": "https://github.com/backbay-labs/chio-bridge/pull/1",
+      "number": 1,
+      "head": "e3a9ab685f901c4fa54f31551ff7484a47e673d4",
+      "headRef": "codex/required-agent-integrations-20260909",
+      "state": "OPEN",
+      "draft": true,
+      "mergeState": "CLEAN",
+      "observedAtUtc": "2026-09-10T08:14:11.058524+00:00",
+      "checks": {
+        "SUCCESS": 1
+      },
+      "jobs": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T04:11:52Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio-bridge/actions/runs/34435801997/job/102740489703",
+          "name": "test",
+          "startedAt": "2026-09-10T04:05:24Z",
+          "status": "COMPLETED",
+          "workflowName": "ci"
+        }
+      ],
+      "sourceBinding": {
+        "repository": "backbay-labs/chio-bridge",
+        "prHead": "e3a9ab685f901c4fa54f31551ff7484a47e673d4",
+        "topicHeadTree": "f0b0de932029b576c811604587a9d9a5a63eb7ea",
+        "jobs": [
+          {
+            "jobId": 102740489703,
+            "runId": 34435801997,
+            "jobUrl": "https://github.com/backbay-labs/chio-bridge/actions/runs/34435801997/job/102740489703",
+            "name": "test",
+            "completedAt": "2026-09-10T04:11:52Z",
+            "conclusion": "SUCCESS",
+            "actualJobCheckout": "75d598ef43ed685480fb65961cbf63f3816b36b1",
+            "actualJobTree": "f0b0de932029b576c811604587a9d9a5a63eb7ea",
+            "topicHeadTree": "f0b0de932029b576c811604587a9d9a5a63eb7ea",
+            "treeEquivalent": true,
+            "mergeParentShas": [
+              "f0f21945484b3e2a9ed79a5b2063bda98754ac80",
+              "e3a9ab685f901c4fa54f31551ff7484a47e673d4"
+            ],
+            "topicHeadIsMergeParent": true,
+            "rawLogPath": "chio-bridge-job-102740489703.log.gz",
+            "rawLogSha256": "a594a7c7e2b278328c0c0246f98baaa0e96b4f69243a51979db596a2cc5a5f3d",
+            "otherRecordedCheckouts": [
+              {
+                "sha": "d8c5f53705173e614a853bad6c0a85acfdf1212b",
+                "commandLine": 1395,
+                "valueLine": 1396,
+                "context": [
+                  "2026-09-10T04:06:28.6433848Z HEAD is now at d8c5f53 fix(mcp): acknowledge verified terminal tool errors without claiming success",
+                  "2026-09-10T04:06:28.7120521Z ##[endgroup]",
+                  "2026-09-10T04:06:28.7149890Z [command]/usr/bin/git log -1 --format=%H",
+                  "2026-09-10T04:06:28.7167921Z d8c5f53705173e614a853bad6c0a85acfdf1212b",
+                  "2026-09-10T04:06:28.7175133Z ##[group]Removing auth"
+                ]
+              },
+              {
+                "sha": "05945ccf4f652a22801c9ab35cabf99456ef76c9",
+                "commandLine": 1499,
+                "valueLine": 1500,
+                "context": [
+                  "2026-09-10T04:06:29.3134036Z HEAD is now at 05945cc fix: start harness with a single durable admission owner",
+                  "2026-09-10T04:06:29.3134886Z ##[endgroup]",
+                  "2026-09-10T04:06:29.3159618Z [command]/usr/bin/git log -1 --format=%H",
+                  "2026-09-10T04:06:29.3176562Z 05945ccf4f652a22801c9ab35cabf99456ef76c9",
+                  "2026-09-10T04:06:29.3182425Z ##[group]Removing auth"
+                ]
+              }
+            ]
+          }
+        ],
+        "scope": "Successful source/package CI at the exact recorded synthetic merge checkout. Equal source trees do not equate commits or establish host acceptance, final frozen archive qualification or release."
+      }
+    },
+    {
+      "component": "Chio kernel and Hermes source",
+      "repository": "backbay-labs/chio",
+      "url": "https://github.com/backbay-labs/chio/pull/2",
+      "number": 2,
+      "head": "bafa02b06de93553cecb6f60b340f3dd8fd9b401",
+      "headRef": "codex/required-agent-integrations-20260909",
+      "state": "OPEN",
+      "draft": true,
+      "mergeState": "UNSTABLE",
+      "observedAtUtc": "2026-09-10T08:14:11.415064+00:00",
+      "checks": {
+        "IN_PROGRESS": 2,
+        "SKIPPED": 11,
+        "SUCCESS": 87
+      },
+      "jobs": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234435/job/102768486210",
+          "name": "Build, lint, test",
+          "startedAt": "2026-09-10T06:30:08Z",
+          "status": "IN_PROGRESS",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:26:51Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445232909/job/102768482600",
+          "name": "dispatch isolated enterprise Linux capture",
+          "startedAt": "2026-09-10T06:26:52Z",
+          "status": "COMPLETED",
+          "workflowName": "Enterprise evidence controller"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:26:52Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234455/job/102768487586",
+          "name": "chio chaos",
+          "startedAt": "2026-09-10T06:26:53Z",
+          "status": "COMPLETED",
+          "workflowName": "chio-chaos-nightly"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:30:01Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234450/job/102768485896",
+          "name": "cargo-audit and osv-scanner",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "CVE Monitor"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:54:02Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234584/job/102768486568",
+          "name": "CMake package (ubuntu-latest)",
+          "startedAt": "2026-09-10T06:51:21Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio C++ SDK"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:38:51Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234356/job/102768485935",
+          "name": "live-treaty-buyer-closure",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Live Treaty Buyer Closure"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:50:41Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234498/job/102768486191",
+          "name": "chio-pheromone-directory-lifecycle",
+          "startedAt": "2026-09-10T06:41:39Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Pheromone Directory Lifecycle"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:38:22Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234369/job/102768485563",
+          "name": "chio-pheromone-relay",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Pheromone Relay"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:52:27Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234509/job/102768486536",
+          "name": "chio-pheromone-relay-alert-assurance",
+          "startedAt": "2026-09-10T06:42:12Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Pheromone Relay Alert Assurance"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T07:01:16Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234650/job/102768486803",
+          "name": "chio-pheromone-relay-alert-assurance-archive",
+          "startedAt": "2026-09-10T06:52:03Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Pheromone Relay Alert Assurance Archive"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:41:02Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234478/job/102768486486",
+          "name": "chio-pheromone-relay-alert-assurance-archive-hardening",
+          "startedAt": "2026-09-10T06:32:57Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Pheromone Relay Alert Assurance Archive Hardening"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:40:11Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234516/job/102768486249",
+          "name": "chio-pheromone-relay-alert-assurance-archive-package",
+          "startedAt": "2026-09-10T06:30:16Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Pheromone Relay Alert Assurance Archive Package"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:36:43Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234383/job/102768485570",
+          "name": "chio-pheromone-relay-alert-assurance-export",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Pheromone Relay Alert Assurance Export"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:40:57Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234535/job/102768486386",
+          "name": "chio-pheromone-relay-alert-assurance-external-retention",
+          "startedAt": "2026-09-10T06:34:00Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Pheromone Relay Alert Assurance External Retention"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:36:56Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234469/job/102768485932",
+          "name": "chio-pheromone-relay-alert-delivery",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Pheromone Relay Alert Delivery"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:33:59Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234398/job/102768485759",
+          "name": "chio-pheromone-relay-alert-handoff",
+          "startedAt": "2026-09-10T06:26:55Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Pheromone Relay Alert Handoff"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:37:15Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234440/job/102768485844",
+          "name": "chio-pheromone-relay-alert-routing",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Pheromone Relay Alert Routing"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:41:46Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234530/job/102768486221",
+          "name": "chio-pheromone-relay-observability",
+          "startedAt": "2026-09-10T06:34:18Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Pheromone Relay Observability"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:35:57Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234428/job/102768485808",
+          "name": "chio-pheromone-relay-ops",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Pheromone Relay Ops"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:34:43Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234448/job/102768485833",
+          "name": "chio-pheromone-runtime",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Pheromone Runtime"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:41:36Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234607/job/102768486746",
+          "name": "proof-package-gate",
+          "startedAt": "2026-09-10T06:29:13Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Proof Package"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:51:47Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234501/job/102768486634",
+          "name": "runtime (ops-hardening)",
+          "startedAt": "2026-09-10T06:41:48Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Runtime"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:37:25Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234462/job/102768486369",
+          "name": "treaty-bound-provenance",
+          "startedAt": "2026-09-10T06:29:08Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Treaty-Bound Provenance"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:56:15Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234419/job/102768485908",
+          "name": "Cognition market PostgreSQL isolation",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "Cognition market hosted"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:43:45Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234371/job/102768486277",
+          "name": "OpenAI provider replay fixtures",
+          "startedAt": "2026-09-10T06:40:59Z",
+          "status": "COMPLETED",
+          "workflowName": "Provider conformance"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:54:13Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234505/job/102768486608",
+          "name": "SDK parity contract lane",
+          "startedAt": "2026-09-10T06:41:11Z",
+          "status": "COMPLETED",
+          "workflowName": "SDK Parity"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T07:49:32Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234473/job/102768486649",
+          "name": "Build sidecar image (linux/amd64)",
+          "startedAt": "2026-09-10T06:30:03Z",
+          "status": "COMPLETED",
+          "workflowName": "Sidecar Image"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:54:44Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234480/job/102768486557",
+          "name": "SDKs and examples",
+          "startedAt": "2026-09-10T06:46:53Z",
+          "status": "COMPLETED",
+          "workflowName": "Transitive Surface"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T07:03:25Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234529/job/102768486919",
+          "name": "Windows authority guard and init",
+          "startedAt": "2026-09-10T06:37:56Z",
+          "status": "COMPLETED",
+          "workflowName": "Windows Secure Scaffold"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:31:52Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234519/job/102768486670",
+          "name": "apalache-contracts",
+          "startedAt": "2026-09-10T06:31:44Z",
+          "status": "COMPLETED",
+          "workflowName": "apalache-safety"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:43:15Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234515/job/102768486476",
+          "name": "cargo-vet (locked supply-chain audit)",
+          "startedAt": "2026-09-10T06:41:04Z",
+          "status": "COMPLETED",
+          "workflowName": "cargo-vet"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:27:03Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234321/job/102768485319",
+          "name": "fuzz-budget",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "cflite_pr"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:34:54Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234523/job/102768486435",
+          "name": "no-implementation-backed",
+          "startedAt": "2026-09-10T06:34:45Z",
+          "status": "COMPLETED",
+          "workflowName": "check-registries"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:39:18Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234503/job/102768486276",
+          "name": "arena-determinism (linux)",
+          "startedAt": "2026-09-10T06:35:59Z",
+          "status": "COMPLETED",
+          "workflowName": "chio-arena-determinism"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:51:19Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234479/job/102768486619",
+          "name": "replay-gate (linux)",
+          "startedAt": "2026-09-10T06:48:49Z",
+          "status": "COMPLETED",
+          "workflowName": "chio-replay-gate"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:31:42Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234289/job/102768485426",
+          "name": "chio-tee fips smoke",
+          "startedAt": "2026-09-10T06:26:55Z",
+          "status": "COMPLETED",
+          "workflowName": "chio-tee-fips"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:55:27Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234524/job/102768486286",
+          "name": "chio-tee image smoke",
+          "startedAt": "2026-09-10T06:38:53Z",
+          "status": "COMPLETED",
+          "workflowName": "chio-tee-image"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:30:06Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234429/job/102768486171",
+          "name": "vectors-byte-stable (freeze-vectors --check nightly)",
+          "startedAt": "2026-09-10T06:28:41Z",
+          "status": "COMPLETED",
+          "workflowName": "conformance-matrix"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:39:31Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234560/job/102768487141",
+          "name": "formal scope",
+          "startedAt": "2026-09-10T06:39:20Z",
+          "status": "COMPLETED",
+          "workflowName": "formal-pr-smoke"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:42:10Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234340/job/102768485939",
+          "name": "proof-mutants-controls",
+          "startedAt": "2026-09-10T06:42:02Z",
+          "status": "COMPLETED",
+          "workflowName": "proof-mutants"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:29:12Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234385/job/102768486086",
+          "name": "codegen-no-diff (rust+python+ts+go)",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "spec-drift"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:42:00Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234465/job/102768486632",
+          "name": "verdict_matrix rust-kernel",
+          "startedAt": "2026-09-10T06:36:00Z",
+          "status": "COMPLETED",
+          "workflowName": "verdict-matrix"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:41:04Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234584/job/102768486421",
+          "name": "CMake package (macos-latest)",
+          "startedAt": "2026-09-10T06:37:22Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio C++ SDK"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:46:46Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234501/job/102768486413",
+          "name": "runtime (orchestration)",
+          "startedAt": "2026-09-10T06:36:44Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Runtime"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T08:05:41Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234473/job/102768486434",
+          "name": "Build sidecar image (linux/arm64)",
+          "startedAt": "2026-09-10T06:29:29Z",
+          "status": "COMPLETED",
+          "workflowName": "Sidecar Image"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:34:30Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234584/job/102768486523",
+          "name": "CMake package (windows-latest)",
+          "startedAt": "2026-09-10T06:27:05Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio C++ SDK"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:53:41Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234501/job/102768486676",
+          "name": "runtime (attack-simulation)",
+          "startedAt": "2026-09-10T06:48:40Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Runtime"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:45:12Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234501/job/102768486566",
+          "name": "runtime (chaos)",
+          "startedAt": "2026-09-10T06:37:36Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Runtime"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:48:47Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234501/job/102768486582",
+          "name": "runtime (policy)",
+          "startedAt": "2026-09-10T06:37:27Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Runtime"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T07:03:20Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234501/job/102768486714",
+          "name": "runtime (proof-parity)",
+          "startedAt": "2026-09-10T06:52:45Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Runtime"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:54:25Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234501/job/102768486718",
+          "name": "runtime (spine)",
+          "startedAt": "2026-09-10T06:46:34Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio Runtime"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234435/job/102768486337",
+          "name": "MSRV build and test",
+          "startedAt": "2026-09-10T06:45:00Z",
+          "status": "IN_PROGRESS",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T08:05:41Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234473/job/102793815573",
+          "name": "Assemble and sign multi-arch sidecar image",
+          "startedAt": "2026-09-10T08:05:42Z",
+          "status": "COMPLETED",
+          "workflowName": "Sidecar Image"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:39:31Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234560/job/102771394937",
+          "name": "fuzz-corpus-smoke-pr (locked replay)",
+          "startedAt": "2026-09-10T06:39:31Z",
+          "status": "COMPLETED",
+          "workflowName": "formal-pr-smoke"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:42:11Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234340/job/102772011176",
+          "name": "lean-mutants",
+          "startedAt": "2026-09-10T06:42:11Z",
+          "status": "COMPLETED",
+          "workflowName": "proof-mutants"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:51:04Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234584/job/102768486406",
+          "name": "Live C++ conformance",
+          "startedAt": "2026-09-10T06:39:02Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio C++ SDK"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:52:02Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234371/job/102768486389",
+          "name": "OpenAI verdict latency budget",
+          "startedAt": "2026-09-10T06:45:14Z",
+          "status": "COMPLETED",
+          "workflowName": "Provider conformance"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:54:00Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234519/job/102768487086",
+          "name": "apalache-safety-monotone-log",
+          "startedAt": "2026-09-10T06:53:43Z",
+          "status": "COMPLETED",
+          "workflowName": "apalache-safety"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T07:13:39Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234321/job/102768526409",
+          "name": "changed-target-sampling",
+          "startedAt": "2026-09-10T06:43:17Z",
+          "status": "COMPLETED",
+          "workflowName": "cflite_pr"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:46:48Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234455/job/102768486482",
+          "name": "chio chaos windows compile",
+          "startedAt": "2026-09-10T06:39:32Z",
+          "status": "COMPLETED",
+          "workflowName": "chio-chaos-nightly"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:36:59Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234479/job/102768486631",
+          "name": "replay-gate (macos read-only)",
+          "startedAt": "2026-09-10T06:34:36Z",
+          "status": "COMPLETED",
+          "workflowName": "chio-replay-gate"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:46:51Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234429/job/102768486474",
+          "name": "peer-lock-shape-check (pre-release fetch-peers --check)",
+          "startedAt": "2026-09-10T06:41:05Z",
+          "status": "COMPLETED",
+          "workflowName": "conformance-matrix"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:31:54Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234385/job/102768486125",
+          "name": "header-stamp-untouched (do-not-edit grep gate)",
+          "startedAt": "2026-09-10T06:31:48Z",
+          "status": "COMPLETED",
+          "workflowName": "spec-drift"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:53:11Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234465/job/102771972171",
+          "name": "verdict_matrix python-sdk go-http-sdk (required)",
+          "startedAt": "2026-09-10T06:52:29Z",
+          "status": "COMPLETED",
+          "workflowName": "verdict-matrix"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:37:53Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234519/job/102768486932",
+          "name": "apalache-safety-revocation-cut",
+          "startedAt": "2026-09-10T06:36:58Z",
+          "status": "COMPLETED",
+          "workflowName": "apalache-safety"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:54:43Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234519/job/102768487028",
+          "name": "apalache-safety-receipt-before-allow",
+          "startedAt": "2026-09-10T06:53:13Z",
+          "status": "COMPLETED",
+          "workflowName": "apalache-safety"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:38:59Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234519/job/102768486833",
+          "name": "apalache-safety-transition-cancel",
+          "startedAt": "2026-09-10T06:38:23Z",
+          "status": "COMPLETED",
+          "workflowName": "apalache-safety"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:43:50Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234519/job/102768486937",
+          "name": "apalache-safety-post-admission",
+          "startedAt": "2026-09-10T06:31:54Z",
+          "status": "COMPLETED",
+          "workflowName": "apalache-safety"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T07:41:05Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234519/job/102768487123",
+          "name": "apalache-safety-revocation-propagation",
+          "startedAt": "2026-09-10T06:54:01Z",
+          "status": "COMPLETED",
+          "workflowName": "apalache-safety"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:51:24Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234519/job/102768487072",
+          "name": "apalache-safety-distributed-domains",
+          "startedAt": "2026-09-10T06:51:06Z",
+          "status": "COMPLETED",
+          "workflowName": "apalache-safety"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:55:43Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234519/job/102768487112",
+          "name": "apalache-safety-distributed-behavior",
+          "startedAt": "2026-09-10T06:53:56Z",
+          "status": "COMPLETED",
+          "workflowName": "apalache-safety"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:34:15Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234519/job/102768486916",
+          "name": "apalache-safety-delegation-depth",
+          "startedAt": "2026-09-10T06:33:00Z",
+          "status": "COMPLETED",
+          "workflowName": "apalache-safety"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:26:52Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234519/job/102768487367",
+          "name": "apalache-scheduled-bounds-and-refinement",
+          "startedAt": "2026-09-10T06:26:53Z",
+          "status": "COMPLETED",
+          "workflowName": "apalache-safety"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:26:52Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234429/job/102768487626",
+          "name": "external-consumer-smoke (release-blocking python peer run)",
+          "startedAt": "2026-09-10T06:26:53Z",
+          "status": "COMPLETED",
+          "workflowName": "conformance-matrix"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:42:11Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234340/job/102772010819",
+          "name": "proof-mutants",
+          "startedAt": "2026-09-10T06:42:11Z",
+          "status": "COMPLETED",
+          "workflowName": "proof-mutants"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:29:06Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234435/job/102768486212",
+          "name": "cargo-vet (locked supply-chain audit)",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:48:38Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234584/job/102768486461",
+          "name": "Sanitizers and leaks",
+          "startedAt": "2026-09-10T06:46:47Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio C++ SDK"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:31:46Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234371/job/102768486273",
+          "name": "Cross-provider verdict equality (8 providers, required-CI)",
+          "startedAt": "2026-09-10T06:28:30Z",
+          "status": "COMPLETED",
+          "workflowName": "Provider conformance"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:50:52Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234479/job/102768486638",
+          "name": "seed-immutable",
+          "startedAt": "2026-09-10T06:50:43Z",
+          "status": "COMPLETED",
+          "workflowName": "chio-replay-gate"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T07:19:49Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234560/job/102771394066",
+          "name": "lean-build (lake + sorry scan + manifest cross-ref)",
+          "startedAt": "2026-09-10T06:53:09Z",
+          "status": "COMPLETED",
+          "workflowName": "formal-pr-smoke"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:28:39Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234385/job/102768485917",
+          "name": "vectors-byte-stable (freeze-vectors --check)",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "spec-drift"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:49:42Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234465/job/102771972138",
+          "name": "verdict_matrix deployment-shape (required)",
+          "startedAt": "2026-09-10T06:43:52Z",
+          "status": "COMPLETED",
+          "workflowName": "verdict-matrix"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:46:52Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234429/job/102773132474",
+          "name": "notify-on-failure (alarm-policy issue opener)",
+          "startedAt": "2026-09-10T06:46:52Z",
+          "status": "COMPLETED",
+          "workflowName": "conformance-matrix"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:29:25Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234435/job/102768486024",
+          "name": "cargo-deny (supply-chain bans/advisories/licenses)",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:57:09Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234584/job/102768486492",
+          "name": "Conan and vcpkg",
+          "startedAt": "2026-09-10T06:51:50Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio C++ SDK"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:28:29Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234371/job/102768486044",
+          "name": "New-provider replay corpora",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "Provider conformance"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:53:07Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234519/job/102768486931",
+          "name": "apalache-negative",
+          "startedAt": "2026-09-10T06:49:44Z",
+          "status": "COMPLETED",
+          "workflowName": "apalache-safety"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:46:00Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234479/job/102768486594",
+          "name": "proptest",
+          "startedAt": "2026-09-10T06:37:00Z",
+          "status": "COMPLETED",
+          "workflowName": "chio-replay-gate"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T07:15:42Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234560/job/102771394097",
+          "name": "kani-public-pr (lanes.pr sweep)",
+          "startedAt": "2026-09-10T06:54:15Z",
+          "status": "COMPLETED",
+          "workflowName": "formal-pr-smoke"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:32:58Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234385/job/102768486080",
+          "name": "schema-coverage (vectors_schema_pair)",
+          "startedAt": "2026-09-10T06:26:54Z",
+          "status": "COMPLETED",
+          "workflowName": "spec-drift"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:26:52Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234519/job/102768487633",
+          "name": "spec-mutants",
+          "startedAt": "2026-09-10T06:26:53Z",
+          "status": "COMPLETED",
+          "workflowName": "apalache-safety"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:32:55Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234584/job/102768486240",
+          "name": "Guard and kernel packages",
+          "startedAt": "2026-09-10T06:31:56Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio C++ SDK"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:53:54Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234371/job/102768486407",
+          "name": "Ollama localhost integration replay",
+          "startedAt": "2026-09-10T06:51:25Z",
+          "status": "COMPLETED",
+          "workflowName": "Provider conformance"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:37:35Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234479/job/102768486400",
+          "name": "differential",
+          "startedAt": "2026-09-10T06:34:57Z",
+          "status": "COMPLETED",
+          "workflowName": "chio-replay-gate"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:58:09Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234560/job/102771394067",
+          "name": "kani-manifest-pr (non-core lanes.pr sweep)",
+          "startedAt": "2026-09-10T06:47:36Z",
+          "status": "COMPLETED",
+          "workflowName": "formal-pr-smoke"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:30:12Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234385/job/102768486035",
+          "name": "cross-lang-bytes (canonical_json_diff proptest)",
+          "startedAt": "2026-09-10T06:26:55Z",
+          "status": "COMPLETED",
+          "workflowName": "spec-drift"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:39:31Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234560/job/102771395372",
+          "name": "rust-verification-metadata (schema only, no proofs)",
+          "startedAt": "2026-09-10T06:39:32Z",
+          "status": "COMPLETED",
+          "workflowName": "formal-pr-smoke"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:46:32Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234584/job/102768486422",
+          "name": "Drogon package",
+          "startedAt": "2026-09-10T06:46:02Z",
+          "status": "COMPLETED",
+          "workflowName": "Chio C++ SDK"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T07:41:18Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234519/job/102787075710",
+          "name": "apalache-subset",
+          "startedAt": "2026-09-10T07:41:07Z",
+          "status": "COMPLETED",
+          "workflowName": "apalache-safety"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-09-10T06:52:43Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/backbay-labs/chio/actions/runs/34445234479/job/102774207160",
+          "name": "cross-version",
+          "startedAt": "2026-09-10T06:51:22Z",
+          "status": "COMPLETED",
+          "workflowName": "chio-replay-gate"
+        }
+      ]
+    }
+  ]
+}
