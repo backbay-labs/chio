@@ -13,7 +13,7 @@ source and observed CLI behavior is high; program acceptance is unresolved.
 | Native file writes and patches | `write_file`, `patch`; local process / terminal backend | Native toolset disabled. The local write control proves the observer detects native effects. Chio-only hook mode is insufficient on callback/load failure. |
 | Shell and descendants | `terminal`; configured shell/terminal backend | Native terminal absent. Forced native terminal with shell indirection was rejected by actual host and produced no marker. Trusted gateway subprocess is explicit infrastructure, not an agent shell capability. |
 | Background processes | `process`, terminal background options | Tools absent; no model-accessible spawn/poll/kill interface. |
-| Native network/browser | Web search/extract, browser, vision/audio/image tools | Toolsets absent. Only operator-configured inference and Chio gateway networking belong to the supported flow. |
+| Native network/browser | Web search/extract, browser, vision/audio/image tools | Toolsets absent. The host can reach only the exact launcher-owned HTTP gateway and model-relay loopback ports, not the kernel port, arbitrary external HTTPS or Unix sockets. Provider authentication stays in the parent relay. |
 | Git | Native terminal or plugin tools | Native shell and legacy `chio_git_*` absent. External file editing does not promise local commit/push or test execution. |
 | Custom code | `execute_code`, plugins, extension handlers | Code execution and custom toolsets absent; project plugins disabled; no enabled general plugins. Bundled providers may register at startup, but none of their action tools are exposed. |
 | MCP tools | `mcp__<server>__<tool>` dispatcher | One server, `chio`, through fixed gateway. Exact raw names from private config: `read_text_file`, `write_file`, `edit_file`, `list_directory` in current qualification. |
@@ -21,10 +21,10 @@ source and observed CLI behavior is high; program acceptance is unresolved.
 | Dynamic tool search | `tool_search`, `tool_describe`, `tool_call` | Explicitly disabled (`tools.tool_search.enabled: off`). Earlier useful run used host default and is recorded separately. |
 | Delegation | `delegate_task`, agent-loop children, background delegation | Delegation toolsets absent; no child runtime is authorized. |
 | Scheduled/external jobs | Cron, Kanban, gateway messaging | Toolsets and relevant entry points unavailable through launcher. No messages to people are part of qualification. |
-| Config/plugin tampering | Native files, terminal, project plugins, `/plugins`, hooks | Native tools absent, project plugins off, one-shot query entry only. External resource excludes local profile/gateway files and Docker socket. Launcher refuses reused state, source contract drift, install `.env`, unqualified managed config. |
-| Resume/retry/cancel | Session DB, MCP reconnect logic | Launcher does not expose resume. Gateway retains operation identity/journal, does not transparently redispatch unknown outcomes, and fences later attempts. Actual unknown-outcome retry/restart fencing is recorded; other recovery cutpoints remain tracked. |
-| Host housekeeping | Session DB, logs, installed provider modules | Trusted host writes isolated profile data. This is not a protected resource grant or evidence of model-controlled native tools. |
-| Resource effects | Official filesystem MCP server in separate container/volume | Only kernel reaches server. Hermes receives no volume mount; inherited Seatbelt denies outbound Unix sockets except the exact DNS resolver. Policy, symlink and alternate path controls require independent observations. |
+| Config/plugin tampering | Native files, terminal, project plugins, `/plugins`, hooks | Native tools absent, project plugins off, one-shot query entry only. The host can write its isolated state; that state contains no authoritative kernel credential or gateway journal. Those operator paths are outside both host-readable roots and protected-resource write scope. Launcher refuses reused state, source drift, install `.env` and unqualified managed config. |
+| Resume/retry/cancel | Session DB, MCP reconnect logic | Launcher does not expose conversation resume. The parent gateway retains operation identity and its private journal; kernel session fencing independently prevents silent redispatch of unknown effects. Supported operator recovery and same-authority retry/restart observations are retained in the final local record. |
+| Host housekeeping | Session DB, logs, installed provider modules | Host writes its isolated profile and session data. Native terminal scanner bootstrap is explicitly disabled after historical runs showed eager downloads. These paths are not protected resource grants or model-controlled tools. |
+| Resource effects | Official filesystem MCP server in separate container/volume | Only kernel reaches server. Hermes receives no volume mount or Docker socket. Inherited Seatbelt denies outbound Unix sockets and direct kernel access. The parent gateway owns kernel credentials and trusted delivery state. |
 
 The pinned `agent/conversation_loop.py` checks `agent.valid_tool_names` before
 invocation and repairs some unknown names against available tools. The plugin
@@ -44,9 +44,23 @@ Authoritative references checked 2026-09-09:
 Current upstream docs describe timeout handling absent from the installed
 callback dispatcher. Do not substitute current docs for pinned host behavior.
 
-The bounded macOS Seatbelt profile also denies normal-home data reads and writes
-except explicit runtime/state paths. Positive canaries verify both direct and
-child-process restrictions. It remains allow-default elsewhere: operator files
-in temporary directories and writable gateway journals are a concrete privilege
-isolation gap. No arbitrary model execution primitive is exposed by this mode,
-but that static restriction is not a substitute for a sealed authority boundary.
+The current macOS profile starts with default deny. It grants file-content reads
+for pinned runtime/source assets, the query and isolated host state; only that
+state and required device endpoints are writable. Kernel credentials, provider
+credentials and the authoritative gateway journal must remain outside those
+readable roots. The host receives ephemeral gateway/model tokens, which do not
+grant direct kernel or operator access. Sysctl reads are explicitly scoped so
+the host cannot read its parent's environment. There is no broad `/System` grant
+that would expose the Data volume alias. Required Python bootstrap descendants
+inherit the same boundary; Node runs only outside the agent sandbox.
+
+The implementation is bound by [`restricted.py`](src/chio_hermes/restricted.py)
+and [`GatewayTransport`](src/chio_hermes/gateway_transport.py). Actual direct and
+descendant controls, native excluded tools, useful work and recovery are retained
+in the [final local record](evidence/2026-09-10/static-kernel-native/README.md).
+That record identifies the tested versions and its publication boundary.
+
+Historical allow-default profiles and host-writable gateway journals were
+rejected authority boundaries. Their narrow observations and omitted harness
+source are retained in the [historical followup archive](evidence/2026-09-10/historical-followup/README.md).
+Those observations do not qualify the current parent-owned architecture.

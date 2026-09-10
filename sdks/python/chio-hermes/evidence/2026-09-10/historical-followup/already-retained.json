@@ -1,0 +1,27 @@
+[
+  {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/public-clean-host-install-2.log",
+    "trackedRelativePath": "evidence/2026-09-10/public-host-install/raw/prior-relocation/public-clean-host-install-2.log.gz",
+    "sha256": "86186c3533198c16f885c823bb2ffa8bd70480241c5887091af28410c48d1ced"
+  },
+  {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/public-clean-host-install.log",
+    "trackedRelativePath": "evidence/2026-09-10/public-host-install/raw/prior-relocation/public-clean-host-install.log.gz",
+    "sha256": "5466d21853b6a72544b3006804a10e25c398d1b2c14abf3d9aa3c3733243fecb"
+  },
+  {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/public-host-freeze.txt",
+    "trackedRelativePath": "evidence/2026-09-10/public-host-install/raw/prior-relocation/public-host-freeze.txt.gz",
+    "sha256": "1143625bddb5846982f4d6dc2cd9d795c3e25b800b8e2886ab0d6191c08e6ba6"
+  },
+  {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/public-host-provenance.json",
+    "trackedRelativePath": "evidence/2026-09-10/public-host-install/raw/prior-relocation/public-host-provenance.json.gz",
+    "sha256": "f868c96d36382822ebc9583fe93e219af981f94a172888863e05b7ae84643dfe"
+  },
+  {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/public-upstream-fetch.log",
+    "trackedRelativePath": "evidence/2026-09-10/public-host-install/raw/prior-relocation/public-upstream-fetch.log.gz",
+    "sha256": "94a52fe54fd88778548b0a3696e022588d33dfe0e9ab64230f1ff85016356df3"
+  }
+]

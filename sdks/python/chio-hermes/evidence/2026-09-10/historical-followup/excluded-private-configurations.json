@@ -1,0 +1,16 @@
+[
+  {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/run-0/profile/config.yaml",
+    "logicalPath": "packed-fault-interrupted-result/run-0/profile/config.yaml",
+    "bytes": 1281,
+    "sha256": "17c1bc524b9426a1601b1655e5ca929d4e40cd1c26a15e267759f66e874f6afb",
+    "reason": "private historical runtime profile configuration; original preserved, raw bytes excluded"
+  },
+  {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/run-1/profile/config.yaml",
+    "logicalPath": "packed-fault-interrupted-result/run-1/profile/config.yaml",
+    "bytes": 1281,
+    "sha256": "57e8aa9492f57390bd0fd974446df8c5e2ac16007ac3514e2ec9da632c96042f",
+    "reason": "private historical runtime profile configuration; original preserved, raw bytes excluded"
+  }
+]

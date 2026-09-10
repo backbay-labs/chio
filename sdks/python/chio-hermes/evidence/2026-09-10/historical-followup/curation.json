@@ -1,0 +1,15 @@
+{
+  "sourceWorktreeHead": "469af30939312d04e33851a8c36a64eed2e60560",
+  "selectedBase": "7255e7aedcab8d36e99e459345f3edde55dc58a5",
+  "rawFilesExported": 32,
+  "knownPrivateValuesCompared": 1399,
+  "privateOperatorSourcesRead": 2456,
+  "privateProfileConfigurationsExcluded": 2,
+  "existingPublicInstallCopiesVerified": 5,
+  "credentialMatches": 0,
+  "additionalProviderAndPrivateKeyPatternsChecked": true,
+  "historicalHelperSyntaxParsed": true,
+  "historicalHelperExecuted": false,
+  "newHostTestsRun": false,
+  "claim": "lossless curation of historical observations and omitted source; no current host or artifact acceptance"
+}

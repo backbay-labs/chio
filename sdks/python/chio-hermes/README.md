@@ -26,20 +26,26 @@ are unavailable in this mode. It does not accept arbitrary Hermes CLI flags.
 
 The real resource lives behind the kernel in a separate resource service. The
 Hermes process must receive no protected resource mount or Docker socket. The
-stdio gateway owns the agent authentication token, trusted signer pins,
-retained kernel session, and durable operation journal. Each effect is sent
+launcher-owned HTTP gateway runs in a private parent child and owns the kernel
+authentication credential, trusted signer pins, retained session and durable
+operation journal. Each effect is sent
 through kernel `tools/call`; the launcher never authorizes a local executor.
 Gateway configuration and journals must be outside the protected resource's
-write scope. The macOS candidate uses a default-deny Seatbelt profile: explicit
-runtime libraries, pinned source, own configuration/profile and gateway journal
-are readable; only the profile and journal are writable. Hard links, shell
+write scope and outside all host-readable runtime, source and state roots.
+The macOS candidate uses a default-deny Seatbelt profile: explicit runtime
+libraries, pinned source, the query and isolated host state are readable; only
+that host state and required device endpoints are writable. The host receives
+ephemeral gateway/model tokens, never the prepared kernel credential or journal.
+Hard links, shell
 execution, Unix sockets, cross-host files and unrelated network endpoints are
-unavailable. Required Python/Node child processes inherit the same restrictions.
-Only the local kernel port and an operator-owned local model relay are reachable.
-The relay accepts inline text and the selected function tools on the fixed
-OpenAI Chat Completions route; the provider key never enters the host process.
-Kernel-owned uncertainty fencing remains required even if a host alters its local
-journal. Other operating systems and providers are refused pending qualification.
+unavailable. Required Python bootstrap descendants inherit the same restrictions;
+Node runs only outside the agent sandbox. Only the launcher-owned HTTP gateway
+and model-relay loopback ports are reachable, not the kernel port. The relay
+accepts the selected supported model route and tool format; provider credentials
+remain in the parent. Kernel-owned uncertainty fencing complements the private
+gateway journal. Other operating systems and providers are refused pending
+qualification. See the [action inventory](ACTION_INVENTORY.md) and the current
+protected HTTP section below for the boundary and supporting source links.
 
 ## Installation and launch
 

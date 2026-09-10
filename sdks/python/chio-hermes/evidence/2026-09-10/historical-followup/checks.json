@@ -1,0 +1,73 @@
+{
+  "method": "static documentation-to-source and local link consistency; no host or behavioral test",
+  "sourceChecks": {
+    "defaultDenyProfile": true,
+    "privateConfigAndJournalOutsideReadableRoots": true,
+    "hostWriteScopeOnlyState": true,
+    "hostNetworkPortsFromParentGatewayAndModelRelay": true,
+    "hostExecScopePythonOnly": true,
+    "scannerBootstrapDisabled": true,
+    "gatewayNodeRunsInParentTransport": true
+  },
+  "sourceFunction": "prepare",
+  "sourceFunctionLine": 217,
+  "sourceSha256": "e1fe2be691cdb9a87e9090f32b1cb1e053b8bfc43f26fe75b0f0071cabce0ea7",
+  "gatewayTransportSha256": "d89109656d2733e7adbfd1a81e578a1c74d0caead339d21daeffe21a7da49f4f",
+  "localLinks": [
+    {
+      "document": "sdks/python/chio-hermes/ACTION_INVENTORY.md",
+      "target": "src/chio_hermes/restricted.py",
+      "exists": true
+    },
+    {
+      "document": "sdks/python/chio-hermes/ACTION_INVENTORY.md",
+      "target": "src/chio_hermes/gateway_transport.py",
+      "exists": true
+    },
+    {
+      "document": "sdks/python/chio-hermes/ACTION_INVENTORY.md",
+      "target": "evidence/2026-09-10/static-kernel-native/README.md",
+      "exists": true
+    },
+    {
+      "document": "sdks/python/chio-hermes/ACTION_INVENTORY.md",
+      "target": "evidence/2026-09-10/historical-followup/README.md",
+      "exists": true
+    },
+    {
+      "document": "sdks/python/chio-hermes/README.md",
+      "target": "ACCEPTANCE.md",
+      "exists": true
+    },
+    {
+      "document": "sdks/python/chio-hermes/README.md",
+      "target": "ACTION_INVENTORY.md",
+      "exists": true
+    },
+    {
+      "document": "sdks/python/chio-hermes/evidence/2026-09-10/historical-followup/README.md",
+      "target": "../public-host-install/README.md",
+      "exists": true
+    },
+    {
+      "document": "sdks/python/chio-hermes/evidence/2026-09-10/historical-followup/README.md",
+      "target": "../../../ACTION_INVENTORY.md",
+      "exists": true
+    },
+    {
+      "document": "sdks/python/chio-hermes/evidence/2026-09-10/historical-followup/README.md",
+      "target": "../../../README.md",
+      "exists": true
+    },
+    {
+      "document": "sdks/python/chio-hermes/evidence/2026-09-10/historical-followup/README.md",
+      "target": "../static-kernel-native/README.md",
+      "exists": true
+    }
+  ],
+  "rawFilesLosslesslyVerified": 32,
+  "historicalPythonSyntaxValid": true,
+  "runtimeAndActiveHistoricalHelperUnchangedFromSelectedBase": true,
+  "frozenWheelSha256": "625979d5331796e7aef5906e69e3e2c746796aa570291af026c305ed4227c818",
+  "newHostRuns": 0
+}

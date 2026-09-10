@@ -1,0 +1,226 @@
+{
+  "followup/clean-host-install-2.log": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/clean-host-install-2.log",
+    "originalBytes": 2200,
+    "originalSha256": "544a86cd955842a1cfac0d303bb0f251385f5d0ffe2f727d0abab729d19578ae",
+    "gzip": "raw/followup/clean-host-install-2.log.gz",
+    "gzipSha256": "2255ba11b98500624100d1f2c8a74eba4c26ffec7b2e025148c090eea0db03ba"
+  },
+  "followup/clean-host-install.log": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/clean-host-install.log",
+    "originalBytes": 679,
+    "originalSha256": "64cf86d4fd3f8d31e89279e868e5a0ca4688fbd53d6f581023f9d889871aac2e",
+    "gzip": "raw/followup/clean-host-install.log.gz",
+    "gzipSha256": "2a6282e818492cac021db4470b49c7c02aaaee0066eb86d678a21b64fa9fa763"
+  },
+  "followup/install-tools.log": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/install-tools.log",
+    "originalBytes": 496,
+    "originalSha256": "89b5ce73261e6323a5be6b3a40efc8276e66206d405c6a199844eb6b31310029",
+    "gzip": "raw/followup/install-tools.log.gz",
+    "gzipSha256": "5da196d5b00ff39ddaac68111c9b1b4a8aa27fc166718d8ad65b49fdb70f4e1c"
+  },
+  "followup/interrupted-journal/c2d274654f6a687c79ed0ef8498742664a0b2d434062af84f744e3a80d0890ee.json": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/interrupted-journal/c2d274654f6a687c79ed0ef8498742664a0b2d434062af84f744e3a80d0890ee.json",
+    "originalBytes": 414,
+    "originalSha256": "c6cd26b09f56eda8ee58a26188f1fed16da35e204715d022f45b38147787912b",
+    "gzip": "raw/followup/interrupted-journal/c2d274654f6a687c79ed0ef8498742664a0b2d434062af84f744e3a80d0890ee.json.gz",
+    "gzipSha256": "d6c86c0640fe54a7a3c3339ccf3ceecf71ee3da0e55dd108d3c503fa882ac2f9"
+  },
+  "followup/packed-fault-interrupted-result/proxy-trace.json": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/proxy-trace.json",
+    "originalBytes": 268,
+    "originalSha256": "e7093b57a15ce7ffb861b4fca1c788c9009c50c04bcf0ec701a429d6af419d31",
+    "gzip": "raw/followup/packed-fault-interrupted-result/proxy-trace.json.gz",
+    "gzipSha256": "2b310866eda88994de5d6c54c2d381d3820c4b5288147d4418212204aa8c9e29"
+  },
+  "followup/packed-fault-interrupted-result/run-0/host.sb": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/run-0/host.sb",
+    "originalBytes": 1206,
+    "originalSha256": "238edc4456be91c5ec327ac95397c117eea1c67ddbb7360470a7eb81a9eee739",
+    "gzip": "raw/followup/packed-fault-interrupted-result/run-0/host.sb.gz",
+    "gzipSha256": "62df0e07bbcb2a26d5ee138c0365e05ade69f485e18e49ed6f1c6881909f2475"
+  },
+  "followup/packed-fault-interrupted-result/run-0/launch.json": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/run-0/launch.json",
+    "originalBytes": 1190,
+    "originalSha256": "2ac1e3f121191737b08d79f9f4ffca0013baf623c95974adcef07685fb47d506",
+    "gzip": "raw/followup/packed-fault-interrupted-result/run-0/launch.json.gz",
+    "gzipSha256": "f7cfcdcf6835424da7b9d203120168fea25ad0c99b913a0e6ad0da6d112a4c01"
+  },
+  "followup/packed-fault-interrupted-result/run-0/profile/logs/agent.log": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/run-0/profile/logs/agent.log",
+    "originalBytes": 5242,
+    "originalSha256": "67eaa601dc725a6c7266ca0551063210039e232217253af915f22b5b8e409d98",
+    "gzip": "raw/followup/packed-fault-interrupted-result/run-0/profile/logs/agent.log.gz",
+    "gzipSha256": "18d1c9347dff355337a495438f0b4ac41bb7b3ddc4fe5a908a1b0a15110c36a5"
+  },
+  "followup/packed-fault-interrupted-result/run-0/profile/logs/errors.log": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/run-0/profile/logs/errors.log",
+    "originalBytes": 873,
+    "originalSha256": "0806ac7a4308c75d515a2c8bcc41f175d868641f3d7eded77302de36a7226c4f",
+    "gzip": "raw/followup/packed-fault-interrupted-result/run-0/profile/logs/errors.log.gz",
+    "gzipSha256": "a1e1a8a90768139158cf34c1af89d80221826598e2308d061e93026122338a4c"
+  },
+  "followup/packed-fault-interrupted-result/run-0/profile/logs/mcp-stderr.log": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/run-0/profile/logs/mcp-stderr.log",
+    "originalBytes": 62,
+    "originalSha256": "94b5e01e47291ccf6244ffedc5e6e016ece0737cc706804d54e31de3d975c29d",
+    "gzip": "raw/followup/packed-fault-interrupted-result/run-0/profile/logs/mcp-stderr.log.gz",
+    "gzipSha256": "067dfa935197a07d63515dd96ce4f4f1f7e9e7274455912ad17c2808668a88a1"
+  },
+  "followup/packed-fault-interrupted-result/run-1/host.sb": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/run-1/host.sb",
+    "originalBytes": 1206,
+    "originalSha256": "b8821590ae7384d233f02975d0a6c31582777565e3564dc71a39319db1c7efc9",
+    "gzip": "raw/followup/packed-fault-interrupted-result/run-1/host.sb.gz",
+    "gzipSha256": "4aa03cecd6d8c337964f54ec42791e28d438512d2be7bc7f8e8da600fbf7c0bb"
+  },
+  "followup/packed-fault-interrupted-result/run-1/launch.json": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/run-1/launch.json",
+    "originalBytes": 1190,
+    "originalSha256": "6c31c4bc0ff69eb685c09751372c0ebc3e2a037ca0f1ef2118fd8be9fc6060ed",
+    "gzip": "raw/followup/packed-fault-interrupted-result/run-1/launch.json.gz",
+    "gzipSha256": "a7e9e44d01072c881f3deaec098a3404caae519c4e41c074978d61a46ff5b385"
+  },
+  "followup/packed-fault-interrupted-result/run-1/profile/logs/agent.log": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/run-1/profile/logs/agent.log",
+    "originalBytes": 6011,
+    "originalSha256": "e9418e38f5e20014cfdf6dedd979f1a7332e460a822339ce28a4785f0a7153b3",
+    "gzip": "raw/followup/packed-fault-interrupted-result/run-1/profile/logs/agent.log.gz",
+    "gzipSha256": "6f69357ecb5da3ae84ea8768a0819536e3fc8b9a388f5e1950d045484ca5bdb7"
+  },
+  "followup/packed-fault-interrupted-result/run-1/profile/logs/errors.log": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/run-1/profile/logs/errors.log",
+    "originalBytes": 1203,
+    "originalSha256": "5e73979c69bf5f1d47ced39b2c16bbea9d75e073fde0c2c49abe1ba68059d18f",
+    "gzip": "raw/followup/packed-fault-interrupted-result/run-1/profile/logs/errors.log.gz",
+    "gzipSha256": "a6c11bfea5e4400c50dc8c04556a06c138d174a4a98dbff039241eb07a888ddc"
+  },
+  "followup/packed-fault-interrupted-result/run-1/profile/logs/mcp-stderr.log": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/run-1/profile/logs/mcp-stderr.log",
+    "originalBytes": 197,
+    "originalSha256": "8c28dc5d8542bc927133286dd06c68a908e0ec6312eaeb57fabaee8d28724886",
+    "gzip": "raw/followup/packed-fault-interrupted-result/run-1/profile/logs/mcp-stderr.log.gz",
+    "gzipSha256": "fb8727a8b89f9b4042fd3a480a0abad23cb553ed5720601536c9a4a45bc41c92"
+  },
+  "followup/packed-fault-interrupted-result/runs.json": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/runs.json",
+    "originalBytes": 2108,
+    "originalSha256": "8221eaf1ef84715552c83bd43094dc6401a4838a2e424b54aab1cd0b3f3482cf",
+    "gzip": "raw/followup/packed-fault-interrupted-result/runs.json.gz",
+    "gzipSha256": "a68dd6baffcbd8aad0e87402647080ca68c2de1d7259cbb437746a158f7db45d"
+  },
+  "followup/packed-fault-interrupted-result/stderr-0.txt": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/stderr-0.txt",
+    "originalBytes": 36,
+    "originalSha256": "82ef14464a77d0caef22fdfd79ce2474a67c8c988264936b6ded4e30bb9ec332",
+    "gzip": "raw/followup/packed-fault-interrupted-result/stderr-0.txt.gz",
+    "gzipSha256": "469cf13ec3f9803e7ab10f763f194329c26dfe97922e3b2592578d6dcf1a45ab"
+  },
+  "followup/packed-fault-interrupted-result/stderr-1.txt": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/stderr-1.txt",
+    "originalBytes": 36,
+    "originalSha256": "f2d1bf2fd1a4714c2831caa2837cd5d129c59bf98c83f9a3ce796ecc9984943c",
+    "gzip": "raw/followup/packed-fault-interrupted-result/stderr-1.txt.gz",
+    "gzipSha256": "4798b1fcaf336c75061febac1b7cd9adac3ebcabed7f6d5a08ed88924c85d078"
+  },
+  "followup/packed-fault-interrupted-result/stdout-0.txt": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/stdout-0.txt",
+    "originalBytes": 109,
+    "originalSha256": "ea659b9a02386d32e68536cab823fca318fbcab748d83d7fca72ff76fd975ed0",
+    "gzip": "raw/followup/packed-fault-interrupted-result/stdout-0.txt.gz",
+    "gzipSha256": "d53d43afbe319b11d9bacdff5e9ce235769743b8136481c5e27439dc16006255"
+  },
+  "followup/packed-fault-interrupted-result/stdout-1.txt": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result/stdout-1.txt",
+    "originalBytes": 368,
+    "originalSha256": "ceb379fc634e19174585d9097a5eaf26401656e428ad8de9f008c5a98d87fe97",
+    "gzip": "raw/followup/packed-fault-interrupted-result/stdout-1.txt.gz",
+    "gzipSha256": "4bf171fe18f939a0c18222c20cd923f6e407977c1c125b171fbf1618e3746de7"
+  },
+  "followup/packed-fault-interrupted-result-driver.stderr.txt": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result-driver.stderr.txt",
+    "originalBytes": 0,
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gzip": "raw/followup/packed-fault-interrupted-result-driver.stderr.txt.gz",
+    "gzipSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+  },
+  "followup/packed-fault-interrupted-result-driver.stdout.txt": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-fault-interrupted-result-driver.stdout.txt",
+    "originalBytes": 1799,
+    "originalSha256": "a0e6c9dc0b4ba84a03df6faecbcc4d582b474e50ec0ba3e9fc766ad2526ff18a",
+    "gzip": "raw/followup/packed-fault-interrupted-result-driver.stdout.txt.gz",
+    "gzipSha256": "9e0ae63e004b6f669c89cf943a87fe064a946448a97498f535c48eaf1a272d5b"
+  },
+  "followup/packed-interrupted-observer.json": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/packed-interrupted-observer.json",
+    "originalBytes": 121,
+    "originalSha256": "67c20bcc72e9d3ef2e0c929516257ea790d6cd9a090634c7a1dbe99ca17861d9",
+    "gzip": "raw/followup/packed-interrupted-observer.json.gz",
+    "gzipSha256": "63c606bfc9e14e590a08a193876726d3db5ac79190eee67ba7e71023e3f0aeb1"
+  },
+  "followup/python-artifact-lifecycle.json": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/python-artifact-lifecycle.json",
+    "originalBytes": 6888,
+    "originalSha256": "71c924aaa7cd827e1ae2dd4cf789a551f4685462cd06c88a4c6e3f7c28de2e38",
+    "gzip": "raw/followup/python-artifact-lifecycle.json.gz",
+    "gzipSha256": "51e213d8244e352cd0aaaf395024ce84b9a7e1f085831fd68f8fd264e8690741"
+  },
+  "followup/release-seatbelt-canaries/observation.json": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/release-seatbelt-canaries/observation.json",
+    "originalBytes": 600,
+    "originalSha256": "429861f9a3891d62447d9b4ab93f68269dbec8617c8e3bd8a43372fce97073d5",
+    "gzip": "raw/followup/release-seatbelt-canaries/observation.json.gz",
+    "gzipSha256": "44e35dbaa6f1599e3effb483b9df6c23a3ac21de7eed72b2c1c21cd17bb6ef96"
+  },
+  "followup/release-seatbelt-canaries/profile.sb": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/release-seatbelt-canaries/profile.sb",
+    "originalBytes": 624,
+    "originalSha256": "19667870fcb4d6bb55a4c976440c8e81f28e463d98f8ce247b9af997b9730080",
+    "gzip": "raw/followup/release-seatbelt-canaries/profile.sb.gz",
+    "gzipSha256": "a50937e56165ccd5737dca8be5496a02b5cbc187bff857327f201add7bae85c9"
+  },
+  "followup/release-seatbelt-canaries/stderr-0.txt": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/release-seatbelt-canaries/stderr-0.txt",
+    "originalBytes": 0,
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gzip": "raw/followup/release-seatbelt-canaries/stderr-0.txt.gz",
+    "gzipSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+  },
+  "followup/release-seatbelt-canaries/stderr-1.txt": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/release-seatbelt-canaries/stderr-1.txt",
+    "originalBytes": 0,
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gzip": "raw/followup/release-seatbelt-canaries/stderr-1.txt.gz",
+    "gzipSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+  },
+  "followup/release-seatbelt-canaries/stdout-0.txt": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/release-seatbelt-canaries/stdout-0.txt",
+    "originalBytes": 74,
+    "originalSha256": "d97e8343b8345a3195370aadb0d24c6163cdd7898c7c2eba02cc1f96f4da13f1",
+    "gzip": "raw/followup/release-seatbelt-canaries/stdout-0.txt.gz",
+    "gzipSha256": "b7b51392d21c4d83bc27209b22f0055e8ecbca90a709c4e48e58e8ca7ca29758"
+  },
+  "followup/release-seatbelt-canaries/stdout-1.txt": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/release-seatbelt-canaries/stdout-1.txt",
+    "originalBytes": 74,
+    "originalSha256": "d97e8343b8345a3195370aadb0d24c6163cdd7898c7c2eba02cc1f96f4da13f1",
+    "gzip": "raw/followup/release-seatbelt-canaries/stdout-1.txt.gz",
+    "gzipSha256": "b7b51392d21c4d83bc27209b22f0055e8ecbca90a709c4e48e58e8ca7ca29758"
+  },
+  "omitted-source/scripts/probe_execution_fault.py": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/scripts/probe_execution_fault.py",
+    "originalBytes": 9718,
+    "originalSha256": "06b96cf5312499a7e0629c3b15bf707b69317f4b757551395ad8ab2730470275",
+    "gzip": "raw/omitted-source/scripts/probe_execution_fault.py.gz",
+    "gzipSha256": "ab58c76fcfc8af9b1b72cfb51d19e22f62e513012515733e49ea75916681b466"
+  },
+  "omitted-source/ACTION_INVENTORY.md": {
+    "originalPath": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/ACTION_INVENTORY.md",
+    "originalBytes": 7024,
+    "originalSha256": "19aa4ead0678cf8e3ed3ffffb9d8414c40dfc7a7f5cb9dae9922e555b6bcab66",
+    "gzip": "raw/omitted-source/ACTION_INVENTORY.md.gz",
+    "gzipSha256": "a26fd5f95d2ef6f2903096cf2346df4a14042e633a7b33af6d2481d11fc3d145"
+  }
+}
