@@ -1,0 +1,55 @@
+{
+  "schema": "chio.local-static-kernel-evidence.v1",
+  "capturedAtUtc": "2026-09-10T07:19:50.545038+00:00",
+  "captureBase": "906c509dfff688817a8b1e5a70d13d97efd3187b",
+  "source": "bafa02b06de93553cecb6f60b340f3dd8fd9b401",
+  "sourceTree": "494cf428a6d6829f132c6b987e3f84a2d14f7485",
+  "cargoLockSha256": "d6db12262907b2c49a500f26d599c14889540efd2f064dd72cf10fed7bb3de2a",
+  "binarySha256": "c03a8a711dbbd15da2c59655d9ab6d8f0068a20187363db7a78f4b5422ded93e",
+  "binaryBytes": 107042112,
+  "version": "chio-cli 0.1.1-rc.1",
+  "target": "aarch64-apple-darwin",
+  "frozenBinary": "/Users/connor/.local/share/chio-required-candidates/kernel-rc-static-20260910/chio-c03a8a711dbb",
+  "sourceAndNativeInputsUnchangedDuringBuild": true,
+  "captureTimeNativeMaterialChecks": 146,
+  "validationSources": [
+    {
+      "path": "scripts/check-macos-release-linkage.py",
+      "sha256": "f43209873d3c5b55bb24acde45fdddd5c1cbe02af56973e27354f07c57cf3bea",
+      "gitBlob": "6918ee7414ce48621dbc8b98ea6fda0ccb25c2f9",
+      "snapshotSource": "906c509dfff688817a8b1e5a70d13d97efd3187b",
+      "sameAsKernelSource": true
+    },
+    {
+      "path": "scripts/check-release-binary-sbom.py",
+      "sha256": "429e2f7cddb4d817fd3c6f8ed38f2d3c056a645c5507102ad15d3681a8d7e09b",
+      "gitBlob": "74e7e893979e713cb378affc28e65e8a909ecc5b",
+      "snapshotSource": "906c509dfff688817a8b1e5a70d13d97efd3187b",
+      "sameAsKernelSource": false
+    },
+    {
+      "path": "deploy/sbom/syft.yaml",
+      "sha256": "d60b760aba6478621a81ee1d267a4f5e48eea08a3520f3c5089033fdc223732d",
+      "gitBlob": "0dec2abfa5d9c8899986ad20249598e23e8cd52b",
+      "snapshotSource": "906c509dfff688817a8b1e5a70d13d97efd3187b",
+      "sameAsKernelSource": false
+    }
+  ],
+  "syft": {
+    "version": "1.51.1",
+    "binarySha256": "47cd0bc89537c80eed48f34766743d54574e5830deff243cf54d99696a8e9ce0",
+    "archiveSha256": "ac063af3b9874769deb7ea1e6d76841e68f9e3bb50cd654226fc977de65532c1",
+    "archiveName": "syft_1.51.1_darwin_arm64.tar.gz"
+  },
+  "claims": {
+    "localBuildSucceeded": true,
+    "systemOnlyLoaderUnderLibraryDenialPassed": true,
+    "embeddedRustInventoryValidationPassed": true,
+    "hostAcceptance": false,
+    "published": false,
+    "hostedReleaseArtifact": false,
+    "completeNativeDependencyInventory": false,
+    "independentCompleteGraphEquality": false
+  },
+  "rawFileCount": 40
+}

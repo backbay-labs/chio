@@ -1,0 +1,25 @@
+{
+  "checks": [
+    {
+      "argv": [
+        "bash",
+        "scripts/check-chio-proof-room-release-truth.sh"
+      ],
+      "exitCode": 0,
+      "scriptSha256": "e1d6a2d94eab5016fee17f8e796a5ac4cd5b9ec255a51f63e6b62f8d041c0ffe",
+      "output": "raw/validation/copy-gate.log.gz",
+      "sourceBaseline": "906c509dfff688817a8b1e5a70d13d97efd3187b"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/tests/check-chio-proof-room-release-truth.test.sh"
+      ],
+      "exitCode": 0,
+      "scriptSha256": "fa9c0abd24f3e36c3964d5677ee8d1d316ac96d4a601f55731714faa7d5cbefc",
+      "output": "raw/validation/copy-regressions.log.gz",
+      "sourceBaseline": "906c509dfff688817a8b1e5a70d13d97efd3187b"
+    }
+  ],
+  "scope": "Unchanged product-copy gate and existing regression controls; not runtime acceptance."
+}

@@ -1,0 +1,404 @@
+{
+  "files": [
+    {
+      "path": "raw/artifact/build.json.gz",
+      "logicalPath": "artifact/build.json",
+      "origin": "/tmp/chio-kernel-rc-static-artifact-20260910/build.json",
+      "originalBytes": 23517,
+      "originalSha256": "737e768b813f6ec3853238b26f46223c85bf76a912bd0510c9428615c3f8d833",
+      "storedBytes": 7698,
+      "storedSha256": "e6fed8c6d2e48f35335396c2bbcd820c217ab78eee13ab5bae9a52e317ac93be",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/artifact/commands.json.gz",
+      "logicalPath": "artifact/commands.json",
+      "origin": "/tmp/chio-kernel-rc-static-artifact-20260910/commands.json",
+      "originalBytes": 3179,
+      "originalSha256": "def83a25dc52197f067726233a053ad30bf187c8153678ba6033a4fc5d2cee69",
+      "storedBytes": 838,
+      "storedSha256": "14bfed2e3ba267c0e609a762585fb59072a61a462fc7a091976d4212510cea7a",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/artifact/identity.json.gz",
+      "logicalPath": "artifact/identity.json",
+      "origin": "/tmp/chio-kernel-rc-static-artifact-20260910/identity.json",
+      "originalBytes": 597,
+      "originalSha256": "0116402d637fa3f456881af67d151d8f343c75c76d66d6d7885d86715326a184",
+      "storedBytes": 409,
+      "storedSha256": "9c12f8c1cf44c2be3ddb2626ebb2521e95416daa0bcee77af68eeda5711054e6",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/artifact/inventory-validation.stderr.gz",
+      "logicalPath": "artifact/inventory-validation.stderr",
+      "origin": "/tmp/chio-kernel-rc-static-artifact-20260910/inventory-validation.stderr",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedBytes": 20,
+      "storedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/artifact/inventory-validation.stdout.gz",
+      "logicalPath": "artifact/inventory-validation.stdout",
+      "origin": "/tmp/chio-kernel-rc-static-artifact-20260910/inventory-validation.stdout",
+      "originalBytes": 879,
+      "originalSha256": "e87d39b1f290380ff988fec4da529d2006914b185e42e7a54fc6800915696faf",
+      "storedBytes": 510,
+      "storedSha256": "afb0cc10c64004a20df510ad8ef5a9d1624a1ffb170bed2134741c5749e63d8f",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/artifact/linkage.json.gz",
+      "logicalPath": "artifact/linkage.json",
+      "origin": "/tmp/chio-kernel-rc-static-artifact-20260910/linkage.json",
+      "originalBytes": 3145,
+      "originalSha256": "7a31cc3aacc00304a5125b7ed05dbfa6abef829138a66193b4ca9ff44dad1e94",
+      "storedBytes": 826,
+      "storedSha256": "92f21f3ac9b47bf652d198b1fc7e464a47db454d3ef3fa2d742ec53faf15d324",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/artifact/linkage.stderr.gz",
+      "logicalPath": "artifact/linkage.stderr",
+      "origin": "/tmp/chio-kernel-rc-static-artifact-20260910/linkage.stderr",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedBytes": 20,
+      "storedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/artifact/linkage.stdout.gz",
+      "logicalPath": "artifact/linkage.stdout",
+      "origin": "/tmp/chio-kernel-rc-static-artifact-20260910/linkage.stdout",
+      "originalBytes": 79,
+      "originalSha256": "51422628392a8cc8507a732c46295ccf473de3503ab3da236b0e2a09437d1698",
+      "storedBytes": 97,
+      "storedSha256": "34f3d0d429694994977fc19bd71292baf21b5c9448c4db881d1795988ee33f37",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/artifact/openssl-sys-build-output.txt.gz",
+      "logicalPath": "artifact/openssl-sys-build-output.txt",
+      "origin": "/tmp/chio-kernel-rc-static-artifact-20260910/openssl-sys-build-output.txt",
+      "originalBytes": 4768,
+      "originalSha256": "b53a20d76a4cea23b7a213175325cd1ed70c823780ed84b65a173d828ad0c47b",
+      "storedBytes": 886,
+      "storedSha256": "6d631f621b1b7f567ac35f93bd9d8218f3c6424128fb08d97df48df3ec74fb83",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/artifact/result.json.gz",
+      "logicalPath": "artifact/result.json",
+      "origin": "/tmp/chio-kernel-rc-static-artifact-20260910/result.json",
+      "originalBytes": 820,
+      "originalSha256": "c0542518a251ca3b0e59d998eba8d8bd068a0dede55edc8d82c15636085c232f",
+      "storedBytes": 521,
+      "storedSha256": "66e56873dd52bece4c6675c587aa4ef0ec9b2abe08e7700e2ae56ad72a9b0dbd",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/artifact/sbom.json.gz",
+      "logicalPath": "artifact/sbom.json",
+      "origin": "/tmp/chio-kernel-rc-static-artifact-20260910/sbom.json",
+      "originalBytes": 1008687,
+      "originalSha256": "5af669eb6b2c01ca59da5a35d509e9a3d3e5faa0d59ea95e917491dadc7f09e6",
+      "storedBytes": 81044,
+      "storedSha256": "00893bfe58342cd959e086a82a42dfc8aea62e9d6919e42ee01066a22faaaa3d",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/artifact/syft.stderr.gz",
+      "logicalPath": "artifact/syft.stderr",
+      "origin": "/tmp/chio-kernel-rc-static-artifact-20260910/syft.stderr",
+      "originalBytes": 218,
+      "originalSha256": "30b25208ec0c7d5bad2fed2626b40f68988c537315069d7db33997e9e066ca9a",
+      "storedBytes": 161,
+      "storedSha256": "fefbf5ea039082d3a9c36c6d1936e2f6a22500231002a4d92d6f7fe14ff25d37",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/artifact/syft.stdout.gz",
+      "logicalPath": "artifact/syft.stdout",
+      "origin": "/tmp/chio-kernel-rc-static-artifact-20260910/syft.stdout",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedBytes": 20,
+      "storedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/artifact/validation.json.gz",
+      "logicalPath": "artifact/validation.json",
+      "origin": "/tmp/chio-kernel-rc-static-artifact-20260910/validation.json",
+      "originalBytes": 879,
+      "originalSha256": "e87d39b1f290380ff988fec4da529d2006914b185e42e7a54fc6800915696faf",
+      "storedBytes": 510,
+      "storedSha256": "afb0cc10c64004a20df510ad8ef5a9d1624a1ffb170bed2134741c5749e63d8f",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/build/build.json.gz",
+      "logicalPath": "build/build.json",
+      "origin": "/tmp/chio-kernel-rc-static-build-20260910/build.json",
+      "originalBytes": 23517,
+      "originalSha256": "737e768b813f6ec3853238b26f46223c85bf76a912bd0510c9428615c3f8d833",
+      "storedBytes": 7698,
+      "storedSha256": "e6fed8c6d2e48f35335396c2bbcd820c217ab78eee13ab5bae9a52e317ac93be",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/build/build.log.gz",
+      "logicalPath": "build/build.log",
+      "origin": "/tmp/chio-kernel-rc-static-build-20260910/build.log",
+      "originalBytes": 6597,
+      "originalSha256": "afdd95a67bd3d361978d2364f8156dab31f911937f2b303bfeef04c44dc48a72",
+      "storedBytes": 778,
+      "storedSha256": "ff16a31234bef90b00b44dd2e9416fd54d0af7f9b39585ecb9ee1e7099a755dc",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/build/runner.py.gz",
+      "logicalPath": "build/runner.py",
+      "origin": "/tmp/chio-kernel-rc-static-build-20260910/runner.py",
+      "originalBytes": 3694,
+      "originalSha256": "c83f99ac54e841e4e597e7086afd00cadb2f8e4be12cb753ed75e9a67355914f",
+      "storedBytes": 1605,
+      "storedSha256": "4f9e3e9dc6f483fa4036bbe2e2b9c5f1bc64cfd2d32528127787c031fb12b5d5",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/native/cargo-env.json.gz",
+      "logicalPath": "native/cargo-env.json",
+      "origin": "/tmp/chio-openssl-static-3.6.4-20260910/cargo-env.json",
+      "originalBytes": 417,
+      "originalSha256": "0b75d000331f98255f5c4439a3e3ca3f76318c8b7aa8896dcf531c2735c1236b",
+      "storedBytes": 177,
+      "storedSha256": "e5f1fb6b7516571416f8f715685da0a74c420b6558b3e791d78797ea81dd617d",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/native/native-openssl-scan.json.gz",
+      "logicalPath": "native/native-openssl-scan.json",
+      "origin": "/tmp/chio-openssl-static-scan-20260910/native-openssl-scan.json",
+      "originalBytes": 4371,
+      "originalSha256": "b73c0b86b1af91c3acfd62085aca3642255f96b7206e49d92e6600e92e34a348",
+      "storedBytes": 1416,
+      "storedSha256": "536ec4c2b23ae903b7d4e0d92199c1b74da673cdefff17d0bc9afb1c791eb5e7",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/native/native-openssl.catalog.cdx.json.gz",
+      "logicalPath": "native/native-openssl.catalog.cdx.json",
+      "origin": "/tmp/chio-openssl-static-scan-20260910/native-openssl.catalog.cdx.json",
+      "originalBytes": 1704,
+      "originalSha256": "797d9bb3fc85bf01a6f89e929ad8f0265d6334840d3c9f5c737306944ddc1be7",
+      "storedBytes": 657,
+      "storedSha256": "b73af5b600a4a58899edf7805fbd66221dc612cc770bbca7ae07fde34ddcbdb4",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/native/native-openssl.grype.json.gz",
+      "logicalPath": "native/native-openssl.grype.json",
+      "origin": "/tmp/chio-openssl-static-scan-20260910/native-openssl.grype.json",
+      "originalBytes": 4792,
+      "originalSha256": "f177b5412926ebba9b9f5f934863f72236cfe3e49f1586e075f62d123cdccc05",
+      "storedBytes": 1773,
+      "storedSha256": "f33da8a5258e9281a9fd6c350b124f46357e0040ef7906165f2c02bed009b5be",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/native/native-openssl.json.gz",
+      "logicalPath": "native/native-openssl.json",
+      "origin": "/tmp/chio-openssl-static-3.6.4-20260910/native-openssl.json",
+      "originalBytes": 15519,
+      "originalSha256": "53ce9d512229466d076ba56302fa7af9960ea78d6a5f5a5295dfb36c2ffebbb2",
+      "storedBytes": 7069,
+      "storedSha256": "c9789b45ba342ff1cb7f262062d28f335726067ca1c12620ca1866e5d5f6d1a3",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/postbuild/runner.py.gz",
+      "logicalPath": "postbuild/runner.py",
+      "origin": "/tmp/chio-static-postbuild-20260910.py",
+      "originalBytes": 4217,
+      "originalSha256": "140ea35cac3aee75f62c5f93d192fb167194a183cdf0c7446fd6e8ee46afed15",
+      "storedBytes": 1786,
+      "storedSha256": "f3420bba1141a685ea3792fcfa63b10595569e8b7bd01364ed4e4aeccf34e5ca",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/source/.github/workflows/release-binaries.yml.gz",
+      "logicalPath": "source/.github/workflows/release-binaries.yml",
+      "origin": "git:bafa02b06de93553cecb6f60b340f3dd8fd9b401:.github/workflows/release-binaries.yml",
+      "originalBytes": 50731,
+      "originalSha256": "8694df5628c772588d798cd044c18fb8d6f6b80b4e936c6f9e77c0aa0f9890cc",
+      "storedBytes": 11766,
+      "storedSha256": "780ba5823c10e188cc2a174913e1c6d811fb9295037aae36c9ce8953031349c1",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/source/Cargo.lock.gz",
+      "logicalPath": "source/Cargo.lock",
+      "origin": "git:bafa02b06de93553cecb6f60b340f3dd8fd9b401:Cargo.lock",
+      "originalBytes": 365230,
+      "originalSha256": "d6db12262907b2c49a500f26d599c14889540efd2f064dd72cf10fed7bb3de2a",
+      "storedBytes": 81565,
+      "storedSha256": "4d36db1eb7ba6f3a738532f9a2b819b60691672d1364b647c4fd992957702c0a",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/source/Cargo.toml.gz",
+      "logicalPath": "source/Cargo.toml",
+      "origin": "git:bafa02b06de93553cecb6f60b340f3dd8fd9b401:Cargo.toml",
+      "originalBytes": 22303,
+      "originalSha256": "f1af9cc30375572b2b393e0d4fde6ffd536638f95d3d2e1d48dd75d75e1e1424",
+      "storedBytes": 5599,
+      "storedSha256": "366ddd6f6f342b8479d25b5840c1ba5d2c1742b14557dc21464c255fc68b0a0a",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/source/crates/core/chio-core/Cargo.toml.gz",
+      "logicalPath": "source/crates/core/chio-core/Cargo.toml",
+      "origin": "git:bafa02b06de93553cecb6f60b340f3dd8fd9b401:crates/core/chio-core/Cargo.toml",
+      "originalBytes": 1269,
+      "originalSha256": "af6e28c896b26c4713d54037526ea62f63382627c44e85886abe5be52176a7f3",
+      "storedBytes": 477,
+      "storedSha256": "dc99a0c3ca0d82779ed3002ce1608852470749771b588537e82bbe3e09165aca",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/source/crates/guards/chio-guards/Cargo.toml.gz",
+      "logicalPath": "source/crates/guards/chio-guards/Cargo.toml",
+      "origin": "git:bafa02b06de93553cecb6f60b340f3dd8fd9b401:crates/guards/chio-guards/Cargo.toml",
+      "originalBytes": 927,
+      "originalSha256": "11b271201c70a080b9e952b239b68fba9ee4a2a59a3cc4418c8729211c908076",
+      "storedBytes": 374,
+      "storedSha256": "5680677117bb17167b1483110d5e22667657000223aab1a1691eacc89696fbbd",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/source/crates/kernel/chio-kernel/Cargo.toml.gz",
+      "logicalPath": "source/crates/kernel/chio-kernel/Cargo.toml",
+      "origin": "git:bafa02b06de93553cecb6f60b340f3dd8fd9b401:crates/kernel/chio-kernel/Cargo.toml",
+      "originalBytes": 8292,
+      "originalSha256": "5ddcb1f0a1f49d8816a9f47ecd5f8653e99d2e8783fb5c40f35e555869618b0d",
+      "storedBytes": 3064,
+      "storedSha256": "5087226c54a8d7bf989389b8f77aadd12b96f52476b6867104e4681ff19f6b4f",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/source/crates/kernel/chio-runtime/Cargo.toml.gz",
+      "logicalPath": "source/crates/kernel/chio-runtime/Cargo.toml",
+      "origin": "git:bafa02b06de93553cecb6f60b340f3dd8fd9b401:crates/kernel/chio-runtime/Cargo.toml",
+      "originalBytes": 576,
+      "originalSha256": "9a1ad1e0be23b7691d1b666ae0f274e4e52c24099d3c0a00dd39ac793937f8e5",
+      "storedBytes": 239,
+      "storedSha256": "8d720d4b196c163086e841bf16f3db96adb2b92868cff29e0a1beb81805ed929",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/source/crates/products/chio-cli/Cargo.toml.gz",
+      "logicalPath": "source/crates/products/chio-cli/Cargo.toml",
+      "origin": "git:bafa02b06de93553cecb6f60b340f3dd8fd9b401:crates/products/chio-cli/Cargo.toml",
+      "originalBytes": 5181,
+      "originalSha256": "f01bb02a8b3d23f68a2c9dc7321d863f2bb3e21552cf09f6380b58ea189e0f64",
+      "storedBytes": 1533,
+      "storedSha256": "771eabd0bf96308a18da5c4dd072e84da105129f7a761612fde3764f41c13f1d",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/source/scripts/prepare-macos-release-openssl.py.gz",
+      "logicalPath": "source/scripts/prepare-macos-release-openssl.py",
+      "origin": "git:bafa02b06de93553cecb6f60b340f3dd8fd9b401:scripts/prepare-macos-release-openssl.py",
+      "originalBytes": 6683,
+      "originalSha256": "fd3c35f15491c87c078c7b530b5c4230ae593f60a3ea52fe9076c9482d2e758d",
+      "storedBytes": 2672,
+      "storedSha256": "0ed5e8a4a3eab39f027fe3173e11098ef7630b8eecc8f07ed75986d9c8414c09",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/tools/retrospective-auditable.json.gz",
+      "logicalPath": "tools/retrospective-auditable.json",
+      "origin": "capture-time inspection; installed cargo metadata filtered to cargo-auditable",
+      "originalBytes": 1049,
+      "originalSha256": "d55e7512a2017c4f909b8d51a7a97ceab0a4874f82bae1db4e464cd3281295e3",
+      "storedBytes": 595,
+      "storedSha256": "30b14ffa0c562c6666e9c2143c5e2040b92ebbae6215f0ea6d294c07753fd85a",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/tools/syft-checksums.txt.gz",
+      "logicalPath": "tools/syft-checksums.txt",
+      "origin": "/tmp/chio-syft151-tool-20260910/checksums.txt",
+      "originalBytes": 2690,
+      "originalSha256": "105346699e7cb694afa37a21e2386432df6278c99f71331c24b1e0bb0f38cc75",
+      "storedBytes": 1260,
+      "storedSha256": "ff0aa8f8a00c55bf96c83bd9e4bda1367bbc3c9a19e2353e2418c6c9124ad9e4",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/validation-source/deploy/sbom/syft.yaml.gz",
+      "logicalPath": "validation-source/deploy/sbom/syft.yaml",
+      "origin": "git:906c509dfff688817a8b1e5a70d13d97efd3187b:deploy/sbom/syft.yaml",
+      "originalBytes": 1665,
+      "originalSha256": "d60b760aba6478621a81ee1d267a4f5e48eea08a3520f3c5089033fdc223732d",
+      "storedBytes": 898,
+      "storedSha256": "2f2d0234ce2737b3c9abe562d9340e23150309cd7092b52c2bae9a9c6ba5798a",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/validation-source/scripts/check-macos-release-linkage.py.gz",
+      "logicalPath": "validation-source/scripts/check-macos-release-linkage.py",
+      "origin": "git:906c509dfff688817a8b1e5a70d13d97efd3187b:scripts/check-macos-release-linkage.py",
+      "originalBytes": 4161,
+      "originalSha256": "f43209873d3c5b55bb24acde45fdddd5c1cbe02af56973e27354f07c57cf3bea",
+      "storedBytes": 1688,
+      "storedSha256": "22e7f9b2de372595afd9b3eecb12388ff8defa377b0f3bc39083ade9aa21cf2a",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/validation-source/scripts/check-release-binary-sbom.py.gz",
+      "logicalPath": "validation-source/scripts/check-release-binary-sbom.py",
+      "origin": "git:906c509dfff688817a8b1e5a70d13d97efd3187b:scripts/check-release-binary-sbom.py",
+      "originalBytes": 9465,
+      "originalSha256": "429e2f7cddb4d817fd3c6f8ed38f2d3c056a645c5507102ad15d3681a8d7e09b",
+      "storedBytes": 3110,
+      "storedSha256": "fbb6eda01590104bbe9044a728b8647ee83223cba2accf37af33dcb8e4f3f4ae",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/validation/copy-gate.log.gz",
+      "logicalPath": "validation/copy-gate.log",
+      "origin": "capture-time validation command",
+      "originalBytes": 28,
+      "originalSha256": "a1d0a08a627700e626e18fc189d7b89281565fc5c76b13b6ecf530eace65af25",
+      "storedBytes": 48,
+      "storedSha256": "d63382d46c3d4bbc4fa30e345e819c4fc7a7cb10cd4621871c0440136a1916a6",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/validation/copy-regressions.log.gz",
+      "logicalPath": "validation/copy-regressions.log",
+      "origin": "capture-time validation command",
+      "originalBytes": 146,
+      "originalSha256": "29210f83da4ef07d063e2f508f08d528a624e89d28f36b4c465918662e0e5d30",
+      "storedBytes": 112,
+      "storedSha256": "cf69a00259cfd210050bcb8285f93ef2e8da108a42d88394ca7685000dd73cf0",
+      "gzipMtime": 0
+    },
+    {
+      "path": "raw/validation/credential-collector-prefix.py.gz",
+      "logicalPath": "validation/credential-collector-prefix.py",
+      "origin": "/tmp/chio-root-evidence-scan-20260909.py before files = 0 marker only",
+      "originalBytes": 1660,
+      "originalSha256": "661e5810ee9ae8c45f8913759c5477a6967ea7664eeaf80aa83fac5671b8d72b",
+      "storedBytes": 803,
+      "storedSha256": "8b9b6fc28d3c277d6558518e54529d5108091bba06155a3f328182a208896ada",
+      "gzipMtime": 0
+    }
+  ]
+}
