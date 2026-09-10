@@ -18,27 +18,36 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ["helper", "owner-launcher", "kernel", "policy", "prepare-bridge", "host-bridge", "launcher-python", "host-python", "host-root", "model-auth-file", "output"]:
         parser.add_argument("--" + name, type=Path, required=True)
+    for name in ["owner-root", "helper-output-root"]:
+        parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument("--name-prefix", required=True)
+    parser.add_argument("--base-port", type=int, required=True)
     parser.add_argument("--kernel-sha256", required=True)
     parser.add_argument("--image", required=True)
     parser.add_argument("--cases", nargs="+", choices=["after-receipt", "before-admission", "after-admission"], default=["after-receipt", "before-admission", "after-admission"])
     args = parser.parse_args()
+    if not 1024 <= args.base_port <= 65533:
+        parser.error("base port must leave room for three nonprivileged ports")
+    if not args.name_prefix.startswith("final-hermes-") or not all(c.islower() or c.isdigit() or c == "-" for c in args.name_prefix):
+        parser.error("choose an explicit isolated final-hermes- name prefix")
     args.output.mkdir(mode=0o700)
+    helper_prefix = ["python3", str(args.helper), "--owner-root", str(args.owner_root), "--output-root", str(args.helper_output_root)]
     results = []
 
     def save(path, value):
         path.write_text(json.dumps(value, indent=2) + "\n")
 
     def helper(*parameters):
-        return subprocess.run(["python3", str(args.helper), *parameters], capture_output=True, text=True, check=True, timeout=90)
+        return subprocess.run([*helper_prefix, *parameters], capture_output=True, text=True, check=True, timeout=90)
 
     for case in args.cases:
-        port = {"after-receipt": 58520, "before-admission": 58521, "after-admission": 58522}[case]
-        name = "hermes-final-r15-" + case
+        port = args.base_port + ["after-receipt", "before-admission", "after-admission"].index(case)
+        name = args.name_prefix + "-" + case
         output = args.output / case
         output.mkdir(mode=0o700)
         create = ["create", "--name", name, "--port", str(port), "--kernel", str(args.kernel), "--kernel-sha256", args.kernel_sha256,
                   "--image", args.image, "--policy", str(args.policy), "--owner-launcher", str(args.owner_launcher), "--bridge", str(args.prepare_bridge)]
-        save(output / "create-command.json", ["python3", str(args.helper), *create])
+        save(output / "create-command.json", [*helper_prefix, *create])
         created = helper(*create)
         manifest = json.loads(created.stdout)
         save(output / "manifest.json", manifest)
@@ -97,7 +106,7 @@ def main() -> int:
         assert code == 0 and terminal["confirmedDeliveries"] == 1
         assert len(positive["dispatch"]) == len(before["dispatch"]) + 1 and positive["files"][Path(control_path).name] == "fully acknowledged native positive"
         helper("snapshot", "--name", name, "--filename", "after-positive.json")
-        fault_command = ["python3", str(args.helper), "fault", "--name", name, "--cutpoint", case, "--wait-seconds", "600", "--hold-seconds", "600"]
+        fault_command = [*helper_prefix, "fault", "--name", name, "--cutpoint", case, "--wait-seconds", "600", "--hold-seconds", "600"]
         save(output / "fault-command.json", fault_command)
         target = "/workspace/before-fault.txt" if case == "before-admission" else "/workspace/uncertain.txt"
         expected_effects = 0 if case == "before-admission" else 1
