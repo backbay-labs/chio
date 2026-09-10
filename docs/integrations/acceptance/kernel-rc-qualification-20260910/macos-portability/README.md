@@ -96,6 +96,18 @@ Chio binary, protected-host tests and real installer qualification must remain
 explicit in subsequent records. Do not inherit the older candidate's host
 results or promote a plain build to a signed release.
 
+The full upstream test log and exact skipped recipe names/reasons are also
+retained under `actual-native-scan/`. There are 55 explicit top-level recipe
+skips: 25 require a dynamic-engine test harness, eight require external suites,
+six require FIPS (including one preparation recipe), three are platform-specific,
+two require TCP Fast Open, two require compression, two require allocation-fault
+instrumentation, and seven have individual disabled-build-feature reasons.
+The FIPS preparation phase reports `Files=1, Tests=0, Result: NOTESTS`; the main
+phase reports `Files=355, Tests=4046, Result: PASS`. The captured non-verbose
+harness log does not enumerate nested assertion-level skips. Disabled features
+and skipped test paths have not been tested by this build, and zero assertion
+skips cannot be inferred from the passing main summary.
+
 ## Native vulnerability inventory
 
 `scan-macos-release-openssl.py` verifies the prepared source identity, static

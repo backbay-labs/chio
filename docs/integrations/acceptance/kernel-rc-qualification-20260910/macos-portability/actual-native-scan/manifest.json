@@ -40,6 +40,16 @@
       "path": "native-openssl.json.gz",
       "sha256": "c9789b45ba342ff1cb7f262062d28f335726067ca1c12620ca1866e5d5f6d1a3",
       "raw_sha256": "53ce9d512229466d076ba56302fa7af9960ea78d6a5f5a5295dfb36c2ffebbb2"
+    },
+    {
+      "path": "upstream-test.log.gz",
+      "sha256": "1e37c88ad6ad08a1ff5f6c754a27a9b6ec266c67ae8fb26b2e7edc423f662f2e",
+      "raw_sha256": "cb27bb16d1bdc801c3345e39bb3b1b3c9ee12bb7a3fb2694a75775377479537e"
+    },
+    {
+      "path": "upstream-test-skips.json.gz",
+      "sha256": "0cd328775900c8b86489ab98d9c5b74b76b5ab83eed016e4d1d6ea0c4d3166cf",
+      "raw_sha256": "c28b3b7201b184f977a833b9acd3b59dce237f129ee51b843d889df23495ea11"
     }
   ]
 }
