@@ -1,0 +1,15 @@
+Usage: chio-codex <subcommand> [...args]
+
+  run            Run Codex with Chio bonded (wraps `codex ...` with policy, publish, evidence)
+  restricted     Candidate isolated Codex mode using only an operator-configured Chio MCP gateway
+  prepare-gateway Establish a private gateway configuration using the packaged bridge
+  status         Show the current bonded session
+  bond           Bond the current/given session to a policy (creates state)
+  policy         Print the active policy path and parsed summary
+  guard-pause    Temporarily pause a named arc guard
+  budget         Adjust the spend ceiling (USD)
+  approve        Countersign a gated receipt by id
+  revoke         Tear down the bonded capability
+  receipt-export Emit an offline-verifiable evidence bundle
+  publish        Promote the current run into a scheduled citizen (did:chio:...)
+  plan-first     Wrap a prompt with a plan-first instruction for plan attestation

@@ -1,0 +1,30 @@
+{
+  "claude": {
+    "source": "/Users/connor/Medica/backbay/standalone/chio-claude-code-plugin/.worktrees/required-agent-integrations-20260909/scripts/model-relay.mjs",
+    "head": "88c9741415fe1ffca8d192a08a82e52061f3556c",
+    "sha256": "3b9cbb60fc79b7ca5f00578ac905b631eaee359ec3d69b9d9301dacb79eb2813",
+    "snapshot": "/tmp/chio-subscription-relay-audit-20260909/claude-relay-source.mjs",
+    "dirty": ""
+  },
+  "codex": {
+    "source": "/Users/connor/Medica/backbay/standalone/chio-codex-plugin/.worktrees/required-agent-integrations-20260909/src/cli/modelRelay.ts",
+    "head": "0e80c6a21655201293ec8aa0b2304db01fee9dce",
+    "sha256": "6ed42a6b8e3f088d69cb5bf83b1f3ff05ac9b4efc7cee662eb21a4b4229e5782",
+    "snapshot": "/tmp/chio-subscription-relay-audit-20260909/codex-relay-source.ts",
+    "dirty": ""
+  },
+  "pi": {
+    "source": "/Users/connor/Medica/backbay/standalone/chio-pi-plugin/src/model-relay.ts",
+    "head": "2ccc027b42b837f3df2889863273df2c1e2d5669",
+    "sha256": "15d70de29b5f87d5402fef3f811d29c5f4af180b4092f5ec9420e84116df7801",
+    "snapshot": "/tmp/chio-subscription-relay-audit-20260909/pi-relay-source.ts",
+    "dirty": ""
+  },
+  "openclaw": {
+    "source": "/Users/connor/Medica/backbay/standalone/chio-open-claw-plugin/.worktrees/required-agent-integrations-20260909/native/src/model-relay.mjs",
+    "head": "bfabb63efe1267658cc6ef566a3e2dd4a3e42183",
+    "sha256": "2ae2c174dd5fea0b50f3f8d611498d112bb678520ec0da2289785d8f820dfdc9",
+    "snapshot": "/tmp/chio-subscription-relay-audit-20260909/openclaw-relay-source.mjs",
+    "dirty": "M native/src/model-relay.mjs"
+  }
+}

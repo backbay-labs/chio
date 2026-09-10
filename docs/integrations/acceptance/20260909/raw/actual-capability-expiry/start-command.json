@@ -1,0 +1,19 @@
+[
+  "python3",
+  "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/integrations/required-agents/serve-filesystem.py",
+  "start",
+  "--state-dir",
+  "/Users/connor/.local/share/chio-required-operators/capability-expiry-20260909",
+  "--kernel",
+  "/tmp/chio-tool-error-ack-candidate-20260909/chio-33dd1dea21a4",
+  "--kernel-sha256",
+  "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "--image",
+  "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "--volume",
+  "chio-required-capability-expiry-20260909",
+  "--port",
+  "58504",
+  "--policy",
+  "/tmp/chio-capability-expiry-20260909/policy.yaml"
+]

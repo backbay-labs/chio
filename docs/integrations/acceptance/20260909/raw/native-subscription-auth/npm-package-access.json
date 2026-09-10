@@ -1,0 +1,135 @@
+[
+  {
+    "command": [
+      "npm",
+      "org",
+      "ls",
+      "chio",
+      "--json"
+    ],
+    "exitCode": 0,
+    "result": {
+      "currentUserRole": "not listed"
+    }
+  },
+  {
+    "command": [
+      "npm",
+      "org",
+      "ls",
+      "chio-protocol",
+      "--json"
+    ],
+    "exitCode": 0,
+    "result": {
+      "currentUserRole": "owner"
+    }
+  },
+  {
+    "command": [
+      "npm",
+      "view",
+      "@chio/bridge",
+      "name",
+      "version",
+      "repository.url",
+      "--json"
+    ],
+    "exitCode": 1,
+    "result": {
+      "errorCode": "E404"
+    }
+  },
+  {
+    "command": [
+      "npm",
+      "view",
+      "@chio/claude-code-plugin",
+      "name",
+      "version",
+      "repository.url",
+      "--json"
+    ],
+    "exitCode": 1,
+    "result": {
+      "errorCode": "E404"
+    }
+  },
+  {
+    "command": [
+      "npm",
+      "view",
+      "@chio/codex-plugin",
+      "name",
+      "version",
+      "repository.url",
+      "--json"
+    ],
+    "exitCode": 1,
+    "result": {
+      "errorCode": "E404"
+    }
+  },
+  {
+    "command": [
+      "npm",
+      "view",
+      "chio-cursor",
+      "name",
+      "version",
+      "repository.url",
+      "--json"
+    ],
+    "exitCode": 1,
+    "result": {
+      "errorCode": "E404"
+    }
+  },
+  {
+    "command": [
+      "npm",
+      "view",
+      "@chio/pi-plugin",
+      "name",
+      "version",
+      "repository.url",
+      "--json"
+    ],
+    "exitCode": 1,
+    "result": {
+      "errorCode": "E404"
+    }
+  },
+  {
+    "command": [
+      "npm",
+      "view",
+      "@chio/openclaw-kernel",
+      "name",
+      "version",
+      "repository.url",
+      "--json"
+    ],
+    "exitCode": 1,
+    "result": {
+      "errorCode": "E404"
+    }
+  },
+  {
+    "command": [
+      "npm",
+      "view",
+      "@chio-protocol/sdk",
+      "name",
+      "version",
+      "repository.url",
+      "--json"
+    ],
+    "exitCode": 0,
+    "result": {
+      "name": "@chio-protocol/sdk",
+      "version": "0.1.0",
+      "repository.url": "git+https://github.com/bb-connor/chio.git"
+    }
+  }
+]

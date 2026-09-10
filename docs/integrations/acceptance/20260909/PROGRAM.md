@@ -24,12 +24,12 @@ local candidate identities, not a published version combination.
 
 | Host | Pinned runtime | Recorded implementation and observations | Remaining acceptance work |
 |---|---|---|---|
-| Claude Code | 2.1.267; Claude Sonnet 5 | Native Claude Max auth now works with parent-only credentials. Current `8bf565bf5d70` archive passed native authority, approval, kernel-fault, evidence and concurrent-owner cases; final useful/recovery reruns are underway | Complete current-artifact lifecycle/bypass matrix; release qualification/publication |
-| Codex | 0.153.4; gpt-5.5 | Native ChatGPT auth; current `ac4f14ee4073` archive passed useful four-tool work, denials, native patch/config tamper prevention, approvals, revocation, budget, kernel/evidence faults and explicit recovery | Complete current-artifact plugin-failure, native inventory and lifecycle checks; release qualification/publication |
+| Claude Code | 2.1.267; Claude Sonnet 5 | Native Claude Max auth now works with parent-only credentials. Current `0dd0d906fc34` archive passed 33 native shared suites, actual capability expiry, useful work, budgets, delivery/cancellation recovery, seven startup/omission cases, upgrade/removal and 27 native confinement assertions | Release qualification and compatible-combination publication |
+| Codex | 0.153.4; gpt-5.5 | Native ChatGPT auth; current `ac4f14ee4073` archive passed useful four-tool work, denials, native patch/config tamper prevention, approvals, revocation, budget, kernel/evidence faults and explicit recovery | Release qualification and compatible-combination publication |
 | Cursor | GUI 3.19.13; CLI 2026.09.08-6caf4ff | Isolated native login confirmed. Current `3bf370db52da` archive and VSIX pass cold installation and structural admission checks; protected prompt mode refuses | Requires a server-enforced pre-dispatch restriction on unsupported remote actions, followed by authenticated relay and real-host acceptance |
-| Hermes | 0.20.5; upstream `175054c14b54404663d8614a178280cffe6062eb` | Native ChatGPT provider; r15 `625979d53317` wheel passed useful work, denials, budget, cancellation/crash/result-loss recovery, evidence substitutions and owner concurrency; remaining authority reruns underway | Complete exact-artifact matrix and native boundary inventory; release qualification/publication |
-| Pi Agent | `@earendil-works/pi-coding-agent@0.85.1`; upstream `d981de1229ef899957bbe968bc8dcda02a21f477` | Native openai-codex provider; `78257af62fc8` archive passed useful work, denials, 26 authority/fault/recovery suites and aggregate budget | Complete final result-loss/crash/cancellation and lifecycle/native boundary checks; release qualification/publication |
-| OpenClaw | 2026.5.20 (`e510042`); gpt-5.5 | Native openai-codex provider; `10429af214df` archive and `9aed9b78d3a0` image passed useful write/edit/read/list with four native-history acknowledgements and forbidden read/write denial | Complete exact-artifact authority/fault/recovery/lifecycle matrix; release qualification/publication |
+| Hermes | 0.20.5; upstream `175054c14b54404663d8614a178280cffe6062eb` | Native ChatGPT provider; r15 `625979d53317` wheel passed useful work, denials, budgets, authority/approval/expiry, evidence rejection and signed recovery, kernel/host faults, cancellation, concurrency and direct/descendant confinement | Release qualification and compatible-combination publication |
+| Pi Agent | `@earendil-works/pi-coding-agent@0.85.1`; upstream `d981de1229ef899957bbe968bc8dcda02a21f477` | Native openai-codex provider; `ec6095390b9e` archive repairs native completed-error acknowledgement and passed useful work, denials, authority/fault/recovery suites, budget and lifecycle | Release qualification and compatible-combination publication |
+| OpenClaw | 2026.5.20 (`e510042`); gpt-5.5 | Native openai-codex provider; `a79dbffa8356` archive and `7f925d68ced72` image repair concurrent relay quota admission; useful work, denials, 26 shared suites, actual capability expiry, budget and delivery recovery passed | Release qualification and compatible-combination publication |
 
 All eight gates are open for the program. Individual passed cases in host records
 are bounded to their recorded source, artifact and configuration. Counts from
@@ -619,7 +619,7 @@ changed-artifact matrices remain independently required. **0/6 accepted; release
 
 ## Current authentication and artifact correction
 
-The current Claude archive is `8bf565bf5d704b01b0847cda64c4244fc1f15a19bc707f8e3a90aa3798064a23`,
+The preceding Claude archive was `8bf565bf5d704b01b0847cda64c4244fc1f15a19bc707f8e3a90aa3798064a23`,
 not the initial `6c8ccd147d37` subscription candidate. Review found that the initial
 relay could attach native OAuth to an explicitly configured localhost fixture.
 The current source refuses subscription forwarding to every origin except the
@@ -641,3 +641,113 @@ That does not prove reachability in a local CLI session, but local flags and
 post-effect notifications cannot establish pre-effect server enforcement.
 A supported upstream capability restriction or verified deployment policy is
 required before opening the protected Run relay.
+
+
+## Native initialization and final fault qualification
+
+Claude's r3 startup tests demonstrated a false completion report: malformed or
+timed-out MCP initialization produced a native `system/init` frame with Chio
+failed and no tools, yet the launcher reported completed. Source `cd303d5` now
+requires the exact connected Chio tool inventory. Current archive
+`ee69944dc92941ab20fed41d0ae5bc6d83dc3c31f9c8717f5c46765aa820a6ab`
+passes both negative cases and the legitimate workflow. It contains a separately
+recorded nonruntime acceptance-driver source delta, so it is not described as a
+clean-commit-only package. The owning record retains the exact packaged bytes.
+
+Pi source `2ccc027` fixes acknowledgement of signed completed tool errors echoed
+with Pi's native text prefix. Its archive `ec6095390b9eae233540b73aee0ad2fef6977c36122dd30aa2779329b1897aa1`
+received and acknowledged a real missing-file error, then performed useful work
+under the same authority. OpenClaw source `f6627ae` moves quota admission after
+request parsing; a concurrent 110-request regression now forwards exactly 100
+and refuses 10. Archive `a79dbffa8356a608f22db847e100d1989cb7ff322ab1315144774decb2b13ab4`
+and image `sha256:7f925d68ced724f4a6314ab76dc117e9000515ba62149ee971a11c510be6637f`
+are the replacement candidates. Prior failing artifacts remain retained.
+
+Actual short-lived capabilities were added as a distinct test from expiration
+of a shorter session credential. The owner issues a signed ten-second capability
+and clamps the requested 900-second delegated credential to that expiry. Each
+host then refuses new protected work after real-clock expiry. The separate shared
+probe also observes an inner-kernel expired-capability denial and unchanged
+resources; it is explicitly not counted as a host test.
+
+Final review identified additional cutpoints requiring explicit evidence:
+cancellation before dispatch, an unreachable route while the kernel remains
+alive, and journal storage failures before and after an effect. Codex passed
+these four current-artifact cases; independent host reruns are underway. Actual
+kernel receipt/admission-store failure remains a separate investigation. The
+software Ed25519 primitive is infallible, but this does not make the entire
+receipt assembly, signing queue or durable storage path infallible.
+
+The existing release workflows contain placeholder publishing actions and
+OpenClaw's legacy workflow targets the chat gateway. Repairs are being prepared
+in separate release worktrees. npm identity authentication is now available;
+package namespace rights, Trusted Publisher configuration and all existing
+release/security gates remain independently required before publication.
+
+
+## Current r5 outcome and real storage qualification
+
+Claude r4 subsequently failed truthful final reporting in two cases: local
+journal reservation failed before dispatch, and a second parallel native call
+was blocked. Neither produced a forbidden effect. Source `c91cd81` now retains
+unsuccessful native outcomes even when no journal row exists. Archive
+`0dd0d906fc34b3ac7d09e3b7f6cdee9f13f511731b25ec761feca7172c9b1158`
+passed 33 shared suites, a separate actual-capability-expiry case, 18 native
+workflow/fault/lifecycle scenarios, 27 confinement assertions and the supplemental
+native parallel fixture. Earlier r4 results remain historical. The r5 packer
+excludes acceptance drivers; its runtime maps to the recorded source commit.
+
+All five working hosts now have current-artifact cancellation-before-dispatch,
+live-kernel network refusal, journal-reservation failure and journal-completion
+failure observations. These local journal faults are separate from kernel store
+failures. [Shared kernel storage qualification](../shared-kernel-storage-qualification-20260909/REPORT.md)
+records three actual SQLite failure cutpoints, including restart and signed
+fences. Before admission there were zero effects. Both post-effect cuts retained
+one effect and caller uncertainty, with no automatic redispatch. Every host is
+running these same storage cuts independently; the shared probe does not count
+as host acceptance. The selected inline software Ed25519 signer has no recoverable
+primitive-error branch or external signing queue. That source conclusion is
+separate from the executed failures of the surrounding durable stores.
+
+Final relocated installation exposed an instruction error in this bundle: Pi's
+plugin archive requires the separately installed public Pi 0.85.1 peer. A generic
+plugin-only offline command failed with `ENOTCACHED`. The exact archive already
+documented the correct two-step nested install. The bundle instructions now match
+that procedure; the failed generic attempt is retained, and no repack is implied.
+
+Release qualification is still open. The exact selected kernel fails review-slice
+classification, schema-manifest consistency, two test-file size caps and the
+cargo-deny yanked dependency check for `der 0.8.0`. Those are concrete release
+failures, not permission to bypass security gates. Narrow repairs are in isolated
+worktrees. Legacy bridge live CI also revealed stale CLI/API contracts against
+this kernel; its gate remains present while those compatibility failures are
+repaired. Successful host subsets do not make these release failures disappear.
+
+
+## Five-host storage completion and release source separation
+
+Claude Code, Codex, Hermes, Pi and OpenClaw each independently passed the three
+actual kernel SQLite cutpoints through their pinned native host and provider.
+Each case first completed and acknowledged useful work. Fault effects were zero
+before admission and one after admission or receipt persistence. Unknown results
+received no acknowledgement. Original-authority native retries and same-owner
+restart produced no additional effects. Retained owner signatures bind caller,
+session, capability, request and resource. Native retries with new IDs remain
+distinct from the shared operator's exact-ID replay probes. Claude's initial
+non-UUID fixture preparation failures remain failed setup evidence with no effects.
+
+The five plugin repositories now contain repaired release/CI workflows and
+repository metadata. These commits do not change the frozen runtime artifacts
+listed above. Clean-source builds, exact source CI, checksums and provenance
+remain necessary before any public promotion. No repository setting, npm package,
+release tag or GitHub release has been changed. The workflows honor existing
+environment rules without requiring a newly invented human-reviewer gate.
+
+The kernel's review classification, test-file organization and schema manifest
+were repaired without production Rust or schema-payload changes. Full workspace
+release qualification still encounters the yanked optional `der 0.8.0` dependency.
+A proposed `0.8.1` update remains under source review and has not been accepted or
+audited safe. The selected default CLI uses `der 0.7.10`; complete selected normal
+and build dependency graphs are unchanged across all five release targets. This
+bounds the release failure separately from the five hosts' immutable `33dd`
+runtime observations; it does not waive the workspace security gate.

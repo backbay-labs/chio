@@ -13,6 +13,7 @@ python3 scripts/acceptance/host-approvals.py \
   --host codex --suite kernel-killed \
   --operator-state /absolute/private/test-owner \
   --package-dir /absolute/install/node_modules/@chio/codex-plugin \
+  --model-auth-file /absolute/private/codex-auth.json \
   --output /absolute/new/evidence
 ```
 
@@ -23,6 +24,22 @@ Kernel death targets the exact recorded test PID only after checking its binary
 and database path. The owner restarts with the same databases after observation.
 Malformed and timed-out responses are injected at the trusted gateway transport;
 they are not synthetic tool calls or evidence of unmodified kernel behavior.
+
+`--model-auth-file` selects the parent-only native ChatGPT subscription cache
+for Codex, Pi, Hermes and OpenClaw. Each adapter maps it to its pinned native
+provider contract; it is never a guest-readable API-key file. Claude uses
+`--model-auth claude-login` through its trusted native-login helper and the fixed
+Anthropic endpoint. No test driver copies credentials into evidence. Missing
+native authentication is a failed run, not permission to invent model output.
+
+Claude forbidden-write and approval-resume cases additionally use
+`force-declared-tool.mjs`. It requests the actual provider's documented
+[declared-tool selection](https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools)
+for a tool already present in the native request. It does not modify tool
+arguments or fabricate assistant output. Its per-case log identifies the
+selection; the native tool call and independent effect observations still
+determine whether the case passes. Ordinary model refusals without a tool
+attempt remain failed test coverage.
 
 `in-flight-capability` and `in-flight-credential` revoke actual authority between
 the first completed native write and the next native request. The private
@@ -44,9 +61,22 @@ the original unknown record to stay unchanged and no new resource dispatch.
 
 `kernel-absent`, `expired-credential`, `wrong-principal`, `wrong-session`,
 `wrong-resource`, and `scope-escalation` exercise launcher preflight refusal.
-These cases must not be labeled native host tool denials. The expiry case waits
+These cases must not be labeled native host tool denials. The credential expiry case waits
 for a genuinely issued five-second credential to expire; the other binding
 cases keep the real credential while altering the claimed binding or scope.
+
+`expired-capability` is separate. Pass `--existing-config` and
+`--capability-expiry-binding` from the short-lived capability preparation. The
+driver checks the actual retained owner capability, verifies that the delegated
+credential was clamped to its expiry, waits for real-clock expiration, and
+requires startup refusal with zero new resource dispatches. It does not claim a
+live delegated credential can outlast its capability.
+
+`forbidden-edit`, `secret-dry-run`, `secret-list`, `secret-path-alias`, and
+`forbidden-write-alias` cover alternate paths through the four supported tools.
+Each requires the exact native arguments, verified kernel denial and unchanged
+independent resource observations. Claude's declared-tool selection helper also
+applies to these cases when the model would otherwise refuse without a call.
 
 `approvals` needs the separate owner policy requiring confirmation for all four
 tools. `revocation` checks native capability denial followed by revoked-credential
@@ -72,7 +102,7 @@ the two authorized writes. They do not resolve unknown outcomes automatically.
 
 
 `recover-owner-result` requires `--existing-config` from an original native
-unknown operation and `--operator-bridge` pointing to the separately installed
+unknown or pending operation and `--operator-bridge` pointing to the separately installed
 signed-owner recovery candidate. It exports the owner's retained signed row,
 requires forged-signature rejection without journal changes, imports the valid
 completion while preserving its fence, reads the exact exported result, and
@@ -80,6 +110,10 @@ acknowledges it explicitly. The actual host then performs one read with no
 repeated write. `--owner-exporter` selects the delivered standalone exporter for
 relocated installation testing. Missing owner completions remain unresolved.
 This suite never prepares replacement authority or retries the original write.
+For a pending journal record whose completion write failed, the imported record
+retains `previousState: pending` and `previousOutcome: null`; it must not invent
+an earlier unknown outcome. Missing operator code is a setup failure, not proof
+of forged-signature rejection.
 
 
 `concurrent-owners` pauses the first actual native call before kernel transport,

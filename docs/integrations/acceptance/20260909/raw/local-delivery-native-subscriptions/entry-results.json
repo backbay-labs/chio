@@ -1,0 +1,52 @@
+[
+  {
+    "case": "claude-syntax",
+    "command": [
+      "node",
+      "--check",
+      "/tmp/chio-subscription-delivery-cold-20260909/claude-code/node_modules/@chio/claude-code-plugin/scripts/restricted.mjs"
+    ],
+    "exitCode": 0
+  },
+  {
+    "case": "codex-entry",
+    "command": [
+      "node",
+      "/tmp/chio-subscription-delivery-cold-20260909/codex/node_modules/@chio/codex-plugin/dist/cli/main.js",
+      "--help"
+    ],
+    "exitCode": 0
+  },
+  {
+    "case": "cursor-closed-entry",
+    "command": [
+      "node",
+      "/tmp/chio-subscription-delivery-cold-20260909/cursor/node_modules/chio-cursor/bin/chio-cursor-protected.mjs",
+      "--prompt",
+      "probe",
+      "--gateway-config",
+      "/nonexistent/chio-gateway.json"
+    ],
+    "exitCode": 1
+  },
+  {
+    "case": "hermes-entry",
+    "command": [
+      "/tmp/chio-subscription-delivery-cold-20260909/hermes/bin/python",
+      "-m",
+      "chio_hermes.restricted",
+      "--help"
+    ],
+    "exitCode": 0
+  },
+  {
+    "case": "hermes-dependencies",
+    "command": [
+      "/tmp/chio-subscription-delivery-cold-20260909/hermes/bin/python",
+      "-m",
+      "pip",
+      "check"
+    ],
+    "exitCode": 0
+  }
+]

@@ -1,0 +1,1 @@
+{"schema":"chio.resource-dispatch-observation.v1","processId":1,"sequence":1,"observedAt":"2026-09-10T02:21:25.402Z","upstreamRequestId":3,"tool":"write_file","path":"/workspace/before-expiry.txt","argumentsSha256":"fe4e3629f79dce3744bd6f7e92ed43895b28f448b37031a2adc681b7b5e9d820","frameSha256":"0cda2c673a8cd5d24e6289f43ace1530a6855fa53638fb8f355d89a30983491b"}

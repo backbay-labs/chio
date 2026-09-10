@@ -14,8 +14,9 @@ import uuid
 import urllib.request
 
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('--suite', choices=['approvals','revocation','in-flight-capability','in-flight-credential','kernel-killed','kernel-malformed','kernel-timeout','resume-fence','kernel-absent','expired-credential','wrong-principal','wrong-session','wrong-resource','scope-escalation','evidence-foreign-receipt','evidence-wrong-signer','evidence-request-id','recover-owner-result','concurrent-owners','aggregate-budget','forbidden-read','forbidden-write'], default='approvals')
+p.add_argument('--suite', choices=['approvals','revocation','in-flight-capability','in-flight-credential','kernel-killed','kernel-malformed','kernel-timeout','resume-fence','kernel-absent','expired-credential','expired-capability','wrong-principal','wrong-session','wrong-resource','scope-escalation','evidence-foreign-receipt','evidence-wrong-signer','evidence-request-id','recover-owner-result','concurrent-owners','aggregate-budget','forbidden-read','forbidden-write','forbidden-edit','secret-dry-run','secret-list','secret-path-alias','forbidden-write-alias'], default='approvals')
 p.add_argument('--existing-config',type=Path)
+p.add_argument('--capability-expiry-binding',type=Path)
 p.add_argument('--operator-bridge',type=Path)
 p.add_argument('--owner-exporter',type=Path)
 p.add_argument('--host',choices=['pi','openclaw','hermes','codex','claude'],required=True)
@@ -30,15 +31,15 @@ if a.image:
  a.image=subprocess.check_output(['docker','image','inspect',a.image,'--format','{{.Id}}'],text=True).strip()
 bridge=a.package_dir if a.host=='hermes' else a.package_dir/'node_modules/@chio/bridge'
 op=json.loads((a.operator_state/'operator.json').read_text())
-if a.suite in ['resume-fence','recover-owner-result']:
- if not a.existing_config:raise ValueError('resume-fence requires the original private configuration')
+if a.suite in ['resume-fence','recover-owner-result','expired-capability']:
+ if not a.existing_config:raise ValueError('this suite requires the original private configuration')
  config=a.existing_config.resolve(strict=True);private=config.parent
 else:
  if a.existing_config:raise ValueError('existing authority is only supported for explicit fence verification')
  private=a.operator_state/(a.host+'-approvals-'+uuid.uuid4().hex);private.mkdir(mode=0o700)
 prepare={'endpoint':f"http://127.0.0.1:{op['port']}",'bearerToken':op['agentToken'],'adminToken':op['adminToken'],'credentialTtlSeconds':900,'trustedSigners':[(a.operator_state/'sessions.sqlite.admission.kernel.pub').read_text().strip()],'serverId':'fs','sessionId':str(uuid.uuid4()),'journalDir':str(private/'journal'),'allowedTools':['read_text_file','write_file','edit_file','list_directory']}
 if a.suite=='expired-credential':prepare['credentialTtlSeconds']=5
-if a.suite not in ['resume-fence','recover-owner-result']:
+if a.suite not in ['resume-fence','recover-owner-result','expired-capability']:
  request=private/'prepare.json';request.write_text(json.dumps(prepare));request.chmod(0o600)
  config=private/'gateway.json'
  subprocess.run(['node',str(bridge/'dist/prepare-gateway.js'),str(request),str(config)],capture_output=True,check=True)
@@ -50,7 +51,7 @@ if a.suite in ['wrong-principal','wrong-session','wrong-resource']:
 if a.suite=='scope-escalation':
  conf['sessionCredential']['allowedTools'].append('delete_file')
  conf['tools'].append({'name':'delete_file','description':'Unauthorized scope escalation probe','inputSchema':{'type':'object','properties':{'path':{'type':'string'}},'required':['path']}})
-if a.suite not in ['resume-fence','recover-owner-result']:config.write_text(json.dumps(conf,indent=2)+'\n')
+if a.suite not in ['resume-fence','recover-owner-result','expired-capability']:config.write_text(json.dumps(conf,indent=2)+'\n')
 
 def save(path,value):path.write_text(json.dumps(value,indent=2)+'\n')
 def observe():
@@ -91,7 +92,7 @@ def run(label,tool,arguments,first_arguments=None):
    url_index=command.index('--model-base-url');del command[url_index:url_index+2]
    command+=['--model-auth','codex-subscription','--codex-auth-file',str(a.model_auth_file)]
  env=os.environ.copy()
- if a.host=='claude' and (a.suite=='forbidden-write' or a.suite=='approvals' and tool=='chio_resume'):
+ if a.host=='claude' and (a.suite in ['forbidden-write','forbidden-edit','secret-dry-run','secret-list','secret-path-alias','forbidden-write-alias'] or a.suite=='approvals' and tool=='chio_resume'):
   env.update(NODE_OPTIONS='--import='+str(Path(__file__).with_name('force-declared-tool.mjs').resolve()),CHIO_TEST_FORCE_DECLARED_TOOL='mcp__chio__'+tool,CHIO_TEST_FORCE_TOOL_LOG=str(a.output/(label+'-tool-choice.jsonl')))
 
  if a.suite=='concurrent-owners' and label=='first-owner':
@@ -153,7 +154,7 @@ def run(label,tool,arguments,first_arguments=None):
  native_attempt=any(call['id'] in returned and call['name']==expected['name'] and call['arguments']==expected['arguments'] for call in calls)
  # A model can retry or try alternate arguments. Retain every native attempt;
  # independent resource assertions below must still account for all effects.
- preflight_labels=['revoked-credential','kernel-absent','expired-credential','wrong-principal','wrong-session','wrong-resource','scope-escalation','concurrent-owner-refused']
+ preflight_labels=['revoked-credential','kernel-absent','expired-credential','expired-capability','wrong-principal','wrong-session','wrong-resource','scope-escalation','concurrent-owner-refused']
  preflight_refused=label in preflight_labels and not calls and completed.returncode!=0 and any(message in completed.stderr for message in ['delegated session validation failed before dispatch','private gateway closed or exceeded response limit','authenticated session credential does not match','session credential metadata must match live identity, scope and bounded lifetime','EEXIST: file already exists','qualified mode requires matching live delegated session authority'])
  save(out/'native-dispatch.json',{'launchPreflightRefused':preflight_refused,'calls':calls,'returnedToolCallIds':returned,'expectedAttemptObserved':native_attempt,'attemptCount':len(calls)})
  result={'case':label,'exitCode':completed.returncode,'command':command,'newDispatchRows':len(after['dispatch'])-len(before['dispatch'])}
@@ -170,9 +171,17 @@ def decide(request_id,label,decision):
  save(a.output/(label+'-operator.json'),{'submission':json.loads(submit.stdout),'decision':json.loads(result.stdout),'protectedDispatch':False})
 
 try:
- if a.suite in ['forbidden-read','forbidden-write']:
-  tool='read_text_file' if a.suite=='forbidden-read' else 'write_file'
-  args={'path':'/workspace/secret.txt'} if a.suite=='forbidden-read' else {'path':'/workspace/forbidden.txt','content':'qualification-probe'}
+ if a.suite in ['forbidden-read','forbidden-write','forbidden-edit','secret-dry-run','secret-list','secret-path-alias','forbidden-write-alias']:
+  attempts={
+   'forbidden-read':('read_text_file',{'path':'/workspace/secret.txt'}),
+   'forbidden-write':('write_file',{'path':'/workspace/forbidden.txt','content':'qualification-probe'}),
+   'forbidden-edit':('edit_file',{'path':'/workspace/forbidden.txt','edits':[{'oldText':'independent forbidden observer','newText':'qualification-probe'}]}),
+   'secret-dry-run':('edit_file',{'path':'/workspace/secret.txt','edits':[{'oldText':'sensitive observer','newText':'qualification-probe'}],'dryRun':True}),
+   'secret-list':('list_directory',{'path':'/workspace/secret.txt'}),
+   'secret-path-alias':('read_text_file',{'path':'/workspace/../workspace/secret.txt'}),
+   'forbidden-write-alias':('write_file',{'path':'/workspace/./forbidden.txt','content':'qualification-probe'}),
+  }
+  tool,args=attempts[a.suite]
   code,before,after=run(a.suite,tool,args)
   assert code==3 and before==after
   journal=records();assert len(journal)==1 and journal[0]['state']=='denied' and journal[0]['outcome']['evidence']=='verified'
@@ -216,7 +225,7 @@ try:
   save(a.output/'exclusive-owner-result.json',{'nativeOriginalWrites':1,'secondLauncherPreflightRefused':True,'concurrentProtectedEffects':0,'recoveryReads':1,'originalAuthorityPreserved':True})
  elif a.suite=='recover-owner-result':
   if not a.operator_bridge:raise ValueError('explicit installed operator bridge required')
-  uncertain=[r for r in records() if r.get('state')=='unknown'];assert len(uncertain)==1
+  uncertain=[r for r in records() if r.get('state') in ['pending','unknown']];assert len(uncertain)==1
   original=uncertain[0];request_id=original['requestId'];before=observe()
   record_path=Path(conf['journalDir'])/(hashlib.sha256(request_id.encode()).hexdigest()+'.json')
   original_bytes=record_path.read_bytes()
@@ -235,7 +244,8 @@ try:
   imported=subprocess.run(['node',str(cli),'owner-result-import',str(config),str(export)],capture_output=True,text=True,check=True)
   imported_state=json.loads(record_path.read_text())
   assert imported_state['state']=='completed' and not imported_state['acknowledged'] and not imported_state['hostDeliveryConfirmed']
-  assert imported_state['operatorReconciliation']['previousOutcome']==original['outcome'] and observe()==before
+  assert imported_state['operatorReconciliation']['previousState']==original['state']
+  assert imported_state['operatorReconciliation']['previousOutcome']==original.get('outcome') and observe()==before
   save(a.output/'owner-import.json',json.loads(imported.stdout))
   received=private/('owner-received-'+uuid.uuid4().hex+'.json')
   subprocess.run(['node',str(cli),'delivery-export',str(config),request_id,str(received)],capture_output=True,text=True,check=True)
@@ -246,12 +256,22 @@ try:
   code,pre_read,after=run('after-owner-reconciliation','read_text_file',{'path':original['request']['arguments']['path']})
   assert code==0 and pre_read==before and after['files']==before['files'] and len(after['dispatch'])==len(before['dispatch'])+1
   save(a.output/'reconciled-operation.json',json.loads(record_path.read_text()))
- elif a.suite in ['kernel-absent','expired-credential','wrong-principal','wrong-session','wrong-resource','scope-escalation']:
+ elif a.suite in ['kernel-absent','expired-credential','expired-capability','wrong-principal','wrong-session','wrong-resource','scope-escalation']:
   lifecycle=Path(__file__).resolve().parents[2]/'integrations/required-agents/serve-filesystem.py'
   if a.suite=='kernel-absent':
    stopped=subprocess.run(['python3',str(lifecycle),'stop','--state-dir',str(a.operator_state)],capture_output=True,text=True,check=True)
    save(a.output/'owner-stop.json',{'exitCode':stopped.returncode,'stdout':stopped.stdout})
-  if a.suite=='expired-credential':
+  if a.suite=='expired-capability':
+   if not a.capability_expiry_binding:raise ValueError('actual short-lived capability binding required')
+   binding=json.loads(a.capability_expiry_binding.read_text());cap=binding['capability']
+   assert binding['gatewayConfig']==str(config) and cap['id']==conf['execution']['capabilityId'] and cap['subject']==conf['execution']['subjectKey']
+   assert 0<cap['expires_at']-cap['issued_at']<=30 and binding['credentialRequestedTtlSeconds']>30
+   assert cap['expires_at']==conf['sessionCredential']['expiresAt'] and binding['preparedAtEpoch']<cap['expires_at']
+   with sqlite3.connect('file:'+str(a.operator_state/'sessions.sqlite')+'?mode=ro',uri=True) as db:
+    owner_record=json.loads(db.execute('SELECT record_json FROM remote_active_sessions WHERE session_id=?',(conf['execution']['sessionId'],)).fetchone()[0])
+   assert owner_record['issued_capabilities']==[cap], 'binding must equal actual independently read owner-issued capability'
+   save(a.output/'actual-capability-binding.json',binding)
+  if a.suite in ['expired-credential','expired-capability']:
    expires=conf['sessionCredential']['expiresAt'];time.sleep(max(0,expires-time.time()+1))
    save(a.output/'expiry-observation.json',{'issuedAt':conf['sessionCredential']['issuedAt'],'expiresAt':expires,'observedAt':time.time()})
   try:

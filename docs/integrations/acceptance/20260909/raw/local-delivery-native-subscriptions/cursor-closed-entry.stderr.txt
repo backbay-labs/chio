@@ -1,0 +1,1 @@
+Chio Cursor launch failed: --agent and --gateway-config are required

@@ -1,0 +1,15 @@
+{
+  "authenticated": true,
+  "user": "bbconnor",
+  "privateConfigMode": "0o600",
+  "accessCommandExitCode": 0,
+  "requiredPackagePermissions": {
+    "@chio/bridge": "not listed",
+    "@chio/claude-code-plugin": "not listed",
+    "@chio/codex-plugin": "not listed",
+    "chio-cursor": "not listed",
+    "@chio/pi-plugin": "not listed",
+    "@chio/openclaw-kernel": "not listed",
+    "@chio-protocol/sdk": "read-write"
+  }
+}

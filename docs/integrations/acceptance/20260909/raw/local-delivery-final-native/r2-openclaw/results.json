@@ -1,0 +1,44 @@
+[
+  {
+    "host": "openclaw",
+    "archiveSha256": "a79dbffa8356a608f22db847e100d1989cb7ff322ab1315144774decb2b13ab4",
+    "packageName": "@chio/openclaw-kernel",
+    "packageVersion": "0.1.0",
+    "command": [
+      "npm",
+      "install",
+      "--offline",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      "--cache",
+      "/tmp/chio-final-bundle-cold-r2-20260909/openclaw/empty-cache",
+      "/tmp/chio-final-bundle-cold-r2-20260909/openclaw/chio-openclaw-kernel-0.1.0.tgz"
+    ],
+    "offline": true,
+    "initialCacheEmpty": true,
+    "exitCode": 0,
+    "elapsedSeconds": 2.2054150104522705,
+    "entryChecks": [
+      {
+        "entry": "src/index.mjs",
+        "exitCode": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "entry": "scripts/create-profile.mjs",
+        "exitCode": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "entry": "scripts/protected.mjs",
+        "exitCode": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    ],
+    "hostAcceptanceClaim": false
+  }
+]

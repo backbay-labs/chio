@@ -29,8 +29,19 @@
     },
     "initialCandidateSource": "249b52a",
     "initialCandidateSha256": "6c8ccd147d37dd12873237c664d0d20396a1e804cee4d0142b3ca0a2fd051885",
-    "currentCandidateSource": "c23dff6",
-    "currentCandidateSha256": "8bf565bf5d704b01b0847cda64c4244fc1f15a19bc707f8e3a90aa3798064a23"
+    "currentCandidateSource": "c91cd81",
+    "currentCandidateSha256": "0dd0d906fc34b3ac7d09e3b7f6cdee9f13f511731b25ec761feca7172c9b1158",
+    "previousCandidateSource": "cd303d5",
+    "previousCandidateSha256": "ee69944dc92941ab20fed41d0ae5bc6d83dc3c31f9c8717f5c46765aa820a6ab",
+    "currentBoundedQualification": {
+      "sharedSuites": 33,
+      "actualCapabilityExpiry": "passed",
+      "nativeScenarios": 18,
+      "supplementalConfinementAssertions": 27,
+      "supplementalParallelBatch": "passed",
+      "kernelStorageFaults": "in progress",
+      "accepted": false
+    }
   },
   "codex": {
     "version": "0.153.4",
@@ -65,10 +76,10 @@
     "hostedProtocol": "protected prompt mode refuses until server-enforced pre-dispatch restriction and bounded relay are qualified"
   },
   "acceptance": "0/6; bounded new evidence only",
-  "updatedAt": "2026-09-10T02:11:38.357559+00:00",
+  "updatedAt": "2026-09-10T03:16:02.562342+00:00",
   "pi": {
     "nativeSubscription": "ChatGPT via pinned host-supported openai-codex provider",
-    "candidateSha256": "78257af62fc840d8806dd9d90f124ff8c0a2a9b63f3588a4adb6bee4a44a6960",
+    "candidateSha256": "ec6095390b9eae233540b73aee0ad2fef6977c36122dd30aa2779329b1897aa1",
     "usefulResourceCalls": 4,
     "hostDeliveryConfirmed": 4,
     "forbiddenReadWriteDispatched": false,
@@ -84,7 +95,7 @@
   },
   "openclaw": {
     "nativeSubscription": "ChatGPT via pinned host-supported openai-codex provider",
-    "candidateSha256": "10429af214dfd12f4383749e1c106babd876a1377d53d55125630a2054dcec2c",
+    "candidateSha256": "a79dbffa8356a608f22db847e100d1989cb7ff322ab1315144774decb2b13ab4",
     "usefulResourceCalls": 4,
     "hostDeliveryConfirmed": 4,
     "forbiddenReadWriteDispatched": false,

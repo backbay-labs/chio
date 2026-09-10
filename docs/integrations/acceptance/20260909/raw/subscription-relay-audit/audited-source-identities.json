@@ -1,0 +1,185 @@
+{
+  "capturedAt": "2026-09-10T02:20:35.642072+00:00",
+  "hosts": {
+    "claude": {
+      "root": "/Users/connor/Medica/backbay/standalone/chio-claude-code-plugin/.worktrees/required-agent-integrations-20260909",
+      "head": "88c9741415fe1ffca8d192a08a82e52061f3556c",
+      "files": [
+        {
+          "path": "scripts/model-relay.mjs",
+          "sha256": "3b9cbb60fc79b7ca5f00578ac905b631eaee359ec3d69b9d9301dacb79eb2813",
+          "snapshot": "sources/claude/scripts/model-relay.mjs",
+          "status": ""
+        },
+        {
+          "path": "scripts/native-login.mjs",
+          "sha256": "7837d0daa1983e0e1dccffa347d3a0d4c16a5053f356733b7e7dfd29d4795be9",
+          "snapshot": "sources/claude/scripts/native-login.mjs",
+          "status": ""
+        },
+        {
+          "path": "scripts/restricted.mjs",
+          "sha256": "dc13f8ea597ec41522fff2dc6101aad5e74a29aacf413540e017f83825479608",
+          "snapshot": "sources/claude/scripts/restricted.mjs",
+          "status": ""
+        },
+        {
+          "path": "scripts/sandbox.mjs",
+          "sha256": "14293e7abf118bb53b19dc5eb347a5ba89e57e26d040c1616186cbd7c2a32ae1",
+          "snapshot": "sources/claude/scripts/sandbox.mjs",
+          "status": ""
+        },
+        {
+          "path": "test/native-login.test.mjs",
+          "sha256": "b05eaa5ab8479005035959584ede93521a9b40bb2d271204937ea32fd5f91a8c",
+          "snapshot": "sources/claude/test/native-login.test.mjs",
+          "status": ""
+        }
+      ]
+    },
+    "codex": {
+      "root": "/Users/connor/Medica/backbay/standalone/chio-codex-plugin/.worktrees/required-agent-integrations-20260909",
+      "head": "bb64e60e1c147caa2e0d50850a560ade188aa4d8",
+      "files": [
+        {
+          "path": "src/cli/modelRelay.ts",
+          "sha256": "6ed42a6b8e3f088d69cb5bf83b1f3ff05ac9b4efc7cee662eb21a4b4229e5782",
+          "snapshot": "sources/codex/src/cli/modelRelay.ts",
+          "status": ""
+        },
+        {
+          "path": "src/cli/restricted.ts",
+          "sha256": "1152a2263c208c553c797165788ae1d8290eeaf512d28622cde96e8ab6adb169",
+          "snapshot": "sources/codex/src/cli/restricted.ts",
+          "status": ""
+        },
+        {
+          "path": "src/cli/sandbox.ts",
+          "sha256": "31c935dec712097188f211bd3577c4c9a59fab3121c4fbf89b77b9a384b9e78e",
+          "snapshot": "sources/codex/src/cli/sandbox.ts",
+          "status": ""
+        },
+        {
+          "path": "test/modelRelay.test.ts",
+          "sha256": "1d5f143c93f858727d1e364c94ea291b6749be1a8f0ec499399df6529ea58d74",
+          "snapshot": "sources/codex/test/modelRelay.test.ts",
+          "status": ""
+        }
+      ]
+    },
+    "pi": {
+      "root": "/Users/connor/Medica/backbay/standalone/chio-pi-plugin",
+      "head": "2ccc027b42b837f3df2889863273df2c1e2d5669",
+      "files": [
+        {
+          "path": "src/model-relay.ts",
+          "sha256": "15d70de29b5f87d5402fef3f811d29c5f4af180b4092f5ec9420e84116df7801",
+          "snapshot": "sources/pi/src/model-relay.ts",
+          "status": ""
+        },
+        {
+          "path": "src/protected-cli.ts",
+          "sha256": "fde271e90bd83b6b3ff4bf72cc5838b186911ca8cc0fa2e1190e17e6583e325d",
+          "snapshot": "sources/pi/src/protected-cli.ts",
+          "status": ""
+        },
+        {
+          "path": "src/sandbox.ts",
+          "sha256": "a1c727ab58362feeb777747435e777f80dedb1fcd6be9716254a9e6d3f7d1cd1",
+          "snapshot": "sources/pi/src/sandbox.ts",
+          "status": ""
+        },
+        {
+          "path": "src/session.ts",
+          "sha256": "31af25ff470032bf31ac9a9a5e766b4626ad6a377197a0bd19407a2c9eafb258",
+          "snapshot": "sources/pi/src/session.ts",
+          "status": ""
+        },
+        {
+          "path": "src/extension.ts",
+          "sha256": "b24ef46df6da6255058e68a945e0723b46b27611d4a8c84ef44ae82952ba3a8f",
+          "snapshot": "sources/pi/src/extension.ts",
+          "status": ""
+        }
+      ]
+    },
+    "hermes": {
+      "root": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909",
+      "head": "476ab366b82e41148da2c8dbd95f405eb29124ab",
+      "files": [
+        {
+          "path": "sdks/python/chio-hermes/src/chio_hermes/model_relay.py",
+          "sha256": "a1ac2abb4247e4e6bc0201e55fb4d839263525c682412d09e971e133b2fe2e71",
+          "snapshot": "sources/hermes/sdks/python/chio-hermes/src/chio_hermes/model_relay.py",
+          "status": ""
+        },
+        {
+          "path": "sdks/python/chio-hermes/src/chio_hermes/restricted.py",
+          "sha256": "e1fe2be691cdb9a87e9090f32b1cb1e053b8bfc43f26fe75b0f0071cabce0ea7",
+          "snapshot": "sources/hermes/sdks/python/chio-hermes/src/chio_hermes/restricted.py",
+          "status": ""
+        },
+        {
+          "path": "sdks/python/chio-hermes/tests/test_model_relay.py",
+          "sha256": "e5a802d559360a01247b8fa75d460121b7c5d2ea24f0233b1ef80a5de4df5080",
+          "snapshot": "sources/hermes/sdks/python/chio-hermes/tests/test_model_relay.py",
+          "status": ""
+        }
+      ]
+    },
+    "openclaw": {
+      "root": "/Users/connor/Medica/backbay/standalone/chio-open-claw-plugin/.worktrees/required-agent-integrations-20260909",
+      "head": "bfabb63efe1267658cc6ef566a3e2dd4a3e42183",
+      "files": [
+        {
+          "path": "native/src/model-relay.mjs",
+          "sha256": "2ae2c174dd5fea0b50f3f8d611498d112bb678520ec0da2289785d8f820dfdc9",
+          "snapshot": "sources/openclaw/native/src/model-relay.mjs",
+          "status": "M native/src/model-relay.mjs"
+        },
+        {
+          "path": "native/scripts/protected.mjs",
+          "sha256": "a812a250a990d21311dec47feb53f428b2fbeaeca1443b8eed2cb63ff8746752",
+          "snapshot": "sources/openclaw/native/scripts/protected.mjs",
+          "status": ""
+        },
+        {
+          "path": "native/src/profile.mjs",
+          "sha256": "2031ad3cfd2cb16541717deb123a86f2f4c594023f34ec2d4cbd65860583cfee",
+          "snapshot": "sources/openclaw/native/src/profile.mjs",
+          "status": ""
+        },
+        {
+          "path": "native/src/plugin.mjs",
+          "sha256": "b7d3347676a32ce1d1373efb622bc2646b51593ff0fd67eb1e6ad369a2f3d061",
+          "snapshot": "sources/openclaw/native/src/plugin.mjs",
+          "status": ""
+        },
+        {
+          "path": "native/src/http-executor.mjs",
+          "sha256": "850c5d03076379e81ae6aa8e3d751405e3a5066fc7cd49cbe405a7677e9f0af8",
+          "snapshot": "sources/openclaw/native/src/http-executor.mjs",
+          "status": ""
+        },
+        {
+          "path": "native/docker/proxy.mjs",
+          "sha256": "5ad67087cdf4fbd7af10e0d59d19469c504c33d601116370647ffacbd67985bf",
+          "snapshot": "sources/openclaw/native/docker/proxy.mjs",
+          "status": ""
+        },
+        {
+          "path": "native/docker/Dockerfile",
+          "sha256": "200edd03f8a9945b196aec0ce13f3aea357bdc4c89059e5c4507bc04b6c703df",
+          "snapshot": "sources/openclaw/native/docker/Dockerfile",
+          "status": ""
+        },
+        {
+          "path": "native/evidence/2026-09-09/native-subscription/tool-error-v5/results.json",
+          "sha256": "39cdcb7fe37862dc3c50b2c1fbe76efffe03c0f1fcf37ad72d65dcbb3d106bdf",
+          "snapshot": "sources/openclaw/native/evidence/2026-09-09/native-subscription/tool-error-v5/results.json",
+          "status": "?? native/evidence/2026-09-09/native-subscription/tool-error-v5/results.json"
+        }
+      ]
+    }
+  }
+}

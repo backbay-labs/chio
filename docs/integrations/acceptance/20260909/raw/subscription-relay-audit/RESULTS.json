@@ -1,0 +1,157 @@
+{
+  "scope": "Read-only source audit and local fake-upstream HTTP probes only. No provider traffic, no host inference, no real credentials, no repository modifications.",
+  "finding": {
+    "id": "OC-QUOTA-001",
+    "confidence": "high",
+    "severity": "configured budget bypass",
+    "status": "fixed in working source and independently reprobed",
+    "before": {
+      "probe": "overlapping request bodies; local fake upstream only",
+      "expectedBudget": 100,
+      "requests": 110,
+      "forwarded": 110,
+      "statuses": {
+        "200": 110
+      }
+    },
+    "after": {
+      "probe": "overlapping request bodies; local fake upstream only",
+      "expectedBudget": 100,
+      "requests": 110,
+      "forwarded": 100,
+      "statuses": {
+        "200": 100,
+        "403": 10
+      }
+    }
+  },
+  "otherRelays": [
+    {
+      "host": "claude",
+      "scope": "local fake upstream only; no host inference/provider network",
+      "configuredLocalRequestBudget": null,
+      "burstRequests": 110,
+      "burstForwarded": 110,
+      "statuses": {
+        "200": 110
+      },
+      "maxRequestedOutput": 1000000000,
+      "guestBetaObserved": "audit-required,audit-guest-chosen",
+      "invalidControls": [
+        {
+          "control": "hosted_web_search",
+          "status": 403,
+          "forwarded": 0
+        },
+        {
+          "control": "remote_file_reference",
+          "status": 403,
+          "forwarded": 0
+        },
+        {
+          "control": "arbitrary_url_image",
+          "status": 403,
+          "forwarded": 0
+        }
+      ],
+      "arbitraryRoute": {
+        "status": 403,
+        "forwarded": 0
+      }
+    },
+    {
+      "host": "codex",
+      "scope": "local fake upstream only; no host inference/provider network",
+      "configuredLocalRequestBudget": null,
+      "burstRequests": 110,
+      "burstForwarded": 110,
+      "statuses": {
+        "200": 110
+      },
+      "maxRequestedOutput": 1000000000,
+      "guestBetaObserved": null,
+      "invalidControls": [
+        {
+          "control": "hosted_web_search",
+          "status": 502,
+          "forwarded": 0
+        },
+        {
+          "control": "remote_item_reference",
+          "status": 502,
+          "forwarded": 0
+        },
+        {
+          "control": "remote_mcp",
+          "status": 502,
+          "forwarded": 0
+        },
+        {
+          "control": "background_job",
+          "status": 502,
+          "forwarded": 0
+        },
+        {
+          "control": "previous_response_id",
+          "status": 502,
+          "forwarded": 0
+        }
+      ],
+      "arbitraryRoute": {
+        "status": 403,
+        "forwarded": 0
+      }
+    },
+    {
+      "host": "pi",
+      "scope": "local fake upstream only; no host inference/provider network",
+      "configuredLocalRequestBudget": null,
+      "burstRequests": 110,
+      "burstForwarded": 110,
+      "statuses": {
+        "200": 110
+      },
+      "maxRequestedOutput": 1000000000,
+      "guestBetaObserved": null,
+      "invalidControls": [
+        {
+          "control": "hosted_web_search",
+          "status": 502,
+          "forwarded": 0
+        },
+        {
+          "control": "remote_item_reference",
+          "status": 502,
+          "forwarded": 0
+        },
+        {
+          "control": "remote_mcp",
+          "status": 502,
+          "forwarded": 0
+        },
+        {
+          "control": "background_job",
+          "status": 502,
+          "forwarded": 0
+        },
+        {
+          "control": "previous_response_id",
+          "status": 502,
+          "forwarded": 0
+        }
+      ],
+      "arbitraryRoute": {
+        "status": 403,
+        "forwarded": 0
+      }
+    }
+  ],
+  "quotaInterpretation": "Claude, Codex and Pi do not claim/configure a local request quota in inspected code. No new acceptance requirement inferred from their count behavior.",
+  "openclawToolError": {
+    "evidenceSource": "sources/openclaw/native/evidence/2026-09-09/native-subscription/tool-error-v5/results.json",
+    "reviewedOwnerEvidence": true,
+    "independentlyReranHost": false,
+    "outcome": "completed signed error, one resource dispatch, acknowledged, launcher exit3"
+  },
+  "acceptanceClaim": false
+}

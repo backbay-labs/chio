@@ -1,0 +1,30 @@
+{
+  "host": "claude",
+  "archiveSha256": "0dd0d906fc34b3ac7d09e3b7f6cdee9f13f511731b25ec761feca7172c9b1158",
+  "packageName": "@chio/claude-code-plugin",
+  "packageVersion": "0.3.0",
+  "command": [
+    "npm",
+    "install",
+    "--offline",
+    "--ignore-scripts",
+    "--no-audit",
+    "--no-fund",
+    "--cache",
+    "/tmp/chio-final-bundle-cold-20260909/claude/empty-cache",
+    "/tmp/chio-final-bundle-cold-20260909/claude/chio-claude-code-plugin-0.3.0.tgz"
+  ],
+  "offline": true,
+  "initialCacheEmpty": true,
+  "exitCode": 0,
+  "elapsedSeconds": 7.838759899139404,
+  "entryChecks": [
+    {
+      "entry": "./dist/index.js",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "hostAcceptanceClaim": false
+}

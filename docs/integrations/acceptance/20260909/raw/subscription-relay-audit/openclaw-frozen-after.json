@@ -1,0 +1,1 @@
+{"probe":"overlapping request bodies; local fake upstream only","expectedBudget":100,"requests":110,"forwarded":100,"statuses":{"200":100,"403":10}}

@@ -1,0 +1,46 @@
+{
+  "observedVia": "prior recorded tool execution; raw installation output in conversation, entry checks retained separately",
+  "installs": [
+    {
+      "host": "claude",
+      "archive": "packages/chio-claude-code-plugin-0.3.0.tgz",
+      "archiveSha256": "8bf565bf5d704b01b0847cda64c4244fc1f15a19bc707f8e3a90aa3798064a23",
+      "offline": true,
+      "ignoreScripts": true,
+      "emptyCache": true,
+      "exitCode": 0,
+      "prefix": "/tmp/chio-subscription-delivery-cold-20260909/claude-code"
+    },
+    {
+      "host": "codex",
+      "archive": "packages/chio-codex-plugin-0.3.0.tgz",
+      "archiveSha256": "ac4f14ee4073abdc0c9ff2b4771e99adf7a871d084a9b488513f5d28eae56874",
+      "offline": true,
+      "ignoreScripts": true,
+      "emptyCache": true,
+      "exitCode": 0,
+      "prefix": "/tmp/chio-subscription-delivery-cold-20260909/codex"
+    },
+    {
+      "host": "cursor",
+      "archive": "packages/chio-cursor-0.3.0.tgz",
+      "archiveSha256": "3bf370db52da7e5b6811ede6e74c5b3d197b96666b80e78c186d441feb4cde4a",
+      "offline": true,
+      "ignoreScripts": true,
+      "emptyCache": true,
+      "exitCode": 0,
+      "prefix": "/tmp/chio-subscription-delivery-cold-20260909/cursor"
+    },
+    {
+      "host": "hermes",
+      "archive": "hermes-wheelhouse/chio_hermes-0.1.2-py3-none-any.whl",
+      "archiveSha256": "625979d5331796e7aef5906e69e3e2c746796aa570291af026c305ed4227c818",
+      "offline": true,
+      "ignoreScripts": false,
+      "emptyCache": true,
+      "exitCode": 0,
+      "prefix": "/tmp/chio-subscription-delivery-cold-20260909/hermes"
+    }
+  ],
+  "acceptedHosts": 0
+}

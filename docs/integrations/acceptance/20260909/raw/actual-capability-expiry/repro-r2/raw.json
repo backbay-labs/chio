@@ -1,0 +1,319 @@
+[
+  {
+    "label": "delegated-context-before-expiry",
+    "startedAtEpoch": 1789006884.7862568,
+    "completedAtEpoch": 1789006884.83323,
+    "request": {
+      "jsonrpc": "2.0",
+      "id": "c6e13ad2-ff3f-4460-8d0c-5ef6c59ea4c7",
+      "method": "chio/execution-context",
+      "params": {}
+    },
+    "status": 200,
+    "response": {
+      "id": "c6e13ad2-ff3f-4460-8d0c-5ef6c59ea4c7",
+      "jsonrpc": "2.0",
+      "result": {
+        "capabilityIds": [
+          "cap-01a0891e-ae59-7311-b162-7e6501f6aba8"
+        ],
+        "deliveryAcknowledgementVersion": "1",
+        "evidenceVersion": "1",
+        "schema": "chio.mcp.execution-context.v1",
+        "serverId": "fs",
+        "serverIds": [
+          "fs"
+        ],
+        "sessionCredential": {
+          "allowedTools": [
+            "edit_file",
+            "list_directory",
+            "read_text_file",
+            "write_file"
+          ],
+          "capabilityIds": [
+            "cap-01a0891e-ae59-7311-b162-7e6501f6aba8"
+          ],
+          "endpointPath": "/mcp",
+          "expiresAt": 1789006894,
+          "issuedAt": 1789006884,
+          "schema": "chio.mcp.session-credential.v1",
+          "serverId": "fs",
+          "sessionId": "47b88a0fbc1c4c362dddad7718f2e1d234189234bb90318e3d4496249e805d88",
+          "subjectKey": "2f22ad9a83fa64ff21a2c4e58df6972e382cf146c3e72eb8c3a97ccbc0244498"
+        },
+        "subjectKey": "2f22ad9a83fa64ff21a2c4e58df6972e382cf146c3e72eb8c3a97ccbc0244498"
+      }
+    }
+  },
+  {
+    "label": "operator-kernel-write-before-expiry",
+    "startedAtEpoch": 1789006884.833333,
+    "completedAtEpoch": 1789006885.675381,
+    "request": {
+      "jsonrpc": "2.0",
+      "id": "e3abd9c6-ba21-4e2d-b0a8-bd8f3740f9b5",
+      "method": "tools/call",
+      "params": {
+        "name": "write_file",
+        "arguments": {
+          "path": "/workspace/before-expiry.txt",
+          "content": "actual capability was live\n"
+        },
+        "_meta": {
+          "chioRequestId": "short-cap-before"
+        }
+      }
+    },
+    "status": 200,
+    "response": {
+      "id": "e3abd9c6-ba21-4e2d-b0a8-bd8f3740f9b5",
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": {
+              "content": [
+                {
+                  "text": "Successfully wrote to /workspace/before-expiry.txt",
+                  "type": "text"
+                }
+              ],
+              "isError": false,
+              "structuredContent": {
+                "content": "Successfully wrote to /workspace/before-expiry.txt"
+              }
+            },
+            "outputKind": "value",
+            "receipt": {
+              "action": {
+                "parameter_hash": "fe4e3629f79dce3744bd6f7e92ed43895b28f448b37031a2adc681b7b5e9d820",
+                "parameters": {
+                  "content": "actual capability was live\n",
+                  "path": "/workspace/before-expiry.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a0891e-ae59-7311-b162-7e6501f6aba8",
+              "content_hash": "e6c7ae2ab0870dd6abb7c80a55c16682f425c73d7d13fe7d1fe164d616f70e50",
+              "decision": {
+                "verdict": "allow"
+              },
+              "id": "833d944572305304c5de618e2fd42f26b2a2854e2999627b3c05dd1a990db77d",
+              "kernel_key": "f65797e3e618193a92471740e14e7c7f7b8f06714bc7253f70cf7028b034053c",
+              "metadata": {
+                "admission_operation": {
+                  "compensation_status": "not_compensated",
+                  "coordinator_lease_epoch": 1,
+                  "coordinator_lease_id": "01a0891c-fbbf-7db0-8f73-8d8fa769b0f0",
+                  "operation_id": "b631a8aaaaaeb8883968aae9022c427092cb41ac0ee24761a750831b97b1e4c5",
+                  "projected_dispatch_state": "terminal",
+                  "projected_operation_version": 8,
+                  "projected_state": "completed",
+                  "request_binding_hash": "f44f7ed0ff8622d5b7037df5fab2161a09141872911fda5b45462a992eb45c94",
+                  "request_id": "short-cap-before",
+                  "request_namespace_digest": "e12035033ea02452d1c09fd6b98ac4161fd499b19acdd59e65adc36063a5707c",
+                  "retained_dispatch_commit": {
+                    "committed_version": 6,
+                    "coordinator_lease_epoch": 1,
+                    "coordinator_lease_id": "01a0891c-fbbf-7db0-8f73-8d8fa769b0f0",
+                    "provider_attempt": {
+                      "attempt_id": "attempt:b631a8aaaaaeb8883968aae9022c427092cb41ac0ee24761a750831b97b1e4c5",
+                      "operation_id": "b631a8aaaaaeb8883968aae9022c427092cb41ac0ee24761a750831b97b1e4c5",
+                      "transport_id": "kernel-tool-server:fs",
+                      "transport_key_epoch": 1
+                    },
+                    "store_fence": {
+                      "lease_id": "01a0891c-fbbf-7db0-8f73-8d8fa769b0f0",
+                      "owner_epoch": 1,
+                      "store_uuid": "01a0891c-fa91-7e03-835a-c4d8ac664c31"
+                    }
+                  },
+                  "schema": "chio.admission-receipt.v1",
+                  "store_fence": {
+                    "lease_id": "01a0891c-fbbf-7db0-8f73-8d8fa769b0f0",
+                    "owner_epoch": 1,
+                    "store_uuid": "01a0891c-fa91-7e03-835a-c4d8ac664c31"
+                  },
+                  "tool_outcome_id": "992d8e57ee8bacdd8e9d016e01728ec897f2f33a469b2575673d831cb326b8e7",
+                  "tool_outcome_version": 2,
+                  "trusted_time_unix_ms": 1789006885425
+                },
+                "attribution": {
+                  "delegation_depth": 0,
+                  "grant_index": 0,
+                  "issuer_key": "6aed358f9a126cf147fd5b45e4f9316665664ad60cd0dfcbe67d1debc1cecda8",
+                  "subject_key": "2f22ad9a83fa64ff21a2c4e58df6972e382cf146c3e72eb8c3a97ccbc0244498"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a0891e-b2fb-72e0-b9a3-e756d179458d",
+                "receipt_context": {
+                  "request_id": "short-cap-before"
+                }
+              },
+              "policy_hash": "3e3e9f64c5d5eebee667c4141b60674e8a1933f0141f6ac872f4f7bb1512c4bb",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "7e78da736d40cd9eb7dc168d1dc83f17e7912398106c7f191d907cb3e516ff541fa143e44e836f206fb55f00b2e463a69c5c3ed3c84694953817e1ceddea590e",
+              "timestamp": 1789006885,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "short-cap-before",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "Successfully wrote to /workspace/before-expiry.txt",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "content": "Successfully wrote to /workspace/before-expiry.txt"
+        }
+      }
+    }
+  },
+  {
+    "label": "independent-observer-before-expiry",
+    "atEpoch": 1789006886.520885,
+    "observation": {
+      "before-expiry.txt": {
+        "exists": true,
+        "content": "actual capability was live\n"
+      },
+      "after-expiry.txt": {
+        "exists": false
+      },
+      "delegated-after-expiry.txt": {
+        "exists": false
+      }
+    }
+  },
+  {
+    "label": "delegated-write-after-capability-and-credential-expiry",
+    "startedAtEpoch": 1789006895.0015202,
+    "completedAtEpoch": 1789006895.0056698,
+    "request": {
+      "jsonrpc": "2.0",
+      "id": "44b086cc-488d-43a9-b232-02deda19c7d4",
+      "method": "tools/call",
+      "params": {
+        "name": "write_file",
+        "arguments": {
+          "path": "/workspace/delegated-after-expiry.txt",
+          "content": "must not happen"
+        },
+        "_meta": {
+          "chioRequestId": "short-cap-delegated-after"
+        }
+      }
+    },
+    "status": 401,
+    "response": {
+      "text": "invalid, expired, or revoked session credential"
+    }
+  },
+  {
+    "label": "operator-inner-kernel-write-after-capability-expiry",
+    "startedAtEpoch": 1789006895.0057411,
+    "completedAtEpoch": 1789006895.016311,
+    "request": {
+      "jsonrpc": "2.0",
+      "id": "0d0f8170-0bc4-4e12-8d2c-b5c632871d5c",
+      "method": "tools/call",
+      "params": {
+        "name": "write_file",
+        "arguments": {
+          "path": "/workspace/after-expiry.txt",
+          "content": "must not happen"
+        },
+        "_meta": {
+          "chioRequestId": "short-cap-inner-after"
+        }
+      }
+    },
+    "status": 200,
+    "response": {
+      "id": "0d0f8170-0bc4-4e12-8d2c-b5c632871d5c",
+      "jsonrpc": "2.0",
+      "result": {
+        "_meta": {
+          "chioEvidence": {
+            "output": null,
+            "outputKind": "none",
+            "receipt": {
+              "action": {
+                "parameter_hash": "7f664212447bcd80f45b70a09457b16cebddc7908b3a5dfa429a537da96dcb85",
+                "parameters": {
+                  "content": "must not happen",
+                  "path": "/workspace/after-expiry.txt"
+                }
+              },
+              "boundary_class": "prevent",
+              "capability_id": "cap-01a0891e-ae59-7311-b162-7e6501f6aba8",
+              "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+              "decision": {
+                "guard": "kernel",
+                "reason": "capability verification failed: capability has expired",
+                "verdict": "deny"
+              },
+              "id": "9e84cf444df7591e5c9b5e559be04bc0d2436264523b7eb72fad9ff00c96c289",
+              "kernel_key": "f65797e3e618193a92471740e14e7c7f7b8f06714bc7253f70cf7028b034053c",
+              "metadata": {
+                "attribution": {
+                  "delegation_depth": 0,
+                  "issuer_key": "6aed358f9a126cf147fd5b45e4f9316665664ad60cd0dfcbe67d1debc1cecda8",
+                  "subject_key": "2f22ad9a83fa64ff21a2c4e58df6972e382cf146c3e72eb8c3a97ccbc0244498"
+                },
+                "chio_receipt_signing_nonce": "rcpt-01a0891e-d7a3-7ad0-8724-95e1dd808a50",
+                "receipt_context": {
+                  "request_id": "short-cap-inner-after"
+                }
+              },
+              "policy_hash": "3e3e9f64c5d5eebee667c4141b60674e8a1933f0141f6ac872f4f7bb1512c4bb",
+              "receipt_kind": "mediated_decision",
+              "redaction_mode": "none",
+              "signature": "594ec3c45b6db54915002fd417034ee6e0015011b2de3c01e38a2568d2fc1990315d1dcaa35927b4a20e08ba7b51b514a6fc547351749483f581989afae06f02",
+              "timestamp": 1789006895,
+              "tool_name": "write_file",
+              "tool_origin": "caller_executed",
+              "tool_server": "fs",
+              "trust_level": "mediated"
+            },
+            "requestId": "short-cap-inner-after",
+            "schema": "chio.mcp.execution-evidence.v1",
+            "terminalState": "completed"
+          }
+        },
+        "content": [
+          {
+            "text": "capability verification failed: capability has expired",
+            "type": "text"
+          }
+        ],
+        "isError": true
+      }
+    }
+  },
+  {
+    "label": "independent-observer-after-expiry",
+    "atEpoch": 1789006895.273354,
+    "observation": {
+      "before-expiry.txt": {
+        "exists": true,
+        "content": "actual capability was live\n"
+      },
+      "after-expiry.txt": {
+        "exists": false
+      },
+      "delegated-after-expiry.txt": {
+        "exists": false
+      }
+    }
+  }
+]

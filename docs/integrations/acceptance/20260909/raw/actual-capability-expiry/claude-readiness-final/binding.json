@@ -1,0 +1,54 @@
+{
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "kernelSource": "d8c5f53705173e614a853bad6c0a85acfdf1212b",
+  "image": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "policySha256": "9890d6b40a7b8394ec5eb52a0dd0ab8168b14e6ae370e7ca9731f1f76e28d52d",
+  "capability": {
+    "schema": "chio.capability.v1",
+    "id": "cap-01a0892f-5823-72d0-9244-7eb0c538880e",
+    "issuer": "6aed358f9a126cf147fd5b45e4f9316665664ad60cd0dfcbe67d1debc1cecda8",
+    "subject": "bcf3c2776f8a076f7561d8e69a7e1c4e6e3f186ff640ed8baf102e65a328ac64",
+    "scope": {
+      "grants": [
+        {
+          "server_id": "fs",
+          "tool_name": "*",
+          "operations": [
+            "invoke"
+          ],
+          "max_invocations": 64
+        }
+      ]
+    },
+    "issued_at": 1789007976,
+    "expires_at": 1789007986,
+    "signature": "9fda76e1e3e40e8d1e324ef4acf802cf0a72d9af1124d1518f516f64300a033062d29c8c22081f60847a68769203b5e67eb6a690d3c871ec32d2f00168a42702"
+  },
+  "capabilitySignatureVerifiedAgainstEmbeddedIssuer": true,
+  "signatureBody": "schema-aware",
+  "sessionCredential": {
+    "schema": "chio.mcp.session-credential.v1",
+    "sessionId": "8af0abcf5df5ff5c4e03f84a4c910ba48b05351cc3577d593f85daf280935b6f",
+    "subjectKey": "bcf3c2776f8a076f7561d8e69a7e1c4e6e3f186ff640ed8baf102e65a328ac64",
+    "capabilityIds": [
+      "cap-01a0892f-5823-72d0-9244-7eb0c538880e"
+    ],
+    "serverId": "fs",
+    "endpointPath": "/mcp",
+    "allowedTools": [
+      "edit_file",
+      "list_directory",
+      "read_text_file",
+      "write_file"
+    ],
+    "issuedAt": 1789007976,
+    "expiresAt": 1789007986
+  },
+  "credentialRequestedTtlSeconds": 900,
+  "preparationStartedAtEpoch": 1789007976.281478,
+  "preparedAtEpoch": 1789007976.669235,
+  "secondsRemainingAtPreparation": 9.330765008926392,
+  "gatewayConfig": "/Users/connor/.local/share/chio-required-operators/capability-expiry-20260909/qualification-claude-readiness-final/gateway.json",
+  "sourceContract": "session_credentials.rs clamps delegated expiresAt to min(issued capability expiries, requested credential TTL)",
+  "claims": "No delegated credential can outlive its capability. Optional inner-kernel probe uses trusted operator admission bearer, not a real host."
+}

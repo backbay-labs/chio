@@ -1,0 +1,48 @@
+{
+  "host": "pi",
+  "archiveSha256": "ec6095390b9eae233540b73aee0ad2fef6977c36122dd30aa2779329b1897aa1",
+  "packageName": "@chio/pi-plugin",
+  "packageVersion": "0.1.0",
+  "command": [
+    "npm",
+    "install",
+    "--install-strategy=nested",
+    "--ignore-scripts",
+    "--no-audit",
+    "--no-fund",
+    "--cache",
+    "/tmp/chio-final-bundle-cold-r3-20260909/pi/empty-cache",
+    "/tmp/chio-final-bundle-cold-r3-20260909/pi/chio-pi-plugin-0.1.0.tgz"
+  ],
+  "offline": false,
+  "initialCacheEmptyBeforePublicHostInstall": true,
+  "hostInstallCommand": [
+    "npm",
+    "install",
+    "--ignore-scripts",
+    "--install-strategy=nested",
+    "--no-audit",
+    "--no-fund",
+    "--cache",
+    "/tmp/chio-final-bundle-cold-r3-20260909/pi/empty-cache",
+    "@earendil-works/pi-coding-agent@0.85.1"
+  ],
+  "hostInstallExitCode": 0,
+  "exitCode": 0,
+  "elapsedSeconds": 6.558851957321167,
+  "entryChecks": [
+    {
+      "entry": "dist/index.js",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "entry": "./dist/protected-cli.js",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "hostAcceptanceClaim": false
+}

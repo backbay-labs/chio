@@ -24,10 +24,13 @@ superseded artifacts remain retained, but are not current authentication blocker
 
 The manifest selects immutable local candidates by SHA256. The preceding
 selection, manifest and instructions remain under `superseded/pre-native-subscriptions`.
-Do not combine tests across these archives. Final current-artifact matrices are
-still underway. In particular, Pi's native tool-error delivery acknowledgement
-and OpenClaw's concurrent model request limit have demonstrated failures under
-repair. Their current archives remain unaccepted until replacement qualification.
+Do not combine tests across these archives. Claude r5 is source `c91cd81`, archive
+`0dd0d906fc34b3ac7d09e3b7f6cdee9f13f511731b25ec761feca7172c9b1158`.
+The current replacements repair Claude native initialization and unsuccessful-result reporting, Pi's
+completed tool-error acknowledgement and OpenClaw's concurrent model-request
+limit. Their regressions, broad host matrices and launcher journal/cancellation
+cutpoints pass. Actual kernel admission and receipt-storage failures are being
+qualified separately through each host. No archive is yet accepted.
 
 Cursor protected prompt mode refuses before starting the host. Its server-owned
 messaging, cloud/agent management and PR mutation paths require a supported
@@ -49,10 +52,24 @@ npm install --prefix install/bridge --offline --ignore-scripts packages/chio-bri
 npm install --prefix install/codex --offline --ignore-scripts packages/chio-codex-plugin-0.3.0.tgz
 ```
 
-For other TypeScript hosts, select the corresponding archive in `packages` and
-use a separate installation prefix. Archives bundle their runtime dependencies;
+Claude, Cursor and OpenClaw use the corresponding archive in `packages` with a
+separate installation prefix. Those archives bundle their runtime dependencies;
 no sibling source checkout is needed. Use an empty `--cache` directory to repeat
 the cold-install check. The original source trees are not install dependencies.
+
+Pi requires its public, exactly pinned upstream peer package. Its documented
+installation needs registry access; the plugin-only offline command fails with
+`ENOTCACHED` on an empty cache. Use both steps in the same prefix:
+
+```sh
+npm install --prefix install/pi --ignore-scripts --install-strategy=nested \
+  @earendil-works/pi-coding-agent@0.85.1
+npm install --prefix install/pi --ignore-scripts --install-strategy=nested \
+  packages/chio-pi-plugin-0.1.0.tgz
+```
+
+This is a public upstream dependency, not a private sibling checkout. The exact
+plugin archive's README contains the same two-step procedure.
 
 Hermes adapter installation, using the Python 3.11 macOS arm64 runtime selected
 in its host record:
@@ -68,7 +85,7 @@ npm install --prefix install/hermes-bridge --offline --ignore-scripts \
 
 Hermes itself must be the separately pinned public upstream checkout and host
 runtime described in its acceptance record. Pi's upstream host library is
-bundled in the integration archive. OpenClaw's exact runtime and plugin are in
+installed separately by the two commands above. OpenClaw's exact runtime and plugin are in
 the retained host image. Claude, Codex and Cursor require their pinned native
 executables; arbitrary upgrades are refused or unqualified.
 
@@ -169,7 +186,9 @@ node install/operator-bridge/node_modules/@chio/bridge/dist/gateway-operator.js 
 Stop the host before import. Use `recover-lock` only for a proven dead owner.
 The exporter reads the exact session/request row without network dispatch. Import
 verifies its signature, original authority, request and complete result; it keeps
-the previous unknown outcome and leaves the completion fenced and unacknowledged.
+the previous journal state and outcome and leaves the completion fenced and
+unacknowledged. A pending record can have no previous outcome after its local
+completion write failed; import preserves that fact.
 Read the exported result and compare the independent resource observation before
 acknowledging it explicitly:
 
@@ -193,8 +212,9 @@ Revoke the session credential and capability before removing a host profile.
 Stop its parent launcher and resource owner; retain required receipts and
 unknown-outcome state. Remove only explicitly designated disposable profiles,
 install prefixes and volumes after inspection. No normal-home cleanup script is
-provided. Complete upgrade/removal and in-flight-failure qualification remain
-open, so this bundle must not be described as accepted lifecycle delivery.
+provided. Current five working hosts have bounded upgrade/removal and
+in-flight-failure evidence. Cursor and public release qualification remain open,
+so this bundle must not be described as accepted lifecycle delivery.
 
 The selected Claude and OpenClaw packages include trusted launcher-death
 supervision. Their replaced artifacts and the previous OpenClaw image remain in
@@ -203,8 +223,8 @@ The new artifacts passed their own forced-crash recovery checks. Earlier Claude 
 remain separate from current authenticated subscription runs. Current-artifact
 crash and recovery observations are named in each host record. Preserved volumes and unknown outcomes still require explicit
 operator recovery. A watchdog cleanup error is unresolved, not successful
-removal. Earlier startup/crash cutpoints and full lifecycle acceptance remain
-open.
+removal. Each new artifact requires its own evidence; historical observations
+do not qualify an upgrade.
 
 Hermes r15 uses the separately retained `hermes-bridge` archive above. Pass
 `install/hermes-bridge/node_modules/@chio/bridge/dist/gateway-http.js` to its
@@ -212,5 +232,5 @@ launcher. This pins the exact bridge used in its native qualification, while
 the other integrations retain their own tested bridge builds. The previous r9
 wheel and manifest remain under `superseded/hermes-r9`. The selected r15 wheel
 handles operator SIGTERM/SIGINT, reaps the isolated process group and reports an
-unacknowledged committed result as unresolved. SIGKILL and every other lifecycle
-cutpoint are separate requirements.
+unacknowledged committed result as unresolved. Its current record includes
+separate SIGKILL, startup, native-history and upgrade/removal cases.

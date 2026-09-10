@@ -1,0 +1,30 @@
+usage: restricted.py [-h] --host-python HOST_PYTHON --host-root HOST_ROOT
+                     --node NODE --gateway-script GATEWAY_SCRIPT
+                     --gateway-config GATEWAY_CONFIG --state-dir STATE_DIR
+                     --query-file QUERY_FILE --model MODEL
+                     [--model-base-url MODEL_BASE_URL]
+                     [--model-auth {api-key,codex-subscription}]
+                     [--codex-auth-file CODEX_AUTH_FILE]
+                     [--model-key-env MODEL_KEY_ENV] [--max-turns 1..100]
+
+Launch the pinned Hermes CLI with only the Chio execution gateway. This
+candidate mode uses static host tool restrictions, independent of the legacy
+Python plugin's hook. Resource isolation and the kernel gateway remain
+separate required boundaries. The qualified mode adds a default-deny macOS
+profile and an operator-owned model relay.
+
+options:
+  -h, --help            show this help message and exit
+  --host-python HOST_PYTHON
+  --host-root HOST_ROOT
+  --node NODE
+  --gateway-script GATEWAY_SCRIPT
+  --gateway-config GATEWAY_CONFIG
+  --state-dir STATE_DIR
+  --query-file QUERY_FILE
+  --model MODEL
+  --model-base-url MODEL_BASE_URL
+  --model-auth {api-key,codex-subscription}
+  --codex-auth-file CODEX_AUTH_FILE
+  --model-key-env MODEL_KEY_ENV
+  --max-turns 1..100

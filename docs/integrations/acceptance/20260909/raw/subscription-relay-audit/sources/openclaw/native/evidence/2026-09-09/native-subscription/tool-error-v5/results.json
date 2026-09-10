@@ -1,0 +1,22 @@
+[
+  {
+    "case": "tool-error",
+    "passed": true,
+    "exitCode": 3,
+    "terminal": {
+      "hostExitCode": 0,
+      "exitCode": 3,
+      "outcome": "protected_work_incomplete",
+      "confirmedDeliveries": 1
+    },
+    "newDispatchRows": 1,
+    "acknowledgements": [
+      {
+        "state": "completed",
+        "acknowledged": true,
+        "hostDeliveryConfirmed": true
+      }
+    ],
+    "privateState": "/Users/connor/.local/share/chio-required-operators/openclaw-host-delivery-20260909/openclaw-tool-error-3d12329e841e4dadb2aaa556d2d6ad4e"
+  }
+]

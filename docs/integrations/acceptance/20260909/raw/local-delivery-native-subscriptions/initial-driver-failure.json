@@ -1,0 +1,5 @@
+{
+  "status": "failed harness setup",
+  "error": "Assumed package-lock keys started with node_modules, but npm canonicalized /tmp to /private/tmp; assertion failed before any entrypoint check",
+  "resourceEffects": 0
+}

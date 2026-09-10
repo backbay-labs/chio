@@ -1,0 +1,17 @@
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @chio/pi-plugin@0.1.0
+npm warn Found: @earendil-works/pi-coding-agent@undefined
+npm warn node_modules/@earendil-works/pi-coding-agent
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer @earendil-works/pi-coding-agent@"0.85.1" from @chio/pi-plugin@0.1.0
+npm warn node_modules/@chio/pi-plugin
+npm warn   @chio/pi-plugin@"file:../../../../../tmp/chio-final-bundle-cold-20260909/pi/chio-pi-plugin-0.1.0.tgz" from the root project
+npm error code ENOTCACHED
+npm error request to https://registry.npmjs.org/@earendil-works%2fpi-coding-agent failed: cache mode is 'only-if-cached' but no cached response is available.
+npm notice
+npm notice New minor version of npm available! 11.8.0 -> 11.19.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.1
+npm notice To update run: npm install -g npm@11.19.1
+npm notice
+npm error A complete log of this run can be found in: /tmp/chio-final-bundle-cold-20260909/pi/empty-cache/_logs/2026-09-10T03_14_28_177Z-debug-0.log
