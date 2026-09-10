@@ -21,6 +21,7 @@ REQUIRED = {
     }),
     "release-qualification.yml": (None, {"Release qualification"}),
     "cve-monitor.yml": (None, {"cargo-audit and osv-scanner"}),
+    "cargo-vet.yml": (None, {"cargo-vet (locked supply-chain audit)"}),
 }
 
 

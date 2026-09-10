@@ -1,0 +1,10 @@
+{
+  "generator": "cargo vet regenerate unpublished",
+  "version": "cargo-vet 0.10.2",
+  "configUnchanged": true,
+  "localAuditsUnchanged": true,
+  "dependencyLockUnchanged": true,
+  "lockedCheckExitCode": 0,
+  "sourceCommitBeforeMetadataRepair": "c4ff34bb9d78e66177c36c31e3bd10adcaec0ce1",
+  "scope": "generated package mapping and existing trusted feed refresh; no new audit, exemption, policy or dependency version"
+}

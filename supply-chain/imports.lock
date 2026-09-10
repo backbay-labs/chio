@@ -70,7 +70,7 @@ version = "0.1.0"
 audited_as = "0.1.2"
 
 [[unpublished.chio-cli]]
-version = "0.1.0"
+version = "0.1.1-rc.1"
 audited_as = "0.1.2"
 
 [[unpublished.chio-cohere-tools-adapter]]
@@ -169,6 +169,10 @@ audited_as = "0.1.2"
 version = "0.1.0"
 audited_as = "0.1.2"
 
+[[unpublished.chio-mcp-remote]]
+version = "0.1.0"
+audited_as = "0.1.2"
+
 [[unpublished.chio-mercury]]
 version = "0.1.0"
 audited_as = "0.1.2"
@@ -214,6 +218,10 @@ version = "0.1.0"
 audited_as = "0.1.2"
 
 [[unpublished.chio-proof-room]]
+version = "0.1.0"
+audited_as = "0.1.2"
+
+[[unpublished.chio-provider-adapter-core]]
 version = "0.1.0"
 audited_as = "0.1.2"
 
@@ -3422,8 +3430,8 @@ who = "Henri Sivonen <hsivonen@hsivonen.fi>"
 criteria = "safe-to-deploy"
 user-id = 4484 # Henri Sivonen (hsivonen)
 start = "2019-02-26"
-end = "2025-10-23"
-notes = "I, Henri Sivonen, wrote encoding_rs for Gecko and have reviewed contributions by others. There are two caveats to the certification: 1) The crate does things that are documented to be UB but that do not appear to actually be UB due to integer types differing from the general rule; https://github.com/hsivonen/encoding_rs/issues/79 . 2) It would be prudent to re-review the code that reinterprets buffers of integers as SIMD vectors; see https://github.com/hsivonen/encoding_rs/issues/87 ."
+end = "2027-09-07"
+notes = "I, Henri Sivonen, wrote encoding_rs for Gecko and have reviewed contributions by others."
 aggregated-from = "https://hg.mozilla.org/mozilla-central/raw-file/tip/supply-chain/audits.toml"
 
 [[audits.mozilla.wildcard-audits.unicode-normalization]]

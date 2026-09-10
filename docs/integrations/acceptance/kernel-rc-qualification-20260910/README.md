@@ -23,7 +23,9 @@ and tag. Existing tag verification, signing, SBOM and provenance steps remain.
 
 Required workflow/job identities are explicit in
 `scripts/check-release-source-gates.py`. CI must have a successful `main` push
-run. Run `cve-monitor.yml` on `main` after source integration if the scheduled
+run. The separate `cargo-vet.yml` supplier-policy workflow is also required,
+including its exemption-growth review gate for pushes that change supplier inputs.
+Run `cve-monitor.yml` on `main` after source integration if the scheduled
 scan has not covered that commit. The release qualifier runs on `main` pushes;
 manual reruns must select that same source. The release tag must identify the
 qualified commit. No tag, registry upload or binary publication is performed by
@@ -44,3 +46,27 @@ publication guard tests, not host or kernel acceptance. The tests also run in
 the existing CI structural lane and full release driver. Actionlint validates
 both changed workflows. The live GitHub job response was checked for `run_id`,
 `head_sha` and `run_attempt` fields before depending on those bindings.
+
+## Publisher metadata refresh
+
+The first hosted check of the new CLI version failed because `imports.lock`
+still named the previous local version. `cargo vet regenerate unpublished`
+regenerated that mapping using the existing Chio publisher trust and imported
+feeds. The resulting locked check passes: 571 fully audited, six partially
+audited, 736 exempted. The policy, local audit records, exemptions and dependency
+versions are unchanged. A locked regeneration is a documented no-op in the
+installed tool; its output and the rejected store-path invocation are retained.
+
+The complete generated diff is in `publisher-metadata/generated-imports.diff.gz`.
+It changes the CLI's local version mapping and adds mappings for two existing
+first-party packages, all to the already trusted published 0.1.2 identities.
+The sole imported certification change renews Mozilla's existing encoding_rs
+publisher entry through 2027-09-07 and updates its supplier-authored notes.
+The signer identity, criterion and start date are unchanged. The entry was
+verified against Mozilla source commit
+`d7f9f897cbabc04d16ae2a62374e098d850d46fa`; the source hash and exact entry are
+retained in `publisher-metadata/mozilla-entry.json`. This accepts a refresh from
+the already configured supplier feed, not a newly performed encoding_rs audit.
+The previous notes and failed check remain in the raw diff and logs. Confidence
+is high in the metadata identity and executed check; this does not certify the
+new CLI's host behavior or replace the release qualifier.

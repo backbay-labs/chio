@@ -54,7 +54,7 @@ class SourceGate(unittest.TestCase):
         return GATE.require_gates(REPOSITORY, HEAD, self.read)
 
     def test_exact_source_latest_attempt_succeeds(self):
-        self.assertEqual(len(self.require()), 3)
+        self.assertEqual(len(self.require()), len(GATE.REQUIRED))
         self.assertTrue(all(path in self.requests for path in self.job_paths))
 
     def test_foreign_or_unreviewed_run_never_substitutes(self):
