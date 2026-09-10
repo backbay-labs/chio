@@ -1,0 +1,244 @@
+{
+  "id": 102740489703,
+  "run_id": 34435801997,
+  "workflow_name": "ci",
+  "head_branch": "codex/required-agent-integrations-20260909",
+  "run_url": "https://api.github.com/repos/backbay-labs/chio-bridge/actions/runs/34435801997",
+  "run_attempt": 1,
+  "node_id": "CR_kwDOSKJ5Ac8AAAAX68915w",
+  "head_sha": "e3a9ab685f901c4fa54f31551ff7484a47e673d4",
+  "url": "https://api.github.com/repos/backbay-labs/chio-bridge/actions/jobs/102740489703",
+  "html_url": "https://github.com/backbay-labs/chio-bridge/actions/runs/34435801997/job/102740489703",
+  "status": "completed",
+  "conclusion": "success",
+  "created_at": "2026-09-10T04:05:23Z",
+  "started_at": "2026-09-10T04:05:24Z",
+  "completed_at": "2026-09-10T04:11:52Z",
+  "name": "test",
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 1,
+      "started_at": "2026-09-10T04:05:25Z",
+      "completed_at": "2026-09-10T04:05:27Z"
+    },
+    {
+      "name": "Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 2,
+      "started_at": "2026-09-10T04:05:27Z",
+      "completed_at": "2026-09-10T04:05:30Z"
+    },
+    {
+      "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 3,
+      "started_at": "2026-09-10T04:05:30Z",
+      "completed_at": "2026-09-10T04:05:35Z"
+    },
+    {
+      "name": "Pin npm",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 4,
+      "started_at": "2026-09-10T04:05:35Z",
+      "completed_at": "2026-09-10T04:05:38Z"
+    },
+    {
+      "name": "Install locked dependencies",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 5,
+      "started_at": "2026-09-10T04:05:38Z",
+      "completed_at": "2026-09-10T04:05:39Z"
+    },
+    {
+      "name": "Typecheck, build, and unit regressions",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 6,
+      "started_at": "2026-09-10T04:05:39Z",
+      "completed_at": "2026-09-10T04:06:16Z"
+    },
+    {
+      "name": "Build staged release artifact",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 7,
+      "started_at": "2026-09-10T04:06:16Z",
+      "completed_at": "2026-09-10T04:06:18Z"
+    },
+    {
+      "name": "Verify clean consumer installation and packaged entrypoints",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 8,
+      "started_at": "2026-09-10T04:06:18Z",
+      "completed_at": "2026-09-10T04:06:22Z"
+    },
+    {
+      "name": "Checkout exact kernel source",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 9,
+      "started_at": "2026-09-10T04:06:22Z",
+      "completed_at": "2026-09-10T04:06:28Z"
+    },
+    {
+      "name": "Checkout public live harness",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 10,
+      "started_at": "2026-09-10T04:06:28Z",
+      "completed_at": "2026-09-10T04:06:29Z"
+    },
+    {
+      "name": "Install kernel build prerequisites",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 11,
+      "started_at": "2026-09-10T04:06:29Z",
+      "completed_at": "2026-09-10T04:06:43Z"
+    },
+    {
+      "name": "Install pinned Rust toolchain",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 12,
+      "started_at": "2026-09-10T04:06:43Z",
+      "completed_at": "2026-09-10T04:06:51Z"
+    },
+    {
+      "name": "Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 13,
+      "started_at": "2026-09-10T04:06:51Z",
+      "completed_at": "2026-09-10T04:06:56Z"
+    },
+    {
+      "name": "Build exact kernel for legacy live API regression",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 14,
+      "started_at": "2026-09-10T04:06:56Z",
+      "completed_at": "2026-09-10T04:10:32Z"
+    },
+    {
+      "name": "Run oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 15,
+      "started_at": "2026-09-10T04:10:32Z",
+      "completed_at": "2026-09-10T04:10:33Z"
+    },
+    {
+      "name": "Install locked public harness dependencies",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 16,
+      "started_at": "2026-09-10T04:10:33Z",
+      "completed_at": "2026-09-10T04:10:34Z"
+    },
+    {
+      "name": "Live integration tests",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 17,
+      "started_at": "2026-09-10T04:10:34Z",
+      "completed_at": "2026-09-10T04:11:32Z"
+    },
+    {
+      "name": "Stop isolated harness",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 18,
+      "started_at": "2026-09-10T04:11:32Z",
+      "completed_at": "2026-09-10T04:11:32Z"
+    },
+    {
+      "name": "Retain live harness logs",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 19,
+      "started_at": "2026-09-10T04:11:32Z",
+      "completed_at": "2026-09-10T04:11:33Z"
+    },
+    {
+      "name": "Retain qualified package",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 20,
+      "started_at": "2026-09-10T04:11:33Z",
+      "completed_at": "2026-09-10T04:11:34Z"
+    },
+    {
+      "name": "Post Run oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 35,
+      "started_at": "2026-09-10T04:11:34Z",
+      "completed_at": "2026-09-10T04:11:36Z"
+    },
+    {
+      "name": "Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 36,
+      "started_at": "2026-09-10T04:11:36Z",
+      "completed_at": "2026-09-10T04:11:49Z"
+    },
+    {
+      "name": "Post Checkout public live harness",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 37,
+      "started_at": "2026-09-10T04:11:49Z",
+      "completed_at": "2026-09-10T04:11:49Z"
+    },
+    {
+      "name": "Post Checkout exact kernel source",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 38,
+      "started_at": "2026-09-10T04:11:49Z",
+      "completed_at": "2026-09-10T04:11:49Z"
+    },
+    {
+      "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 39,
+      "started_at": "2026-09-10T04:11:49Z",
+      "completed_at": "2026-09-10T04:11:49Z"
+    },
+    {
+      "name": "Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 40,
+      "started_at": "2026-09-10T04:11:49Z",
+      "completed_at": "2026-09-10T04:11:49Z"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 41,
+      "started_at": "2026-09-10T04:11:49Z",
+      "completed_at": "2026-09-10T04:11:49Z"
+    }
+  ],
+  "check_run_url": "https://api.github.com/repos/backbay-labs/chio-bridge/check-runs/102740489703",
+  "labels": [
+    "ubuntu-24.04"
+  ],
+  "runner_id": 1000113891,
+  "runner_name": "GitHub Actions 1000113891",
+  "runner_group_id": 0,
+  "runner_group_name": "GitHub Actions"
+}

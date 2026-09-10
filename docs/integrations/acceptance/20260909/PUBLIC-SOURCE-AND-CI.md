@@ -24,7 +24,7 @@ check URLs, status and conclusion; subsequent remote changes require a new snaps
 | OpenClaw | [draft PR 1](https://github.com/backbay-labs/chio-open-claw-plugin/pull/1) | `647c4fef2b775be84c554ecc03403e2418fb0879` | [test: SUCCESS](https://github.com/backbay-labs/chio-open-claw-plugin/actions/runs/34434447182/job/102736507159) |
 | Pi | [draft PR 1](https://github.com/backbay-labs/chio-pi-plugin/pull/1) | `b24b14e9c4d69261ab39eb9507db45bc07cba96f` | [test: SUCCESS](https://github.com/backbay-labs/chio-pi-plugin/actions/runs/34435298347/job/102738991841) |
 | Shared test harness | [draft PR 1](https://github.com/backbay-labs/chio-test-harness/pull/1) | `98a0f5e33d63ded80cf36434c448b7ec45c3b413` | [self-test: SUCCESS](https://github.com/backbay-labs/chio-test-harness/actions/runs/34435362383/job/102739187548) |
-| Shared bridge | [draft PR 1](https://github.com/backbay-labs/chio-bridge/pull/1) | `e3a9ab685f901c4fa54f31551ff7484a47e673d4` | [test: IN_PROGRESS](https://github.com/backbay-labs/chio-bridge/actions/runs/34435801997/job/102740489703) |
+| Shared bridge | [draft PR 1](https://github.com/backbay-labs/chio-bridge/pull/1) | `e3a9ab685f901c4fa54f31551ff7484a47e673d4` | [test: SUCCESS](https://github.com/backbay-labs/chio-bridge/actions/runs/34435801997/job/102740489703) |
 
 The checks above exercise their repository source/package contracts. They do not
 rerun the retained real-host I01-I08 matrices, confer Cursor enforcement, or
@@ -52,8 +52,7 @@ under [raw/publication-and-ci](raw/publication-and-ci) binds the evidence to the
 run and exact checked-out source. The harness also checked out kernel
 `d8c5f53705173e614a853bad6c0a85acfdf1212b` from ARC in a separate step; this is
 not the harness repository tree and not a full kernel release qualification.
-Bridge's current synthetic merge tree equals its head, but its run was unfinished;
-no tested-source success is claimed for it.
+The bridge subsequently passed 144 component and 16 real-kernel API tests. Its actual job checkout `75d598ef43ed685480fb65961cbf63f3816b36b1` has tree `f0b0de932029b576c811604587a9d9a5a63eb7ea`, equal to the recorded head. The later bridge-success records retain this completed result; the initial pending snapshot remains historical.
 
 ## Pi hosted failure, isolated fix and passing rerun
 

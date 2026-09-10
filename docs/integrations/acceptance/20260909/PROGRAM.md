@@ -775,3 +775,31 @@ audited safe. The selected default CLI uses `der 0.7.10`; complete selected norm
 and build dependency graphs are unchanged across all five release targets. This
 bounds the release failure separately from the five hosts' immutable `33dd`
 runtime observations; it does not waive the workspace security gate.
+
+
+## Combined release repairs, 2026-09-10
+
+All seven standalone source/package CI lanes have now passed, including the bridge
+and test harness. Their exact merge/head tree identities are retained in
+[the source CI checkpoint](PUBLIC-SOURCE-AND-CI.md). Cursor's package checks do not
+establish its missing remote enforcement contract. Authentication works; another
+login does not resolve that gap. The program remains at zero accepted hosts until
+its required host and publication gates close.
+
+[JavaScript dependency qualification](../javascript-dependency-qualification-20260910/README.md)
+resolves the five baseline OSV advisories without new exceptions, corrects proven
+stale receipt fixtures, and passes the complete 16-package TypeScript release
+driver using pinned Node and Bun. [DER dependency qualification](../der-dependency-qualification-20260910/README.md)
+selects the published patch with a contextual, non-exportable audit and passing
+actual parser/transport tests. Its known unused API defect remains explicit.
+Neither change replaces the immutable kernel or host artifacts used by the five
+completed bounded host matrices. Full hosted release qualification remains open.
+
+Hosted source gates also found raw evidence being interpreted as current code
+and a stale generated Docker lockfile. Lossless compressed artifacts preserve
+the exact original bytes, while the unchanged gates now pass locally. The Docker
+lockfile was regenerated through its supported script. No gate was weakened.
+
+A [verbatim compressed copy of document 19](raw/requirements/document19.md.gz) and
+its source/hash identity are retained for reviewers without the private planning
+worktree. That copy does not change the authoritative planning commit or scope.

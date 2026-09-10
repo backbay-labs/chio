@@ -1,0 +1,15 @@
+{
+  "capturedAt": "2026-09-10T04:28:30.025859+00:00",
+  "head": "e3a9ab685f901c4fa54f31551ff7484a47e673d4",
+  "actualJobCheckout": "75d598ef43ed685480fb65961cbf63f3816b36b1",
+  "tree": "f0b0de932029b576c811604587a9d9a5a63eb7ea",
+  "treeEquivalent": true,
+  "job": 102740489703,
+  "run": 34435801997,
+  "rawLogSha256": "a594a7c7e2b278328c0c0246f98baaa0e96b4f69243a51979db596a2cc5a5f3d",
+  "componentTestsPassed": 144,
+  "liveTestsPassed": 16,
+  "kernelSource": "d8c5f53705173e614a853bad6c0a85acfdf1212b",
+  "harnessSource": "05945ccf4f652a22801c9ab35cabf99456ef76c9",
+  "scope": "Hosted source/package and legacy real-kernel API tests; no new host artifact promotion."
+}
