@@ -27,9 +27,10 @@ The lifecycle consumer separately installs the archived adapter into a fresh
 Python 3.11.3 venv. Other cases use the cold Python 3.11.13 adapter consumer.
 Both use the same pinned Python 3.11.3 native host.
 
-Each orchestration preflight compares all 18 installed adapter files and all
-1,052 Hermes bridge archive files. Old-install, upgrade and reinstall steps
-compare the actual consumer against the selected wheel. Per-case commands,
+The native, storage, budget and expiry orchestration preflights compare all
+18 installed adapter files and all 1,052 Hermes bridge archive files. Lifecycle
+reuses that bridge consumer and compares each old, upgraded and reinstalled
+adapter consumer against its selected wheel. Per-case commands,
 source snapshots, kernel hashes, configuration hashes, native history and
 independent resource observations are retained under `raw/`.
 
