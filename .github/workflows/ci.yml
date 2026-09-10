@@ -97,6 +97,7 @@ jobs:
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: |
           ./scripts/check-release-inputs.sh
+          python3 scripts/tests/check-release-source-gates.test.py
           ./scripts/check-web3-contract-parity.sh
           ./scripts/check-workspace-layering.sh
           python3 scripts/check-review-slices.py
