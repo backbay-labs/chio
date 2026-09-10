@@ -113,27 +113,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     drop(edge);
 
-    let receipts = Command::new(&chio_bin)
-        .arg("--receipt-db")
-        .arg(&receipt_db)
-        .arg("receipt")
-        .arg("list")
-        .arg("--admin-all")
-        .arg("--limit")
-        .arg("1")
-        .current_dir(&project_root)
-        .output()?;
-    if !receipts.status.success() {
-        return Err(format!(
-            "failed to read receipt store: {}",
-            String::from_utf8_lossy(&receipts.stderr)
-        )
-        .into());
+    let receipt_id = tool_call.pointer("/result/_meta/chioReceipt/receiptId")
+        .and_then(Value::as_str)
+        .ok_or("tool result did not include a receipt ID; rebuild the documented Chio CLI")?;
+    println!("receipt_id: {receipt_id}");
+    let receipt = Command::new(&chio_bin)
+        .arg("--receipt-db").arg(&receipt_db)
+        .args(["receipt", "explain", receipt_id, "--admin-all"])
+        .current_dir(&project_root).output()?;
+    if !receipt.status.success() {
+        return Err(format!("failed to read call receipt: {}", String::from_utf8_lossy(&receipt.stderr)).into());
     }
-
     println!();
-    println!("latest receipt:");
-    println!("{}", String::from_utf8_lossy(&receipts.stdout).trim());
+    println!("call receipt:");
+    println!("{}", String::from_utf8_lossy(&receipt.stdout).trim());
 
     Ok(())
 }

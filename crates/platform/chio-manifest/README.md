@@ -89,3 +89,40 @@ verify_manifest(&signed, &keypair.public_key())?;
   MCP-backed servers.
 - `chio-binding-helpers` - FFI-facing JSON helpers that report structural and
   signature validity separately, built on this crate's `validate_manifest`.
+
+## Import OpenAI function tools
+
+`ToolManifest::from_openai_tools` accepts Chat Completions or Responses function
+schemas and validates the resulting manifest. Supply every tool's side-effect
+and pricing declaration explicitly. There is no default governance declaration.
+
+```rust,ignore
+use std::collections::BTreeMap;
+use chio_manifest::{ToolGovernance, ToolManifest};
+
+let governance = BTreeMap::from([(
+    "get_weather".to_owned(),
+    ToolGovernance { has_side_effects: false, pricing: None },
+)]);
+let manifest = ToolManifest::from_openai_tools(
+    "weather", server_public_key, "1.0.0", &openai_tools, &governance,
+)?;
+```
+
+`pricing: None` explicitly declares no advertised metering. Use `Some(ToolPricing)`
+for a priced tool. Missing or extra declarations, duplicate names, invalid
+pricing, malformed schemas, and provider-native tool types are rejected.
+The builder preserves function names, descriptions, parameter schemas, and optional
+Responses `output_schema` definitions. Omitted or null descriptions become empty
+strings; omitted or null parameters become an empty object schema. An omitted or
+null output schema remains absent. Empty and populated schema objects are preserved.
+
+Schema syntax is checked against the declared bundled JSON Schema draft, defaulting
+to 2020-12 when `$schema` is absent. Custom meta-schemas are refused. Import does not
+resolve external `$ref` targets or validate runtime input/output values; references
+are preserved for the host to resolve. Provider execution options such as `strict`
+are not manifest fields.
+
+The returned manifest is unsigned. Sign and register it through the usual host
+lifecycle. Importing a schema neither authenticates its signer nor grants a
+capability to invoke the tool.

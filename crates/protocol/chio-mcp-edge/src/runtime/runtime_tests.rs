@@ -1,4 +1,5 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
+use super::tool_calls::KernelToolResultArgs;
 use super::*;
 use chio_core::capability::{
     governance::ProvenanceEvidenceClass,
@@ -4623,4 +4624,90 @@ fn serve_stdio_refreshes_roots_after_list_changed_notification() {
     assert_eq!(session.roots().len(), 1);
     assert_eq!(session.roots()[0].uri, "file:///workspace/project-b");
     assert_eq!(session.roots()[0].name.as_deref(), Some("Project B"));
+}
+
+#[test]
+fn receipt_association_survives_error_prose_and_typed_cancellation() {
+    let mut edge = make_edge(10);
+    initialize_edge(&mut edge);
+    let (session_id, context, operation) = edge
+        .prepare_tool_call_request(
+            &json!(2),
+            &json!({
+                "name": "read_file", "arguments": { "path": "/tmp/demo.txt" }, "task": {}
+            }),
+        )
+        .unwrap();
+    for message in [
+        "cancelled by client: user stopped",
+        "operation demo was cancelled: user stopped",
+        "task cancelled by client: ordinary tool error",
+    ] {
+        for cancelled in [false, true] {
+            let terminal_state = if cancelled {
+                OperationTerminalState::Cancelled {
+                    reason: message.to_string(),
+                }
+            } else {
+                OperationTerminalState::Completed
+            };
+            let outcome = edge.tool_result_for_kernel_response(KernelToolResultArgs {
+                receipt_id: "receipt-for-this-call", kernel_request_id: context.request_id.as_str(),
+                client_request_id: &json!(2), session_id: &session_id,
+                output: Some(ToolCallOutput::Value(json!({ "isError": true, "content": [{ "type": "text", "text": message }], "_meta": { "chioReceipt": { "receiptId": "untrusted-upstream" } } }))),
+                reason: if cancelled { Some(message.to_string()) } else { None },
+                verdict: Verdict::Allow, terminal_state: &terminal_state,
+                execution_nonce: None, related_task_id: None,
+            });
+            assert_eq!(
+                matches!(&outcome, ToolCallEdgeOutcome::Cancelled { .. }),
+                cancelled
+            );
+            let mut task = EdgeTask::new(
+                "error-task".to_string(),
+                session_id.clone(),
+                context.clone(),
+                operation.clone(),
+                None,
+                0,
+            );
+            // Exercise both JSON-RPC and task-result conversions of the same
+            // authoritative outcome without constructing a second response.
+            let direct = match &outcome {
+                ToolCallEdgeOutcome::Result(result) => tool_call_outcome_to_jsonrpc(
+                    json!(2),
+                    ToolCallEdgeOutcome::Result(result.clone()),
+                ),
+                ToolCallEdgeOutcome::Cancelled { reason, result } => tool_call_outcome_to_jsonrpc(
+                    json!(2),
+                    ToolCallEdgeOutcome::Cancelled {
+                        reason: reason.clone(),
+                        result: result.clone(),
+                    },
+                ),
+                _ => panic!("expected a tool result"),
+            };
+            task.record_outcome(outcome);
+            assert_eq!(
+                task.status,
+                if cancelled {
+                    EdgeTaskStatus::Cancelled
+                } else {
+                    EdgeTaskStatus::Failed
+                }
+            );
+            let task_result = task_outcome_to_jsonrpc(Some(task), &json!(3), "error-task");
+            for response in [direct, task_result] {
+                assert_eq!(response["result"]["content"][0]["text"], message);
+                assert_eq!(
+                    response["result"]["_meta"]["chioReceipt"]["receiptId"],
+                    "receipt-for-this-call"
+                );
+                assert_eq!(
+                    response["result"]["_meta"]["chioReceipt"]["requestId"],
+                    context.request_id.as_str()
+                );
+            }
+        }
+    }
 }
