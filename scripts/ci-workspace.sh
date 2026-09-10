@@ -10,6 +10,7 @@ python3 scripts/tests/release-provenance.test.py
 python3 scripts/tests/check-release-binary-sbom.test.py
 python3 scripts/tests/release-sbom-rescan.test.py
 python3 scripts/tests/macos-release-portability.test.py
+python3 -m unittest discover -s integrations/required-agents/qualification -p 'test_*.py'
 ./scripts/check-workspace-layering.sh
 python3 scripts/check-review-slices.py
 bash scripts/tests/check-sidecar-docker-context.test.sh
