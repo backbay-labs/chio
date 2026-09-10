@@ -1,0 +1,38 @@
+{
+  "base": "aed52cb3913385e8dddb5c315ec6fc3cb61c913a",
+  "python": "3.11.4 (main, Aug 22 2024, 09:11:32) [Clang 15.0.0 (clang-1500.1.0.2.5)]",
+  "platform": "macOS-26.4-arm64-arm-64bit",
+  "command": [
+    "/Users/connor/.pyenv/versions/3.11.4/bin/python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "integrations/required-agents/qualification",
+    "-p",
+    "test_storage_fault_diagnostics.py",
+    "-v"
+  ],
+  "exitCode": 0,
+  "testLog": "tests.log",
+  "testLogSha256": "a8cc3fc6e53a3940544f2eda47b6e4d691674295221a27d9e8b822df4a4ac50e",
+  "helperSha256": "e0cadc53255cf7c3376a86cd8617d28f59ebb7357995c54b2b9ff93da3c538ce",
+  "unchangedExistingFunctions": [
+    "write",
+    "paths",
+    "configuration",
+    "fault",
+    "snapshot",
+    "main"
+  ],
+  "scope": "Python child subprocess diagnostic tests only; no Docker, kernel or real host launched; no storage acceptance credit",
+  "diagnosticContract": {
+    "location": "owner_root/.<case-name>-subprocess-diagnostics/<operation>-<unique-attempt>/",
+    "directories": "0700, current effective operator UID; existing symlink, wrong-owner or group/world-accessible roots rejected before launch",
+    "files": "stdout.bin, stderr.bin and failure.json; mode0600",
+    "publicError": "fixed operation label, command SHA-256, status and exit code or timeout, evidence paths, byte counts and hashes only",
+    "rawOutput": "exact bytes, private; never copy raw diagnostic files into public acceptance evidence without a separate review",
+    "failureSemantics": "nonzero remains RuntimeError with returncode; timeout remains subprocess.TimeoutExpired; launch errors preserve errno/class; no retry",
+    "diagnosticWriteFailure": "original child status remains failure and diagnosticStorageError records safe error type/errno; no claim that unpersisted bytes were retained"
+  }
+}

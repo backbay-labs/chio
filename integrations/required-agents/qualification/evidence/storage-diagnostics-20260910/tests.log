@@ -1,0 +1,15 @@
+test_diagnostic_storage_error_preserves_child_failure_status (test_storage_fault_diagnostics.SubprocessDiagnosticsTest.test_diagnostic_storage_error_preserves_child_failure_status) ... ok
+test_existing_public_directory_rejected_before_launch (test_storage_fault_diagnostics.SubprocessDiagnosticsTest.test_existing_public_directory_rejected_before_launch) ... ok
+test_failure_records_are_unique_and_preserve_previous_attempt (test_storage_fault_diagnostics.SubprocessDiagnosticsTest.test_failure_records_are_unique_and_preserve_previous_attempt) ... ok
+test_launch_error_type_is_retained_without_executable_disclosure (test_storage_fault_diagnostics.SubprocessDiagnosticsTest.test_launch_error_type_is_retained_without_executable_disclosure) ... ok
+test_nonzero_preserves_exact_bytes_and_hides_argv_and_output (test_storage_fault_diagnostics.SubprocessDiagnosticsTest.test_nonzero_preserves_exact_bytes_and_hides_argv_and_output) ... ok
+test_success_retains_text_return_and_universal_newlines (test_storage_fault_diagnostics.SubprocessDiagnosticsTest.test_success_retains_text_return_and_universal_newlines) ... ok
+test_symlink_directory_rejected_before_launch (test_storage_fault_diagnostics.SubprocessDiagnosticsTest.test_symlink_directory_rejected_before_launch) ... ok
+test_timeout_preserves_partial_bytes_and_does_not_retry (test_storage_fault_diagnostics.SubprocessDiagnosticsTest.test_timeout_preserves_partial_bytes_and_does_not_retry) ... ok
+test_timeout_storage_error_preserves_timeout_status (test_storage_fault_diagnostics.SubprocessDiagnosticsTest.test_timeout_storage_error_preserves_timeout_status) ... ok
+test_wrong_owner_rejected_before_launch (test_storage_fault_diagnostics.SubprocessDiagnosticsTest.test_wrong_owner_rejected_before_launch) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.900s
+
+OK

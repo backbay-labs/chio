@@ -7,13 +7,16 @@ Each named owner is single-use and retains its databases and resource volumes.
 """
 import argparse
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import re
 import sqlite3
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -29,12 +32,71 @@ def write(path, value, private=False):
         os.fsync(stream.fileno())
 
 
-def run(command, timeout=40):
-    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+def diagnostic_directory(state):
+    # Owner creation requires state itself to remain absent until launch.
+    return state.parent / f".{state.name}-subprocess-diagnostics"
+
+
+def retain_failure(directory, operation, command, status, stdout=b"", stderr=b""):
+    summary = {"operation": operation, **status,
+               "commandSha256": hashlib.sha256(json.dumps(command).encode()).hexdigest()}
+    try:
+        attempt = Path(tempfile.mkdtemp(prefix=f"{operation}-", dir=directory))
+        for name, content in [("stdout", stdout or b""), ("stderr", stderr or b"")]:
+            path = attempt / f"{name}.bin"
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, "wb") as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            summary[name] = {"path": str(path), "bytes": len(content),
+                             "sha256": hashlib.sha256(content).hexdigest()}
+        write(attempt / "failure.json", summary, True)
+    except OSError as error:
+        # A diagnostic storage fault must not hide the original child status.
+        # Never print an OS error string that might contain child-supplied data.
+        summary["diagnosticStorageError"] = {"type": type(error).__name__, "errno": error.errno}
+    return summary
+
+
+def run(command, timeout=40, *, diagnostic_dir, operation):
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", operation):
+        raise ValueError("subprocess operation must be a fixed safe label")
+    diagnostic_dir = Path(diagnostic_dir)
+    diagnostic_dir.mkdir(mode=0o700, exist_ok=True)
+    metadata = diagnostic_dir.lstat()
+    if (not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(metadata.st_mode) & 0o077):
+        raise PermissionError("subprocess diagnostics require a private directory owned by this operator")
+    try:
+        # Binary capture retains exact failed output, including invalid UTF-8.
+        result = subprocess.run(command, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        summary = retain_failure(diagnostic_dir, operation, command,
+                                 {"status": "timeout", "timeoutSeconds": timeout},
+                                 error.stdout, error.stderr)
+        # Preserve the timeout exception type without exposing argv or output.
+        failure = subprocess.TimeoutExpired(json.dumps(summary, sort_keys=True), timeout)
+        failure.diagnostics = summary
+        raise failure from None
+    except OSError as error:
+        summary = retain_failure(diagnostic_dir, operation, command,
+                                 {"status": "launch-error", "errno": error.errno})
+        failure = OSError(error.errno, json.dumps(summary, sort_keys=True))
+        failure.diagnostics = summary
+        raise failure from None
     if result.returncode:
-        # Commands never carry credentials; private child diagnostics stay private.
-        raise RuntimeError(f"subprocess failed with status {result.returncode}: {command[0]}")
-    return result.stdout
+        summary = retain_failure(diagnostic_dir, operation, command,
+                                 {"status": "nonzero", "returncode": result.returncode},
+                                 result.stdout, result.stderr)
+        failure = RuntimeError("subprocess failed: " + json.dumps(summary, sort_keys=True))
+        failure.returncode = result.returncode
+        failure.diagnostics = summary
+        raise failure
+    # Match the former text=True decoding and universal-newline behavior.
+    with io.TextIOWrapper(io.BytesIO(result.stdout)) as stream:
+        return stream.read()
 
 
 def paths(args):
@@ -59,7 +121,8 @@ def observe(state):
                "const p='/workspace/'+n;if(f.statSync(p).isFile())files[n]=f.readFileSync(p,'utf8')}"
                "const p='/audit/dispatch.jsonl';console.log(JSON.stringify({files,dispatch:"
                "f.existsSync(p)?f.readFileSync(p,'utf8').trim().split('\\n').filter(Boolean).map(JSON.parse):[]}));"]
-    return {"observedAtEpoch": time.time(), **json.loads(run(command))}
+    return {"observedAtEpoch": time.time(), **json.loads(run(
+        command, diagnostic_dir=diagnostic_directory(state), operation="resource-observer"))}
 
 
 def create(args):
@@ -73,10 +136,12 @@ def create(args):
                "--image", args.image, "--volume", f"chio-required-kernel-store-{args.name}",
                "--port", str(args.port), "--policy", str(args.policy.resolve(strict=True))]
     write(output / "start-command.json", command)
-    (output / "start.log").write_text(run(command))
+    (output / "start.log").write_text(run(
+        command, diagnostic_dir=diagnostic_directory(state), operation="owner-start"))
     # This owner has never admitted a session. Stop only its verified PID before
     # inserting the explicitly recorded test-only reply barrier.
-    run([sys.executable, str(launcher), "stop", "--state-dir", str(state)])
+    run([sys.executable, str(launcher), "stop", "--state-dir", str(state)],
+        diagnostic_dir=diagnostic_directory(state), operation="owner-stop")
     operator = configuration(state)
     split = operator["command"].index("--") + 1
     barrier = Path(__file__).resolve().with_name("stdio_response_barrier.py")
@@ -84,7 +149,9 @@ def create(args):
     temporary = state / "operator-with-barrier.json"
     write(temporary, operator, True)
     temporary.replace(state / "operator.json")
-    (output / "restart.log").write_text(run([sys.executable, str(launcher), "restart", "--state-dir", str(state)]))
+    (output / "restart.log").write_text(run(
+        [sys.executable, str(launcher), "restart", "--state-dir", str(state)],
+        diagnostic_dir=diagnostic_directory(state), operation="owner-restart"))
     prepare = {"endpoint": f"http://127.0.0.1:{args.port}",
                "bearerToken": operator["agentToken"], "adminToken": operator["adminToken"],
                "credentialTtlSeconds": 3600,
@@ -94,8 +161,10 @@ def create(args):
                "allowedTools": ["read_text_file", "write_file", "edit_file", "list_directory"]}
     write(state / "prepare.json", prepare, True)
     bridge = args.bridge.resolve(strict=True)
-    (output / "prepare.log").write_text(run(["node", str(bridge / "dist/prepare-gateway.js"),
-                                             str(state / "prepare.json"), str(state / "gateway.json")]))
+    (output / "prepare.log").write_text(run(
+        ["node", str(bridge / "dist/prepare-gateway.js"),
+         str(state / "prepare.json"), str(state / "gateway.json")],
+        diagnostic_dir=diagnostic_directory(state), operation="gateway-prepare"))
     config = json.loads((state / "gateway.json").read_text())
     manifest = {"owner": str(state), "gatewayConfig": str(state / "gateway.json"),
                 "output": str(output), "endpoint": prepare["endpoint"],
