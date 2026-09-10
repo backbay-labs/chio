@@ -1,0 +1,47 @@
+{
+  "observedAt": "2026-09-10T00:04:08.076637+00:00",
+  "acceptedIntegrations": 0,
+  "openai": {
+    "status": "blocked",
+    "observedHttpStatus": 429,
+    "message": "You have no credits remaining. Add credits to continue using the API",
+    "affectedTests": [
+      "Hermes r11 native fenced restart after malformed response",
+      "Hermes r11 explicit aggregate-budget first write"
+    ],
+    "effectsInBlockedAttempts": 0,
+    "requiredNativeAttemptsObserved": false,
+    "furtherProviderCallsStopped": true,
+    "requiredInput": "Funded isolated OpenAI API credential via local environment/file, or confirmation existing balance was replenished"
+  },
+  "claude": {
+    "status": "blocked",
+    "requiredInput": "Isolated supported Claude-provider credential or approved gateway configuration",
+    "openaiSubstitutionSupported": false,
+    "authoritativeGatewayDocumentation": "https://code.claude.com/docs/en/llm-gateway"
+  },
+  "cursor": {
+    "status": "blocked",
+    "requiredInput": "Isolated authenticated Cursor profile for real hosted protocol qualification",
+    "hostedAgentServiceBoundaryStillUnqualified": true
+  },
+  "relevantEnvironmentPresence": {
+    "OPENAI_API_KEY": true,
+    "ANTHROPIC_API_KEY": false,
+    "ANTHROPIC_AUTH_TOKEN": false,
+    "CURSOR_API_KEY": false
+  },
+  "pendingRepairs": {
+    "hermes": {
+      "source": "049018b78",
+      "evidenceCommit": "7cfc241f6d6a51d669c41e06227177f6bd2b181d",
+      "artifactSha256": "f2c3d0e79a04c496c80950dccaa5752177216e7d2d267deb78c6b5c3f953b4f3",
+      "status": "partial native qualification; full reruns blocked"
+    },
+    "openclaw": {
+      "sourceAndEvidenceCommit": "a4e994cea7ae6e849073526540548d3a955b4a1b",
+      "artifactSha256": "72551df5c80ccde8b7b3433f92231b70ca558fd64e62b1aee0574f07e326b759",
+      "status": "startup crash and missing watchdog checks passed; native provider reruns blocked"
+    }
+  }
+}

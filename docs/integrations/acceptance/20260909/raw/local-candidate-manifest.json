@@ -272,8 +272,8 @@
     {
       "component": "instructions",
       "path": "README.md",
-      "sha256": "c786658d9ea468e4f59c08a849589e75f9e79538210d1bcc3d2805abdffb52dd",
-      "bytes": 10311
+      "sha256": "83234893f4d453fac2a8955112c2b8e2a5389948c05101b99e7c0c1ae0b04f6a",
+      "bytes": 11356
     },
     {
       "component": "hermes-bridge",

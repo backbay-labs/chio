@@ -1,0 +1,21 @@
+{
+  "schema": "chio.required-agent-pending-repairs.v1",
+  "status": "unaccepted; provider-backed reruns externally blocked",
+  "entries": [
+    {
+      "path": "chio_hermes-0.1.2-py3-none-any.whl",
+      "sha256": "f2c3d0e79a04c496c80950dccaa5752177216e7d2d267deb78c6b5c3f953b4f3",
+      "bytes": 57101
+    },
+    {
+      "path": "chio-openclaw-kernel-0.1.0.tgz",
+      "sha256": "72551df5c80ccde8b7b3433f92231b70ca558fd64e62b1aee0574f07e326b759",
+      "bytes": 4660798
+    },
+    {
+      "path": "README.md",
+      "sha256": "f95bddbfc4be0e1852d83f1ab4f65ca06dd8beafb136efd43c244608cf45b0c6",
+      "bytes": 1975
+    }
+  ]
+}

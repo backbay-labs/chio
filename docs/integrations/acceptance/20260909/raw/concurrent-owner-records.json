@@ -1,0 +1,32 @@
+[
+  {
+    "host": "codex",
+    "evidence": "/Users/connor/Medica/backbay/standalone/chio-codex-plugin/.worktrees/required-agent-integrations-20260909/acceptance/2026-09-09/concurrent-owners",
+    "commit": "2b5902df3952d920256ef97a3f713961ddc74e77",
+    "nativeRuns": 2,
+    "preflightRefusals": 1,
+    "protectedWrites": 1,
+    "protectedReads": 1,
+    "competingEffects": 0
+  },
+  {
+    "host": "pi",
+    "evidence": "/Users/connor/Medica/backbay/standalone/chio-pi-plugin/evidence/2026-09-09/concurrent-owners",
+    "commit": "165cde97b5719f272362190719e9c564dc2a1f87",
+    "nativeRuns": 2,
+    "preflightRefusals": 1,
+    "protectedWrites": 1,
+    "protectedReads": 1,
+    "competingEffects": 0
+  },
+  {
+    "host": "openclaw",
+    "evidence": "/Users/connor/Medica/backbay/standalone/chio-open-claw-plugin/.worktrees/required-agent-integrations-20260909/native/evidence/2026-09-09/concurrent-owners",
+    "commit": "b7f3d70c0842601401b7a4c4c23c83717763d179",
+    "nativeRuns": 2,
+    "preflightRefusals": 1,
+    "protectedWrites": 1,
+    "protectedReads": 1,
+    "competingEffects": 0
+  }
+]

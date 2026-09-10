@@ -14,6 +14,23 @@ images. It contains no operator credentials, normal host profiles, or resource
 volumes. Host applications are separate upstream prerequisites. The manifest
 identifies artifacts; the host records identify bounded tests and remaining gaps.
 
+## Pending repairs and current access blockers
+
+The active manifest retains the previously qualified candidate subsets. Later
+tests found an orphaned Hermes r10 process after launcher SIGKILL and an
+OpenClaw r3 relay leak during early startup. Both failures are retained.
+Repairs are packaged separately under `pending/provider-blocked-repairs`, with
+their own SHA256SUMS, source identities and offline installation instructions.
+Hermes r11 passed its native crash/recovery case and several additional native
+suites. OpenClaw r4 passed actual Docker startup-crash cleanup and missing-watchdog
+refusal. Their remaining native reruns are blocked by an observed OpenAI API
+HTTP 429 response reporting no credits. Do not combine predecessor passes with
+new artifact results or treat either set as an accepted integration.
+
+Claude still requires an isolated supported Claude-provider credential. Cursor
+requires an isolated authenticated profile and hosted-protocol qualification.
+These missing inputs block six-host acceptance and public delivery.
+
 ## Verify and install
 
 From the retained bundle directory:

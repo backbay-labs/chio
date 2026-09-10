@@ -1,0 +1,57 @@
+[
+  {
+    "command": [
+      "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11",
+      "-m",
+      "venv",
+      "/Users/connor/.local/share/chio-required-candidates/20260909/install/hermes-r11-pending"
+    ],
+    "exitCode": 0
+  },
+  {
+    "command": [
+      "/Users/connor/.local/share/chio-required-candidates/20260909/install/hermes-r11-pending/bin/python",
+      "-m",
+      "pip",
+      "install",
+      "--no-index",
+      "--no-cache-dir",
+      "--find-links",
+      "/Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse",
+      "/Users/connor/.local/share/chio-required-candidates/20260909/pending/provider-blocked-repairs/chio_hermes-0.1.2-py3-none-any.whl"
+    ],
+    "exitCode": 0
+  },
+  {
+    "command": [
+      "/Users/connor/.local/share/chio-required-candidates/20260909/install/hermes-r11-pending/bin/python",
+      "-m",
+      "pip",
+      "check"
+    ],
+    "exitCode": 0
+  },
+  {
+    "command": [
+      "/Users/connor/.local/share/chio-required-candidates/20260909/install/hermes-r11-pending/bin/python",
+      "-m",
+      "chio_hermes.restricted",
+      "--help"
+    ],
+    "exitCode": 0
+  },
+  {
+    "command": [
+      "npm",
+      "install",
+      "--prefix",
+      "/Users/connor/.local/share/chio-required-candidates/20260909/install/openclaw-r4-pending",
+      "--cache",
+      "/tmp/chio-openclaw-pending-relocated-empty-cache-20260909",
+      "--offline",
+      "--ignore-scripts",
+      "/Users/connor/.local/share/chio-required-candidates/20260909/pending/provider-blocked-repairs/chio-openclaw-kernel-0.1.0.tgz"
+    ],
+    "exitCode": 0
+  }
+]

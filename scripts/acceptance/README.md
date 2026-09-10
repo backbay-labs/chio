@@ -80,3 +80,17 @@ acknowledges it explicitly. The actual host then performs one read with no
 repeated write. `--owner-exporter` selects the delivered standalone exporter for
 relocated installation testing. Missing owner completions remain unresolved.
 This suite never prepares replacement authority or retries the original write.
+
+
+`concurrent-owners` pauses the first actual native call before kernel transport,
+then attempts a second launcher using the same configuration. The second must
+refuse startup with no resource effect or journal-lock change. After release,
+the original call and a subsequent native read must succeed. This covers
+exclusive ownership across concurrent launchers, not every sibling-call schedule.
+
+`aggregate-budget` uses the separate three-invocation owner. Four native sessions
+retain the same issued grant and original kernel session while requesting write,
+edit, read, and list. Exactly three dispatches succeed; the fourth native call
+must be a verified denial with no fourth resource dispatch. This test does not
+replenish the grant between sessions or rely on a model continuing a four-step
+workflow unprompted.

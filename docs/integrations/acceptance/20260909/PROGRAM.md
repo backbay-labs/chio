@@ -512,3 +512,71 @@ package and copied kernel passed a fresh native fault/recovery run: two original
 authorized writes, zero operator dispatches, one recovery read and no repeated
 write. Evidence is in `raw/local-delivery-owner-recovery`. This qualifies the
 local documented recovery path, not public release or full lifecycle acceptance.
+
+
+## Concurrent ownership and Hermes launcher-death repair
+
+The unchanged Codex, Pi and OpenClaw candidates each passed an exclusive-owner
+case. An actual native protected write was held before kernel transport while
+the gateway retained its live journal lock. A second launcher with the exact
+same authority was refused before native startup, without a dispatch or lock
+change. Releasing the first call completed one write; a later native session
+read it once under the original authority. This is two native runs plus one
+explicit preflight refusal per host, not all sibling-call schedules. Records:
+`raw/concurrent-owner-records.json`.
+
+A new actual Hermes r10 SIGKILL test found a native process still alive 12 seconds
+after launcher death. The private gateway stopped and its original committed
+write remained unacknowledged. The failure and explicit operator orphan cleanup
+are preserved. Source `049018b78` adds a trusted supervisor with a private parent
+liveness pipe that the guest cannot inherit. The r11 wheel SHA256 is
+`f2c3d0e79a04c496c80950dccaa5752177216e7d2d267deb78c6b5c3f953b4f3`.
+Its component suite passes 237 tests, with four legacy opt-in skips unresolved.
+Its first actual native SIGKILL/recovery case automatically stopped the host,
+retained the original fence and resumed with one read without repeating the
+write. Record: Hermes `evidence/2026-09-09/launcher-supervision-r11`.
+Full r11 reruns and bundle replacement are still in progress; no r10 result is
+silently attributed to the new wheel.
+
+
+## External provider blocker and separately retained repairs
+
+Real Hermes r11 runs now return OpenAI HTTP 429 with the explicit message that
+no API credits remain. The failed native fenced restart and explicit-budget
+attempt produced zero new effects, but no required native call occurred. They
+are unresolved, not passes. Further provider calls were stopped. The first r11
+budget workflow had separately stopped after one legitimate write and is also
+retained as a failed qualification attempt. Exact raw provider failures and
+missing inputs are in `raw/provider-blocker/status.json`.
+
+Hermes r11 evidence commit `7cfc241f6` retains all attempted reruns. Useful work,
+denials, response loss, gateway crash, operator SIGTERM, revocation, in-flight
+revocation, actual kernel death/restart fencing, malformed response and seven
+approval stages passed. Six independent preflight refusals passed with no
+model call. Its remaining native matrix stays open; the four legacy opt-in
+skips also remain unresolved.
+
+OpenClaw r3 failed an actual early-startup SIGKILL: its relay and network remained
+alive before the native host had started. Source/evidence `a4e994cea7` starts the
+watchdog and awaits readiness before any Docker resource creation. The r4 archive
+SHA256 is `72551df5c80ccde8b7b3433f92231b70ca558fd64e62b1aee0574f07e326b759`.
+It passed 19 component tests with zero skips, offline cold installation, the
+same actual startup crash with automatic cleanup, and a deliberately missing
+watchdog refusal. No protected effects occurred. These are startup observations,
+not native provider sessions. Further Docker creation/failure schedules and
+native reruns remain open.
+
+Both repair artifacts are retained under the bundle's separate
+`pending/provider-blocked-repairs` manifest. The active 47-file manifest is not
+silently replaced, and prior artifact results are not assigned to new builds.
+The delivery guide identifies both known predecessor failures and pending
+repairs. Public release remains gated. Required missing inputs now include a
+funded isolated OpenAI account, a supported isolated Claude-provider credential,
+and authenticated isolated Cursor access. Cursor's hosted execution boundary
+still needs technical qualification after access is available. **0/6 accepted.**
+
+Both pending repair archives also installed offline from their relocated bundle
+paths. Hermes pip check and CLI loading passed; OpenClaw's packaged native
+plugin entry point loaded. All 47 active and three pending manifest entries
+verify. Records are in `raw/local-delivery-pending-repairs`. These are packaging
+checks and do not replace the blocked provider-backed runs.

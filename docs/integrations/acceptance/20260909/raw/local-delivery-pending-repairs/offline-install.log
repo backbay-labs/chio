@@ -1,0 +1,56 @@
+Looking in links: /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/pending/provider-blocked-repairs/chio_hermes-0.1.2-py3-none-any.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/certifi-2026.7.22-py3-none-any.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/chio_adapter_base-0.2.0-py3-none-any.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/chio_code_agent-0.1.0-py3-none-any.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/chio_sdk_python-0.1.0-py3-none-any.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/pyyaml-6.0.3-cp311-cp311-macosx_11_0_arm64.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/pydantic-2.13.5-py3-none-any.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/httpx-0.28.1-py3-none-any.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/anyio-4.15.1-py3-none-any.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/httpcore-1.0.9-py3-none-any.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/idna-3.19-py3-none-any.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/h11-0.16.0-py3-none-any.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/annotated_types-0.8.0-py3-none-any.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/pydantic_core-2.46.5-cp311-cp311-macosx_11_0_arm64.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/typing_extensions-4.16.0-py3-none-any.whl
+Processing /Users/connor/.local/share/chio-required-candidates/20260909/hermes-wheelhouse/typing_inspection-0.4.4-py3-none-any.whl
+Installing collected packages: typing-extensions, pyyaml, idna, h11, certifi, annotated-types, typing-inspection, pydantic-core, httpcore, anyio, pydantic, httpx, chio-sdk-python, chio-code-agent, chio-adapter-base, chio-hermes
+Successfully installed annotated-types-0.8.0 anyio-4.15.1 certifi-2026.7.22 chio-adapter-base-0.2.0 chio-code-agent-0.1.0 chio-hermes-0.1.2 chio-sdk-python-0.1.0 h11-0.16.0 httpcore-1.0.9 httpx-0.28.1 idna-3.19 pydantic-2.13.5 pydantic-core-2.46.5 pyyaml-6.0.3 typing-extensions-4.16.0 typing-inspection-0.4.4
+No broken requirements found.
+usage: restricted.py [-h] --host-python HOST_PYTHON --host-root HOST_ROOT
+                     --node NODE --gateway-script GATEWAY_SCRIPT
+                     --gateway-config GATEWAY_CONFIG --state-dir STATE_DIR
+                     --query-file QUERY_FILE --model MODEL --model-base-url
+                     MODEL_BASE_URL [--model-key-env MODEL_KEY_ENV]
+                     [--max-turns 1..100]
+
+Launch the pinned Hermes CLI with only the Chio execution gateway. This
+candidate mode uses static host tool restrictions, independent of the legacy
+Python plugin's hook. Resource isolation and the kernel gateway remain
+separate required boundaries. The qualified mode adds a default-deny macOS
+profile and an operator-owned model relay.
+
+options:
+  -h, --help            show this help message and exit
+  --host-python HOST_PYTHON
+  --host-root HOST_ROOT
+  --node NODE
+  --gateway-script GATEWAY_SCRIPT
+  --gateway-config GATEWAY_CONFIG
+  --state-dir STATE_DIR
+  --query-file QUERY_FILE
+  --model MODEL
+  --model-base-url MODEL_BASE_URL
+  --model-key-env MODEL_KEY_ENV
+  --max-turns 1..100
+
+added 1 package in 1s
+
+2 packages are looking for funding
+  run `npm fund` for details
+npm notice
+npm notice New minor version of npm available! 11.8.0 -> 11.19.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.1
+npm notice To update run: npm install -g npm@11.19.1
+npm notice
