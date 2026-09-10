@@ -1,0 +1,1997 @@
+[
+  {
+    "path": "raw/binding-repair-controls/controls-result.json.gz",
+    "sha256": "9d1603bb7cb91e3b8f9ed95922a0368872cc08d1046b1fe004e9204aa2be4187",
+    "originalSha256": "a357e46a0961b8860b5a2cbccd0733ada1ec12a36203fd18829c0753f6e08c1b",
+    "originalBytes": 235,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/controls-result.json"
+  },
+  {
+    "path": "raw/binding-repair-controls/controls.stderr.gz",
+    "sha256": "601ab9ceeb9229fa14608a9df3bb0d156ca9550f342ea7cf59ca9c2e5abb9f8e",
+    "originalSha256": "20c141b0e6eeb6c30eef8585cd47c70affc87d31055b1b43a2acfc36c5d64292",
+    "originalBytes": 124,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/controls.stderr"
+  },
+  {
+    "path": "raw/binding-repair-controls/controls.stdout.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/controls.stdout"
+  },
+  {
+    "path": "raw/binding-repair-controls/credential-exclusion.json.gz",
+    "sha256": "0b84e98306a82e3ecd41856b7665f37f9a54cabab175db75553a9b9dbe8583e7",
+    "originalSha256": "2aa05c7fd75b259343a3e59b530f0392a498857f2cf3a46b880cfa3c8f1ba682",
+    "originalBytes": 136,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/credential-exclusion.json"
+  },
+  {
+    "path": "raw/binding-repair-controls/image-files.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/image-files.stderr"
+  },
+  {
+    "path": "raw/binding-repair-controls/image-files.stdout.gz",
+    "sha256": "b17a107502ebf8d7138e455bb7ef03963d1356c8b698b551f2fc62f104152c25",
+    "originalSha256": "23327d61805c688a0da0acf0c934df9ef2e0c8a4bc75f9366870277dddc29330",
+    "originalBytes": 645,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/image-files.stdout"
+  },
+  {
+    "path": "raw/binding-repair-controls/source-and-original-guest-binding.json.gz",
+    "sha256": "4d7450c4d16185b92572691f921aa56a3af3a6bea6dab7c5f68020b9881ba358",
+    "originalSha256": "86ab2e19d51c6d8742fa02698b70f542efc62f94854a545f77dfc2150a0214ec",
+    "originalBytes": 1808,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/source-and-original-guest-binding.json"
+  },
+  {
+    "path": "raw/binding-repair-followup/controls-result.json.gz",
+    "sha256": "9d1603bb7cb91e3b8f9ed95922a0368872cc08d1046b1fe004e9204aa2be4187",
+    "originalSha256": "a357e46a0961b8860b5a2cbccd0733ada1ec12a36203fd18829c0753f6e08c1b",
+    "originalBytes": 235,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/controls-result.json"
+  },
+  {
+    "path": "raw/binding-repair-followup/controls.stderr.gz",
+    "sha256": "601ab9ceeb9229fa14608a9df3bb0d156ca9550f342ea7cf59ca9c2e5abb9f8e",
+    "originalSha256": "20c141b0e6eeb6c30eef8585cd47c70affc87d31055b1b43a2acfc36c5d64292",
+    "originalBytes": 124,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/controls.stderr"
+  },
+  {
+    "path": "raw/binding-repair-followup/controls.stdout.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/controls.stdout"
+  },
+  {
+    "path": "raw/binding-repair-followup/credential-exclusion.json.gz",
+    "sha256": "0b84e98306a82e3ecd41856b7665f37f9a54cabab175db75553a9b9dbe8583e7",
+    "originalSha256": "2aa05c7fd75b259343a3e59b530f0392a498857f2cf3a46b880cfa3c8f1ba682",
+    "originalBytes": 136,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/credential-exclusion.json"
+  },
+  {
+    "path": "raw/binding-repair-followup/image-files.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/image-files.stderr"
+  },
+  {
+    "path": "raw/binding-repair-followup/image-files.stdout.gz",
+    "sha256": "b17a107502ebf8d7138e455bb7ef03963d1356c8b698b551f2fc62f104152c25",
+    "originalSha256": "23327d61805c688a0da0acf0c934df9ef2e0c8a4bc75f9366870277dddc29330",
+    "originalBytes": 645,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/image-files.stdout"
+  },
+  {
+    "path": "raw/binding-repair-followup/public-session-observation-audit.json.gz",
+    "sha256": "3e742ed46be46cd0b58788a9e150e711562b240a45f1d0644285b84eb07dc807",
+    "originalSha256": "04aa3726cf251de03dad8e8ceae79213068bcbda29386c32be0924ae58d54274",
+    "originalBytes": 1498,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/public-session-observation-audit.json"
+  },
+  {
+    "path": "raw/binding-repair-followup/source-and-original-guest-binding.json.gz",
+    "sha256": "4d7450c4d16185b92572691f921aa56a3af3a6bea6dab7c5f68020b9881ba358",
+    "originalSha256": "86ab2e19d51c6d8742fa02698b70f542efc62f94854a545f77dfc2150a0214ec",
+    "originalBytes": 1808,
+    "source": "/tmp/chio-openclaw-expiry-binding-repair-20260910/source-and-original-guest-binding.json"
+  },
+  {
+    "path": "raw/final-copy-check/command.json.gz",
+    "sha256": "6a6570f6b789bffcb0cbc4986d0ffcc710afecda4e7ebc3887e0558bde44ce0c",
+    "originalSha256": "631a30b12035abec809f22cfbf5cd155ce386ff7db57a6e571f18055929bc972",
+    "originalBytes": 330,
+    "source": "/tmp/chio-live-expiry-archive-final-copy-20260910/command.json"
+  },
+  {
+    "path": "raw/final-copy-check/product-copy.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-live-expiry-archive-final-copy-20260910/product-copy.stderr"
+  },
+  {
+    "path": "raw/final-copy-check/product-copy.stdout.gz",
+    "sha256": "d63382d46c3d4bbc4fa30e345e819c4fc7a7cb10cd4621871c0440136a1916a6",
+    "originalSha256": "a1d0a08a627700e626e18fc189d7b89281565fc5c76b13b6ecf530eace65af25",
+    "originalBytes": 28,
+    "source": "/tmp/chio-live-expiry-archive-final-copy-20260910/product-copy.stdout"
+  },
+  {
+    "path": "raw/mac-hosts-r2/driver.py.gz",
+    "sha256": "abe149df6980acfcb8258b50dbe4decb1b74434cd24b71eafc4dcb7c18cc689c",
+    "originalSha256": "79d4a6c3a435f4a1ff398953e2f78b4ede3d5749a8a21d426e8b825097a34377",
+    "originalBytes": 9967,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/driver.py"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/expiry-cutpoint.jsonl.gz",
+    "sha256": "4afea0f7afb0d6bde50c322ffe5724545f8134fc8a0db809c73e3de860746757",
+    "originalSha256": "0ebd2591cf4cdfe8bdeca8bcfd0c8821adeb93ce530ff1d3d3541699a7fad47f",
+    "originalBytes": 8894,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/expiry-cutpoint.jsonl"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/identity.json.gz",
+    "sha256": "592a296f85438e6dcd75087daa67943d6e4b7c881b2fff14eb98460f567ae783",
+    "originalSha256": "dc0fe64c8ccd4a4b43e14e6144d71729cbcfe3075fe7cd83a1558016a91d74a2",
+    "originalBytes": 779,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/identity.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/in-flight-expiry-result.json.gz",
+    "sha256": "8673f10c31b3efd38fea681815e7546d17c2e1660f5f8486a5c5df8aaa3c6475",
+    "originalSha256": "1ff3e6c39467d1fc85130f050de9afb8c97b698b4acf8e25569516f005cd00a0",
+    "originalBytes": 632,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/in-flight-expiry-result.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/in-flight-expiry/after.json.gz",
+    "sha256": "252ab5ed6b4d518d5b1cfd427477d900417f10e0059534fada3ded012e6be9bc",
+    "originalSha256": "c22b17605291240ac257b884d0c870f935aa093ccf3adac34b4131e8de8c7300",
+    "originalBytes": 698,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/in-flight-expiry/after.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/in-flight-expiry/before.json.gz",
+    "sha256": "f223868f624ea0bd690ba63db3079911f1467ce5bc5683785d8f2c910fbc6007",
+    "originalSha256": "096fe7ac523c61c768f3241237d0fea4ec7db0db70996514ffb570e6158c742b",
+    "originalBytes": 137,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/in-flight-expiry/before.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/in-flight-expiry/host-delivery.json.gz",
+    "sha256": "c8973888ee4fbe63d0a1db7c810b51bf52ca88cf1fd6e3b0e2a1ec8a9bc91299",
+    "originalSha256": "5af5a1594f295b5b26335f5a44bc1ec7dfaa7fd4be09297456fed2ba5be9f5f1",
+    "originalBytes": 159,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/in-flight-expiry/host-delivery.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/in-flight-expiry/host.stderr.txt.gz",
+    "sha256": "73d62704d4bbc0a10a890a066fe0a898dc5ecc787a5950b6fa5bcd8e7ac1c476",
+    "originalSha256": "20c0fda80c33cc65d1619b292b42c479f7776f9233d332931253671e5343d6ed",
+    "originalBytes": 36,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/in-flight-expiry/host.stderr.txt"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/in-flight-expiry/host.stdout.txt.gz",
+    "sha256": "a038b06ff2861c09441e957d69be462a9dae8155f979dfa4934c0f6eb209c667",
+    "originalSha256": "926ea4363269b4c0c12ec317acb4f3055fc15935f4269173e9dd4be570d6d813",
+    "originalBytes": 413,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/in-flight-expiry/host.stdout.txt"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/in-flight-expiry/launch.json.gz",
+    "sha256": "56593e38b11628c6ea787b50a4804844eee8520ceae5e591e0df3b510449c82f",
+    "originalSha256": "294adbf2e5c5b31fbcdf7c75261758c26238639b32c6ec28d85bf85f9dd92a7c",
+    "originalBytes": 1338,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/in-flight-expiry/launch.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/in-flight-expiry/model-relay.json.gz",
+    "sha256": "3ef68f49289041cec9146a66ca41b57924a997d6ca15e815f3520a5ada026a79",
+    "originalSha256": "721fb6e90152162b284d1bd58d4db8d180cd9832db3861a165b63946671f8f92",
+    "originalBytes": 603,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/in-flight-expiry/model-relay.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/in-flight-expiry/native-dispatch.json.gz",
+    "sha256": "ddb25756fd8a394c77d40c98c3cdb1e31d0d082c6a0f0d9f59f56dfd84d31a21",
+    "originalSha256": "42922ef8520be510fde7bb53bc76379d5fdf9727e26ece138fac7a98ba21b815",
+    "originalBytes": 734,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/in-flight-expiry/native-dispatch.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/in-flight-expiry/native-results.json.gz",
+    "sha256": "321b13293604bf75cef12240bb7f72a95a1a67653c986b793fccc9774f6bdcb4",
+    "originalSha256": "1f09e3b7f27e5a792b6cb05ee6dd3dbb514da36aa25b85534c47fa2036220cd4",
+    "originalBytes": 5718,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/in-flight-expiry/native-results.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/in-flight-expiry/prompt.txt.gz",
+    "sha256": "bd880a9e863ae83f9c957fade8abb4b213523887f7fc73a501a6411657c2034a",
+    "originalSha256": "c56693f081e722552f80e186c0d13d26b02cc0987c98691d8ff5088315aaaf79",
+    "originalBytes": 604,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/in-flight-expiry/prompt.txt"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/in-flight-expiry/terminal.json.gz",
+    "sha256": "4818b3848034ef6ba9ce5f9ed68c40ff7f8404ba78de2ea8a71b157389c6c861",
+    "originalSha256": "d42e2c977fc1d4fd7598039e287ffb7d116b7661ad5bf8e2d05187a3be7ae836",
+    "originalBytes": 113,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/in-flight-expiry/terminal.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/journal-states.json.gz",
+    "sha256": "7a6224b82007bae987f1124a8a628e3e2f349c090e2286f3686a77cee5db76ee",
+    "originalSha256": "03505f07268ee2c7af52854bad31feda834bd6f2fc24eb1eebe7b069cb29345b",
+    "originalBytes": 6382,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/journal-states.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/live-expiry-binding.json.gz",
+    "sha256": "d84b9b47352131cd96d4a27ec6c9db06fdbd18e78881a2350699db1ba8e8da36",
+    "originalSha256": "b36394dfc2f13f3db80dbcc8defaca00924c9927b965c8708f29da3953737464",
+    "originalBytes": 2284,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/live-expiry-binding.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/native-expiry-outcome.json.gz",
+    "sha256": "e4263d7ff3de4d7c75e0c2e009f91cff20c9fe0905638ef409aacd131fd55ce5",
+    "originalSha256": "d68ae5cdc0fa3e6eddae818a0d5a593a207edfc8676a4d1e4bdd4d3484016632",
+    "originalBytes": 894,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/native-expiry-outcome.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/case/results.json.gz",
+    "sha256": "4d07e648b17f95665ceb8e8d2f0d06269c6b378c3befa7011c7a3696a473bbc0",
+    "originalSha256": "8a0bcae4fbad929611615bd25d43ed5d8e0f696b0ae4aad280b6eb705d137c46",
+    "originalBytes": 1358,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/case/results.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/commands.json.gz",
+    "sha256": "26f42115a6158e190e112c36e7f1d9dd4f6be306581b695b493eca858b46dd1d",
+    "originalSha256": "3e4467d528f53a260c2cf8f23d5ed39e94c6ce0594f7b0daf36848604b1727e1",
+    "originalBytes": 2626,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/commands.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/in-flight-expiry.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/in-flight-expiry.stderr"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/in-flight-expiry.stdout.gz",
+    "sha256": "31a679213f0563ce4ea8868a32180b871487e2649c0f9cf38239da90afad303e",
+    "originalSha256": "4e0ef031e0941a23ac33716774ede89ceb66e32b247b8e913dbc4c8080657930",
+    "originalBytes": 66,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/in-flight-expiry.stdout"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/start.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/start.stderr"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/start.stdout.gz",
+    "sha256": "8a47735806a0cd62c9f8440c4b04bada3f8cbc70adfad35b0241583f92952d80",
+    "originalSha256": "f99ecffbee3d000312c0f4c81d7d7fca5de4bfb026544b71a01a3ebb9452eb3c",
+    "originalBytes": 81,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/start.stdout"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/stop.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/stop.stderr"
+  },
+  {
+    "path": "raw/mac-hosts-r2/hermes/stop.stdout.gz",
+    "sha256": "fefcdc05ea28b1e156417e2872d5344baac235d058fb54b9ea68b38b8b2f46e7",
+    "originalSha256": "3f19de6969ec8dc13c43ac6f7d88bf9fca055b9e02093d978971aacf6285dff0",
+    "originalBytes": 67,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/hermes/stop.stdout"
+  },
+  {
+    "path": "raw/mac-hosts-r2/identity.json.gz",
+    "sha256": "5b49a97dc24da4c94776225169f0a0902ffa7a0e99e56f1f393e511717687c2e",
+    "originalSha256": "e420f6efe0539592d07e1482d929ced45a431853a4784196c6c1421280164511",
+    "originalBytes": 4119,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/identity.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/installed-identities-after.json.gz",
+    "sha256": "6c2007d67c3e47ea3fa016dc0592b0d0e7ba40c61e9a92463085dfa65f2dbf29",
+    "originalSha256": "8ea48302ef1048c50e8e354007eac4dc49f9674750a2fa44b3d917ecdb0d8a46",
+    "originalBytes": 837,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/installed-identities-after.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/installed-identities-before.json.gz",
+    "sha256": "6c2007d67c3e47ea3fa016dc0592b0d0e7ba40c61e9a92463085dfa65f2dbf29",
+    "originalSha256": "8ea48302ef1048c50e8e354007eac4dc49f9674750a2fa44b3d917ecdb0d8a46",
+    "originalBytes": 837,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/installed-identities-before.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/case/expiry-cutpoint.jsonl.gz",
+    "sha256": "2c4e3025af57ff61a9fbb0cb16c4d3dfd7c3aa32472e57d96d15ffb4b2aa6bab",
+    "originalSha256": "82132f4cde84705c016cb6b4309d7d36f37031f4f1e06e4f085fc00b7fefed3f",
+    "originalBytes": 8855,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/case/expiry-cutpoint.jsonl"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/case/identity.json.gz",
+    "sha256": "b01c7833738a786dc688a68a95cf3f5831ce77af3d50f3d4a1bf06695f9f2706",
+    "originalSha256": "fbd9c53279b1e70de28c8171b3f668565a33eb2b5e2cb867e22fb4ae3bcd114e",
+    "originalBytes": 768,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/case/identity.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/case/in-flight-expiry-result.json.gz",
+    "sha256": "e60ff96ca86d076f85fb7347264652ec427f4de0525ae941d45df63507968aab",
+    "originalSha256": "9b3e2a24a6101f21ba68c3517af4d4b6c9a49a6096bf0274517a9c93679c0d32",
+    "originalBytes": 632,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/case/in-flight-expiry-result.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/case/in-flight-expiry/after.json.gz",
+    "sha256": "6b818b21a58b8b88e1422a2cb94a70ae75a12bda70dbe84ebf907a479c540d1e",
+    "originalSha256": "bfde590fe9f88a5358466831d32589f3cfa2cf42761386193811be4d6a79b287",
+    "originalBytes": 690,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/case/in-flight-expiry/after.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/case/in-flight-expiry/before.json.gz",
+    "sha256": "f223868f624ea0bd690ba63db3079911f1467ce5bc5683785d8f2c910fbc6007",
+    "originalSha256": "096fe7ac523c61c768f3241237d0fea4ec7db0db70996514ffb570e6158c742b",
+    "originalBytes": 137,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/case/in-flight-expiry/before.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/case/in-flight-expiry/host.stderr.txt.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/case/in-flight-expiry/host.stderr.txt"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/case/in-flight-expiry/host.stdout.txt.gz",
+    "sha256": "8181a092dc9d8e3281be759cfbfe42949c24701ac31642c011d10ef811f67da4",
+    "originalSha256": "528400071cba7f56bde4807cabba5b44d4bf0d43386a68d889568576f5f702d1",
+    "originalBytes": 19496,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/case/in-flight-expiry/host.stdout.txt"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/case/in-flight-expiry/native-dispatch.json.gz",
+    "sha256": "e75b74bc12e3c6282dc932cc342c52bea68544debee7afee0848914730b3d60f",
+    "originalSha256": "a09c3c0fd08d42c65c32d1547252a5a9664ce7d146c6eb880496b60efa25ca23",
+    "originalBytes": 1058,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/case/in-flight-expiry/native-dispatch.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/case/in-flight-expiry/native-results.json.gz",
+    "sha256": "f4f70108a66681b013722d4a95f27564c3843857d67221b14686d7462eff946d",
+    "originalSha256": "84572c94ade85a84c98c9a202e057fa9338ea6fde1daec8634c1cdf6ce22835f",
+    "originalBytes": 8708,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/case/in-flight-expiry/native-results.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/case/in-flight-expiry/prompt.txt.gz",
+    "sha256": "cf5a56dbacb7bbb86583964f30625b84e454f96e765c8fbe3c1ebd610f89f744",
+    "originalSha256": "dd433652ece9686065abfe55c201a45228ddaff4e1519d4bd3cfc77406f73591",
+    "originalBytes": 642,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/case/in-flight-expiry/prompt.txt"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/case/journal-states.json.gz",
+    "sha256": "173bf82b21b701c2936daf989bc58bf434e3c7cf1f8795b6280aeb92af2b2be8",
+    "originalSha256": "e072ad45b79443a02a79ffb3c3f1cf4be00432dff6d4f7488882dbc377ec9a75",
+    "originalBytes": 6362,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/case/journal-states.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/case/live-expiry-binding.json.gz",
+    "sha256": "c2558c897a37455ba9a7dc469e69c6281619e57b3616f9a02ce4cbd4cd51a20e",
+    "originalSha256": "10fd8d6a2053ac45adda18ce8d8afbeda8d5049f04565daa965e070d4a22bbd7",
+    "originalBytes": 2268,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/case/live-expiry-binding.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/case/native-expiry-outcome.json.gz",
+    "sha256": "62d63c50fbd1965eee39882731f7bc5811571d1b45188ba870ffd407755bae52",
+    "originalSha256": "b9d48526f963c1f59941621a8b3a8b4a7356fe497413197d09befdf7b50855c7",
+    "originalBytes": 789,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/case/native-expiry-outcome.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/case/results.json.gz",
+    "sha256": "7397e90012aa73a06e9bb3a3d5375bfbb71821aff2deab09456827612d24d910",
+    "originalSha256": "f11011e15bbf85cb35faaa6a5c537682bbf5ac33695e38acb1cddeec9077d972",
+    "originalBytes": 1526,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/case/results.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/commands.json.gz",
+    "sha256": "d34e11eee1cc66108f16a297b95f030daf5874d80886d9b495347ba89307afce",
+    "originalSha256": "f0eda16c41e299e60a41e15e15152aaf93b83b6063be2aa27b76cb116c435018",
+    "originalBytes": 2313,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/commands.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/in-flight-expiry.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/in-flight-expiry.stderr"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/in-flight-expiry.stdout.gz",
+    "sha256": "31a679213f0563ce4ea8868a32180b871487e2649c0f9cf38239da90afad303e",
+    "originalSha256": "4e0ef031e0941a23ac33716774ede89ceb66e32b247b8e913dbc4c8080657930",
+    "originalBytes": 66,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/in-flight-expiry.stdout"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/start.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/start.stderr"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/start.stdout.gz",
+    "sha256": "e5677b2c6ec9a8ea3b6c8dae42ecec602deef64ef6683d99a55b4acc82b2c313",
+    "originalSha256": "c351d14e4b4d30321b96f3b27364aeb378538e3938f9f38e7aca50fa48943fad",
+    "originalBytes": 81,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/start.stdout"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/stop.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/stop.stderr"
+  },
+  {
+    "path": "raw/mac-hosts-r2/pi/stop.stdout.gz",
+    "sha256": "fefcdc05ea28b1e156417e2872d5344baac235d058fb54b9ea68b38b8b2f46e7",
+    "originalSha256": "3f19de6969ec8dc13c43ac6f7d88bf9fca055b9e02093d978971aacf6285dff0",
+    "originalBytes": 67,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/pi/stop.stdout"
+  },
+  {
+    "path": "raw/mac-hosts-r2/policy.yaml.gz",
+    "sha256": "c90c0e755b0461a2053a07a5411bd20f384920ed3fabe159369b43c110896a82",
+    "originalSha256": "e18402bad93bf4f9ba5d8aef4d6d5791d0e8edbab4395376e6fc483f58b25e5b",
+    "originalBytes": 627,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/policy.yaml"
+  },
+  {
+    "path": "raw/mac-hosts-r2/results.json.gz",
+    "sha256": "7c6aa518115f95833eaff6e42a9d5f88ab92131be64752f6ff00d3f12b6e9e67",
+    "originalSha256": "faafc9e5308b654632409e3dec475babb5d8815d284bb89c11821e217c4cf8bc",
+    "originalBytes": 239,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/results.json"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/0-serve-filesystem.py.gz",
+    "sha256": "de3d4443f55fdef78e769239afa596bb045cf7c7270042be6eb34a1ec857b016",
+    "originalSha256": "24187dd47e497d226fb0b1f6652a006a2514cff6bc84fea9b35361e948ed6399",
+    "originalBytes": 7273,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/0-serve-filesystem.py"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/1-prepare-session.py.gz",
+    "sha256": "e12abe836e8f069ed8428b34df85929020ade75c23d56e434f3f9179813139be",
+    "originalSha256": "efb4cbde3d032a461d804dc40e2bae32e179219f95ecddf0d112e37cfa14dd6c",
+    "originalBytes": 10369,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/1-prepare-session.py"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/10-interrupt-kernel-call.mjs.gz",
+    "sha256": "fc5f870c90d9d0c1c5f455d986a071082da9ff6a1d553fcfd2e0cece763e8d50",
+    "originalSha256": "f9175d719cf5030e78ec7d36d96c146ff2eda0740a2164dc8d45c3315b0214b3",
+    "originalBytes": 2518,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/10-interrupt-kernel-call.mjs"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/11-revoke-during-host.mjs.gz",
+    "sha256": "713dbf87c7d1899749ed06c68522c8804547c583eea3f1ea83606b057995462c",
+    "originalSha256": "8822b59146880602738b8c314e9919f16a9654c0a6c807359406254ddad5f165",
+    "originalBytes": 2130,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/11-revoke-during-host.mjs"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/12-substitute-host-result.mjs.gz",
+    "sha256": "ebd7f8319dd32a50d9b7c4e9ffba19eefa543514a06ce94dcc0df128857ae1e9",
+    "originalSha256": "babae5f7c5891610844418730c9b59f8af09b9f9dabeeeaec5e68b502ac8e91d",
+    "originalBytes": 1615,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/12-substitute-host-result.mjs"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/13-substitute-kernel-evidence.mjs.gz",
+    "sha256": "006b8f8671cec2582f1d8db6037a5f8476594c409542a82f4b0ead46c7d4cd96",
+    "originalSha256": "fdc40c17fa48f2160275fa807e00c5da3008275bc02a13c8948d4bdc99929f54",
+    "originalBytes": 2792,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/13-substitute-kernel-evidence.mjs"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/14-host-approvals.py.gz",
+    "sha256": "5b16a911cf8c1ebdf8b705acd41bdca573fb460c518d1bc82f7f9ab6d2bd328e",
+    "originalSha256": "4d88192df236f8e964e56642008ebdf875987de18c07b85da314c42cc28ebb9e",
+    "originalBytes": 38718,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/14-host-approvals.py"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/15-live_expiry_native.py.gz",
+    "sha256": "e3b205516b7943f1b86b9b1d42750aae0c31fcfd2830a1d4b60e517b4026fcbe",
+    "originalSha256": "9ce862117cb9e8ca5ce0b595b3b722e6f7a0fa38f9ecf59942f5602c47adcc1f",
+    "originalBytes": 5361,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/15-live_expiry_native.py"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/2-filesystem-policy.yaml.gz",
+    "sha256": "1c72cb566baa09d750f0cd63d850fadd57abb4f81745e20c8c870d5805580699",
+    "originalSha256": "8c2c732d9115799b13150f7924da0e68fc1f9b2d42a2618912511d407035cc66",
+    "originalBytes": 631,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/2-filesystem-policy.yaml"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/3-cancel-host-response.mjs.gz",
+    "sha256": "79aeb6752be3acd5d240a890f5600f5aaf877b880c8030cfe2f5d45f4728c361",
+    "originalSha256": "f3fe77d8ffe39815b5b478590b2e25a1cb9ab057faed94d7a6f8e43ea08a891b",
+    "originalBytes": 1640,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/3-cancel-host-response.mjs"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/4-crash-host-gateway.mjs.gz",
+    "sha256": "aeb27979bbc11da70ec0e188a72d2e75cf80eb82e7f953dbec915197d1a47721",
+    "originalSha256": "c14ad2e7263781beb5cc516d77cfe188fba89cd50ce89b95a84d8b53c519400a",
+    "originalBytes": 1391,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/4-crash-host-gateway.mjs"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/5-drop-host-ack-response.mjs.gz",
+    "sha256": "407ad1c82bf29250768a5a8e12614dc8ec1d1e27adaaee342504decff4f1dbd3",
+    "originalSha256": "cf6cd70d35d6c9b16d87429c8be1d38f62d2718622e9e821b5f4443dc5eaae46",
+    "originalBytes": 1052,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/5-drop-host-ack-response.mjs"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/6-drop-host-response.mjs.gz",
+    "sha256": "d581dd2eb7f3334f4c834e69ec0bca542436b3535b357192c901d14fab2735f5",
+    "originalSha256": "b80337c4c9dd30697b375228ef4ceca724ff14867c9d3ca9fbe37fceb874c2fa",
+    "originalBytes": 1536,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/6-drop-host-response.mjs"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/7-expire-during-host.mjs.gz",
+    "sha256": "d73310f8b88fe91f7af08ea2fcd0e506306d89aa5103576ef242ea88314a3ccb",
+    "originalSha256": "1d6239ce9966b8cb44b05861cfb86a9ed2d445b0c398deb3e33e23d523f29bf1",
+    "originalBytes": 5074,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/7-expire-during-host.mjs"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/8-force-declared-tool.mjs.gz",
+    "sha256": "b89798b4065a78de08dc4b03f88ba62da9f78cf3f2ad4992cbb78ae26dde9f4a",
+    "originalSha256": "1eab335d4be1d83f4cb1138736d76193b9e4c663a2b3b9830049e7b065b4134a",
+    "originalBytes": 1050,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/8-force-declared-tool.mjs"
+  },
+  {
+    "path": "raw/mac-hosts-r2/source-snapshots/9-hold-native-dispatch.mjs.gz",
+    "sha256": "104bc650bdc6efb93223edc5f6495b77fa7fa50af10cc9050972d1bea33390d9",
+    "originalSha256": "05b2b65a2e6b1e8b0bc82b5090e53e4f562b349c284cc0aeafd53094bd1dcacf",
+    "originalBytes": 1096,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910/source-snapshots/9-hold-native-dispatch.mjs"
+  },
+  {
+    "path": "raw/openclaw-r2/driver.py.gz",
+    "sha256": "abe149df6980acfcb8258b50dbe4decb1b74434cd24b71eafc4dcb7c18cc689c",
+    "originalSha256": "79d4a6c3a435f4a1ff398953e2f78b4ede3d5749a8a21d426e8b825097a34377",
+    "originalBytes": 9967,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/driver.py"
+  },
+  {
+    "path": "raw/openclaw-r2/identity.json.gz",
+    "sha256": "3644d54b928c65675f505ec891efa5e0bd71ec543e033db8b17c59ddf4b879be",
+    "originalSha256": "651b1a61d66e36e87df9b39baa18c1cdee3ccf0d0d43e68e89d7ebe2b9f0b539",
+    "originalBytes": 4119,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/identity.json"
+  },
+  {
+    "path": "raw/openclaw-r2/installed-identities-after.json.gz",
+    "sha256": "7df4a88d051f4aae8ee04362b2632a102be7034e3ef3e52ec7e92dbbc6cbdea4",
+    "originalSha256": "55cd66743ddfa4866c2b0643b53ebd3ba20b85f74721c55ab8bf3eeb57a5099d",
+    "originalBytes": 389,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/installed-identities-after.json"
+  },
+  {
+    "path": "raw/openclaw-r2/installed-identities-before.json.gz",
+    "sha256": "7df4a88d051f4aae8ee04362b2632a102be7034e3ef3e52ec7e92dbbc6cbdea4",
+    "originalSha256": "55cd66743ddfa4866c2b0643b53ebd3ba20b85f74721c55ab8bf3eeb57a5099d",
+    "originalBytes": 389,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/installed-identities-before.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/expiry-cutpoint.jsonl.gz",
+    "sha256": "3e1dd0994dd185ad7ef180e28a0c08ca5e3fa3be77292ba9465391dd81527bf4",
+    "originalSha256": "9b36a24409e1c254c9aafdbe90adf7b2768b36f97915cf25a7f525f687ae5412",
+    "originalBytes": 8942,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/expiry-cutpoint.jsonl"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/identity.json.gz",
+    "sha256": "243cd8a3f9592e171174d0a9b9ff9d1174861cc2762b03f9e95c79f2b49a3138",
+    "originalSha256": "83b96314244e6d4474a9d44699351581780ea322e1411aed46e2f89ad9fadda0",
+    "originalBytes": 866,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/identity.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/in-flight-expiry-result.json.gz",
+    "sha256": "6d887a1d64c6f403472e1fe2f08526654ec92d9260d36e82e6320c57081dab7c",
+    "originalSha256": "3a3d56d27411f2d2e88f94bc58333d4bd3122dcbc2b2e981afd711b54a1dd736",
+    "originalBytes": 632,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/in-flight-expiry-result.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/in-flight-expiry/after.json.gz",
+    "sha256": "5d7a034d7ef30a3dba408fe1693e7d5722100f033a5ce02ebc9b78ba4490c7db",
+    "originalSha256": "4f3e346f62c02233a806047ca111b8f396a5fb15da4bb1e9c34eeb0fd6168ee7",
+    "originalBytes": 702,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/in-flight-expiry/after.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/in-flight-expiry/before.json.gz",
+    "sha256": "f223868f624ea0bd690ba63db3079911f1467ce5bc5683785d8f2c910fbc6007",
+    "originalSha256": "096fe7ac523c61c768f3241237d0fea4ec7db0db70996514ffb570e6158c742b",
+    "originalBytes": 137,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/in-flight-expiry/before.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/in-flight-expiry/host.stderr.txt.gz",
+    "sha256": "387f6832087942ca675f05162cd877b1116f9975b4ae57a7a63b3a5ceaa1afb0",
+    "originalSha256": "51b0b922612efee97f2b2b8accded5e73c6fb381bcabde8d2d33edd37fc470ac",
+    "originalBytes": 515,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/in-flight-expiry/host.stderr.txt"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/in-flight-expiry/host.stdout.txt.gz",
+    "sha256": "878f593454dbabeddf1c6ae3b841d44566f5b8f702470e15a26beae44c490599",
+    "originalSha256": "4b3243bea9d966c3ae965676c58fff0140c7a1f3a90cc13f5dbc5202f00247dd",
+    "originalBytes": 5555,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/in-flight-expiry/host.stdout.txt"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/in-flight-expiry/launch.json.gz",
+    "sha256": "c6cad5995e6c14e9cacbd36dbf799b3b802ff88b0a78a47c155f469fe1236f26",
+    "originalSha256": "10e379b8090a207345d2f6627d4243f2588431dd4c327417ba926b2649c2874a",
+    "originalBytes": 1007,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/in-flight-expiry/launch.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/in-flight-expiry/model-relay.json.gz",
+    "sha256": "1f61457e45848b99baff2c3ea97b1333d7ea327c6cbae312b17022527eb025f7",
+    "originalSha256": "e7274738fd3fca32412ea4a063528c9f7579acecf4109ab93981db4c1a482723",
+    "originalBytes": 10304,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/in-flight-expiry/model-relay.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/in-flight-expiry/native-dispatch.json.gz",
+    "sha256": "572e11a94ce86b63961b1b42521ccfd11cdb2fa1da6fc7ca654f8a72f6df4131",
+    "originalSha256": "c99e92709bee9e75f7d2d5262d00310fcc886e4f5153c99f000371e40d7a863f",
+    "originalBytes": 1064,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/in-flight-expiry/native-dispatch.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/in-flight-expiry/native-results.json.gz",
+    "sha256": "8f4764d9cd320e176b3ef3dd2942ad3e8b44f912df1e87a3b28e740c41eff032",
+    "originalSha256": "aaf1f201b0d84374a65e7eb9d185d38e95a7998bdcdaeda604115b84f07b6dca",
+    "originalBytes": 4806,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/in-flight-expiry/native-results.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/in-flight-expiry/prompt.txt.gz",
+    "sha256": "a04c815524b963bb435a43d40154b7d657d1cd1c0165042935e360bdc4b7ec20",
+    "originalSha256": "0fa6f190b03a3ede8ddca999f67291d7049d54d64d7b5e0d019bfb9eb0fea4ee",
+    "originalBytes": 648,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/in-flight-expiry/prompt.txt"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/in-flight-expiry/terminal.json.gz",
+    "sha256": "3d810b957f9bec4791d8f0470bccfca0c55c81bb18c07859edaccbde2ab3bdf6",
+    "originalSha256": "4f74881809ce4beb1cc9d7d4ef16282cd8638066cb0839c1d59b1fa5b9a94efd",
+    "originalBytes": 79,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/in-flight-expiry/terminal.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/journal-states.json.gz",
+    "sha256": "eaa1866d89ad1a4c70c4e74721ac2a11b4c772f94079edb335d6a6f24534fac5",
+    "originalSha256": "88c9a35f5910ae90d30e79e31ebd07a440591665730433855fa8439ea75db7c7",
+    "originalBytes": 6603,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/journal-states.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/live-expiry-binding.json.gz",
+    "sha256": "2daa290be0741d35e63993f1bc669f6617ef12c7189d9ee3f22d00d91e283775",
+    "originalSha256": "8a87d75b1838b7acece68ccda8f5cd5ea33a59de982b47dc06c8e3d0b33f4402",
+    "originalBytes": 2314,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/live-expiry-binding.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/native-expiry-outcome.json.gz",
+    "sha256": "2b936c4e21082ed5f8367161a49b40cccdc61642d831b2a899bbd0fb0f48099b",
+    "originalSha256": "d050eb666ebede3cf23faa94131178fc30dcaefe7d0328b09ce7dd15690e0878",
+    "originalBytes": 2387,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/native-expiry-outcome.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/openclaw-gateway-session.jsonl.gz",
+    "sha256": "ea12d24c70fb1cbddd80a25b648e913978c13359f303e8d5577e2dca8bc0702f",
+    "originalSha256": "dccd25956a3023354260782020dd0c5a5473e668cec2c008306113814e27b733",
+    "originalBytes": 185,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/openclaw-gateway-session.jsonl"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/openclaw-identity-binding.json.gz",
+    "sha256": "294bedda3d82a959d16e99b5c58f93d4fe4e5bcd43e8f7ac5f49074dc14d089b",
+    "originalSha256": "515284a2e8b946fa3fa52db5909e420edbbbdc8794efedd9db0833d80651958e",
+    "originalBytes": 2230,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/openclaw-identity-binding.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/case/results.json.gz",
+    "sha256": "143bc7e7b482add67fb588a0074cc45600c737650142a6fe9af1207e01e61f1b",
+    "originalSha256": "77791d868d5551d1c26803161a56b821d438c93539ee8bd8a4b6e928764bf77a",
+    "originalBytes": 1493,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/case/results.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/commands.json.gz",
+    "sha256": "dc0002f7e10b868303ee5633f1cfadf3eed54a0fa552be16e8f57932d35e9b61",
+    "originalSha256": "7e362a9cf66756cfe0d824b339f230a46a5d7e7d830436cd0263fced2ca23990",
+    "originalBytes": 2463,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/commands.json"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/in-flight-expiry.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/in-flight-expiry.stderr"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/in-flight-expiry.stdout.gz",
+    "sha256": "31a679213f0563ce4ea8868a32180b871487e2649c0f9cf38239da90afad303e",
+    "originalSha256": "4e0ef031e0941a23ac33716774ede89ceb66e32b247b8e913dbc4c8080657930",
+    "originalBytes": 66,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/in-flight-expiry.stdout"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/start.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/start.stderr"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/start.stdout.gz",
+    "sha256": "e9bdd33b363bf18c89621d24e855054eaefa4a88a8d848305c5d8abad1b6760d",
+    "originalSha256": "b6348385d6de56c6be869f90a9c5762ba91cf8878ba6a6383ee97216dee89182",
+    "originalBytes": 81,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/start.stdout"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/stop.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/stop.stderr"
+  },
+  {
+    "path": "raw/openclaw-r2/openclaw/stop.stdout.gz",
+    "sha256": "fefcdc05ea28b1e156417e2872d5344baac235d058fb54b9ea68b38b8b2f46e7",
+    "originalSha256": "3f19de6969ec8dc13c43ac6f7d88bf9fca055b9e02093d978971aacf6285dff0",
+    "originalBytes": 67,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/openclaw/stop.stdout"
+  },
+  {
+    "path": "raw/openclaw-r2/policy.yaml.gz",
+    "sha256": "48769631f91e6460eb56a3981687badc09b41893322d6da1067a097caef16ae3",
+    "originalSha256": "f266fd481c134ce45184e0534a23364ab8d7ec9d2233557a8179d3cf023c94c0",
+    "originalBytes": 627,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/policy.yaml"
+  },
+  {
+    "path": "raw/openclaw-r2/results.json.gz",
+    "sha256": "bac629007aa8967e987f2d7495812f18c4d98889ca8c437e3936fbd83f98c350",
+    "originalSha256": "930adef676a4fa43022241df6ad81dccffecd8a22451dc87dddab4728fb57fd6",
+    "originalBytes": 150,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/results.json"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/0-serve-filesystem.py.gz",
+    "sha256": "de3d4443f55fdef78e769239afa596bb045cf7c7270042be6eb34a1ec857b016",
+    "originalSha256": "24187dd47e497d226fb0b1f6652a006a2514cff6bc84fea9b35361e948ed6399",
+    "originalBytes": 7273,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/0-serve-filesystem.py"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/1-prepare-session.py.gz",
+    "sha256": "e12abe836e8f069ed8428b34df85929020ade75c23d56e434f3f9179813139be",
+    "originalSha256": "efb4cbde3d032a461d804dc40e2bae32e179219f95ecddf0d112e37cfa14dd6c",
+    "originalBytes": 10369,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/1-prepare-session.py"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/10-interrupt-kernel-call.mjs.gz",
+    "sha256": "fc5f870c90d9d0c1c5f455d986a071082da9ff6a1d553fcfd2e0cece763e8d50",
+    "originalSha256": "f9175d719cf5030e78ec7d36d96c146ff2eda0740a2164dc8d45c3315b0214b3",
+    "originalBytes": 2518,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/10-interrupt-kernel-call.mjs"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/11-revoke-during-host.mjs.gz",
+    "sha256": "713dbf87c7d1899749ed06c68522c8804547c583eea3f1ea83606b057995462c",
+    "originalSha256": "8822b59146880602738b8c314e9919f16a9654c0a6c807359406254ddad5f165",
+    "originalBytes": 2130,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/11-revoke-during-host.mjs"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/12-substitute-host-result.mjs.gz",
+    "sha256": "ebd7f8319dd32a50d9b7c4e9ffba19eefa543514a06ce94dcc0df128857ae1e9",
+    "originalSha256": "babae5f7c5891610844418730c9b59f8af09b9f9dabeeeaec5e68b502ac8e91d",
+    "originalBytes": 1615,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/12-substitute-host-result.mjs"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/13-substitute-kernel-evidence.mjs.gz",
+    "sha256": "006b8f8671cec2582f1d8db6037a5f8476594c409542a82f4b0ead46c7d4cd96",
+    "originalSha256": "fdc40c17fa48f2160275fa807e00c5da3008275bc02a13c8948d4bdc99929f54",
+    "originalBytes": 2792,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/13-substitute-kernel-evidence.mjs"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/14-host-approvals.py.gz",
+    "sha256": "a416e053d628dedf2d2babc56ebb266e75ff7766031d6824f3ae90000cdab3b0",
+    "originalSha256": "578e07928e2c5bb519990ca3b09bf016cc012c178c5856461955e97a5826e08d",
+    "originalBytes": 39379,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/14-host-approvals.py"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/15-live_expiry_native.py.gz",
+    "sha256": "04a7bb79aa910e5b54895f28a43ac2c7439f562ca045b60a82b52f2c80674758",
+    "originalSha256": "078f58e57a5a437fb9a117361dadc768c7f7282a3d2a3f166b7cf3de764bfac0",
+    "originalBytes": 9919,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/15-live_expiry_native.py"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/2-filesystem-policy.yaml.gz",
+    "sha256": "1c72cb566baa09d750f0cd63d850fadd57abb4f81745e20c8c870d5805580699",
+    "originalSha256": "8c2c732d9115799b13150f7924da0e68fc1f9b2d42a2618912511d407035cc66",
+    "originalBytes": 631,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/2-filesystem-policy.yaml"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/3-cancel-host-response.mjs.gz",
+    "sha256": "79aeb6752be3acd5d240a890f5600f5aaf877b880c8030cfe2f5d45f4728c361",
+    "originalSha256": "f3fe77d8ffe39815b5b478590b2e25a1cb9ab057faed94d7a6f8e43ea08a891b",
+    "originalBytes": 1640,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/3-cancel-host-response.mjs"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/4-crash-host-gateway.mjs.gz",
+    "sha256": "aeb27979bbc11da70ec0e188a72d2e75cf80eb82e7f953dbec915197d1a47721",
+    "originalSha256": "c14ad2e7263781beb5cc516d77cfe188fba89cd50ce89b95a84d8b53c519400a",
+    "originalBytes": 1391,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/4-crash-host-gateway.mjs"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/5-drop-host-ack-response.mjs.gz",
+    "sha256": "407ad1c82bf29250768a5a8e12614dc8ec1d1e27adaaee342504decff4f1dbd3",
+    "originalSha256": "cf6cd70d35d6c9b16d87429c8be1d38f62d2718622e9e821b5f4443dc5eaae46",
+    "originalBytes": 1052,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/5-drop-host-ack-response.mjs"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/6-drop-host-response.mjs.gz",
+    "sha256": "d581dd2eb7f3334f4c834e69ec0bca542436b3535b357192c901d14fab2735f5",
+    "originalSha256": "b80337c4c9dd30697b375228ef4ceca724ff14867c9d3ca9fbe37fceb874c2fa",
+    "originalBytes": 1536,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/6-drop-host-response.mjs"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/7-expire-during-host.mjs.gz",
+    "sha256": "cbabf2f8136658e0af956c26d363e35769112ad33d839d34f897afb47eb4adb4",
+    "originalSha256": "b44ba40e5f687d0f47594903bdfcf38e3a6d7e5a401e1f310bc9670a204e3a34",
+    "originalBytes": 6129,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/7-expire-during-host.mjs"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/8-force-declared-tool.mjs.gz",
+    "sha256": "b89798b4065a78de08dc4b03f88ba62da9f78cf3f2ad4992cbb78ae26dde9f4a",
+    "originalSha256": "1eab335d4be1d83f4cb1138736d76193b9e4c663a2b3b9830049e7b065b4134a",
+    "originalBytes": 1050,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/8-force-declared-tool.mjs"
+  },
+  {
+    "path": "raw/openclaw-r2/source-snapshots/9-hold-native-dispatch.mjs.gz",
+    "sha256": "104bc650bdc6efb93223edc5f6495b77fa7fa50af10cc9050972d1bea33390d9",
+    "originalSha256": "05b2b65a2e6b1e8b0bc82b5090e53e4f562b349c284cc0aeafd53094bd1dcacf",
+    "originalBytes": 1096,
+    "source": "/tmp/chio-static-live-expiry-openclaw-r2-20260910/source-snapshots/9-hold-native-dispatch.mjs"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/expiry-cutpoint.jsonl.gz",
+    "sha256": "f18dfc12972bf6d3a5b9dd6444daa68bb084023a7a086b7fd1918f404d8956f4",
+    "originalSha256": "330a1314afd0b85a5bf7a1d38b32b3662cca152f7cc737919e82cb893fb939d6",
+    "originalBytes": 8884,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/expiry-cutpoint.jsonl"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/identity.json.gz",
+    "sha256": "d0af145f690d4b2e488bc4939b9df08432928428dcd23574ef3462fed5fea97f",
+    "originalSha256": "397bc7a860385d276988af333b98277f9e86ba6919c05381741b1182ed44c631",
+    "originalBytes": 780,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/identity.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/in-flight-expiry-result.json.gz",
+    "sha256": "8ca0f2f5e6f51a9d93ff9337ed988f5701f45c78047686145615b2e730cd2830",
+    "originalSha256": "5bc000c13ad19703c6a7cd02ef7ea2de3da3717ef60c300992fe89741d8f65f7",
+    "originalBytes": 632,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/in-flight-expiry-result.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/in-flight-expiry/after.json.gz",
+    "sha256": "73a7507c5593ee69fecc4888db4cc67834f8213230ee0dc78bb26db4282d39d7",
+    "originalSha256": "68cfa37cf51c55d615cf36e6170b40b21f40e5cb116b1802b1c1f33c173f7974",
+    "originalBytes": 696,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/in-flight-expiry/after.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/in-flight-expiry/before.json.gz",
+    "sha256": "f223868f624ea0bd690ba63db3079911f1467ce5bc5683785d8f2c910fbc6007",
+    "originalSha256": "096fe7ac523c61c768f3241237d0fea4ec7db0db70996514ffb570e6158c742b",
+    "originalBytes": 137,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/in-flight-expiry/before.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/in-flight-expiry/host.stderr.txt.gz",
+    "sha256": "b32ed0a3778b05c2722eaa979d97c4a0d85f4e3087e44fff94947485cbcd6080",
+    "originalSha256": "72263d20f6424aad3c38a255bfea82bde3275ae2ed13c18d2c70f8819f6d20c7",
+    "originalBytes": 308,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/in-flight-expiry/host.stderr.txt"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/in-flight-expiry/host.stdout.txt.gz",
+    "sha256": "4aa4d3a436c4c28b55c2212a9502bbac3b699baf997b1208c9aa8a50ed242462",
+    "originalSha256": "0ba58470379d4e772783a404daaacbe34a77ee0f63e122d03a5ce025b08a4d39",
+    "originalBytes": 6627,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/in-flight-expiry/host.stdout.txt"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/in-flight-expiry/launch.json.gz",
+    "sha256": "818bb7539022ed4e786d57dfbf45da68fd610cadbcbcfb80e94dd2c27fb49196",
+    "originalSha256": "ddf56723323bb8f879fb0715045318c63a158dab8de4bb4f2bd119a4118a5813",
+    "originalBytes": 5548,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/in-flight-expiry/launch.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/in-flight-expiry/native-dispatch.json.gz",
+    "sha256": "ef154566c80fd13f6a58d47d92b43d28a4b3a840dce8befe1742a1b031259555",
+    "originalSha256": "93a60fbf027f3ac69c60f9a248207118d52da44c3651305cf46f2e59291a7fce",
+    "originalBytes": 618,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/in-flight-expiry/native-dispatch.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/in-flight-expiry/native-results.json.gz",
+    "sha256": "3bf4fcc9f9fe4e19431697d4e318ec07ed66c59e4ce60f76a495cfbe426f9523",
+    "originalSha256": "4f7eda0ae55d4a3623b12458c3b48a0279af5a21a76d90c94283f4cad7f07085",
+    "originalBytes": 4670,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/in-flight-expiry/native-results.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/in-flight-expiry/prompt.txt.gz",
+    "sha256": "2bf8ef7f77b06e53ea82c1eec529fa6633cfe4cbc084f1d3e07b79cb3ce1b62b",
+    "originalSha256": "df00f1a93a3ea17c709c537beb19e3eb0245ced6e6e396d8a3885725c78352b6",
+    "originalBytes": 603,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/in-flight-expiry/prompt.txt"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/journal-states.json.gz",
+    "sha256": "2ea865a68310cbeb5a5c85f777c12d1d8b469c0a1e4a416c3bdb3efaf98206da",
+    "originalSha256": "51492e6fe2cd6402b204b66a87837668c5e49968a045908ff397284c3dc96352",
+    "originalBytes": 6377,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/journal-states.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/live-expiry-binding.json.gz",
+    "sha256": "09892c4b56901d9d0b0654be63490b1ced648152043f93397184560c3caf459f",
+    "originalSha256": "1ea57d9554a619ab598f49dbdd069d88e5175268dd36248d91f4aea69225aa47",
+    "originalBytes": 2277,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/live-expiry-binding.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/native-expiry-outcome.json.gz",
+    "sha256": "664c6855b186de047d44d531744763c36b0cea0f55e101cd8d90483f63834b9f",
+    "originalSha256": "4a0899012d98d129db847d4f9e60e2479e34f13ecaca43924ddac6ea494ad565",
+    "originalBytes": 434,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/native-expiry-outcome.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/case/results.json.gz",
+    "sha256": "447df5665e715bf1cdf58957eb6b40a6ca7f5b41221a0e909fd1e00aa5595d95",
+    "originalSha256": "848e25f26e1d65fbd0d12ae8f0c9435b3e63c50f0b02a37032c1301ef8e7ced8",
+    "originalBytes": 1396,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/case/results.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/commands.json.gz",
+    "sha256": "fd837194e8d4d85e3523408f80169a25f548bce589e16e3ecd259ff6291f3d37",
+    "originalSha256": "fff2936b72a68f3b6f536232ce607f9eeb513c247805cbdd138b4f635a0c6528",
+    "originalBytes": 2318,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/commands.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/in-flight-expiry.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/in-flight-expiry.stderr"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/in-flight-expiry.stdout.gz",
+    "sha256": "31a679213f0563ce4ea8868a32180b871487e2649c0f9cf38239da90afad303e",
+    "originalSha256": "4e0ef031e0941a23ac33716774ede89ceb66e32b247b8e913dbc4c8080657930",
+    "originalBytes": 66,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/in-flight-expiry.stdout"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/start.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/start.stderr"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/start.stdout.gz",
+    "sha256": "36f758d3d3e9bb36d552c69e9c6542efb17859e331c5d2a2b4f35d5e3c18fce1",
+    "originalSha256": "6a1301e7515411e77005e000c3f3863700249deb398687dae3faa5e24420af17",
+    "originalBytes": 81,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/start.stdout"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/stop.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/stop.stderr"
+  },
+  {
+    "path": "raw/original-mac-hosts/codex/stop.stdout.gz",
+    "sha256": "fefcdc05ea28b1e156417e2872d5344baac235d058fb54b9ea68b38b8b2f46e7",
+    "originalSha256": "3f19de6969ec8dc13c43ac6f7d88bf9fca055b9e02093d978971aacf6285dff0",
+    "originalBytes": 67,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/codex/stop.stdout"
+  },
+  {
+    "path": "raw/original-mac-hosts/driver.py.gz",
+    "sha256": "bf216f5097ada1b7755b11d482d27029da52aa5fc2a3f262a41734051834701c",
+    "originalSha256": "84af7720c33f559cdcf81b4468ecc5e264b8441ba32f2455e4da529dabb8d336",
+    "originalBytes": 6260,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/driver.py"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/expiry-cutpoint.jsonl.gz",
+    "sha256": "421d0639fa11c326aaa5909e4d1081f857a659eb4fc4a80528ffd7d7575e868f",
+    "originalSha256": "353f5d1ca3da7c1009c34d5330c8e23c1ec1f818faae90a223e464aefaa0c216",
+    "originalBytes": 8894,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/expiry-cutpoint.jsonl"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/failure.json.gz",
+    "sha256": "8570d9646da7b1223dda2c806e1140ff1091d6afdbc3d8296d0ad058e0215ccf",
+    "originalSha256": "4046df15d4454c641123f4c7575cd69b86b84d39d1b039be604362629c026850",
+    "originalBytes": 288,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/failure.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/in-flight-expiry/after.json.gz",
+    "sha256": "144a572f409a048941e2c673e5e7c58613da32af97040d14015c39b8e0c9ea6d",
+    "originalSha256": "0111e22052c286db3ef1520beacb69a3bb00b06e11900ce7dea7b3a813319983",
+    "originalBytes": 698,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/in-flight-expiry/after.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/in-flight-expiry/before.json.gz",
+    "sha256": "f223868f624ea0bd690ba63db3079911f1467ce5bc5683785d8f2c910fbc6007",
+    "originalSha256": "096fe7ac523c61c768f3241237d0fea4ec7db0db70996514ffb570e6158c742b",
+    "originalBytes": 137,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/in-flight-expiry/before.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/in-flight-expiry/host-delivery.json.gz",
+    "sha256": "2042ec144d63a41f3d6487afcdb38b7cb438912d6d33894d5a94aba20e725566",
+    "originalSha256": "23d2e0682626d67f78d01b78cbd952f02f12778f3d2d5a1b96ffad5f60e6c113",
+    "originalBytes": 159,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/in-flight-expiry/host-delivery.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/in-flight-expiry/host.stderr.txt.gz",
+    "sha256": "87cc931461298561dd6879402176414a0c330bc32741e4897774db62e259c635",
+    "originalSha256": "5dfa04a6a35fdac2284efc86ce698529b0ef58cc7b5f349584e922be579ea687",
+    "originalBytes": 36,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/in-flight-expiry/host.stderr.txt"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/in-flight-expiry/host.stdout.txt.gz",
+    "sha256": "b4bc69ca07694d297e21a022a69c813c8ae7ce52755721d8863dd5924ef22514",
+    "originalSha256": "c67f04b870b6d10b7a329ab300f85e2223932009c658db99dd53ebc837562fad",
+    "originalBytes": 340,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/in-flight-expiry/host.stdout.txt"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/in-flight-expiry/launch.json.gz",
+    "sha256": "84a06dff40b65438be9265c1126044a80ab0b46e3e4286fe451ef8ae12cb9064",
+    "originalSha256": "7de02bd16d8903195bec32f554e800a5dee318730df96660c1514b06a57ca2ed",
+    "originalBytes": 1335,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/in-flight-expiry/launch.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/in-flight-expiry/model-relay.json.gz",
+    "sha256": "3ef68f49289041cec9146a66ca41b57924a997d6ca15e815f3520a5ada026a79",
+    "originalSha256": "721fb6e90152162b284d1bd58d4db8d180cd9832db3861a165b63946671f8f92",
+    "originalBytes": 603,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/in-flight-expiry/model-relay.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/in-flight-expiry/native-dispatch.json.gz",
+    "sha256": "0683174457a3cf91450b6d2ab68b0e6cc61a790c9982086a5be19541e8e6239c",
+    "originalSha256": "fa82eccdd9a36278afbfb6b336153b90b7dfc587ea81fd1632ed86883bc89a23",
+    "originalBytes": 734,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/in-flight-expiry/native-dispatch.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/in-flight-expiry/native-results.json.gz",
+    "sha256": "250483d2467a272dec724e27824737cd9e1615fd3d7e51ef621f19050f6536e7",
+    "originalSha256": "3c1370f34226e3141303614e5b0273978475c551713ffdac181b903141ad4024",
+    "originalBytes": 5718,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/in-flight-expiry/native-results.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/in-flight-expiry/prompt.txt.gz",
+    "sha256": "76787bb8f78cfd12a91110c627047e8f61fdbc95d6d88bdbb900c9be9b6a9995",
+    "originalSha256": "0fd1e1ea31bf1f288354543e5f488fd26736b21988df2d81ce952fb46cc4f9f1",
+    "originalBytes": 604,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/in-flight-expiry/prompt.txt"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/in-flight-expiry/terminal.json.gz",
+    "sha256": "4818b3848034ef6ba9ce5f9ed68c40ff7f8404ba78de2ea8a71b157389c6c861",
+    "originalSha256": "d42e2c977fc1d4fd7598039e287ffb7d116b7661ad5bf8e2d05187a3be7ae836",
+    "originalBytes": 113,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/in-flight-expiry/terminal.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/live-expiry-binding.json.gz",
+    "sha256": "e9d42b94ff94855be3f5af76e0c5769f4049c0867d9741903a056994579c8d95",
+    "originalSha256": "eb24f01a47fee861d9db5a5838ac003dde4bd5095d2f70aa8058ff92f680f25d",
+    "originalBytes": 2281,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/live-expiry-binding.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/case/results.json.gz",
+    "sha256": "876eb7593c845e1d0b0850c977139a4ad1f0f0c939d591dc795481863de49d1d",
+    "originalSha256": "2c88f08d3e0ba1ab2ff18f36e593860d00c2b4a68990ec532d38890edf45e4a2",
+    "originalBytes": 1352,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/case/results.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/commands.json.gz",
+    "sha256": "58a9c068cb2b00c0498ea9919753005996e83d0d9ec4d38bde4d3b2ebb88d3ff",
+    "originalSha256": "907c5c40426db0209815fd02a633a4009f2ef50cafa4537dd7b7fa34efe72dbc",
+    "originalBytes": 2144,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/commands.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/failure.json.gz",
+    "sha256": "a0ee921e5695a48049690c61df8fcb4bdb4e92d7e50c9eba80502579bef8eaf3",
+    "originalSha256": "0529ebf3970cc218e2f7053c16fb82ca4d4afe5e10ca490017a345071adc8c54",
+    "originalBytes": 184,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/failure.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/in-flight-expiry.stderr.gz",
+    "sha256": "dc02a91a931de73372bd7552beb67b28d07eef33f9b1bd1c248806a8aa7521f4",
+    "originalSha256": "f8e4f82d240f3b2943c2605cd4f1128c4c667c8175a81bf880bc835a112bc9b9",
+    "originalBytes": 357,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/in-flight-expiry.stderr"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/in-flight-expiry.stdout.gz",
+    "sha256": "31a679213f0563ce4ea8868a32180b871487e2649c0f9cf38239da90afad303e",
+    "originalSha256": "4e0ef031e0941a23ac33716774ede89ceb66e32b247b8e913dbc4c8080657930",
+    "originalBytes": 66,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/in-flight-expiry.stdout"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/post-failure-stop.json.gz",
+    "sha256": "4c75bbe600ad959bf959fc22b890f1cd0fd769983c68c1572584d595d3714cf7",
+    "originalSha256": "33c9ecdfe75a9e48b619f331c833d71186271837151f4e6f5f1e9f3e593ec72b",
+    "originalBytes": 465,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/post-failure-stop.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/post-failure-stop.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/post-failure-stop.stderr"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/post-failure-stop.stdout.gz",
+    "sha256": "fefcdc05ea28b1e156417e2872d5344baac235d058fb54b9ea68b38b8b2f46e7",
+    "originalSha256": "3f19de6969ec8dc13c43ac6f7d88bf9fca055b9e02093d978971aacf6285dff0",
+    "originalBytes": 67,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/post-failure-stop.stdout"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/start.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/start.stderr"
+  },
+  {
+    "path": "raw/original-mac-hosts/hermes/start.stdout.gz",
+    "sha256": "f1ee582df1a360017e7338cf21452a836f14605c89312a5c140dabaa325e1b23",
+    "originalSha256": "7f318e5634c72dfeed90b1087ad4e21248c944cd08270c19cd68abb12bf18d6b",
+    "originalBytes": 81,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/hermes/start.stdout"
+  },
+  {
+    "path": "raw/original-mac-hosts/identity.json.gz",
+    "sha256": "ab2531bd1d5d49014ce43455faf2cad899437b324ca1d2dc97e434b3112df958",
+    "originalSha256": "fae1cc13686475fa98f05f5a1192c9c2da290c1b401fcf89360dc1c66d3e5a07",
+    "originalBytes": 3911,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/identity.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/case/expiry-cutpoint.jsonl.gz",
+    "sha256": "58a122b52ca62db8dd96db063fad50dece1e79d794842d99271d16b8cc11a819",
+    "originalSha256": "fc7af42aa817dbd7b781d818608859213adc4bf6529575572dde091d24fca36d",
+    "originalBytes": 8855,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/case/expiry-cutpoint.jsonl"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/case/failure.json.gz",
+    "sha256": "060f9b9f1f398325b0c043c17fcdd08113a636cadac2fdb30e8bd37ed2072f4c",
+    "originalSha256": "644ce824697121ab784a4e421fdf48e7b74a901e8b1a3bcb46bde77a6d25d5de",
+    "originalBytes": 280,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/case/failure.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/case/in-flight-expiry/after.json.gz",
+    "sha256": "8d4fea0b9426f0055f68f268b6848b3160c141a85148d77a611ed737bee3f0fb",
+    "originalSha256": "c490ee64457689dbbaed32fa89d43786413f082e98b7233971be7d92b97fcf40",
+    "originalBytes": 690,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/case/in-flight-expiry/after.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/case/in-flight-expiry/before.json.gz",
+    "sha256": "f223868f624ea0bd690ba63db3079911f1467ce5bc5683785d8f2c910fbc6007",
+    "originalSha256": "096fe7ac523c61c768f3241237d0fea4ec7db0db70996514ffb570e6158c742b",
+    "originalBytes": 137,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/case/in-flight-expiry/before.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/case/in-flight-expiry/host.stderr.txt.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/case/in-flight-expiry/host.stderr.txt"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/case/in-flight-expiry/host.stdout.txt.gz",
+    "sha256": "bb319fd188cf07d5311bd80b4592d985db85ed2594ca905b4f1e098573ef2fd2",
+    "originalSha256": "9680c7876becf364d7973b671718f3027bbc00cf4aef82837b5936094bd67eb5",
+    "originalBytes": 19469,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/case/in-flight-expiry/host.stdout.txt"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/case/in-flight-expiry/native-dispatch.json.gz",
+    "sha256": "a4cb20ba8cd23dd44eef6dbc4b2fd174fb42573be12a6c4811e321754085d92f",
+    "originalSha256": "24fc8f0b2318d21d8f982fb3d87c18a86528079c73fd9bd33040d2fdd9d5e975",
+    "originalBytes": 1058,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/case/in-flight-expiry/native-dispatch.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/case/in-flight-expiry/native-results.json.gz",
+    "sha256": "af71b8847e914bf9abc03832e28ef1c96eb606731c9c194b15a744b806296222",
+    "originalSha256": "c4b7782f92e5910f8e181c92e9bb6c780fa0b7c93ab44d2fa4e96929fb44e056",
+    "originalBytes": 8708,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/case/in-flight-expiry/native-results.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/case/in-flight-expiry/prompt.txt.gz",
+    "sha256": "fa2642d56bced6195ef0262d1985eb3ad3c2330d1426fa12fae8c5e6eed45e8f",
+    "originalSha256": "c60c850fd182517677607b470e029966ca50e67cc90b200ec4b5c0ec7c8a6054",
+    "originalBytes": 642,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/case/in-flight-expiry/prompt.txt"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/case/live-expiry-binding.json.gz",
+    "sha256": "5565d6683242dceb2e8bce32eed21d448d1e6df38a84a4c30f5a7b3cb778d208",
+    "originalSha256": "276d804e0e263056187111147391565ede20b1f04764159b5ec5e48a69d6b96b",
+    "originalBytes": 2265,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/case/live-expiry-binding.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/case/results.json.gz",
+    "sha256": "39df20472279d728a13fab1f06b7bedd78cab4121c1769f7d551e714e1e294b1",
+    "originalSha256": "d3e3c5eefb05414df9510356980320c5ca2ff9e84cfd2eff8957845bc3680fdb",
+    "originalBytes": 1523,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/case/results.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/commands.json.gz",
+    "sha256": "8ba40f386dc2a8ea945d54d9462347a2f48a2b8d14f953b1a966b797f4c24cc4",
+    "originalSha256": "e0c0d3a7ad0c17d8c05da9bb838f6f945c2e43fa352661ea6e261d66c15dbee7",
+    "originalBytes": 1835,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/commands.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/failure.json.gz",
+    "sha256": "4fb4ec2045450cf5e0119a0db9036cb507812086c5a6917a9e18a3b9283390a3",
+    "originalSha256": "27bd5825bdcca6640006e7c01b5e2ba841d681c5cc5f47c5fff1c4f589d767e5",
+    "originalBytes": 180,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/failure.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/in-flight-expiry.stderr.gz",
+    "sha256": "dc02a91a931de73372bd7552beb67b28d07eef33f9b1bd1c248806a8aa7521f4",
+    "originalSha256": "f8e4f82d240f3b2943c2605cd4f1128c4c667c8175a81bf880bc835a112bc9b9",
+    "originalBytes": 357,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/in-flight-expiry.stderr"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/in-flight-expiry.stdout.gz",
+    "sha256": "31a679213f0563ce4ea8868a32180b871487e2649c0f9cf38239da90afad303e",
+    "originalSha256": "4e0ef031e0941a23ac33716774ede89ceb66e32b247b8e913dbc4c8080657930",
+    "originalBytes": 66,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/in-flight-expiry.stdout"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/post-failure-stop.json.gz",
+    "sha256": "3e036b4cdc14f017e31eec579c99d537e393f7075d92ffb954d5dce1ef754289",
+    "originalSha256": "a75da9df72886280be9b59aec5b54f0cb0bf988bfea30c6245ca08d10dcd695b",
+    "originalBytes": 461,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/post-failure-stop.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/post-failure-stop.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/post-failure-stop.stderr"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/post-failure-stop.stdout.gz",
+    "sha256": "fefcdc05ea28b1e156417e2872d5344baac235d058fb54b9ea68b38b8b2f46e7",
+    "originalSha256": "3f19de6969ec8dc13c43ac6f7d88bf9fca055b9e02093d978971aacf6285dff0",
+    "originalBytes": 67,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/post-failure-stop.stdout"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/start.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/start.stderr"
+  },
+  {
+    "path": "raw/original-mac-hosts/pi/start.stdout.gz",
+    "sha256": "c798c647cf91f77275df3b748f1dbc2254ddb6242cb8d8ef5261068305634f6e",
+    "originalSha256": "ca5ee60f51aa890678302fc97fa94902a6af5490e2fbf6730cfe44119f2ba83d",
+    "originalBytes": 81,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/pi/start.stdout"
+  },
+  {
+    "path": "raw/original-mac-hosts/policy.yaml.gz",
+    "sha256": "c90c0e755b0461a2053a07a5411bd20f384920ed3fabe159369b43c110896a82",
+    "originalSha256": "e18402bad93bf4f9ba5d8aef4d6d5791d0e8edbab4395376e6fc483f58b25e5b",
+    "originalBytes": 627,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/policy.yaml"
+  },
+  {
+    "path": "raw/original-mac-hosts/results.json.gz",
+    "sha256": "07250d88e1a4ca57d14edd902d31efbb4d61dbed2f7b6ab04bc79c25c420c172",
+    "originalSha256": "d172f76eb839fd0855a084517d12bfe057f26b447545f3b80f365bf8a340ce70",
+    "originalBytes": 569,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/results.json"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/0-serve-filesystem.py.gz",
+    "sha256": "de3d4443f55fdef78e769239afa596bb045cf7c7270042be6eb34a1ec857b016",
+    "originalSha256": "24187dd47e497d226fb0b1f6652a006a2514cff6bc84fea9b35361e948ed6399",
+    "originalBytes": 7273,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/0-serve-filesystem.py"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/1-prepare-session.py.gz",
+    "sha256": "e12abe836e8f069ed8428b34df85929020ade75c23d56e434f3f9179813139be",
+    "originalSha256": "efb4cbde3d032a461d804dc40e2bae32e179219f95ecddf0d112e37cfa14dd6c",
+    "originalBytes": 10369,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/1-prepare-session.py"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/10-interrupt-kernel-call.mjs.gz",
+    "sha256": "fc5f870c90d9d0c1c5f455d986a071082da9ff6a1d553fcfd2e0cece763e8d50",
+    "originalSha256": "f9175d719cf5030e78ec7d36d96c146ff2eda0740a2164dc8d45c3315b0214b3",
+    "originalBytes": 2518,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/10-interrupt-kernel-call.mjs"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/11-revoke-during-host.mjs.gz",
+    "sha256": "713dbf87c7d1899749ed06c68522c8804547c583eea3f1ea83606b057995462c",
+    "originalSha256": "8822b59146880602738b8c314e9919f16a9654c0a6c807359406254ddad5f165",
+    "originalBytes": 2130,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/11-revoke-during-host.mjs"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/12-substitute-host-result.mjs.gz",
+    "sha256": "ebd7f8319dd32a50d9b7c4e9ffba19eefa543514a06ce94dcc0df128857ae1e9",
+    "originalSha256": "babae5f7c5891610844418730c9b59f8af09b9f9dabeeeaec5e68b502ac8e91d",
+    "originalBytes": 1615,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/12-substitute-host-result.mjs"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/13-substitute-kernel-evidence.mjs.gz",
+    "sha256": "006b8f8671cec2582f1d8db6037a5f8476594c409542a82f4b0ead46c7d4cd96",
+    "originalSha256": "fdc40c17fa48f2160275fa807e00c5da3008275bc02a13c8948d4bdc99929f54",
+    "originalBytes": 2792,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/13-substitute-kernel-evidence.mjs"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/14-host-approvals.py.gz",
+    "sha256": "29e73bc589fe0b7adad460d980f365a7c5294ea7eacd2b2bfb286337b731b5fe",
+    "originalSha256": "34d377ca421e487975136ae8d4f54eb0a7b42ce8d038d05e229d45690579f1f0",
+    "originalBytes": 39583,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/14-host-approvals.py"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/2-filesystem-policy.yaml.gz",
+    "sha256": "1c72cb566baa09d750f0cd63d850fadd57abb4f81745e20c8c870d5805580699",
+    "originalSha256": "8c2c732d9115799b13150f7924da0e68fc1f9b2d42a2618912511d407035cc66",
+    "originalBytes": 631,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/2-filesystem-policy.yaml"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/3-cancel-host-response.mjs.gz",
+    "sha256": "79aeb6752be3acd5d240a890f5600f5aaf877b880c8030cfe2f5d45f4728c361",
+    "originalSha256": "f3fe77d8ffe39815b5b478590b2e25a1cb9ab057faed94d7a6f8e43ea08a891b",
+    "originalBytes": 1640,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/3-cancel-host-response.mjs"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/4-crash-host-gateway.mjs.gz",
+    "sha256": "aeb27979bbc11da70ec0e188a72d2e75cf80eb82e7f953dbec915197d1a47721",
+    "originalSha256": "c14ad2e7263781beb5cc516d77cfe188fba89cd50ce89b95a84d8b53c519400a",
+    "originalBytes": 1391,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/4-crash-host-gateway.mjs"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/5-drop-host-ack-response.mjs.gz",
+    "sha256": "407ad1c82bf29250768a5a8e12614dc8ec1d1e27adaaee342504decff4f1dbd3",
+    "originalSha256": "cf6cd70d35d6c9b16d87429c8be1d38f62d2718622e9e821b5f4443dc5eaae46",
+    "originalBytes": 1052,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/5-drop-host-ack-response.mjs"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/6-drop-host-response.mjs.gz",
+    "sha256": "d581dd2eb7f3334f4c834e69ec0bca542436b3535b357192c901d14fab2735f5",
+    "originalSha256": "b80337c4c9dd30697b375228ef4ceca724ff14867c9d3ca9fbe37fceb874c2fa",
+    "originalBytes": 1536,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/6-drop-host-response.mjs"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/7-expire-during-host.mjs.gz",
+    "sha256": "d73310f8b88fe91f7af08ea2fcd0e506306d89aa5103576ef242ea88314a3ccb",
+    "originalSha256": "1d6239ce9966b8cb44b05861cfb86a9ed2d445b0c398deb3e33e23d523f29bf1",
+    "originalBytes": 5074,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/7-expire-during-host.mjs"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/8-force-declared-tool.mjs.gz",
+    "sha256": "b89798b4065a78de08dc4b03f88ba62da9f78cf3f2ad4992cbb78ae26dde9f4a",
+    "originalSha256": "1eab335d4be1d83f4cb1138736d76193b9e4c663a2b3b9830049e7b065b4134a",
+    "originalBytes": 1050,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/8-force-declared-tool.mjs"
+  },
+  {
+    "path": "raw/original-mac-hosts/source-snapshots/9-hold-native-dispatch.mjs.gz",
+    "sha256": "104bc650bdc6efb93223edc5f6495b77fa7fa50af10cc9050972d1bea33390d9",
+    "originalSha256": "05b2b65a2e6b1e8b0bc82b5090e53e4f562b349c284cc0aeafd53094bd1dcacf",
+    "originalBytes": 1096,
+    "source": "/tmp/chio-static-live-expiry-mac-hosts-20260910/source-snapshots/9-hold-native-dispatch.mjs"
+  },
+  {
+    "path": "raw/original-openclaw/driver.py.gz",
+    "sha256": "abe149df6980acfcb8258b50dbe4decb1b74434cd24b71eafc4dcb7c18cc689c",
+    "originalSha256": "79d4a6c3a435f4a1ff398953e2f78b4ede3d5749a8a21d426e8b825097a34377",
+    "originalBytes": 9967,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/driver.py"
+  },
+  {
+    "path": "raw/original-openclaw/identity.json.gz",
+    "sha256": "3a3510cd5447e880194a38f180f5e3121760e647fb079bf5d63dfe76360e55b9",
+    "originalSha256": "958ca3c6c85a54d87df001d78226de43aaa2481afad942764b366a0b411c6489",
+    "originalBytes": 4119,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/identity.json"
+  },
+  {
+    "path": "raw/original-openclaw/installed-identities-after.json.gz",
+    "sha256": "7df4a88d051f4aae8ee04362b2632a102be7034e3ef3e52ec7e92dbbc6cbdea4",
+    "originalSha256": "55cd66743ddfa4866c2b0643b53ebd3ba20b85f74721c55ab8bf3eeb57a5099d",
+    "originalBytes": 389,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/installed-identities-after.json"
+  },
+  {
+    "path": "raw/original-openclaw/installed-identities-before.json.gz",
+    "sha256": "7df4a88d051f4aae8ee04362b2632a102be7034e3ef3e52ec7e92dbbc6cbdea4",
+    "originalSha256": "55cd66743ddfa4866c2b0643b53ebd3ba20b85f74721c55ab8bf3eeb57a5099d",
+    "originalBytes": 389,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/installed-identities-before.json"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/case/expiry-cutpoint.jsonl.gz",
+    "sha256": "b6fdf0658bc447e20c7efe0e324a0a2f8a68b75399c86e6540e4fe590396286b",
+    "originalSha256": "339cdcd15f9299ad1f9f4fdcdad6b815cb0ec03305bc34be43c4fba09ebba550",
+    "originalBytes": 8915,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/case/expiry-cutpoint.jsonl"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/case/failure.json.gz",
+    "sha256": "fe46f494c057081680fd0d44238fa3487fa31cc238bff2c057e2560cf32a84c4",
+    "originalSha256": "6b878b7f9d517b0198dbfebc3a645d8e464770bb95823bd34652fb0948439cd8",
+    "originalBytes": 352,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/case/failure.json"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/case/in-flight-expiry/after.json.gz",
+    "sha256": "030124ed71598e4fcbea2600a01ff22dac2b7d9bd2f0bd62498f7b926daf7e0d",
+    "originalSha256": "a2dbe9d2c47acd448cbf044445fdecf9c09f8816ef0ef271db9a392756a67871",
+    "originalBytes": 702,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/case/in-flight-expiry/after.json"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/case/in-flight-expiry/before.json.gz",
+    "sha256": "f223868f624ea0bd690ba63db3079911f1467ce5bc5683785d8f2c910fbc6007",
+    "originalSha256": "096fe7ac523c61c768f3241237d0fea4ec7db0db70996514ffb570e6158c742b",
+    "originalBytes": 137,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/case/in-flight-expiry/before.json"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/case/in-flight-expiry/host.stderr.txt.gz",
+    "sha256": "387f6832087942ca675f05162cd877b1116f9975b4ae57a7a63b3a5ceaa1afb0",
+    "originalSha256": "51b0b922612efee97f2b2b8accded5e73c6fb381bcabde8d2d33edd37fc470ac",
+    "originalBytes": 515,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/case/in-flight-expiry/host.stderr.txt"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/case/in-flight-expiry/host.stdout.txt.gz",
+    "sha256": "b2103eb5c86f4b47f5665e07804657a369eb5bc5f9652c0ef91e7cf773286729",
+    "originalSha256": "dc62b045f89cec58f466b2004de95c442bbf5a3645e6a23c602193b7721025b9",
+    "originalBytes": 5561,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/case/in-flight-expiry/host.stdout.txt"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/case/in-flight-expiry/launch.json.gz",
+    "sha256": "827cf7d205f20237eef3ae1fded7ad67901e453df95915a6b891c9b7e6c62afa",
+    "originalSha256": "91ed3edb1037c63196630a8a12c399da4c826cc6be638cc57658c4d87bd4312e",
+    "originalBytes": 1007,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/case/in-flight-expiry/launch.json"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/case/in-flight-expiry/model-relay.json.gz",
+    "sha256": "a802adc402c791b52b15b3cd2c2d4d8b696b52b2a1ecd6e87e415f63bb292190",
+    "originalSha256": "6307a38a3b719ff27ff63becc92b5e68cb7c6890e3f78b301337d6420dded254",
+    "originalBytes": 10090,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/case/in-flight-expiry/model-relay.json"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/case/in-flight-expiry/native-dispatch.json.gz",
+    "sha256": "b5151ee028be2e010872fbfd50510850c3c419e62e46aa194f09ef6f8cdd6ccd",
+    "originalSha256": "02d21c728a48267996e63dd772b5430bdecfc38d7f53ead7ed28ed1dad2dc7af",
+    "originalBytes": 1064,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/case/in-flight-expiry/native-dispatch.json"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/case/in-flight-expiry/native-results.json.gz",
+    "sha256": "91b789d41c334fdcfe81176d4e6b86949905cfeaa56e644196823003d9d6530b",
+    "originalSha256": "4fc5d569eb0d1a86d92b1442696297bb5ca77aa49df3e273e77e4b28702a2dc4",
+    "originalBytes": 4699,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/case/in-flight-expiry/native-results.json"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/case/in-flight-expiry/prompt.txt.gz",
+    "sha256": "43b508f7da4ad63fadd1af17bafc5e88139851ded372bff50b8cae90db293f03",
+    "originalSha256": "50f20ecf101520d6cdd087e99864656b073458e627aa581551a90d27e82461d5",
+    "originalBytes": 648,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/case/in-flight-expiry/prompt.txt"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/case/in-flight-expiry/terminal.json.gz",
+    "sha256": "3d810b957f9bec4791d8f0470bccfca0c55c81bb18c07859edaccbde2ab3bdf6",
+    "originalSha256": "4f74881809ce4beb1cc9d7d4ef16282cd8638066cb0839c1d59b1fa5b9a94efd",
+    "originalBytes": 79,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/case/in-flight-expiry/terminal.json"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/case/live-expiry-binding.json.gz",
+    "sha256": "b5d697c96ff634d76585a3e26af780cd8d4942b3e1a9581745a4ffcc666ab167",
+    "originalSha256": "52b401aa9fea784904c61e73dfa3ebfd15892398bdbd643f312213a13be3af75",
+    "originalBytes": 2288,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/case/live-expiry-binding.json"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/case/results.json.gz",
+    "sha256": "b6095c172eea173c1b61bd2d2ebd56f4185a51f2071472b8ae6c5e5b1a0bb9fe",
+    "originalSha256": "cf7deb7d0214ca180640a760fb0263d0b36afa610c987b11ec483804f17139bf",
+    "originalBytes": 1490,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/case/results.json"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/commands.json.gz",
+    "sha256": "4716dce1b345d332c6af41cb9fd70b1a94dfeec1019ed453092fdb1f1d93cc63",
+    "originalSha256": "9985834967678d823e2f5e6bb3575369b9396f93326932371848245fb542b5f6",
+    "originalBytes": 1979,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/commands.json"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/failure.json.gz",
+    "sha256": "c6fe8ee010ef7a96c06df2c11747321c6d4dd9437a893dab34648587bae195fb",
+    "originalSha256": "d22b36ec5ff8eff9e366e21571d3548934bd2a343336fc9314df3de9a39434bb",
+    "originalBytes": 186,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/failure.json"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/in-flight-expiry.stderr.gz",
+    "sha256": "dab24ccdd26bd3565249f32f2cbfcba24a52980aab6e7d6b53229380e9317f6a",
+    "originalSha256": "91983a89a0e3c0bbe920c00d57e12ad3d16e323114cf2cebc68678fc85fe37b2",
+    "originalBytes": 1057,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/in-flight-expiry.stderr"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/in-flight-expiry.stdout.gz",
+    "sha256": "31a679213f0563ce4ea8868a32180b871487e2649c0f9cf38239da90afad303e",
+    "originalSha256": "4e0ef031e0941a23ac33716774ede89ceb66e32b247b8e913dbc4c8080657930",
+    "originalBytes": 66,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/in-flight-expiry.stdout"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/post-failure-stop.json.gz",
+    "sha256": "8c0975e28aa869e67e81d0851122b6cd6a4b90dd2aa826b56617d1caa1c96432",
+    "originalSha256": "2fe7e58f229ea3d85d40f1bc075d82470df57af085918c21dc272ca26870fae9",
+    "originalBytes": 491,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/post-failure-stop.json"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/post-failure-stop.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/post-failure-stop.stderr"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/post-failure-stop.stdout.gz",
+    "sha256": "fefcdc05ea28b1e156417e2872d5344baac235d058fb54b9ea68b38b8b2f46e7",
+    "originalSha256": "3f19de6969ec8dc13c43ac6f7d88bf9fca055b9e02093d978971aacf6285dff0",
+    "originalBytes": 67,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/post-failure-stop.stdout"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/start.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/start.stderr"
+  },
+  {
+    "path": "raw/original-openclaw/openclaw/start.stdout.gz",
+    "sha256": "f23a29af41554aad7a28a23f96715259d9c37717af92491a8f8993e536cf4044",
+    "originalSha256": "ab473e7c58fed39f12e0da6640ff1f41a9579c23c5eaadb581d7a4ace7ee3251",
+    "originalBytes": 81,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/openclaw/start.stdout"
+  },
+  {
+    "path": "raw/original-openclaw/policy.yaml.gz",
+    "sha256": "48769631f91e6460eb56a3981687badc09b41893322d6da1067a097caef16ae3",
+    "originalSha256": "f266fd481c134ce45184e0534a23364ab8d7ec9d2233557a8179d3cf023c94c0",
+    "originalBytes": 627,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/policy.yaml"
+  },
+  {
+    "path": "raw/original-openclaw/results.json.gz",
+    "sha256": "bef3bac3ce8019cb78c33c755b8ff475e7972afecc3393f364f38118b2e0dfac",
+    "originalSha256": "2d6cb062d853e1d7e1a73eecf3c90dc1ee03f182f3a25c6c8374655b75b6c537",
+    "originalBytes": 268,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/results.json"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/0-serve-filesystem.py.gz",
+    "sha256": "de3d4443f55fdef78e769239afa596bb045cf7c7270042be6eb34a1ec857b016",
+    "originalSha256": "24187dd47e497d226fb0b1f6652a006a2514cff6bc84fea9b35361e948ed6399",
+    "originalBytes": 7273,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/0-serve-filesystem.py"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/1-prepare-session.py.gz",
+    "sha256": "e12abe836e8f069ed8428b34df85929020ade75c23d56e434f3f9179813139be",
+    "originalSha256": "efb4cbde3d032a461d804dc40e2bae32e179219f95ecddf0d112e37cfa14dd6c",
+    "originalBytes": 10369,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/1-prepare-session.py"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/10-interrupt-kernel-call.mjs.gz",
+    "sha256": "fc5f870c90d9d0c1c5f455d986a071082da9ff6a1d553fcfd2e0cece763e8d50",
+    "originalSha256": "f9175d719cf5030e78ec7d36d96c146ff2eda0740a2164dc8d45c3315b0214b3",
+    "originalBytes": 2518,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/10-interrupt-kernel-call.mjs"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/11-revoke-during-host.mjs.gz",
+    "sha256": "713dbf87c7d1899749ed06c68522c8804547c583eea3f1ea83606b057995462c",
+    "originalSha256": "8822b59146880602738b8c314e9919f16a9654c0a6c807359406254ddad5f165",
+    "originalBytes": 2130,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/11-revoke-during-host.mjs"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/12-substitute-host-result.mjs.gz",
+    "sha256": "ebd7f8319dd32a50d9b7c4e9ffba19eefa543514a06ce94dcc0df128857ae1e9",
+    "originalSha256": "babae5f7c5891610844418730c9b59f8af09b9f9dabeeeaec5e68b502ac8e91d",
+    "originalBytes": 1615,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/12-substitute-host-result.mjs"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/13-substitute-kernel-evidence.mjs.gz",
+    "sha256": "006b8f8671cec2582f1d8db6037a5f8476594c409542a82f4b0ead46c7d4cd96",
+    "originalSha256": "fdc40c17fa48f2160275fa807e00c5da3008275bc02a13c8948d4bdc99929f54",
+    "originalBytes": 2792,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/13-substitute-kernel-evidence.mjs"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/14-host-approvals.py.gz",
+    "sha256": "5b16a911cf8c1ebdf8b705acd41bdca573fb460c518d1bc82f7f9ab6d2bd328e",
+    "originalSha256": "4d88192df236f8e964e56642008ebdf875987de18c07b85da314c42cc28ebb9e",
+    "originalBytes": 38718,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/14-host-approvals.py"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/15-live_expiry_native.py.gz",
+    "sha256": "e3b205516b7943f1b86b9b1d42750aae0c31fcfd2830a1d4b60e517b4026fcbe",
+    "originalSha256": "9ce862117cb9e8ca5ce0b595b3b722e6f7a0fa38f9ecf59942f5602c47adcc1f",
+    "originalBytes": 5361,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/15-live_expiry_native.py"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/2-filesystem-policy.yaml.gz",
+    "sha256": "1c72cb566baa09d750f0cd63d850fadd57abb4f81745e20c8c870d5805580699",
+    "originalSha256": "8c2c732d9115799b13150f7924da0e68fc1f9b2d42a2618912511d407035cc66",
+    "originalBytes": 631,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/2-filesystem-policy.yaml"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/3-cancel-host-response.mjs.gz",
+    "sha256": "79aeb6752be3acd5d240a890f5600f5aaf877b880c8030cfe2f5d45f4728c361",
+    "originalSha256": "f3fe77d8ffe39815b5b478590b2e25a1cb9ab057faed94d7a6f8e43ea08a891b",
+    "originalBytes": 1640,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/3-cancel-host-response.mjs"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/4-crash-host-gateway.mjs.gz",
+    "sha256": "aeb27979bbc11da70ec0e188a72d2e75cf80eb82e7f953dbec915197d1a47721",
+    "originalSha256": "c14ad2e7263781beb5cc516d77cfe188fba89cd50ce89b95a84d8b53c519400a",
+    "originalBytes": 1391,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/4-crash-host-gateway.mjs"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/5-drop-host-ack-response.mjs.gz",
+    "sha256": "407ad1c82bf29250768a5a8e12614dc8ec1d1e27adaaee342504decff4f1dbd3",
+    "originalSha256": "cf6cd70d35d6c9b16d87429c8be1d38f62d2718622e9e821b5f4443dc5eaae46",
+    "originalBytes": 1052,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/5-drop-host-ack-response.mjs"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/6-drop-host-response.mjs.gz",
+    "sha256": "d581dd2eb7f3334f4c834e69ec0bca542436b3535b357192c901d14fab2735f5",
+    "originalSha256": "b80337c4c9dd30697b375228ef4ceca724ff14867c9d3ca9fbe37fceb874c2fa",
+    "originalBytes": 1536,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/6-drop-host-response.mjs"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/7-expire-during-host.mjs.gz",
+    "sha256": "d73310f8b88fe91f7af08ea2fcd0e506306d89aa5103576ef242ea88314a3ccb",
+    "originalSha256": "1d6239ce9966b8cb44b05861cfb86a9ed2d445b0c398deb3e33e23d523f29bf1",
+    "originalBytes": 5074,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/7-expire-during-host.mjs"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/8-force-declared-tool.mjs.gz",
+    "sha256": "b89798b4065a78de08dc4b03f88ba62da9f78cf3f2ad4992cbb78ae26dde9f4a",
+    "originalSha256": "1eab335d4be1d83f4cb1138736d76193b9e4c663a2b3b9830049e7b065b4134a",
+    "originalBytes": 1050,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/8-force-declared-tool.mjs"
+  },
+  {
+    "path": "raw/original-openclaw/source-snapshots/9-hold-native-dispatch.mjs.gz",
+    "sha256": "104bc650bdc6efb93223edc5f6495b77fa7fa50af10cc9050972d1bea33390d9",
+    "originalSha256": "05b2b65a2e6b1e8b0bc82b5090e53e4f562b349c284cc0aeafd53094bd1dcacf",
+    "originalBytes": 1096,
+    "source": "/tmp/chio-static-live-expiry-openclaw-20260910/source-snapshots/9-hold-native-dispatch.mjs"
+  },
+  {
+    "path": "raw/post-run-installed-review/claude-archive-files.json.gz",
+    "sha256": "5cd5501e784304d04ecd542a793a8006e6d608d86c269f11355ac3423537657a",
+    "originalSha256": "37a4c2841c7a7b24ae36052ebb438508f29241b71870358db279e95e96f2a28e",
+    "originalBytes": 230840,
+    "source": "/tmp/chio-static-live-expiry-installed-review-20260910/claude-archive-files.json"
+  },
+  {
+    "path": "raw/post-run-installed-review/codex-archive-files.json.gz",
+    "sha256": "706f82e66de639b427a3df122241d0bae535024492bffba528d7f5a054f28e9e",
+    "originalSha256": "b77e1a5d5b1c88f96f65d367bd2b7d9882226274269c4279ea3d5803dca454da",
+    "originalBytes": 455737,
+    "source": "/tmp/chio-static-live-expiry-installed-review-20260910/codex-archive-files.json"
+  },
+  {
+    "path": "raw/post-run-installed-review/hermes-bridge-archive-files.json.gz",
+    "sha256": "c38c5f4b70402c977cd20677654d7219efc6f0b52362ee47e22f7de1a8da9ca8",
+    "originalSha256": "943fc5d7b31da302a9d1112c19e14d6053c058c3292f068f67a6a52c40dbc12c",
+    "originalBytes": 174127,
+    "source": "/tmp/chio-static-live-expiry-installed-review-20260910/hermes-bridge-archive-files.json"
+  },
+  {
+    "path": "raw/post-run-installed-review/hermes-host-source.json.gz",
+    "sha256": "f5d9176199369fc91ffca03d8a0d3892819eae343f6d8e22db856fc9344775b9",
+    "originalSha256": "0e78d2755de4e84d3b8641c2399ca0e3e265ad18894ccfcd24c5394584469e27",
+    "originalBytes": 898,
+    "source": "/tmp/chio-static-live-expiry-installed-review-20260910/hermes-host-source.json"
+  },
+  {
+    "path": "raw/post-run-installed-review/hermes-wheel-files.json.gz",
+    "sha256": "9b108bcca6ee195d6fc83ffdb7816474e897d7d1937b1fff21a13956b11bb7a5",
+    "originalSha256": "1434d9ee6b54fc70e6e39edee1d2e6377da5d62c3db6e6cbf4ef20e13634c210",
+    "originalBytes": 2683,
+    "source": "/tmp/chio-static-live-expiry-installed-review-20260910/hermes-wheel-files.json"
+  },
+  {
+    "path": "raw/post-run-installed-review/installation-manifest.json.gz",
+    "sha256": "44e057d38b8a96bcfc1689a6adb76de56672cbd5e8a8dee5d1b661d6f9c86bb2",
+    "originalSha256": "7bf28132a11f2bdbf2c727faa1cee065fa2b6b8b8ef1aa8f314e4e829672dddb",
+    "originalBytes": 4475,
+    "source": "/tmp/chio-static-live-expiry-installed-review-20260910/installation-manifest.json"
+  },
+  {
+    "path": "raw/post-run-installed-review/openclaw-archive-files.json.gz",
+    "sha256": "4c9ef433f696219e997096e654423a13f4ce518a0fe58bf62f56eac388da512e",
+    "originalSha256": "10ccaeb88e61e41154a6ff92d275156b98aa7bc49a1896fb81f7ead92d1f8af0",
+    "originalBytes": 204865,
+    "source": "/tmp/chio-static-live-expiry-installed-review-20260910/openclaw-archive-files.json"
+  },
+  {
+    "path": "raw/post-run-installed-review/operator-recovery-bridge-archive-files.json.gz",
+    "sha256": "1d7c0c07d80f17bd7e8b5b1d5e1feaadf6d6dd48e394b3ac6befece563f6f6b5",
+    "originalSha256": "14d2650f92c6ba83e04ece6619a41f9d63fd061d9986070f985f8b348d1989aa",
+    "originalBytes": 174725,
+    "source": "/tmp/chio-static-live-expiry-installed-review-20260910/operator-recovery-bridge-archive-files.json"
+  },
+  {
+    "path": "raw/post-run-installed-review/pi-archive-files.json.gz",
+    "sha256": "7769fef16d8c318e442e94a6bfacc4c8afd233720fe5ce85d3e29a3c86e6396d",
+    "originalSha256": "0a60672fa7fc5d23796cb5925929585677b4d9c6bc80923c2d87cbac8b99bac6",
+    "originalBytes": 207058,
+    "source": "/tmp/chio-static-live-expiry-installed-review-20260910/pi-archive-files.json"
+  },
+  {
+    "path": "raw/post-run-installed-review/pi-native-peer-archive-files.json.gz",
+    "sha256": "c6b1e8a03c875955facca454720e82ecd228f10c0e7ccd3bcf5e422bb31f7d1b",
+    "originalSha256": "192626a51f061cd8fb22d75931f927205f387c60f0d577f0db0a4ebc2a388eff",
+    "originalBytes": 169284,
+    "source": "/tmp/chio-static-live-expiry-installed-review-20260910/pi-native-peer-archive-files.json"
+  },
+  {
+    "path": "raw/post-run-installed-review/pi-peer-lock-binding.json.gz",
+    "sha256": "b9c7964b7df51fbf44b8a39b5c04a5404c0882b1745fe19f9cf6e9eee6ab51ef",
+    "originalSha256": "47c8ae6446919bc63af7aad69418d272a7fa66835ae288b89897139ad8f1d125",
+    "originalBytes": 3367,
+    "source": "/tmp/chio-static-live-expiry-installed-review-20260910/pi-peer-lock-binding.json"
+  },
+  {
+    "path": "raw/post-run-installed-review/post-run-provenance.json.gz",
+    "sha256": "b1744deb0412609b5e14319a88cf60bc4d53b3dac93b2612829c4f618e5c4285",
+    "originalSha256": "203fc1bf6cfde393dc7b5daaaa9f6fee296586f099639f11820e7ea81f385625",
+    "originalBytes": 16572,
+    "source": "/tmp/chio-static-live-expiry-installed-review-20260910/post-run-provenance.json"
+  },
+  {
+    "path": "raw/post-run-installed-review/review-installed.py.gz",
+    "sha256": "afbf4eabea13a9eb692951ad58d32e034e26def59050958cbb59b74893bf15b4",
+    "originalSha256": "0aa317b2774a1b5338584bec66eff6bfa38669a98802c3408a89169de97c3f44",
+    "originalBytes": 9618,
+    "source": "/tmp/chio-static-live-expiry-installed-review-20260910/review-installed.py"
+  },
+  {
+    "path": "raw/validation/commands.json.gz",
+    "sha256": "11bdf86efe94cd8326d501def175055bc9911c79f966ca24316d8bb81539d89a",
+    "originalSha256": "e5ada3908ba6caa25f849f47fc91e0a51bbe627663daddfb4dea94fbea77c6e6",
+    "originalBytes": 335,
+    "source": "/tmp/chio-live-expiry-archive-validation-20260910/commands.json"
+  },
+  {
+    "path": "raw/validation/gate-source-identities.json.gz",
+    "sha256": "71556fc83de66ed7a83b0f2556db75117920765122e3c619dbca5bfe42080816",
+    "originalSha256": "de863530da9925f2df1fc71dcc09364b35cd40f1ab37870e53568963a53ce8da",
+    "originalBytes": 587,
+    "source": "/tmp/chio-live-expiry-archive-validation-20260910/gate-source-identities.json"
+  },
+  {
+    "path": "raw/validation/product-copy-command.json.gz",
+    "sha256": "bb6b0a09bf73bef57b18768056d2d7c639635b4826f0f2c999a0ae5d7b228f39",
+    "originalSha256": "2b51c399d154a00e6614aedb42344fab6d6d45c7bc70b72a0e34453daaa382ed",
+    "originalBytes": 145,
+    "source": "/tmp/chio-live-expiry-archive-validation-20260910/product-copy-command.json"
+  },
+  {
+    "path": "raw/validation/product-copy-regressions-command.json.gz",
+    "sha256": "a56fe6ba3288bfc86fdf50fd96082c3e2cbe1887a77c23892d2289b03d979447",
+    "originalSha256": "4f8c68b865ca18d50a0dd9a0f5a5e48580c201405f44752bdda231d7c13f55e9",
+    "originalBytes": 153,
+    "source": "/tmp/chio-live-expiry-archive-validation-20260910/product-copy-regressions-command.json"
+  },
+  {
+    "path": "raw/validation/product-copy-regressions.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-live-expiry-archive-validation-20260910/product-copy-regressions.stderr"
+  },
+  {
+    "path": "raw/validation/product-copy-regressions.stdout.gz",
+    "sha256": "cf69a00259cfd210050bcb8285f93ef2e8da108a42d88394ca7685000dd73cf0",
+    "originalSha256": "29210f83da4ef07d063e2f508f08d528a624e89d28f36b4c465918662e0e5d30",
+    "originalBytes": 146,
+    "source": "/tmp/chio-live-expiry-archive-validation-20260910/product-copy-regressions.stdout"
+  },
+  {
+    "path": "raw/validation/product-copy.stderr.gz",
+    "sha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "source": "/tmp/chio-live-expiry-archive-validation-20260910/product-copy.stderr"
+  },
+  {
+    "path": "raw/validation/product-copy.stdout.gz",
+    "sha256": "d63382d46c3d4bbc4fa30e345e819c4fc7a7cb10cd4621871c0440136a1916a6",
+    "originalSha256": "a1d0a08a627700e626e18fc189d7b89281565fc5c76b13b6ecf530eace65af25",
+    "originalBytes": 28,
+    "source": "/tmp/chio-live-expiry-archive-validation-20260910/product-copy.stdout"
+  }
+]

@@ -1,0 +1,78 @@
+{
+  "scope": "Byte-preserved bounded observations, including failures. No host acceptance or publication.",
+  "groups": [
+    {
+      "group": "binding-repair-controls",
+      "sourceDirectory": "/tmp/chio-openclaw-expiry-binding-repair-20260910",
+      "files": 7,
+      "originalBytes": 2948,
+      "inventorySha256": "2bbdbe1b9a7d7a44838e349946e36365ee6c609fd3aebec17a53f533df9f8870",
+      "archivedAt": "2026-09-10T08:18:19.366492+00:00"
+    },
+    {
+      "group": "binding-repair-followup",
+      "sourceDirectory": "/tmp/chio-openclaw-expiry-binding-repair-20260910",
+      "files": 8,
+      "originalBytes": 4446,
+      "inventorySha256": "83df973aa4667cc348a88de5306ac3c7a6e38f1c3fb0bb75a41aec1a61a09b91",
+      "archivedAt": "2026-09-10T08:22:50.269369+00:00"
+    },
+    {
+      "group": "final-copy-check",
+      "sourceDirectory": "/tmp/chio-live-expiry-archive-final-copy-20260910",
+      "files": 3,
+      "originalBytes": 358,
+      "inventorySha256": "a3dec9930d54090481c12963fb224ecdc115e98b7e50c7a8ed5ca27d77c3be5a",
+      "archivedAt": "2026-09-10T08:24:04.892061+00:00"
+    },
+    {
+      "group": "mac-hosts-r2",
+      "sourceDirectory": "/tmp/chio-static-live-expiry-mac-hosts-r2-20260910",
+      "files": 68,
+      "originalBytes": 189946,
+      "inventorySha256": "6e530dc6f03ddba1dda5231d0177c16cd143d9196b33405eb7b03be526cfe932",
+      "archivedAt": "2026-09-10T08:09:59.580514+00:00"
+    },
+    {
+      "group": "openclaw-r2",
+      "sourceDirectory": "/tmp/chio-static-live-expiry-openclaw-r2-20260910",
+      "files": 48,
+      "originalBytes": 159307,
+      "inventorySha256": "ff0e60f175d6af4e37c65723633dfbfb720a721b02dd645e47276f9c6100b97b",
+      "archivedAt": "2026-09-10T08:18:42.568926+00:00"
+    },
+    {
+      "group": "original-mac-hosts",
+      "sourceDirectory": "/tmp/chio-static-live-expiry-mac-hosts-20260910",
+      "files": 85,
+      "originalBytes": 206966,
+      "inventorySha256": "b11984353eb47bd6bc8fd277106b7bd408e93afbda040060e5565105b8dc3559",
+      "archivedAt": "2026-09-10T08:09:05.410089+00:00"
+    },
+    {
+      "group": "original-openclaw",
+      "sourceDirectory": "/tmp/chio-static-live-expiry-openclaw-20260910",
+      "files": 45,
+      "originalBytes": 141479,
+      "inventorySha256": "4393c1a9b52790701878e1769008275ff6cd1a00f1ea667bc3da77836e0c7bee",
+      "archivedAt": "2026-09-10T08:09:59.646551+00:00"
+    },
+    {
+      "group": "post-run-installed-review",
+      "sourceDirectory": "/tmp/chio-static-live-expiry-installed-review-20260910",
+      "files": 13,
+      "originalBytes": 1654249,
+      "inventorySha256": "b497aca5e0ae4c5c722bb809d24706b3c794c996cbc36d6e0d547953266a3700",
+      "archivedAt": "2026-09-10T08:09:05.727345+00:00"
+    },
+    {
+      "group": "validation",
+      "sourceDirectory": "/tmp/chio-live-expiry-archive-validation-20260910",
+      "files": 8,
+      "originalBytes": 1394,
+      "inventorySha256": "bea11f037f90d80bebe5cc70146a17a3fe9603a57ebd4869794cddfd97084d50",
+      "archivedAt": "2026-09-10T08:21:30.913079+00:00"
+    }
+  ],
+  "recordBaseRevision": "02afad1a6969805e516083210a0ca3c15df450f8"
+}
