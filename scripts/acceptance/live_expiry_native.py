@@ -1,5 +1,7 @@
 """Validate observed native expiry errors without inventing host envelopes."""
 import json
+import hashlib
+import re
 
 
 PI_UNKNOWN_MESSAGE = "Gateway reports an unknown external outcome"
@@ -34,7 +36,57 @@ def expected_call(host, request):
     return ('mcp__chio__' + tool if host in ['claude', 'hermes'] else tool, arguments)
 
 
-def native_expiry_outcome(host, dispatch, results, requests, journal_outcome):
+def openclaw_mapping(calls, results, requests, context):
+    """Recompute both frozen guest and gateway namespaces from observations."""
+    require(isinstance(context, dict), 'OpenClaw requires observed launcher and HTTP session identity')
+    launch, agent, prompt = context['launch'], context['agentMeta'], context['systemPromptReport']
+    session_id = launch['sessionId']
+    require(launch['schema'] == 'chio.openclaw.protected-run.v1'
+            and launch['gatewayConfigSha256'] == context['configurationSha256'], 'OpenClaw launcher configuration differs')
+    require(agent['sessionId'] == prompt['sessionId'] == session_id
+            and agent['sessionFile'] == '/state/openclaw/agents/main/sessions/' + session_id + '.jsonl'
+            and prompt['sessionKey'] == 'agent:main:explicit:' + session_id, 'OpenClaw native caller context differs')
+    authority = launch['kernelAuthority']
+    require(all(request['sessionId'] == authority['sessionId']
+                and request['capabilityId'] == authority['capabilityId'] for request in requests),
+            'OpenClaw launch authority differs from actual kernel requests')
+    sessions = context['gatewaySessions']
+    require(len(sessions) == 1, 'OpenClaw requires exactly one observed initialized gateway session')
+    observed = sessions[0]
+    require(observed['event'] == 'gateway-http-initialized' and observed['method'] == 'POST'
+            and observed['path'] == '/mcp' and observed['status'] == 200
+            and isinstance(observed['localPort'], int) and 1024 <= observed['localPort'] <= 65535
+            and re.fullmatch(r'[A-Za-z0-9_-]{43}', observed['sessionId'])
+            and observed['observedAtMs'] < requests[0]['heldAtMs'], 'OpenClaw gateway session observation differs')
+    caller = {'host': 'openclaw', 'agentId': 'main', 'sessionId': session_id, 'sessionKey': prompt['sessionKey']}
+    mappings = []
+    compact = lambda value, **kwargs: json.dumps(value, separators=(',', ':'), ensure_ascii=False, **kwargs)
+    for call, request in zip(calls, requests):
+        # Frozen plugin journal.mjs sorts object keys recursively. Gateway HTTP
+        # adds its initialized session and JSON string ID, then gateway.js hashes
+        # canonical {id} under the operator's configured gateway namespace.
+        guest_id = hashlib.sha256(compact({'caller': caller, 'toolCallId': call['id']}, sort_keys=True).encode()).hexdigest()
+        rpc_namespace = observed['sessionId'] + ':' + compact(guest_id)
+        kernel_id = context['gatewayNamespace'] + ':' + hashlib.sha256(compact({'id': rpc_namespace}).encode()).hexdigest()
+        require(kernel_id == request['requestId'], 'OpenClaw guest-to-kernel request mapping differs')
+        mappings.append({'toolCallId': call['id'], 'guestRequestId': guest_id, 'kernelRequestId': kernel_id})
+    outcomes = []
+    for result in results:
+        value = result['value']
+        require(isinstance(value, list) and len(value) == 1 and set(value[0]) == {'type', 'text'}
+                and value[0]['type'] == 'text', 'OpenClaw native result shape differs')
+        outcomes.append(decode(value[0]['text']))
+    require(outcomes[0].get('state') == 'completed' and outcomes[0].get('evidence') == 'verified'
+            and outcomes[0].get('requestId') == mappings[0]['kernelRequestId'], 'OpenClaw first native outcome binding differs')
+    require(outcomes[1] == {'state': 'unknown', 'evidence': 'unverified',
+                           'requestId': mappings[1]['guestRequestId'],
+                           'reason': 'Gateway transport, evidence or host delivery failed; preserve original operation'},
+            'OpenClaw native unknown differs from original guest operation')
+    require(all(result.get('isError') is False for result in results), 'OpenClaw native history error flag differs')
+    return outcomes[1], {'caller': caller, 'gatewayHttpSession': observed, 'gatewayNamespace': context['gatewayNamespace'], 'calls': mappings}
+
+
+def native_expiry_outcome(host, dispatch, results, requests, journal_outcome, openclaw_context=None):
     """Bind native results to both calls and distinguish Pi's plain host error."""
     require(host in ['pi', 'openclaw', 'claude', 'hermes', 'codex'], 'unsupported host')
     calls = dispatch['calls']
@@ -56,6 +108,12 @@ def native_expiry_outcome(host, dispatch, results, requests, journal_outcome):
     result = results[1]
     record = {'toolCallId': ids[1], 'requestId': request_id,
               'journalOutcome': journal_outcome, 'nativeToolError': result.get('isError')}
+    if host == 'openclaw':
+        outcome, mapping = openclaw_mapping(calls, results, requests, openclaw_context)
+        return {**record, 'nativeEvidenceKind': 'native-guest-outcome-envelope',
+                'nativeOutcome': outcome, 'nativeCarriesRequestId': True,
+                'nativeCarriesKernelRequestId': False, 'nativeRequestIdNamespace': 'openclaw-guest-operation',
+                'identityMapping': mapping, 'binding': 'native caller and tool call ID to guest digest to observed gateway HTTP session and kernel namespace'}
     if host == 'pi':
         require(result.get('isError') is True, 'Pi did not report a native tool error')
         require(result['value'] == {'content': [{'type': 'text', 'text': PI_UNKNOWN_MESSAGE}], 'details': {}},

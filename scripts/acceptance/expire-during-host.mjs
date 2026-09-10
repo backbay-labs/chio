@@ -2,9 +2,10 @@
 // owner-issued capability and bounded delegated credential expire together.
 // The original fetch, body, headers and AbortSignal are preserved.
 import {readFileSync,openSync,writeSync,fsyncSync} from 'node:fs';
-import {isAbsolute} from 'node:path';
+import {isAbsolute,dirname,join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
+import {subscribe} from 'node:diagnostics_channel';
 
 const configPath=process.env.CHIO_TEST_GATEWAY_CONFIG;
 const bindingPath=process.env.CHIO_INFLIGHT_EXPIRY_BINDING;
@@ -20,6 +21,18 @@ if(binding.gatewayConfig!==configPath||binding.configurationSha256!==hash(config
 if(!(cap.expires_at>cap.issued_at&&cap.expires_at-cap.issued_at<=45))throw Error('Real short-lived capability required');
 const fd=openSync(logPath,'wx',0o600);
 function record(value){writeSync(fd,JSON.stringify(value)+'\n');fsyncSync(fd);}
+if(binding.host==='openclaw'){
+ // Observe the actual launcher's initialized HTTP session without reading or
+ // consuming request/response bodies, changing headers, or logging bearer data.
+ // https://nodejs.org/api/diagnostics_channel.html#event-httpserverresponsefinish
+ const sessionFd=openSync(join(dirname(logPath),'openclaw-gateway-session.jsonl'),'wx',0o600);
+ subscribe('http.server.response.finish',({request,response})=>{
+  const sessionId=response.getHeader('mcp-session-id');
+  const localPort=request.socket.localPort;
+  if(request.method!=='POST'||request.url!=='/mcp'||response.statusCode!==200||request.headers['mcp-session-id']||request.headers.host!==`127.0.0.1:${localPort}`||typeof sessionId!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(sessionId))return;
+  writeSync(sessionFd,JSON.stringify({event:'gateway-http-initialized',sessionId,localPort,method:request.method,path:request.url,status:response.statusCode,observedAtMs:Date.now()})+'\n');fsyncSync(sessionFd);
+ });
+}
 const original=globalThis.fetch;
 let calls=0,firstSucceeded=false;
 globalThis.fetch=async function(input,init){

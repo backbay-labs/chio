@@ -309,7 +309,7 @@ try:
   name=a.host+'-live-expiry-'+private.name[-12:]+'.txt'
   first={'path':'/workspace/'+name,'content':'authorized before actual capability-bound expiry'}
   second={**first,'content':'must not replace the original after expiry'}
-  binding={'gatewayConfig':str(config.resolve()),'configurationSha256':config_hash,'capability':cap,'sessionCredential':conf['sessionCredential'],'credentialRequestedTtlSeconds':prepare['credentialTtlSeconds'],'preparedAtEpoch':prepared_at,'kernelSha256':op['kernelSha256'],'policySha256':op['policySha256'],'capabilitySource':'independently read real owner SQLite record','nativeRequests':[{'tool':'write_file','arguments':first},{'tool':'write_file','arguments':second}]}
+  binding={'host':a.host,'gatewayConfig':str(config.resolve()),'configurationSha256':config_hash,'capability':cap,'sessionCredential':conf['sessionCredential'],'credentialRequestedTtlSeconds':prepare['credentialTtlSeconds'],'preparedAtEpoch':prepared_at,'kernelSha256':op['kernelSha256'],'policySha256':op['policySha256'],'capabilitySource':'independently read real owner SQLite record','nativeRequests':[{'tool':'write_file','arguments':first},{'tool':'write_file','arguments':second}]}
   save(a.output/'live-expiry-binding.json',binding)
   code,before,after=run('in-flight-expiry','write_file',second,first)
   assert code!=0 and len(after['dispatch'])==len(before['dispatch'])+1 and after['files'][name]==first['content']
@@ -332,7 +332,13 @@ try:
   assert expired['request']['arguments']==second
   native_dispatch=json.loads((a.output/'in-flight-expiry/native-dispatch.json').read_text())
   native_results=json.loads((a.output/'in-flight-expiry/native-results.json').read_text())
-  save(a.output/'native-expiry-outcome.json',native_expiry_outcome(a.host,native_dispatch,native_results,[first_request,held],expired['outcome']))
+  oc_context=None
+  if a.host=='openclaw':
+   launch=json.loads((a.output/'in-flight-expiry/launch.json').read_text())
+   native_meta=json.loads((a.output/'in-flight-expiry/host.stdout.txt').read_text())['meta']
+   oc_context={'launch':launch,'agentMeta':native_meta['agentMeta'],'systemPromptReport':{key:native_meta['systemPromptReport'][key] for key in ['sessionId','sessionKey']},'gatewayNamespace':conf['sessionId'],'configurationSha256':config_hash,'gatewaySessions':[json.loads(line) for line in (a.output/'openclaw-gateway-session.jsonl').read_text().splitlines()]}
+   save(a.output/'openclaw-identity-binding.json',oc_context)
+  save(a.output/'native-expiry-outcome.json',native_expiry_outcome(a.host,native_dispatch,native_results,[first_request,held],expired['outcome'],oc_context))
   save(a.output/'journal-states.json',[{key:r.get(key) for key in ['requestId','request','state','acknowledged','hostDeliveryConfirmed','outcome']} for r in retained])
   save(a.output/'in-flight-expiry-result.json',{'passed':True,'realNativeCalls':2,'positiveResourceDispatches':1,'expiredRequestDispatches':0,'sameActualRequestReachedKernel':True,'kernelHttpStatus':response['status'],'clientSignalAborted':False,'expiredResultAcknowledged':False,'originalAuthorityUnchanged':True,'capabilityExpiresAt':cap['expires_at'],'heldAtMs':held['heldAtMs'],'releasedAtMs':released['releasedAtMs'],'kernelResponseAtMs':response['receivedAtMs'],'claim':'Actual live native request refused by kernel HTTP authority authentication after its owner-issued capability and clamped credential expired; not a signed CapabilityExpired admission receipt'})
  elif a.suite.startswith(('in-flight-','kernel-','evidence-')):

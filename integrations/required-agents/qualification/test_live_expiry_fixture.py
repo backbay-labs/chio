@@ -35,12 +35,15 @@ class LiveExpiryFixtureTests(unittest.TestCase):
                        "nativeRequests": [{"tool": "write_file", "arguments": first}, {"tool": "write_file", "arguments": second}]}
             if mode == "wrong-caller":
                 binding["capability"]["subject"] = "different-caller"
+            if mode.startswith("gateway-"):
+                binding["host"] = "openclaw"
             binding_path = root / "binding.json"
             binding_path.write_text(json.dumps(binding))
             log = root / "events.jsonl"
             script = root / "control.mjs"
             script.write_text("""import {pathToFileURL} from 'node:url';
 import {readFileSync} from 'node:fs';
+import {createServer,request as httpRequest} from 'node:http';
 const [helper,mode,bindingPath]=process.argv.slice(2);
 const binding=JSON.parse(readFileSync(bindingPath,'utf8'));
 // Only these synthetic controls use a controlled clock. Native qualification
@@ -53,9 +56,15 @@ globalThis.fetch=async function(input,init){
  if(init.signal.aborted)throw Error('mock transport observed aborted signal');
  return forwarded===1||mode==='server-allows'?new Response('{"actual":"allowed"}',{status:200}):new Response('invalid, expired, or revoked session credential',{status:401,headers:{'www-authenticate':'Bearer'}});
 };
-let error;
+let error,observedGatewayBody;
 try{
  await import(pathToFileURL(helper).href);
+ if(mode.startsWith('gateway-')){
+  const server=createServer(async(req,res)=>{const chunks=[];for await(const chunk of req)chunks.push(chunk);observedGatewayBody=Buffer.concat(chunks).toString();res.setHeader('mcp-session-id',mode==='gateway-invalid-session'?'invalid':'A'.repeat(43));res.end('{}');});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  await new Promise((resolve,reject)=>{const req=httpRequest({hostname:'127.0.0.1',port:server.address().port,path:mode==='gateway-wrong-path'?'/other':'/mcp',method:'POST',headers:{authorization:'Bearer synthetic-session-observer-secret'}},res=>{res.resume();res.on('end',resolve);});req.on('error',reject);req.end('unchanged initialize request body');});
+  await new Promise(resolve=>server.close(resolve));
+ }
  for(let index=0;index<2;index++){
   const controller=new AbortController();
   if(index===1&&mode==='aborted')setTimeout(()=>controller.abort(),10);
@@ -68,7 +77,7 @@ try{
   responseStatuses.push(response.status);
  }
 }catch(value){error=value.message;}
-console.log(JSON.stringify({forwarded,responseStatuses,error}));
+console.log(JSON.stringify({forwarded,responseStatuses,error,observedGatewayBody}));
 """)
             env = {key: value for key, value in os.environ.items() if key != "NODE_OPTIONS"}
             env.update(CHIO_TEST_GATEWAY_CONFIG=str(config_path), CHIO_INFLIGHT_EXPIRY_BINDING=str(binding_path), CHIO_INFLIGHT_EXPIRY_LOG=str(log))
@@ -76,6 +85,8 @@ console.log(JSON.stringify({forwarded,responseStatuses,error}));
             self.assertEqual(result.returncode, 0, result.stderr)
             value = json.loads(result.stdout)
             events = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+            if mode.startswith("gateway-"):
+                value['gatewaySessions'] = [json.loads(line) for line in (root / 'openclaw-gateway-session.jsonl').read_text().splitlines()]
             return value, events
 
     def test_actual_response_is_preserved_after_expiry_hold(self):
@@ -119,6 +130,22 @@ console.log(JSON.stringify({forwarded,responseStatuses,error}));
         value, _ = self.exercise("mutated-header")
         self.assertEqual(value["forwarded"], 1)
         self.assertIn("changed during hold", value["error"])
+
+    def test_observes_actual_http_session_without_consuming_body_or_exporting_bearer(self):
+        value, _ = self.exercise('gateway-session')
+        self.assertEqual(value['observedGatewayBody'], 'unchanged initialize request body')
+        self.assertEqual(len(value['gatewaySessions']), 1)
+        observed = value['gatewaySessions'][0]
+        self.assertEqual(observed['sessionId'], 'A' * 43)
+        self.assertEqual(observed['event'], 'gateway-http-initialized')
+        self.assertNotIn('authorization', json.dumps(observed))
+        self.assertNotIn('synthetic-session-observer-secret', json.dumps(observed))
+
+    def test_unrelated_http_path_or_invalid_session_does_not_become_identity_evidence(self):
+        for mode in ['gateway-wrong-path', 'gateway-invalid-session']:
+            with self.subTest(mode=mode):
+                value, _ = self.exercise(mode)
+                self.assertEqual(value['gatewaySessions'], [])
 
 
 if __name__ == "__main__":
