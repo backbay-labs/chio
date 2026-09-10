@@ -4,12 +4,14 @@ set -euo pipefail
 EXAMPLE_ROOT="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "${EXAMPLE_ROOT}/../.." && pwd)"
 
-CHIO_BIN="${CHIO_BIN:-${ROOT}/target/debug/chio}"
-if [[ ! -x "${CHIO_BIN}" ]]; then
-  (cd "${ROOT}" && cargo build --bin chio >/dev/null)
+CHIO_BIN="${CHIO_BIN:-$(command -v chio || true)}"
+if [[ -z "${CHIO_BIN}" || ! -x "${CHIO_BIN}" ]]; then
+  echo "Install the Chio CLI revision in README.md, or set CHIO_BIN to your built executable." >&2
+  exit 1
 fi
 
-ARTIFACT_ROOT="${EXAMPLE_ROOT}/.artifacts/$(date -u +"%Y%m%dT%H%M%SZ")"
+mkdir -p "${EXAMPLE_ROOT}/.artifacts"
+ARTIFACT_ROOT="$(mktemp -d "${EXAMPLE_ROOT}/.artifacts/run.XXXXXXXX")"
 INPUT_DIR="${ARTIFACT_ROOT}/input-package"
 TAMPERED_DIR="${ARTIFACT_ROOT}/tampered-package"
 mkdir -p "${ARTIFACT_ROOT}"

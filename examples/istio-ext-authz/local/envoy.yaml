@@ -1,0 +1,61 @@
+static_resources:
+  listeners:
+    - name: notes
+      address:
+        socket_address: {address: 127.0.0.1, port_value: 10000}
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                '@type': type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: governed_notes
+                route_config:
+                  name: notes
+                  virtual_hosts:
+                    - name: notes
+                      domains: ['*']
+                      routes:
+                        - match: {prefix: /}
+                          route: {cluster: notes}
+                http_filters:
+                  - name: envoy.filters.http.ext_authz
+                    typed_config:
+                      '@type': type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                      transport_api_version: V3
+                      failure_mode_allow: false
+                      clear_route_cache: false
+                      with_request_body:
+                        max_request_bytes: 65536
+                        allow_partial_message: false
+                        pack_as_bytes: true
+                      grpc_service:
+                        envoy_grpc: {cluster_name: chio_authorization}
+                        timeout: 3s
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      '@type': type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+    - name: notes
+      type: STATIC
+      connect_timeout: 1s
+      load_assignment:
+        cluster_name: notes
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: {address: 127.0.0.1, port_value: 8087}
+    - name: chio_authorization
+      type: STATIC
+      connect_timeout: 1s
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          '@type': type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config: {http2_protocol_options: {}}
+      load_assignment:
+        cluster_name: chio_authorization
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: {address: 127.0.0.1, port_value: 9091}

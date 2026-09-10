@@ -3466,10 +3466,17 @@ name = "chio-envoy-ext-authz"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "axum 0.8.8",
+ "chio-core-types",
+ "chio-http-core",
+ "clap 4.6.0",
  "hex",
  "prost 0.13.5",
  "prost-types 0.13.5",
  "protoc-bin-vendored",
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
  "sha2 0.10.9",
  "thiserror 1.0.69",
  "tokio",
@@ -3477,6 +3484,9 @@ dependencies = [
  "tonic 0.12.3",
  "tonic-build",
  "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
 ]
 
 [[package]]

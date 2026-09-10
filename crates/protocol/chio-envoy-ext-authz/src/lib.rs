@@ -52,6 +52,8 @@
 #![deny(missing_docs)]
 
 pub mod error;
+#[cfg(feature = "runtime")]
+pub mod runtime;
 pub mod service;
 pub mod translate;
 

@@ -1,0 +1,62 @@
+name: Builder examples
+on:
+  pull_request:
+    paths:
+      - 'crates/protocol/chio-envoy-ext-authz/**'
+      - 'examples/istio-ext-authz/**'
+      - 'examples/hello-receipt-verify/**'
+      - '.github/workflows/builder-examples.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: builder-examples-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  envoy:
+    name: Envoy executable and real request path
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: ./.github/actions/apt-install
+        with:
+          packages: clang cmake pkg-config libssl-dev protobuf-compiler
+      - run: rustup toolchain install 1.94.1 --profile minimal --component clippy
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          key: builder-envoy
+      - name: Protocol and authority regressions
+        run: |
+          cargo test --locked -p chio-envoy-ext-authz --features runtime
+          cargo clippy --locked -p chio-envoy-ext-authz --features runtime --all-targets -- -D warnings
+      - name: Build the runtime and CLI
+        run: |
+          cargo build --locked -p chio-cli --bin chio
+          cargo build --locked -p chio-envoy-ext-authz --features runtime --bin chio-envoy-ext-authz
+      - name: Run actual Envoy allow, refusal, revocation and outage
+        run: |
+          python3 examples/istio-ext-authz/local/install-envoy.py
+          export CHIO_BIN="$PWD/target/debug/chio"
+          export CHIO_EXT_AUTHZ_BIN="$PWD/target/debug/chio-envoy-ext-authz"
+          export ENVOY_BIN="$PWD/examples/istio-ext-authz/local/.bin/envoy"
+          python3 examples/istio-ext-authz/local/run.py --check
+          CHIO_BIN="$PWD/target/debug/chio" examples/hello-receipt-verify/smoke.sh
+      - name: Build the supplied container
+        run: |
+          docker build -f examples/istio-ext-authz/Dockerfile -t chio-ext-authz:qualification .
+          docker run --rm chio-ext-authz:qualification --help
+          docker image inspect chio-ext-authz:qualification --format '{{.Id}}' > envoy-image-id.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: builder-envoy-evidence
+          path: |
+            examples/istio-ext-authz/local/.state/verification.json
+            examples/istio-ext-authz/local/.state/*.log
+            examples/hello-receipt-verify/.artifacts/*/summary.json
+            envoy-image-id.txt

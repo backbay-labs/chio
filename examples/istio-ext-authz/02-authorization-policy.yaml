@@ -1,37 +1,11 @@
-# Route mesh traffic through Chio via Istio's AuthorizationPolicy CUSTOM action.
-#
-# The CUSTOM action delegates the allow/deny decision to the named provider
-# registered in MeshConfig (see 01-meshconfig-patch.yaml). This file contains
-# three policies:
-#
-#   1. chio-tool-authorization     -- opts workloads labelled
-#                                    `chio.world/secured=true` in the
-#                                    `agent-tools` namespace into Chio
-#                                    evaluation, with a header-driven filter
-#                                    so only capability-bearing requests pay
-#                                    the ext_authz latency.
-#   2. chio-deny-unauthenticated   -- fail-closed backstop: anonymous requests
-#                                    that slip past the CUSTOM match above
-#                                    are denied outright. Ensures there is
-#                                    no bypass path when the capability
-#                                    header is missing.
-#   3. chio-allow-health-probes    -- excludes kubelet probe traffic so the
-#                                    demo workload's `/healthz` path stays
-#                                    reachable without a capability token.
-#
-# All policies use `security.istio.io/v1` (GA in Istio 1.22+). The CUSTOM
-# action uses the provider:name field -- the deprecated
-# `.external.httpAuthorizationService` style is explicitly NOT used.
----
+# Evaluate every protected request, including requests with missing credentials.
+# /healthz is the workload's explicit liveness route.
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: chio-tool-authorization
   namespace: agent-tools
-  labels:
-    app.kubernetes.io/part-of: chio-protocol
 spec:
-  # Apply only to workloads that opted in by labelling themselves.
   selector:
     matchLabels:
       chio.world/secured: "true"
@@ -39,76 +13,6 @@ spec:
   provider:
     name: chio-ext-authz
   rules:
-    # Allow-rule #1: route POSTs to /tools/* through Chio when either an
-    # Chio capability token header or a Bearer Authorization header is
-    # present. This is the hot path for agent tool invocation.
     - to:
         - operation:
-            methods: ["POST"]
-            paths: ["/tools/*", "/invoke/*"]
-      when:
-        - key: request.headers[x-chio-capability-token]
-          notValues: [""]
-    # Allow-rule #2: route POSTs through Chio when the request authenticates
-    # with a Bearer token instead of a capability header.
-    - to:
-        - operation:
-            methods: ["POST"]
-            paths: ["/tools/*", "/invoke/*"]
-      when:
-        - key: request.headers[authorization]
-          values: ["Bearer *"]
-    # Allow-rule #3: route GETs on /tools/* (listings, schema fetches)
-    # through Chio only when an Authorization header is present. This
-    # illustrates header-based routing -- unauthenticated GETs fall
-    # through to the deny policy below.
-    - to:
-        - operation:
-            methods: ["GET"]
-            paths: ["/tools/*"]
-      when:
-        - key: request.headers[authorization]
-          values: ["Bearer *"]
----
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
-metadata:
-  name: chio-deny-unauthenticated
-  namespace: agent-tools
-  labels:
-    app.kubernetes.io/part-of: chio-protocol
-spec:
-  selector:
-    matchLabels:
-      chio.world/secured: "true"
-  action: DENY
-  rules:
-    # Anything hitting /tools/* without either header is denied before it
-    # ever reaches Chio. Saves the ext_authz RTT and keeps receipts focused
-    # on real authenticated traffic.
-    - to:
-        - operation:
-            paths: ["/tools/*", "/invoke/*"]
-      when:
-        - key: request.headers[x-chio-capability-token]
-          values: [""]
-        - key: request.headers[authorization]
-          notValues: ["Bearer *"]
----
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
-metadata:
-  name: chio-allow-health-probes
-  namespace: agent-tools
-  labels:
-    app.kubernetes.io/part-of: chio-protocol
-spec:
-  selector:
-    matchLabels:
-      chio.world/secured: "true"
-  action: ALLOW
-  rules:
-    - to:
-        - operation:
-            methods: ["GET"]
-            paths: ["/healthz", "/readyz", "/metrics"]
+            notPaths: ["/healthz"]

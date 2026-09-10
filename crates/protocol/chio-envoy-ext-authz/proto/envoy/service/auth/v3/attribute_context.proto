@@ -24,7 +24,7 @@ message AttributeContext {
   message Peer {
     // The network address of the peer. Opaque to the Chio adapter so we leave
     // it unset in tests and forward-compatible in production.
-    google.protobuf.Struct address = 1;
+    envoy.config.core.v3.Address address = 1;
 
     // The canonical service name of the peer.
     string service = 2;
@@ -95,7 +95,7 @@ message AttributeContext {
   Peer destination = 2;
 
   // Represents a network request, such as an HTTP request.
-  Request request = 3;
+  Request request = 4;
 
   // Represents request context from the proxy. Opaque in the Chio adapter.
   map<string, string> context_extensions = 10;
@@ -103,6 +103,6 @@ message AttributeContext {
   // Dynamic metadata associated with the request. Opaque in the Chio adapter.
   envoy.config.core.v3.Metadata metadata_context = 11;
 
-  // The TLS session attributes for the upstream peer.
+  // Metadata associated with the selected route.
   envoy.config.core.v3.Metadata route_metadata_context = 13;
 }

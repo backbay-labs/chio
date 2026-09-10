@@ -1,0 +1,42 @@
+openapi: 3.1.0
+info:
+  title: My notes
+  version: 1.0.0
+paths:
+  /notes:
+    get:
+      operationId: listNotes
+      summary: List the first 100 saved notes
+      responses:
+        "200": { description: Notes returned }
+    post:
+      operationId: createNote
+      summary: Save a note
+      x-chio-side-effects: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string, minLength: 1, maxLength: 1000 }
+              required: [text]
+      responses:
+        "201": { description: Note saved }
+  /notes/{noteId}:
+    parameters:
+      - name: noteId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    get:
+      operationId: readNote
+      summary: Read one saved note
+      responses:
+        "200": { description: Note returned }
+    delete:
+      operationId: deleteNote
+      summary: Delete one saved note
+      responses:
+        "200": { description: Note deleted }

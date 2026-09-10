@@ -6,6 +6,9 @@ use thiserror::Error;
 /// [`crate::translate::ToolCallRequest`].
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum TranslateError {
+    /// Envoy did not provide the entire body needed to bind authorization.
+    #[error("complete request body is required; disable partial messages in Envoy ext_authz")]
+    IncompleteBody,
     /// The `CheckRequest` did not carry an `AttributeContext`.
     #[error("check request is missing the attributes field")]
     MissingAttributes,

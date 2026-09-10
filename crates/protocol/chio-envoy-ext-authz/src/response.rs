@@ -197,6 +197,21 @@ fn json_string(value: &str) -> String {
     out
 }
 
+/// Add the verified admission receipt to the downstream response.
+pub(crate) fn attach_receipt(response: &mut CheckResponse, id: &str) {
+    let mut header = header_option("x-chio-receipt-id", id);
+    header.append_action = 2; // OVERWRITE_IF_EXISTS_OR_ADD
+    match &mut response.http_response {
+        Some(HttpResponse::OkResponse(ok)) => {
+            ok.response_headers_to_add.push(header);
+            ok.headers_to_remove
+                .extend(["x-chio-capability".into(), "x-chio-capability-token".into()]);
+        }
+        Some(HttpResponse::DeniedResponse(denied)) => denied.headers.push(header),
+        None => {}
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {

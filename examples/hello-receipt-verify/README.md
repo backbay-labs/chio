@@ -8,6 +8,8 @@ This example does not start trust, issue capabilities, or run an app surface. It
 - inspect one receipt and its capability lineage
 - prove that tampering breaks verification
 
+The package was exported from a real local `chio check` policy evaluation. It contains one signed decision and its full signed capability lineage. It records no executed file read, checkpoint, witness, or transparency publication. `trusted-signers.json` records the key selected on the generating operator host; for your own records, supply your own independently trusted keys.
+
 ## What It Demonstrates
 
 - receipt verification from a static captured package
@@ -42,3 +44,5 @@ python3 -m unittest discover -s . -p 'test_*.py'
 ## Note
 
 This example stops at offline verification. `chio evidence import` is intentionally stricter and requires a signed bilateral federation policy, so it belongs in a federation-focused example rather than this minimal offline verifier.
+
+The `verify.py`, `verify.mjs`, and `verify.go` programs verify receipts using the matching public Chio SDK source. The documentation download includes those exact SDKs and package-manager setup. They require the trusted-signer APIs from this source revision; the older registry releases do not provide those APIs.
