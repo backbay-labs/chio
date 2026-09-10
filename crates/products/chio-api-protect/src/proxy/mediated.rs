@@ -27,8 +27,7 @@ pub(crate) use budget_configuration::build_budget_store;
 /// Opening or reading a configured store that fails is fatal (fail-closed): the
 /// caller must not start the sidecar advertising revocation enforcement it
 /// cannot provide. The whole table is paged into memory once at startup;
-/// revocations recorded after startup require a sidecar restart or the
-/// in-process `/v1/capabilities/release` (or `--control-url`) channel.
+/// the live revocation store also observes subsequent changes on every request.
 pub(crate) fn load_revocation_db_ids(
     config: &ProtectConfig,
 ) -> Result<std::collections::HashSet<String>, ProtectError> {
