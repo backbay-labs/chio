@@ -12,6 +12,15 @@ The registry archive SHA256 is `a878c850e9e421b20262e9b41f9c860e4785fa07541c266b
 - Cargo-vet locked: passed (571 fully audited, six partially audited, 736 exempted); no new exemption or relaxed criterion.
 - Cargo-deny: advisories, bans, licenses and sources passed.
 
+The hosted source check at `8408ae9996d5f011849406b07490e5ec67928e8d`
+passed those four cargo-deny checks and the external wildcard check, then failed
+the separate duplicate-version inventory: it still named DER 0.8.0. The inventory
+now names the reviewed 0.8.2 selection; no duplicate was added or removed and no
+policy was relaxed. `hosted-duplicate-inventory-failure.log.gz` preserves the
+complete failed job. The earlier local success did not establish that this
+separate inventory was current. The corrected inventory check passes locally;
+its new hosted result remains required.
+
 ## Audit judgment and known limitation
 
 The existing built-in criterion permits documented discretion; it is not a universal API correctness certificate. The previously reported SetOfRef typed-decoding/comparison defect remains present in the published package. There is no use of that new API in Chio or the inspected Iroh, Ed25519, PKCS8 and SPKI parent paths. The actual deployed parser path rejects the malformed inputs tested above. Based on the complete delta and baseline context, the reviewer judges that this update does not introduce a serious security vulnerability in the selected Chio deployment. Confidence is moderate in that contextual security judgment and high in the executed results and provenance.
