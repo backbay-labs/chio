@@ -1,0 +1,92 @@
+{
+  "schema": "chio.proof-coverage-input-refresh.v1",
+  "source": "73423c697e6173c4ba78e15e860575d49dbabc78",
+  "observedAtUtc": "2026-09-10T06:09:20.189490+00:00",
+  "hostedFailure": {
+    "source": "0599e9fa3ee337719986f6fd88466f75ba0290dd",
+    "runId": 34441401643,
+    "jobId": 102757068695,
+    "gate": "proof coverage drift guard"
+  },
+  "coverageDocument": "docs/formal/COVERAGE.md",
+  "beforeSha256": "2fc04cf524ae653247043e218cc512bd15cc4297735fb6a1543163edd7e41da9",
+  "afterSha256": "f450ba42a61af664ff045ed76736323ce87e8897db970aefbf521656638d841a",
+  "proofTableBeforeGenerationSectionUnchanged": true,
+  "rows": 58,
+  "declaredArtifacts": 166,
+  "beforeInputDigest": "b7347228c923b5e124ff60386085b2be4bd70461342d2b41c2e5e4ef32816f47",
+  "afterInputDigest": "07365910c2b323b748835e0b6ce487322aaa96677aecf41b84329e4b020db2b8",
+  "finalCommand": {
+    "argv": [
+      "cargo",
+      "xtask",
+      "gen",
+      "proof-coverage",
+      "--check"
+    ],
+    "exitCode": 0,
+    "environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_TARGET_DIR": "/tmp/chio-source-ci-xtask-20260910"
+    }
+  },
+  "scope": "Generated input metadata refresh only. No new proof result, host acceptance, gate relaxation or source-code change is claimed.",
+  "artifacts": [
+    {
+      "storedPath": "hosted-failure.log.gz",
+      "originalBytes": 434032,
+      "originalSha256": "6f547ed09aaee9feb996eb5348fe0ccc7a8352c8fcf74c3e88de03eb32851a66",
+      "storedBytes": 84524,
+      "storedSha256": "072f5773ee39721113c85ab51413cb79b01a5b56c033bf8900f15bd85c358f90",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "hosted-job.json.gz",
+      "originalBytes": 8948,
+      "originalSha256": "06bd326a739d9d018673c967afe42fe043d458367d32c4473800299d2a3bf1f1",
+      "storedBytes": 1589,
+      "storedSha256": "99e46cb19706359f7ae39d36cb1691438a8f6642c1e6c7da2dd191b765a4f239",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "before.log.gz",
+      "originalBytes": 316,
+      "originalSha256": "678bbbe66427bf8deac782242083d89c2b357735f1c2a16c224c42bd66844f79",
+      "storedBytes": 249,
+      "storedSha256": "83348c2eda4ef76be43ec6df704e2cbe2850cf804dbbeb2a91b9843214f03a82",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "generation.log.gz",
+      "originalBytes": 103,
+      "originalSha256": "97d8fa72c446dba72f91c9122a4cb856835a42926a4baaca5c1a09269b868445",
+      "storedBytes": 110,
+      "storedSha256": "c3dc4acba97d3b3b84153f0c92f1186ff7405cee821a4c5bc09ad92ffe9b7487",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "after.stdout.gz",
+      "originalBytes": 48,
+      "originalSha256": "a1c6289feaf36ca1b2f99298cd3e33ceb00efc4ff06752bbecdfaf0de8216cf5",
+      "storedBytes": 68,
+      "storedSha256": "03d95de0bc58ab60e5b5c150825f81645cc42f3ffecb90dee040ac08abc8a365",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "after.stderr.gz",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedBytes": 20,
+      "storedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "generated-coverage.json.gz",
+      "originalBytes": 270554,
+      "originalSha256": "2a715a16528d4045f24ea72dc6df006d1e18888ae6c9a0b9ed483d6de687d848",
+      "storedBytes": 32726,
+      "storedSha256": "104b9db871a4cc34809e87de4e319fe9cee5f2e56116287c743700608c000bc8",
+      "gzipMtime": 0
+    }
+  ]
+}
