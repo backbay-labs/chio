@@ -47,6 +47,7 @@ jobs:
       subjects: ${{ steps.compute.outputs.subjects }}
       release_tag: ${{ steps.compute.outputs.release_tag }}
       source_sha: ${{ steps.compute.outputs.source_sha }}
+      draft_release: ${{ steps.compute.outputs.draft_release }}
     steps:
       - name: Download artifacts from release-binaries.yml
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -60,6 +61,7 @@ jobs:
         shell: bash
         env:
           WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           cd artifacts
@@ -109,6 +111,17 @@ jobs:
           fi
           echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
           echo "source_sha=${source_sha}" >> "${GITHUB_OUTPUT}"
+          tag_core="${release_tag%%+*}"
+          if [[ "${tag_core}" == *-* ]]; then
+            draft_state="$(gh release view "${release_tag}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+            if [[ "${draft_state}" != "true" ]]; then
+              echo "::error::candidate provenance requires an existing draft; do not reopen published releases" >&2
+              exit 1
+            fi
+            echo "draft_release=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "draft_release=false" >> "${GITHUB_OUTPUT}"
+          fi
 
   provenance:
     name: SLSA L2 provenance
@@ -124,6 +137,8 @@ jobs:
       base64-subjects: ${{ needs.collect-digests.outputs.subjects }}
       provenance-name: chio-${{ needs.collect-digests.outputs.source_sha }}.intoto.jsonl
       upload-assets: true
+      # Explicitly preserve RC draft status when provenance is attached.
+      draft-release: ${{ needs.collect-digests.outputs.draft_release }}
       # Populated from release-metadata.json after source_sha is checked
       # against workflow_run.head_sha. Dispatch rebuilds are tag-ref
       # gated and upload provenance to that exact release tag.
