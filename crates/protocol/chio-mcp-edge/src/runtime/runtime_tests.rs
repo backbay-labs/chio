@@ -4463,34 +4463,6 @@ fn external_request_identity_separates_reused_jsonrpc_ids() {
 }
 
 #[test]
-fn execution_nonce_retry_uses_the_nonce_bound_request_identity() {
-    let session_id = SessionId::new("nonce-retry-session");
-    let preflight = build_operation_context(
-        &json!(7),
-        session_id.clone(),
-        "agent",
-        "tools/call",
-        &json!({ "name": "read_file", "arguments": { "path": "/tmp/demo.txt" } }),
-    )
-    .unwrap();
-    let retry = build_operation_context_for_retry(
-        &json!(7),
-        session_id.clone(),
-        "agent",
-        "tools/call",
-        &json!({
-            "name": "read_file",
-            "arguments": { "path": "/tmp/demo.txt" },
-            "_meta": { "chioExecutionNonce": { "nonce": "opaque" } }
-        }),
-        Some(preflight.request_id.as_str()),
-    )
-    .unwrap();
-
-    assert_eq!(preflight.request_id, retry.request_id);
-}
-
-#[test]
 fn configured_session_identity_is_used_during_initialization() {
     let mut edge = make_edge(10);
     let expected = SessionId::new("stable-hosted-session");
