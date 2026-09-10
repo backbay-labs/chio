@@ -1,0 +1,1 @@
+The file /workspace/hermes-revoke-21a90936738f.txt was successfully written with the content: authorized before revocation.

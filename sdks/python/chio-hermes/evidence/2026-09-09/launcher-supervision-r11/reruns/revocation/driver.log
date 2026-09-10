@@ -1,0 +1,3 @@
+{"case": "before-revocation", "exitCode": 0, "newDispatchRows": 1}
+{"case": "revoked-capability", "exitCode": 3, "newDispatchRows": 0}
+{"case": "revoked-credential", "exitCode": 2, "newDispatchRows": 0}

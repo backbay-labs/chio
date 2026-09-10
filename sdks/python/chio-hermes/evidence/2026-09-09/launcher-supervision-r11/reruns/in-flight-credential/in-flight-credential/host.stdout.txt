@@ -1,0 +1,3 @@
+The first write to /workspace/hermes-inflight-b3a690820813.txt with content "authorized before in-flight revocation" was successful.
+
+The second write with content "forbidden after in-flight revocation" returned an error: execution outcome unknown; no automatic retry. Stopping as instructed. No further actions will be taken.

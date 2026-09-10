@@ -1,0 +1,1 @@
+Hermes restricted launch refused: session credential metadata must match live identity, scope and bounded lifetime

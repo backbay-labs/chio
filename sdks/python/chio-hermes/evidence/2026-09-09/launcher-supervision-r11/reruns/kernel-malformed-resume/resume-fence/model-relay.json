@@ -1,0 +1,34 @@
+[
+  {
+    "method": "POST",
+    "path": "/api/show",
+    "forwarded": false,
+    "error_type": "ValueError",
+    "reason": "route or authentication refused"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "forwarded": false,
+    "error_type": "ValueError",
+    "reason": "request exceeds selected model mode"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "forwarded": true,
+    "upstream_status": 429
+  },
+  {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "forwarded": true,
+    "upstream_status": 429
+  },
+  {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "forwarded": true,
+    "upstream_status": 429
+  }
+]

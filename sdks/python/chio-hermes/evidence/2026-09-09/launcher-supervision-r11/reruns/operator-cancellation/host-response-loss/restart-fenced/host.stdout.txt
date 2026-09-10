@@ -1,0 +1,1 @@
+Refused: the write operation was blocked due to an unresolved gateway fencing issue that requires operator intervention. The file /workspace/hermes-qualified-5562d402464f.txt was not replaced. Stopping as instructed.

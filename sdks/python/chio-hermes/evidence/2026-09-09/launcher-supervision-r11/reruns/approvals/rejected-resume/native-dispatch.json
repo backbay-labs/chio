@@ -1,0 +1,22 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_UgKd8c0tPzofrZ0ifxTxIBYf",
+      "name": "mcp__chio__chio_resume",
+      "arguments": {
+        "requestId": "ab8123ee-ed94-4012-9c03-a55649d4ca92:9f4559c518d15d7fbf912181d342070b1d597ac0128abf2b7eca27f2dc83c848",
+        "tool": "write_file",
+        "arguments": {
+          "path": "/workspace/hermes-rejected-0bf18172322c.txt",
+          "content": "must never appear"
+        }
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_UgKd8c0tPzofrZ0ifxTxIBYf"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

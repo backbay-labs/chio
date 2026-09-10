@@ -1,0 +1,9 @@
+{
+  "status": 200,
+  "response": {
+    "capabilityId": "cap-01a08895-bee2-7363-b271-f40f31a00874",
+    "newlyRevoked": true,
+    "revoked": true
+  },
+  "protectedDispatch": false
+}

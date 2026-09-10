@@ -1,0 +1,6 @@
+First write succeeded: /workspace/hermes-inflight-be58539fc4f4.txt was set to "authorized before in-flight revocation".
+
+Second write was denied:
+"capability has been revoked: cap-01a08896-10c4-7f03-97d1-ffd966148d4b"
+
+Stopped as instructed due to unsuccessful result on the second write. No further actions taken.

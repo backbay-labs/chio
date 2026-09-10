@@ -1,0 +1,1 @@
+The resume request failed: the proposal was denied by the operator before it could be dispatched. No changes were made and the action did not execute. No further steps will be taken as instructed.

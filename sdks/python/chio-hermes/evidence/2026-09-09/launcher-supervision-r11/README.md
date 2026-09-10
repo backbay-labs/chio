@@ -18,3 +18,21 @@ occurred once; recovery added one read and no write. SIGKILL produces no launche
 terminal report, so the retained unacknowledged journal remains authoritative.
 Other r11 acceptance cases must be rerun independently before replacing r10's
 bounded evidence. Neither build is an accepted integration.
+
+
+The r11 native reruns additionally passed useful write/edit/read/list, forbidden
+read/write, response loss, private gateway crash, operator SIGTERM, revocation,
+in-flight capability/credential revocation, actual kernel death and its fenced
+restart, malformed response, and all seven approval stages. Six separate
+preflight cases passed absent kernel, expired credential, wrong principal,
+session/resource, and scope escalation. These startup refusals are not native
+tool-call denials. Every attempted run is retained in rerun-records.json.
+
+The first budget run stopped after one legitimate write and did not reach the
+budget limit; it failed qualification. A subsequent explicit-call budget test
+and the malformed-response fenced restart were blocked by the provider's HTTP
+429 response: no API credits remained. They produced zero new effects but no
+required native tool attempt, so they remain failed/unresolved. The timeout,
+remaining evidence substitutions, concurrent-owner, complete budget and new
+wheel lifecycle/delivery qualifications are not inferred from r10 results.
+The r11 wheel is retained as a pending candidate until those runs can finish.

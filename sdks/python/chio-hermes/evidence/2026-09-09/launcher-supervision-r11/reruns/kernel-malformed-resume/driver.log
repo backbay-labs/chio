@@ -1,0 +1,9 @@
+{"case": "resume-fence", "exitCode": 2, "newDispatchRows": 0}
+Traceback (most recent call last):
+  File "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/scripts/acceptance/host-approvals.py", line 217, in <module>
+    code,before,after=run('resume-fence','write_file',{'path':'/workspace/'+a.host+'-must-stay-fenced.txt','content':'must never dispatch after unknown outcome'})
+                      ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/scripts/acceptance/host-approvals.py", line 131, in run
+    if not native_attempt and not preflight_refused:raise RuntimeError('actual host did not execute the exact expected tool call; no acceptance claim')
+                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: actual host did not execute the exact expected tool call; no acceptance claim

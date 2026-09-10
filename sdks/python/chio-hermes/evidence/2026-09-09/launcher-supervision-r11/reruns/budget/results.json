@@ -1,0 +1,23 @@
+[
+  {
+    "case": "aggregate-budget",
+    "passed": false,
+    "exitCode": 0,
+    "terminal": {
+      "hostExitCode": 0,
+      "exitCode": 0,
+      "outcome": "completed",
+      "operatorInterrupt": null,
+      "confirmedDeliveries": 1
+    },
+    "newDispatchRows": 1,
+    "acknowledgements": [
+      {
+        "state": "completed",
+        "acknowledged": true,
+        "hostDeliveryConfirmed": true
+      }
+    ],
+    "privateState": "/Users/connor/.local/share/chio-required-operators/budget3-hosts-20260909/hermes-aggregate-budget-229d0f1a2735434eb5a1b60298578a1c"
+  }
+]

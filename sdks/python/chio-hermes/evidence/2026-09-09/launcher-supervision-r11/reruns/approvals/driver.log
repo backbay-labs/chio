@@ -1,0 +1,7 @@
+{"case": "pending", "exitCode": 4, "newDispatchRows": 0}
+{"case": "missing-decision", "exitCode": 4, "newDispatchRows": 0}
+{"case": "substituted-arguments", "exitCode": 4, "newDispatchRows": 0}
+{"case": "approved-resume", "exitCode": 0, "newDispatchRows": 1}
+{"case": "completed-replay", "exitCode": 0, "newDispatchRows": 0}
+{"case": "pending-rejection", "exitCode": 4, "newDispatchRows": 0}
+{"case": "rejected-resume", "exitCode": 3, "newDispatchRows": 0}

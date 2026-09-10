@@ -1,0 +1,18 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_QgEhOpSlcwu211kvFxKxKqR0",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/hermes-revoke-21a90936738f.txt",
+        "content": "authorized before revocation"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_QgEhOpSlcwu211kvFxKxKqR0"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

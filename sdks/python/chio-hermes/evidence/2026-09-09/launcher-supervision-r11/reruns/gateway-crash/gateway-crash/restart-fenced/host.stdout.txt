@@ -1,0 +1,1 @@
+Refused: The write operation was blocked due to an unresolved gateway issue requiring operator intervention. The file /workspace/hermes-qualified-528e0114843e.txt was not replaced.

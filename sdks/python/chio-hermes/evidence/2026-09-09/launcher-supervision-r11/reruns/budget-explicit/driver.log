@@ -1,0 +1,9 @@
+{"case": "budget-write", "exitCode": 1, "newDispatchRows": 0}
+Traceback (most recent call last):
+  File "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/scripts/acceptance/host-approvals.py", line 148, in <module>
+    code,before,after=run(label,tool,args)
+                      ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/scripts/acceptance/host-approvals.py", line 131, in run
+    if not native_attempt and not preflight_refused:raise RuntimeError('actual host did not execute the exact expected tool call; no acceptance claim')
+                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: actual host did not execute the exact expected tool call; no acceptance claim

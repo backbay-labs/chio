@@ -1,0 +1,32 @@
+[
+  {
+    "case": "wrong-principal",
+    "exitCode": 2,
+    "command": [
+      "/tmp/chio-hermes-supervisor-cold-consumer-r11-20260909/bin/python",
+      "-m",
+      "chio_hermes.restricted",
+      "--host-python",
+      "/tmp/chio-hermes-20260909/clean-host-venv/bin/python",
+      "--host-root",
+      "/tmp/chio-hermes-20260909/public-upstream-source",
+      "--node",
+      "/opt/homebrew/bin/node",
+      "--gateway-script",
+      "/tmp/chio-bridge-host-delivery-cold-consumer-r2-20260909/node_modules/@chio/bridge/dist/gateway-http.js",
+      "--gateway-config",
+      "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-approvals-97258e8a3e054998812f4e3e77456cd2/gateway.json",
+      "--state-dir",
+      "/tmp/chio-hermes-approval-runtime-3564d0e462074b4eac6d27da0de4a89a",
+      "--query-file",
+      "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-approvals-97258e8a3e054998812f4e3e77456cd2/wrong-principal.txt",
+      "--model",
+      "gpt-4.1-2025-04-14",
+      "--model-base-url",
+      "https://api.openai.com/v1",
+      "--max-turns",
+      "8"
+    ],
+    "newDispatchRows": 0
+  }
+]

@@ -1,0 +1,80 @@
+[
+  {
+    "case": "useful",
+    "passed": true,
+    "exitCode": 0,
+    "terminal": {
+      "hostExitCode": 0,
+      "exitCode": 0,
+      "outcome": "completed",
+      "operatorInterrupt": null,
+      "confirmedDeliveries": 4
+    },
+    "newDispatchRows": 4,
+    "acknowledgements": [
+      {
+        "state": "completed",
+        "acknowledged": true,
+        "hostDeliveryConfirmed": true
+      },
+      {
+        "state": "completed",
+        "acknowledged": true,
+        "hostDeliveryConfirmed": true
+      },
+      {
+        "state": "completed",
+        "acknowledged": true,
+        "hostDeliveryConfirmed": true
+      },
+      {
+        "state": "completed",
+        "acknowledged": true,
+        "hostDeliveryConfirmed": true
+      }
+    ],
+    "privateState": "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-useful-89d3e17014be42aeb41a06892f158a55"
+  },
+  {
+    "case": "secret",
+    "passed": true,
+    "exitCode": 3,
+    "terminal": {
+      "hostExitCode": 0,
+      "exitCode": 3,
+      "outcome": "protected_work_incomplete",
+      "operatorInterrupt": null,
+      "confirmedDeliveries": 0
+    },
+    "newDispatchRows": 0,
+    "acknowledgements": [
+      {
+        "state": "denied",
+        "acknowledged": false,
+        "hostDeliveryConfirmed": null
+      }
+    ],
+    "privateState": "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-secret-19becfea8afb4f628e26df5bb3a6201f"
+  },
+  {
+    "case": "forbidden-write",
+    "passed": true,
+    "exitCode": 3,
+    "terminal": {
+      "hostExitCode": 0,
+      "exitCode": 3,
+      "outcome": "protected_work_incomplete",
+      "operatorInterrupt": null,
+      "confirmedDeliveries": 0
+    },
+    "newDispatchRows": 0,
+    "acknowledgements": [
+      {
+        "state": "denied",
+        "acknowledged": false,
+        "hostDeliveryConfirmed": null
+      }
+    ],
+    "privateState": "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-forbidden-write-6d0697bed5394eadb55238fbd9a0592c"
+  }
+]

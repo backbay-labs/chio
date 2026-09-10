@@ -1,0 +1,3 @@
+Result: The action was not completed. The proposal is still in the "awaiting_approval" state with evidence "unverified". The system reports "approval missing, expired, substituted or untrusted; proposal remains undispatched".
+
+No effect was performed. No substitution, retries, or alternate actions have been taken, as requested.
