@@ -12,6 +12,7 @@ import subprocess
 import time
 import uuid
 import urllib.request
+from live_expiry_native import native_expiry_outcome
 
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--suite', choices=['approvals','revocation','in-flight-capability','in-flight-credential','in-flight-expiry','kernel-killed','kernel-malformed','kernel-timeout','resume-fence','kernel-absent','expired-credential','expired-capability','wrong-principal','wrong-session','wrong-resource','scope-escalation','evidence-foreign-receipt','evidence-wrong-signer','evidence-request-id','recover-owner-result','concurrent-owners','aggregate-budget','forbidden-read','forbidden-write','forbidden-edit','secret-dry-run','secret-list','secret-path-alias','forbidden-write-alias'], default='approvals')
@@ -331,21 +332,7 @@ try:
   assert expired['request']['arguments']==second
   native_dispatch=json.loads((a.output/'in-flight-expiry/native-dispatch.json').read_text())
   native_results=json.loads((a.output/'in-flight-expiry/native-results.json').read_text())
-  assert len(native_dispatch['calls'])==len(native_results)==2
-  second_tool_id=native_dispatch['calls'][1]['id'];native_result=next(r for r in native_results if r['id']==second_tool_id)
-  def envelopes(value):
-   if isinstance(value,str):
-    try:return envelopes(json.loads(value))
-    except ValueError:return []
-   if isinstance(value,list):return [entry for item in value for entry in envelopes(item)]
-   if isinstance(value,dict):
-    if value.get('requestId')==held['requestId'] and 'state' in value:return [value]
-    return [entry for key,item in value.items() if key in ['content','text','result','details','outcome'] for entry in envelopes(item)]
-   return []
-  delivered=envelopes(native_result['value']);assert len(delivered)==1
-  assert delivered[0]['state']=='unknown' and delivered[0]['evidence']=='unverified'
-  if a.host=='claude':assert native_result['isError'] is True
-  save(a.output/'native-expiry-outcome.json',{'toolCallId':second_tool_id,'requestId':held['requestId'],'outcome':delivered[0],'nativeToolError':native_result.get('isError')})
+  save(a.output/'native-expiry-outcome.json',native_expiry_outcome(a.host,native_dispatch,native_results,[first_request,held],expired['outcome']))
   save(a.output/'journal-states.json',[{key:r.get(key) for key in ['requestId','request','state','acknowledged','hostDeliveryConfirmed','outcome']} for r in retained])
   save(a.output/'in-flight-expiry-result.json',{'passed':True,'realNativeCalls':2,'positiveResourceDispatches':1,'expiredRequestDispatches':0,'sameActualRequestReachedKernel':True,'kernelHttpStatus':response['status'],'clientSignalAborted':False,'expiredResultAcknowledged':False,'originalAuthorityUnchanged':True,'capabilityExpiresAt':cap['expires_at'],'heldAtMs':held['heldAtMs'],'releasedAtMs':released['releasedAtMs'],'kernelResponseAtMs':response['receivedAtMs'],'claim':'Actual live native request refused by kernel HTTP authority authentication after its owner-issued capability and clamped credential expired; not a signed CapabilityExpired admission receipt'})
  elif a.suite.startswith(('in-flight-','kernel-','evidence-')):
