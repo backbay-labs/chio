@@ -196,8 +196,10 @@ class ReadinessTests(unittest.TestCase):
         self.assert_no_preparation()
 
     def test_actual_native_process_identity_rejects_wrong_command(self):
-        executable = Path(sys.executable).resolve()
-        command = [str(executable), '-c', 'import time; time.sleep(10)', '--session-db', str(self.state / 'sessions.sqlite')]
+        # Framework Python launchers can re-exec a different binary. The owner
+        # contract requires one native executable with its exact recorded argv.
+        executable = Path('/bin/sleep').resolve(strict=True)
+        command = [str(executable), '10']
         process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             time.sleep(0.05)

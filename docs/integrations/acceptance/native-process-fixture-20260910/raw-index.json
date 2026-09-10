@@ -1,0 +1,44 @@
+[
+  {
+    "source": "/tmp/chio-live-expiry-controls-20260910/unittest.stderr",
+    "stored": "raw/original-unittest.stderr.gz",
+    "originalBytes": 1254,
+    "originalSha256": "1c9a2127c8a848882eeb99ed072e4cd39a5d6a938e1767ceb3475df832af5688",
+    "compressedSha256": "042a643ee95ccd1564f4bd31d38d52aa62ea1c8825dfedb93867bed92d5fb4f3"
+  },
+  {
+    "source": "/tmp/chio-native-process-fixture-20260910/default.stdout",
+    "stored": "raw/default.stdout.gz",
+    "originalBytes": 0,
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "compressedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+  },
+  {
+    "source": "/tmp/chio-native-process-fixture-20260910/default.stderr",
+    "stored": "raw/default.stderr.gz",
+    "originalBytes": 4531,
+    "originalSha256": "17fea58975e36874a8610b2284e6e88d6858fd1773dd1d1ad3cbc35a1f8e8d85",
+    "compressedSha256": "0a71ec4f816254f757653a11486eea750505fe832fa5ebf5980d557aa2b6cda3"
+  },
+  {
+    "source": "/tmp/chio-native-process-fixture-20260910/homebrew314.stdout",
+    "stored": "raw/homebrew314.stdout.gz",
+    "originalBytes": 0,
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "compressedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+  },
+  {
+    "source": "/tmp/chio-native-process-fixture-20260910/homebrew314.stderr",
+    "stored": "raw/homebrew314.stderr.gz",
+    "originalBytes": 4531,
+    "originalSha256": "4cde5224badfb8008e68b9c27830cf4ec9a85d9e7a3dc17eb5aa0d2b96268870",
+    "compressedSha256": "daf20cb9b764da2ff883546aa8cbfb645d8e1ad9850075e0339b9943df67a589"
+  },
+  {
+    "source": "/tmp/chio-native-process-fixture-20260910/results.json",
+    "stored": "raw/results.json.gz",
+    "originalBytes": 949,
+    "originalSha256": "6f25b155627e134be2f49ce1aa177d30ad657d5ae68e123dcc1334654fab5639",
+    "compressedSha256": "30576c50f5745656644c3a7030e0f5dfc3faa4db53cedfbf497da6404a819fb5"
+  }
+]
