@@ -1,0 +1,60 @@
+{
+  "schema": "chio.hosted-qualifier-interruption.v1",
+  "observedAtUtc": "2026-09-10T05:59:37.034806+00:00",
+  "source": "8408ae9996d5f011849406b07490e5ec67928e8d",
+  "repository": "bb-connor/arc",
+  "runId": 34437467881,
+  "jobId": 102745434060,
+  "attempt": 1,
+  "runConclusion": "failure",
+  "jobConclusion": "failure",
+  "qualificationStepConclusion": "cancelled",
+  "jobStartedAtUtc": "2026-09-10T04:37:13Z",
+  "jobCompletedAtUtc": "2026-09-10T05:55:11Z",
+  "lastObservedHarness": "public_sign_receipt_accepts_matching_kernel_key",
+  "outcome": "Interrupted. No final proof result for the active harness and no completed release qualifier.",
+  "runnerShutdownCause": "unknown",
+  "newerSourceChecks": {
+    "source": "0599e9fa3ee337719986f6fd88466f75ba0290dd",
+    "snapshot": "current-source-checks.json.gz",
+    "success": 71,
+    "inProgress": 15,
+    "skipped": 10,
+    "failure": 0,
+    "claim": "Incomplete independent source CI snapshot; not inherited release qualification."
+  },
+  "artifacts": [
+    {
+      "storedPath": "job.log.gz",
+      "originalBytes": 10544100,
+      "originalSha256": "e6a9e24ea3c383feaf3a5593cb26bdbc145736a3418a1fd589e5d436d94bce17",
+      "storedBytes": 864780,
+      "storedSha256": "e62fae7df75af774cd3fa4b0b8229406a9152d901d4acc8ed730eb09f59be03e",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "job.json.gz",
+      "originalBytes": 8060,
+      "originalSha256": "fa5482cd4e0f50964b3bbadad49ef9fab2c11f345457d2cd9b6dcb57c959d979",
+      "storedBytes": 1393,
+      "storedSha256": "2a20e550c9b602915d7fef95dd4343bd24f47d64ac50849e8a369062fe1f7121",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "run-summary.json.gz",
+      "originalBytes": 7435,
+      "originalSha256": "416d72682384980dad39260f0276be7aaaa17efaca2a3d33987cae03f6d60f9f",
+      "storedBytes": 1179,
+      "storedSha256": "c0063b2be3aff78a5c20ced51173bd4cd441228cb61446dc0deacb9ae9a3cf53",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "current-source-checks.json.gz",
+      "originalBytes": 16917,
+      "originalSha256": "1b7a4fb549b51a5e8f68a4a0109ac310c089f698a937b8e761a658c967e40d16",
+      "storedBytes": 2602,
+      "storedSha256": "e82cc1ec0b3f326ed960dc5e98c1e10acb898c3e35cead52e8adf7703c5a2a58",
+      "gzipMtime": 0
+    }
+  ]
+}
