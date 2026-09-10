@@ -1,0 +1,191 @@
+{
+  "current/freeze.stdout": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/freeze.stdout",
+    "originalSha256": "03aefb187df5352c34a22a9e03ca3de61dccea86e55e6f09ffb2c5696280d89c",
+    "originalBytes": 1361,
+    "gzipPath": "raw/current/freeze.stdout.gz",
+    "gzipSha256": "b8537da16104f5fa5c32e8137dd95b44c0cd4265e65b6243ae2861cec9e97b5b"
+  },
+  "current/launcher-contract.stdout": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/launcher-contract.stdout",
+    "originalSha256": "1846c98a93161c13eed5b805c026f44180950637d3d6dcd6c6f9d2e6fbbfc5d2",
+    "originalBytes": 51,
+    "gzipPath": "raw/current/launcher-contract.stdout.gz",
+    "gzipSha256": "4964777aff748e525c4144860dd29d2ae8bdaa808f300f81f21f7c0fc919cace"
+  },
+  "current/fetch.stderr": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/fetch.stderr",
+    "originalSha256": "94a52fe54fd88778548b0a3696e022588d33dfe0e9ab64230f1ff85016356df3",
+    "originalBytes": 126,
+    "gzipPath": "raw/current/fetch.stderr.gz",
+    "gzipSha256": "8e377eabec17e3aa6dc138c8e106a69c7c6950d145b98f814c686df913c7eb79"
+  },
+  "current/checkout.stderr": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/checkout.stderr",
+    "originalSha256": "a3284b86546cb8b9cf7d1c9432603ae7cf4277e2b446b8d03b1249fe4e2c10f9",
+    "originalBytes": 73,
+    "gzipPath": "raw/current/checkout.stderr.gz",
+    "gzipSha256": "f5d8a0ee2fecccd56a16377cf60bac3f58010a4dd5c69ad6802f8c01790d3f2e"
+  },
+  "current/fetch.stdout": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/fetch.stdout",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "gzipPath": "raw/current/fetch.stdout.gz",
+    "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+  },
+  "current/checkout.stdout": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/checkout.stdout",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "gzipPath": "raw/current/checkout.stdout.gz",
+    "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+  },
+  "current/identity-check-first-failure.json": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/identity-check-first-failure.json",
+    "originalSha256": "acb85db277ba00b34a04923bf4f9900bcefb04d1cf0bc07b31d7ee81fc485677",
+    "originalBytes": 242,
+    "gzipPath": "raw/current/identity-check-first-failure.json.gz",
+    "gzipSha256": "a80bff08875ac1d525d66785d2d86eafc7d854ecd74887956a46c4c6beff8c73"
+  },
+  "current/freeze.stderr": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/freeze.stderr",
+    "originalSha256": "328f2b7ec14fb955b0c3096b6fbf1eade4079e43db41830c3274d49ff1474029",
+    "originalBytes": 106,
+    "gzipPath": "raw/current/freeze.stderr.gz",
+    "gzipSha256": "e9708f95cea9851363d1e1d1e7f1defe425c1ca1159a68d8e0116463fb482d8e"
+  },
+  "current/identity.json": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/identity.json",
+    "originalSha256": "51aa2fcec16fb6a8e4befc765c9aabc180f72e8a5c12ec5dc2ea9e12e14246f2",
+    "originalBytes": 1300,
+    "gzipPath": "raw/current/identity.json.gz",
+    "gzipSha256": "4ff9e862bd0bf4e1b7b76a1fda0710bbe80cdcc97e0f47c176e361b6c59697ea"
+  },
+  "current/dependency-check.stderr": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/dependency-check.stderr",
+    "originalSha256": "61638c1500b812a3d86be2ad42fdb474eee304056268842541eac6a421d036b9",
+    "originalBytes": 173,
+    "gzipPath": "raw/current/dependency-check.stderr.gz",
+    "gzipSha256": "d0eabd0c1b857d44ee68584cde03439bfe784965280923c8f5dfaa1b8ffa5747"
+  },
+  "current/sync.stderr": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/sync.stderr",
+    "originalSha256": "5595cd783eb21f998dd30f0fc725e1e9c786362e5134c35bb140194d3204a4dd",
+    "originalBytes": 423,
+    "gzipPath": "raw/current/sync.stderr.gz",
+    "gzipSha256": "97e9d153fc1fa137688189cd1d0412728c6139068cd332bb619fb2cc92190180"
+  },
+  "current/init.stderr": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/init.stderr",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "gzipPath": "raw/current/init.stderr.gz",
+    "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+  },
+  "current/qualified-sync.stdout": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/qualified-sync.stdout",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "gzipPath": "raw/current/qualified-sync.stdout.gz",
+    "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+  },
+  "current/dependency-identities.stderr": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/dependency-identities.stderr",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "gzipPath": "raw/current/dependency-identities.stderr.gz",
+    "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+  },
+  "current/qualified-sync.stderr": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/qualified-sync.stderr",
+    "originalSha256": "160b7ad7c79d67bc8cf5fe0a8006a63dd3932350f331f278adebc8301f01e547",
+    "originalBytes": 2444,
+    "gzipPath": "raw/current/qualified-sync.stderr.gz",
+    "gzipSha256": "673182ac603b074171fc5c7492e3a3b96a6ce7a9c8747663dbea6523e0619d6c"
+  },
+  "current/dependency-identities.stdout": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/dependency-identities.stdout",
+    "originalSha256": "a231922a44f7ef20bd5692bed24a64f83098d8d8afde74abbbe7b56d4f4a54ef",
+    "originalBytes": 20829,
+    "gzipPath": "raw/current/dependency-identities.stdout.gz",
+    "gzipSha256": "c0997f102d165b336293e66e4a9f9423f853543f0487efc16a643f825bec8508"
+  },
+  "current/init.stdout": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/init.stdout",
+    "originalSha256": "304eebe872673de231892a60a97d9806ef7900cbe6acd4d24218351b0daeae0c",
+    "originalBytes": 104,
+    "gzipPath": "raw/current/init.stdout.gz",
+    "gzipSha256": "3d942b1a8aa2b15d0e144fb9cdc7433b801fcc7be48a6c5b8fdd019ed74a0792"
+  },
+  "current/dependency-check.stdout": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/dependency-check.stdout",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "gzipPath": "raw/current/dependency-check.stdout.gz",
+    "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+  },
+  "current/runs.json": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/runs.json",
+    "originalSha256": "d9a38a8202e01713a435fdd1b9a7681600cb2b2078be688e8043eb03f56ad1f9",
+    "originalBytes": 4228,
+    "gzipPath": "raw/current/runs.json.gz",
+    "gzipSha256": "4c8c02ea587bec1ee82dfe4e4b4204039010af879195cc94747d3868a0bed5f8"
+  },
+  "current/sync.stdout": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/sync.stdout",
+    "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "originalBytes": 0,
+    "gzipPath": "raw/current/sync.stdout.gz",
+    "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+  },
+  "current/source/uv.lock": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/source/uv.lock",
+    "originalSha256": "64a66f8a0ce1d23ea10c16ca89b7104f1828a8f21cf1dd95d7cb74e4bd3efa10",
+    "originalBytes": 717552,
+    "gzipPath": "raw/current/source/uv.lock.gz",
+    "gzipSha256": "e93adb931d1607cade6957b56a7da5736e65e92372b4b59e41babe8a4604ede2"
+  },
+  "current/source/pyproject.toml": {
+    "source": "/tmp/chio-hermes-public-final-install-20260910/source/pyproject.toml",
+    "originalSha256": "f2d8625df7b015c52a7940ac9f6dd51cc89e70ca13548511fb4f293c90926d99",
+    "originalBytes": 27595,
+    "gzipPath": "raw/current/source/pyproject.toml.gz",
+    "gzipSha256": "4e8e533bcaf9c3412951ca2d9936623d0bf8c328c078b95c420a0f47705c07fb"
+  },
+  "prior-relocation/public-host-provenance.json": {
+    "source": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/public-host-provenance.json",
+    "originalSha256": "f868c96d36382822ebc9583fe93e219af981f94a172888863e05b7ae84643dfe",
+    "originalBytes": 403,
+    "gzipPath": "raw/prior-relocation/public-host-provenance.json.gz",
+    "gzipSha256": "b21bc75ed68c1a3accbdfcb315bcaa1b2fa557c9116b7d7d7a32209dc5370685"
+  },
+  "prior-relocation/public-upstream-fetch.log": {
+    "source": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/public-upstream-fetch.log",
+    "originalSha256": "94a52fe54fd88778548b0a3696e022588d33dfe0e9ab64230f1ff85016356df3",
+    "originalBytes": 126,
+    "gzipPath": "raw/prior-relocation/public-upstream-fetch.log.gz",
+    "gzipSha256": "8e377eabec17e3aa6dc138c8e106a69c7c6950d145b98f814c686df913c7eb79"
+  },
+  "prior-relocation/public-clean-host-install.log": {
+    "source": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/public-clean-host-install.log",
+    "originalSha256": "5466d21853b6a72544b3006804a10e25c398d1b2c14abf3d9aa3c3733243fecb",
+    "originalBytes": 3285,
+    "gzipPath": "raw/prior-relocation/public-clean-host-install.log.gz",
+    "gzipSha256": "adc897ade5080a8f1ea1b8e5840757ac956cc3a89d3fbe806188269579825472"
+  },
+  "prior-relocation/public-clean-host-install-2.log": {
+    "source": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/public-clean-host-install-2.log",
+    "originalSha256": "86186c3533198c16f885c823bb2ffa8bd70480241c5887091af28410c48d1ced",
+    "originalBytes": 468,
+    "gzipPath": "raw/prior-relocation/public-clean-host-install-2.log.gz",
+    "gzipSha256": "2bedcce815e08c8f9ab4bcd281777a95c8074a6b458e38f5807ccdebc1da3bdb"
+  },
+  "prior-relocation/public-host-freeze.txt": {
+    "source": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/hermes-required-integration-20260909/sdks/python/chio-hermes/evidence/2026-09-09/final-candidate/followup/public-host-freeze.txt",
+    "originalSha256": "1143625bddb5846982f4d6dc2cd9d795c3e25b800b8e2886ab0d6191c08e6ba6",
+    "originalBytes": 1364,
+    "gzipPath": "raw/prior-relocation/public-host-freeze.txt.gz",
+    "gzipSha256": "dadf0b56d668591347169e05444355d899b84de83feb3e6af8740c8559b38c49"
+  }
+}
