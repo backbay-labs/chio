@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "./scripts/check-chio-proof-room-release-truth.sh"
+  ],
+  "exitCode": 0,
+  "gateSourceSha256": "e1d6a2d94eab5016fee17f8e796a5ac4cd5b9ec255a51f63e6b62f8d041c0ffe",
+  "stdout": "OK Proof Room release truth\n",
+  "stderr": ""
+}

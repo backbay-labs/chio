@@ -1,0 +1,8 @@
+{
+  "passed": true,
+  "verifiedExports": 109,
+  "exportedCaseRawFiles": 22,
+  "originalRunPublicFiles": 54,
+  "auditedRerunPublicFiles": 55,
+  "verification": "Compressed and decompressed SHA-256, original byte count and exact source bytes all match; manifests, source hashes and 11-case inventories checked; no source evidence changed."
+}

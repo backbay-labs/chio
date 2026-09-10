@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "./scripts/tests/check-chio-proof-room-release-truth.test.sh"
+  ],
+  "exitCode": 0,
+  "testSourceSha256": "fa9c0abd24f3e36c3964d5677ee8d1d316ac96d4a601f55731714faa7d5cbefc",
+  "stdout": "OK Proof Room release truth\nOK Proof Room release truth\ncheck-chio-proof-room-release-truth.test.sh: release truth positives and negatives passed\n",
+  "stderr": ""
+}

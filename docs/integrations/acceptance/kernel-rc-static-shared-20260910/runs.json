@@ -1,0 +1,264 @@
+{
+  "schema": "chio.static-shared-qualification-record.v1",
+  "runs": [
+    {
+      "run": "original-unaudited-failure",
+      "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910",
+      "image": "sha256:0106edcb15a1c0d12d914ea0504f0e63ec85f5e6fdd3825b4d7a0d1367af3991",
+      "runnerSha256": "0d100b8836de951c3e3ac5f6c0830c71c8d25eb50f0bfef20443832246a49e22",
+      "sourceRevision": "bafa02b06de93553cecb6f60b340f3dd8fd9b401",
+      "binarySha256": "c03a8a711dbbd15da2c59655d9ab6d8f0068a20187363db7a78f4b5422ded93e",
+      "startedAt": "2026-09-10T07:00:50.583322+00:00",
+      "normalizedAggregateExitCode": 1,
+      "qualifiesIntendedSharedCombination": false,
+      "hostAcceptance": false,
+      "publicFilesExported": 54,
+      "cases": [
+        {
+          "case": "authority-replay",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": []
+        },
+        {
+          "case": "capability-expiration",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": []
+        },
+        {
+          "case": "unknown-after-dispatch",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": []
+        },
+        {
+          "case": "cancellation-after-dispatch",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": []
+        },
+        {
+          "case": "approval-artifact-rejection",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": []
+        },
+        {
+          "case": "approval-workflow",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": []
+        },
+        {
+          "case": "bounded-approval-workflow",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": true,
+          "normalizedCaseStatus": "failed",
+          "dispatches": []
+        },
+        {
+          "case": "approved-grant-budget",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": true,
+          "normalizedCaseStatus": "failed",
+          "dispatches": []
+        },
+        {
+          "case": "approved-unknown-after-dispatch",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": []
+        },
+        {
+          "case": "grant-budget",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": []
+        },
+        {
+          "case": "parallel-grant-budget",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": []
+        }
+      ]
+    },
+    {
+      "run": "qualified-audited-rerun",
+      "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910",
+      "image": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+      "runnerSha256": "7576929ba3f28e2115216803898e5304d7dfce274805d7e745d8d376f471d92b",
+      "sourceRevision": "bafa02b06de93553cecb6f60b340f3dd8fd9b401",
+      "binarySha256": "c03a8a711dbbd15da2c59655d9ab6d8f0068a20187363db7a78f4b5422ded93e",
+      "startedAt": "2026-09-10T07:18:50.562706+00:00",
+      "normalizedAggregateExitCode": 0,
+      "qualifiesIntendedSharedCombination": true,
+      "hostAcceptance": false,
+      "publicFilesExported": 55,
+      "cases": [
+        {
+          "case": "authority-replay",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": [
+            {
+              "tool": "write_file",
+              "path": "/workspace/useful.txt"
+            },
+            {
+              "tool": "write_file",
+              "path": "/workspace/fresh.txt"
+            }
+          ]
+        },
+        {
+          "case": "capability-expiration",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": [
+            {
+              "tool": "write_file",
+              "path": "/workspace/before-expiry.txt"
+            }
+          ]
+        },
+        {
+          "case": "unknown-after-dispatch",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": [
+            {
+              "tool": "write_file",
+              "path": "/workspace/uncertain.txt"
+            }
+          ]
+        },
+        {
+          "case": "cancellation-after-dispatch",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": [
+            {
+              "tool": "write_file",
+              "path": "/workspace/uncertain.txt"
+            }
+          ]
+        },
+        {
+          "case": "approval-artifact-rejection",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": [
+            {
+              "tool": "read_text_file",
+              "path": "/workspace/readable.txt"
+            }
+          ]
+        },
+        {
+          "case": "approval-workflow",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": [
+            {
+              "tool": "write_file",
+              "path": "/workspace/valid.txt"
+            }
+          ]
+        },
+        {
+          "case": "bounded-approval-workflow",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": [
+            {
+              "tool": "write_file",
+              "path": "/workspace/valid.txt"
+            }
+          ]
+        },
+        {
+          "case": "approved-grant-budget",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": [
+            {
+              "tool": "write_file",
+              "path": "/workspace/budgeted-approved.txt"
+            },
+            {
+              "tool": "read_text_file",
+              "path": "/workspace/budgeted-approved.txt"
+            }
+          ]
+        },
+        {
+          "case": "approved-unknown-after-dispatch",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": [
+            {
+              "tool": "write_file",
+              "path": "/workspace/uncertain.txt"
+            }
+          ]
+        },
+        {
+          "case": "grant-budget",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": [
+            {
+              "tool": "write_file",
+              "path": "/workspace/budget-first.txt"
+            },
+            {
+              "tool": "read_text_file",
+              "path": "/workspace/budget-first.txt"
+            },
+            {
+              "tool": "write_file",
+              "path": "/workspace/budget-new-session.txt"
+            }
+          ]
+        },
+        {
+          "case": "parallel-grant-budget",
+          "sourceManifestStatus": "passed",
+          "hasCleanupError": false,
+          "normalizedCaseStatus": "passed",
+          "dispatches": [
+            {
+              "tool": "write_file",
+              "path": "/workspace/parallel-2.txt"
+            },
+            {
+              "tool": "write_file",
+              "path": "/workspace/parallel-1.txt"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

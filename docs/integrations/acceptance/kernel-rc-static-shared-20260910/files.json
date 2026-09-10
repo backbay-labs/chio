@@ -1,0 +1,765 @@
+[
+  {
+    "path": "raw/original-unaudited-failure/approval-artifact-rejection/kernel.log.gz",
+    "sha256": "6a53f6cde82ab2024312352bb915f99656827c84120fdb17a86636a04298882e",
+    "decompressedSha256": "6a183dc447a658bcbb23a1d8327d06203bc5c7a96b52b3584e8b3f2c8e78460d",
+    "decompressedBytes": 223,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approval-artifact-rejection/kernel.log"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approval-artifact-rejection/policy.yaml.gz",
+    "sha256": "0101d80b0d24d7e2c5050f6c0b6b35f600b182882b37c1a9bbbc7996e4029275",
+    "decompressedSha256": "85235c1c04ce31f2b756d4d0d315c627a12c29081356fdd9d83e3ab20de11fcc",
+    "decompressedBytes": 185,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approval-artifact-rejection/policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approval-artifact-rejection/raw.json.gz",
+    "sha256": "06113a31abe924926f489d7aabf17622b59c704e29a4f901a913b7341afa4fc5",
+    "decompressedSha256": "07921da1618f37424bb4e5828e19acbd7cbdb747c48511ec96648c239d58fcda",
+    "decompressedBytes": 15383,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approval-artifact-rejection/raw.json"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approval-artifact-rejection/resource-dispatch.jsonl.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approval-artifact-rejection/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approval-policy.yaml.gz",
+    "sha256": "8b65a8e035331c98c30e935bfa7ccdc6e7886956a34145adc89bc9303a665b96",
+    "decompressedSha256": "949ed40e3dce6f2f02b5a5246ea9d0adc7d4bfd45faeff0e18d748a6f0314650",
+    "decompressedBytes": 506,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approval-policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approval-workflow/kernel.log.gz",
+    "sha256": "2edacc6dc30a6d9d1fbb486920183c4ac976eb2c49c95d1acb6894fcc92eacb9",
+    "decompressedSha256": "4727cc011addb33004e5b713a52ce9c4f183e3fae8e08ddfef915dd403ca01cc",
+    "decompressedBytes": 863,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approval-workflow/kernel.log"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approval-workflow/policy.yaml.gz",
+    "sha256": "0101d80b0d24d7e2c5050f6c0b6b35f600b182882b37c1a9bbbc7996e4029275",
+    "decompressedSha256": "85235c1c04ce31f2b756d4d0d315c627a12c29081356fdd9d83e3ab20de11fcc",
+    "decompressedBytes": 185,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approval-workflow/policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approval-workflow/raw.json.gz",
+    "sha256": "4880713c8b217f039ae6052f2d6cff9531c6178056553a442669c8e89e53307a",
+    "decompressedSha256": "a1e02d155d8c3d25bd014cd6302affeac07d545f7a11db2f36890f91b53a41d8",
+    "decompressedBytes": 94417,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approval-workflow/raw.json"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approval-workflow/resource-dispatch.jsonl.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approval-workflow/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approved-grant-budget/kernel.log.gz",
+    "sha256": "475d442e260f5224d70e5e659e82d431221416a74707f19682cdf5a18ce2095c",
+    "decompressedSha256": "30ba0b38ed72e1aff4cb9602ba85d623f0cb6f3850f9b9e438c2352f3370a624",
+    "decompressedBytes": 446,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approved-grant-budget/kernel.log"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approved-grant-budget/policy.yaml.gz",
+    "sha256": "70d8d25b5d97d2bc5639365782c002e69e008d68cc64fcc481d785cb7807122b",
+    "decompressedSha256": "6c6b1b00180aec1b23dc80fdab660664130771f888ed94ee9c1fbfc2889d06fd",
+    "decompressedBytes": 505,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approved-grant-budget/policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approved-grant-budget/raw.json.gz",
+    "sha256": "c1d0e70093cc817894b1e9eca0fc5466d94d7fefaaa141395224b7894813a08a",
+    "decompressedSha256": "61b6c4019b86255ba5d555bd1e136ec7c08a09d1a8029b75f8304129a26f03cc",
+    "decompressedBytes": 52832,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approved-grant-budget/raw.json"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approved-grant-budget/resource-dispatch.jsonl.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approved-grant-budget/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approved-unknown-after-dispatch/kernel.log.gz",
+    "sha256": "e84429ff5a03dd8b6fc0030003e386e7755210ac6e6214c5834b61e14ff4592e",
+    "decompressedSha256": "bef58d79f93e9860d2a5646c7dfa33715abf3426c9154a693e12a4375119b8ed",
+    "decompressedBytes": 681,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approved-unknown-after-dispatch/kernel.log"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approved-unknown-after-dispatch/policy.yaml.gz",
+    "sha256": "0101d80b0d24d7e2c5050f6c0b6b35f600b182882b37c1a9bbbc7996e4029275",
+    "decompressedSha256": "85235c1c04ce31f2b756d4d0d315c627a12c29081356fdd9d83e3ab20de11fcc",
+    "decompressedBytes": 185,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approved-unknown-after-dispatch/policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approved-unknown-after-dispatch/raw.json.gz",
+    "sha256": "909ddfe0331a4e0afc5f05caa6913c3deafe9b6a55307567c3317ee67c582aaa",
+    "decompressedSha256": "c3b64101d9e0b56cfb41c0bec98168c866316c941a857d786553955e8187ad3a",
+    "decompressedBytes": 25009,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approved-unknown-after-dispatch/raw.json"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approved-unknown-after-dispatch/release.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approved-unknown-after-dispatch/release"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approved-unknown-after-dispatch/resource-dispatch.jsonl.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approved-unknown-after-dispatch/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/original-unaudited-failure/approved-unknown-after-dispatch/resource-replied.json.gz",
+    "sha256": "a2e627bef304ad5493212026a06895effc1f33dceadcaec8619e77478f93d62d",
+    "decompressedSha256": "af5e7e01ac9d4a01253a775f22173e11b7da3e14883aaed4a016f979d3e3e801",
+    "decompressedBytes": 411,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/approved-unknown-after-dispatch/resource-replied.json"
+  },
+  {
+    "path": "raw/original-unaudited-failure/authority-replay/kernel.log.gz",
+    "sha256": "5149ca7c6947f1fff6ef8fc17406efdf85a8d93bacb333db6f4756f8c829052d",
+    "decompressedSha256": "50a7a520b43b28039ae9d0cfdf2fa57c5ab309abd797842195c2886368fba4ed",
+    "decompressedBytes": 1437,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/authority-replay/kernel.log"
+  },
+  {
+    "path": "raw/original-unaudited-failure/authority-replay/policy.yaml.gz",
+    "sha256": "e096913a42686a6097b7c911f245f8a888b90aee5a5fe2e6bcbbdf008e5e029e",
+    "decompressedSha256": "3fbfd313858d8fab8fe0d9c92498ef1874139379aba4ca9607f662a0e7a7b9fd",
+    "decompressedBytes": 531,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/authority-replay/policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited-failure/authority-replay/raw.json.gz",
+    "sha256": "64f1d315bd3b93e94ddb7114147dee59e9cd88973a8caa4267c4eb098ba77b5b",
+    "decompressedSha256": "d37e6b4fb912809e76c649762b0d5919378d807ec49f31137117c98d4fd360d8",
+    "decompressedBytes": 46276,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/authority-replay/raw.json"
+  },
+  {
+    "path": "raw/original-unaudited-failure/authority-replay/resource-dispatch.jsonl.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/authority-replay/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/original-unaudited-failure/bounded-approval-workflow/kernel.log.gz",
+    "sha256": "30330ec3f37c6d1a8ec6b480dfdbf7fa1346a32ce0c791935e14b76dd0c28e83",
+    "decompressedSha256": "fd24b331d0d3ddaea05b8bdc59d08b06be6a88cfdadce3c631c3fcd6b47262e4",
+    "decompressedBytes": 863,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/bounded-approval-workflow/kernel.log"
+  },
+  {
+    "path": "raw/original-unaudited-failure/bounded-approval-workflow/policy.yaml.gz",
+    "sha256": "8b65a8e035331c98c30e935bfa7ccdc6e7886956a34145adc89bc9303a665b96",
+    "decompressedSha256": "949ed40e3dce6f2f02b5a5246ea9d0adc7d4bfd45faeff0e18d748a6f0314650",
+    "decompressedBytes": 506,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/bounded-approval-workflow/policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited-failure/bounded-approval-workflow/raw.json.gz",
+    "sha256": "76801eb78409440a1e255fab2bfa492d63e1e79a22237ccad61499589ef77c62",
+    "decompressedSha256": "3d8fb827691dfb2e6f2b1cc434a0445ed932596503d11725109a61bc99db964e",
+    "decompressedBytes": 97969,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/bounded-approval-workflow/raw.json"
+  },
+  {
+    "path": "raw/original-unaudited-failure/bounded-approval-workflow/resource-dispatch.jsonl.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/bounded-approval-workflow/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/original-unaudited-failure/cancellation-after-dispatch/kernel.log.gz",
+    "sha256": "1201f4d28a68d12b2fb24a2aff2396b2437e7ae4f93b45208c041d0606771ea2",
+    "decompressedSha256": "35906a2be668144cef0c23099d63a707026fafed62195bc373227e3ce90c6fa8",
+    "decompressedBytes": 1198,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/cancellation-after-dispatch/kernel.log"
+  },
+  {
+    "path": "raw/original-unaudited-failure/cancellation-after-dispatch/policy.yaml.gz",
+    "sha256": "e096913a42686a6097b7c911f245f8a888b90aee5a5fe2e6bcbbdf008e5e029e",
+    "decompressedSha256": "3fbfd313858d8fab8fe0d9c92498ef1874139379aba4ca9607f662a0e7a7b9fd",
+    "decompressedBytes": 531,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/cancellation-after-dispatch/policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited-failure/cancellation-after-dispatch/raw.json.gz",
+    "sha256": "d6185e84c5b957344d883f255c63e3c6c60a3573b9cfc77eff84aa930e85f47a",
+    "decompressedSha256": "2544886c209738103c99a3e76bc4a419b66bd9d56749b5cf0d686b6e360b3591",
+    "decompressedBytes": 12141,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/cancellation-after-dispatch/raw.json"
+  },
+  {
+    "path": "raw/original-unaudited-failure/cancellation-after-dispatch/release.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/cancellation-after-dispatch/release"
+  },
+  {
+    "path": "raw/original-unaudited-failure/cancellation-after-dispatch/resource-dispatch.jsonl.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/cancellation-after-dispatch/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/original-unaudited-failure/cancellation-after-dispatch/resource-replied.json.gz",
+    "sha256": "2b1de751c826c2d1ef53a8a42af254a2ff07733821d1e76d462ab58dced0379a",
+    "decompressedSha256": "fab4b128705fe4e9cb7757ae13ea7390cc9c444ee475c1ac478e23ca75bc26d1",
+    "decompressedBytes": 410,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/cancellation-after-dispatch/resource-replied.json"
+  },
+  {
+    "path": "raw/original-unaudited-failure/capability-expiration/kernel.log.gz",
+    "sha256": "b0829c8b03f6db822f279c892fde4003ba885977814465a4ef1dd9f0301733c5",
+    "decompressedSha256": "04bac5d5de605dfbb66ded5c916ddb6289aa1268701a79afaf2a9e204c5dc35a",
+    "decompressedBytes": 400,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/capability-expiration/kernel.log"
+  },
+  {
+    "path": "raw/original-unaudited-failure/capability-expiration/policy.yaml.gz",
+    "sha256": "d27384643c446fb0e86f5052a7c626aceb64d6325172a33b2cd7dda40cb721db",
+    "decompressedSha256": "dc4c2a609a65384cce11a0642470b90cdb3fe1cda3b553b89e957329546ca84d",
+    "decompressedBytes": 519,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/capability-expiration/policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited-failure/capability-expiration/raw.json.gz",
+    "sha256": "64cd840aa03044409b20fe09577eeee4ce6f8cce60196d7a986aefb99893a43c",
+    "decompressedSha256": "19deeaf91a9be324958c6ada4350e528c7887b54a96ec5fb84f1eb0c49d9866a",
+    "decompressedBytes": 14143,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/capability-expiration/raw.json"
+  },
+  {
+    "path": "raw/original-unaudited-failure/capability-expiration/resource-dispatch.jsonl.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/capability-expiration/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/original-unaudited-failure/grant-budget/kernel.log.gz",
+    "sha256": "d5c9742b0342653d28e2874090a287e5ccb92aee2efbd0aca9a41bb31b442865",
+    "decompressedSha256": "c91aa52902fc67dedf5513e33ead2f45e29407cda250e6c4ef49c44a24d6a263",
+    "decompressedBytes": 613,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/grant-budget/kernel.log"
+  },
+  {
+    "path": "raw/original-unaudited-failure/grant-budget/policy.yaml.gz",
+    "sha256": "9544cd09982ebd202146176105c145276de28a973876dca04f3e4c4c712cf863",
+    "decompressedSha256": "1f4b9e468e06e3a423a848951d88c404693829c56f11c54a56a8acaf06c578ac",
+    "decompressedBytes": 374,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/grant-budget/policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited-failure/grant-budget/raw.json.gz",
+    "sha256": "e071523e61d3796e8e1eadc6f287361f553fa4625418383c3ba64065458c3342",
+    "decompressedSha256": "d4eed40e48de54cfbb3b6294cc8730aa7d50fa42b569e338a3a3a4cf55d89bc6",
+    "decompressedBytes": 35361,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/grant-budget/raw.json"
+  },
+  {
+    "path": "raw/original-unaudited-failure/grant-budget/resource-dispatch.jsonl.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/grant-budget/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/original-unaudited-failure/manifest.json.gz",
+    "sha256": "7eece2d59681079fda42f5c35fed1cf05e921d8de602d7798350809286c8a6b0",
+    "decompressedSha256": "ead7697dc164ff48d513bdffb64d136a40eaed3e8d93b361968d7128e2a15d7c",
+    "decompressedBytes": 1870,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/manifest.json"
+  },
+  {
+    "path": "raw/original-unaudited-failure/parallel-grant-budget/kernel.log.gz",
+    "sha256": "8505cfba8deaf816eacadd9572684b09d0b4c406dc7fed8a8c8d2141912102b6",
+    "decompressedSha256": "bad0f37f83efe488581d863b3d122fd885d0f31fc196285203119bc1181d2d31",
+    "decompressedBytes": 446,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/parallel-grant-budget/kernel.log"
+  },
+  {
+    "path": "raw/original-unaudited-failure/parallel-grant-budget/policy.yaml.gz",
+    "sha256": "9544cd09982ebd202146176105c145276de28a973876dca04f3e4c4c712cf863",
+    "decompressedSha256": "1f4b9e468e06e3a423a848951d88c404693829c56f11c54a56a8acaf06c578ac",
+    "decompressedBytes": 374,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/parallel-grant-budget/policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited-failure/parallel-grant-budget/raw.json.gz",
+    "sha256": "e856f545ecad42548412f9a72cef997b5fdc58e6590de8c6b5f3f2632df8621c",
+    "decompressedSha256": "aad9fd5066ae04c59fadeeff5849608675ae6fedecb1dda1435559d7bafdb5dc",
+    "decompressedBytes": 28965,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/parallel-grant-budget/raw.json"
+  },
+  {
+    "path": "raw/original-unaudited-failure/parallel-grant-budget/resource-dispatch.jsonl.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/parallel-grant-budget/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/original-unaudited-failure/shared_kernel.py.gz",
+    "sha256": "dea84046329e5faeb5ca1c33b3b15b9438e7758bdbaa149f653dc497cb14f27e",
+    "decompressedSha256": "0d100b8836de951c3e3ac5f6c0830c71c8d25eb50f0bfef20443832246a49e22",
+    "decompressedBytes": 38395,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/shared_kernel.py"
+  },
+  {
+    "path": "raw/original-unaudited-failure/stdio_response_barrier.py.gz",
+    "sha256": "d056bdbe850a320c41e1ae5dedc1a1ffa3b4f6024783c1161cfd101cd1694aff",
+    "decompressedSha256": "a690f141d14fb3b9a18a8541e89bb5eabf76a18f71e504ad16cd2878bec398b6",
+    "decompressedBytes": 1775,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/stdio_response_barrier.py"
+  },
+  {
+    "path": "raw/original-unaudited-failure/unknown-after-dispatch/kernel.log.gz",
+    "sha256": "ef3c68a72b77843660db25d509e3d668d7a998a2407d52b50980c42deacbf767",
+    "decompressedSha256": "c291b71e28206811216ccf9bbc44d43567e7acee5b96c0d95d8cf234be16a3d4",
+    "decompressedBytes": 682,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/unknown-after-dispatch/kernel.log"
+  },
+  {
+    "path": "raw/original-unaudited-failure/unknown-after-dispatch/policy.yaml.gz",
+    "sha256": "e096913a42686a6097b7c911f245f8a888b90aee5a5fe2e6bcbbdf008e5e029e",
+    "decompressedSha256": "3fbfd313858d8fab8fe0d9c92498ef1874139379aba4ca9607f662a0e7a7b9fd",
+    "decompressedBytes": 531,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/unknown-after-dispatch/policy.yaml"
+  },
+  {
+    "path": "raw/original-unaudited-failure/unknown-after-dispatch/raw.json.gz",
+    "sha256": "4a5ddd01e685db68a333e3452aaf7f4d0a851b9b3e8f2fae4418a4098c2d8656",
+    "decompressedSha256": "13e49df9c93ecdf67fd076ac1e44c9525f103ee0f70c9f13c4e4f0782d23e726",
+    "decompressedBytes": 12264,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/unknown-after-dispatch/raw.json"
+  },
+  {
+    "path": "raw/original-unaudited-failure/unknown-after-dispatch/release.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/unknown-after-dispatch/release"
+  },
+  {
+    "path": "raw/original-unaudited-failure/unknown-after-dispatch/resource-dispatch.jsonl.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/unknown-after-dispatch/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/original-unaudited-failure/unknown-after-dispatch/resource-replied.json.gz",
+    "sha256": "d077a8ab0b00da7fe9d0e79c314fa8bdfdbb021ce5f433b11e290948d957bf89",
+    "decompressedSha256": "60d25be16e5a5a40f2e1b8a8dad8a7aa1a67aa0b45389e1107b3dbf9513217f8",
+    "decompressedBytes": 409,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-20260910/unknown-after-dispatch/resource-replied.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approval-artifact-rejection/kernel.log.gz",
+    "sha256": "444ddccd6708d90e030167c7f3bc0bcfc8b971c2dffac057557e78fd95508c44",
+    "decompressedSha256": "2a77dca9c9469a4148d6c4f34d03b97b7972236fcc59249fff4b2e5e6854b3a3",
+    "decompressedBytes": 223,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approval-artifact-rejection/kernel.log"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approval-artifact-rejection/policy.yaml.gz",
+    "sha256": "0101d80b0d24d7e2c5050f6c0b6b35f600b182882b37c1a9bbbc7996e4029275",
+    "decompressedSha256": "85235c1c04ce31f2b756d4d0d315c627a12c29081356fdd9d83e3ab20de11fcc",
+    "decompressedBytes": 185,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approval-artifact-rejection/policy.yaml"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approval-artifact-rejection/raw.json.gz",
+    "sha256": "9f285c9b0a94fd92bb5ed8503f5848a888c79445f638df6394c761d3736b4591",
+    "decompressedSha256": "0a0a9f9e1a6ffdb2f27b3f8556b939f1cb599d51ec409b30f99a092b2251bd7f",
+    "decompressedBytes": 15383,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approval-artifact-rejection/raw.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approval-artifact-rejection/resource-dispatch.jsonl.gz",
+    "sha256": "6782b01632388d8a717bed86e4b084d9dfe757b418f894bc744633451fd3857f",
+    "decompressedSha256": "c79ac28d90746cf56d0be516b516fe987c163036e17b4d66000769f06241d12f",
+    "decompressedBytes": 363,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approval-artifact-rejection/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approval-policy.yaml.gz",
+    "sha256": "8b65a8e035331c98c30e935bfa7ccdc6e7886956a34145adc89bc9303a665b96",
+    "decompressedSha256": "949ed40e3dce6f2f02b5a5246ea9d0adc7d4bfd45faeff0e18d748a6f0314650",
+    "decompressedBytes": 506,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approval-policy.yaml"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approval-workflow/kernel.log.gz",
+    "sha256": "809984b22390671e020b7de551cb73265a8be75076cbc0025302b837a64b21fc",
+    "decompressedSha256": "7dde7e1d03db409098459017e3ca084ce7bcfdf4eb64746ba1eebe07c78ddb2f",
+    "decompressedBytes": 863,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approval-workflow/kernel.log"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approval-workflow/policy.yaml.gz",
+    "sha256": "0101d80b0d24d7e2c5050f6c0b6b35f600b182882b37c1a9bbbc7996e4029275",
+    "decompressedSha256": "85235c1c04ce31f2b756d4d0d315c627a12c29081356fdd9d83e3ab20de11fcc",
+    "decompressedBytes": 185,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approval-workflow/policy.yaml"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approval-workflow/raw.json.gz",
+    "sha256": "3181d87afa795894cd6dda8582313efca624c9addf6380713916e9b14e362a0d",
+    "decompressedSha256": "1e50766e9620588e69622904e7c5a1bca7870c6cd97494df4fde5f6e499ec7fb",
+    "decompressedBytes": 94417,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approval-workflow/raw.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approval-workflow/resource-dispatch.jsonl.gz",
+    "sha256": "924c07890bd1f9f8b474cc4dd9ad7eb50f8d43f52f71d5fe8f5ba844dd17bdc9",
+    "decompressedSha256": "80081fbdac48e1510e1f655d634d58e1b1b5cdc8ecf76606ae96e79462146510",
+    "decompressedBytes": 356,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approval-workflow/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approved-grant-budget/kernel.log.gz",
+    "sha256": "7f26025389e81ec1ae553b79150039845f344a32d87def510e0916639536ee37",
+    "decompressedSha256": "bc0b05c79ae21d63589da3806c619bfb93fb41966b8254a70e41f3f2f2af176e",
+    "decompressedBytes": 446,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approved-grant-budget/kernel.log"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approved-grant-budget/policy.yaml.gz",
+    "sha256": "70d8d25b5d97d2bc5639365782c002e69e008d68cc64fcc481d785cb7807122b",
+    "decompressedSha256": "6c6b1b00180aec1b23dc80fdab660664130771f888ed94ee9c1fbfc2889d06fd",
+    "decompressedBytes": 505,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approved-grant-budget/policy.yaml"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approved-grant-budget/raw.json.gz",
+    "sha256": "f152413b6b5253055b2873b00be4ba3e72cb9fc5ad91a87ad0e90891503e2fb1",
+    "decompressedSha256": "9309f8239eeefcece7f3458a5d6ca1c332be674a818dfdee3f9fdeeecd087e4e",
+    "decompressedBytes": 52832,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approved-grant-budget/raw.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approved-grant-budget/resource-dispatch.jsonl.gz",
+    "sha256": "8cff9672bacdfe64c285b900a5f47cd4227633b9309afcd89970c9a983363124",
+    "decompressedSha256": "4610fccab81287bb63b918139a075ea661a85d5cbdf9293e0f48cc777dfca800",
+    "decompressedBytes": 740,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approved-grant-budget/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approved-unknown-after-dispatch/kernel.log.gz",
+    "sha256": "b11eaf500f02f53c7b9d05dc550fdfe836eaef553b2cdb5c87d5ad49827c1384",
+    "decompressedSha256": "4ba6ca2c9ef79f308081c7d5d43e20dd54641e8360f1514f4b0b84bd91e2286d",
+    "decompressedBytes": 681,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approved-unknown-after-dispatch/kernel.log"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approved-unknown-after-dispatch/policy.yaml.gz",
+    "sha256": "0101d80b0d24d7e2c5050f6c0b6b35f600b182882b37c1a9bbbc7996e4029275",
+    "decompressedSha256": "85235c1c04ce31f2b756d4d0d315c627a12c29081356fdd9d83e3ab20de11fcc",
+    "decompressedBytes": 185,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approved-unknown-after-dispatch/policy.yaml"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approved-unknown-after-dispatch/raw.json.gz",
+    "sha256": "96dfe7311bdbcc6d0c0f70399daae2c599ae9a6cd8b47b190f785e2152ccb31c",
+    "decompressedSha256": "71f8d5083e94c780726b798931e8874f428fd7f05f7c6e23e854dc845e2c4376",
+    "decompressedBytes": 25009,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approved-unknown-after-dispatch/raw.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approved-unknown-after-dispatch/release.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approved-unknown-after-dispatch/release"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approved-unknown-after-dispatch/resource-dispatch.jsonl.gz",
+    "sha256": "02115c0c8589bc87207edfbfa44484c4931efff1783b100ce17f1cb0b5c8b6f4",
+    "decompressedSha256": "be85bb24d7bd41c5390a9f566d91bbed7e184721e2e70b543698954d644a186a",
+    "decompressedBytes": 360,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approved-unknown-after-dispatch/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/approved-unknown-after-dispatch/resource-replied.json.gz",
+    "sha256": "a2e627bef304ad5493212026a06895effc1f33dceadcaec8619e77478f93d62d",
+    "decompressedSha256": "af5e7e01ac9d4a01253a775f22173e11b7da3e14883aaed4a016f979d3e3e801",
+    "decompressedBytes": 411,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/approved-unknown-after-dispatch/resource-replied.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/audit-tool-server.mjs.gz",
+    "sha256": "7ea3b0b90e4643752ba79d768df5fd2f18714d1ed48eb04425d14ddf1ddbcfa5",
+    "decompressedSha256": "23c83a3568a5d42af9a99e8bc837d4f17ef5b5bb18efeec4af502b5f7779c2ef",
+    "decompressedBytes": 3242,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/audit-tool-server.mjs"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/authority-replay/kernel.log.gz",
+    "sha256": "7b93eccea090f7667edb105b92569930229a41596b4c60d4cfaa29bc827f99c5",
+    "decompressedSha256": "7838fd66265c3aa92c64139399842eecbe7d9b1e9a1c6ac2cffc9c7ecd3e527d",
+    "decompressedBytes": 1437,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/authority-replay/kernel.log"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/authority-replay/policy.yaml.gz",
+    "sha256": "e096913a42686a6097b7c911f245f8a888b90aee5a5fe2e6bcbbdf008e5e029e",
+    "decompressedSha256": "3fbfd313858d8fab8fe0d9c92498ef1874139379aba4ca9607f662a0e7a7b9fd",
+    "decompressedBytes": 531,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/authority-replay/policy.yaml"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/authority-replay/raw.json.gz",
+    "sha256": "61a7d7228e6432cbff7d27dbeeb86aa9e3078ac13feb023735c96ccc7391d935",
+    "decompressedSha256": "7d9099996dbce561f2d65437d9594d2d0ced460551312db78060337fa7d13fb3",
+    "decompressedBytes": 46276,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/authority-replay/raw.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/authority-replay/resource-dispatch.jsonl.gz",
+    "sha256": "03943c67c456b5c0faed85c2aea1183d0397135d795fd2d6ad51dc501cfb1e3f",
+    "decompressedSha256": "e04519c2e5e523ee7fd1bb36131e0e257f03b8dfd1e9de4d87274a7482b90e6e",
+    "decompressedBytes": 713,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/authority-replay/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/bounded-approval-workflow/kernel.log.gz",
+    "sha256": "e22a8c91aca65d63d4a40ed12e9911aa452337a84f71e7576e28d6ce2de917a9",
+    "decompressedSha256": "6aca27fd85395286572c2bba13c050d14ddeefff24d41171aaed4f0e22edc151",
+    "decompressedBytes": 863,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/bounded-approval-workflow/kernel.log"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/bounded-approval-workflow/policy.yaml.gz",
+    "sha256": "8b65a8e035331c98c30e935bfa7ccdc6e7886956a34145adc89bc9303a665b96",
+    "decompressedSha256": "949ed40e3dce6f2f02b5a5246ea9d0adc7d4bfd45faeff0e18d748a6f0314650",
+    "decompressedBytes": 506,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/bounded-approval-workflow/policy.yaml"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/bounded-approval-workflow/raw.json.gz",
+    "sha256": "ff0b0529ec602deb1c03c1c36abee99fb27b11a97fb9cabecdd55551be9d7e3e",
+    "decompressedSha256": "6605fc9bd68f03e46bd4c340b833d42e3e04d44b5c49804131f07ac018d763e0",
+    "decompressedBytes": 97969,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/bounded-approval-workflow/raw.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/bounded-approval-workflow/resource-dispatch.jsonl.gz",
+    "sha256": "96dfb3d2ef59c5a982b4fd11cb686235f36292be6fbaff1e43ddb0749cf0595a",
+    "decompressedSha256": "527f83380678a3b3e6d04f9f96cebc4828292edf0c15e115352592ae93ed21c6",
+    "decompressedBytes": 356,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/bounded-approval-workflow/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/cancellation-after-dispatch/kernel.log.gz",
+    "sha256": "16565c2caf31560c984a7e779351a03cb498de5d4cfd53e197aee5a9b8ac788a",
+    "decompressedSha256": "897583f484779715a583b8344bb7e879a81461287de87c67b63ff1ae273f2f23",
+    "decompressedBytes": 1198,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/cancellation-after-dispatch/kernel.log"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/cancellation-after-dispatch/policy.yaml.gz",
+    "sha256": "e096913a42686a6097b7c911f245f8a888b90aee5a5fe2e6bcbbdf008e5e029e",
+    "decompressedSha256": "3fbfd313858d8fab8fe0d9c92498ef1874139379aba4ca9607f662a0e7a7b9fd",
+    "decompressedBytes": 531,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/cancellation-after-dispatch/policy.yaml"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/cancellation-after-dispatch/raw.json.gz",
+    "sha256": "0d2809bbf14ed3021d06276b4b66509f4bbe823d2cc1516578f759cbaa0b3a68",
+    "decompressedSha256": "064a8f42030ed752e19b04c9bc768db7daac3b6fdb6b6c20db11ea16b8993c45",
+    "decompressedBytes": 12141,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/cancellation-after-dispatch/raw.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/cancellation-after-dispatch/release.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/cancellation-after-dispatch/release"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/cancellation-after-dispatch/resource-dispatch.jsonl.gz",
+    "sha256": "5f384e1613ad37b214cbef5472dd6d8cd4e83d7a68eb32d8d45ec10381edbe37",
+    "decompressedSha256": "853b7de5a2ebb8ea5eba30b363724d2201450bbc2975eafc6d092ed4eb19786f",
+    "decompressedBytes": 360,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/cancellation-after-dispatch/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/cancellation-after-dispatch/resource-replied.json.gz",
+    "sha256": "2b1de751c826c2d1ef53a8a42af254a2ff07733821d1e76d462ab58dced0379a",
+    "decompressedSha256": "fab4b128705fe4e9cb7757ae13ea7390cc9c444ee475c1ac478e23ca75bc26d1",
+    "decompressedBytes": 410,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/cancellation-after-dispatch/resource-replied.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/capability-expiration/kernel.log.gz",
+    "sha256": "2206be3ec0b5c84c6f72d036db19d76f7f6b1e0b2793a70268a1f346844b0871",
+    "decompressedSha256": "e6bc9b31debd5164eb40f0ab8b99f55db2ea460468cad14221c9c3f15a336d69",
+    "decompressedBytes": 400,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/capability-expiration/kernel.log"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/capability-expiration/policy.yaml.gz",
+    "sha256": "d27384643c446fb0e86f5052a7c626aceb64d6325172a33b2cd7dda40cb721db",
+    "decompressedSha256": "dc4c2a609a65384cce11a0642470b90cdb3fe1cda3b553b89e957329546ca84d",
+    "decompressedBytes": 519,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/capability-expiration/policy.yaml"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/capability-expiration/raw.json.gz",
+    "sha256": "937f849005eb5512ca6adf1274d5f8c660ad883163cbc98458c9d2781117646b",
+    "decompressedSha256": "8334f47e36d27f5a880472ad24d0098f02c2600e7a674098cd1f455de6033537",
+    "decompressedBytes": 14143,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/capability-expiration/raw.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/capability-expiration/resource-dispatch.jsonl.gz",
+    "sha256": "973d3e5018e03917f676a1cb8f0bbc521815a461d9eb29a9e65ac026247d539f",
+    "decompressedSha256": "a090d8633e963404e2b0ddfd08472a59e870449cbc3240b37e73180531575259",
+    "decompressedBytes": 364,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/capability-expiration/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/grant-budget/kernel.log.gz",
+    "sha256": "0912bbdebdac056b79ded02152eb55aa0d4f05281443bf03be2470916bb5e693",
+    "decompressedSha256": "ba5e3e2d1e06169d29e511cea1fe0de936fc2b13cc671e633899f26ba9ab27ae",
+    "decompressedBytes": 613,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/grant-budget/kernel.log"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/grant-budget/policy.yaml.gz",
+    "sha256": "9544cd09982ebd202146176105c145276de28a973876dca04f3e4c4c712cf863",
+    "decompressedSha256": "1f4b9e468e06e3a423a848951d88c404693829c56f11c54a56a8acaf06c578ac",
+    "decompressedBytes": 374,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/grant-budget/policy.yaml"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/grant-budget/raw.json.gz",
+    "sha256": "01b005184fda4604891f61b5a6f1b59e2db6c0ad25b7ae7dd1cf7f062d05b889",
+    "decompressedSha256": "57c8801b45846cdcf63c90a13ff964cf0bcd2e5dc146f0a6e9296f401947ca31",
+    "decompressedBytes": 35361,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/grant-budget/raw.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/grant-budget/resource-dispatch.jsonl.gz",
+    "sha256": "05a0951bb481017b448aa57d4edd279da0186d35006925e9821ee337d38280ce",
+    "decompressedSha256": "790f7cbe571cd719822fd7e4b9c37eb51754c32f557462f49793c715798f9924",
+    "decompressedBytes": 1099,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/grant-budget/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/manifest.json.gz",
+    "sha256": "5070604f3ca7894d791e7b5121c605647514d806dd99a0611031c9950d341804",
+    "decompressedSha256": "1c30acb349c4a0748c959b452267b6be3480d358c02f1f5cd6c716da741ff12b",
+    "decompressedBytes": 1910,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/manifest.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/parallel-grant-budget/kernel.log.gz",
+    "sha256": "581ca00e0a6e950b29f0aa93af802a0045584a89563c119921aef858a4749238",
+    "decompressedSha256": "75b0e70635e8c7cf7bbdcc31776edf61e135688b92e2ac5f6a7608cc4d74eda6",
+    "decompressedBytes": 446,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/parallel-grant-budget/kernel.log"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/parallel-grant-budget/policy.yaml.gz",
+    "sha256": "9544cd09982ebd202146176105c145276de28a973876dca04f3e4c4c712cf863",
+    "decompressedSha256": "1f4b9e468e06e3a423a848951d88c404693829c56f11c54a56a8acaf06c578ac",
+    "decompressedBytes": 374,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/parallel-grant-budget/policy.yaml"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/parallel-grant-budget/raw.json.gz",
+    "sha256": "4cfca96f2b62e20aea0418283d53aa4d3e0cdb0ead77ed399b408b55337d9f16",
+    "decompressedSha256": "f8c5d82194781a4e8348b1bd2a13b017d043b1257651ccf09c93006abafc8caf",
+    "decompressedBytes": 28965,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/parallel-grant-budget/raw.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/parallel-grant-budget/resource-dispatch.jsonl.gz",
+    "sha256": "5c7a9d4e2156fcb4a45f468f167143e606fe84ffc4454c85720a55f47f6da792",
+    "decompressedSha256": "9051339b2dc13c1754a6b9235125d3cf7ebeb7d8b55e4d0285684eb79a57a85e",
+    "decompressedBytes": 722,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/parallel-grant-budget/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/shared_kernel.py.gz",
+    "sha256": "57570c8d158d1718b1bc10b916085d539582551cec2e673c449b2a24e198e0dc",
+    "decompressedSha256": "7576929ba3f28e2115216803898e5304d7dfce274805d7e745d8d376f471d92b",
+    "decompressedBytes": 40083,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/shared_kernel.py"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/stdio_response_barrier.py.gz",
+    "sha256": "d056bdbe850a320c41e1ae5dedc1a1ffa3b4f6024783c1161cfd101cd1694aff",
+    "decompressedSha256": "a690f141d14fb3b9a18a8541e89bb5eabf76a18f71e504ad16cd2878bec398b6",
+    "decompressedBytes": 1775,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/stdio_response_barrier.py"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/unknown-after-dispatch/kernel.log.gz",
+    "sha256": "2b2a4bf9906bfa9912f78c62e6604f7d4eae55d5c0f7a6d41d03af1c8d17e8f2",
+    "decompressedSha256": "89a04b70592401cf7699321063c0305c74f377e5c93f68b6f6337912791a11a0",
+    "decompressedBytes": 682,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/unknown-after-dispatch/kernel.log"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/unknown-after-dispatch/policy.yaml.gz",
+    "sha256": "e096913a42686a6097b7c911f245f8a888b90aee5a5fe2e6bcbbdf008e5e029e",
+    "decompressedSha256": "3fbfd313858d8fab8fe0d9c92498ef1874139379aba4ca9607f662a0e7a7b9fd",
+    "decompressedBytes": 531,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/unknown-after-dispatch/policy.yaml"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/unknown-after-dispatch/raw.json.gz",
+    "sha256": "cd85bd53127c494def578f2f0435095a129217e5104bf58854c23ddab0dd33f1",
+    "decompressedSha256": "8e070bb431d6d28a1027a22e3b4d8a13853a3d92f4f0e7468e798bbff0303d3a",
+    "decompressedBytes": 12264,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/unknown-after-dispatch/raw.json"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/unknown-after-dispatch/release.gz",
+    "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "decompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "decompressedBytes": 0,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/unknown-after-dispatch/release"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/unknown-after-dispatch/resource-dispatch.jsonl.gz",
+    "sha256": "bce96b19c79292d8101d588fef458ba5a48c71c6908c7c60bef53b313bbb7a80",
+    "decompressedSha256": "f31b2a9405d3d40674235adfabc292a40c6302b8634e86b045e4f30ac21f96a2",
+    "decompressedBytes": 360,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/unknown-after-dispatch/resource-dispatch.jsonl"
+  },
+  {
+    "path": "raw/qualified-audited-rerun/unknown-after-dispatch/resource-replied.json.gz",
+    "sha256": "d077a8ab0b00da7fe9d0e79c314fa8bdfdbb021ce5f433b11e290948d957bf89",
+    "decompressedSha256": "60d25be16e5a5a40f2e1b8a8dad8a7aa1a67aa0b45389e1107b3dbf9513217f8",
+    "decompressedBytes": 409,
+    "sourcePath": "/tmp/chio-kernel-rc-static-shared-audited-20260910/unknown-after-dispatch/resource-replied.json"
+  }
+]
