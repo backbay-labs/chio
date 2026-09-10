@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/tests/qualify-release-provider-replay.test.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010207.4971,
+  "completedAtEpoch": 1789010207.573468,
+  "log": "21-bash-scripts_tests_qualify-release-provider-replay.test.sh.log"
+}

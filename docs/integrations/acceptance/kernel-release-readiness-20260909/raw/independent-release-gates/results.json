@@ -1,0 +1,43 @@
+[
+  {
+    "name": "policy-analysis",
+    "command": [
+      "bash",
+      "scripts/check-policy-analysis.sh",
+      "/tmp/chio-tool-error-ack-candidate-20260909/chio-33dd1dea21a4"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789011246.946107,
+    "endEpoch": 1789011265.558918
+  },
+  {
+    "name": "sdk-go",
+    "command": [
+      "bash",
+      "scripts/check-chio-go-release.sh"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789011246.946239,
+    "endEpoch": 1789011265.669415
+  },
+  {
+    "name": "sdk-py",
+    "command": [
+      "bash",
+      "scripts/check-chio-py-release.sh"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789011246.94991,
+    "endEpoch": 1789011444.250412
+  },
+  {
+    "name": "sdk-ts",
+    "command": [
+      "bash",
+      "scripts/check-chio-ts-release.sh"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789011265.559888,
+    "endEpoch": 1789011382.6000488
+  }
+]

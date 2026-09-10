@@ -1,0 +1,1 @@
+release-npm-package-matrix.test.sh: npm package matrix covers publishable TS workspaces

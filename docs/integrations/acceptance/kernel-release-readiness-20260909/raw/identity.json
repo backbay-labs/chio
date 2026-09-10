@@ -1,0 +1,32 @@
+{
+  "schema": "chio.required-agents.release-audit.v1",
+  "runtimeSource": "d8c5f53705173e614a853bad6c0a85acfdf1212b",
+  "runtimeArtifact": "/tmp/chio-tool-error-ack-candidate-20260909/chio-33dd1dea21a4",
+  "runtimeSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "qualificationMetadataSource": "abfd3b56111e2838ae648a4a82c5059eda16e210",
+  "runtimeArtifactHashRechecked": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "testSuites": [
+    {
+      "package": "chio-core-types",
+      "passed": 402,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "package": "chio-mcp-edge",
+      "passed": 112,
+      "failed": 0,
+      "ignored": 0
+    }
+  ],
+  "metadataProductionChanges": false,
+  "rejectedLockfileCandidate": "dependency-impact/unaccepted-der-0.8.1.patch",
+  "selectedDefaultCliGraphsIdenticalTargets": {
+    "aarch64-apple-darwin": true,
+    "x86_64-unknown-linux-gnu": true,
+    "aarch64-unknown-linux-gnu": true,
+    "x86_64-apple-darwin": true,
+    "x86_64-pc-windows-msvc": true
+  },
+  "publicReleaseAccepted": false
+}

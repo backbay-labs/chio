@@ -1,0 +1,13 @@
+{
+  "name": "format",
+  "command": [
+    "cargo",
+    "fmt",
+    "--all",
+    "--",
+    "--check"
+  ],
+  "returncode": 0,
+  "startEpoch": 1789010719.339433,
+  "endEpoch": 1789010727.752266
+}

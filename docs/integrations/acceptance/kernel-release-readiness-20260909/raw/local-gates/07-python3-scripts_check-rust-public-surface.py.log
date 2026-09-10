@@ -1,0 +1,1 @@
+Rust public surface policy is consistent: every workspace member is either publish=false or explicitly registry-public, and every public Rust surface has a README, description, and implementation target.

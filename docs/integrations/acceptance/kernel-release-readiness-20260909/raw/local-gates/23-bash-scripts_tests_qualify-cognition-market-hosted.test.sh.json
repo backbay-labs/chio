@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/tests/qualify-cognition-market-hosted.test.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010207.7566311,
+  "completedAtEpoch": 1789010234.0633228,
+  "log": "23-bash-scripts_tests_qualify-cognition-market-hosted.test.sh.log"
+}

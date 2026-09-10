@@ -1,0 +1,10 @@
+{
+  "command": [
+    "cargo",
+    "deny",
+    "check"
+  ],
+  "returncode": 1,
+  "startEpoch": 1789011376.39656,
+  "endEpoch": 1789011389.7140522
+}

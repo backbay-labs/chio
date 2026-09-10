@@ -1,0 +1,7 @@
+[package]
+name = "chio-der-review-probe"
+version = "0.0.0"
+edition = "2024"
+[dependencies]
+der = { path = "../der-0.8.2", features = ["alloc"] }
+[workspace]

@@ -1,0 +1,9 @@
+{
+  "command": [
+    "gh",
+    "api",
+    "repos/bb-connor/arc/git/tags/6d741458cf57877ba8639b8b7cfc5342fd47f97b"
+  ],
+  "observed_at_utc": "2026-09-10T03:18:16.156288+00:00",
+  "exit_code": 0
+}

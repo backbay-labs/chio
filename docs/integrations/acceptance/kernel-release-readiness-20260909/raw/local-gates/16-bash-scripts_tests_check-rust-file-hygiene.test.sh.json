@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/tests/check-rust-file-hygiene.test.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010203.541402,
+  "completedAtEpoch": 1789010206.785068,
+  "log": "16-bash-scripts_tests_check-rust-file-hygiene.test.sh.log"
+}

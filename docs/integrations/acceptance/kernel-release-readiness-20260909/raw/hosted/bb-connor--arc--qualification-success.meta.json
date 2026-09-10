@@ -1,0 +1,10 @@
+{
+  "command": [
+    "gh",
+    "api",
+    "repos/bb-connor/arc/actions/workflows/release-qualification.yml/runs?status=success&per_page=3"
+  ],
+  "started_at_utc": "2026-09-10T03:17:38.999611+00:00",
+  "finished_at_utc": "2026-09-10T03:17:39.597500+00:00",
+  "exit_code": 0
+}

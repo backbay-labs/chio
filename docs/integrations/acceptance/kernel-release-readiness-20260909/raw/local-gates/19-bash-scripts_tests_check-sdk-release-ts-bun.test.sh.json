@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/tests/check-sdk-release-ts-bun.test.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010207.289522,
+  "completedAtEpoch": 1789010207.421949,
+  "log": "19-bash-scripts_tests_check-sdk-release-ts-bun.test.sh.log"
+}

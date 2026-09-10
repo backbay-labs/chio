@@ -1,0 +1,11 @@
+{
+  "command": [
+    "cargo",
+    "vet",
+    "--locked"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010192.108774,
+  "completedAtEpoch": 1789010196.334236,
+  "log": "01-cargo-vet---locked.log"
+}

@@ -1,0 +1,4 @@
+Vetting Failed!
+
+1 unvetted dependencies:
+  der:0.8.1 missing ["safe-to-deploy"]

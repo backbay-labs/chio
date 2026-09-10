@@ -1,0 +1,1 @@
+check-sdk-release-python-generated.test.sh: generated Python SDK release smoke is present

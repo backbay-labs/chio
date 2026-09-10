@@ -1,0 +1,12 @@
+{
+  "command": [
+    "gh",
+    "api",
+    "repos/backbay-labs/chio/rulesets?per_page=100"
+  ],
+  "started_at_utc": "2026-09-10T03:16:26.821966+00:00",
+  "finished_at_utc": "2026-09-10T03:16:27.241247+00:00",
+  "exit_code": 0,
+  "stdout_file": "backbay-labs--chio--rulesets.stdout.json",
+  "stderr_file": "backbay-labs--chio--rulesets.stderr.txt"
+}

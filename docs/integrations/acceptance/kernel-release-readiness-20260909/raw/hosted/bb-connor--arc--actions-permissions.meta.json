@@ -1,0 +1,12 @@
+{
+  "command": [
+    "gh",
+    "api",
+    "repos/bb-connor/arc/actions/permissions"
+  ],
+  "started_at_utc": "2026-09-10T03:16:25.599117+00:00",
+  "finished_at_utc": "2026-09-10T03:16:26.078167+00:00",
+  "exit_code": 0,
+  "stdout_file": "bb-connor--arc--actions-permissions.stdout.json",
+  "stderr_file": "bb-connor--arc--actions-permissions.stderr.txt"
+}

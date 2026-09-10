@@ -1,0 +1,54 @@
+error[yanked]: detected yanked crate (try `cargo update -p der`)
+    ┌─ /Users/connor/Medica/backbay/standalone/arc/.worktrees/kernel-release-audit-20260909/Cargo.lock:406:1
+    │
+406 │ der 0.8.0 registry+https://github.com/rust-lang/crates.io-index
+    │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ yanked version
+    │
+    ├ der v0.8.0
+      ├── pkcs8 v0.11.0
+      │   └── ed25519 v3.0.0
+      │       └── ed25519-dalek v3.0.0-rc.0
+      │           ├── iroh v1.0.1
+      │           │   ├── chio-cli v0.1.0
+      │           │   ├── (dev) chio-conformance v0.1.0
+      │           │   │   ├── chio-cli v0.1.0 (*)
+      │           │   │   └── chio-control-plane v0.1.0
+      │           │   │       ├── chio-api-protect v0.1.0
+      │           │   │       │   ├── chio-cli v0.1.0 (*)
+      │           │   │       │   └── (dev) chio-conformance v0.1.0 (*)
+      │           │   │       ├── chio-cli v0.1.0 (*)
+      │           │   │       ├── chio-finding-market-canary v0.1.0
+      │           │   │       ├── chio-finding-market-server v0.1.0
+      │           │   │       ├── chio-finding-worker-daemon v0.1.0
+      │           │   │       ├── chio-hosted-mcp v0.1.0
+      │           │   │       │   └── chio-cli v0.1.0 (*)
+      │           │   │       ├── chio-mcp-remote v0.1.0
+      │           │   │       │   ├── chio-cli v0.1.0 (*)
+      │           │   │       │   ├── (dev) chio-conformance v0.1.0 (*)
+      │           │   │       │   └── chio-hosted-mcp v0.1.0 (*)
+      │           │   │       ├── chio-mercury v0.1.0
+      │           │   │       └── chio-wall v0.1.0
+      │           │   ├── chio-federation-transport-iroh v0.1.0
+      │           │   │   ├── chio-cli v0.1.0 (*)
+      │           │   │   └── (dev) chio-conformance v0.1.0 (*)
+      │           │   ├── iroh-blobs v0.103.0
+      │           │   │   └── chio-federation-transport-iroh v0.1.0 (*)
+      │           │   ├── iroh-gossip v0.101.0
+      │           │   │   └── chio-federation-transport-iroh v0.1.0 (*)
+      │           │   └── iroh-util v0.6.0
+      │           │       └── iroh-blobs v0.103.0 (*)
+      │           └── iroh-base v1.0.1
+      │               ├── iroh v1.0.1 (*)
+      │               ├── iroh-blobs v0.103.0 (*)
+      │               ├── iroh-dns v1.0.1
+      │               │   ├── iroh v1.0.1 (*)
+      │               │   └── iroh-relay v1.0.1
+      │               │       └── iroh v1.0.1 (*)
+      │               ├── iroh-gossip v0.101.0 (*)
+      │               ├── iroh-relay v1.0.1 (*)
+      │               └── iroh-tickets v1.0.0
+      │                   └── iroh-blobs v0.103.0 (*)
+      └── spki v0.8.0
+          └── pkcs8 v0.11.0 (*)
+
+advisories FAILED

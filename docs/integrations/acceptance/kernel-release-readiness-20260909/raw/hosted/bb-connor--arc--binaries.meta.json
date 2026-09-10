@@ -1,0 +1,12 @@
+{
+  "command": [
+    "gh",
+    "api",
+    "repos/bb-connor/arc/actions/workflows/release-binaries.yml/runs?per_page=5"
+  ],
+  "started_at_utc": "2026-09-10T03:16:25.160115+00:00",
+  "finished_at_utc": "2026-09-10T03:16:26.021671+00:00",
+  "exit_code": 0,
+  "stdout_file": "bb-connor--arc--binaries.stdout.json",
+  "stderr_file": "bb-connor--arc--binaries.stderr.txt"
+}

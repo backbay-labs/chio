@@ -1,0 +1,133 @@
+Stub-surface scan summary
+deployment-templates: 5 hit(s)
+docs: 386 hit(s)
+examples: 11 hit(s)
+generated: 10 hit(s)
+production: 147 hit(s)
+scripts: 313 hit(s)
+tests: 152 hit(s)
+
+Production hits:
+crates/core/chio-arena/src/promote.rs:295: allowlisted until 2026-12-31 /// Environment access for the CHIO_BLESS gate. Tests inject a stub.
+crates/core/chio-core-types/src/crypto.rs:609: allowlisted until 2026-12-31 /// of coercing P-256 / P-384 material into a lossy 32-byte placeholder.
+crates/core/chio-core-types/src/crypto.rs:814: allowlisted until 2026-12-31 /// all-zero placeholder (such signatures never flow through 64-byte-only
+crates/core/chio-core-types/src/plan.rs:67: allowlisted until 2026-12-31 /// Advisory only in v1: the kernel records the edges for downstream
+crates/core/chio-core-types/src/receipt/kinds.rs:22: allowlisted until 2026-12-31 /// Authorization was advisory only -- the kernel evaluated but the
+crates/economy/chio-anchor/src/witness.rs:487: allowlisted until 2026-12-31 witness_id: "rekor:placeholder".to_string(),
+crates/economy/chio-anchor/src/witness/rekor.rs:955: allowlisted until 2026-12-31 witness_id: "rekor:placeholder".to_string(),
+crates/economy/chio-metering/src/export.rs:147: allowlisted until 2026-12-31 /// Uses UTC. Falls back to a placeholder if the timestamp cannot be
+crates/guards/chio-policy/src/detection.rs:453: allowlisted until 2026-12-31 "stub"
+crates/guards/chio-policy/src/detection.rs:536: allowlisted until 2026-12-31 assert_eq!(detections[0].detector_name, "stub");
+crates/guards/chio-wasm-guards/src/fuzz.rs:162: allowlisted until 2026-12-31 /// fuzzer into a multi-second iteration. 50k units lets a `chio_alloc` stub
+crates/guards/chio-wasm-guards/src/lib.rs:78: allowlisted until 2026-12-31 pub mod placeholders;
+crates/guards/chio-wasm-guards/src/lib.rs:150: allowlisted until 2026-12-31 pub use placeholders::{
+crates/guards/chio-wasm-guards/src/placeholders.rs:1: allowlisted until 2026-12-31 //! Placeholder resolution for WASM guard configuration values.
+crates/guards/chio-wasm-guards/src/placeholders.rs:3: allowlisted until 2026-12-31 //! This module resolves placeholders in JSON guard configuration. It
+crates/guards/chio-wasm-guards/src/placeholders.rs:17: allowlisted until 2026-12-31 //!   placeholder.
+crates/guards/chio-wasm-guards/src/placeholders.rs:34: allowlisted until 2026-12-31 /// A `${VAR}` placeholder was encountered with no value bound and no
+crates/guards/chio-wasm-guards/src/placeholders.rs:36: allowlisted until 2026-12-31 #[error("placeholder ${{{0}}} is not defined and has no default")]
+crates/guards/chio-wasm-guards/src/placeholders.rs:40: allowlisted until 2026-12-31 #[error("unterminated placeholder starting at byte {offset}")]
+crates/guards/chio-wasm-guards/src/placeholders.rs:46: allowlisted until 2026-12-31 /// A placeholder had an empty variable name (e.g. `${}` or `${:-x}`).
+crates/guards/chio-wasm-guards/src/placeholders.rs:47: allowlisted until 2026-12-31 #[error("placeholder at byte {offset} has an empty variable name")]
+crates/guards/chio-wasm-guards/src/placeholders.rs:54: allowlisted until 2026-12-31 /// Source of variable bindings for placeholder resolution.
+crates/guards/chio-wasm-guards/src/placeholders.rs:57: allowlisted until 2026-12-31 /// otherwise. Returning `None` for a placeholder without a default triggers
+crates/guards/chio-wasm-guards/src/placeholders.rs:91: allowlisted until 2026-12-31 /// Resolve every `${...}` placeholder in `input` against `env`.
+crates/guards/chio-wasm-guards/src/placeholders.rs:112: allowlisted until 2026-12-31 // Placeholder: `${...}`
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:833: allowlisted until 2026-12-31 // Policy-driven loading with placeholders and capability
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:838: allowlisted until 2026-12-31 use crate::placeholders::{resolve_placeholders_in_json, PlaceholderEnv, PlaceholderError};
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:852: allowlisted until 2026-12-31 /// contain `${ENV_VAR}` placeholders.
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:876: allowlisted until 2026-12-31 /// `${VAR:-default}` placeholders that are resolved at load time
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:962: allowlisted until 2026-12-31 /// wiring problem (missing capability, unresolved placeholder, bad
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:988: allowlisted until 2026-12-31 /// A placeholder in the guard config could not be resolved.
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:989: allowlisted until 2026-12-31 #[error("placeholder resolution failed for guard {guard:?}: {source}")]
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:990: allowlisted until 2026-12-31 Placeholder {
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:993: allowlisted until 2026-12-31 /// Underlying placeholder error.
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:999: allowlisted until 2026-12-31 /// of string keys to string values after placeholder expansion).
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:1009: allowlisted until 2026-12-31 /// placeholder expansion; the current host ABI only accepts strings.
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:1069: allowlisted until 2026-12-31 /// 2. **Placeholder resolution.** String leaves in `guard.config` are
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:1071: allowlisted until 2026-12-31 ///    Undefined placeholders without a `:-default` fail closed.
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:1119: allowlisted until 2026-12-31 // 2. Placeholder resolution on the config JSON.
+crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs:1122: allowlisted until 2026-12-31 LoadError::Placeholder {
+crates/kernel/chio-kernel-browser/src/clock.rs:61: allowlisted until 2026-12-31 // stub so `cargo test -p chio-kernel-browser` can link and run
+crates/kernel/chio-kernel-browser/src/clock.rs:64: allowlisted until 2026-12-31 // The stub intentionally returns `0`. Any native test that needs
+crates/kernel/chio-kernel-browser/src/rng.rs:100: allowlisted until 2026-12-31 /// Host-target stub so the crate still compiles on native targets and
+crates/kernel/chio-kernel-browser/src/rng.rs:111: allowlisted until 2026-12-31 /// Native stub that always fails -- the browser adapter is not
+crates/observability/chio-lineage/src/anchor.rs:283: allowlisted until 2026-12-31 /// stub for a real PQ signature. Real signing is produced through
+crates/observability/chio-log-redact/src/engine.rs:66: allowlisted until 2026-12-31 /// failures with the fail-closed placeholder instead of the original value.
+crates/platform/chio-config/src/interpolation.rs:63: allowlisted until 2026-12-31 // Leave a placeholder so the rest of parsing can proceed;
+crates/platform/chio-http-core/src/routes.rs:50: allowlisted until 2026-12-31 /// The `{id}` placeholder is substituted by the adapter's routing
+crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs:343: allowlisted until 2026-12-31 // but must still bind placeholders if we reuse `params!`;
+crates/products/chio-cli/dashboard/src/components/BudgetSparkline.tsx:49: allowlisted until 2026-12-31 * Shows "No cost data" placeholder when data array is empty.
+crates/products/chio-cli/dashboard/src/components/BudgetSparkline.tsx:53: allowlisted until 2026-12-31 return <div className="sparkline-placeholder">No cost data</div>
+crates/products/chio-cli/dashboard/src/components/FilterSidebar.tsx:67: allowlisted until 2026-12-31 placeholder="hex key..."
+crates/products/chio-cli/dashboard/src/components/FilterSidebar.tsx:78: allowlisted until 2026-12-31 placeholder="server name..."
+crates/products/chio-cli/dashboard/src/components/FilterSidebar.tsx:89: allowlisted until 2026-12-31 placeholder="tool name..."
+crates/products/chio-cli/dashboard/src/components/ReceiptTable.tsx:157: allowlisted until 2026-12-31 <Suspense fallback={<div className="sparkline-placeholder">Loading chart...</div>}>
+crates/products/chio-cli/dashboard/src/index.css:803: allowlisted until 2026-12-31 /* Budget sparkline placeholder */
+crates/products/chio-cli/dashboard/src/index.css:804: allowlisted until 2026-12-31 .sparkline-placeholder {
+crates/products/chio-cli/src/cli/mcp/manifest.rs:24: allowlisted until 2026-12-31 out.push_str("# TODO: review the inferred scopes below before promoting.\n\n");
+crates/products/chio-cli/src/cli/mcp/manifest.rs:35: allowlisted until 2026-12-31 out.push_str("# TODO: review and promote\n\n");
+crates/products/chio-cli/src/cli/replay/validate.rs:385: allowlisted until 2026-12-31 // Unsigned placeholder matching the schema regex; tests that verify signatures overwrite this field.
+crates/products/chio-cli/src/cli/replay/validate.rs:524: allowlisted until 2026-12-31 // An unsigned placeholder tenant_sig is accepted when pubkey verification is skipped.
+crates/products/chio-cli/src/cli/session/test_support.rs:26: allowlisted until 2026-12-31 "stub": true,
+crates/products/chio-cli/src/doctor/cosign.rs:169: allowlisted until 2026-12-31 writeln!(file, "{{\"stub\": true}}").unwrap();
+crates/products/chio-cli/src/doctor/cosign.rs:181: allowlisted until 2026-12-31 writeln!(file, "{{\"stub\": true}}").unwrap();
+crates/products/chio-cli/src/guard/new.rs:31: allowlisted until 2026-12-31 // Replace this stub with real policy logic before shipping.
+crates/products/chio-cli/src/guard/new.rs:49: allowlisted until 2026-12-31 wasm_sha256: "TODO: run `chio guard build` and update this hash"
+crates/products/chio-cli/templates/init/README.md.tmpl:8: allowlisted until 2026-12-31 - `src/bin/hello_server.rs`: a tiny MCP tool server stub
+crates/protocol/chio-acp-edge/src/bridge.rs:126: allowlisted until 2026-12-31 "permission preview is advisory only; enforcement happens at invoke time with Chio capability checks"
+crates/protocol/chio-envoy-ext-authz/proto/envoy/config/core/v3/base.proto:9: allowlisted until 2026-12-31 // or replaced with opaque placeholders; the Chio adapter does not interpret them.
+crates/protocol/chio-envoy-ext-authz/src/service.rs:20: allowlisted until 2026-12-31 /// `chio-http-core`); tests can stub this trait to verify the adapter's
+crates/tooling/chio-conformance/peers.lock.toml:10: allowlisted until 2026-12-31 # `published = false` flags an entry as a forward-looking placeholder: the
+crates/tooling/chio-conformance/peers.lock.toml:15: allowlisted until 2026-12-31 # placeholder sha256 (the all-zeros / all-ones strings below), update the url
+crates/tooling/chio-conformance/src/peers.rs:53: allowlisted until 2026-12-31 /// to be edited; placeholder entries MUST set `published = false`.
+crates/tooling/chio-conformance/src/peers.rs:481: allowlisted until 2026-12-31 // replaces the placeholder sha256 pins with real values.
+crates/tooling/chio-conformance/src/peers.rs:489: allowlisted until 2026-12-31 "shipped peer[{idx}] ({} / {}) is flagged published but the lockfile carries placeholder pins; flip published=true only when the release pipeline cuts a real binary",
+crates/tooling/chio-conformance/verdict_matrix/drivers/lambda/src/lib.rs:23: allowlisted until 2026-12-31 //!   real availability gate, not a placeholder: this driver has no in-process
+crates/tooling/chio-spec-codegen/src/main.rs:14: allowlisted until 2026-12-31 //! chio-spec-codegen --threat-model <input.json> --out <stubs-dir>
+crates/tooling/chio-spec-codegen/src/main.rs:20: allowlisted until 2026-12-31 //! `--threat-model` emits one stub Rust test per threat ID.
+crates/tooling/chio-spec-codegen/src/main.rs:28: allowlisted until 2026-12-31 \x20      chio-spec-codegen --threat-model <input.json> --out <stubs-dir>\n\
+crates/tooling/chio-spec-codegen/src/main.rs:151: allowlisted until 2026-12-31 // chio-spec-codegen --threat-model <input.json> --out <stubs-dir>
+crates/tooling/chio-spec-codegen/src/main.rs:158: allowlisted until 2026-12-31 eprintln!("error: --threat-model requires --out <stubs-dir>");
+crates/tooling/chio-spec-codegen/src/main.rs:197: allowlisted until 2026-12-31 "wrote {} threat-stub file(s) under {}",
+crates/tooling/chio-spec-codegen/src/threat_coverage_doc.rs:33: allowlisted until 2026-12-31 /// Default location of the threats stub directory.
+crates/tooling/chio-spec-codegen/src/threat_coverage_doc.rs:297: allowlisted until 2026-12-31 "- **Test stub:** `crates/tooling/chio-conformance/tests/threats/{}.rs`\n",
+crates/tooling/chio-spec-codegen/src/threat_coverage_doc.rs:301: allowlisted until 2026-12-31 out.push_str("- **Test stub:** (not yet emitted)\n");
+crates/tooling/chio-spec-codegen/src/threat_model.rs:24: allowlisted until 2026-12-31 /// Default codegen output directory for threat-stub tests.
+crates/tooling/chio-spec-codegen/src/threat_model.rs:104: allowlisted until 2026-12-31 /// Render the stub source for a single threat ID. Public so callers can
+crates/tooling/chio-spec-codegen/src/threat_model.rs:124: allowlisted until 2026-12-31 //! Stub test for threat ID `{id}` ({name}).\n\
+crates/tooling/chio-spec-codegen/src/threat_model.rs:128: allowlisted until 2026-12-31 //! Until a real test body lands, the stub fails closed via\n\
+crates/tooling/chio-spec-codegen/src/threat_model.rs:129: allowlisted until 2026-12-31 //! `unimplemented!()` so the threat-model-coverage CI gate flags this\n\
+crates/tooling/chio-spec-codegen/src/threat_model.rs:132: allowlisted until 2026-12-31 //! When you fill in the body, replace the `unimplemented!()` call\n\
+crates/tooling/chio-spec-codegen/src/threat_model.rs:140: allowlisted until 2026-12-31 unimplemented!(\"populate the test body for threat \\\"{id}\\\"\");\n\
+crates/tooling/chio-spec-codegen/src/threat_model.rs:178: allowlisted until 2026-12-31 /// Render the `mod.rs` aggregator that pulls in every per-threat stub
+crates/tooling/chio-spec-codegen/src/threat_model.rs:187: allowlisted until 2026-12-31 body.push_str("//! Aggregator for the threat-model codegen stubs.\n");
+crates/tooling/chio-spec-codegen/src/threat_model.rs:198: allowlisted until 2026-12-31 /// Generate one stub test file per threat ID under `out_dir` and
+crates/tooling/chio-spec-codegen/src/threat_model.rs:206: allowlisted until 2026-12-31 /// presence of `unimplemented!()`
+crates/tooling/chio-spec-codegen/src/threat_model.rs:254: allowlisted until 2026-12-31 .any(|line| !line.starts_with("//") && line.contains("unimplemented!("))
+crates/tooling/chio-spec-codegen/src/threat_model.rs:304: allowlisted until 2026-12-31 // top-level Rust into the stub.
+crates/tooling/chio-spec-codegen/src/threat_model.rs:318: allowlisted until 2026-12-31 // The stub must still parse as a valid Rust file.
+crates/tooling/chio-spec-codegen/src/threat_model.rs:320: allowlisted until 2026-12-31 syn::parse_str(&body).expect("sanitised stub must parse as Rust source");
+crates/tooling/chio-spec-codegen/src/threat_model.rs:342: allowlisted until 2026-12-31 syn::parse_str(&body).expect("sanitised stub must parse as Rust source");
+crates/tooling/chio-spec-codegen/src/threat_model.rs:357: allowlisted until 2026-12-31 //! Replace the `unimplemented!()` call when editing.
+crates/tooling/chio-spec-codegen/src/threat_model.rs:366: allowlisted until 2026-12-31 let stub = r#"
+crates/tooling/chio-spec-codegen/src/threat_model.rs:369: allowlisted until 2026-12-31 unimplemented!("fill me");
+crates/tooling/chio-spec-codegen/src/threat_model.rs:372: allowlisted until 2026-12-31 assert!(contains_live_unimplemented_marker(stub));
+crates/trust/chio-attest-verify/src/lib.rs:23: allowlisted until 2026-12-31 //! unsafe blocks at the lint level, and contains no `todo!`,
+crates/trust/chio-custody-hw/src/attestation/google_root.rs:11: allowlisted until 2026-12-31 //! SECURITY / PLACEHOLDER: the pinned key material below is NOT a
+crates/trust/chio-custody-hw/src/attestation/google_root.rs:27: allowlisted until 2026-12-31 // SECURITY / PLACEHOLDER - READ BEFORE ANY PRODUCTION DEPLOYMENT
+crates/trust/chio-custody-hw/src/attestation/google_root.rs:43: allowlisted until 2026-12-31 //      off the `*-fixture-root` placeholder value).
+crates/trust/chio-custody-hw/src/attestation/google_root.rs:47: allowlisted until 2026-12-31 //      MUST pass (it fails loudly while the placeholder kid is still pinned).
+crates/trust/chio-custody-hw/src/attestation/google_root.rs:66: allowlisted until 2026-12-31 /// SECURITY / PLACEHOLDER: this committed key is the private half of
+crates/trust/chio-custody-hw/src/attestation/google_root.rs:79: allowlisted until 2026-12-31 /// SECURITY / PLACEHOLDER: these coordinates are the SYNTHETIC FIXTURE
+crates/trust/chio-custody-hw/src/attestation/google_root.rs:91: allowlisted until 2026-12-31 /// SECURITY / PLACEHOLDER: the current value
+crates/trust/chio-custody-hw/src/attestation/google_root.rs:94: allowlisted until 2026-12-31 /// rotate this kid off the `*-fixture-root` placeholder; the production startup
+crates/trust/chio-custody-hw/src/attestation/google_root.rs:102: allowlisted until 2026-12-31 /// SECURITY / PLACEHOLDER: while
+crates/trust/chio-custody-hw/src/attestation/google_root.rs:112: allowlisted until 2026-12-31 /// SECURITY / PLACEHOLDER: these are byte-identical to the fixture
+crates/trust/chio-custody-hw/src/attestation/google_root.rs:124: allowlisted until 2026-12-31 /// FIXTURE placeholder (i.e. NOT a real Google verification key).
+crates/trust/chio-custody-hw/src/attestation/google_root.rs:126: allowlisted until 2026-12-31 /// SECURITY / PLACEHOLDER: this is `true` until the pinned root is
+crates/trust/chio-custody-hw/src/attestation/google_root.rs:135: allowlisted until 2026-12-31 /// placeholder-root provisioning footgun) still reports the root as a placeholder and keeps the
+crates/trust/chio-custody-hw/src/attestation/google_root.rs:139: allowlisted until 2026-12-31 // `const` byte comparison (no external deps). The root is a placeholder
+... 27 more production hit(s)
+
+Stub-surface check passed

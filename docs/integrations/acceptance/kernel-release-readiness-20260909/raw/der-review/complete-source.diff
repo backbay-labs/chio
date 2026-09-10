@@ -1,0 +1,1676 @@
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/.cargo_vcs_info.json b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/.cargo_vcs_info.json
+index f46724458..03fcbe395 100644
+--- a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/.cargo_vcs_info.json
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/.cargo_vcs_info.json
+@@ -1,6 +1,6 @@
+ {
+   "git": {
+-    "sha1": "7784544099435bddfe0fd4c9a0ef4f60ce37093b"
++    "sha1": "905717f83173b30a92304a57b7412f85c1788be9"
+   },
+   "path_in_vcs": "der"
+ }
+\ No newline at end of file
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/CHANGELOG.md b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/CHANGELOG.md
+index d093e5d2a..2202a7574 100644
+--- a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/CHANGELOG.md
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/CHANGELOG.md
+@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++## 0.8.1 (2026-07-08)
++### Added
++- `SetOfRef` struct ([#2247])
++
++### Changed
++- Deprecate `ErrorKind::SetDuplicate` ([#2276])
++- Improve `SetOf*` sorting performance ([#2345])
++- Cap maximum number of nested messages at `64` ([#2379])
++
++### Fixed
++- `SET OF` is not supposed to disallow duplicates ([#2272])
++
++[#2247]: https://github.com/RustCrypto/formats/pull/2247
++[#2272]: https://github.com/RustCrypto/formats/pull/2272
++[#2276]: https://github.com/RustCrypto/formats/pull/2276
++[#2345]: https://github.com/RustCrypto/formats/pull/2345
++[#2379]: https://github.com/RustCrypto/formats/pull/2379
++
+ ## 0.8.0 (2026-02-13)
+ ### Added
+ - Custom error types support to the `Decode` and `DecodeValue` traits ([#1055])
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/Cargo.lock b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/Cargo.lock
+index bf51e26fc..d125d6ea3 100644
+--- a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/Cargo.lock
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/Cargo.lock
+@@ -13,9 +13,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "autocfg"
+-version = "1.5.0"
++version = "1.5.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
++checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
+ 
+ [[package]]
+ name = "base64ct"
+@@ -40,9 +40,9 @@ checksum = "5e764a1d40d510daf35e07be9eb06e75770908c27d411ee6c92109c9840eaaf7"
+ 
+ [[package]]
+ name = "bitflags"
+-version = "2.10.0"
++version = "2.13.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
++checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
+ 
+ [[package]]
+ name = "byteorder"
+@@ -52,9 +52,9 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
+ 
+ [[package]]
+ name = "bytes"
+-version = "1.11.1"
++version = "1.12.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
++checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
+ 
+ [[package]]
+ name = "cfg-if"
+@@ -73,12 +73,13 @@ dependencies = [
+ 
+ [[package]]
+ name = "der"
+-version = "0.8.0"
++version = "0.8.1"
+ dependencies = [
+  "arbitrary",
+  "bytes",
+  "const-oid",
+  "der_derive",
++ "derive_arbitrary",
+  "flagset",
+  "heapless",
+  "hex-literal",
+@@ -101,12 +102,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "deranged"
+-version = "0.5.5"
++version = "0.5.8"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ececcb659e7ba858fb4f10388c250a7252eb0a27373f1a72b8748afdd248e587"
+-dependencies = [
+- "powerfmt",
+-]
++checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
+ 
+ [[package]]
+ name = "derive_arbitrary"
+@@ -131,9 +129,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "fastrand"
+-version = "2.3.0"
++version = "2.4.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
++checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
+ 
+ [[package]]
+ name = "flagset"
+@@ -155,10 +153,21 @@ checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
+ dependencies = [
+  "cfg-if",
+  "libc",
+- "r-efi",
++ "r-efi 5.3.0",
+  "wasip2",
+ ]
+ 
++[[package]]
++name = "getrandom"
++version = "0.4.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099"
++dependencies = [
++ "cfg-if",
++ "libc",
++ "r-efi 6.0.0",
++]
++
+ [[package]]
+ name = "hash32"
+ version = "0.3.1"
+@@ -170,9 +179,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "heapless"
+-version = "0.9.2"
++version = "0.9.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "2af2455f757db2b292a9b1768c4b70186d443bcb3b316252d6b540aec1cd89ed"
++checksum = "25ba4bd83f9415b58b4ed8dc5714c76e626a105be4646c02630ad730ad3b5aa4"
+ dependencies = [
+  "hash32",
+  "stable_deref_trait",
+@@ -186,21 +195,21 @@ checksum = "e712f64ec3850b98572bffac52e2c6f282b29fe6c5fa6d42334b30be438d95c1"
+ 
+ [[package]]
+ name = "libc"
+-version = "0.2.181"
++version = "0.2.186"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "459427e2af2b9c839b132acb702a1c654d95e10f8c326bfc2ad11310e458b1c5"
++checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
+ 
+ [[package]]
+ name = "linux-raw-sys"
+-version = "0.11.0"
++version = "0.12.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "df1d3c3b53da64cf5760482273a98e575c651a67eec7f77df96b5b642de8f039"
++checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
+ 
+ [[package]]
+ name = "num-conv"
+-version = "0.2.0"
++version = "0.2.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "cf97ec579c3c42f953ef76dbf8d55ac91fb219dde70e49aa4a6b7d74e9919050"
++checksum = "521739c6d2bac4aa25192232afe6841231376b2b26d4d9fae5ecf8ca5772e441"
+ 
+ [[package]]
+ name = "num-traits"
+@@ -213,9 +222,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "once_cell"
+-version = "1.21.3"
++version = "1.21.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
++checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+ 
+ [[package]]
+ name = "pem-rfc7468"
+@@ -243,18 +252,18 @@ dependencies = [
+ 
+ [[package]]
+ name = "proc-macro2"
+-version = "1.0.104"
++version = "1.0.106"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9695f8df41bb4f3d222c95a67532365f569318332d03d5f3f67f37b20e6ebdf0"
++checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
+ dependencies = [
+  "unicode-ident",
+ ]
+ 
+ [[package]]
+ name = "proptest"
+-version = "1.10.0"
++version = "1.11.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "37566cb3fdacef14c0737f9546df7cfeadbfbc9fef10991038bf5015d0c80532"
++checksum = "4b45fcc2344c680f5025fe57779faef368840d0bd1f42f216291f0dc4ace4744"
+ dependencies = [
+  "bit-set",
+  "bit-vec",
+@@ -277,9 +286,9 @@ checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
+ 
+ [[package]]
+ name = "quote"
+-version = "1.0.42"
++version = "1.0.46"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a338cc41d27e6cc6dce6cefc13a0729dfbb81c262b1f519331575dd80ef3067f"
++checksum = "dfbc457d0c7a0759a614551b11a6409e5951f6c7537be1f1b7682b9ae9230368"
+ dependencies = [
+  "proc-macro2",
+ ]
+@@ -290,11 +299,17 @@ version = "5.3.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
+ 
++[[package]]
++name = "r-efi"
++version = "6.0.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
++
+ [[package]]
+ name = "rand"
+-version = "0.9.2"
++version = "0.9.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "6db2770f06117d490610c7488547d543617b21bfa07796d7a12f6f1bd53850d1"
++checksum = "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea"
+ dependencies = [
+  "rand_chacha",
+  "rand_core",
+@@ -312,11 +327,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "rand_core"
+-version = "0.9.3"
++version = "0.9.5"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "99d9a13982dcf210057a8a78572b2217b667c3beacbf3a0d8b454f6f82837d38"
++checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
+ dependencies = [
+- "getrandom",
++ "getrandom 0.3.4",
+ ]
+ 
+ [[package]]
+@@ -330,15 +345,15 @@ dependencies = [
+ 
+ [[package]]
+ name = "regex-syntax"
+-version = "0.8.9"
++version = "0.8.11"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a96887878f22d7bad8a3b6dc5b7440e0ada9a245242924394987b21cf2210a4c"
++checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+ 
+ [[package]]
+ name = "rustix"
+-version = "1.1.3"
++version = "1.1.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "146c9e247ccc180c1f61615433868c99f3de3ae256a30a43b49f67c2d9171f34"
++checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
+ dependencies = [
+  "bitflags",
+  "errno",
+@@ -367,9 +382,9 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+ 
+ [[package]]
+ name = "syn"
+-version = "2.0.113"
++version = "2.0.118"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "678faa00651c9eb72dd2020cbdf275d92eccb2400d568e419efdd64838145cb4"
++checksum = "1b9ae57f904213ebb649ce6895b8a66c66f0203b9319718f69a5612a065b1422"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+@@ -378,12 +393,12 @@ dependencies = [
+ 
+ [[package]]
+ name = "tempfile"
+-version = "3.24.0"
++version = "3.27.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "655da9c7eb6305c55742045d5a8d2037996d61d8de95806335c7c86ce0f82e9c"
++checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
+ dependencies = [
+  "fastrand",
+- "getrandom",
++ "getrandom 0.4.3",
+  "once_cell",
+  "rustix",
+  "windows-sys",
+@@ -391,9 +406,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "time"
+-version = "0.3.47"
++version = "0.3.51"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "743bd48c283afc0388f9b8827b976905fb217ad9e647fae3a379a9283c4def2c"
++checksum = "85c17d80feb7334b40c484e45ed1a5273dfd8bfda537c3be2e74a06a6686f327"
+ dependencies = [
+  "deranged",
+  "num-conv",
+@@ -403,9 +418,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "time-core"
+-version = "0.1.8"
++version = "0.1.9"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7694e1cfe791f8d31026952abf09c69ca6f6fa4e1a1229e18988f06a04a12dca"
++checksum = "9e1c906769ad99c88eaa54e728060edef082f8e358ff32030cb7c7d315e81109"
+ 
+ [[package]]
+ name = "unarray"
+@@ -415,9 +430,9 @@ checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
+ 
+ [[package]]
+ name = "unicode-ident"
+-version = "1.0.23"
++version = "1.0.24"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "537dd038a89878be9b64dd4bd1b260315c1bb94f4d784956b81e27a088d9a09e"
++checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+ 
+ [[package]]
+ name = "wait-timeout"
+@@ -430,9 +445,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "wasip2"
+-version = "1.0.2+wasi-0.2.9"
++version = "1.0.4+wasi-0.2.12"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9517f9239f02c069db75e65f174b3da828fe5f5b945c4dd26bd25d89c03ebcf5"
++checksum = "b67efb37e106e55ce722a510d6b5f9c17f083e5fc79afc2badeb12cc313d9487"
+ dependencies = [
+  "wit-bindgen",
+ ]
+@@ -454,24 +469,24 @@ dependencies = [
+ 
+ [[package]]
+ name = "wit-bindgen"
+-version = "0.51.0"
++version = "0.57.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d7249219f66ced02969388cf2bb044a09756a083d0fab1e566056b04d9fbcaa5"
++checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+ 
+ [[package]]
+ name = "zerocopy"
+-version = "0.8.39"
++version = "0.8.53"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "db6d35d663eadb6c932438e763b262fe1a70987f9ae936e60158176d710cae4a"
++checksum = "75726053136156d419e285b9b7eddaaea9e3fea6ce32eed44a89901f0bd98de1"
+ dependencies = [
+  "zerocopy-derive",
+ ]
+ 
+ [[package]]
+ name = "zerocopy-derive"
+-version = "0.8.39"
++version = "0.8.53"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4122cd3169e94605190e77839c9a40d40ed048d305bfdc146e7df40ab0f3e517"
++checksum = "4714fd92cf900833d49538023a9b3915155210801d1c1169eba513b2addefd71"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+@@ -480,6 +495,6 @@ dependencies = [
+ 
+ [[package]]
+ name = "zeroize"
+-version = "1.8.2"
++version = "1.9.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
++checksum = "e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e"
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/Cargo.toml b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/Cargo.toml
+index 8d54a2779..5979f1396 100644
+--- a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/Cargo.toml
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/Cargo.toml
+@@ -13,7 +13,7 @@
+ edition = "2024"
+ rust-version = "1.85"
+ name = "der"
+-version = "0.8.0"
++version = "0.8.1"
+ authors = ["RustCrypto Developers"]
+ build = false
+ autolib = false
+@@ -57,6 +57,7 @@ rustdoc-args = [
+ alloc = ["zeroize?/alloc"]
+ arbitrary = [
+     "dep:arbitrary",
++    "dep:derive_arbitrary",
+     "const-oid?/arbitrary",
+     "std",
+ ]
+@@ -91,6 +92,10 @@ path = "tests/derive.rs"
+ name = "derive_no_alloc"
+ path = "tests/derive_no_alloc.rs"
+ 
++[[test]]
++name = "nesting"
++path = "tests/nesting.rs"
++
+ [[test]]
+ name = "pem"
+ path = "tests/pem.rs"
+@@ -100,7 +105,7 @@ name = "set_of"
+ path = "tests/set_of.rs"
+ 
+ [dependencies.arbitrary]
+-version = "1.4"
++version = "1.4.2"
+ features = ["derive"]
+ optional = true
+ 
+@@ -117,6 +122,10 @@ optional = true
+ version = "0.8"
+ optional = true
+ 
++[dependencies.derive_arbitrary]
++version = "1.4.2"
++optional = true
++
+ [dependencies.flagset]
+ version = "0.4.7"
+ optional = true
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/Cargo.toml.orig b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/Cargo.toml.orig
+index a271e3863..875f3ff47 100644
+--- a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/Cargo.toml.orig
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/Cargo.toml.orig
+@@ -1,6 +1,6 @@
+ [package]
+ name = "der"
+-version = "0.8.0"
++version = "0.8.1"
+ description = """
+ Pure Rust embedded-friendly implementation of the Distinguished Encoding Rules
+ (DER) for Abstract Syntax Notation One (ASN.1) as described in ITU X.690 with
+@@ -17,7 +17,8 @@ edition = "2024"
+ rust-version = "1.85"
+ 
+ [dependencies]
+-arbitrary = { version = "1.4", features = ["derive"], optional = true }
++arbitrary = { version = "1.4.2", features = ["derive"], optional = true }
++derive_arbitrary = { version = "1.4.2", optional = true } # Fixup for minimal-versions
+ bytes = { version = "1", optional = true, default-features = false }
+ const-oid = { version = "0.10", optional = true }
+ der_derive = { version = "0.8", optional = true }
+@@ -36,7 +37,7 @@ proptest = "1.10"
+ alloc = ["zeroize?/alloc"]
+ std = ["alloc"]
+ 
+-arbitrary = ["dep:arbitrary", "const-oid?/arbitrary", "std"]
++arbitrary = ["dep:arbitrary", "dep:derive_arbitrary", "const-oid?/arbitrary", "std"]
+ ber = []
+ bytes = ["dep:bytes", "alloc"]
+ derive = ["dep:der_derive"]
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/LICENSE-MIT b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/LICENSE-MIT
+index 0cd648f76..b135e18de 100644
+--- a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/LICENSE-MIT
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/LICENSE-MIT
+@@ -1,4 +1,4 @@
+-Copyright (c) 2020-2025 The RustCrypto Project Developers
++Copyright (c) 2020-2026 The RustCrypto Project Developers
+ 
+ Permission is hereby granted, free of charge, to any
+ person obtaining a copy of this software and associated
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/src/asn1/set_of.rs b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/src/asn1/set_of.rs
+index 2233a062d..bda5a45fa 100644
+--- a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/src/asn1/set_of.rs
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/src/asn1/set_of.rs
+@@ -11,8 +11,8 @@
+ #![cfg(any(feature = "alloc", feature = "heapless"))]
+ 
+ use crate::{
+-    Decode, DecodeValue, DerOrd, Encode, EncodeValue, Error, ErrorKind, FixedTag, Header, Length,
+-    Reader, Tag, ValueOrd, Writer, ord::iter_cmp,
++    AnyRef, Decode, DecodeValue, DerOrd, Encode, EncodeValue, Error, ErrorKind, FixedTag, Header,
++    Length, Reader, SliceReader, Tag, ValueOrd, Writer, ord::iter_cmp, ord::iter_cmp_owned,
+ };
+ use core::cmp::Ordering;
+ 
+@@ -35,6 +35,28 @@ where
+     inner: heapless::Vec<T, N>,
+ }
+ 
++// Inner reference of a SetOfRef
++//
++// An internal reference can either be bytes when constructed during decoding
++// or a slice of items of the generic type T.
++#[derive(Clone, Debug, Eq, PartialEq, Hash)]
++enum InnerRef<'a, T> {
++    BytesRef(&'a [u8], usize),
++    ObjectsRef(&'a [T]),
++}
++
++/// ASN.1 `SET OF` with a reference to an array.
++///
++/// This type implements a viewer in a `SET OF` type
++/// and does not depend on `alloc` support.
++#[derive(Clone, Debug, Eq, PartialEq, Hash)]
++pub struct SetOfRef<'a, T>
++where
++    T: DerOrd,
++{
++    inner: InnerRef<'a, T>,
++}
++
+ #[cfg(feature = "heapless")]
+ impl<T, const N: usize> SetOf<T, N>
+ where
+@@ -51,9 +73,8 @@ where
+     /// Insert an item into this [`SetOf`].
+     ///
+     /// # Errors
+-    /// If there's a duplicate or sorting error.
++    /// If there's a sorting error.
+     pub fn insert(&mut self, item: T) -> Result<(), Error> {
+-        check_duplicate(&item, self.iter())?;
+         self.try_push(item)?;
+         der_sort(self.inner.as_mut())
+     }
+@@ -125,6 +146,91 @@ where
+     }
+ }
+ 
++impl<'a, T> SetOfRef<'a, T>
++where
++    T: Decode<'a> + 'a,
++    T: Clone + DerOrd,
++{
++    /// Creates a [`SetOfRef`] by parsing the *contents* of a DER-encoded `SET OF` —
++    /// that is, the raw bytes after the tag and length bytes have been stripped.
++    fn from_bytes(v: &'a [u8]) -> Result<Self, Error> {
++        // Make sure we can decode valid objects from the bytes
++        let mut reader = SliceReader::new(v)?;
++
++        let mut iter_len = 0;
++        while !reader.is_finished() {
++            AnyRef::decode(&mut reader).map_err(|_| Error::from_kind(ErrorKind::Failed))?;
++            iter_len += 1;
++        }
++
++        // Generate the set as a byte reference
++        let new_set = Self {
++            inner: InnerRef::BytesRef(v, iter_len),
++        };
++
++        // Assert the constructed set obeys ordering rules
++        new_set
++            .iter()
++            .is_sorted_by(|a, b| !matches!(a.der_cmp(b), Ok(Ordering::Greater)))
++            .then_some(new_set)
++            .ok_or_else(|| Error::from_kind(ErrorKind::SetOrdering))
++    }
++
++    /// Get the nth element from this [`SetOfRef`].
++    #[must_use]
++    pub fn get(&self, index: usize) -> Option<T>
++    where
++        T: Decode<'a> + 'a,
++        T: Clone,
++    {
++        self.iter().nth(index)
++    }
++
++    /// Iterate over the elements of this [`SetOfRef`].
++    ///
++    /// # Panics
++    ///
++    /// Panics if the inner byte slice contains invalid data that cannot be
++    /// parsed by [`SliceReader`].
++    #[must_use]
++    pub fn iter(&self) -> SetOfRefIter<'a, T>
++    where
++        T: Decode<'a> + 'a,
++    {
++        match self.inner {
++            InnerRef::BytesRef(inner, length) => SetOfRefIter {
++                inner: InnerIterRef::<'a, T>::BytesRef(
++                    SliceReader::new(inner).expect("Invalid data"),
++                ),
++                length,
++            },
++            InnerRef::ObjectsRef(inner) => SetOfRefIter {
++                inner: InnerIterRef::<'a, T>::ObjectsRef(inner),
++                length: inner.len(),
++            },
++        }
++    }
++
++    /// Is this [`SetOfRef`] empty?
++    #[must_use]
++    pub fn is_empty(&self) -> bool {
++        match self.inner {
++            InnerRef::BytesRef(inner, _) => inner.is_empty(),
++            InnerRef::ObjectsRef(inner) => inner.is_empty(),
++        }
++    }
++
++    /// Number of elements in this [`SetOfRef`].
++    #[must_use]
++    pub fn len(&self) -> usize
++    where
++        T: Decode<'a> + 'a,
++        T: Clone,
++    {
++        self.iter().len()
++    }
++}
++
+ #[cfg(feature = "heapless")]
+ impl<T, const N: usize> Default for SetOf<T, N>
+ where
+@@ -158,6 +264,19 @@ where
+     }
+ }
+ 
++impl<'a, T> DecodeValue<'a> for SetOfRef<'a, T>
++where
++    T: Clone,
++    T: Decode<'a> + DerOrd,
++{
++    type Error = Error;
++
++    fn decode_value<R: Reader<'a>>(reader: &mut R, header: Header) -> Result<Self, Self::Error> {
++        let inner_slice: &'a [u8] = reader.read_slice(header.length())?;
++        SetOfRef::<'a, T>::from_bytes(inner_slice)
++    }
++}
++
+ #[cfg(feature = "heapless")]
+ impl<T, const N: usize> EncodeValue for SetOf<T, N>
+ where
+@@ -177,6 +296,25 @@ where
+     }
+ }
+ 
++impl<'a, T> EncodeValue for SetOfRef<'a, T>
++where
++    T: Decode<'a> + Encode + DerOrd,
++    T: Clone,
++{
++    fn value_len(&self) -> Result<Length, Error> {
++        self.iter()
++            .try_fold(Length::ZERO, |len, elem| len + elem.encoded_len()?)
++    }
++
++    fn encode_value(&self, writer: &mut impl Writer) -> Result<(), Error> {
++        for elem in self.iter() {
++            elem.encode(writer)?;
++        }
++
++        Ok(())
++    }
++}
++
+ #[cfg(feature = "heapless")]
+ impl<T, const N: usize> FixedTag for SetOf<T, N>
+ where
+@@ -185,6 +323,13 @@ where
+     const TAG: Tag = Tag::Set;
+ }
+ 
++impl<'a, T> FixedTag for SetOfRef<'a, T>
++where
++    T: DerOrd,
++{
++    const TAG: Tag = Tag::Set;
++}
++
+ #[cfg(feature = "heapless")]
+ impl<T, const N: usize> TryFrom<[T; N]> for SetOf<T, N>
+ where
+@@ -205,6 +350,31 @@ where
+     }
+ }
+ 
++impl<'a, T> TryFrom<&'a [T]> for SetOfRef<'a, T>
++where
++    T: DerOrd,
++{
++    type Error = Error;
++
++    fn try_from(arr: &'a [T]) -> Result<SetOfRef<'a, T>, Error> {
++        arr.iter()
++            .is_sorted_by(|a, b| !matches!(a.der_cmp(b), Ok(Ordering::Greater)))
++            .then_some(SetOfRef {
++                inner: InnerRef::ObjectsRef(arr),
++            })
++            .ok_or_else(|| Error::from_kind(ErrorKind::SetOrdering))
++    }
++}
++
++impl<'a, T> From<&SetOfRef<'a, T>> for SetOfRef<'a, T>
++where
++    T: Clone + DerOrd,
++{
++    fn from(value: &SetOfRef<'a, T>) -> SetOfRef<'a, T> {
++        value.clone()
++    }
++}
++
+ #[cfg(feature = "heapless")]
+ impl<T, const N: usize> ValueOrd for SetOf<T, N>
+ where
+@@ -215,6 +385,16 @@ where
+     }
+ }
+ 
++impl<'a, T> ValueOrd for SetOfRef<'a, T>
++where
++    T: Decode<'a> + DerOrd + 'a,
++    T: Clone,
++{
++    fn value_cmp(&self, other: &Self) -> Result<Ordering, Error> {
++        iter_cmp_owned(self.iter(), other.iter())
++    }
++}
++
+ /// Iterator over the elements of an [`SetOf`].
+ #[derive(Clone, Debug)]
+ pub struct SetOfIter<'a, T> {
+@@ -236,6 +416,67 @@ impl<'a, T: 'a> Iterator for SetOfIter<'a, T> {
+ 
+ impl<'a, T: 'a> ExactSizeIterator for SetOfIter<'a, T> {}
+ 
++// Inner reference of a SetOfRefIter
++//
++// An internal reference can either be a slice reader when constructed during decoding
++// or a slice of items of the generic type T.
++#[derive(Clone, Debug)]
++enum InnerIterRef<'a, T> {
++    BytesRef(SliceReader<'a>),
++    ObjectsRef(&'a [T]),
++}
++
++/// Iterator over the elements of an [`SetOfRef`].
++#[derive(Clone, Debug)]
++pub struct SetOfRefIter<'a, T>
++where
++    T: Decode<'a>,
++{
++    /// Inner iterator.
++    inner: InnerIterRef<'a, T>,
++    length: usize,
++}
++
++impl<'a, T> Iterator for SetOfRefIter<'a, T>
++where
++    T: Decode<'a> + 'a,
++    T: Clone,
++{
++    type Item = T;
++
++    fn next(&mut self) -> Option<T> {
++        match &mut self.inner {
++            InnerIterRef::BytesRef(inner_reader) => {
++                if inner_reader.is_finished() {
++                    return None;
++                }
++
++                let next_val = T::decode(inner_reader).ok()?;
++                self.length -= 1;
++                Some(next_val)
++            }
++            InnerIterRef::ObjectsRef(inner_slice) => {
++                let next_val = inner_slice.first()?;
++                self.inner = InnerIterRef::ObjectsRef(&inner_slice[1..]);
++                self.length -= 1;
++
++                Some(next_val.clone())
++            }
++        }
++    }
++
++    fn size_hint(&self) -> (usize, Option<usize>) {
++        (self.length, Some(self.length))
++    }
++}
++
++impl<'a, T> ExactSizeIterator for SetOfRefIter<'a, T>
++where
++    T: Decode<'a> + 'a,
++    T: Clone,
++{
++}
++
+ /// ASN.1 `SET OF` backed by a [`Vec`].
+ ///
+ /// This type implements an append-only `SET OF` type which is heap-backed
+@@ -304,9 +545,8 @@ where
+     /// Insert an item into this [`SetOfVec`]. Must be unique.
+     ///
+     /// # Errors
+-    /// If `item` is a duplicate or a sorting error occurred.
++    /// If a sorting error occurred.
+     pub fn insert(&mut self, item: T) -> Result<(), Error> {
+-        check_duplicate(&item, self.iter())?;
+         self.inner.push(item);
+         der_sort(&mut self.inner)
+     }
+@@ -488,70 +728,96 @@ where
+     }
+ }
+ 
+-/// Check if the given item is a duplicate, given an iterator over sorted items (which we can
+-/// short-circuit once we hit `Ordering::Less`.
+-fn check_duplicate<'a, T, I>(item: &T, iter: I) -> Result<(), Error>
+-where
+-    T: DerOrd + 'a,
+-    I: Iterator<Item = &'a T>,
+-{
+-    for item2 in iter {
+-        match item.der_cmp(item2)? {
+-            Ordering::Less => return Ok(()), // all remaining items are greater
+-            Ordering::Equal => return Err(ErrorKind::SetDuplicate.into()),
+-            Ordering::Greater => continue,
+-        }
+-    }
+-
+-    Ok(())
+-}
+-
+ /// Ensure set elements are lexicographically ordered using [`DerOrd`].
+ fn check_der_ordering<T: DerOrd>(a: &T, b: &T) -> Result<(), Error> {
+-    match a.der_cmp(b)? {
+-        Ordering::Less => Ok(()),
+-        Ordering::Equal => Err(ErrorKind::SetDuplicate.into()),
+-        Ordering::Greater => Err(ErrorKind::SetOrdering.into()),
++    if a.der_cmp(b)? == Ordering::Greater {
++        return Err(ErrorKind::SetOrdering.into());
+     }
++
++    Ok(())
+ }
+ 
+ /// Sort a mut slice according to its [`DerOrd`], returning any errors which
+ /// might occur during the comparison.
+ ///
+-/// The algorithm is insertion sort, which should perform well when the input
+-/// is mostly sorted to begin with.
++/// Uses [`slice::sort_unstable_by`] (an O(n log n) introsort) rather than the
++/// stable [`slice::sort_by`] because the latter requires `alloc`, while this
++/// function must also work on heapless `no_std` targets where only `core` is
++/// available. Sorting unstably is fine here: two elements that compare
++/// [`Ordering::Equal`] under [`DerOrd`] have identical DER encodings, so their
++/// relative order does not affect the serialized output.
++///
++/// A previous implementation used a hand-rolled insertion sort. On adversarial
++/// reverse-sorted input that degrades to O(n^2), which let a crafted `SET OF`
++/// turn a single decode into a quadratic-time denial of service (see
++/// <https://github.com/RustCrypto/formats/issues/2319>).
+ ///
+-/// This function is used rather than Rust's built-in `[T]::sort_by` in order
+-/// to support heapless `no_std` targets as well as to enable bubbling up
+-/// sorting errors.
+-#[allow(clippy::arithmetic_side_effects)]
++/// `DerOrd::der_cmp` is fallible. Since the standard sort comparator must
++/// return [`Ordering`] rather than a `Result`, the first comparison error is
++/// captured and returned after the sort completes; on error the slice is left
++/// in an unspecified (but valid) order.
+ fn der_sort<T: DerOrd>(slice: &mut [T]) -> Result<(), Error> {
+-    for i in 0..slice.len() {
+-        let mut j = i;
+-
+-        while j > 0 {
+-            match slice[j - 1].der_cmp(&slice[j])? {
+-                Ordering::Less => break,
+-                Ordering::Equal => return Err(ErrorKind::SetDuplicate.into()),
+-                Ordering::Greater => {
+-                    slice.swap(j - 1, j);
+-                    j -= 1;
+-                }
+-            }
++    let mut first_err: Option<Error> = None;
++
++    slice.sort_unstable_by(|a, b| {
++        a.der_cmp(b).unwrap_or_else(|err| {
++            first_err.get_or_insert(err);
++            Ordering::Equal
++        })
++    });
++
++    first_err.map_or(Ok(()), Err)
++}
++
++#[cfg(feature = "alloc")]
++mod allocating {
++    use super::*;
++    use crate::referenced::*;
++
++    impl<'a, T> RefToOwned<'a> for SetOfRef<'a, T>
++    where
++        T: Decode<'a> + EncodeValue + 'a,
++        T: DerOrd + FixedTag,
++        T: Clone,
++    {
++        type Owned = SetOfVec<T>;
++        fn ref_to_owned(&self) -> Self::Owned {
++            SetOfVec::from_iter(self.iter()).expect("SetOfVec: Could not sort inner slice")
+         }
+     }
+ 
+-    Ok(())
++    impl<T> OwnedToRef for SetOfVec<T>
++    where
++        T: Encode,
++        T: DerOrd,
++    {
++        type Borrowed<'a>
++            = SetOfRef<'a, T>
++        where
++            T: 'a;
++
++        fn owned_to_ref(&self) -> Self::Borrowed<'_> {
++            SetOfRef::<T>::try_from(self.inner.as_slice()).expect("Unsorted slice")
++        }
++    }
+ }
+ 
+ #[cfg(test)]
+ #[allow(clippy::unwrap_used)]
+ mod tests {
+-    #[cfg(feature = "alloc")]
+-    use super::SetOfVec;
++
+     use crate::ErrorKind;
++    #[cfg(feature = "alloc")]
++    use {
++        super::SetOfVec,
++        crate::{Decode, Encode, EncodeValue, SliceWriter},
++        alloc::vec,
++    };
++
+     #[cfg(feature = "heapless")]
+-    use {super::SetOf, crate::DerOrd};
++    use super::SetOf;
++    #[cfg(any(feature = "alloc", feature = "heapless"))]
++    use {super::SetOfRef, crate::DerOrd};
+ 
+     #[cfg(feature = "heapless")]
+     #[test]
+@@ -560,13 +826,22 @@ mod tests {
+         setof.insert(42).unwrap();
+         assert_eq!(setof.len(), 1);
+         assert_eq!(*setof.iter().next().unwrap(), 42);
++    }
+ 
+-        // Ensure duplicates are disallowed
+-        assert_eq!(
+-            setof.insert(42).unwrap_err().kind(),
+-            ErrorKind::SetDuplicate
+-        );
++    #[cfg(feature = "heapless")]
++    #[test]
++    fn setof_insert_duplicate() {
++        let mut setof = SetOf::<u8, 10>::new();
++        setof.insert(42).unwrap();
+         assert_eq!(setof.len(), 1);
++
++        setof.insert(42).unwrap();
++
++        let mut iter = setof.iter();
++
++        assert_eq!(setof.len(), 2);
++        assert_eq!(*iter.next().unwrap(), 42);
++        assert_eq!(*iter.next().unwrap(), 42);
+     }
+ 
+     #[cfg(feature = "heapless")]
+@@ -577,14 +852,6 @@ mod tests {
+         assert!(set.iter().copied().eq([0, 1, 2, 3, 65535]));
+     }
+ 
+-    #[cfg(feature = "heapless")]
+-    #[test]
+-    fn setof_tryfrom_array_reject_duplicates() {
+-        let arr = [1u16, 1];
+-        let err = SetOf::try_from(arr).err().unwrap();
+-        assert_eq!(err.kind(), ErrorKind::SetDuplicate);
+-    }
+-
+     #[cfg(feature = "heapless")]
+     #[test]
+     fn setof_valueord_value_cmp() {
+@@ -597,20 +864,77 @@ mod tests {
+         assert_eq!(set1.der_cmp(&set2), Ok(Ordering::Greater));
+     }
+ 
++    #[test]
++    fn setofref_tryfrom_array() {
++        let arr = [0u16, 1, 2, 3, 65535];
++        let set = SetOfRef::try_from(arr.as_ref()).unwrap();
++        assert!(set.iter().eq([0, 1, 2, 3, 65535]));
++    }
++
++    #[cfg(feature = "alloc")]
++    #[test]
++    fn setofref_tryfrom_der() {
++        let arr = SetOfVec::try_from([0u16, 1, 2, 3, 65535])
++            .unwrap()
++            .to_der()
++            .unwrap();
++        let set = SetOfRef::<u16>::from_der(arr.as_ref()).unwrap();
++        assert!(set.iter().eq([0, 1, 2, 3, 65535]));
++    }
++
++    #[cfg(feature = "alloc")]
++    #[test]
++    fn setofref_tryfrom_bytes() {
++        let arr = SetOfVec::try_from([0u16, 1, 2, 3, 65535]).unwrap();
++
++        let mut encoded = vec![0u8; arr.value_len().unwrap().try_into().unwrap()];
++        let mut writer = SliceWriter::new(&mut encoded);
++        arr.encode_value(&mut writer).unwrap();
++
++        let decoded = SetOfRef::<u16>::from_bytes(writer.finish().unwrap()).unwrap();
++
++        assert!(decoded.iter().eq([0, 1, 2, 3, 65535]));
++    }
++
++    #[test]
++    fn setofref_tryfrom_array_reject_unsorted() {
++        let arr = [3u16, 2, 1, 65535, 0];
++        let err = SetOfRef::try_from(arr.as_ref()).err().unwrap();
++        assert_eq!(err.kind(), ErrorKind::SetOrdering);
++    }
++
++    #[test]
++    fn setofref_tryfrom_array_allow_duplicates() {
++        let arr = [1u16, 1];
++        let set = SetOfRef::try_from(arr.as_ref()).unwrap();
++        assert!(set.iter().eq([1, 1]));
++    }
++
++    #[test]
++    fn setofref_valueord_value_cmp() {
++        use core::cmp::Ordering;
++
++        let arr1 = [0u16, 1, 2, 3, 5];
++        let arr2 = [0u16, 1, 2, 3, 4];
++        let set1 = SetOfRef::try_from(arr1.as_ref()).unwrap();
++        let set2 = SetOfRef::try_from(arr2.as_ref()).unwrap();
++        assert_eq!(set1.der_cmp(&set2), Ok(Ordering::Greater));
++    }
++
+     #[cfg(feature = "alloc")]
+     #[test]
+     fn setofvec_insert() {
+         let mut setof = SetOfVec::new();
+         setof.insert(42).unwrap();
+         assert_eq!(setof.len(), 1);
+-        assert_eq!(*setof.iter().next().unwrap(), 42);
+ 
+-        // Ensure duplicates are disallowed
+-        assert_eq!(
+-            setof.insert(42).unwrap_err().kind(),
+-            ErrorKind::SetDuplicate
+-        );
+-        assert_eq!(setof.len(), 1);
++        setof.insert(46).unwrap();
++
++        let mut iter = setof.iter();
++
++        assert_eq!(setof.len(), 2);
++        assert_eq!(*iter.next().unwrap(), 42);
++        assert_eq!(*iter.next().unwrap(), 46);
+     }
+ 
+     #[cfg(feature = "alloc")]
+@@ -631,9 +955,144 @@ mod tests {
+ 
+     #[cfg(feature = "alloc")]
+     #[test]
+-    fn setofvec_tryfrom_vec_reject_duplicates() {
++    fn setofvec_tryfrom_vec_allow_duplicates() {
+         let vec = vec![1u16, 1];
+-        let err = SetOfVec::try_from(vec).err().unwrap();
+-        assert_eq!(err.kind(), ErrorKind::SetDuplicate);
++        let set = SetOfVec::try_from(vec).unwrap();
++        assert_eq!(set.as_ref(), &[1, 1]);
++    }
++
++    // Regression tests for #2319: `der_sort` was a hand-rolled O(n^2) insertion
++    // sort, which a crafted reverse-sorted `SET OF` could exploit for a
++    // quadratic-time denial of service. The fix swaps in `sort_unstable_by`
++    // (O(n log n)). These tests pin the externally observable contract so the
++    // algorithm swap cannot silently change behavior: the resulting order, the
++    // DER `SET OF` ordering invariant, and duplicate preservation.
++
++    #[cfg(feature = "alloc")]
++    use alloc::vec::Vec;
++
++    /// Reference implementation: the original insertion sort that `der_sort`
++    /// replaced. Used to confirm the new sort yields a byte-identical ordering.
++    #[cfg(feature = "alloc")]
++    fn insertion_sort_reference<T: DerOrd>(slice: &mut [T]) {
++        for i in 0..slice.len() {
++            let mut j = i;
++            while j > 0 {
++                if slice[j - 1].der_cmp(&slice[j]).unwrap() == core::cmp::Ordering::Greater {
++                    slice.swap(j - 1, j);
++                    j -= 1;
++                } else {
++                    break;
++                }
++            }
++        }
++    }
++
++    /// Assert the slice obeys the DER `SET OF` ordering invariant: each element
++    /// is less-than-or-equal to its successor under `DerOrd`. Equal neighbors
++    /// (duplicates / encoding ties) are allowed, matching the decoder.
++    #[cfg(feature = "alloc")]
++    fn assert_der_sorted<T: DerOrd>(slice: &[T]) {
++        for pair in slice.windows(2) {
++            assert_ne!(
++                pair[0].der_cmp(&pair[1]).unwrap(),
++                core::cmp::Ordering::Greater,
++                "der_sort left an out-of-order pair"
++            );
++        }
++    }
++
++    /// A small deterministic LCG so the test is reproducible without a `rand`
++    /// dependency (the crate has none in dev-deps for this path).
++    #[cfg(feature = "alloc")]
++    fn lcg_next(state: &mut u64) -> u16 {
++        *state = state
++            .wrapping_mul(6364136223846793005)
++            .wrapping_add(1442695040888963407);
++        // Intentionally take the low 16 bits of the high word as the output;
++        // the mask makes the truncation explicit rather than a lossy `as` cast.
++        ((*state >> 33) & 0xFFFF) as u16
++    }
++
++    /// The fix must not change which ordering `der_sort` produces. Cross-check
++    /// it against the original insertion sort on many inputs: fully randomized
++    /// (with intentional duplicates from a narrow value range), the adversarial
++    /// reverse-sorted case from the issue, already-sorted, and constant.
++    #[cfg(feature = "alloc")]
++    #[test]
++    fn der_sort_matches_reference_ordering() {
++        let mut rng_state = 0x2319_u64;
++
++        // Randomized inputs of varied sizes. The narrow value range forces
++        // frequent duplicates so duplicate handling is exercised.
++        for &len in &[0usize, 1, 2, 5, 17, 64, 257, 1000] {
++            let original: Vec<u16> = (0..len).map(|_| lcg_next(&mut rng_state) % 50).collect();
++
++            let mut via_new = original.clone();
++            super::der_sort(&mut via_new).unwrap();
++
++            let mut via_reference = original.clone();
++            insertion_sort_reference(&mut via_reference);
++
++            assert_eq!(via_new, via_reference, "ordering diverged at len={len}");
++            assert_der_sorted(&via_new);
++            // Multiset is preserved (nothing dropped or duplicated by the sort).
++            let mut a = original.clone();
++            let mut b = via_new.clone();
++            a.sort_unstable();
++            b.sort_unstable();
++            assert_eq!(a, b, "der_sort changed the multiset at len={len}");
++        }
++
++        // Adversarial worst case for insertion sort: strictly reverse-sorted.
++        let reversed: Vec<u16> = (0..2000u16).rev().collect();
++        let mut via_new = reversed.clone();
++        super::der_sort(&mut via_new).unwrap();
++        let mut via_reference = reversed;
++        insertion_sort_reference(&mut via_reference);
++        assert_eq!(via_new, via_reference);
++        assert_der_sorted(&via_new);
++        assert!(via_new.iter().copied().eq(0..2000u16));
++    }
++
++    /// Decoding a large reverse-sorted DER `SET OF` must succeed, sort
++    /// correctly, and re-encode to canonical (sorted) DER. This is the decode
++    /// path that the `DoS` in #2319 targeted. With the O(n^2) sort this input
++    /// took seconds; with O(n log n) it is effectively instant, but the
++    /// assertion here is on correctness, not timing.
++    #[cfg(feature = "alloc")]
++    #[test]
++    fn setofvec_decodes_large_reverse_sorted_der() {
++        // Build non-canonical (reverse-sorted) DER for a SET OF INTEGER.
++        let n = 4000u16;
++        let elements: Vec<u16> = (0..n).rev().collect();
++
++        let mut encoded = elements.to_der().unwrap();
++        // Trick: change SEQUENCE tag 0x30 to SET 0x31
++        encoded[0] = 0x31;
++
++        // Decoder accepts the non-canonical input and sorts it at decode time.
++        let set = SetOfVec::<u16>::from_der(&encoded).unwrap();
++        assert_eq!(set.len(), n as usize);
++        assert!(set.iter().copied().eq(0..n));
++        assert_der_sorted(set.as_ref());
++
++        // Re-encoding yields canonical (sorted) DER, distinct from the input.
++        let reencoded = set.to_der().unwrap();
++        assert_ne!(reencoded, encoded, "expected canonicalization on re-encode");
++        // And the canonical form round-trips unchanged.
++        let reparsed = SetOfVec::<u16>::from_der(&reencoded).unwrap();
++        assert!(reparsed.iter().copied().eq(0..n));
++    }
++
++    /// Duplicate elements (allowed since #2272) must survive the sort: equal
++    /// encodings are kept, not deduplicated, and end up adjacent.
++    #[cfg(feature = "alloc")]
++    #[test]
++    fn der_sort_preserves_duplicates() {
++        let vec = vec![5u16, 1, 5, 1, 3, 1, 5];
++        let set = SetOfVec::try_from(vec).unwrap();
++        assert_eq!(set.as_ref(), &[1, 1, 1, 3, 5, 5, 5]);
++        assert_eq!(set.len(), 7);
+     }
+ }
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/src/asn1.rs b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/src/asn1.rs
+index a128f1bbb..9717b395f 100644
+--- a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/src/asn1.rs
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/src/asn1.rs
+@@ -74,7 +74,7 @@ pub use self::{
+ };
+ 
+ #[cfg(any(feature = "alloc", feature = "heapless"))]
+-pub use set_of::SetOfIter;
++pub use set_of::{SetOfIter, SetOfRef};
+ 
+ #[cfg(feature = "oid")]
+ pub use const_oid::ObjectIdentifier;
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/src/error.rs b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/src/error.rs
+index 9f48c5014..9acf950fb 100644
+--- a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/src/error.rs
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/src/error.rs
+@@ -232,7 +232,7 @@ pub enum ErrorKind {
+     #[cfg(feature = "std")]
+     Io(std::io::ErrorKind),
+ 
+-    /// Indefinite length disallowed (or malformed when decoding BER)
++    /// Indefinite length invalid (disallowed in DER or malformed when decoding BER)
+     IndefiniteLength,
+ 
+     /// Incorrect length for a given field.
+@@ -241,6 +241,9 @@ pub enum ErrorKind {
+         tag: Tag,
+     },
+ 
++    /// Too many nested productions (i.e. TLV-in-TLV) encountered.
++    NestingDepth,
++
+     /// Message is not canonically encoded.
+     Noncanonical {
+         /// Tag of the value which is not canonically encoded.
+@@ -265,6 +268,11 @@ pub enum ErrorKind {
+     },
+ 
+     /// `SET` cannot contain duplicates.
++    // TODO(tarcieri): remove this in the next breaking release
++    #[deprecated(
++        since = "0.8.1",
++        note = "per X.680, 27.3 NOTE 3 duplicates are allowed"
++    )]
+     SetDuplicate,
+ 
+     /// `SET` ordering error: items not in canonical order.
+@@ -368,6 +376,7 @@ impl fmt::Display for ErrorKind {
+             ErrorKind::Io(err) => write!(f, "I/O error: {err:?}"),
+             ErrorKind::IndefiniteLength => write!(f, "indefinite length disallowed/malformed"),
+             ErrorKind::Length { tag } => write!(f, "incorrect length for {tag}"),
++            ErrorKind::NestingDepth => write!(f, "too many nested productions encountered"),
+             ErrorKind::Noncanonical { tag } => {
+                 write!(f, "ASN.1 {tag} not canonically encoded as DER")
+             }
+@@ -376,6 +385,7 @@ impl fmt::Display for ErrorKind {
+             ErrorKind::OidUnknown { oid } => {
+                 write!(f, "unknown/unsupported OID: {oid}")
+             }
++            #[allow(deprecated)]
+             ErrorKind::SetDuplicate => write!(f, "SET OF contains duplicate"),
+             ErrorKind::SetOrdering => write!(f, "SET OF ordering error"),
+             ErrorKind::Overflow => write!(f, "integer overflow"),
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/src/ord.rs b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/src/ord.rs
+index ca430d771..6d33a42e7 100644
+--- a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/src/ord.rs
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/src/ord.rs
+@@ -85,6 +85,25 @@ where
+     Ok(length_ord)
+ }
+ 
++#[cfg(any(feature = "alloc", feature = "heapless"))]
++/// Compare the order of two iterators using [`DerCmp`] on the values.
++pub(crate) fn iter_cmp_owned<'a, I, T>(a: I, b: I) -> Result<Ordering>
++where
++    I: Iterator<Item = T> + ExactSizeIterator,
++    T: 'a + DerOrd,
++{
++    let length_ord = a.len().cmp(&b.len());
++
++    for (value1, value2) in a.zip(b) {
++        match value1.der_cmp(&value2)? {
++            Ordering::Equal => (),
++            other => return Ok(other),
++        }
++    }
++
++    Ok(length_ord)
++}
++
+ /// Provide a no-op implementation for `PhantomData`
+ impl<T> ValueOrd for PhantomData<T> {
+     fn value_cmp(&self, _other: &Self) -> Result<Ordering> {
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/src/reader/position.rs b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/src/reader/position.rs
+index e35a8a04f..0d160a291 100644
+--- a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/src/reader/position.rs
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/src/reader/position.rs
+@@ -10,32 +10,27 @@ pub(super) struct Position {
+ 
+     /// Position in the input buffer (in bytes after Base64 decoding).
+     position: Length,
++
++    /// Number of nested productions encountered (i.e. depth in the call stack).
++    depth: usize,
+ }
+ 
+ impl Position {
++    /// Maximum number of nested messages we tolerate (prevents stack exhaustion).
++    const MAX_DEPTH: usize = 64;
++
+     /// Create a new position tracker with the given overall length.
+     pub(super) fn new(input_len: Length) -> Self {
+         Self {
+             input_len,
+             position: Length::ZERO,
++            depth: 0,
+         }
+     }
+ 
+-    /// Get the input length.
+-    pub(super) fn input_len(&self) -> Length {
+-        self.input_len
+-    }
+-
+-    /// Get the current position.
+-    pub(super) fn current(&self) -> Length {
+-        self.position
+-    }
+-
+     /// Advance the current position by the given amount.
+     ///
+-    /// # Returns
+-    ///
+-    /// The new current position.
++    /// Returns the new current position.
+     pub(super) fn advance(&mut self, amount: Length) -> Result<Length> {
+         let new_position = (self.position + amount)?;
+ 
+@@ -51,12 +46,38 @@ impl Position {
+         Ok(new_position)
+     }
+ 
++    /// Get the current position.
++    pub(super) fn current(&self) -> Length {
++        self.position
++    }
++
++    /// Create new [`Error`] from the given [`ErrorKind`] which includes the current position.
++    pub(super) fn error(&mut self, kind: ErrorKind) -> Error {
++        kind.at(self.position)
++    }
++
++    /// Get the input length.
++    pub(super) fn input_len(&self) -> Length {
++        self.input_len
++    }
++
++    /// Get the remaining length.
++    pub(super) fn remaining_len(&self) -> Length {
++        debug_assert!(self.position <= self.input_len());
++        self.input_len.saturating_sub(self.position)
++    }
++
+     /// Split a nested position tracker of the given size.
+     ///
+     /// # Returns
+     ///
+     /// A [`Resumption`] value which can be used to continue parsing the outer message.
+     pub(super) fn split_nested(&mut self, len: Length) -> Result<Resumption> {
++        match self.depth.checked_add(1) {
++            Some(depth) if depth < Self::MAX_DEPTH => self.depth = depth,
++            _ => return Err(self.error(ErrorKind::NestingDepth)),
++        }
++
+         let nested_input_len = (self.position + len)?;
+ 
+         if nested_input_len > self.input_len {
+@@ -73,6 +94,7 @@ impl Position {
+     /// Resume processing the rest of a message after processing a nested inner portion.
+     pub(super) fn resume_nested(&mut self, resumption: Resumption) {
+         self.input_len = resumption.input_len;
++        self.depth = self.depth.saturating_sub(1);
+     }
+ }
+ 
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/src/reader/slice.rs b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/src/reader/slice.rs
+index a0ec9b6dd..4e5a7c4d5 100644
+--- a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/src/reader/slice.rs
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/src/reader/slice.rs
+@@ -1,5 +1,6 @@
+ //! Slice reader.
+ 
++use super::position::Position;
+ use crate::{BytesRef, Decode, EncodingRules, Error, ErrorKind, Length, Reader};
+ 
+ /// [`Reader`] which consumes an input byte slice.
+@@ -15,7 +16,7 @@ pub struct SliceReader<'a> {
+     failed: bool,
+ 
+     /// Position within the decoded slice.
+-    position: Length,
++    position: Position,
+ }
+ 
+ impl<'a> SliceReader<'a> {
+@@ -39,15 +40,15 @@ impl<'a> SliceReader<'a> {
+             bytes: BytesRef::new(bytes)?,
+             encoding_rules,
+             failed: false,
+-            position: Length::ZERO,
++            position: Position::new(bytes.len().try_into()?),
+         })
+     }
+ 
+-    /// Return an error with the given [`ErrorKind`], annotating it with
+-    /// context about where the error occurred.
++    /// Return an error with the given [`ErrorKind`], annotating it with context about where the
++    /// error occurred.
+     pub fn error(&mut self, kind: ErrorKind) -> Error {
+         self.failed = true;
+-        kind.at(self.position)
++        self.position.error(kind)
+     }
+ 
+     /// Did the decoding operation fail due to an error?
+@@ -56,25 +57,17 @@ impl<'a> SliceReader<'a> {
+         self.failed
+     }
+ 
+-    /// Obtain the remaining bytes in this slice reader from the current cursor
+-    /// position.
++    /// Obtain the remaining bytes in this slice reader from the current cursor position.
+     pub(crate) fn remaining(&self) -> Result<&'a [u8], Error> {
+         if self.is_failed() {
+-            Err(ErrorKind::Failed.at(self.position))
++            Err(ErrorKind::Failed.at(self.position.current()))
+         } else {
+             self.bytes
+                 .as_slice()
+-                .get(self.position.try_into()?..)
++                .get(self.position.current().try_into()?..)
+                 .ok_or_else(|| Error::incomplete(self.input_len()))
+         }
+     }
+-    /// Creates new [`SliceReader`] without advancing current reader.
+-    pub(crate) fn new_nested_reader(&mut self, len: Length) -> Result<Self, Error> {
+-        let prefix_len = (self.position + len)?;
+-        let mut nested_reader = self.clone();
+-        nested_reader.bytes = self.bytes.prefix(prefix_len)?;
+-        Ok(nested_reader)
+-    }
+ }
+ 
+ impl<'a> Reader<'a> for SliceReader<'a> {
+@@ -89,29 +82,26 @@ impl<'a> Reader<'a> for SliceReader<'a> {
+     }
+ 
+     fn position(&self) -> Length {
+-        self.position
++        self.position.current()
+     }
+ 
+     /// Read nested data of the given length.
++    #[inline]
+     fn read_nested<T, F, E>(&mut self, len: Length, f: F) -> Result<T, E>
+     where
+         F: FnOnce(&mut Self) -> Result<T, E>,
+         E: From<Error>,
+     {
+-        let mut nested_reader = self.new_nested_reader(len)?;
+-        let ret = f(&mut nested_reader);
+-        self.position = nested_reader.position;
+-        self.failed = nested_reader.failed;
+-
+-        match ret {
+-            Ok(value) => {
+-                nested_reader.finish().inspect_err(|_e| {
+-                    self.failed = true;
+-                })?;
+-                Ok(value)
+-            }
+-            Err(err) => Err(err),
+-        }
++        // Slice `self.bytes` as a secondary check we don't read past end-of-slice
++        let bytes = self.bytes;
++        let prefix_len = (self.position.current() + len)?;
++        self.bytes = self.bytes.prefix(prefix_len)?;
++
++        let resumption = self.position.split_nested(len)?;
++        let ret = f(self);
++        self.bytes = bytes;
++        self.position.resume_nested(resumption);
++        ret
+     }
+ 
+     fn read_slice(&mut self, len: Length) -> Result<&'a [u8], Error> {
+@@ -121,11 +111,11 @@ impl<'a> Reader<'a> for SliceReader<'a> {
+ 
+         match self.remaining()?.get(..len.try_into()?) {
+             Some(result) => {
+-                self.position = (self.position + len)?;
++                self.position.advance(len)?;
+                 Ok(result)
+             }
+             None => Err(self.error(ErrorKind::Incomplete {
+-                expected_len: (self.position + len)?,
++                expected_len: (self.position.current() + len)?,
+                 actual_len: self.input_len(),
+             })),
+         }
+@@ -142,27 +132,23 @@ impl<'a> Reader<'a> for SliceReader<'a> {
+     }
+ 
+     fn error(&mut self, kind: ErrorKind) -> Error {
+-        self.failed = true;
+-        kind.at(self.position)
++        self.error(kind)
+     }
+ 
+-    fn finish(self) -> Result<(), Error> {
++    fn finish(mut self) -> Result<(), Error> {
+         if self.is_failed() {
+-            Err(ErrorKind::Failed.at(self.position))
++            Err(ErrorKind::Failed.at(self.position.current()))
+         } else if !self.is_finished() {
+-            Err(ErrorKind::TrailingData {
+-                decoded: self.position,
+-                remaining: self.remaining_len(),
+-            }
+-            .at(self.position))
++            let decoded = self.position.current();
++            let remaining = self.remaining_len();
++            Err(self.error(ErrorKind::TrailingData { decoded, remaining }))
+         } else {
+             Ok(())
+         }
+     }
+ 
+     fn remaining_len(&self) -> Length {
+-        debug_assert!(self.position <= self.input_len());
+-        self.input_len().saturating_sub(self.position)
++        self.position.remaining_len()
+     }
+ }
+ 
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/src/reader.rs b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/src/reader.rs
+index c34713d6b..d5e1cd622 100644
+--- a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/src/reader.rs
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/src/reader.rs
+@@ -4,7 +4,6 @@
+ pub(crate) mod pem;
+ pub(crate) mod slice;
+ 
+-#[cfg(feature = "pem")]
+ mod position;
+ 
+ use crate::{
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/tests/derive.rs b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/tests/derive.rs
+index 0bee15899..74dd2380d 100644
+--- a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.0/tests/derive.rs
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/tests/derive.rs
+@@ -466,6 +466,7 @@ mod sequence {
+     }
+ 
+     /// Default value of the `critical` bit
++    #[allow(dead_code)]
+     fn critical_default() -> bool {
+         false
+     }
+diff --git a/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/tests/nesting.rs b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/tests/nesting.rs
+new file mode 100644
+index 000000000..d8e81e703
+--- /dev/null
++++ b/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.1/tests/nesting.rs
+@@ -0,0 +1,50 @@
++//! Tests for handling of nested messages.
++
++use der::{Decode, Error, ErrorKind, Header, Reader, SliceReader, Tag, asn1::AnyRef};
++
++// This is the expected maximum depth.
++// TODO(tarcieri): expose this as a constant in the public API?
++const MAX_DEPTH: usize = 64;
++
++fn walk<'a>(reader: &mut SliceReader<'a>) -> Result<AnyRef<'a>, Error> {
++    let header = Header::peek(reader)?;
++    if header.tag() == Tag::Sequence {
++        reader.sequence(|r| walk(r)) // der::read_nested recursion
++    } else {
++        AnyRef::decode(reader)
++    }
++}
++
++#[test]
++#[allow(clippy::cast_possible_truncation, reason = "test")]
++fn returns_nesting_depth_error_when_max_depth_encountered() {
++    let depth = MAX_DEPTH + 1;
++
++    let mut buf = vec![0x05, 0x00]; // innermost NULL
++    for _ in 0..depth {
++        let len = buf.len();
++        let mut next = Vec::with_capacity(len + 5);
++        next.push(0x30);
++        if len < 0x80 {
++            next.push(len as u8);
++        } else if len <= 0xFF {
++            next.push(0x81);
++            next.push(len as u8);
++        } else if len <= 0xFFFF {
++            next.push(0x82);
++            next.push((len >> 8) as u8);
++            next.push(len as u8);
++        } else {
++            next.push(0x83);
++            next.push((len >> 16) as u8);
++            next.push((len >> 8) as u8);
++            next.push(len as u8);
++        }
++        next.extend_from_slice(&buf);
++        buf = next;
++    }
++
++    let mut reader = SliceReader::new(&buf).unwrap();
++    let err = walk(&mut reader).expect_err("should return ErrorKind::NestingDepth");
++    assert_eq!(err.kind(), ErrorKind::NestingDepth);
++}

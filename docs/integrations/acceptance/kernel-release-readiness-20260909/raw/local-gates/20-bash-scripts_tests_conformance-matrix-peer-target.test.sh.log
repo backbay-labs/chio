@@ -1,0 +1,1 @@
+conformance-matrix-peer-target.test.sh: external smoke selects the runner target and is not a pre-release PR gate

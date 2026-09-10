@@ -1,0 +1,9 @@
+{
+  "command": [
+    "python3",
+    "scripts/check-cargo-deny-duplicate-baseline.py"
+  ],
+  "returncode": 0,
+  "startEpoch": 1789011376.403074,
+  "endEpoch": 1789011376.821355
+}

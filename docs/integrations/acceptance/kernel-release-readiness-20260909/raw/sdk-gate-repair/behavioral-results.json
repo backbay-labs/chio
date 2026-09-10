@@ -1,0 +1,22 @@
+[
+  {
+    "name": "repaired-driver",
+    "command": [
+      "bash",
+      "scripts/tests/check-sdk-release-ts-bun.test.sh"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789011630.273598,
+    "endEpoch": 1789011633.136601
+  },
+  {
+    "name": "old-driver-negative-control",
+    "command": [
+      "bash",
+      "/var/folders/jy/95wms_mn265f0bpj_v6wc4zh0000gn/T/chio-sdk-gate-regression-bjrpwepi/scripts/tests/check-sdk-release-ts-bun.test.sh"
+    ],
+    "returncode": 1,
+    "startEpoch": 1789011633.1366122,
+    "endEpoch": 1789011634.369691
+  }
+]

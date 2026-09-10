@@ -1,0 +1,10 @@
+{
+  "command": [
+    "python3",
+    "scripts/check-architecture-docs.py"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010201.059553,
+  "completedAtEpoch": 1789010201.237812,
+  "log": "08-python3-scripts_check-architecture-docs.py.log"
+}

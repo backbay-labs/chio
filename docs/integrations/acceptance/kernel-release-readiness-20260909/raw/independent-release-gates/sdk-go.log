@@ -1,0 +1,12 @@
+ok  	github.com/backbay-labs/chio/sdks/go/chio-go/auth	0.710s
+ok  	github.com/backbay-labs/chio/sdks/go/chio-go/client	1.205s
+?   	github.com/backbay-labs/chio/sdks/go/chio-go/cmd/conformance-peer	[no test files]
+ok  	github.com/backbay-labs/chio/sdks/go/chio-go/invariants	1.226s
+ok  	github.com/backbay-labs/chio/sdks/go/chio-go/nested	1.935s
+ok  	github.com/backbay-labs/chio/sdks/go/chio-go/session	1.732s
+ok  	github.com/backbay-labs/chio/sdks/go/chio-go/transport	2.182s
+?   	github.com/backbay-labs/chio/sdks/go/chio-go/version	[no test files]
+go: creating new go.mod: module example.com/chio-go-release-smoke
+go: to add module requirements and sums:
+	go mod tidy
+chio-go release qualification passed for v0.1.0

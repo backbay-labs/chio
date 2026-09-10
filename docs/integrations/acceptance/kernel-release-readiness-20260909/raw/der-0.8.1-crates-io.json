@@ -1,0 +1,81 @@
+{
+  "version": {
+    "id": 2746253,
+    "crate": "der",
+    "num": "0.8.1",
+    "dl_path": "/api/v1/crates/der/0.8.1/download",
+    "readme_path": "/api/v1/crates/der/0.8.1/readme",
+    "updated_at": "2026-07-09T05:02:38.440237Z",
+    "created_at": "2026-07-09T05:02:38.440237Z",
+    "downloads": 5585751,
+    "features": {
+      "alloc": [
+        "zeroize?/alloc"
+      ],
+      "arbitrary": [
+        "dep:arbitrary",
+        "dep:derive_arbitrary",
+        "const-oid?/arbitrary",
+        "std"
+      ],
+      "ber": [],
+      "bytes": [
+        "dep:bytes",
+        "alloc"
+      ],
+      "derive": [
+        "dep:der_derive"
+      ],
+      "oid": [
+        "dep:const-oid"
+      ],
+      "pem": [
+        "dep:pem-rfc7468",
+        "alloc",
+        "zeroize"
+      ],
+      "real": [],
+      "std": [
+        "alloc"
+      ]
+    },
+    "yanked": false,
+    "yank_message": null,
+    "lib_links": null,
+    "license": "Apache-2.0 OR MIT",
+    "links": {
+      "dependencies": "/api/v1/crates/der/0.8.1/dependencies",
+      "version_downloads": "/api/v1/crates/der/0.8.1/downloads",
+      "authors": "/api/v1/crates/der/0.8.1/authors"
+    },
+    "crate_size": 120522,
+    "published_by": null,
+    "audit_actions": [],
+    "checksum": "a69dedd701da44b0536442edf09c81a64b0ab97a7a4a5e3d1971f00027cbc63d",
+    "rust_version": "1.85",
+    "has_lib": true,
+    "bin_names": [],
+    "edition": "2024",
+    "description": "Pure Rust embedded-friendly implementation of the Distinguished Encoding Rules\n(DER) for Abstract Syntax Notation One (ASN.1) as described in ITU X.690 with\nfull support for heapless `no_std`/`no_alloc` targets\n",
+    "homepage": "https://github.com/RustCrypto/formats/tree/master/der",
+    "documentation": null,
+    "repository": "https://github.com/RustCrypto/formats",
+    "trustpub_data": {
+      "provider": "github",
+      "repository": "RustCrypto/formats",
+      "run_id": "28995169198",
+      "sha": "905717f83173b30a92304a57b7412f85c1788be9"
+    },
+    "linecounts": {
+      "languages": {
+        "Rust": {
+          "code_lines": 9873,
+          "comment_lines": 299,
+          "files": 56
+        }
+      },
+      "total_code_lines": 9873,
+      "total_comment_lines": 299
+    }
+  }
+}

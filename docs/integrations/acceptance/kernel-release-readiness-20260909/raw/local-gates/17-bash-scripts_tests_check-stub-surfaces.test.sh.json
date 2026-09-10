@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/tests/check-stub-surfaces.test.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010206.785447,
+  "completedAtEpoch": 1789010209.0163898,
+  "log": "17-bash-scripts_tests_check-stub-surfaces.test.sh.log"
+}

@@ -1,0 +1,12 @@
+{
+  "command": [
+    "gh",
+    "api",
+    "repos/backbay-labs/chio/actions/permissions"
+  ],
+  "started_at_utc": "2026-09-10T03:16:26.815946+00:00",
+  "finished_at_utc": "2026-09-10T03:16:27.216445+00:00",
+  "exit_code": 0,
+  "stdout_file": "backbay-labs--chio--actions-permissions.stdout.json",
+  "stderr_file": "backbay-labs--chio--actions-permissions.stderr.txt"
+}

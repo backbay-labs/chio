@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "<stdin>", line 62, in <module>
+AssertionError: checking TypeScript package @test/base
+/var/folders/jy/95wms_mn265f0bpj_v6wc4zh0000gn/T/chio-sdk-release-driver-test-dzcnjjjw/repo/scripts/check-sdk-release.sh: line 708: install_arg_names[@]: unbound variable
+

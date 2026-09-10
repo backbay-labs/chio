@@ -1,0 +1,11 @@
+{
+  "command": [
+    "cargo",
+    "run",
+    "--manifest-path",
+    "/tmp/chio-kernel-release-audit-20260909/der-review/probe/Cargo.toml"
+  ],
+  "returncode": 0,
+  "startEpoch": 1789011189.568162,
+  "endEpoch": 1789011194.82782
+}

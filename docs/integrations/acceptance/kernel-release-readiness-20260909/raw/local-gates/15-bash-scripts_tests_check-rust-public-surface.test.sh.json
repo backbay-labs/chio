@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/tests/check-rust-public-surface.test.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010203.332314,
+  "completedAtEpoch": 1789010207.212839,
+  "log": "15-bash-scripts_tests_check-rust-public-surface.test.sh.log"
+}

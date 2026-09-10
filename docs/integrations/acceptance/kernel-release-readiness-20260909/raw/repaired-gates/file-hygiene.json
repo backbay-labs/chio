@@ -1,0 +1,10 @@
+{
+  "name": "file-hygiene",
+  "command": [
+    "python3",
+    "scripts/check-rust-file-hygiene.py"
+  ],
+  "returncode": 0,
+  "startEpoch": 1789010719.340916,
+  "endEpoch": 1789010721.040101
+}

@@ -1,0 +1,10 @@
+{
+  "command": [
+    "gh",
+    "api",
+    "repos/bb-connor/arc/rulesets/22033486"
+  ],
+  "started_at_utc": "2026-09-10T03:17:38.997922+00:00",
+  "finished_at_utc": "2026-09-10T03:17:39.539636+00:00",
+  "exit_code": 0
+}

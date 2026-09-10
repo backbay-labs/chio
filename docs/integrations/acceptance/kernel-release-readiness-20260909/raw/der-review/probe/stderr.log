@@ -1,0 +1,6 @@
+    Updating crates.io index
+     Locking 2 packages to latest Rust 1.94.1 compatible versions
+   Compiling der v0.8.2 (/tmp/chio-kernel-release-audit-20260909/der-review/der-0.8.2)
+   Compiling chio-der-review-probe v0.0.0 (/tmp/chio-kernel-release-audit-20260909/der-review/probe)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.52s
+     Running `/tmp/chio-kernel-release-audit-20260909/der-review/probe/target/debug/chio-der-review-probe`

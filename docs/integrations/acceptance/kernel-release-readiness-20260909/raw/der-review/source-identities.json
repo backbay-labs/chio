@@ -1,0 +1,29 @@
+[
+  {
+    "version": "0.8.0",
+    "metadata_url": "https://crates.io/api/v1/crates/der/0.8.0",
+    "archive_url": "https://static.crates.io/crates/der/der-0.8.0.crate",
+    "sha256": "71fd89660b2dc699704064e59e9dba0147b903e85319429e131620d022be411b",
+    "verified_registry_checksum": "71fd89660b2dc699704064e59e9dba0147b903e85319429e131620d022be411b",
+    "bytes": 115680,
+    "observed_at_utc": "2026-09-10T03:26:31.976675+00:00"
+  },
+  {
+    "version": "0.8.1",
+    "metadata_url": "https://crates.io/api/v1/crates/der/0.8.1",
+    "archive_url": "https://static.crates.io/crates/der/der-0.8.1.crate",
+    "sha256": "a69dedd701da44b0536442edf09c81a64b0ab97a7a4a5e3d1971f00027cbc63d",
+    "verified_registry_checksum": "a69dedd701da44b0536442edf09c81a64b0ab97a7a4a5e3d1971f00027cbc63d",
+    "bytes": 120522,
+    "observed_at_utc": "2026-09-10T03:26:31.976936+00:00"
+  },
+  {
+    "version": "0.8.2",
+    "metadata_url": "https://crates.io/api/v1/crates/der/0.8.2",
+    "archive_url": "https://static.crates.io/crates/der/der-0.8.2.crate",
+    "sha256": "a878c850e9e421b20262e9b41f9c860e4785fa07541c266b62ff9d1ef998a80a",
+    "verified_registry_checksum": "a878c850e9e421b20262e9b41f9c860e4785fa07541c266b62ff9d1ef998a80a",
+    "bytes": 120967,
+    "observed_at_utc": "2026-09-10T03:28:48.355233+00:00"
+  }
+]

@@ -1,0 +1,45 @@
+{
+  "name": "@chio-protocol/node-http",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Common HTTP interception substrate for Chio protocol -- Node and Bun compatible",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc && npm run build:cjs",
+    "build:cjs": "esbuild src/index.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/index.cjs",
+    "test": "vitest run --no-file-parallelism",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.1",
+    "typescript": "~5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "overrides": {
+    "vite": {
+      ".": "7.3.5",
+      "esbuild": "0.28.1"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,2 @@
+valid_integer: accepted len=1 count=1 first=Some(1) reencoded=Ok([49, 3, 2, 1, 1])
+wrong_type_null: accepted len=1 count=0 first=None reencoded=Ok([49, 0])

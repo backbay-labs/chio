@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/tests/release-pypi-package-matrix.test.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010209.6982532,
+  "completedAtEpoch": 1789010209.9345028,
+  "log": "26-bash-scripts_tests_release-pypi-package-matrix.test.sh.log"
+}

@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/tests/conformance-matrix-peer-target.test.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010207.422368,
+  "completedAtEpoch": 1789010207.4967139,
+  "log": "20-bash-scripts_tests_conformance-matrix-peer-target.test.sh.log"
+}

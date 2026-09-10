@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/check-no-eip3009-broadcast.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010202.9936168,
+  "completedAtEpoch": 1789010203.070246,
+  "log": "12-bash-scripts_check-no-eip3009-broadcast.sh.log"
+}

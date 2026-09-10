@@ -1,0 +1,12 @@
+{
+  "command": [
+    "bash",
+    "scripts/qualify-release.sh"
+  ],
+  "source": "d8c5f53705173e614a853bad6c0a85acfdf1212b",
+  "binarySha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "startEpoch": 1789010135.9974232,
+  "completedEpoch": 1789010138.878774,
+  "returncode": 1,
+  "sourceStatusAfter": ""
+}

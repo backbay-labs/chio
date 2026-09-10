@@ -1,0 +1,123 @@
+[
+  {
+    "command": [
+      "npm",
+      "ci",
+      "--ignore-scripts",
+      "--no-fund",
+      "--no-audit"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789012037.935919,
+    "endEpoch": 1789012039.472224,
+    "loadAtStart": [
+      100.51171875,
+      170.654296875,
+      139.96337890625
+    ]
+  },
+  {
+    "command": [
+      "npm",
+      "test",
+      "--",
+      "test/sidecar-client.test.ts",
+      "-t",
+      "throws evaluation-failed SidecarError for non-verdict 4xx verifier responses"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789012039.472359,
+    "endEpoch": 1789012041.443419,
+    "loadAtStart": [
+      100.51171875,
+      170.654296875,
+      139.96337890625
+    ]
+  },
+  {
+    "command": [
+      "npm",
+      "test",
+      "--",
+      "test/sidecar-client.test.ts",
+      "-t",
+      "throws evaluation-failed SidecarError for non-verdict 4xx verifier responses"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789012041.44351,
+    "endEpoch": 1789012042.226914,
+    "loadAtStart": [
+      98.1484375,
+      168.99951171875,
+      139.55908203125
+    ]
+  },
+  {
+    "command": [
+      "npm",
+      "test",
+      "--",
+      "test/sidecar-client.test.ts",
+      "-t",
+      "throws evaluation-failed SidecarError for non-verdict 4xx verifier responses"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789012042.227011,
+    "endEpoch": 1789012043.095337,
+    "loadAtStart": [
+      98.1484375,
+      168.99951171875,
+      139.55908203125
+    ]
+  },
+  {
+    "command": [
+      "npm",
+      "test",
+      "--",
+      "test/sidecar-client.test.ts",
+      "-t",
+      "throws evaluation-failed SidecarError for non-verdict 4xx verifier responses"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789012043.0954392,
+    "endEpoch": 1789012044.038285,
+    "loadAtStart": [
+      98.1484375,
+      168.99951171875,
+      139.55908203125
+    ]
+  },
+  {
+    "command": [
+      "npm",
+      "test",
+      "--",
+      "test/sidecar-client.test.ts",
+      "-t",
+      "throws evaluation-failed SidecarError for non-verdict 4xx verifier responses"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789012044.038398,
+    "endEpoch": 1789012044.885065,
+    "loadAtStart": [
+      98.1484375,
+      168.99951171875,
+      139.55908203125
+    ]
+  },
+  {
+    "command": [
+      "npm",
+      "test"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789012044.8851671,
+    "endEpoch": 1789012046.387341,
+    "loadAtStart": [
+      98.1484375,
+      168.99951171875,
+      139.55908203125
+    ]
+  }
+]

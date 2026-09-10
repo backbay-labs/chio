@@ -1,0 +1,12 @@
+{
+  "command": [
+    "gh",
+    "api",
+    "repos/backbay-labs/chio/commits/d8c5f53705173e614a853bad6c0a85acfdf1212b/check-runs?per_page=100"
+  ],
+  "started_at_utc": "2026-09-10T03:16:26.022364+00:00",
+  "finished_at_utc": "2026-09-10T03:16:26.802352+00:00",
+  "exit_code": 1,
+  "stdout_file": "backbay-labs--chio--checks.stdout.json",
+  "stderr_file": "backbay-labs--chio--checks.stderr.txt"
+}

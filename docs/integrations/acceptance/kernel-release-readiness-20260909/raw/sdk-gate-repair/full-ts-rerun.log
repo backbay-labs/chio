@@ -1,0 +1,78 @@
+
+added 717 packages in 50s
+checking TypeScript package @chio-protocol/node-http
+
+> @chio-protocol/node-http@0.1.0 test
+> vitest run --no-file-parallelism
+
+
+ RUN  v3.2.6 /private/var/folders/jy/95wms_mn265f0bpj_v6wc4zh0000gn/T/chio-sdk-release.75DoSn/repo/sdks/typescript/packages/node-http
+
+ ✓ test/interceptor.test.ts (24 tests) 222ms
+ ❯ test/sidecar-client.test.ts (30 tests | 1 failed) 432ms
+   ✓ resolveSidecarUrl > uses config sidecarUrl when provided 1ms
+   ✓ resolveSidecarUrl > strips trailing slashes 0ms
+   ✓ resolveSidecarUrl > defaults to 127.0.0.1:9090 when no config or env 0ms
+   ✓ SidecarError > sets code and message 0ms
+   ✓ SidecarError > sets status code when provided 0ms
+   ✓ SidecarError > is an instance of Error 0ms
+   ✓ ChioSidecarClient.evaluate > returns allow only after receipt authority verification 29ms
+   ✓ ChioSidecarClient.evaluate > normalizes omitted receipt evidence to an empty array 198ms
+   ✓ ChioSidecarClient.evaluate > rejects allow-shaped responses without structural receipt authority 2ms
+   ✓ ChioSidecarClient.evaluate > rejects advisory receipts as execution authorization 17ms
+   ✓ ChioSidecarClient.evaluate > rejects unverified authoritative allow receipts 6ms
+   ✓ ChioSidecarClient.evaluate > rejects inconsistent deny verdict with allow-shaped receipt 6ms
+   ✓ ChioSidecarClient.evaluate > does not verify non-allow responses 2ms
+   ✓ ChioSidecarClient.evaluate > allows deny responses that omit the receipt field 1ms
+   ✓ ChioSidecarClient.evaluate > rejects allow responses that omit the receipt field 3ms
+   ✓ ChioSidecarClient.evaluate > rejects non-allow responses with receipts missing semantics fields 5ms
+   ✓ ChioSidecarClient.evaluate > rejects mediated decision receipts with observation outcomes 3ms
+   ✓ ChioSidecarClient.evaluate > rejects advisory receipts without observation outcomes 3ms
+   ✓ ChioSidecarClient.evaluate > throws evaluation-failed SidecarError for malformed JSON evaluate responses 1ms
+   ✓ ChioSidecarClient.evaluate > throws evaluation-failed SidecarError for incomplete evaluate responses 1ms
+   ✓ ChioSidecarClient.verifyReceipt > returns structured non-authorizing verifier reports 1ms
+   ✓ ChioSidecarClient.verifyReceipt > throws invalid-receipt SidecarError for definitive non-200 verifier bodies 3ms
+   × ChioSidecarClient.verifyReceipt > throws evaluation-failed SidecarError for non-verdict 4xx verifier responses 51ms
+     → expected 'chio_sidecar_unavailable' to be 'chio_evaluation_failed' // Object.is equality
+   ✓ ChioSidecarClient.verifyReceipt > throws sidecar-unavailable SidecarError for non-verdict unavailable verifier responses 55ms
+   ✓ ChioSidecarClient.verifyReceipt > throws sidecar-unavailable SidecarError for 5xx verifier responses 2ms
+   ✓ ChioSidecarClient.verifyReceipt > throws sidecar-unreachable SidecarError for network failure 3ms
+   ✓ ChioSidecarClient.verifyReceipt > throws evaluation-failed SidecarError for malformed JSON verifier responses 2ms
+   ✓ ChioSidecarClient.verifyReceipt > throws evaluation-failed SidecarError when verifier response omits valid 1ms
+   ✓ ChioSidecarClient.verifyReceipt > throws timeout SidecarError when verifier body read times out 33ms
+   ✓ ChioSidecarClient.verifyReceipt > throws sidecar-unreachable SidecarError when verifier body read fails 0ms
+ ✓ test/types.test.ts (10 tests) 3ms
+ ✓ test/identity.test.ts (9 tests) 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sidecar-client.test.ts > ChioSidecarClient.verifyReceipt > throws evaluation-failed SidecarError for non-verdict 4xx verifier responses
+AssertionError: expected 'chio_sidecar_unavailable' to be 'chio_evaluation_failed' // Object.is equality
+
+Expected: "chio_evaluation_failed"
+Received: "chio_sidecar_unavailable"
+
+ ❯ expectSidecarError test/sidecar-client.test.ts:223:29
+    221|   expect(caught).toBeInstanceOf(SidecarError);
+    222|   const sidecarError = caught as SidecarError;
+    223|   expect(sidecarError.code).toBe(code);
+       |                             ^
+    224|   expect(sidecarError.statusCode).toBe(statusCode);
+    225| }
+ ❯ test/sidecar-client.test.ts:596:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 3 passed (4)
+      Tests  1 failed | 72 passed (73)
+   Start at  23:42:42
+   Duration  5.81s (transform 772ms, setup 0ms, collect 937ms, tests 661ms, environment 1ms, prepare 800ms)
+
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /private/var/folders/jy/95wms_mn265f0bpj_v6wc4zh0000gn/T/chio-sdk-release.75DoSn/repo/sdks/typescript/packages/node-http
+npm error workspace @chio-protocol/node-http@0.1.0
+npm error location /private/var/folders/jy/95wms_mn265f0bpj_v6wc4zh0000gn/T/chio-sdk-release.75DoSn/repo/sdks/typescript/packages/node-http
+npm error command failed
+npm error command sh -c vitest run --no-file-parallelism

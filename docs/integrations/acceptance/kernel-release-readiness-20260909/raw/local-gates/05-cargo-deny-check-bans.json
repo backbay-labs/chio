@@ -1,0 +1,12 @@
+{
+  "command": [
+    "cargo",
+    "deny",
+    "check",
+    "bans"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010199.619616,
+  "completedAtEpoch": 1789010201.8818612,
+  "log": "05-cargo-deny-check-bans.log"
+}

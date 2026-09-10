@@ -1,0 +1,12 @@
+{
+  "command": [
+    "gh",
+    "api",
+    "repos/bb-connor/arc/commits/d8c5f53705173e614a853bad6c0a85acfdf1212b"
+  ],
+  "started_at_utc": "2026-09-10T03:16:24.548465+00:00",
+  "finished_at_utc": "2026-09-10T03:16:25.159762+00:00",
+  "exit_code": 1,
+  "stdout_file": "bb-connor--arc--commit.stdout.json",
+  "stderr_file": "bb-connor--arc--commit.stderr.txt"
+}

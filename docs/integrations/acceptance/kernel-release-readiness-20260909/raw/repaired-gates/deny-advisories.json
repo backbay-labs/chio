@@ -1,0 +1,12 @@
+{
+  "name": "deny-advisories",
+  "command": [
+    "cargo",
+    "deny",
+    "check",
+    "advisories"
+  ],
+  "returncode": 0,
+  "startEpoch": 1789010719.7195652,
+  "endEpoch": 1789010722.263964
+}

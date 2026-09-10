@@ -1,0 +1,10 @@
+{
+  "command": [
+    "gh",
+    "api",
+    "repos/bb-connor/arc/actions/runs/33717023364/jobs?per_page=100"
+  ],
+  "started_at_utc": "2026-09-10T03:17:38.998280+00:00",
+  "finished_at_utc": "2026-09-10T03:17:39.782655+00:00",
+  "exit_code": 0
+}

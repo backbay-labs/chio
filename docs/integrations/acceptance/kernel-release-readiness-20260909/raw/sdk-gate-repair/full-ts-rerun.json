@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/check-chio-ts-release.sh"
+  ],
+  "source": "10d347df9d6b717af8e22a79202dd1723c680c8b",
+  "returncode": 1,
+  "startEpoch": 1789011680.150743,
+  "endEpoch": 1789011791.156856
+}

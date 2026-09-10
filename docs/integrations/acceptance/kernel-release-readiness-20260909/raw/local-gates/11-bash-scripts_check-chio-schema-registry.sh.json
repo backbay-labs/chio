@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/check-chio-schema-registry.sh"
+  ],
+  "returncode": 1,
+  "startedAtEpoch": 1789010202.705395,
+  "completedAtEpoch": 1789010202.993233,
+  "log": "11-bash-scripts_check-chio-schema-registry.sh.log"
+}

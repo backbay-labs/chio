@@ -1,0 +1,10 @@
+{
+  "name": "sdk-go",
+  "command": [
+    "bash",
+    "scripts/check-chio-go-release.sh"
+  ],
+  "returncode": 0,
+  "startEpoch": 1789011246.946239,
+  "endEpoch": 1789011265.669415
+}

@@ -1,0 +1,12 @@
+{
+  "command": [
+    "cargo",
+    "deny",
+    "check",
+    "sources"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010197.9556549,
+  "completedAtEpoch": 1789010200.7436118,
+  "log": "04-cargo-deny-check-sources.log"
+}

@@ -1,0 +1,30 @@
+{
+  "url": "https://crates.io/api/v1/crates/der",
+  "observed_at_utc": "2026-09-10T03:28:26.753085+00:00",
+  "versions": [
+    {
+      "num": "0.8.2",
+      "yanked": false,
+      "checksum": "a878c850e9e421b20262e9b41f9c860e4785fa07541c266b62ff9d1ef998a80a",
+      "created_at": "2026-09-05T14:12:57.504716Z",
+      "updated_at": "2026-09-05T14:12:57.504716Z",
+      "rust_version": "1.85"
+    },
+    {
+      "num": "0.8.1",
+      "yanked": false,
+      "checksum": "a69dedd701da44b0536442edf09c81a64b0ab97a7a4a5e3d1971f00027cbc63d",
+      "created_at": "2026-07-09T05:02:38.440237Z",
+      "updated_at": "2026-07-09T05:02:38.440237Z",
+      "rust_version": "1.85"
+    },
+    {
+      "num": "0.8.0",
+      "yanked": true,
+      "checksum": "71fd89660b2dc699704064e59e9dba0147b903e85319429e131620d022be411b",
+      "created_at": "2026-02-13T18:00:29.625415Z",
+      "updated_at": "2026-09-05T13:29:40.570453Z",
+      "rust_version": "1.85"
+    }
+  ]
+}

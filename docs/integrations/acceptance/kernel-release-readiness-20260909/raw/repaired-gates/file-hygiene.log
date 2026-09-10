@@ -1,0 +1,328 @@
+Rust file hygiene summary
+
+==> generated top 7
+41475 crates/core/chio-core-types/src/_generated/chio_wire_v1.rs
+ 1620 crates/core/chio-errors/src/_generated/error_codes.rs
+   86 crates/tooling/chio-conformance/tests/_generated/bilateral_dsse_producer_ordering.rs
+   75 crates/trust/chio-federation/src/_generated/bilateral_dsse_producer_typestate.rs
+   63 crates/tooling/chio-conformance/tests/_generated/anchor_witness_state_ordering.rs
+   16 crates/core/chio-core-types/src/_generated/mod.rs
+    9 crates/core/chio-errors/src/_generated/mod.rs
+
+==> production top 25
+ 6323 crates/products/chio-cli/src/cli/dispatch/proof/fixture.rs allowlisted until 2027-01-31
+ 5816 crates/platform/chio-store-sqlite/src/receipt_store.rs allowlisted until 2027-01-31
+ 3551 crates/products/chio-api-protect/src/proxy/mediated.rs allowlisted until 2027-01-31
+ 3484 crates/products/chio-cli/src/cli/dispatch/proof.rs allowlisted until 2027-01-31
+ 3385 crates/platform/chio-store-sqlite/src/finding_purchase_store.rs allowlisted until 2027-01-31
+ 3375 crates/products/chio-cli/src/cli/chio/dispatch/pheromone/iroh_mount.rs allowlisted until 2027-01-31
+ 2981 crates/platform/chio-store-sqlite/src/serving_owner/global_commit_chain.rs allowlisted until 2026-12-31
+ 2937 crates/platform/chio-store-sqlite/src/fiscal_store.rs allowlisted until 2026-12-31
+ 2821 crates/kernel/chio-kernel/src/kernel/validation.rs allowlisted until 2026-12-31
+ 2818 crates/trust/chio-federation-transport-iroh/src/lanes/pheromone.rs allowlisted until 2026-12-31
+ 2801 crates/platform/chio-control-plane/src/trust_control/cluster_and_reports.rs allowlisted until 2026-12-31
+ 2511 crates/trust/chio-federation-transport-iroh/src/lanes/revocation.rs allowlisted until 2026-12-31
+ 2443 crates/trust/chio-federation-transport-iroh/src/lanes/fanout.rs allowlisted until 2026-12-31
+ 2426 crates/platform/chio-control-plane/src/trust_control/finding_handlers.rs allowlisted until 2026-12-31
+ 2413 crates/kernel/chio-kernel/src/kernel/admission_coordinator/terminal.rs allowlisted until 2026-12-31
+ 2328 crates/platform/chio-store-sqlite/src/finding_market_store.rs allowlisted until 2026-11-30
+ 2322 crates/platform/chio-transaction-passport/src/runtime_security/artifacts.rs allowlisted until 2026-11-30
+ 2283 crates/platform/chio-store-sqlite/src/finding_pool_ledger.rs allowlisted until 2026-11-30
+ 2246 crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs allowlisted until 2026-11-30
+ 2235 crates/kernel/chio-swarm-authority/src/verifier.rs allowlisted until 2026-11-30
+ 2172 crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs allowlisted until 2026-11-30
+ 2166 crates/platform/chio-control-plane/src/trust_control/capital_and_liability/liability.rs allowlisted until 2026-11-30
+ 2154 crates/kernel/chio-kernel/src/admission_operation/projection.rs allowlisted until 2026-11-30
+ 2152 crates/platform/chio-store-sqlite/src/finding_status_store/persistence.rs allowlisted until 2026-10-31
+ 2107 crates/trust/chio-finding-verifier/src/verify.rs allowlisted until 2026-10-31
+
+==> test top 25
+ 7468 crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_challenge_enforcement_e2e_tests.rs allowlisted until 2027-01-31
+ 6235 crates/products/chio-cli/tests/mcp_serve_http.rs allowlisted until 2027-01-31
+ 6213 crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs allowlisted until 2027-01-31
+ 5395 crates/products/chio-cli/tests/passport.rs allowlisted until 2027-01-31
+ 4668 crates/platform/chio-store-sqlite/src/receipt_store/tests/retention.rs allowlisted until 2027-01-31
+ 4604 crates/protocol/chio-mcp-edge/src/runtime/runtime_tests.rs allowlisted until 2027-01-31
+ 4531 crates/platform/chio-store-sqlite/src/finding_challenge_store_tests.rs allowlisted until 2027-01-31
+ 4452 crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs allowlisted until 2027-01-31
+ 4401 crates/products/chio-cli/tests/mcp_serve.rs allowlisted until 2027-01-31
+ 4072 crates/products/chio-cli/tests/proof_cli_contract/support.rs allowlisted until 2027-01-31
+ 3645 crates/products/chio-cli/tests/certify.rs allowlisted until 2027-01-31
+ 3458 crates/products/chio-api-protect/src/proxy/tests.rs allowlisted until 2027-01-31
+ 3438 crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs allowlisted until 2027-01-31
+ 3377 crates/kernel/chio-kernel/src/kernel/tests/execution_nonce.rs allowlisted until 2027-01-31
+ 3338 crates/protocol/chio-acp-edge/src/tests/all.rs allowlisted until 2027-01-31
+ 3272 crates/products/chio-cli/tests/trust_cluster.rs allowlisted until 2026-12-31
+ 3207 crates/protocol/chio-a2a-edge/src/tests/all.rs allowlisted until 2026-12-31
+ 3183 crates/products/chio-mercury/tests/cli.rs allowlisted until 2026-12-31
+ 3163 crates/core/chio-core-types/src/capability/tests.rs allowlisted until 2026-12-31
+ 3161 crates/platform/chio-store-sqlite/src/finding_purchase_store_tests.rs allowlisted until 2026-12-31
+ 3094 crates/products/chio-cli/tests/proof_verify.rs allowlisted until 2026-12-31
+ 2847 crates/kernel/chio-runtime-core/tests/runtime_admission.rs allowlisted until 2026-12-31
+ 2789 crates/platform/chio-transaction-passport/tests/transaction_passport.rs allowlisted until 2026-12-31
+ 2773 crates/kernel/chio-kernel/src/kernel/tests/durable_admission.rs allowlisted until 2026-12-31
+ 2724 crates/platform/chio-enterprise-export/tests/enterprise_export.rs allowlisted until 2026-12-31
+
+==> example top 25
+  964 examples/chio-3vendor/src/commands.rs
+  567 crates/kernel/chio-swarm-authority/examples/agent_os.rs
+  546 examples/cross-provider-policy/src/lib.rs
+  441 crates/trust/chio-federation-transport-iroh/examples/fanout_gossip.rs
+  409 examples/hello-mcp/src/lib.rs
+  407 examples/hello-a2a/src/lib.rs
+  404 examples/hello-acp/src/lib.rs
+  401 crates/trust/chio-federation-transport-iroh/examples/pheromone_exchange.rs
+  337 crates/trust/chio-federation-transport-iroh/examples/revocation_catchup.rs
+  333 crates/trust/chio-attest-verify/examples/generate_tdx_fixtures.rs
+  316 crates/trust/chio-attest-verify/examples/generate_sev_snp_fixtures.rs
+  308 crates/trust/chio-attest-verify/examples/generate_nitro_fixtures.rs
+  292 crates/trust/chio-federation-transport-iroh/examples/bilateral_cosign.rs
+  291 examples/guards/enriched-inspector/src/lib.rs
+  284 crates/trust/chio-federation-transport-iroh/examples/admission_gate.rs
+  274 examples/hello-tool/src/lib.rs
+  242 examples/bilateral-invocation/src/lib.rs
+  143 examples/otel-genai/tests/support/mod.rs
+  134 examples/guards/tool-gate/src/lib.rs
+  102 crates/trust/chio-selective-disclosure/examples/chio_fixture.rs
+   81 examples/otel-genai/tests/bidirectional_lookup.rs
+   49 examples/bilateral-invocation/src/main.rs
+   29 crates/trust/chio-weights/examples/dump_minimal_card.rs
+   12 examples/hello-a2a/src/main.rs
+   12 examples/hello-acp/src/main.rs
+
+Rust file hygiene warnings: 149 files exceed warning limits
+warning: crates/core/chio-core-types/src/canonical.rs has 1416 lines, warn limit is 1200
+warning: crates/core/chio-core-types/src/capability/governance.rs has 1428 lines, warn limit is 1200
+warning: crates/core/chio-core-types/src/crypto.rs has 1553 lines, warn limit is 1200
+warning: crates/core/chio-core-types/src/economic_continuity.rs has 1484 lines, warn limit is 1200
+warning: crates/core/chio-core-types/src/economic_continuity/anchor.rs has 1453 lines, warn limit is 1200
+warning: crates/core/chio-core-types/src/signed_artifact.rs has 1263 lines, warn limit is 1200
+warning: crates/economy/chio-anchor/src/evm.rs has 1336 lines, warn limit is 1200
+warning: crates/economy/chio-anchor/src/lib.rs has 974 lines, warn limit is 900
+warning: crates/economy/chio-anchor/src/witness/rekor.rs has 1425 lines, warn limit is 1200
+warning: crates/economy/chio-credit/src/clearing/lifecycle.rs has 1826 lines, warn limit is 1200
+warning: crates/economy/chio-credit/src/factor/result.rs has 1387 lines, warn limit is 1200
+warning: crates/economy/chio-credit/src/lib.rs has 939 lines, warn limit is 900
+warning: crates/economy/chio-market/src/insurance_flow.rs has 1496 lines, warn limit is 1200
+warning: crates/economy/chio-market/src/parametric/claim.rs has 1432 lines, warn limit is 1200
+warning: crates/economy/chio-settle/src/evm/prepare.rs has 1851 lines, warn limit is 1200
+warning: crates/economy/chio-settle/src/finding_enforcement/verify.rs has 1274 lines, warn limit is 1200
+warning: crates/economy/chio-settle/src/observe.rs has 1476 lines, warn limit is 1200
+warning: crates/economy/chio-settle/src/payments.rs has 1959 lines, warn limit is 1200
+warning: crates/economy/chio-underwriting/src/decision.rs has 1342 lines, warn limit is 1200
+warning: crates/guards/chio-guard-registry/src/oci.rs has 1315 lines, warn limit is 1200
+warning: crates/guards/chio-guards/src/velocity.rs has 1518 lines, warn limit is 1200
+warning: crates/guards/chio-policy/src/evaluate/matchers.rs has 1427 lines, warn limit is 1200
+warning: crates/guards/chio-policy/src/validate.rs has 1312 lines, warn limit is 1200
+warning: crates/guards/chio-wasm-guards/src/hot_reload.rs has 1224 lines, warn limit is 1200
+warning: crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs has 1302 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs has 1755 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel-mobile/src/lib.rs has 952 lines, warn limit is 900
+warning: crates/kernel/chio-kernel/src/admission_operation.rs has 1250 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/admission_operation/remote_projection.rs has 1714 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/admission_operation_tests/terminal_projection.rs has 1578 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/approval.rs has 1406 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/budget_store.rs has 1411 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/checkpoint.rs has 1971 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/finding_pool.rs has 1480 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/kernel/admission_coordinator.rs has 1960 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/kernel/evaluation/nested_flow_evaluation.rs has 1914 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/kernel/governed_validation.rs has 1753 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/kernel/mod.rs has 1522 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/payment.rs has 1899 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/receipt_store.rs has 1658 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/request_matching.rs has 1300 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/session.rs has 1595 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/tool_outcome.rs has 1517 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/tool_outcome/post_return.rs has 1239 lines, warn limit is 1200
+warning: crates/kernel/chio-kernel/src/tool_outcome/release.rs has 1824 lines, warn limit is 1200
+warning: crates/kernel/chio-runtime/src/lib.rs has 942 lines, warn limit is 900
+warning: crates/observability/chio-otel-receipt-exporter/src/ingress.rs has 1215 lines, warn limit is 1200
+warning: crates/observability/chio-siem/src/manager.rs has 1864 lines, warn limit is 1200
+warning: crates/platform/chio-agent-web-interop/src/artifacts.rs has 1585 lines, warn limit is 1200
+warning: crates/platform/chio-agent-web-interop/src/interop.rs has 1479 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/attestation/verification.rs has 1220 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/durable_admission.rs has 1701 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/economic_state_anchor.rs has 1304 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/evidence_export.rs has 1380 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/passport_verifier.rs has 1585 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/capital_and_liability.rs has 1510 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/cluster/deltas.rs has 1844 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/config_and_public.rs has 1834 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/credit_and_loss.rs has 1491 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/finding_challenge_coordinator.rs has 1270 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/finding_hosted_profile.rs has 1668 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/finding_operator_purchase.rs has 1750 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/finding_purchase_coordinator.rs has 1918 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/finding_purchase_routes.rs has 1245 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/finding_status_handlers.rs has 1951 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/finding_verified_fix.rs has 1669 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/passport_handlers.rs has 1433 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/service_runtime/budget.rs has 1274 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/service_types/cluster_budget.rs has 1234 lines, warn limit is 1200
+warning: crates/platform/chio-control-plane/src/trust_control/underwriting_and_support.rs has 1649 lines, warn limit is 1200
+warning: crates/platform/chio-finding-hosted-edge/src/server.rs has 1904 lines, warn limit is 1200
+warning: crates/platform/chio-finding-market-store-postgres/src/domain.rs has 1482 lines, warn limit is 1200
+warning: crates/platform/chio-finding-market-store-postgres/src/lib.rs has 926 lines, warn limit is 900
+warning: crates/platform/chio-finding-worker/src/executor.rs has 1962 lines, warn limit is 1200
+warning: crates/platform/chio-http-core/src/authority.rs has 1372 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/admission_operation_store.rs has 1216 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/admission_operation_store/credit_exposure.rs has 1416 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/admission_operation_store/obligation.rs has 1300 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/admission_operation_store/participant.rs has 1617 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/admission_operation_store/projection.rs has 1605 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/admission_operation_store_tests/factor_assignment.rs has 1975 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/admission_operation_store_tests/obligation.rs has 1243 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/admission_operation_store_tests/schema.rs has 1407 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/agent_web_replay_store.rs has 1768 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/approval_store.rs has 1374 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/budget_store/composite/model.rs has 1921 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/budget_store/composite_schema/state_invariants.rs has 1223 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/budget_store/store.rs has 1935 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/budget_store/trait_impl.rs has 1718 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/economic_state_cache.rs has 1881 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/execution_nonce_store.rs has 1283 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/finding_operator_bundle_store.rs has 1971 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/finding_operator_payment.rs has 1234 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/finding_status_store.rs has 1863 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/governed_approval_replay_store.rs has 1260 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/receipt_store/bootstrap/open.rs has 1836 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs has 2000 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/receipt_store/liability_market.rs has 1353 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/receipt_store/support/checkpoint_projection.rs has 1237 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/receipt_store/support/checkpoint_validate.rs has 1665 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/revocation_store.rs has 1618 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/serving_owner.rs has 1713 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/serving_owner/rollback_anchor.rs has 1355 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/settle_attempts.rs has 1815 lines, warn limit is 1200
+warning: crates/platform/chio-store-sqlite/src/tool_outcome_store.rs has 1342 lines, warn limit is 1200
+warning: crates/platform/chio-transaction-passport/src/cognition_market.rs has 1659 lines, warn limit is 1200
+warning: crates/platform/chio-transaction-passport/src/evidence_graph.rs has 1496 lines, warn limit is 1200
+warning: crates/platform/chio-transaction-passport/src/minimal.rs has 1646 lines, warn limit is 1200
+warning: crates/platform/chio-workflow/src/authority.rs has 1611 lines, warn limit is 1200
+warning: crates/products/chio-api-protect/src/evaluator.rs has 1560 lines, warn limit is 1200
+warning: crates/products/chio-api-protect/src/proxy/sidecar.rs has 1523 lines, warn limit is 1200
+warning: crates/products/chio-cli/src/cli/chio/dispatch/pheromone/relay.rs has 1455 lines, warn limit is 1200
+warning: crates/products/chio-cli/src/cli/dispatch/finding/operator.rs has 1919 lines, warn limit is 1200
+warning: crates/products/chio-cli/src/cli/dispatch/finding/verified_fix.rs has 1531 lines, warn limit is 1200
+warning: crates/products/chio-cli/src/cli/dispatch/finding/verify.rs has 1227 lines, warn limit is 1200
+warning: crates/products/chio-cli/src/cli/dispatch/proof/collect.rs has 1370 lines, warn limit is 1200
+warning: crates/products/chio-cli/src/cli/dispatch/proof/doctor.rs has 1697 lines, warn limit is 1200
+warning: crates/products/chio-cli/src/cli/dispatch/proof/env.rs has 1390 lines, warn limit is 1200
+warning: crates/products/chio-cli/src/cli/dispatch/trust.rs has 1406 lines, warn limit is 1200
+warning: crates/products/chio-cli/src/cli/runtime.rs has 1735 lines, warn limit is 1200
+warning: crates/products/chio-cli/src/cli/runtime/trust_reports.rs has 1242 lines, warn limit is 1200
+warning: crates/products/chio-cli/src/cli/trust/liability.rs has 1217 lines, warn limit is 1200
+warning: crates/products/chio-cli/src/cli/types/trust.rs has 1530 lines, warn limit is 1200
+warning: crates/products/chio-cli/src/passport.rs has 1437 lines, warn limit is 1200
+warning: crates/products/chio-finding-market-canary/src/main.rs has 1540 lines, warn limit is 1200
+warning: crates/products/chio-mercury-core/src/proof_package.rs has 1764 lines, warn limit is 1200
+warning: crates/products/chio-proof-room/src/fixture_a.rs has 1244 lines, warn limit is 1200
+warning: crates/products/chio-proof-room/src/fixture_b.rs has 1369 lines, warn limit is 1200
+warning: crates/products/chio-proof-room/src/source_verifier.rs has 1736 lines, warn limit is 1200
+warning: crates/protocol/chio-a2a-adapter/src/invoke.rs has 1439 lines, warn limit is 1200
+warning: crates/protocol/chio-ag-ui-proxy/src/proxy.rs has 1289 lines, warn limit is 1200
+warning: crates/protocol/chio-mcp-remote/src/remote_mcp/http_service.rs has 1327 lines, warn limit is 1200
+warning: crates/protocol/chio-mcp-remote/src/remote_mcp/http_service_auth.rs has 1229 lines, warn limit is 1200
+warning: crates/protocol/chio-mcp-remote/src/remote_mcp/session_credentials.rs has 1205 lines, warn limit is 1200
+warning: crates/protocol/chio-provider-adapter-core/src/http.rs has 1266 lines, warn limit is 1200
+warning: crates/protocol/chio-tower/src/service.rs has 1276 lines, warn limit is 1200
+warning: crates/tooling/chio-conformance/src/native_suite.rs has 1756 lines, warn limit is 1200
+warning: crates/tooling/chio-conformance/verdict_matrix/src/driver.rs has 1401 lines, warn limit is 1200
+warning: crates/tooling/chio-trace-validate/src/apalache.rs has 1451 lines, warn limit is 1200
+warning: crates/trust/chio-custody-hw/src/revocation.rs has 1472 lines, warn limit is 1200
+warning: crates/trust/chio-disclosure-lineage/src/verifier.rs has 1272 lines, warn limit is 1200
+warning: crates/trust/chio-federation-authority/src/lib.rs has 967 lines, warn limit is 900
+warning: crates/trust/chio-federation-transport-iroh/src/catchup.rs has 1689 lines, warn limit is 1200
+warning: crates/trust/chio-federation-transport-iroh/src/identity.rs has 1742 lines, warn limit is 1200
+warning: crates/trust/chio-federation-transport-iroh/src/lanes/bilateral.rs has 1717 lines, warn limit is 1200
+warning: crates/trust/chio-pheromone-relay/src/store.rs has 1318 lines, warn limit is 1200
+warning: xtask/src/fixtures.rs has 1598 lines, warn limit is 1200
+warning: xtask/src/fixtures_facets.rs has 1924 lines, warn limit is 1200
+warning: xtask/src/launch_acceptance.rs has 1433 lines, warn limit is 1200
+allowlisted: crates/core/chio-core-types/src/capability/tests.rs: existing oversized capability type test suite; capped to current size until split; covers time-checked verification, attenuation narrowing, and wildcard/concrete reflection regressions; expires 2026-12-31; max_lines 3241
+allowlisted: crates/economy/chio-credit/src/obligation/credit_admission.rs: authoritative credit admission surface; capped to current size until split; expires 2026-10-31; max_lines 2042
+allowlisted: crates/economy/chio-finding/tests/challenge_families.rs: cognition challenge artifact and schema regression suite; capped to current size until split; expires 2026-11-30; max_lines 2277
+allowlisted: crates/economy/chio-market/src/tests.rs: market admission and quote test suite; capped to current size until split; expires 2026-11-30; max_lines 2387
+allowlisted: crates/economy/chio-open-market/tests/finding_admission.rs: cognition-market admission regression suite; capped to current size until split; expires 2026-11-30; max_lines 2256
+allowlisted: crates/economy/chio-settle/src/channel/tests/support.rs: settlement channel test support module; capped to current size until split; expires 2026-10-31; max_lines 2030
+allowlisted: crates/economy/chio-settle/src/evm/tests.rs: EVM settlement unit test module with anchor content-hash regression coverage; capped until split; expires 2026-11-30; max_lines 2380
+allowlisted: crates/economy/chio-web3/src/settlement_proof.rs: web3 settlement proof surface; capped to current size until split; expires 2026-10-31; max_lines 2053
+allowlisted: crates/economy/chio-web3/src/tests.rs: web3 test module with public-settlement review regressions; capped until split; expires 2026-12-31; max_lines 2697
+allowlisted: crates/kernel/chio-kernel/src/admission_operation/projection.rs: durable admission projection surface with current-status denial binding; capped to current size until split; expires 2026-11-30; max_lines 2154
+allowlisted: crates/kernel/chio-kernel/src/admission_operation_tests.rs: durable admission operation regression suite with authoritative outcome binding coverage; capped to current size until split; expires 2026-11-30; max_lines 2359
+allowlisted: crates/kernel/chio-kernel/src/kernel/admission_coordinator/terminal.rs: durable terminal coordinator with status-release and recovery snapshots plus signed outcome and pool-claim binding; capped to current size until split; expires 2026-12-31; max_lines 2428
+allowlisted: crates/kernel/chio-kernel/src/kernel/construction.rs: kernel construction wiring with the finding-pool ledger, verifier authorities, and receipt-flush lock; capped to current size until split; expires 2026-10-31; max_lines 2034
+allowlisted: crates/kernel/chio-kernel/src/kernel/dispatch.rs: kernel dispatch surface with status snapshots and request-scoped pool claims; capped to current size until split; expires 2026-10-31; max_lines 2058
+allowlisted: crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs: kernel async evaluation core with recovery status and pool dispatch continuity; capped to current size until split; expires 2026-11-30; max_lines 2172
+allowlisted: crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs: existing oversized kernel runtime test suite; capped to current size until split; expires 2027-01-31; max_lines 4452
+allowlisted: crates/kernel/chio-kernel/src/kernel/tests/durable_admission.rs: durable kernel admission regression suite; capped to current size until split; expires 2026-12-31; max_lines 2773
+allowlisted: crates/kernel/chio-kernel/src/kernel/tests/execution_nonce.rs: execution nonce regression suite; capped to current size until split; expires 2027-01-31; max_lines 3377
+allowlisted: crates/kernel/chio-kernel/src/kernel/tests/session.rs: kernel session regression suite; capped to current size until split; expires 2026-10-31; max_lines 2083
+allowlisted: crates/kernel/chio-kernel/src/kernel/tests/support.rs: existing oversized kernel test support module; capped to current size until split; expires 2026-11-30; max_lines 2317
+allowlisted: crates/kernel/chio-kernel/src/kernel/validation.rs: kernel capability and admission validation surface; capped to current size until split; expires 2026-12-31; max_lines 2821
+allowlisted: crates/kernel/chio-runtime-core/tests/runtime_admission.rs: runtime admission integration suite; capped to current size after swarm authority split; expires 2026-12-31; max_lines 2847
+allowlisted: crates/kernel/chio-runtime-core/tests/runtime_buyer_review.rs: existing oversized runtime buyer review integration suite; capped to current size until split; expires 2026-10-31; max_lines 2068
+allowlisted: crates/kernel/chio-runtime-proof-parity/src/lib.rs: runtime proof parity surface; capped to current size until split; expires 2026-10-31; max_lines 1058
+allowlisted: crates/kernel/chio-swarm-authority/src/verifier.rs: swarm authority verifier surface; capped to current size until split; expires 2026-11-30; max_lines 2235
+allowlisted: crates/platform/chio-control-plane/src/lib.rs: control-plane crate root; capped to current size until split; expires 2026-10-31; max_lines 1034
+allowlisted: crates/platform/chio-control-plane/src/trust_control/capital_and_liability/liability.rs: capital liability control surface; capped to current size until split; expires 2026-11-30; max_lines 2166
+allowlisted: crates/platform/chio-control-plane/src/trust_control/cluster_and_reports.rs: trust-control cluster and reports surface with mixed-version revocation cursor coverage; capped to current size until split; expires 2026-12-31; max_lines 2801
+allowlisted: crates/platform/chio-control-plane/src/trust_control/finding_handlers.rs: cognition finding handler surface with authenticated status-operator standing and live service-bond renewal; capped to current size until split; expires 2026-12-31; max_lines 2426
+allowlisted: crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_challenge_enforcement_e2e_tests.rs: cognition challenge enforcement end-to-end regression suite with unavailable-status, authority-rotation, and bounded admission coverage; capped to current size until split; expires 2027-01-31; max_lines 7468
+allowlisted: crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs: cognition market exit regression suite with status-gated activation, admission-view, and replay coverage; capped to current size until split; expires 2027-01-31; max_lines 3438
+allowlisted: crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs: cognition purchase and recovery end-to-end regression suite with bounded buyer admission and durable replay coverage; capped to current size until split; expires 2027-01-31; max_lines 6213
+allowlisted: crates/platform/chio-enterprise-export/tests/enterprise_export.rs: launch enterprise export integration suite; capped to current size until split; expires 2026-12-31; max_lines 2724
+allowlisted: crates/platform/chio-http-session/src/lib.rs: shared HTTP session crate root; capped to current size until split; expires 2026-10-31; max_lines 1103
+allowlisted: crates/platform/chio-risk-comptroller/src/lib.rs: launch risk comptroller verifier surface; capped to current size until split; expires 2026-10-31; max_lines 1356
+allowlisted: crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs: admission factor assignment store surface; capped to current size until split; expires 2026-11-30; max_lines 2246
+allowlisted: crates/platform/chio-store-sqlite/src/budget_store/composite_schema.rs: durable composite budget schema and migration surface; capped to current size until split; expires 2026-10-31; max_lines 2104
+allowlisted: crates/platform/chio-store-sqlite/src/budget_store/tests.rs: existing oversized budget store test suite; capped to current size until split; expires 2026-12-31; max_lines 2479
+allowlisted: crates/platform/chio-store-sqlite/src/finding_challenge_store_tests.rs: cognition challenge authority store regression suite; capped to current size until split; expires 2027-01-31; max_lines 4531
+allowlisted: crates/platform/chio-store-sqlite/src/finding_market_store.rs: cognition finding market authority store with atomic status and sales-blocked participation fences; capped to current size until split; expires 2026-11-30; max_lines 2328
+allowlisted: crates/platform/chio-store-sqlite/src/finding_pool_ledger.rs: cognition pool ledger with durable delivery claims; capped to current size until split; expires 2026-11-30; max_lines 2283
+allowlisted: crates/platform/chio-store-sqlite/src/finding_purchase_store.rs: cognition purchase and recovery authority store with atomic finding-status and sales-block reservation gates; capped until split; expires 2027-01-31; max_lines 3385
+allowlisted: crates/platform/chio-store-sqlite/src/finding_purchase_store_tests.rs: cognition purchase authority store regression suite split for sales-block coverage; capped to current size until split; expires 2026-12-31; max_lines 3161
+allowlisted: crates/platform/chio-store-sqlite/src/finding_status_store/persistence.rs: cognition finding status persistence with durable rollback recovery; capped to current size until split; expires 2026-10-31; max_lines 2152
+allowlisted: crates/platform/chio-store-sqlite/src/fiscal_store.rs: fiscal persistence surface; capped to current size until split; expires 2026-12-31; max_lines 2937
+allowlisted: crates/platform/chio-store-sqlite/src/receipt_store.rs: receipt store hot-path module with anchored receipt, lineage metadata, checkpoint, and retention writes plus qualified read verification; capped to current size until split; expires 2027-01-31; max_lines 5816
+allowlisted: crates/platform/chio-store-sqlite/src/receipt_store/tests/retention.rs: receipt retention regression suite; capped to current size until split; expires 2027-01-31; max_lines 4668
+allowlisted: crates/platform/chio-store-sqlite/src/receipt_store/tests/support.rs: receipt store test support module; capped to current size until split; expires 2026-10-31; max_lines 2056
+allowlisted: crates/platform/chio-store-sqlite/src/receipt_store/tests/verified_head.rs: receipt verified-head regression suite with live qualified rollback coverage; capped to current size until split; expires 2026-10-31; max_lines 2048
+allowlisted: crates/platform/chio-store-sqlite/src/serving_owner/global_commit_chain.rs: serving-owner commit chain persistence surface; capped to current size until split; expires 2026-12-31; max_lines 2981
+allowlisted: crates/platform/chio-store-sqlite/src/serving_owner/tests.rs: serving-owner provisioning test suite with sequenced revocation stream coverage; capped to current size until split; expires 2026-11-30; max_lines 2298
+allowlisted: crates/platform/chio-transaction-passport/src/runtime_security/artifacts.rs: runtime security artifact verifier with trusted join and overflow hardening; capped until split; expires 2026-11-30; max_lines 2322
+allowlisted: crates/platform/chio-transaction-passport/tests/cognition_market.rs: cognition-market transaction passport regression suite; capped to current size until split; expires 2026-11-30; max_lines 2195
+allowlisted: crates/platform/chio-transaction-passport/tests/transaction_passport.rs: transaction passport integration suite with runtime-security and transparency-anchor review regressions; capped until split; expires 2026-12-31; max_lines 2789
+allowlisted: crates/products/chio-api-protect/src/proxy/mediated.rs: mediated API protection proxy surface; capped to current size until split; expires 2027-01-31; max_lines 3551
+allowlisted: crates/products/chio-api-protect/src/proxy/tests.rs: existing oversized API protect proxy test suite; capped to current size until split; expires 2027-01-31; max_lines 3458
+allowlisted: crates/products/chio-cli/src/cli/chio/dispatch/pheromone/iroh_mount.rs: pheromone iroh mount dispatch surface; capped to current size until split; expires 2027-01-31; max_lines 3375
+allowlisted: crates/products/chio-cli/src/cli/dispatch/finding/unit_tests.rs: cognition-market CLI regression suite with status trust-input migration coverage; capped to current size until split; expires 2026-11-30; max_lines 2175
+allowlisted: crates/products/chio-cli/src/cli/dispatch/proof.rs: proof dispatch with ClaimSet-routed family verification; capped to current size until split; expires 2027-01-31; max_lines 3484
+allowlisted: crates/products/chio-cli/src/cli/dispatch/proof/fixture.rs: launch proof fixture dispatch surface; capped to current size until split; expires 2027-01-31; max_lines 6323
+allowlisted: crates/products/chio-cli/tests/certify.rs: existing oversized CLI certify integration suite; capped to current size until split; expires 2027-01-31; max_lines 3645
+allowlisted: crates/products/chio-cli/tests/federated_issue.rs: existing oversized CLI federated issue integration suite; capped to current size until split; expires 2026-11-30; max_lines 2271
+allowlisted: crates/products/chio-cli/tests/mcp_serve.rs: existing oversized CLI MCP serve integration suite; capped to current size until split; expires 2027-01-31; max_lines 4401
+allowlisted: crates/products/chio-cli/tests/mcp_serve_http.rs: existing oversized CLI MCP HTTP integration suite; capped to current size until split; expires 2027-01-31; max_lines 6235
+allowlisted: crates/products/chio-cli/tests/passport.rs: existing oversized CLI passport integration suite; capped to current size until split; expires 2027-01-31; max_lines 5395
+allowlisted: crates/products/chio-cli/tests/proof_cli_contract/fixture.rs: launch proof CLI fixture contract suite; capped to current size until split; expires 2026-11-30; max_lines 2210
+allowlisted: crates/products/chio-cli/tests/proof_cli_contract/support.rs: launch proof CLI contract support module; capped to current size until split; expires 2027-01-31; max_lines 4072
+allowlisted: crates/products/chio-cli/tests/proof_verify.rs: launch proof verifier integration suite; capped to current size until split; expires 2026-12-31; max_lines 3094
+allowlisted: crates/products/chio-cli/tests/proof_verify/support.rs: launch proof verifier support module; capped to current size until split; expires 2026-11-30; max_lines 2231
+allowlisted: crates/products/chio-cli/tests/trust_cluster.rs: existing oversized CLI trust-cluster integration suite with signed delegation and same-second revocation coverage; capped to current size until split; expires 2026-12-31; max_lines 3272
+allowlisted: crates/products/chio-mercury/tests/cli.rs: existing oversized Mercury CLI integration suite; capped to current size until split; expires 2026-12-31; max_lines 3183
+allowlisted: crates/products/chio-proof-room/src/lib.rs: Proof Room product surface; capped to current size until split; expires 2026-10-31; max_lines 1196
+allowlisted: crates/products/chio-wall/src/commands.rs: wall command surface; capped to current size until split; expires 2026-10-31; max_lines 2048
+allowlisted: crates/protocol/chio-a2a-edge/src/tests/all.rs: existing oversized A2A edge aggregate test suite; capped to current size until split; expires 2026-12-31; max_lines 3207
+allowlisted: crates/protocol/chio-acp-edge/src/tests/all.rs: existing oversized ACP edge aggregate test suite; capped to current size until split; expires 2027-01-31; max_lines 3338
+allowlisted: crates/protocol/chio-mcp-edge/src/runtime/runtime_tests.rs: existing oversized MCP edge runtime test suite; capped to current size until split; expires 2027-01-31; max_lines 4626
+allowlisted: crates/trust/chio-credentials/src/tests.rs: existing oversized credentials test suite; capped to current size until split; expires 2026-10-31; max_lines 2021
+allowlisted: crates/trust/chio-federation-transport-iroh/src/lanes/fanout.rs: iroh fanout lane; capped to current size until split; expires 2026-12-31; max_lines 2443
+allowlisted: crates/trust/chio-federation-transport-iroh/src/lanes/pheromone.rs: iroh pheromone lane; capped to current size until split; expires 2026-12-31; max_lines 2818
+allowlisted: crates/trust/chio-federation-transport-iroh/src/lanes/revocation.rs: iroh revocation lane; capped to current size until split; expires 2026-12-31; max_lines 2511
+allowlisted: crates/trust/chio-finding-challenge/tests/support/mod.rs: cognition challenge authenticated standing fixtures; capped to current size until split; expires 2026-10-31; max_lines 2142
+allowlisted: crates/trust/chio-finding-verifier/src/verify.rs: cognition finding verifier with current authority standing and terminal-receipt-checkpoint role separation; capped to current size until split; expires 2026-10-31; max_lines 2107
+allowlisted: crates/trust/chio-finding-verifier/tests/verifier.rs: cognition finding verifier regression suite with authority standing and evidence-role separation coverage; capped until split; expires 2026-11-30; max_lines 2219
+allowlisted: crates/trust/chio-selective-disclosure/src/lib.rs: launch selective disclosure verifier surface; capped to current size until split; expires 2026-10-31; max_lines 1346
+
+Rust file hygiene check passed

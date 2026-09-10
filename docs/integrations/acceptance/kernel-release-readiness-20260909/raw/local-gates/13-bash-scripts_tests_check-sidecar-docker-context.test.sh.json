@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/tests/check-sidecar-docker-context.test.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010203.070734,
+  "completedAtEpoch": 1789010203.25693,
+  "log": "13-bash-scripts_tests_check-sidecar-docker-context.test.sh.log"
+}

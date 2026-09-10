@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/tests/check-sidecar-image-workflow.test.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010203.257322,
+  "completedAtEpoch": 1789010203.331868,
+  "log": "14-bash-scripts_tests_check-sidecar-image-workflow.test.sh.log"
+}

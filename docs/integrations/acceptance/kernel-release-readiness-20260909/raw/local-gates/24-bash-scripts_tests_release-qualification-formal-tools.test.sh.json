@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/tests/release-qualification-formal-tools.test.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010209.016834,
+  "completedAtEpoch": 1789010209.090483,
+  "log": "24-bash-scripts_tests_release-qualification-formal-tools.test.sh.log"
+}

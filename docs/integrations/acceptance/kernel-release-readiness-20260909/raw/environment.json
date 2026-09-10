@@ -1,0 +1,114 @@
+{
+  "capturedAtEpoch": 1789012143.851077,
+  "commands": [
+    {
+      "command": [
+        "sw_vers"
+      ],
+      "returncode": 0,
+      "stdout": "ProductName:\t\tmacOS\nProductVersion:\t\t26.4\nBuildVersion:\t\t25E246\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "uname",
+        "-m"
+      ],
+      "returncode": 0,
+      "stdout": "arm64\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "rustc",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "rustc 1.94.1 (e408947bf 2026-03-25)\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "cargo",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "cargo 1.94.1 (29ea6fb6a 2026-03-24)\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "node",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "v26.7.0\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "npm",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "11.19.0\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "Python 3.14.4\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "go",
+        "version"
+      ],
+      "returncode": 0,
+      "stdout": "go version go1.25.6 darwin/arm64\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "bun",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "1.3.14\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/bin/bash",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "GNU bash, version 3.2.57(1)-release (arm64-apple-darwin25)\nCopyright (C) 2007 Free Software Foundation, Inc.\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "cargo",
+        "vet",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "cargo-vet 0.10.2\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "cargo",
+        "deny",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "cargo-deny 0.19.4\n",
+      "stderr": ""
+    }
+  ]
+}

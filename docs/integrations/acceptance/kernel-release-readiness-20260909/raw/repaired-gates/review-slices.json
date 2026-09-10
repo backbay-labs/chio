@@ -1,0 +1,10 @@
+{
+  "name": "review-slices",
+  "command": [
+    "python3",
+    "scripts/check-review-slices.py"
+  ],
+  "returncode": 0,
+  "startEpoch": 1789010719.339531,
+  "endEpoch": 1789010719.471621
+}

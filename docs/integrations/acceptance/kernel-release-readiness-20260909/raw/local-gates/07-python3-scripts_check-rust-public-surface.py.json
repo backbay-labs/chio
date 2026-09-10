@@ -1,0 +1,10 @@
+{
+  "command": [
+    "python3",
+    "scripts/check-rust-public-surface.py"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010200.874658,
+  "completedAtEpoch": 1789010201.059134,
+  "log": "07-python3-scripts_check-rust-public-surface.py.log"
+}

@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/tests/check-sdk-release-python-generated.test.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010207.213253,
+  "completedAtEpoch": 1789010207.288817,
+  "log": "18-bash-scripts_tests_check-sdk-release-python-generated.test.sh.log"
+}

@@ -1,0 +1,13 @@
+ok: non-production stub-surface hits pass (rc=0)
+ok: unallowlisted production stub hit fails (rc=1)
+ok: lowercase Rust todo and unimplemented macros fail (rc=1)
+ok: tracked production files outside old prefixes fail (rc=1)
+ok: untracked production stub hit fails (rc=1)
+ok: split session test support stub payload is allowlisted (rc=0)
+ok: bbs-stub production feature surface fails (rc=1)
+ok: bbs-stub federation file rejects unrelated production TODO (rc=1)
+ok: allowlisted guard file rejects unrelated production TODO (rc=1)
+ok: sidecar attenuation stub remains a hard failure (rc=1)
+ok: reviewed cargo-vet package names pass (rc=0)
+ok: cargo-vet package-name exception rejects trailing text (rc=1)
+check-stub-surfaces.test.sh: all assertions passed

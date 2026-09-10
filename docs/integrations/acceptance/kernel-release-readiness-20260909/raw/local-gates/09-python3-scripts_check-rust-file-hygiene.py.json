@@ -1,0 +1,10 @@
+{
+  "command": [
+    "python3",
+    "scripts/check-rust-file-hygiene.py"
+  ],
+  "returncode": 1,
+  "startedAtEpoch": 1789010201.238278,
+  "completedAtEpoch": 1789010202.704971,
+  "log": "09-python3-scripts_check-rust-file-hygiene.py.log"
+}

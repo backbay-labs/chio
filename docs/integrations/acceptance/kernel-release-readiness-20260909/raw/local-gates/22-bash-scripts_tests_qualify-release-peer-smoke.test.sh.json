@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/tests/qualify-release-peer-smoke.test.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010207.5738702,
+  "completedAtEpoch": 1789010207.756216,
+  "log": "22-bash-scripts_tests_qualify-release-peer-smoke.test.sh.log"
+}

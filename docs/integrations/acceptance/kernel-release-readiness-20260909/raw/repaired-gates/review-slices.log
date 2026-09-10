@@ -1,0 +1,9 @@
+review slice check passed (521 files across 8 slices)
+- adapters-edges: 29 files - protocol adapters, provider adapters, edges, bridges, integrations
+- architecture-docs: 214 files - ARCHITECTURE.md files and architecture/reference docs
+- attestation-conformance-formal: 1 files - attestation, conformance, replay, formal, adversarial, test corpora
+- ci-tooling-workspace: 2 files - CI workflows, scripts, workspace metadata, xtask and scanner config
+- core-protocol: 3 files - core protocol types, canonical bytes, HTTP/session contracts, manifests
+- kernel-runtime: 6 files - kernel, runtime, portable/browser/mobile kernels, runtime harnesses
+- sdks-examples: 255 files - language SDKs and runnable examples
+- storage-control-observability: 11 files - control plane, stores, metering, SIEM, operational state

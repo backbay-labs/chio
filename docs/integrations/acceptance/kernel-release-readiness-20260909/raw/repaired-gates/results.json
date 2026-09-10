@@ -1,0 +1,78 @@
+[
+  {
+    "name": "format",
+    "command": [
+      "cargo",
+      "fmt",
+      "--all",
+      "--",
+      "--check"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789010719.339433,
+    "endEpoch": 1789010727.752266
+  },
+  {
+    "name": "review-slices",
+    "command": [
+      "python3",
+      "scripts/check-review-slices.py"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789010719.339531,
+    "endEpoch": 1789010719.471621
+  },
+  {
+    "name": "file-hygiene",
+    "command": [
+      "python3",
+      "scripts/check-rust-file-hygiene.py"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789010719.340916,
+    "endEpoch": 1789010721.040101
+  },
+  {
+    "name": "schema-registry",
+    "command": [
+      "bash",
+      "scripts/check-chio-schema-registry.sh"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789010719.4718919,
+    "endEpoch": 1789010719.719347
+  },
+  {
+    "name": "deny-advisories",
+    "command": [
+      "cargo",
+      "deny",
+      "check",
+      "advisories"
+    ],
+    "returncode": 0,
+    "startEpoch": 1789010719.7195652,
+    "endEpoch": 1789010722.263964
+  },
+  {
+    "name": "cargo-vet",
+    "command": [
+      "cargo",
+      "vet",
+      "--locked"
+    ],
+    "returncode": 255,
+    "startEpoch": 1789010721.04033,
+    "endEpoch": 1789010722.01506
+  },
+  {
+    "name": "deny-baseline",
+    "command": [
+      "python3",
+      "scripts/check-cargo-deny-duplicate-baseline.py"
+    ],
+    "returncode": 1,
+    "startEpoch": 1789010722.0152771,
+    "endEpoch": 1789010722.100713
+  }
+]

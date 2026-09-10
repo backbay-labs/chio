@@ -1,0 +1,10 @@
+{
+  "command": [
+    "gh",
+    "api",
+    "repos/bb-connor/arc/compare/5b8bec41d32f3838b880576fe6123c983ecebf8d...f5566d9a765c21cb36652a99c79de64968a656bf"
+  ],
+  "started_at_utc": "2026-09-10T03:17:39.783010+00:00",
+  "finished_at_utc": "2026-09-10T03:17:40.658473+00:00",
+  "exit_code": 0
+}

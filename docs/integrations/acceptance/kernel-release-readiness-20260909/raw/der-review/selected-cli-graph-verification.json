@@ -1,0 +1,42 @@
+[
+  {
+    "target": "aarch64-apple-darwin",
+    "before_sha256": "04833c87e56f62330b084da7abd4770bbf8b738a173125b87dbd4522597f1dc2",
+    "after_sha256": "04833c87e56f62330b084da7abd4770bbf8b738a173125b87dbd4522597f1dc2",
+    "byte_identical": true,
+    "contains_der_0_8": false,
+    "contains_iroh": false
+  },
+  {
+    "target": "aarch64-unknown-linux-gnu",
+    "before_sha256": "70bb2fcd05373b3fdf010abf8b006fc119f2b3df9fcc0128aaf4355c86bb0380",
+    "after_sha256": "70bb2fcd05373b3fdf010abf8b006fc119f2b3df9fcc0128aaf4355c86bb0380",
+    "byte_identical": true,
+    "contains_der_0_8": false,
+    "contains_iroh": false
+  },
+  {
+    "target": "x86_64-apple-darwin",
+    "before_sha256": "6f1feabff911703e362cbb7a6c8eadf50555456bcd37613f38cd343b5810db48",
+    "after_sha256": "6f1feabff911703e362cbb7a6c8eadf50555456bcd37613f38cd343b5810db48",
+    "byte_identical": true,
+    "contains_der_0_8": false,
+    "contains_iroh": false
+  },
+  {
+    "target": "x86_64-pc-windows-msvc",
+    "before_sha256": "96df33b3e6fba3943091f3eca4c61bbcbf5460c123eb8a7eb1671622ce7ce3ae",
+    "after_sha256": "96df33b3e6fba3943091f3eca4c61bbcbf5460c123eb8a7eb1671622ce7ce3ae",
+    "byte_identical": true,
+    "contains_der_0_8": false,
+    "contains_iroh": false
+  },
+  {
+    "target": "x86_64-unknown-linux-gnu",
+    "before_sha256": "a9a0a2f573cfe86cbfd2b7c7ce26547058ebc41235272c97152deeab435e4428",
+    "after_sha256": "a9a0a2f573cfe86cbfd2b7c7ce26547058ebc41235272c97152deeab435e4428",
+    "byte_identical": true,
+    "contains_der_0_8": false,
+    "contains_iroh": false
+  }
+]

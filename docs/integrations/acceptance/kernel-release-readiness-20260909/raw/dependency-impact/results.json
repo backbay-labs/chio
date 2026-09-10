@@ -1,0 +1,201 @@
+{
+  "runs": [
+    {
+      "name": "before-aarch64-apple-darwin",
+      "command": [
+        "cargo",
+        "tree",
+        "--locked",
+        "-p",
+        "chio-cli",
+        "--target",
+        "aarch64-apple-darwin",
+        "-e",
+        "normal,build",
+        "--prefix",
+        "none",
+        "--format",
+        "{p} {f}"
+      ],
+      "returncode": 0
+    },
+    {
+      "name": "before-x86_64-unknown-linux-gnu",
+      "command": [
+        "cargo",
+        "tree",
+        "--locked",
+        "-p",
+        "chio-cli",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "-e",
+        "normal,build",
+        "--prefix",
+        "none",
+        "--format",
+        "{p} {f}"
+      ],
+      "returncode": 0
+    },
+    {
+      "name": "before-aarch64-unknown-linux-gnu",
+      "command": [
+        "cargo",
+        "tree",
+        "--locked",
+        "-p",
+        "chio-cli",
+        "--target",
+        "aarch64-unknown-linux-gnu",
+        "-e",
+        "normal,build",
+        "--prefix",
+        "none",
+        "--format",
+        "{p} {f}"
+      ],
+      "returncode": 0
+    },
+    {
+      "name": "before-x86_64-apple-darwin",
+      "command": [
+        "cargo",
+        "tree",
+        "--locked",
+        "-p",
+        "chio-cli",
+        "--target",
+        "x86_64-apple-darwin",
+        "-e",
+        "normal,build",
+        "--prefix",
+        "none",
+        "--format",
+        "{p} {f}"
+      ],
+      "returncode": 0
+    },
+    {
+      "name": "before-x86_64-pc-windows-msvc",
+      "command": [
+        "cargo",
+        "tree",
+        "--locked",
+        "-p",
+        "chio-cli",
+        "--target",
+        "x86_64-pc-windows-msvc",
+        "-e",
+        "normal,build",
+        "--prefix",
+        "none",
+        "--format",
+        "{p} {f}"
+      ],
+      "returncode": 0
+    },
+    {
+      "name": "after-aarch64-apple-darwin",
+      "command": [
+        "cargo",
+        "tree",
+        "--locked",
+        "-p",
+        "chio-cli",
+        "--target",
+        "aarch64-apple-darwin",
+        "-e",
+        "normal,build",
+        "--prefix",
+        "none",
+        "--format",
+        "{p} {f}"
+      ],
+      "returncode": 0
+    },
+    {
+      "name": "after-x86_64-unknown-linux-gnu",
+      "command": [
+        "cargo",
+        "tree",
+        "--locked",
+        "-p",
+        "chio-cli",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "-e",
+        "normal,build",
+        "--prefix",
+        "none",
+        "--format",
+        "{p} {f}"
+      ],
+      "returncode": 0
+    },
+    {
+      "name": "after-aarch64-unknown-linux-gnu",
+      "command": [
+        "cargo",
+        "tree",
+        "--locked",
+        "-p",
+        "chio-cli",
+        "--target",
+        "aarch64-unknown-linux-gnu",
+        "-e",
+        "normal,build",
+        "--prefix",
+        "none",
+        "--format",
+        "{p} {f}"
+      ],
+      "returncode": 0
+    },
+    {
+      "name": "after-x86_64-apple-darwin",
+      "command": [
+        "cargo",
+        "tree",
+        "--locked",
+        "-p",
+        "chio-cli",
+        "--target",
+        "x86_64-apple-darwin",
+        "-e",
+        "normal,build",
+        "--prefix",
+        "none",
+        "--format",
+        "{p} {f}"
+      ],
+      "returncode": 0
+    },
+    {
+      "name": "after-x86_64-pc-windows-msvc",
+      "command": [
+        "cargo",
+        "tree",
+        "--locked",
+        "-p",
+        "chio-cli",
+        "--target",
+        "x86_64-pc-windows-msvc",
+        "-e",
+        "normal,build",
+        "--prefix",
+        "none",
+        "--format",
+        "{p} {f}"
+      ],
+      "returncode": 0
+    }
+  ],
+  "selectedGraphsByteIdentical": {
+    "aarch64-apple-darwin": true,
+    "x86_64-unknown-linux-gnu": true,
+    "aarch64-unknown-linux-gnu": true,
+    "x86_64-apple-darwin": true,
+    "x86_64-pc-windows-msvc": true
+  }
+}

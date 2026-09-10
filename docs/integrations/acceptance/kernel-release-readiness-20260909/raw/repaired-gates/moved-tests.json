@@ -1,0 +1,20 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "chio-core-types",
+    "-p",
+    "chio-mcp-edge",
+    "--lib"
+  ],
+  "returncode": 0,
+  "startEpoch": 1789010738.672548,
+  "endEpoch": 1789010988.185751,
+  "environment": {
+    "CARGO_TARGET_DIR": "/Users/connor/Medica/backbay/standalone/arc/target",
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_BUILD_JOBS": "2"
+  }
+}

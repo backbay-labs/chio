@@ -1,0 +1,22 @@
+{
+  "command": [
+    "bash",
+    "scripts/qualify-release.sh"
+  ],
+  "qualificationSource": "abfd3b56111e2838ae648a4a82c5059eda16e210",
+  "runtimeSource": "d8c5f53705173e614a853bad6c0a85acfdf1212b",
+  "binarySha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "startEpoch": 1789010952.337495,
+  "completedEpoch": 1789011912.494834,
+  "returncode": 130,
+  "sourceStatusAfter": "",
+  "classification": "interrupted_incomplete",
+  "interruption": {
+    "reason": "shared machine load exceeded 240; owner requested graceful interruption and hosted Linux handoff",
+    "signal": "SIGINT",
+    "verifiedOwnedLakePid": 71524,
+    "unrelatedProcessesSignaled": false,
+    "ownedLeanChildrenRemain": false,
+    "cachedProofsPreserved": true
+  }
+}

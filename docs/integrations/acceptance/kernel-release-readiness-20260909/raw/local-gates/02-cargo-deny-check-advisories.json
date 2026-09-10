@@ -1,0 +1,12 @@
+{
+  "command": [
+    "cargo",
+    "deny",
+    "check",
+    "advisories"
+  ],
+  "returncode": 1,
+  "startedAtEpoch": 1789010192.108943,
+  "completedAtEpoch": 1789010197.955182,
+  "log": "02-cargo-deny-check-advisories.log"
+}

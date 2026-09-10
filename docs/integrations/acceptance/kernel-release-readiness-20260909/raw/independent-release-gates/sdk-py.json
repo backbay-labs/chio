@@ -1,0 +1,10 @@
+{
+  "name": "sdk-py",
+  "command": [
+    "bash",
+    "scripts/check-chio-py-release.sh"
+  ],
+  "returncode": 0,
+  "startEpoch": 1789011246.94991,
+  "endEpoch": 1789011444.250412
+}

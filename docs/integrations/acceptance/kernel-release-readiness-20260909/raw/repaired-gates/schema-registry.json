@@ -1,0 +1,10 @@
+{
+  "name": "schema-registry",
+  "command": [
+    "bash",
+    "scripts/check-chio-schema-registry.sh"
+  ],
+  "returncode": 0,
+  "startEpoch": 1789010719.4718919,
+  "endEpoch": 1789010719.719347
+}

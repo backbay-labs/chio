@@ -1,0 +1,13 @@
+{
+  "command": [
+    "cargo",
+    "fmt",
+    "--all",
+    "--",
+    "--check"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010192.108599,
+  "completedAtEpoch": 1789010203.534403,
+  "log": "00-cargo-fmt---all---.log"
+}

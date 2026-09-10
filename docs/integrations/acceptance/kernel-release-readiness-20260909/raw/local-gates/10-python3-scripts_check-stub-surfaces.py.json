@@ -1,0 +1,10 @@
+{
+  "command": [
+    "python3",
+    "scripts/check-stub-surfaces.py"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010201.8822558,
+  "completedAtEpoch": 1789010219.306525,
+  "log": "10-python3-scripts_check-stub-surfaces.py.log"
+}

@@ -1,0 +1,3 @@
+OK /var/folders/jy/95wms_mn265f0bpj_v6wc4zh0000gn/T//chio-hosted-report.r3lnck/qualification.json -> /Users/connor/Medica/backbay/standalone/arc/.worktrees/kernel-release-audit-20260909/spec/schemas/chio-finding/v1/hosted-qualification.schema.json
+OK /var/folders/jy/95wms_mn265f0bpj_v6wc4zh0000gn/T//chio-hosted-report.r3lnck/qualification.json -> /Users/connor/Medica/backbay/standalone/arc/.worktrees/kernel-release-audit-20260909/spec/schemas/chio-finding/v1/hosted-qualification.schema.json
+qualify-cognition-market-hosted.test.sh: code and KVM claims remain bounded

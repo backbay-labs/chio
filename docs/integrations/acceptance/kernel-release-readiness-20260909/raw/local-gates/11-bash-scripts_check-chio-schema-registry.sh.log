@@ -1,0 +1,2 @@
+MANIFEST.sha256 bytes do not match deterministic regeneration
+Active Chio schema spec/schemas/chio-wire/v1/agent/governed-transaction-intent.schema.json is absent from MANIFEST.sha256 or has stale hash

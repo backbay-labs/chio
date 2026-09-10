@@ -1,0 +1,12 @@
+{
+  "command": [
+    "cargo",
+    "deny",
+    "check",
+    "licenses"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010196.334752,
+  "completedAtEpoch": 1789010199.619064,
+  "log": "03-cargo-deny-check-licenses.log"
+}

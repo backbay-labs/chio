@@ -1,0 +1,12 @@
+{
+  "command": [
+    "gh",
+    "api",
+    "repos/bb-connor/arc/actions/runs?head_sha=d8c5f53705173e614a853bad6c0a85acfdf1212b&per_page=100"
+  ],
+  "started_at_utc": "2026-09-10T03:16:24.550754+00:00",
+  "finished_at_utc": "2026-09-10T03:16:25.152019+00:00",
+  "exit_code": 0,
+  "stdout_file": "bb-connor--arc--runs-candidate.stdout.json",
+  "stderr_file": "bb-connor--arc--runs-candidate.stderr.txt"
+}

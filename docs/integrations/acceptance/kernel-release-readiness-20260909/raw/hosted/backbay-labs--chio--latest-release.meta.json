@@ -1,0 +1,12 @@
+{
+  "command": [
+    "gh",
+    "api",
+    "repos/backbay-labs/chio/releases/latest"
+  ],
+  "started_at_utc": "2026-09-10T03:16:26.802596+00:00",
+  "finished_at_utc": "2026-09-10T03:16:27.241127+00:00",
+  "exit_code": 0,
+  "stdout_file": "backbay-labs--chio--latest-release.stdout.json",
+  "stderr_file": "backbay-labs--chio--latest-release.stderr.txt"
+}

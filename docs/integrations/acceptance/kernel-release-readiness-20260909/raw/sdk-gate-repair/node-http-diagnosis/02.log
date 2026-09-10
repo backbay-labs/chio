@@ -1,0 +1,14 @@
+
+> @chio-protocol/node-http@0.1.0 test
+> vitest run --no-file-parallelism test/sidecar-client.test.ts -t throws evaluation-failed SidecarError for non-verdict 4xx verifier responses
+
+
+ RUN  v3.2.6 /private/tmp/chio-kernel-release-audit-20260909/sdk-gate-repair/node-http-diagnosis/package
+
+ ✓ test/sidecar-client.test.ts (30 tests | 29 skipped) 23ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 29 skipped (30)
+   Start at  23:47:21
+   Duration  261ms (transform 49ms, setup 0ms, collect 54ms, tests 23ms, environment 0ms, prepare 36ms)
+

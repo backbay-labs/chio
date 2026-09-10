@@ -1,0 +1,5 @@
+release input inventory clean
+workspace layering checks passed
+unclassified changed paths:
+  crates/platform/chio-sqlite-file-identity/Cargo.toml
+  crates/platform/chio-sqlite-file-identity/src/lib.rs

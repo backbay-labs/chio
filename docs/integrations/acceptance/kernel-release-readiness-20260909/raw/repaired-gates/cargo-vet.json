@@ -1,0 +1,11 @@
+{
+  "name": "cargo-vet",
+  "command": [
+    "cargo",
+    "vet",
+    "--locked"
+  ],
+  "returncode": 255,
+  "startEpoch": 1789010721.04033,
+  "endEpoch": 1789010722.01506
+}

@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/tests/provider-fixture-claims.test.sh"
+  ],
+  "returncode": 0,
+  "startedAtEpoch": 1789010209.935018,
+  "completedAtEpoch": 1789010210.013791,
+  "log": "27-bash-scripts_tests_provider-fixture-claims.test.sh.log"
+}
