@@ -1,0 +1,30 @@
+{
+  "checks": [
+    {
+      "command": [
+        "bash",
+        "scripts/check-chio-proof-room-release-truth.sh"
+      ],
+      "exitCode": 0,
+      "scriptSha256": "e1d6a2d94eab5016fee17f8e796a5ac4cd5b9ec255a51f63e6b62f8d041c0ffe",
+      "sourceRevision": "0599e9fa3ee337719986f6fd88466f75ba0290dd",
+      "scriptModified": false
+    },
+    {
+      "command": [
+        "bash",
+        "scripts/tests/check-chio-proof-room-release-truth.test.sh"
+      ],
+      "exitCode": 0,
+      "scriptSha256": "fa9c0abd24f3e36c3964d5677ee8d1d316ac96d4a601f55731714faa7d5cbefc",
+      "sourceRevision": "0599e9fa3ee337719986f6fd88466f75ba0290dd",
+      "scriptModified": false
+    }
+  ],
+  "finalCopyGateRecheckExitCode": 0,
+  "claim": "Unchanged repository copy gate and its negative controls, not host acceptance",
+  "exportPreparationCorrections": [
+    "Initial export of validation logs asserted a one-line regression log. The actual successful log contains multiple positive-control lines and the explicit negative-control completion. It is now preserved byte-exact.",
+    "Offline verification initially refused the intermediate checksum set after README metadata changed. Checksums are regenerated only over the finalized export; no raw host evidence is altered."
+  ]
+}
