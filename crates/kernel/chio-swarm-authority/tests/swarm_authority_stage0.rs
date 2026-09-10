@@ -30,6 +30,91 @@ use proptest::prelude::*;
 const NOW_UNIX_MS: u64 = 1_800_000_001_000;
 
 #[test]
+fn admission_accepts_ready_work_without_claiming_future_completion() -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.join_receipts.clear();
+    bundle.terminal_receipts.clear();
+    let report = chio_swarm_authority::verify_swarm_admission_bundle(
+        &bundle,
+        "continuation-child-a",
+        &trusted_witness_keys(),
+    )?;
+    assert!(!report
+        .verified_claims
+        .contains(&CLAIM_SWARM_TERMINAL_GRAPH_RECEIPT_BOUND.to_string()));
+    assert!(!report
+        .verified_claims
+        .contains(&CLAIM_SWARM_JOIN_RECEIPT_BOUND.to_string()));
+    assert!(verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()).is_err());
+    Ok(())
+}
+
+#[test]
+fn admission_allows_unissued_future_continuations_but_requires_selected_one(
+) -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.join_receipts.clear();
+    bundle.terminal_receipts.clear();
+    bundle
+        .continuation_tokens
+        .retain(|token| token.token_id == "continuation-child-a");
+    let report = chio_swarm_authority::verify_swarm_admission_bundle(
+        &bundle,
+        "continuation-child-a",
+        &trusted_witness_keys(),
+    )?;
+    assert_eq!(report.hop_reports.len(), 1);
+    assert!(chio_swarm_authority::verify_swarm_admission_bundle(
+        &bundle,
+        "continuation-child-b",
+        &trusted_witness_keys()
+    )
+    .is_err());
+    Ok(())
+}
+
+#[test]
+fn admission_preserves_signer_and_time_checks_before_work() -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.join_receipts.clear();
+    bundle.terminal_receipts.clear();
+    assert!(chio_swarm_authority::verify_swarm_admission_bundle(
+        &bundle,
+        "continuation-child-a",
+        &[Keypair::generate().public_key()]
+    )
+    .is_err());
+    bundle.now_unix_ms = bundle.continuation_tokens[0].expires_at_unix_ms + 1;
+    assert!(chio_swarm_authority::verify_swarm_admission_bundle(
+        &bundle,
+        "continuation-child-a",
+        &trusted_witness_keys()
+    )
+    .is_err());
+    Ok(())
+}
+
+#[test]
+fn admission_cannot_bypass_a_declared_join_with_a_parent_continuation() -> Result<(), Box<dyn Error>>
+{
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.join_receipts.clear();
+    bundle.terminal_receipts.clear();
+    bundle.task_graph.joins[0].next_task_id = "task-child-a".into();
+    let error = chio_swarm_authority::verify_swarm_admission_bundle(
+        &bundle,
+        "continuation-child-a",
+        &trusted_witness_keys(),
+    );
+    assert!(error
+        .err()
+        .ok_or("expected a refusal")?
+        .runtime_detail()
+        .contains("requires predecessor join"));
+    Ok(())
+}
+
+#[test]
 fn swarm_authority_stage0_verifies_valid_bundle() -> Result<(), Box<dyn Error>> {
     let bundle = sample_swarm_bundle()?;
     let report = verify_swarm_authority_bundle(&bundle, &trusted_witness_keys())?;
@@ -1226,7 +1311,8 @@ fn swarm_authority_stage0_rejects_terminal_budget_rollup_mismatch() -> Result<()
 }
 
 #[test]
-fn swarm_authority_stage0_rejects_released_budget_allocation() -> Result<(), Box<dyn Error>> {
+fn swarm_authority_stage0_accepts_final_release_but_refuses_it_for_admission(
+) -> Result<(), Box<dyn Error>> {
     let mut bundle = sample_swarm_bundle()?;
     bundle.budget_pool.allocations[0].state = SwarmBudgetAllocationState::Released;
     bundle.budget_pool.allocations[0].active_units = 0;
@@ -1235,7 +1321,19 @@ fn swarm_authority_stage0_rejects_released_budget_allocation() -> Result<(), Box
     bundle.terminal_receipts[0].budget_rollups[0].released_units = 2_500;
     sign_terminal_graph_receipt(&mut bundle.terminal_receipts[0])?;
 
-    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
+    verify_swarm_authority_bundle(&bundle, &trusted_witness_keys())?;
+    let token_id = bundle
+        .continuation_tokens
+        .iter()
+        .find(|token| token.budget_allocation_id == bundle.budget_pool.allocations[0].allocation_id)
+        .ok_or("released task has no continuation")?
+        .token_id
+        .clone();
+    let error = match chio_swarm_authority::verify_swarm_admission_bundle(
+        &bundle,
+        &token_id,
+        &trusted_witness_keys(),
+    ) {
         Ok(report) => panic!("released budget allocation verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };

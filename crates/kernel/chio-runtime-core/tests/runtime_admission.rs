@@ -61,7 +61,7 @@ use support::treaty::{treaty_action_class, treaty_manifest, treaty_scope};
 
 #[path = "runtime_admission/swarm_request_support.rs"]
 mod swarm_request_support;
-use swarm_request_support::{chio_swarm_runtime_request, swarm_runtime_context};
+use swarm_request_support::{chio_swarm_runtime_request, swarm_capability, swarm_runtime_context};
 
 fn emit_threat_matrix_code(code: &str) {
     if std::env::var_os("CHIO_THREAT_MATRIX_EMIT_CODE").is_some() {
@@ -1758,6 +1758,109 @@ fn sqlite_runtime_hook_denies_replayed_swarm_continuation_before_dispatch(
 }
 
 #[test]
+fn swarm_runtime_refuses_another_workers_validly_signed_capability(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for changed_scope in [false, true] {
+        let store = InMemoryRuntimeAdmissionStore::new();
+        let mut admission = bundle();
+        admission.schema = "chio.runtime.admission-bundle.v1".into();
+        admission.destructive = false;
+        admission.lease_id = None;
+        admission.governance_receipt_id = None;
+        let args = serde_json::json!({"record":"vendor-ledger-7","value":"closed"});
+        admission.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+        admission.binding.origin_kernel_id = None;
+        let hash = runtime_admission_bundle_sha256(&admission)?;
+        store.insert_bundle(admission)?;
+        let swarm = runtime_swarm_bundle(false)?;
+        let refs = swarm_runtime_context(&swarm)?;
+        store.insert_swarm_authority_bundle(swarm)?;
+        let mut request = chio_swarm_runtime_request(args, hash, refs)?;
+        let mut body = request.capability.body();
+        if changed_scope {
+            body.scope = runtime_swarm_scope(2);
+        } else {
+            body.subject = Keypair::generate().public_key();
+        }
+        request.capability = CapabilityToken::sign(body, &Keypair::from_seed(&[81u8; 32]))?;
+        request.agent_id = request.capability.subject.to_hex();
+        assert!(request.capability.verify_signature()?);
+        let hook =
+            allowing_chio_policy_hook(store)?.with_swarm_witness_keys(trusted_swarm_witness_keys());
+        let metadata = swarm_route_metadata();
+        let result = hook.evaluate(&RuntimeAdmissionContext {
+            request: &request,
+            extra_metadata: Some(&metadata),
+            now_unix_secs: 1_800_000_001,
+            now_unix_ms: 1_800_000_001_000,
+            matched_grant_index: Some(0),
+            local_kernel_id: "kernel.vendor-b".into(),
+        })?;
+        assert!(
+            !result.allowed,
+            "another worker or wider capability must not consume this task continuation"
+        );
+        assert_eq!(
+            result.metadata.ok_or("missing refusal metadata")?["chio_runtime"]["failure_code"],
+            "chio_swarm_authority_rejected"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn sqlite_runtime_admits_unfinished_graph_and_retains_replay_refusal(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let store = SqliteRuntimeOrchestrationStore::open(dir.path().join("swarm-replay.sqlite3"))?;
+    let mut admission_bundle = bundle();
+    admission_bundle.schema = "chio.runtime.admission-bundle.v1".to_string();
+    admission_bundle.destructive = false;
+    admission_bundle.lease_id = None;
+    admission_bundle.governance_receipt_id = None;
+    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
+    admission_bundle.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+    admission_bundle.binding.origin_kernel_id = None;
+    let bundle_hash = runtime_admission_bundle_sha256(&admission_bundle)?;
+    store.insert_bundle(admission_bundle)?;
+
+    let mut swarm_bundle = runtime_swarm_bundle(false)?;
+    let mut request_context = swarm_runtime_context(&swarm_bundle)?;
+    request_context
+        .as_object_mut()
+        .ok_or("swarm context is not an object")?
+        .remove("joinReceipt");
+    swarm_bundle.join_receipts.clear();
+    swarm_bundle.terminal_receipts.clear();
+    store.insert_swarm_authority_bundle(swarm_bundle)?;
+    let request = chio_swarm_runtime_request(args, bundle_hash, request_context)?;
+    let hook =
+        allowing_chio_policy_hook(store)?.with_swarm_witness_keys(trusted_swarm_witness_keys());
+    let route_metadata = swarm_route_metadata();
+    let context = RuntimeAdmissionContext {
+        request: &request,
+        extra_metadata: Some(&route_metadata),
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    };
+    let first = hook.evaluate(&context)?;
+    assert!(first.allowed, "{first:#?}");
+
+    let replay = hook.evaluate(&context)?;
+    assert!(!replay.allowed);
+    let replay_metadata = replay
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    assert_eq!(
+        replay_metadata["chio_runtime"]["failure_code"],
+        "chio_swarm_continuation_replay"
+    );
+    Ok(())
+}
+
+#[test]
 fn kernel_hook_uses_configured_runtime_policy_to_deny() -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();
     let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
@@ -2705,7 +2808,7 @@ fn runtime_swarm_witness_chain(
         child_task_id: child_task_id.to_string(),
         hops: vec![SwarmDelegationWitnessHop {
             parent_capability_digest: sha256_hex(b"parent-capability"),
-            child_capability_digest: sha256_hex(child_task_id.as_bytes()),
+            child_capability_digest: canonical_test_hash(&swarm_capability()?)?,
             parent_scope_hash: parent_scope_hash.to_string(),
             child_scope_hash: child_scope_hash.to_string(),
             attenuation_rule_id: "rule-subset-tool-invocation".to_string(),

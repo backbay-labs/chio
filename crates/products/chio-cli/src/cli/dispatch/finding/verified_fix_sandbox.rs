@@ -51,12 +51,7 @@ pub(super) fn run_test_command_with_timeout(
     command: &str,
     timeout: Duration,
 ) -> Result<VerifiedFixCommandResult, CliError> {
-    run_test_command_with_limits(
-        worktree,
-        command,
-        timeout,
-        TestSandboxLimits::production(),
-    )
+    run_test_command_with_limits(worktree, command, timeout, TestSandboxLimits::production())
 }
 
 #[derive(Clone, Copy)]
@@ -93,10 +88,7 @@ impl SandboxCgroup {
             return Ok(cgroup);
         }
         Ok(Self::UserScope {
-            unit: format!(
-                "chio-verified-fix-{}.scope",
-                uuid::Uuid::new_v4().simple()
-            ),
+            unit: format!("chio-verified-fix-{}.scope", uuid::Uuid::new_v4().simple()),
         })
     }
 
@@ -126,12 +118,17 @@ impl SandboxCgroup {
             return Ok(None);
         }
         let configured = (|| -> Result<File, std::io::Error> {
-            fs::write(path.join("memory.max"), limits.address_space_bytes.to_string())?;
+            fs::write(
+                path.join("memory.max"),
+                limits.address_space_bytes.to_string(),
+            )?;
             if path.join("memory.swap.max").is_file() {
                 fs::write(path.join("memory.swap.max"), "0")?;
             }
             fs::write(path.join("pids.max"), limits.process_count.to_string())?;
-            OpenOptions::new().write(true).open(path.join("cgroup.procs"))
+            OpenOptions::new()
+                .write(true)
+                .open(path.join("cgroup.procs"))
         })();
         match configured {
             Ok(procs) => Ok(Some(Self::Direct { path, procs })),
@@ -184,13 +181,7 @@ impl SandboxCgroup {
             }
             Self::UserScope { unit } => {
                 let _ = Command::new("systemctl")
-                    .args([
-                        "--user",
-                        "kill",
-                        "--kill-who=all",
-                        "--signal=KILL",
-                        unit,
-                    ])
+                    .args(["--user", "kill", "--kill-who=all", "--signal=KILL", unit])
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
                     .status();
@@ -233,13 +224,8 @@ fn write_current_pid(fd: std::os::fd::RawFd) -> Result<(), std::io::Error> {
     let mut written = 0usize;
     let bytes = &digits[cursor..];
     while written < bytes.len() {
-        let result = unsafe {
-            libc::write(
-                fd,
-                bytes[written..].as_ptr().cast(),
-                bytes.len() - written,
-            )
-        };
+        let result =
+            unsafe { libc::write(fd, bytes[written..].as_ptr().cast(), bytes.len() - written) };
         if result < 0 {
             return Err(std::io::Error::last_os_error());
         }
@@ -249,6 +235,21 @@ fn write_current_pid(fd: std::os::fd::RawFd) -> Result<(), std::io::Error> {
 }
 
 fn current_cgroup_directory() -> Result<Option<PathBuf>, CliError> {
+    // Operators may delegate an empty sibling subtree instead of the process's
+    // own cgroup, which cannot contain both processes and domain controllers.
+    if let Some(configured) = std::env::var_os("CHIO_SANDBOX_CGROUP_PARENT") {
+        let root = fs::canonicalize("/sys/fs/cgroup")?;
+        let parent = fs::canonicalize(PathBuf::from(configured))?;
+        if parent == root
+            || !parent.starts_with(&root)
+            || !parent.join("cgroup.controllers").is_file()
+        {
+            return Err(CliError::cli_other_error(
+                "CHIO_SANDBOX_CGROUP_PARENT must select a delegated cgroup v2 subtree".to_owned(),
+            ));
+        }
+        return Ok(Some(parent));
+    }
     let cgroup = fs::read_to_string("/proc/self/cgroup")?;
     let Some(relative) = cgroup.lines().find_map(|line| line.strip_prefix("0::")) else {
         return Ok(None);
@@ -265,6 +266,32 @@ fn current_cgroup_directory() -> Result<Option<PathBuf>, CliError> {
         ));
     }
     Ok(Some(Path::new("/sys/fs/cgroup").join(relative)))
+}
+
+/// A host may omit procfs entirely when nested private procfs is unavailable.
+/// This never binds the host's procfs into a seller's execution environment.
+fn proc_mount_arguments(selection: Option<&str>) -> Result<[&'static str; 2], CliError> {
+    match selection {
+        None | Some("private") => Ok(["--proc", "/proc"]),
+        Some("none") => Ok(["--dir", "/proc"]),
+        _ => Err(CliError::cli_other_error(
+            "CHIO_SANDBOX_PROC must be private or none".to_owned(),
+        )),
+    }
+}
+
+pub(super) fn add_proc_mount(command: &mut Command) -> Result<(), CliError> {
+    let selection = match std::env::var("CHIO_SANDBOX_PROC") {
+        Ok(value) => Some(value),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(_) => {
+            return Err(CliError::cli_other_error(
+                "CHIO_SANDBOX_PROC is not valid text".to_owned(),
+            ))
+        }
+    };
+    command.args(proc_mount_arguments(selection.as_deref())?);
+    Ok(())
 }
 
 pub(super) fn run_test_command_with_limits(
@@ -288,8 +315,6 @@ pub(super) fn run_test_command_with_limits(
             "--unshare-cgroup-try",
             "--disable-userns",
             "--clearenv",
-            "--proc",
-            "/proc",
             "--dev",
             "/dev",
             "--size",
@@ -305,10 +330,8 @@ pub(super) fn run_test_command_with_limits(
             "--dir",
             "/workspace/.tmp",
         ]);
-    add_runtime_mounts(
-        &mut isolated,
-        RuntimeMountProfile::SellerTest,
-    )?;
+    add_proc_mount(&mut isolated)?;
+    add_runtime_mounts(&mut isolated, RuntimeMountProfile::SellerTest)?;
     isolated
         .arg("--ro-bind")
         .arg(worktree)
@@ -468,8 +491,12 @@ mod rlimit_tests {
             .map(|argument| argument.to_string_lossy().into_owned())
             .collect::<Vec<_>>();
 
-        assert!(arguments.iter().all(|argument| !argument.starts_with("--nproc=")));
-        assert!(arguments.iter().any(|argument| argument.starts_with("--as=")));
+        assert!(arguments
+            .iter()
+            .all(|argument| !argument.starts_with("--nproc=")));
+        assert!(arguments
+            .iter()
+            .any(|argument| argument.starts_with("--as=")));
         assert!(arguments
             .iter()
             .any(|argument| argument.starts_with("--nofile=")));
@@ -495,7 +522,10 @@ fn read_and_digest(
         }
         digest.update(&buffer[..read]);
     }
-    Ok((hex::encode(digest.finalize()), total > MAX_COMMAND_OUTPUT_BYTES))
+    Ok((
+        hex::encode(digest.finalize()),
+        total > MAX_COMMAND_OUTPUT_BYTES,
+    ))
 }
 
 fn join_digest(
@@ -547,7 +577,9 @@ impl RuntimeMountSpecBuilder {
     fn add_executable(&mut self, name: &str, required: bool) -> Result<Option<PathBuf>, String> {
         let Some(path) = executable_on_path(name) else {
             if required {
-                return Err(format!("required sandbox runtime executable {name} is unavailable"));
+                return Err(format!(
+                    "required sandbox runtime executable {name} is unavailable"
+                ));
             }
             return Ok(None);
         };
@@ -569,10 +601,7 @@ impl RuntimeMountSpecBuilder {
         }
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        for line in stdout
-            .lines()
-            .chain(stderr.lines())
-        {
+        for line in stdout.lines().chain(stderr.lines()) {
             for token in line.split_whitespace() {
                 let path = token.trim_end_matches(':');
                 if !path.starts_with('/') {
@@ -628,11 +657,8 @@ impl RuntimeMountSpecBuilder {
         else {
             return Ok(());
         };
-        let sysroot = bounded_runtime_path(
-            &rustc,
-            &["--print", "sysroot"],
-            "Rust toolchain sysroot",
-        )?;
+        let sysroot =
+            bounded_runtime_path(&rustc, &["--print", "sysroot"], "Rust toolchain sysroot")?;
         for executable in ["cargo", "rustc"] {
             if !sysroot.join("bin").join(executable).is_file() {
                 return Err(format!(
@@ -651,8 +677,7 @@ impl RuntimeMountSpecBuilder {
             ));
         }
         self.add_tree_dependencies(&sysroot)?;
-        self.trees
-            .insert((sysroot, PathBuf::from("/runtime/rust")));
+        self.trees.insert((sysroot, PathBuf::from("/runtime/rust")));
 
         let cc = self
             .add_executable("cc", true)?
@@ -725,10 +750,8 @@ impl RuntimeMountSpecBuilder {
                 if let Ok(relative) = destination.strip_prefix("/usr/lib") {
                     self.add_runtime_file(source, Path::new("/lib").join(relative))?;
                 }
-                self.symlinks.insert((
-                    destination,
-                    Path::new("/runtime/link/lib").join(artifact),
-                ));
+                self.symlinks
+                    .insert((destination, Path::new("/runtime/link/lib").join(artifact)));
             }
         }
         Ok(())
@@ -761,20 +784,22 @@ pub(super) fn add_runtime_mounts(
     profile: RuntimeMountProfile,
 ) -> Result<(), CliError> {
     let spec = match profile {
-        RuntimeMountProfile::Git => GIT_RUNTIME_MOUNT_SPEC.get_or_init(|| {
-            build_runtime_mount_spec(RuntimeMountProfile::Git)
-        }),
-        RuntimeMountProfile::SellerTest => RUNTIME_MOUNT_SPEC.get_or_init(|| {
-            build_runtime_mount_spec(RuntimeMountProfile::SellerTest)
-        }),
+        RuntimeMountProfile::Git => GIT_RUNTIME_MOUNT_SPEC
+            .get_or_init(|| build_runtime_mount_spec(RuntimeMountProfile::Git)),
+        RuntimeMountProfile::SellerTest => RUNTIME_MOUNT_SPEC
+            .get_or_init(|| build_runtime_mount_spec(RuntimeMountProfile::SellerTest)),
     }
-        .as_ref()
-        .map_err(|error| CliError::cli_other_error(error.clone()))?;
+    .as_ref()
+    .map_err(|error| CliError::cli_other_error(error.clone()))?;
     let mut directories = BTreeSet::new();
     for (_, destination) in spec.files.iter().chain(spec.trees.iter()) {
         collect_parent_directories(destination, &mut directories);
     }
-    for destination in spec.masks.iter().chain(spec.symlinks.iter().map(|(_, path)| path)) {
+    for destination in spec
+        .masks
+        .iter()
+        .chain(spec.symlinks.iter().map(|(_, path)| path))
+    {
         collect_parent_directories(destination, &mut directories);
     }
     let mut directories = directories.into_iter().collect::<Vec<_>>();
@@ -783,25 +808,16 @@ pub(super) fn add_runtime_mounts(
         command.arg("--dir").arg(directory);
     }
     for (source, destination) in &spec.trees {
-        command
-            .arg("--ro-bind")
-            .arg(source)
-            .arg(destination);
+        command.arg("--ro-bind").arg(source).arg(destination);
     }
     for (source, destination) in &spec.files {
-        command
-            .arg("--ro-bind")
-            .arg(source)
-            .arg(destination);
+        command.arg("--ro-bind").arg(source).arg(destination);
     }
     for destination in &spec.masks {
         command.arg("--tmpfs").arg(destination);
     }
     for (target, destination) in &spec.symlinks {
-        command
-            .arg("--symlink")
-            .arg(target)
-            .arg(destination);
+        command.arg("--symlink").arg(target).arg(destination);
     }
     Ok(())
 }
@@ -818,9 +834,7 @@ fn build_runtime_mount_spec(profile: RuntimeMountProfile) -> Result<RuntimeMount
     let shell = builder
         .add_executable("sh", true)?
         .ok_or_else(|| "required sandbox shell is unavailable".to_owned())?;
-    builder
-        .files
-        .insert((shell, PathBuf::from("/bin/sh")));
+    builder.files.insert((shell, PathBuf::from("/bin/sh")));
     let environment = builder
         .add_executable("env", true)?
         .ok_or_else(|| "required sandbox environment executable is unavailable".to_owned())?;
@@ -841,8 +855,8 @@ fn build_runtime_mount_spec(profile: RuntimeMountProfile) -> Result<RuntimeMount
     }
 
     for optional in [
-        "bash", "rm", "touch", "sed", "grep", "find", "cat", "sort", "cut", "tr", "wc",
-        "xargs", "basename", "dirname", "readlink", "realpath", "dd", "sleep",
+        "bash", "rm", "touch", "sed", "grep", "find", "cat", "sort", "cut", "tr", "wc", "xargs",
+        "basename", "dirname", "readlink", "realpath", "dd", "sleep",
     ] {
         builder.add_executable(optional, false)?;
     }
@@ -870,10 +884,9 @@ fn build_runtime_mount_spec(profile: RuntimeMountProfile) -> Result<RuntimeMount
                     .join("site-packages"),
             );
         }
-        builder.trees.insert((
-            stdlib,
-            Path::new("/runtime/python/lib").join(version),
-        ));
+        builder
+            .trees
+            .insert((stdlib, Path::new("/runtime/python/lib").join(version)));
     }
 
     if builder.add_executable("node", false)?.is_some() {
@@ -1059,8 +1072,10 @@ pub(super) fn runtime_fingerprint() -> Result<Vec<u8>, CliError> {
     let git = command_version("git", &["--version"])?;
     let bwrap = command_version("bwrap", &["--version"])?;
     let prlimit = command_version("prlimit", &["--version"])?;
-    let cargo = command_version("cargo", &["--version"]).unwrap_or_else(|_| "unavailable".to_owned());
-    let rustc = command_version("rustc", &["--version"]).unwrap_or_else(|_| "unavailable".to_owned());
+    let cargo =
+        command_version("cargo", &["--version"]).unwrap_or_else(|_| "unavailable".to_owned());
+    let rustc =
+        command_version("rustc", &["--version"]).unwrap_or_else(|_| "unavailable".to_owned());
     let systemd_run =
         command_version("systemd-run", &["--version"]).unwrap_or_else(|_| "unavailable".to_owned());
     let shell = command_version("sh", &["--version"]).unwrap_or_else(|_| "sh".to_owned());
@@ -1072,6 +1087,7 @@ pub(super) fn runtime_fingerprint() -> Result<Vec<u8>, CliError> {
         "os": std::env::consts::OS,
         "osReleaseSha256": sha256_hex(os_release.as_bytes()),
         "prlimit": prlimit,
+        "procfs": if proc_mount_arguments(std::env::var("CHIO_SANDBOX_PROC").ok().as_deref())?[0] == "--proc" { "private" } else { "absent" },
         "resourceLimits": {
             "addressSpaceBytesPerProcess": TEST_SANDBOX_ADDRESS_SPACE_BYTES,
             "aggregateMemoryBytes": TEST_SANDBOX_ADDRESS_SPACE_BYTES,
@@ -1103,6 +1119,17 @@ fn command_version(command: &str, args: &[&str]) -> Result<String, CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn procfs_profiles_never_expose_host_processes() {
+        assert_eq!(proc_mount_arguments(None).ok(), Some(["--proc", "/proc"]));
+        assert_eq!(
+            proc_mount_arguments(Some("none")).ok(),
+            Some(["--dir", "/proc"])
+        );
+        assert!(proc_mount_arguments(Some("host")).is_err());
+        assert!(proc_mount_arguments(Some("/proc")).is_err());
+    }
 
     #[test]
     fn aggregate_deadline_caps_each_remaining_command() {

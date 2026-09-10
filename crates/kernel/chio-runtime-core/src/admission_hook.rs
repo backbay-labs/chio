@@ -463,6 +463,7 @@ where
                 verify_swarm_authority_reference_from_store(
                     &self.store,
                     reference,
+                    &context.request.capability,
                     &self.swarm_witness_keys,
                     verified_swarm_route_metadata,
                     now_unix_ms,
@@ -772,6 +773,7 @@ where
             match verify_swarm_authority_reference_from_store(
                 &self.store,
                 reference,
+                &context.request.capability,
                 &self.swarm_witness_keys,
                 context.extra_metadata,
                 admission_now_unix_ms,

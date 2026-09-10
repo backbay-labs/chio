@@ -1,0 +1,16 @@
+[package]
+name = "chio-suite"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+chio-agent-os-shared = { path = "../shared" }
+chio-mission-host = { path = "../mission-host" }
+chio-knowledge-network = { path = "../knowledge-network" }
+chio-research-swarm = { path = "../research-swarm" }
+chio-software-factory = { path = "../software-factory" }
+chio-cooperative = { path = "../cooperative" }
+chio-personal-network = { path = "../personal-network" }
+anyhow.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

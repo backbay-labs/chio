@@ -38,6 +38,98 @@ pub fn verify_swarm_authority_bundle(
     bundle: &SwarmAuthorityBundle,
     trusted_witness_issuer_keys: &[PublicKey],
 ) -> Result<SwarmAuthorityVerifierReport, SwarmAuthorityError> {
+    verify_bundle(bundle, trusted_witness_issuer_keys, None)
+}
+
+/// Verify authority for one ready continuation before dispatch. Future join
+/// and terminal receipts are absent until their work actually completes.
+/// The complete proof verifier retains its requirement for graph closure.
+pub fn verify_swarm_admission_bundle(
+    bundle: &SwarmAuthorityBundle,
+    continuation_id: &str,
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<SwarmAuthorityVerifierReport, SwarmAuthorityError> {
+    require_non_empty(continuation_id, "swarm admission continuation id")?;
+    verify_bundle(bundle, trusted_witness_issuer_keys, Some(continuation_id))
+}
+
+/// Bind a verified continuation to the exact capability presented for dispatch.
+/// A valid graph for another worker is not authority for this request.
+pub fn verify_swarm_admission_capability(
+    bundle: &SwarmAuthorityBundle,
+    continuation_id: &str,
+    capability: &chio_core_types::capability::token::CapabilityToken,
+) -> Result<(), SwarmAuthorityError> {
+    let token = bundle
+        .continuation_tokens
+        .iter()
+        .find(|token| token.token_id == continuation_id)
+        .ok_or_else(|| rejected("swarm admission continuation missing"))?;
+    let node = bundle
+        .task_graph
+        .nodes
+        .iter()
+        .find(|node| node.task_id == token.child_task_id)
+        .ok_or_else(|| rejected("swarm admission task missing"))?;
+    let scope_hash = chio_core_types::capability::attenuation::scope_hash(&capability.scope)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    if scope_hash != node.scope_hash {
+        return Err(rejected(
+            "swarm admission capability scope does not match selected task",
+        ));
+    }
+    let chain = bundle
+        .witness_chains
+        .iter()
+        .find(|chain| Some(chain.chain_id.as_str()) == token.witness_chain_ref.as_deref())
+        .ok_or_else(|| rejected("swarm admission witness chain missing"))?;
+    let hop = chain
+        .hops
+        .last()
+        .ok_or_else(|| rejected("swarm admission witness chain is empty"))?;
+    if hop.child_capability_digest != canonical_sha256(capability)? {
+        return Err(rejected(
+            "swarm admission capability does not match selected delegation witness",
+        ));
+    }
+    let subject = format!("did:chio:{}", capability.subject.to_hex());
+    if bundle
+        .revocation_epoch
+        .revoked_subjects
+        .iter()
+        .any(|revoked| revoked == &subject || revoked == &capability.subject.to_hex())
+    {
+        return Err(rejected("swarm admission capability subject is revoked"));
+    }
+    Ok(())
+}
+
+fn verify_bundle(
+    bundle: &SwarmAuthorityBundle,
+    trusted_witness_issuer_keys: &[PublicKey],
+    admission_continuation: Option<&str>,
+) -> Result<SwarmAuthorityVerifierReport, SwarmAuthorityError> {
+    let complete = admission_continuation.is_none();
+    if let Some(id) = admission_continuation {
+        let token = bundle
+            .continuation_tokens
+            .iter()
+            .find(|token| token.token_id == id)
+            .ok_or_else(|| rejected(format!("missing swarm admission continuation: {id}")))?;
+        for join in bundle
+            .task_graph
+            .joins
+            .iter()
+            .filter(|join| join.next_task_id == token.child_task_id)
+        {
+            if token.join_receipt_id.as_deref() != Some(join.join_id.as_str()) {
+                return Err(rejected(format!(
+                    "swarm admission requires predecessor join: {}",
+                    join.join_id
+                )));
+            }
+        }
+    }
     require_trusted_witness_issuer_keys(trusted_witness_issuer_keys)?;
     validate_task_graph(&bundle.task_graph, bundle.now_unix_ms)?;
     verify_task_graph_signature(&bundle.task_graph, trusted_witness_issuer_keys)?;
@@ -47,27 +139,37 @@ pub fn verify_swarm_authority_bundle(
     let edge_set = edge_set(&bundle.task_graph.edges);
     let route_by_id =
         validate_route_plan_receipts(bundle, &task_by_id, trusted_witness_issuer_keys)?;
-    let join_by_id = validate_join_receipts(bundle, &task_by_id, trusted_witness_issuer_keys)?;
-    let allocation_by_id = validate_budget_pool(bundle, &task_by_id)?;
-    validate_revocation_epoch(bundle, &task_by_id, trusted_witness_issuer_keys)?;
-    validate_terminal_graph_receipts(
+    let join_by_id = validate_join_receipts(
         bundle,
         &task_by_id,
-        &route_by_id,
-        &join_by_id,
-        &allocation_by_id,
         trusted_witness_issuer_keys,
+        complete || !bundle.terminal_receipts.is_empty(),
     )?;
-    validate_continuation_tokens(&ContinuationValidationContext {
-        bundle,
-        graph_sha256: &graph_sha256,
-        task_by_id: &task_by_id,
-        edge_set: &edge_set,
-        route_by_id: &route_by_id,
-        join_by_id: &join_by_id,
-        allocation_by_id: &allocation_by_id,
-        trusted_witness_issuer_keys,
-    })?;
+    let allocation_by_id = validate_budget_pool(bundle, &task_by_id)?;
+    validate_revocation_epoch(bundle, &task_by_id, trusted_witness_issuer_keys)?;
+    if complete || !bundle.terminal_receipts.is_empty() {
+        validate_terminal_graph_receipts(
+            bundle,
+            &task_by_id,
+            &route_by_id,
+            &join_by_id,
+            &allocation_by_id,
+            trusted_witness_issuer_keys,
+        )?;
+    }
+    validate_continuation_tokens(
+        &ContinuationValidationContext {
+            bundle,
+            graph_sha256: &graph_sha256,
+            task_by_id: &task_by_id,
+            edge_set: &edge_set,
+            route_by_id: &route_by_id,
+            join_by_id: &join_by_id,
+            allocation_by_id: &allocation_by_id,
+            trusted_witness_issuer_keys,
+        },
+        complete,
+    )?;
     validate_witness_chains(bundle, &task_by_id, &edge_set, trusted_witness_issuer_keys)?;
 
     let mut verified_claims = vec![CLAIM_SWARM_TASK_GRAPH_BOUND.to_string()];
@@ -85,8 +187,10 @@ pub fn verify_swarm_authority_bundle(
     }
     verified_claims.push(CLAIM_SWARM_BUDGET_POOL_BOUND.to_string());
     verified_claims.push(CLAIM_SWARM_REVOCATION_EPOCH_BOUND.to_string());
-    verified_claims.push(CLAIM_SWARM_TERMINAL_GRAPH_RECEIPT_BOUND.to_string());
-    let hop_reports = swarm_authority_hop_reports(bundle)?;
+    if !bundle.terminal_receipts.is_empty() {
+        verified_claims.push(CLAIM_SWARM_TERMINAL_GRAPH_RECEIPT_BOUND.to_string());
+    }
+    let hop_reports = swarm_authority_hop_reports(bundle, complete)?;
 
     Ok(SwarmAuthorityVerifierReport {
         schema: CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_SCHEMA.to_string(),
@@ -107,6 +211,7 @@ pub fn verify_swarm_authority_bundle(
 
 fn swarm_authority_hop_reports(
     bundle: &SwarmAuthorityBundle,
+    complete: bool,
 ) -> Result<Vec<SwarmAuthorityHopReport>, SwarmAuthorityError> {
     let mut continuation_by_id = BTreeMap::new();
     for token in &bundle.continuation_tokens {
@@ -121,6 +226,9 @@ fn swarm_authority_hop_reports(
         let Some(continuation_token_ref) = node.continuation_token_ref.as_deref() else {
             continue;
         };
+        if !complete && !continuation_by_id.contains_key(continuation_token_ref) {
+            continue;
+        }
         let token = continuation_by_id
             .get(continuation_token_ref)
             .copied()
@@ -1089,6 +1197,7 @@ fn validate_join_receipts<'a>(
     bundle: &'a SwarmAuthorityBundle,
     task_by_id: &BTreeMap<&str, &SwarmGraphNode>,
     trusted_witness_issuer_keys: &[PublicKey],
+    complete: bool,
 ) -> Result<BTreeMap<&'a str, &'a SwarmJoinReceipt>, SwarmAuthorityError> {
     let mut graph_joins = BTreeMap::new();
     for join in &bundle.task_graph.joins {
@@ -1146,7 +1255,7 @@ fn validate_join_receipts<'a>(
         }
     }
     for join_id in graph_joins.keys() {
-        if !receipts.contains_key(join_id) {
+        if complete && !receipts.contains_key(join_id) {
             return Err(rejected(format!("missing swarm join receipt: {join_id}")));
         }
     }
@@ -1857,11 +1966,16 @@ struct ContinuationValidationContext<'a, 'b> {
 
 fn validate_continuation_tokens(
     context: &ContinuationValidationContext<'_, '_>,
+    complete: bool,
 ) -> Result<(), SwarmAuthorityError> {
     let mut continuations = BTreeMap::new();
     let mut continuation_nonces = BTreeSet::new();
     for token in &context.bundle.continuation_tokens {
-        validate_continuation_token(context, token)?;
+        validate_continuation_token(
+            context,
+            token,
+            complete && !context.bundle.terminal_receipts.is_empty(),
+        )?;
         verify_continuation_token_signature(token, context.trusted_witness_issuer_keys)?;
         if !continuation_nonces.insert(token.nonce.as_str()) {
             return Err(rejected(format!(
@@ -1894,6 +2008,7 @@ fn validate_continuation_tokens(
                         "swarm continuation token task mismatch: {token_ref}"
                     )));
                 }
+                None if !complete => {}
                 None => {
                     return Err(rejected(format!(
                         "missing swarm continuation token: {token_ref}"
@@ -1908,6 +2023,7 @@ fn validate_continuation_tokens(
 fn validate_continuation_token(
     context: &ContinuationValidationContext<'_, '_>,
     token: &SwarmContinuationToken,
+    terminal_verified: bool,
 ) -> Result<(), SwarmAuthorityError> {
     let bundle = context.bundle;
     if token.schema != CHIO_SWARM_CONTINUATION_TOKEN_SCHEMA {
@@ -1965,7 +2081,12 @@ fn validate_continuation_token(
     validate_continuation_parent(token, child_task, context.edge_set, context.join_by_id)?;
     validate_continuation_witness_chain(token, bundle)?;
     validate_continuation_route(token, child_task, context.route_by_id)?;
-    validate_continuation_budget(token, child_task, context.allocation_by_id)?;
+    validate_continuation_budget(
+        token,
+        child_task,
+        context.allocation_by_id,
+        terminal_verified,
+    )?;
     if token.revocation_epoch_ref != bundle.revocation_epoch.epoch_id {
         return Err(rejected(format!(
             "swarm continuation revocation epoch mismatch: {}",
@@ -2195,6 +2316,7 @@ fn validate_continuation_budget(
     token: &SwarmContinuationToken,
     child_task: &SwarmGraphNode,
     allocation_by_id: &BTreeMap<&str, &SwarmBudgetAllocation>,
+    terminal_verified: bool,
 ) -> Result<(), SwarmAuthorityError> {
     match child_task.budget_allocation_ref.as_deref() {
         Some(allocation_ref) if allocation_ref == token.budget_allocation_id => {}
@@ -2225,7 +2347,13 @@ fn validate_continuation_budget(
             token.token_id
         )));
     }
-    if allocation.state != SwarmBudgetAllocationState::Active {
+    if allocation.state != SwarmBudgetAllocationState::Active
+        && !(terminal_verified
+            && matches!(
+                allocation.state,
+                SwarmBudgetAllocationState::Consumed | SwarmBudgetAllocationState::Released
+            ))
+    {
         return Err(rejected(format!(
             "swarm budget allocation is not active: {}",
             allocation.allocation_id

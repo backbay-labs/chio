@@ -1,0 +1,25 @@
+[package]
+name = "chio-cooperative"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chio-agent-os-shared = { path = "../shared" }
+chio-personal-network = { path = "../personal-network" }
+chio-core.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+chio-federation = { path = "../../../crates/trust/chio-federation" }
+chio-federation-authority = { path = "../../../crates/trust/chio-federation-authority" }
+chio-kernel.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+reqwest.workspace = true
+rand_core = { version = "0.6", features = ["getrandom"] }
+hex = "0.4"
+rusqlite = { version = "0.39", features = ["bundled"] }
+zeroize = "1"

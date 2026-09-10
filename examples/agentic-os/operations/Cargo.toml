@@ -1,0 +1,14 @@
+[package]
+name = "chio-operations"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+chio-agent-os-shared = { path = "../shared" }
+chio-worker-fleet = { path = "../worker-fleet" }
+chio-personal-network = { path = "../personal-network" }
+anyhow.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+reqwest.workspace = true

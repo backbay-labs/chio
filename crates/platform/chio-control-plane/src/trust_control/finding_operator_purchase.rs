@@ -25,12 +25,12 @@ use chio_kernel::{
     DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES, DPOP_SCHEMA,
 };
 use chio_open_market::bidding::{
-    BidMintContext, BidRequest, RequestedScope, SignedAcceptedBid, SignedAskResponse,
+    BidMintContext, BidRequest, BiddingError, RequestedScope, SignedAcceptedBid, SignedAskResponse,
     SignedBidRequest, SignedReservationReceipt, VerifiedReservationReceipt, BID_REQUEST_SCHEMA,
 };
 use chio_open_market::finding_admission::{
     accept_finding_purchase, bid_with_finding_purchase, verify_finding_admission,
-    FindingAdmissionContext, FindingAdmissionPenaltyGate,
+    FindingAdmissionContext, FindingAdmissionError, FindingAdmissionPenaltyGate,
     FindingAllocationSnapshot as AdmissionAllocationSnapshot, FindingAllocationStatus,
     FindingConstituentExpiryBounds, FindingFeeScheduleGate, VerifiedFindingAdmission,
     VerifiedFindingPurchaseAsk,
@@ -823,7 +823,12 @@ impl FindingOperatorPurchaseExecutor {
             witness,
             &bundle.finding,
         )
-        .map_err(execution_internal)?;
+        .map_err(|error| match error {
+            FindingAdmissionError::Bidding(BiddingError::BidCeilingTooLow) => {
+                FindingPurchaseExecutionError::BidCeilingTooLow
+            }
+            other => execution_internal(other),
+        })?;
         let ask = verified_ask.signed_ask().clone();
         let ask_digest = canonical_json_bytes(&ask.body)
             .map(|bytes| sha256_hex(&bytes))
