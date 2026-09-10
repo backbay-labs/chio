@@ -47,8 +47,8 @@
     },
     {
       "path": "unit-tests.log.gz",
-      "sha256": "dec902ed23807fddfa7c9d364fa658d4e7797498def77ba9b331bf2b82e9acad",
-      "raw_sha256": "e586fc0f3bb2a05f4c80f07d1b4c6171e830592f6c7aaf70d4af3b0aa3ebd072"
+      "sha256": "b43c7378b08237b64e35da56a373e262c5544bb0d4fc76c17477942d61f16767",
+      "raw_sha256": "f901fbabb56c390d7ec0076b3e0fd921737c4ab64cd9dae784da066e2bb10567"
     }
   ],
   "claims": {
@@ -58,6 +58,6 @@
     "new_host_acceptance": false
   },
   "unit_test_exit": 0,
-  "unit_test_count": 7,
+  "unit_test_count": 16,
   "unit_test_skips": 0
 }

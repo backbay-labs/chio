@@ -1,0 +1,111 @@
+{
+  "selected_source_component_only": true,
+  "prepared_binary_scan_completed": false,
+  "files": [
+    {
+      "path": "version.json.gz",
+      "sha256": "c0f2487471c80ce646d3f03e1c221103f2d33758b9bb73d3d1066dfdfde3cdd1",
+      "raw_sha256": "09fc9eed597ef840716614068c9c75f48cc91896835277868237319511e64f6a"
+    },
+    {
+      "path": "download.json.gz",
+      "sha256": "dcf1017bd4ff725465bd5bd110278eede62f8f3b99e3a1e3d0ac4cdc11495729",
+      "raw_sha256": "4b7d9143647c404fbec7114f201919a7b3581b98b412e0bec93577298f61f342"
+    },
+    {
+      "path": "scanner-identity.json.gz",
+      "sha256": "fee6bdd9c85880ddb1d59f9da48e511460945809d3cf5e6d6701cbc563f85a24",
+      "raw_sha256": "24c2d95b203dfe0fc5a9ec5c390ce66d507ab011f556f821f8414f040171979f"
+    },
+    {
+      "path": "grype_0.118.0_checksums.txt.gz",
+      "sha256": "a6e3ffe0832195d1f5d907ef94d95eecb5e91583b8ec638b1843bd2c11a094cf",
+      "raw_sha256": "7a0cfafb6082951a68f89199c3a45f84b0ed8670491e509529ab5f8ee4977a2b"
+    },
+    {
+      "path": "source-VERSION.dat.gz",
+      "sha256": "73fc2520476e9cf3ebc365e203f1a6196e8c8eb3a2a2c4f7d2ec63e57e2bfb98",
+      "raw_sha256": "bf08b07a8535f526ebfcb99ad7cf5ee24e0127436b0f6423b7bc3f9f2e69991d"
+    },
+    {
+      "path": "grype.yaml.gz",
+      "sha256": "9dde4290cad894c5fdb16dcab963514d5306f5ce179b11517f31e1953cc86b96",
+      "raw_sha256": "84bd2a3ff5820cc5d2e9236fa69eaaf5fdded9d395d8f8c112619d27c8f536e8"
+    },
+    {
+      "path": "openssl-3.6.3.cdx.json.gz",
+      "sha256": "5f8021a94ccad3bfaae486cf691935a0f638cfcbd5ad8f532b1af43a855983e8",
+      "raw_sha256": "b71674593b6b53667cf04e675cb874034d725dbf887f0daaf3962af880a65d5e"
+    },
+    {
+      "path": "openssl-3.6.4.cdx.json.gz",
+      "sha256": "c481f27181035792cb2f6b9f03fd1de57ab7f57fce376fa0d4aebb300a7e395e",
+      "raw_sha256": "6cd190ac2c9df24f375b0177b2cd822f0a38678b0eb20dc02592ca5fababe1a4"
+    },
+    {
+      "path": "openssl-3.6.3.grype.json.gz",
+      "sha256": "ac711f174a0de2eaac823d610e76182b7fccfe75f3feab6886bd2a56f786df21",
+      "raw_sha256": "87f27a075b2721f3028369349e131d861d8240322b0de2a1cf64e46ad21a5dd5"
+    },
+    {
+      "path": "openssl-3.6.4.grype.json.gz",
+      "sha256": "6496c015125bd02aa49c0f4e64c3a97643beec669a6a09ac77353e7bece18360",
+      "raw_sha256": "b123bda533828f3a7d546d57adfca8e8e49a8f50d2442c6b8daae89060d3e296"
+    },
+    {
+      "path": "scan-old-command.json.gz",
+      "sha256": "b2f6e211db503895ba1f97b2e1f33d1a7c8c2273f8328359a90a45a43aee11bb",
+      "raw_sha256": "58b03b2f3f1ea08f8e3906ce40e62708d844f8fb1bbc01077747af7a592ee026"
+    },
+    {
+      "path": "scan-new-command.json.gz",
+      "sha256": "95f5f9a47754127abf5bed10300248dbd82cd44b1c811ca9d7abc80cc3ffd859",
+      "raw_sha256": "c266340a3f0dc2073c17cf0106fcb23a4084345df1d4de8039a4d298204c661b"
+    },
+    {
+      "path": "installed-3.6.3.catalog.cdx.json.gz",
+      "sha256": "31615888e49245365f163031ee1a6386f8a9734416ab2ff9ca2d08339fd71047",
+      "raw_sha256": "6feb5eda6dbc1c369f5e1a57483579de22d829358a121a1b77c70c1f23ef90d6"
+    },
+    {
+      "path": "installed-3.6.3.catalog.grype.json.gz",
+      "sha256": "5e1207f793045869d77eef8e87c1dd43f8d1fd10cfa3b9636a8899e052596d01",
+      "raw_sha256": "9f8c6b10313294fc71cb5e86d563850cbeb3aa802c40c4820c646e5de0d2675a"
+    },
+    {
+      "path": "scan-installed-catalog-command.json.gz",
+      "sha256": "6d2335f62fc3390bc4452a93ad7988167c3d1f5548d54fc777478d8f957c8983",
+      "raw_sha256": "ea16a35fc69fd93a2c17a23f5e0cfd3b80ff89a13e744c6f98356bd403ae8988"
+    },
+    {
+      "path": "controlled-grype.yaml.gz",
+      "sha256": "3776f31406e862d59dfe1a0c2f9fa9179eb00ed676282e418ad0aa1a1f0cd763",
+      "raw_sha256": "067874862496414e2a9d73a0e5323b131bb62a9e4b6b758a6dd9cad335672bc2"
+    },
+    {
+      "path": "controlled-old.grype.json.gz",
+      "sha256": "ea60dc129e8d958c4490e97729520159837d4c1b7cb3f694c3101f669c83974c",
+      "raw_sha256": "7769a606b8c464d2017dc5c9b9e1aa367506648614b92d1384238523053d5749"
+    },
+    {
+      "path": "controlled-old.catalog.cdx.json.gz",
+      "sha256": "7b4c0e7cfdd094bb20adaf64a567b947bb9f56258538157d0e9f677f8cef42bb",
+      "raw_sha256": "f7df2ee475f4e559afd9ce1d774ba253676bef4004c72683898a8cdfcc8b0b94"
+    },
+    {
+      "path": "controlled-old-command.json.gz",
+      "sha256": "6014a88ce43323207ae64978946547796ae0ce800cd8cc8af8afc41f31de4754",
+      "raw_sha256": "a400e6d102ec3f049a301b2a249c16d8ebdc50e218612843073319dc4db98abc"
+    },
+    {
+      "path": "controlled-new.grype.json.gz",
+      "sha256": "a6c1b23a264304f6809b8007c3ee8377d001c89f3bf4647f5a6e47b083b65ebf",
+      "raw_sha256": "9a2e6eebae7e3d8e249a8c0179bc74dcd8c83a20b9c739b548ec681189ac6398"
+    },
+    {
+      "path": "controlled-new-command.json.gz",
+      "sha256": "f638b3b160b327471e6cf8215f721fe73bdc0353c96d99b46a1c0c71ca0f1a2b",
+      "raw_sha256": "8bc9db3118d68b421843202f7709526bf34182f5a3bc43981ccbec28299fb7fb"
+    }
+  ]
+}

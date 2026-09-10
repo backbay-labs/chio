@@ -80,10 +80,12 @@ the unchanged Rust lockfile and cargo-vet graph describe the Rust wrappers.
 
 ## Validation boundaries
 
-Seven focused unit tests pass with zero skips, covering system and non-system
+Sixteen focused unit tests pass with zero skips, covering system and non-system
 dependency parsing, malformed inventories, target-specific static selection,
 bad-source refusal before compilation, preservation of existing directories and
-wrong-architecture refusal. The two actual binary gate controls are retained.
+wrong-architecture refusal, and native scan identity, findings, filtering and
+database freshness. Synthetic report fixtures exercise validator refusal only.
+The two actual binary gate controls are retained.
 
 The source-preparation recipe was handed to the coordinating worker for an
 independent real build. This record does not claim that its build or upstream
@@ -91,3 +93,51 @@ test suite has completed. All upstream failures/skips, the eventual static
 binary hash, native scanner result, protected-host tests and real installer
 qualification must remain explicit in subsequent records. Do not inherit the
 older candidate's host results or promote a plain build to a signed release.
+
+## Native vulnerability inventory
+
+`scan-macos-release-openssl.py` verifies the prepared source identity, static
+library/header hashes, command-log identity and license hash. It downloads a
+checksum-pinned Grype 0.118.0 for the native macOS architecture and scans the
+actual installed `openssl` executable. Its generated CycloneDX inventory must
+contain one OpenSSL component discovered by the binary classifier with the
+selected version, CPE and purl, plus the executable's matching SHA-256.
+
+The validator refuses reported or ignored findings, effective ignore/VEX/path
+filters, disabled generic CPE matching, an incorrect source, and an invalid or
+older-than-120-hour database. It checks the prepared files again afterward.
+The controlled configuration enables matching of upstream Linux kernel-header
+packages to prevent Grype from adding its four default ignore rules. It uses an
+isolated HOME and an explicit configuration with no inherited scanner variables.
+
+```sh
+python3 scripts/scan-macos-release-openssl.py \
+  --prepared /tmp/chio-openssl-release-build \
+  --target aarch64-apple-darwin --output /tmp/chio-openssl-release-scan
+```
+
+The [pinned Grype release](https://github.com/anchore/grype/releases/tag/v0.118.0)
+is source commit `756eb9a24f7beeafb6871a24e943e8a3ae210695`, with bundled Syft
+1.51.1. Archive checksums are pinned separately for both macOS architectures.
+
+The native package probe retains these distinct observations:
+
+- The actual installed OpenSSL 3.6.3 executable is discovered by the scanner,
+  which reports 11 vulnerability matches and exits 2. This is a working negative
+  control for native package discovery and CPE matching, not a claim that every
+  reported path is reachable from Chio.
+- The explicitly declared OpenSSL 3.6.4 source-version component yields zero
+  matches and zero ignored matches in the same database. This is source-selection
+  evidence. It is not a scan of the eventual prepared OpenSSL or Chio executable.
+- The database is schema v6.1.9, built 2026-09-09T06:31:00Z; downloaded archive
+  SHA-256 `f842f2a17dd4934dca9e1f283ebd7ce397dfcf14cc8a08a8cebb2f5530c131e0`.
+  Its installed SQLite bytes hash to
+  `3adb9b480e69a184db84652a13973eb2ac8be95683a50e020723aa3c35bc9499`.
+
+Initial probe reports retain Grype's four unrelated default Linux-header ignore
+rules, with no ignored matches. Subsequent `controlled-*` reports have an empty
+effective ignore list. These records do not label the initial configuration as
+unfiltered. No findings were suppressed to obtain a passing OpenSSL result.
+
+The real prepared binary, exact complete Chio executable inventory, signed
+release assets, and host qualification remain separate required observations.
