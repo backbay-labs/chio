@@ -248,6 +248,137 @@ release is the correct response.
 
 ---
 
+## Candidate archive staging and promotion
+
+SemVer prereleases such as `v0.1.1-rc.1` produce a GitHub draft prerelease.
+Stable tags retain the stable-release path. The source CI/security/qualification
+checks, auditable build, SBOM validation and cosign signing still run before
+release assets are attached. A hyphen in build metadata alone, such as
+`v1.2.3+build-42`, does not select prerelease mode.
+
+The separate SLSA workflow explicitly keeps candidate provenance uploads in draft
+mode and refuses to reopen an already published candidate. Archive uploads do not
+overwrite an existing asset. Never rebuild a tag to replace bytes that have already
+been qualified. A changed binary needs a new candidate and fresh acceptance.
+
+GitHub restricts draft release listings to users with push access. Authenticate
+`gh` as an authorized maintainer to download the draft. Draft status does not hide
+public Actions logs/artifacts or Sigstore transparency records. Do not include
+credentials in release artifacts. See [GitHub's release API](https://docs.github.com/en/rest/releases/releases)
+and [the pinned generator's draft input](https://github.com/slsa-framework/slsa-github-generator/blob/f7dd8c54c2067bafc12ca7a55595d5ee9b75204a/.github/workflows/generator_generic_slsa3.yml).
+
+### Retrieve the hosted candidate
+
+Wait for the exact tag's Release Binaries run and its triggered SLSA run to finish
+successfully. Retain their run IDs, attempts, source SHA and artifact identities.
+The provenance asset must be present before freezing the acceptance inventory.
+Use Python 3.11 or newer, a clean checkout at the reviewed release tag and an
+empty download directory:
+
+```sh
+REPO=backbay-labs/chio
+TAG=v0.1.1-rc.1
+SOURCE="$(git rev-list -n 1 "$TAG")"
+CANDIDATE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/chio-rc-qualification.XXXXXX")"
+mkdir "$CANDIDATE_ROOT/assets"
+gh release download "$TAG" --repo "$REPO" --dir "$CANDIDATE_ROOT/assets"
+python3 scripts/check-release-draft-assets.py record \
+  --repository "$REPO" --tag "$TAG" --source-sha "$SOURCE" \
+  --directory "$CANDIDATE_ROOT/assets" --manifest "$CANDIDATE_ROOT/asset-identities.json"
+```
+
+The identity checker binds every downloaded byte to the current release ID,
+asset ID, size and GitHub SHA-256, checks the remote tag's commit, and requires the
+five archives with signature/checksum siblings, their SBOM reports, macOS native
+materials and the source-named provenance asset. It refuses missing/extra files,
+symlinks and changed assets. It does not verify signatures, attest acceptance,
+replace the source gates or publish anything.
+
+Before executing a downloaded binary, perform the cosign and SLSA verification
+recipes below for its exact archive. Pin the exact certificate identity, for
+example `https://github.com/backbay-labs/chio/.github/workflows/release-binaries.yml@refs/tags/v0.1.1-rc.1`,
+and the GitHub OIDC issuer. Use `slsa-verifier --print-provenance` and check the
+verified config-source or material commit against `$SOURCE`; a matching tag name
+alone is insufficient. Compare the attached SBOM/native reports to the copies
+inside the signed archive and run the existing binary inventory/linkage validators.
+Retain those verification outputs with the acceptance record.
+
+For Apple Silicon, extract and test `chio-0.1.1-rc.1-aarch64-apple-darwin.tar.gz`
+from this download. Record both archive and extracted executable hashes. Run each
+required real host and the documented installer against that executable, along
+with the selected plugin/SDK archives. A local build or a different hosted rebuild
+cannot supply evidence for these bytes. Other platforms require their own stated
+qualification; this macOS example supplies none for them.
+
+### Review the signed checksum index
+
+The candidate workflow attaches `v<VERSION>.txt`, `.txt.sig` and `.txt.pem` to the
+draft and uploads the same files as Actions artifact `checksum-index-<TAG>`.
+GitHub Actions does not create the candidate's review PR: the organization forbids
+Actions from creating or approving PRs. No token exception is required. The job
+explicitly reports that operator checksum review is pending while SLSA completes
+against the unpublished draft.
+
+Verify the signed index with cosign against the same exact release workflow/tag
+identity used for archive signatures. In a separate clean branch from canonical
+`main`, copy these three downloaded files unchanged into `supply-chain/checksums/`.
+Commit them and create the checksum review PR using the trusted operator's existing
+GitHub identity. Record the PR number as `CHECKSUM_REVIEW_PR`. Complete the normal
+review and required repository checks before merging it. No other files belong in
+this PR, and no long-lived token belongs in a workflow or release artifact.
+
+The promotion identity checker requires `--checksum-review-pr`. It rejects an
+unmerged PR, a PR against another repository/branch, missing or extra files, and
+any index/signature/certificate byte mismatch. Both the merge commit and current
+canonical `main` must retain the exact files frozen in the draft inventory. The
+operator's PR replaces the prohibited bot action; it does not waive checksum
+review or signature verification. Source, security and host gates remain separate.
+
+### Publish the accepted bytes
+
+Promotion is a trusted operator step after every required host gate, operational
+procedure, artifact signature, provenance and source/security/release check passes.
+Required failures, unavailable cases or skips remain unresolved. Review raw host
+records against `asset-identities.json`; this helper intentionally cannot turn an
+operator-written boolean into proof of host acceptance.
+
+Re-run `scripts/check-release-source-gates.py` from the clean accepted tag checkout
+with `GITHUB_REPOSITORY`, `GITHUB_SHA`, `GITHUB_REF_TYPE=tag` and `GITHUB_REF_NAME`
+set to the selected repository, source and tag. Retrieve the complete draft again
+into a fresh directory and compare it with the inventory used during acceptance:
+
+```sh
+mkdir "$CANDIDATE_ROOT/pre-promotion"
+gh release download "$TAG" --repo "$REPO" --dir "$CANDIDATE_ROOT/pre-promotion"
+python3 scripts/check-release-draft-assets.py check \
+  --repository "$REPO" --tag "$TAG" --source-sha "$SOURCE" \
+  --directory "$CANDIDATE_ROOT/pre-promotion" --manifest "$CANDIDATE_ROOT/asset-identities.json" \
+  --checksum-review-pr "$CHECKSUM_REVIEW_PR"
+```
+
+After these checks and the required release review, the operator publishes the
+existing release without uploading or rebuilding assets:
+
+```sh
+gh release edit "$TAG" --repo "$REPO" --draft=false --prerelease --latest=false --verify-tag
+```
+
+This command changes publication state. It does not establish technical acceptance.
+Do not run it while acceptance remains incomplete. Do not upload or replace assets
+between the final identity check and publication; the trusted release operator owns
+that interval. Immediately download the published release into another empty
+directory and run the same `check` command with `--published`. Repeat the signature
+and public installation checks. Record the release ID, source, URLs and matching
+hashes; changing the website's default is a separate deployment procedure.
+
+An interrupted draft upload remains unpublished. Preserve its build artifacts and
+investigate the failure before resuming. Asset replacement or a rebuild requires
+fresh identity records and affected host qualification. Do not delete an old
+acceptance record, reopen a published candidate or use `--clobber` to make an
+inconsistent release appear current.
+
+---
+
 ## Supply-chain artifacts
 
 Every binary release built by
@@ -257,17 +388,26 @@ emits two complementary supply-chain artifacts in addition to the
 
 | Artifact | Producer | Where to find it |
 |---|---|---|
-| Embedded `auditable` dependency graph | `cargo auditable build` (cargo-auditable v0.7.4) | Inside the `chio` binary itself; read with `cargo audit -f <binary>`. |
-| CycloneDX 1.6 JSON SBOM | `syft` v1.18.1 with [`deploy/sbom/syft.yaml`](../../deploy/sbom/syft.yaml) | GitHub Actions artifact `sbom-<target>` (90-day retention). One file per matrix leg, named `chio-<target>.cyclonedx.json`. |
+| Embedded `auditable` dependency graph | `cargo auditable build` (cargo-auditable v0.7.4) | Inside the `chio` binary itself, consumed by Syft's embedded-audit-data cataloger. |
+| CycloneDX 1.6 JSON SBOM | `syft` v1.51.1 with [`deploy/sbom/syft.yaml`](../../deploy/sbom/syft.yaml) | Inside the signed archive and as separate release assets: `chio-<target>.cyclonedx.json` and its `chio-<target>.validation.json` report. Also retained as Actions artifact `sbom-<target>` for 90 days. |
 
 Both artifacts are produced per matrix leg, so each of the five
 release targets (linux x86_64 / aarch64, macOS x86_64 / aarch64,
 windows x86_64) ships its own embedded graph and its own SBOM.
 
-The release job validates the SBOM with
-`jq -e '.bomFormat == "CycloneDX" and .specVersion == "1.6"'` before
-upload; a missing or malformed SBOM fails the workflow rather than
-silently publishing without one.
+Before packaging or signing,
+[`check-release-binary-sbom.py`](../../scripts/check-release-binary-sbom.py)
+requires the pinned Syft identity and binds the SBOM to the executable SHA-256.
+It checks exact CLI and required kernel package versions against the selected
+source, requires Rust package identities from the embedded-audit-data cataloger
+to match `Cargo.lock`, and verifies that the required kernel packages are reachable
+from the CLI in the dependency graph. Missing or inconsistent inventory fails the
+release. The validation report retains both executable and SBOM hashes.
+
+This binary inventory is separate from the source/workspace SBOM and from the
+macOS native OpenSSL materials and vulnerability scan. Each answers a different
+question; a source scan cannot stand in for the executable inventory, and the
+embedded Rust graph does not establish native-library coverage.
 
 Cosign keyless signing of every `release-binaries.yml` archive
 ships today; the consumer verification recipe lives below
@@ -529,12 +669,10 @@ match the build's claimed origin.
 
 ### Pinning policy
 
-`slsa.yml` pins
-`slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0`.
-Bumping to a newer tag is intentionally a manual change because the
-upstream workflow's identity is part of the verification chain;
-unpinning to `@main` or to a commit SHA outside an audited tag would
-weaken the L2 guarantees.
+`slsa.yml` pins the generator to commit `f7dd8c54c2067bafc12ca7a55595d5ee9b75204a`, the
+reviewed `v2.1.0` release. Bumping that revision requires a manual review because
+the upstream workflow identity is part of verification. Do not replace it with
+`@main` or an unaudited revision.
 
 ---
 

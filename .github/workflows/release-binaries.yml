@@ -265,24 +265,24 @@ jobs:
 
       - name: Install syft
         if: runner.os != 'Windows'
-        # Pinned to v1.18.1 with checked-in SHA-256 digests per runner
+        # Pinned to v1.51.1 with checked-in SHA-256 digests per runner
         # platform. Avoid piping a remote installer into the release lane.
         shell: bash
         run: |
           set -euo pipefail
-          SYFT_VERSION=1.18.1
+          SYFT_VERSION=1.51.1
           case "$(uname -s)-$(uname -m)" in
             Linux-x86_64)
               asset="syft_${SYFT_VERSION}_linux_amd64.tar.gz"
-              expected_sha256="066c251652221e4d44fcc4d115ce3df33a91769da38c830a8533199db2f65aab"
+              expected_sha256="8fcb33017a0dc1058298c923c436d19dfa68ae93968e0b423248542e3afb9fc3"
               ;;
             Darwin-x86_64)
               asset="syft_${SYFT_VERSION}_darwin_amd64.tar.gz"
-              expected_sha256="223f5a97653e0bb0a96580a04328d41d515ee742bfbdd917f0583dc43e66f423"
+              expected_sha256="0e186ce1d4351ec276126851ca3ff258ed070e93e73574ed64858d4fc2339867"
               ;;
             Darwin-arm64 | Darwin-aarch64)
               asset="syft_${SYFT_VERSION}_darwin_arm64.tar.gz"
-              expected_sha256="bc5ad238a7cc60f19459b6f358079847bff5f8e520c8239706730f3fc5c5edd5"
+              expected_sha256="ac063af3b9874769deb7ea1e6d76841e68f9e3bb50cd654226fc977de65532c1"
               ;;
             *)
               echo "::error::unsupported syft runner platform $(uname -s)-$(uname -m)" >&2
@@ -304,8 +304,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $syftVersion = "1.18.1"
-          $expectedSha256 = "85476686b4eaaf4175a16c1cbef391c5396e06cdbef171ae8b7b2f7117e5b038"
+          $syftVersion = "1.51.1"
+          $expectedSha256 = "5e4bc3e6b6344b4625de0f7aa5351aaa72856d11d78462972de0a101ee2c1c8f"
           $asset = "syft_${syftVersion}_windows_amd64.zip"
           $url = "https://github.com/anchore/syft/releases/download/v$syftVersion/$asset"
           $archive = Join-Path $env:RUNNER_TEMP $asset
@@ -398,6 +398,13 @@ jobs:
           version="${tag#v}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+          # A hyphen inside build metadata is not a SemVer prerelease.
+          version_core="${version%%+*}"
+          if [[ "${version_core}" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Stage artifacts (unix)
         if: matrix.archive == 'tar.gz'
@@ -644,6 +651,13 @@ jobs:
           version="${tag#v}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+          # A hyphen inside build metadata is not a SemVer prerelease.
+          version_core="${version%%+*}"
+          if [[ "${version_core}" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Download build artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -745,12 +759,12 @@ jobs:
           {
             echo "## chio ${CHIO_RELEASE_TAG}"
             echo
-            echo "Pre-built Chio sidecar binaries. Install via Homebrew, Docker, or by downloading an archive below."
+            echo "Pre-built Chio binaries. Verify the selected archive and its provenance before installation."
             echo
             echo "### Install"
             echo
             echo '```bash'
-            echo "curl -fsSL -o /tmp/chio.rb https://github.com/${CHIO_GITHUB_REPO}/releases/latest/download/chio.rb"
+            echo "curl -fsSL -o /tmp/chio.rb https://github.com/${CHIO_GITHUB_REPO}/releases/download/${CHIO_RELEASE_TAG}/chio.rb"
             echo "brew install --formula /tmp/chio.rb"
             echo "docker pull ghcr.io/${chio_ghcr_owner}/chio-sidecar:${CHIO_VERSION}"
             echo '```'
@@ -775,13 +789,26 @@ jobs:
           } > release/NOTES.md
           cat release/NOTES.md
 
-      - name: Publish release
+      - name: Refuse to reopen a published candidate
+        if: steps.version.outputs.prerelease == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: python3 scripts/check-release-draft-assets.py stage --repository "${GITHUB_REPOSITORY}" --tag "${RELEASE_TAG}"
+
+      - name: Stage candidate or publish stable release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: chio ${{ steps.version.outputs.tag }}
           body_path: release/NOTES.md
-          draft: false
+          # Candidates stay unpublished until their exact hosted bytes pass host
+          # acceptance and SLSA verification. Promotion does not rebuild assets.
+          draft: ${{ steps.version.outputs.prerelease == 'true' }}
+          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
+          make_latest: ${{ steps.version.outputs.prerelease == 'true' && 'false' || 'true' }}
+          overwrite_files: false
           fail_on_unmatched_files: true
           # `*.sig` and `*.pem` are the cosign sign-blob siblings; without them
           # consumers could not run the `cosign verify-blob` recipe in
@@ -807,10 +834,10 @@ jobs:
     # Publishes an in-repo checksum index for external reviewers after
     # release artifacts are attached. The index mirrors SHA256SUMS, adds
     # source and SLSA provenance headers, signs the text file with the
-    # same keyless cosign identity used for release archives, and opens
-    # a PR against main so the evidence path is reviewed before it
-    # becomes part of the repository.
-    name: Publish checksum index PR
+    # same keyless cosign identity used for release archives. Stable releases
+    # open a PR; candidates retain the signed files for an operator-created
+    # review PR. RC promotion requires the merged, byte-matching review.
+    name: Prepare signed checksum review
     needs: release
     runs-on: ubuntu-latest
     permissions:
@@ -891,6 +918,12 @@ jobs:
             echo "version=${release_tag#v}"
             echo "source_sha=${source_sha}"
             echo "source_ref=${source_ref}"
+            tag_core="${release_tag%%+*}"
+            if [[ "${tag_core}" == *-* ]]; then
+              echo "prerelease=true"
+            else
+              echo "prerelease=false"
+            fi
           } >> "${GITHUB_OUTPUT}"
 
       - name: Render checksum index
@@ -953,7 +986,41 @@ jobs:
             exit 1
           fi
 
+      - name: Retain signed checksum review materials
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: checksum-index-${{ steps.checksum_release.outputs.tag }}
+          path: |
+            supply-chain/checksums/${{ steps.checksum_release.outputs.tag }}.txt
+            supply-chain/checksums/${{ steps.checksum_release.outputs.tag }}.txt.sig
+            supply-chain/checksums/${{ steps.checksum_release.outputs.tag }}.txt.pem
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Attach candidate checksum review materials to the draft
+        if: steps.checksum_release.outputs.prerelease == 'true'
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        with:
+          tag_name: ${{ steps.checksum_release.outputs.tag }}
+          draft: true
+          prerelease: true
+          make_latest: false
+          overwrite_files: false
+          fail_on_unmatched_files: true
+          files: |
+            supply-chain/checksums/${{ steps.checksum_release.outputs.tag }}.txt
+            supply-chain/checksums/${{ steps.checksum_release.outputs.tag }}.txt.sig
+            supply-chain/checksums/${{ steps.checksum_release.outputs.tag }}.txt.pem
+
+      - name: Candidate checksum review remains pending with the operator
+        if: steps.checksum_release.outputs.prerelease == 'true'
+        run: |
+          echo "Signed checksum materials are staged. An operator must create the checksum review PR."
+          echo "Candidate promotion remains blocked until that PR is merged with these exact bytes."
+          echo "See docs/install/PUBLISHING.md and check-release-draft-assets.py --checksum-review-pr."
+
       - name: Open checksum index PR
+        if: steps.checksum_release.outputs.prerelease != 'true'
         uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c
         with:
           base: main

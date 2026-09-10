@@ -1,0 +1,5 @@
+{
+  "exitCode": 1,
+  "stdout": "{\"message\":\"Conflict\",\"errors\":\"The organization does not allow GitHub Actions to create or approve pull requests\",\"documentation_url\":\"https://docs.github.com/rest/actions/permissions#set-default-workflow-permissions-for-a-repository\",\"status\":\"409\"}",
+  "stderr": "gh: The organization does not allow GitHub Actions to create or approve pull requests (Conflict)\n"
+}

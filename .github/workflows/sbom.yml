@@ -34,12 +34,16 @@ jobs:
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
-      SYFT_VERSION: "1.18.1"
-      SYFT_LINUX_AMD64_SHA256: "066c251652221e4d44fcc4d115ce3df33a91769da38c830a8533199db2f65aab"
+      SYFT_VERSION: "1.51.1"
+      SYFT_LINUX_AMD64_SHA256: "8fcb33017a0dc1058298c923c436d19dfa68ae93968e0b423248542e3afb9fc3"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
 
       - name: Resolve release tag
         id: release
@@ -73,13 +77,25 @@ jobs:
             echo "::error::resolved tag '${tag}' does not match v<semver>" >&2
             exit 1
           fi
-          git checkout --detach "refs/tags/${tag}"
+          source_sha="$(git rev-parse "refs/tags/${tag}^{commit}")"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" && "${source_sha}" != "${WORKFLOW_RUN_HEAD_SHA}" ]]; then
+            echo "::error::release tag moved away from the completed build source" >&2
+            exit 1
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${source_sha}" != "$(git rev-parse "${GITHUB_SHA}^{commit}")" ]]; then
+            echo "::error::release tag moved away from the triggering source" >&2
+            exit 1
+          fi
+          source_dir="${RUNNER_TEMP}/release-source"
+          git worktree add --detach "${source_dir}" "${source_sha}"
           version="${tag#v}"
           out_dir="supply-chain/sbom/${tag}"
           mkdir -p "${out_dir}"
           {
             echo "tag=${tag}"
             echo "version=${version}"
+            echo "source_sha=${source_sha}"
+            echo "source_dir=${source_dir}"
             echo "out_dir=${out_dir}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -103,24 +119,29 @@ jobs:
         with:
           cosign-release: v2.4.1
 
-      - name: Emit deterministic source CycloneDX SBOM
+      - name: Compare full source CycloneDX inventories
         shell: bash
         env:
           OUT_DIR: ${{ steps.release.outputs.out_dir }}
+          SOURCE_DIR: ${{ steps.release.outputs.source_dir }}
         run: |
           set -euo pipefail
-          first="${RUNNER_TEMP}/source.first.cyclonedx.json"
-          second="${RUNNER_TEMP}/source.determinism.cyclonedx.json"
-          syft --config deploy/sbom/syft.yaml \
-            -o "cyclonedx-json@1.6=${first}" \
-            "dir:."
-          syft --config deploy/sbom/syft.yaml \
-            -o "cyclonedx-json@1.6=${second}" \
-            "dir:."
-          cmp "${first}" "${second}"
-          jq -e '.bomFormat == "CycloneDX" and .specVersion == "1.6"' \
-            "${first}" > /dev/null
-          cp "${first}" "${OUT_DIR}/source.cdx.json"
+          first="${GITHUB_WORKSPACE}/${OUT_DIR}/source.cdx.json"
+          second="${GITHUB_WORKSPACE}/${OUT_DIR}/source-repeat.cdx.json"
+          # Scan the immutable release tree, retaining the current workflow's verifier.
+          (
+            cd "${SOURCE_DIR}"
+            syft --config deploy/sbom/syft.yaml \
+              -o "cyclonedx-json@1.6=${first}" "dir:." \
+              >"${first}.stdout" 2> >(tee "${first}.stderr" >&2)
+            syft --config deploy/sbom/syft.yaml \
+              -o "cyclonedx-json@1.6=${second}" "dir:." \
+              >"${second}.stdout" 2> >(tee "${second}.stderr" >&2)
+          )
+          python3 scripts/check-source-sbom-determinism.py \
+            --first "${first}" --second "${second}" \
+            --report "${OUT_DIR}/source-comparison.json" \
+            >"${OUT_DIR}/source-comparison.stdout" 2> >(tee "${OUT_DIR}/source-comparison.stderr" >&2)
 
       - name: Download release archives
         shell: bash
@@ -151,26 +172,20 @@ jobs:
             exit 1
           fi
 
-      - name: Emit binary CycloneDX SBOMs
+      - name: Authenticate archives and rescan extracted executables
         shell: bash
         env:
           OUT_DIR: ${{ steps.release.outputs.out_dir }}
-          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          SOURCE_DIR: ${{ steps.release.outputs.source_dir }}
+          SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
         run: |
           set -euo pipefail
-          while IFS= read -r archive; do
-            name="$(basename "${archive}")"
-            prefix="chio-${RELEASE_VERSION}-"
-            target="${name#"${prefix}"}"
-            target="${target%.tar.gz}"
-            target="${target%.zip}"
-            out="${OUT_DIR}/${target}.binary.cdx.json"
-            syft --config deploy/sbom/syft.yaml \
-              -o "cyclonedx-json@1.6=${out}" \
-              "${archive}"
-            jq -e '.bomFormat == "CycloneDX" and .specVersion == "1.6"' \
-              "${out}" > /dev/null
-          done < "${RUNNER_TEMP}/release-assets/archives.txt"
+          python3 scripts/rescan-release-sboms.py \
+            --assets "${RUNNER_TEMP}/release-assets" --root "${SOURCE_DIR}" \
+            --output "${OUT_DIR}/binary" --work "${RUNNER_TEMP}/release-binary-rescan" \
+            --repository "${GITHUB_REPOSITORY}" --tag "${RELEASE_TAG}" --source-sha "${SOURCE_SHA}" \
+            >"${OUT_DIR}/rescan.stdout" 2> >(tee "${OUT_DIR}/rescan.stderr" >&2)
 
       - name: Cosign sign-blob SBOM files
         shell: bash
@@ -194,7 +209,8 @@ jobs:
             fi
           done
 
-      - name: Upload SBOM publication tree
+      - name: Retain SBOM evidence on success or refusal
+        if: always() && steps.release.outputs.out_dir != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: sbom-${{ steps.release.outputs.tag }}

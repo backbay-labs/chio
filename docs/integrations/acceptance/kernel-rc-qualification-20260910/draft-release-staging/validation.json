@@ -1,0 +1,92 @@
+{
+  "baseSource": "bafa02b06de93553cecb6f60b340f3dd8fd9b401",
+  "combinedValidatorCommit": "751234246dd581b934bdbed9e9d89711c9b06ddf",
+  "tests": {
+    "draftAssetMethods": 13,
+    "sourceGateMethods": 13,
+    "sbomMethods": 13,
+    "macOSMethods": 16,
+    "failures": 0,
+    "skips": 0,
+    "totalMethods": 55
+  },
+  "actionlint": "pass",
+  "releaseAssurance": "pass",
+  "releaseInputInventory": "pass",
+  "liveNegativeControl": {
+    "command": [
+      "python3",
+      "scripts/check-release-draft-assets.py",
+      "stage",
+      "--repository",
+      "backbay-labs/chio",
+      "--tag",
+      "v0.1.0"
+    ],
+    "exitCode": 1,
+    "expectedRefusal": true,
+    "scope": "refuses existing published release; no write request"
+  },
+  "unexecuted": [
+    "hosted RC draft creation and download",
+    "RC cosign and SLSA verification",
+    "native host qualification of hosted RC bytes",
+    "actual operator checksum review PR and merged-file verification",
+    "release promotion"
+  ],
+  "tools": {
+    "gh": "2.87.3",
+    "python": "Python 3.11.4"
+  },
+  "upstreamContracts": [
+    {
+      "url": "https://raw.githubusercontent.com/slsa-framework/slsa-github-generator/f7dd8c54c2067bafc12ca7a55595d5ee9b75204a/.github/workflows/generator_generic_slsa3.yml",
+      "sha256": "1a81568c11f5cb36c4c25822f1ddde4c93ba555a19f8c494586b2f54226f2fac",
+      "finding": "draft-release is a supported string input passed to the provenance uploader"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/softprops/action-gh-release/3bb12739c298aeb8a4eeaf626c5b8d85266b0e65/action.yml",
+      "sha256": "f7221c20c67d2c8ff47e6613413bedfc0e5d839cfb74f6e5d12b47a7cada2fec",
+      "finding": "draft, prerelease, make_latest and overwrite_files inputs are supported"
+    }
+  ],
+  "operatingEnvironment": {
+    "system": "Darwin",
+    "release": "25.4.0",
+    "machine": "arm64"
+  },
+  "checksumReview": {
+    "organizationBotPrRestriction": "GitHub API 409, retained in operator-pr-policy-change.json",
+    "configurationChanged": false,
+    "fallback": "OIDC-signed draft index and Actions artifact, followed by a separately reviewed operator PR into canonical main",
+    "identityGate": "check requires merged PR, exactly three expected files and identical index bytes at both merge commit and current main",
+    "actualOperatorPr": "not yet created; no hosted candidate exists"
+  },
+  "commands": {
+    "draft-tests": "python3 scripts/tests/check-release-draft-assets.test.py",
+    "source-tests": "python3 scripts/tests/check-release-source-gates.test.py",
+    "sbom-tests": "python3 scripts/tests/check-release-binary-sbom.test.py",
+    "macos-tests": "python3 scripts/tests/macos-release-portability.test.py",
+    "actionlint": "actionlint .github/workflows/release-binaries.yml .github/workflows/slsa.yml",
+    "release-assurance": "bash scripts/tests/ci-release-assurance.test.sh",
+    "release-inputs": "bash scripts/check-release-inputs.sh",
+    "diff-check": "git diff --check"
+  },
+  "commandExitCodes": {
+    "draft-tests": 0,
+    "source-tests": 0,
+    "sbom-tests": 0,
+    "macos-tests": 0,
+    "actionlint": 0,
+    "release-assurance": 0,
+    "release-inputs": 0,
+    "diff-check": 0
+  },
+  "validatedSourceFiles": {
+    ".github/workflows/release-binaries.yml": "e7cab7e6af5a7c001296ed28dab85176f4b91744565180b1fb7989f2b7a98163",
+    ".github/workflows/slsa.yml": "f1ac729d9e3d7bd58341d62c275caf87bd9afbb90ebcf61b27dce63611c6a33c",
+    "scripts/check-release-draft-assets.py": "739688b9076ec03c5acd548ba35302ca71bf3f7409fc6708ba516b130bce026f",
+    "scripts/tests/check-release-draft-assets.test.py": "a641706eba4b03309eb13b50a351c6cc642181db68700c7a864cd35af894def8",
+    "docs/install/PUBLISHING.md": "067972be5aba75ad66734a85f63c07bf60e21f3df828ca25dae33812b8f18e73"
+  }
+}
