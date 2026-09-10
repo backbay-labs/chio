@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ./scripts/check-release-inputs.sh
+python3 scripts/tests/check-release-source-gates.test.py
 ./scripts/check-workspace-layering.sh
 python3 scripts/check-review-slices.py
 bash scripts/tests/check-sidecar-docker-context.test.sh

@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to build (e.g. v0.1.0). Creates a draft release if it does not exist."
+        description: "Release tag to build; publication requires matching successful source checks."
         required: true
         type: string
 
@@ -480,6 +480,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     steps:
       - name: Require dispatch to run from release tag
         if: github.event_name == 'workflow_dispatch'
@@ -528,6 +529,12 @@ jobs:
             echo "::error::tag ${tag} resolves to ${tag_sha}, not workflow SHA ${GITHUB_SHA}" >&2
             exit 1
           fi
+
+      - name: Require exact-source CI, security, and release qualification
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/check-release-source-gates.py
 
       - name: Resolve release version
         id: version
