@@ -353,6 +353,31 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           toolchain: "1.94.1"
+          cache: "false"
+
+      - name: Resolve and check the MSRV cache target
+        id: msrv-cache
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/chio-msrv-target
+        run: |
+          python3 scripts/tests/msrv-cache-target.test.py
+          # The pinned action joins each RHS to the workspace root. An absolute
+          # RHS would be nested under that root instead of selecting this target.
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
+          target = Path(os.environ["CARGO_TARGET_DIR"]).resolve()
+          relative_target = os.path.relpath(target, workspace)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"workspace=. -> {relative_target}\n")
+          PY
+
+      - name: Cache the actual MSRV build target
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          workspaces: ${{ steps.msrv-cache.outputs.workspace }}
 
       - name: MSRV workspace lane
         env:
