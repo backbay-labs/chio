@@ -1,7 +1,7 @@
 # Required agent integration resource profile
 
 This is a qualification candidate for the six mandatory integrations in
-`docs/strategy/chio-direction/19-priority-agent-integrations.md`. No host is
+[document 19](https://github.com/backbay-labs/chio/blob/codex/required-agent-integrations-20260909/docs/strategy/chio-direction/19-priority-agent-integrations.md). No host is
 accepted merely by installing this profile. See the per-host acceptance records.
 
 The resource owner runs the official MCP filesystem server in a container with
@@ -29,29 +29,39 @@ four tools. The guest credential cannot initialize sessions, issue authority,
 reach admin APIs or select another session. Budgets are per issued grant, not a
 global account budget. Credential rotation preserves the same grant and fence.
 
-## Build and select artifacts
+## Select the qualified RC artifacts
 
-Build the kernel from the source commit recorded in the acceptance manifest:
+Use the checksummed kernel and resource image selected by the companion delivery
+manifest. The candidate CLI version is `0.1.1-rc.1`. The historical public CLI
+`0.1.0` and the older debug candidate with the same version label are not this
+combination. Neither version text nor an arbitrary rebuild is a release identity.
 
-```sh
-cargo build --locked -p chio-cli --bin chio
-shasum -a 256 target/debug/chio
-docker build -t chio-required-agent-filesystem:candidate integrations/required-agents/filesystem
-docker image inspect chio-required-agent-filesystem:candidate
-```
+Run `python3 verify.py verify-bundle --bundle . --images` from the assembled
+bundle before creating installs or runtime state. This verifies the complete
+local artifact inventory, image blobs and pinned image identity. The separate
+release signature and provenance procedures establish publisher/source trust;
+checksums alone do not. Real-host acceptance and public delivery remain pending
+until their exact selected-artifact records are complete.
 
-The Dockerfile pins its base image and the lockfile pins public npm dependencies.
-No sibling SDK checkout is needed. The compiled kernel still reports version
-`0.1.0`; this is also the label of an incompatible historical CLI. Select its
-source commit and binary SHA256, never the version string alone. The debug binary
-is a local test artifact, not a published release or portable distribution.
+The local static auditable candidate was built from source
+`bafa02b06de93553cecb6f60b340f3dd8fd9b401`, reports `chio-cli 0.1.1-rc.1`,
+and has binary SHA256
+`c03a8a711dbbd15da2c59655d9ab6d8f0068a20187363db7a78f4b5422ded93e`.
+This is a local qualification artifact. A later hosted release build can have
+a different hash and requires its own artifact qualification. Source metadata
+or a version label cannot promote this local binary into a signed public release.
+
+The filesystem Dockerfile pins its base image and public npm lockfile. The
+bundle ships its saved OCI image, so installation does not need a private image
+registry, a sibling SDK checkout, or an unrecorded image rebuild. Load and use
+its exact `imageId` from `manifest.json`.
 
 Copy the selected executable to an immutable artifact path before starting it.
 Pass its independently recorded SHA256 and the immutable Docker image identity:
 
 ```sh
-python3 integrations/required-agents/serve-filesystem.py start \
-  --state-dir /Users/connor/.local/share/chio-required-operators/example \
+python3 resource-owner/serve-filesystem.py start \
+  --state-dir /absolute/private/chio-owner-example \
   --kernel /absolute/artifacts/chio \
   --kernel-sha256 REPLACE_WITH_RECORDED_SHA256 \
   --image sha256:REPLACE_WITH_IMAGE_ID \
@@ -67,8 +77,15 @@ operator credentials, snapshots and hashes the policy, and starts a durable kern
 Use `--policy /absolute/selected-policy.yaml` for a separately qualified policy,
 such as the explicit-confirmation qualification policy. Restart rejects changes
 to that snapshot.
-A listening process alone is not readiness: authenticated MCP preparation must
-also succeed. Preserve failed startup databases and logs for diagnosis.
+A listening process alone is not readiness. `prepare-session.py` waits up to
+60 seconds for the existing operator's trusted signer before creating a new
+session directory or making a network request. It checks private owner state,
+the recorded executable SHA256, actual live process and exact session database
+command, and a protected regular signer file. Use `--readiness-timeout-seconds`
+only for an explicitly selected bounded deadline (maximum 300 seconds). A timeout,
+changed identity or dead process fails closed and preserves the owner without
+retrying preparation. Authenticated MCP preparation must then also succeed.
+Preserve failed startup databases and logs for diagnosis.
 
 ## Prepare a host
 
@@ -119,7 +136,7 @@ Observe effects independently using an operator-only read-only container mount:
 ```sh
 docker run --rm --network none --read-only \
   --mount type=volume,src=chio-required-example,dst=/observe,readonly \
-  --entrypoint node chio-required-agent-filesystem:candidate \
+  --entrypoint node sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0 \
   -e 'const fs=require("fs"); console.log(fs.readFileSync("/observe/example.txt","utf8"))'
 ```
 
@@ -132,7 +149,7 @@ ledger first. Automatic unknown-outcome resolution is not supplied by this
 candidate. The bridge offers `chio-gateway-operator status CONFIG` and
 `chio-gateway-operator recover-lock CONFIG`. Recovery requires the recorded
 process to be dead on the same machine, protects against concurrent recovery,
-and preserves every operation record. It does not clear an unknown outcome.
+and preserves every operation record. It does not clear an unknown outcome. The companion bundle README instructions describe signed owner-result import and explicit delivery acknowledgement when the owner retained a verified completion.
 
 The kernel keeps completed-but-unacknowledged calls fenced. The bridge verifies
 and durably records the exact response before acknowledging it. An exact replay
@@ -147,8 +164,8 @@ automatically initialize a replacement to retry uncertain work. Reconcile the
 prior session before the operator authorizes an independent new session.
 
 ```sh
-python3 integrations/required-agents/serve-filesystem.py stop --state-dir /private/tmp/chio-required-example
-python3 integrations/required-agents/serve-filesystem.py restart --state-dir /private/tmp/chio-required-example
+python3 resource-owner/serve-filesystem.py stop --state-dir /absolute/private/chio-owner-example
+python3 resource-owner/serve-filesystem.py restart --state-dir /absolute/private/chio-owner-example
 ```
 
 Restart preserves the database, policy snapshot, signing identity and resource

@@ -1,0 +1,23 @@
+{
+  "recordedAt": "2026-09-10T07:25:35.867377+00:00",
+  "command": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "integrations/required-agents/qualification",
+    "-p",
+    "test_prepare_session_readiness.py",
+    "-v"
+  ],
+  "exitCode": 0,
+  "pythonVersion": "3.11.4 (main, Aug 22 2024, 09:11:32) [Clang 15.0.0 (clang-1500.1.0.2.5)]",
+  "sourceFileSha256": {
+    "integrations/required-agents/prepare-session.py": "4f6d60b6c1a4e7c371a05a52152e71cd2443b5042c2945303574990721fe0716",
+    "integrations/required-agents/README.md": "35e2d845d3e5dd2e090366147a419ed3b14d3da425628eabf3d203339717cc1c",
+    "integrations/required-agents/qualification/test_prepare_session_readiness.py": "0679c50a1c875ef18a1662b4099af671868a7171aaf0236a808db747356d49cc"
+  },
+  "scope": "Ten readiness/preparation boundary tests, including a real native Python fixture-process identity check. Fixture process and mocked gateway completion are not a Chio kernel/agent host acceptance. Actual final-kernel owner test remains pending during Docker capacity hold.",
+  "sourceOfRegression": "Cold local static bundle owner startup returned before sessions.sqlite.admission.kernel.pub was present; original prepare helper created empty private directory and failed before request/network. Raw failure remains in companion harness delivery evidence."
+}

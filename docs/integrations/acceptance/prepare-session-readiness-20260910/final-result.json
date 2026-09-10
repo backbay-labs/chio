@@ -1,0 +1,24 @@
+{
+  "recordedAt": "2026-09-10T07:27:32.099764+00:00",
+  "command": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "integrations/required-agents/qualification",
+    "-p",
+    "test_prepare_session_readiness.py",
+    "-v"
+  ],
+  "exitCode": 0,
+  "pythonVersion": "3.11.4 (main, Aug 22 2024, 09:11:32) [Clang 15.0.0 (clang-1500.1.0.2.5)]",
+  "sourceFileSha256": {
+    "integrations/required-agents/prepare-session.py": "efb4cbde3d032a461d804dc40e2bae32e179219f95ecddf0d112e37cfa14dd6c",
+    "integrations/required-agents/README.md": "35e2d845d3e5dd2e090366147a419ed3b14d3da425628eabf3d203339717cc1c",
+    "integrations/required-agents/qualification/test_prepare_session_readiness.py": "3438f2ee8381866709bb78b2cc301edcbcd7b39633bd6c7c71f073362103d8ff"
+  },
+  "scope": "Eleven final readiness/preparation boundary tests, including an actual native Python process identity fixture; no Docker or real kernel/host acceptance.",
+  "developmentFailure": "Adding listener binding exposed test-state contamination between two negative subcases: the record-change fixture left port59213 for the deadline fixture. Its initial11-test run had1fixture error, then the fixture restored original port before testing deadline behavior. Runtime listener validation was unchanged by that fixture repair.",
+  "realKernelRetest": "Pending Docker capacity hold; original local artifact startup failure and actual subsequent administrative revocations are retained by companion harness record."
+}

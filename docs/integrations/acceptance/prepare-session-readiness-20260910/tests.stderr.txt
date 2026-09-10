@@ -1,0 +1,15 @@
+test_actual_native_process_identity_rejects_wrong_command (test_prepare_session_readiness.ReadinessTests.test_actual_native_process_identity_rejects_wrong_command) ... ok
+test_dead_owner_and_changed_record_during_wait_are_refused (test_prepare_session_readiness.ReadinessTests.test_dead_owner_and_changed_record_during_wait_are_refused) ... ok
+test_deadline_and_record_change_during_final_hash_cannot_return_success (test_prepare_session_readiness.ReadinessTests.test_deadline_and_record_change_during_final_hash_cannot_return_success) ... ok
+test_failed_preparation_is_not_retried_and_retains_original_request (test_prepare_session_readiness.ReadinessTests.test_failed_preparation_is_not_retried_and_retains_original_request) ... ok
+test_fifo_readiness_file_is_rejected_without_blocking (test_prepare_session_readiness.ReadinessTests.test_fifo_readiness_file_is_rejected_without_blocking) ... ok
+test_late_signer_waits_without_allocating_or_dispatching (test_prepare_session_readiness.ReadinessTests.test_late_signer_waits_without_allocating_or_dispatching) ... ok
+test_missing_signer_timeout_preserves_owner_and_makes_no_network_call (test_prepare_session_readiness.ReadinessTests.test_missing_signer_timeout_preserves_owner_and_makes_no_network_call) ... ok
+test_ready_owner_allocates_once_and_prepares_once (test_prepare_session_readiness.ReadinessTests.test_ready_owner_allocates_once_and_prepares_once) ... ok
+test_symlink_hardlink_and_writable_signer_are_refused (test_prepare_session_readiness.ReadinessTests.test_symlink_hardlink_and_writable_signer_are_refused) ... ok
+test_wrong_state_database_hash_and_pid_are_refused (test_prepare_session_readiness.ReadinessTests.test_wrong_state_database_hash_and_pid_are_refused) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.333s
+
+OK
