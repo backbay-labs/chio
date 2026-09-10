@@ -74,3 +74,9 @@ The shared `approval-workflow` qualification drives these routes and the real
 kernel against the isolated Docker filesystem resource. It remains shared kernel
 qualification. Every host must separately demonstrate its own approved execution,
 denial and missing-approval behavior.
+
+The private operator commands share the redirect-refusing, proxy-independent
+transport described in [OPERATOR-CAPABILITIES.md](OPERATOR-CAPABILITIES.md).
+Use the trusted final HTTPS or loopback origin directly. Preserve the private
+output and reconcile ambiguous mutation outcomes before another decision; the
+helper does not retry automatically.
