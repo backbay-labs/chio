@@ -14,7 +14,7 @@ import uuid
 import urllib.request
 
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('--suite', choices=['approvals','revocation','in-flight-capability','in-flight-credential','kernel-killed','kernel-malformed','kernel-timeout','resume-fence','kernel-absent','expired-credential','expired-capability','wrong-principal','wrong-session','wrong-resource','scope-escalation','evidence-foreign-receipt','evidence-wrong-signer','evidence-request-id','recover-owner-result','concurrent-owners','aggregate-budget','forbidden-read','forbidden-write','forbidden-edit','secret-dry-run','secret-list','secret-path-alias','forbidden-write-alias'], default='approvals')
+p.add_argument('--suite', choices=['approvals','revocation','in-flight-capability','in-flight-credential','in-flight-expiry','kernel-killed','kernel-malformed','kernel-timeout','resume-fence','kernel-absent','expired-credential','expired-capability','wrong-principal','wrong-session','wrong-resource','scope-escalation','evidence-foreign-receipt','evidence-wrong-signer','evidence-request-id','recover-owner-result','concurrent-owners','aggregate-budget','forbidden-read','forbidden-write','forbidden-edit','secret-dry-run','secret-list','secret-path-alias','forbidden-write-alias'], default='approvals')
 p.add_argument('--existing-config',type=Path)
 p.add_argument('--capability-expiry-binding',type=Path)
 p.add_argument('--operator-bridge',type=Path)
@@ -101,6 +101,8 @@ def run(label,tool,arguments,first_arguments=None):
   env.update(CHIO_TEST_OPERATOR_STATE=str(a.operator_state.resolve()),CHIO_TEST_GATEWAY_CONFIG=str(config.resolve()))
   if a.suite.startswith('evidence-'):
    env.update(NODE_OPTIONS='--import='+str(Path(__file__).with_name('substitute-kernel-evidence.mjs').resolve()),CHIO_EVIDENCE_FAULT_LOG=str((a.output/'evidence-cutpoint.jsonl').resolve()),CHIO_EVIDENCE_FAULT_KIND=a.suite.removeprefix('evidence-'))
+  elif a.suite=='in-flight-expiry':
+   env.update(NODE_OPTIONS='--import='+str(Path(__file__).with_name('expire-during-host.mjs').resolve()),CHIO_INFLIGHT_EXPIRY_BINDING=str((a.output/'live-expiry-binding.json').resolve()),CHIO_INFLIGHT_EXPIRY_LOG=str((a.output/'expiry-cutpoint.jsonl').resolve()))
   elif a.suite.startswith('kernel-'):
    env.update(NODE_OPTIONS='--import='+str(Path(__file__).with_name('interrupt-kernel-call.mjs').resolve()),CHIO_KERNEL_FAULT_LOG=str((a.output/'kernel-cutpoint.jsonl').resolve()),CHIO_KERNEL_FAULT_KIND=a.suite.removeprefix('kernel-'))
   else:
@@ -289,6 +291,43 @@ try:
   current={p.name:p.read_bytes() for p in Path(conf['journalDir']).glob('*.json')}
   assert all(current.get(name)==value for name,value in original.items())
   assert all(json.loads(value).get('state')=='not_dispatched' for name,value in current.items() if name not in original)
+ elif a.suite=='in-flight-expiry':
+  # The owner clamps delegated credential lifetime to its real capability.
+  # Expiry therefore returns HTTP authority refusal before capability dispatch;
+  # preserve unknown/unverified transport truth, never fabricate a signed denial.
+  with sqlite3.connect('file:'+str(a.operator_state/'sessions.sqlite')+'?mode=ro',uri=True) as db:
+   owner_record=json.loads(db.execute('SELECT record_json FROM remote_active_sessions WHERE session_id=?',(conf['execution']['sessionId'],)).fetchone()[0])
+  caps=owner_record['issued_capabilities'];assert len(caps)==1
+  cap=caps[0];prepared_at=time.time();config_hash=hashlib.sha256(config.read_bytes()).hexdigest()
+  assert cap['id']==conf['execution']['capabilityId'] and cap['subject']==conf['execution']['subjectKey']
+  assert 0<cap['expires_at']-cap['issued_at']<=45 and prepared_at<cap['expires_at']
+  assert cap['expires_at']==conf['sessionCredential']['expiresAt'] and prepare['credentialTtlSeconds']>45
+  name=a.host+'-live-expiry-'+private.name[-12:]+'.txt'
+  first={'path':'/workspace/'+name,'content':'authorized before actual capability-bound expiry'}
+  second={**first,'content':'must not replace the original after expiry'}
+  binding={'gatewayConfig':str(config.resolve()),'configurationSha256':config_hash,'capability':cap,'sessionCredential':conf['sessionCredential'],'credentialRequestedTtlSeconds':prepare['credentialTtlSeconds'],'preparedAtEpoch':prepared_at,'kernelSha256':op['kernelSha256'],'policySha256':op['policySha256'],'capabilitySource':'independently read real owner SQLite record','nativeRequests':[{'tool':'write_file','arguments':first},{'tool':'write_file','arguments':second}]}
+  save(a.output/'live-expiry-binding.json',binding)
+  code,before,after=run('in-flight-expiry','write_file',second,first)
+  assert code!=0 and len(after['dispatch'])==len(before['dispatch'])+1 and after['files'][name]==first['content']
+  assert hashlib.sha256(config.read_bytes()).hexdigest()==config_hash
+  events=[json.loads(line) for line in (a.output/'expiry-cutpoint.jsonl').read_text().splitlines()]
+  assert [e['event'] for e in events]==['native-request','kernel-response','native-request','released-to-kernel','kernel-response']
+  first_request,first_response,held,released,response=events
+  assert first_request['index']==first_response['index']==1 and held['index']==released['index']==response['index']==2
+  assert first_response['status']==200 and first_response['receivedAtMs']<cap['expires_at']*1000 and held['firstSucceeded']
+  assert held['heldAtMs']<cap['expires_at']*1000<released['releasedAtMs']<=response['receivedAtMs']
+  assert 0<released['holdMilliseconds']<=21500 and released['originalTransportUnchanged']
+  assert response['status']==401 and response['authenticateHeader']=='Bearer' and response['body']=='invalid, expired, or revoked session credential'
+  assert not any(e.get('signalAborted') for e in events)
+  assert all(e['sessionId']==conf['execution']['sessionId'] and e['subjectKey']==cap['subject'] and e['capabilityId']==cap['id'] for e in events)
+  assert held['requestId']==released['requestId']==response['requestId'] and held['requestBodySha256']==released['requestBodySha256']==response['requestBodySha256']
+  retained=records();assert len(retained)==2
+  positive=next(r for r in retained if r['requestId']==first_request['requestId']);expired=next(r for r in retained if r['requestId']==held['requestId'])
+  assert positive['state']=='completed' and positive.get('acknowledged') and positive.get('hostDeliveryConfirmed') and not positive['outcome']['result'].get('isError')
+  assert expired['state']=='unknown' and expired['outcome']['evidence']=='unverified' and not expired.get('acknowledged') and not expired.get('hostDeliveryConfirmed')
+  assert expired['request']['arguments']==second
+  save(a.output/'journal-states.json',[{key:r.get(key) for key in ['requestId','request','state','acknowledged','hostDeliveryConfirmed','outcome']} for r in retained])
+  save(a.output/'in-flight-expiry-result.json',{'passed':True,'realNativeCalls':2,'positiveResourceDispatches':1,'expiredRequestDispatches':0,'sameActualRequestReachedKernel':True,'kernelHttpStatus':response['status'],'clientSignalAborted':False,'expiredResultAcknowledged':False,'originalAuthorityUnchanged':True,'capabilityExpiresAt':cap['expires_at'],'heldAtMs':held['heldAtMs'],'releasedAtMs':released['releasedAtMs'],'kernelResponseAtMs':response['receivedAtMs'],'claim':'Actual live native request refused by kernel HTTP authority authentication after its owner-issued capability and clamped credential expired; not a signed CapabilityExpired admission receipt'})
  elif a.suite.startswith(('in-flight-','kernel-','evidence-')):
   name=a.host+'-inflight-'+private.name[-12:]+'.txt'
   first={'path':'/workspace/'+name,'content':'authorized before in-flight revocation'}
