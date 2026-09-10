@@ -184,6 +184,8 @@ class BinaryInventoryGate(unittest.TestCase):
     def test_workflow_requires_validator_before_upload_on_all_platforms(self):
         root = SCRIPT.parents[1]
         workflow = (root / ".github/workflows/release-binaries.yml").read_text()
+        self.assertIn(f"SYFT_VERSION={GATE.SYFT_VERSION}", workflow)
+        self.assertIn(f'$syftVersion = "{GATE.SYFT_VERSION}"', workflow)
         index = workflow.index("      - name: Validate executable dependency inventory")
         end = workflow.index("      - name: Upload SBOM", index)
         block = workflow[index:end]

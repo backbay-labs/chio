@@ -34,3 +34,10 @@ exclude:
 scope: all-layers
 default-catalogers:
   - all
+
+# Source inventories include development dependencies. Syft's Bun graph
+# classification merges same-name versions when deciding which are dev-only;
+# retaining all entries avoids dropping lockfile packages in map-dependent order.
+# This option does not change the embedded Rust binary cataloger.
+javascript:
+  include-dev-dependencies: true
