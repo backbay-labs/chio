@@ -1,0 +1,12 @@
+{
+  "rawFiles": 1020,
+  "rawChecksumEntries": 1022,
+  "decompressionAndOriginalByteComparison": true,
+  "adapterArchiveFilesVerified": 18,
+  "bridgeArchiveFilesVerified": 1052,
+  "kernelSha256": "c03a8a711dbbd15da2c59655d9ab6d8f0068a20187363db7a78f4b5422ded93e",
+  "nativeHostSource": "175054c14b54404663d8614a178280cffe6062eb",
+  "nativeHostTree": "b485d3e994bda896e30ba7e3216aadb641b1d8e3",
+  "nativePythonVersion": "Python 3.11.3",
+  "claim": "post-run artifact and lossless evidence verification; no runtime changes"
+}
