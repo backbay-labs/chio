@@ -1,0 +1,56 @@
+{
+  "encoding": "gzip",
+  "gzipMtime": 0,
+  "gzipFilename": "",
+  "compressionLevel": 9,
+  "files": [
+    {
+      "logicalPath": "hosted-job.log",
+      "storedPath": "hosted-job.log.gz",
+      "decodedBytes": 22467,
+      "decodedSha256": "3228e64fbfc1fafa5b8894ef518388a10dde282783fa77e1c1914f0bb9664b66",
+      "storedBytes": 6157,
+      "storedSha256": "18a352cb8063a6a2f047cffe3e4068f7600f6957b5931d2e961d2e448a62ddea"
+    },
+    {
+      "logicalPath": "hosted-job.json",
+      "storedPath": "hosted-job.json.gz",
+      "decodedBytes": 3566,
+      "decodedSha256": "7b93efa0d0355566d8b40260e5a39704221231f0a31cf77e35cbee90f3f0d923",
+      "storedBytes": 847,
+      "storedSha256": "95a46fe9676aea1a49c319d7acdda4f35a8d3c75e7d28a9649214eb6778e614e"
+    },
+    {
+      "logicalPath": "hosted-run.json",
+      "storedPath": "hosted-run.json.gz",
+      "decodedBytes": 12067,
+      "decodedSha256": "9c34ec43b350a68707405079eff6a0f371951163921887f7ffb4ca5f540c8a06",
+      "storedBytes": 1642,
+      "storedSha256": "1e9b559a404b7a781cbedfbbbd5caf601d82d0c1db9e4ae88f57c266f8fe41e4"
+    },
+    {
+      "logicalPath": "codegen-check.log",
+      "storedPath": "codegen-check.log.gz",
+      "decodedBytes": 1711,
+      "decodedSha256": "ad80c0bc1ebafe2afbc9d2d8f371d4d2f48febe50413d87a3c6273e4ebcf359a",
+      "storedBytes": 609,
+      "storedSha256": "fcad1e7c5fa4dc4a3955ce3e4b4d9a7aa8718ba6848ff350571b9e4902237b28"
+    },
+    {
+      "logicalPath": "spec-drift.log",
+      "storedPath": "spec-drift.log.gz",
+      "decodedBytes": 1971,
+      "decodedSha256": "152acd47d413e5d0a091894c2eec73fc527e7e86d1e7e3f56ef27dfb6553534e",
+      "storedBytes": 740,
+      "storedSha256": "e7af7fe03c7115b31e4181aca4c27109c8f6eac04609e37f4a68d41919d99af9"
+    },
+    {
+      "logicalPath": "codegen-npm-audit.json",
+      "storedPath": "codegen-npm-audit.json.gz",
+      "decodedBytes": 1179,
+      "decodedSha256": "4799433133037d2c8c57ce1dde4cc410db4d327751ee97e42afdacf5c5a28117",
+      "storedBytes": 528,
+      "storedSha256": "641af1c510f734f7a030c58026fcc1a1bb72899cdd775a32011e54fec43a2503"
+    }
+  ]
+}

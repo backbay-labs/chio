@@ -1,0 +1,43 @@
+[
+  {
+    "command": [
+      "git",
+      "diff",
+      "--exit-code",
+      "--",
+      "crates/core/chio-core-types/src/_generated",
+      "crates/trust/chio-federation/src/_generated",
+      "crates/tooling/chio-conformance/tests/_generated",
+      "docs/reference/generated/STATE_MACHINES.md",
+      "sdks/python/chio-sdk-python/src/chio_sdk/_generated",
+      "sdks/typescript/packages/conformance/src/_generated",
+      "sdks/go/chio-go-http/types.go"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "git",
+      "ls-files",
+      "--others",
+      "--exclude-standard",
+      "--",
+      "crates/core/chio-core-types/src/_generated",
+      "crates/trust/chio-federation/src/_generated",
+      "crates/tooling/chio-conformance/tests/_generated",
+      "docs/reference/generated/STATE_MACHINES.md",
+      "sdks/python/chio-sdk-python/src/chio_sdk/_generated",
+      "sdks/typescript/packages/conformance/src/_generated",
+      "sdks/go/chio-go-http"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "source and dependency locks unchanged",
+    "result": ""
+  }
+]

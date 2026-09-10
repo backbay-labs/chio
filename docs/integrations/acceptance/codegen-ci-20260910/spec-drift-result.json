@@ -1,0 +1,12 @@
+{
+  "command": [
+    "make",
+    "spec-drift"
+  ],
+  "head": "47c7b2007effe193170e557f167f86abde2a7553",
+  "startedUtc": "2026-09-10T04:08:50.945787+00:00",
+  "os": "Darwin Connors-MacBook-Pro.local 25.4.0 Darwin Kernel Version 25.4.0: Thu Mar 19 19:30:44 PDT 2026; root:xnu-12377.101.15~1/RELEASE_ARM64_T6000 arm64",
+  "exitCode": 0,
+  "elapsedSeconds": 32.81302058399888,
+  "finishedUtc": "2026-09-10T04:09:23.744401+00:00"
+}

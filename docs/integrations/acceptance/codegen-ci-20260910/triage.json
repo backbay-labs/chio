@@ -1,0 +1,23 @@
+{
+  "retrievedAt": "2026-09-10T04:09:26.520176+00:00",
+  "pr": 1156,
+  "failedRun": 34434603167,
+  "failedJob": 102736959361,
+  "base": "f5566d9a765c21cb36652a99c79de64968a656bf",
+  "head": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+  "versionGateIdenticalAtBaseHeadAndRepair": true,
+  "versionGateSha256": "def7a65b2ce04a1f6de5aca12d40506d12e41ecd7aface069a57495fc442fa73",
+  "auditSourceStatusInPR": "A\tdocs/integrations/acceptance/20260909/raw/subscription-relay-audit/sources/claude/scripts/restricted.mjs",
+  "localToolVersions": {
+    "cargo": "cargo 1.94.1 (29ea6fb6a 2026-03-24)",
+    "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
+    "uv": "uv 0.9.10 (Homebrew 2025-11-17)",
+    "go": "go version go1.26.2 darwin/arm64",
+    "node": "v25.5.0",
+    "npm": "11.8.0",
+    "protoc": "libprotoc 33.4"
+  },
+  "hostedRunner": "ubuntu-latest",
+  "hostedJobSkippedCodegen": true,
+  "localQualificationDoesNotReplaceHostedCI": true
+}
