@@ -1,10 +1,12 @@
 #[derive(Debug, Default, Deserialize)]
 struct AdminToolReceiptQuery {
-    #[serde(default)]
+    #[serde(default, alias = "receiptId")]
+    receipt_id: Option<String>,
+    #[serde(default, alias = "capabilityId")]
     capability_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "toolServer")]
     tool_server: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "toolName")]
     tool_name: Option<String>,
     #[serde(default)]
     decision: Option<String>,
