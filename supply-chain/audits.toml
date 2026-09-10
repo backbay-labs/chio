@@ -535,6 +535,13 @@ criteria = "safe-to-deploy"
 version = "0.1.0"
 notes = "cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked separately."
 
+[[audits.der]]
+who = "Chio supply-chain reviewer (Codex)"
+criteria = "safe-to-deploy"
+delta = "0.8.0 -> 0.8.2"
+importable = false
+notes = "Reviewed complete checksum-verified RustCrypto source delta and selected Chio APIs. Pure DER parsing changes add no unsafe code or ambient IO; 0.8.2 restores nested full-consumption validation. Actual Iroh Ed25519/SPKI path passed 17 conformance tests (4 valid and 59 rejected inputs), plus 179 transport tests and 2 doctests. Known unused SetOfRef typed-decode/comparison error suppression remains, so this contextual judgment is not exportable: no use exists in Chio or reviewed Iroh/Ed25519/PKCS8/SPKI parents, and selected default CLI graphs omit der 0.8. Adding SetOfRef use requires renewed review. No vendor patch or security criterion relaxation. See docs/integrations/acceptance/der-dependency-qualification-20260910/README.md for source identities, complete review, discretion and limits."
+
 [[audits.der-parser]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
