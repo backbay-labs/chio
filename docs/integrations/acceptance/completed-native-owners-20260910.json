@@ -1,0 +1,91 @@
+{
+  "purpose": "Stop only the six completed intermediate resource owners; preserve all authority databases, operation journals and resource/audit volumes",
+  "sourceSha256": "8f45c4f69cfda01b4c54a0e40297871f8e1c170d676c3a0b8187db4e150e8a2c",
+  "claim": "Post-run owner shutdown only, not new host or release acceptance",
+  "results": [
+    {
+      "state": "/Users/connor/.local/share/chio-required-operators/kernel-rc-plain-20260910/claude",
+      "command": [
+        "python3",
+        "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/integrations/required-agents/serve-filesystem.py",
+        "stop",
+        "--state-dir",
+        "/Users/connor/.local/share/chio-required-operators/kernel-rc-plain-20260910/claude"
+      ],
+      "exitCode": 0,
+      "stdout": "Kernel stopped. Databases, journals and resource volume preserved.\n",
+      "stderr": "",
+      "at": "2026-09-10T06:43:38.717702+00:00"
+    },
+    {
+      "state": "/Users/connor/.local/share/chio-required-operators/kernel-rc-plain-20260910/codex",
+      "command": [
+        "python3",
+        "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/integrations/required-agents/serve-filesystem.py",
+        "stop",
+        "--state-dir",
+        "/Users/connor/.local/share/chio-required-operators/kernel-rc-plain-20260910/codex"
+      ],
+      "exitCode": 0,
+      "stdout": "Kernel stopped. Databases, journals and resource volume preserved.\n",
+      "stderr": "",
+      "at": "2026-09-10T06:43:38.986663+00:00"
+    },
+    {
+      "state": "/Users/connor/.local/share/chio-required-operators/kernel-rc-plain-20260910/pi",
+      "command": [
+        "python3",
+        "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/integrations/required-agents/serve-filesystem.py",
+        "stop",
+        "--state-dir",
+        "/Users/connor/.local/share/chio-required-operators/kernel-rc-plain-20260910/pi"
+      ],
+      "exitCode": 0,
+      "stdout": "Kernel stopped. Databases, journals and resource volume preserved.\n",
+      "stderr": "",
+      "at": "2026-09-10T06:43:39.264146+00:00"
+    },
+    {
+      "state": "/Users/connor/.local/share/chio-required-operators/kernel-rc-plain-20260910/hermes",
+      "command": [
+        "python3",
+        "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/integrations/required-agents/serve-filesystem.py",
+        "stop",
+        "--state-dir",
+        "/Users/connor/.local/share/chio-required-operators/kernel-rc-plain-20260910/hermes"
+      ],
+      "exitCode": 0,
+      "stdout": "Kernel stopped. Databases, journals and resource volume preserved.\n",
+      "stderr": "",
+      "at": "2026-09-10T06:43:39.543055+00:00"
+    },
+    {
+      "state": "/Users/connor/.local/share/chio-required-operators/kernel-rc-plain-20260910/openclaw",
+      "command": [
+        "python3",
+        "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/integrations/required-agents/serve-filesystem.py",
+        "stop",
+        "--state-dir",
+        "/Users/connor/.local/share/chio-required-operators/kernel-rc-plain-20260910/openclaw"
+      ],
+      "exitCode": 0,
+      "stdout": "Kernel stopped. Databases, journals and resource volume preserved.\n",
+      "stderr": "",
+      "at": "2026-09-10T06:43:39.814558+00:00"
+    },
+    {
+      "state": "/Users/connor/.local/share/chio-required-operators/kernel-rc-claude-contract-matrix-20260910/claude",
+      "command": [
+        "python3",
+        "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/integrations/required-agents/serve-filesystem.py",
+        "stop",
+        "--state-dir",
+        "/Users/connor/.local/share/chio-required-operators/kernel-rc-claude-contract-matrix-20260910/claude"
+      ],
+      "exitCode": 0,
+      "stdout": "Kernel stopped. Databases, journals and resource volume preserved.\n",
+      "stderr": "",
+      "at": "2026-09-10T06:43:40.076190+00:00"
+    }
+  ]
+}

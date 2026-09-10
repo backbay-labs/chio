@@ -1,0 +1,32 @@
+{
+  "planningCommit": "d1d99f881ed2547367e45d1715f3c41c8c21589d",
+  "selection": "Controlling document19 and directly referenced adoption and validation criteria; original identities retained and one historical source-map hyperlink made portable",
+  "scope": "Document19 controls the six-host integration program; historical source findings and research hypotheses are not new acceptance evidence",
+  "untrackedProposal": "13-breakthrough-program.md remains untouched in the authoritative planning worktree and is not copied",
+  "files": [
+    {
+      "path": "docs/strategy/chio-direction/04-consumers.md",
+      "sha256": "fea6500539de8afe0981eec084612aab1156ed47974d4d89d29f1b9d8fb4dc6e",
+      "bytes": 8206
+    },
+    {
+      "path": "docs/strategy/chio-direction/08-validation.md",
+      "sha256": "9a0ee26fc6408f15fa3b066589b55511a2bc4158f8e11d7431bff835477312f6",
+      "bytes": 9715,
+      "renderedSha256": "54d06e30c44c65b5fb5577fd17f7c06fc22314cd46066c98412401034f46fc73",
+      "renderingChange": "Only the testing-map hyperlink targets the retained compressed original map, avoiding a nonexistent private planning-checkout link"
+    },
+    {
+      "path": "docs/strategy/chio-direction/19-priority-agent-integrations.md",
+      "sha256": "716c066323889ce54f0dfe6988dfbc7fa76b0c27c8afc7c8d0287f686b786099",
+      "bytes": 11905
+    }
+  ],
+  "referencedTestingMap": {
+    "planningPath": ".planning/codebase/TESTING.md",
+    "path": "docs/integrations/acceptance/planning-testing-map-20260910.md.gz",
+    "sourceSha256": "8d907777b1b646c42652c98786d4c9d704faf8cb29e17f7d814b78b70ced2463",
+    "compressedSha256": "357cab39428e13109ba62d7b26384630ac9844452e6305562e50d9f61abf2df1",
+    "claim": "Historical planning source map, not current test execution evidence"
+  }
+}
