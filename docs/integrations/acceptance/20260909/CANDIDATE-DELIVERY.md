@@ -14,22 +14,28 @@ images. It contains no operator credentials, normal host profiles, or resource
 volumes. Host applications are separate upstream prerequisites. The manifest
 identifies artifacts; the host records identify bounded tests and remaining gaps.
 
-## Pending repairs and current access blockers
+## Current candidates and unresolved gates
 
-The active manifest retains the previously qualified candidate subsets. Later
-tests found an orphaned Hermes r10 process after launcher SIGKILL and an
-OpenClaw r3 relay leak during early startup. Both failures are retained.
-Repairs are packaged separately under `pending/provider-blocked-repairs`, with
-their own SHA256SUMS, source identities and offline installation instructions.
-Hermes r11 passed its native crash/recovery case and several additional native
-suites. OpenClaw r4 passed actual Docker startup-crash cleanup and missing-watchdog
-refusal. Their remaining native reruns are blocked by an observed OpenAI API
-HTTP 429 response reporting no credits. Do not combine predecessor passes with
-new artifact results or treat either set as an accepted integration.
+Native subscription authentication is working for Claude Code, Codex, Hermes,
+Pi and OpenClaw. Each has performed actual kernel-mediated file work with its
+host-supported provider. Cursor's isolated CLI login also works. No new API key
+or MFA is currently needed for these profiles. The old API-credit failures and
+superseded artifacts remain retained, but are not current authentication blockers.
 
-Claude still requires an isolated supported Claude-provider credential. Cursor
-requires an isolated authenticated profile and hosted-protocol qualification.
-These missing inputs block six-host acceptance and public delivery.
+The manifest selects immutable local candidates by SHA256. The preceding
+selection, manifest and instructions remain under `superseded/pre-native-subscriptions`.
+Do not combine tests across these archives. Final current-artifact matrices are
+still underway. In particular, Pi's native tool-error delivery acknowledgement
+and OpenClaw's concurrent model request limit have demonstrated failures under
+repair. Their current archives remain unaccepted until replacement qualification.
+
+Cursor protected prompt mode refuses before starting the host. Its server-owned
+messaging, cloud/agent management and PR mutation paths require a supported
+pre-dispatch restriction. Local permission flags and after-effect notifications
+do not establish that boundary. Authentication is no longer its blocker.
+
+The exact version combination has not passed all I01-I08 and release gates;
+this bundle is local qualification delivery, not an accepted public release.
 
 ## Verify and install
 
@@ -98,12 +104,12 @@ hooks. The following files are inside the corresponding installed package:
 
 | Host | Launcher | Configuration and procedures |
 |---|---|---|
-| Claude | `scripts/restricted.mjs` | `docs/RESTRICTED-MODE.md`; pinned executable/gateway hashes, new profile/workspace and private gateway config. Isolated Anthropic credential remains missing for real provider acceptance |
-| Codex | `dist/cli/main.js restricted` | `RESTRICTED.md`; private gateway config, pinned Codex binary, new evidence directory and prompt; operator OpenAI credential stays in parent |
-| Cursor | `bin/chio-cursor-protected.mjs --probe` | `OPERATIONS.md`; pinned extracted CLI and private gateway config. Only discovery works. Protected prompt mode deliberately refuses pending isolated authentication and hosted-protocol qualification |
-| Hermes | `python -m chio_hermes.restricted` | Adapter `README.md`; pinned host Python/source, installed bridge, private gateway config, new state, query file and fixed provider route |
-| Pi | `dist/protected-cli.js` | `README.md`; private config, new profile/workspace, OpenAI provider/model and prompt |
-| OpenClaw | `scripts/protected.mjs` | `README.md`; private config, new state and immutable host image `sha256:1586b295831a811e4ba890fe466e9397bc44eeff9b77fa41ae740cc845eb4c2d` |
+| Claude | `scripts/restricted.mjs` | `docs/RESTRICTED-MODE.md`; pinned executable/gateway hashes, new profile/workspace and private gateway config. use `--model-auth claude-login` with the native operator login; credentials stay in the trusted parent |
+| Codex | `dist/cli/main.js restricted` | `RESTRICTED.md`; private gateway config, pinned Codex binary, new evidence directory and prompt; use `--model-auth-file /absolute/private/codex-auth.json`; the native ChatGPT credential stays in the parent |
+| Cursor | `bin/chio-cursor-protected.mjs --probe` | `OPERATIONS.md`; pinned extracted CLI and private gateway config. Only discovery works. Protected prompt mode deliberately refuses pending the server enforcement contract and hosted-protocol qualification |
+| Hermes | `python -m chio_hermes.restricted` | Adapter `README.md`; pinned host Python/source, installed bridge, private gateway config, new state and query file; `--model-auth codex-subscription --codex-auth-file /absolute/private/codex-auth.json --model gpt-5.5` |
+| Pi | `dist/protected-cli.js` | `README.md`; private config, new profile/workspace, `--provider openai-codex --model gpt-5.5 --codex-auth /absolute/private/codex-auth.json` and prompt |
+| OpenClaw | `scripts/protected.mjs` | `README.md`; private config, new state and `--model-auth-file /absolute/private/codex-auth.json` and immutable host image selected by the manifest |
 
 For example, after preparing a session and selecting a new evidence directory:
 
@@ -112,8 +118,18 @@ node install/codex/node_modules/@chio/codex-plugin/dist/cli/main.js restricted \
   --gateway-config /absolute/private/new-owner/new-session-ID/gateway.json \
   --codex-binary /absolute/pinned/codex \
   --evidence-dir /absolute/private/new-evidence \
+  --model-auth-file /absolute/private/codex-auth.json \
   --prompt 'Use Chio to write /workspace/example.txt, then read the same remote file.'
 ```
+
+The selected native Codex auth cache must be an operator-owned regular mode-0600
+file outside guest/profile/workspace/install trees. Use a designated private cache
+initialized or refreshed by the native Codex CLI. Do not manually refresh or expose
+its OAuth tokens. A login in the ordinary CLI alone does not activate the protected
+launcher: select this explicit parent-only auth argument. Claude's native-login
+helper uses the operator's existing native login without copying its credential
+into the guest. Remove an inherited alternate `ANTHROPIC_BASE_URL` before using
+Claude subscription mode; only the fixed native endpoint is permitted.
 
 No credentials are embedded in this document or bundle. The profile implements
 remote file work; shell, arbitrary networking, delegation and other unsupported
@@ -183,19 +199,18 @@ open, so this bundle must not be described as accepted lifecycle delivery.
 The selected Claude and OpenClaw packages include trusted launcher-death
 supervision. Their replaced artifacts and the previous OpenClaw image remain in
 `superseded/pre-host-supervision`, outside the active installation manifest.
-The new artifacts passed their own forced-crash recovery checks. Claude tests
-used an actual native host with a local model fixture; authenticated Anthropic
-qualification remains open. OpenClaw tests used its actual native host and
-OpenAI service. Preserved volumes and unknown outcomes still require explicit
+The new artifacts passed their own forced-crash recovery checks. Earlier Claude supervision tests used a local model fixture; those observations
+remain separate from current authenticated subscription runs. Current-artifact
+crash and recovery observations are named in each host record. Preserved volumes and unknown outcomes still require explicit
 operator recovery. A watchdog cleanup error is unresolved, not successful
 removal. Earlier startup/crash cutpoints and full lifecycle acceptance remain
 open.
 
-Hermes r10 uses the separately retained `hermes-bridge` archive above. Pass
+Hermes r15 uses the separately retained `hermes-bridge` archive above. Pass
 `install/hermes-bridge/node_modules/@chio/bridge/dist/gateway-http.js` to its
 launcher. This pins the exact bridge used in its native qualification, while
 the other integrations retain their own tested bridge builds. The previous r9
-wheel and manifest remain under `superseded/hermes-r9`. The selected r10 wheel
+wheel and manifest remain under `superseded/hermes-r9`. The selected r15 wheel
 handles operator SIGTERM/SIGINT, reaps the isolated process group and reports an
 unacknowledged committed result as unresolved. SIGKILL and every other lifecycle
 cutpoint are separate requirements.

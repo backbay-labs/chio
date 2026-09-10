@@ -24,17 +24,23 @@ local candidate identities, not a published version combination.
 
 | Host | Pinned runtime | Recorded implementation and observations | Remaining acceptance work |
 |---|---|---|---|
-| Claude Code | 2.1.267 for current received-result cases; earlier 2.1.266 retained separately | Restricted parent HTTP transport and full native-result verification; actual host/kernel useful work, budget, denial, native-tool and response-loss cases with local Messages fixture | Isolated Anthropic credential; authenticated provider cases, remaining authority/fault/lifecycle matrix and publication |
-| Codex | 0.153.4 | Current archive: useful work, denials, budget, approvals, revocation, 14 authority/fault cases, evidence substitution, cancellation, crash and signed owner-result recovery through actual OpenAI/kernel sessions | Remaining plugin omission/failure, parallel-call and lifecycle cases; release qualification and publication |
-| Cursor | GUI 3.19.13; CLI 2026.09.08-6caf4ff | Parent-owned HTTP gateway, scoped guest route and private journal; packaged real CLI discovery plus exact retained default-deny OS profile probes | Isolated authentication and bounded hosted AgentService protocol; protected prompt mode refuses. No useful model-driven workflow or full gate accepted |
-| Hermes | 0.20.5; upstream `175054c14b54404663d8614a178280cffe6062eb` | Current r10 wheel: useful work, denials, approvals, budget, 14 authority/fault cases, evidence substitution, cancellation, gateway crash and signed owner-result recovery through actual OpenAI/kernel sessions | Remaining plugin omission/failure, parallel-call, launcher SIGKILL and lifecycle cases; four legacy opt-in skips unresolved; publication |
-| Pi Agent | `@earendil-works/pi-coding-agent@0.85.1`; upstream `d981de1229ef899957bbe968bc8dcda02a21f477` | Current archive: stock AgentSession with one Chio tool; actual provider/kernel workflow, denials, approvals, budget, 14 authority/fault cases, evidence substitution, cancellation, crash and signed owner-result recovery | Remaining plugin omission/failure, parallel-call and lifecycle cases; publication |
-| OpenClaw | 2026.5.20 (`e510042`) | Current supervised archive/image: actual provider/kernel workflow, denials, approvals, budget, 14 authority/fault cases, evidence substitution, cancellation, crash and signed owner-result recovery; current-image process/descendant probes | Remaining plugin omission/failure, parallel-call, early creation crash and lifecycle cases; publication |
+| Claude Code | 2.1.267; Claude Sonnet 5 | Native Claude Max auth now works with parent-only credentials. Current `8bf565bf5d70` archive passed native authority, approval, kernel-fault, evidence and concurrent-owner cases; final useful/recovery reruns are underway | Complete current-artifact lifecycle/bypass matrix; release qualification/publication |
+| Codex | 0.153.4; gpt-5.5 | Native ChatGPT auth; current `ac4f14ee4073` archive passed useful four-tool work, denials, native patch/config tamper prevention, approvals, revocation, budget, kernel/evidence faults and explicit recovery | Complete current-artifact plugin-failure, native inventory and lifecycle checks; release qualification/publication |
+| Cursor | GUI 3.19.13; CLI 2026.09.08-6caf4ff | Isolated native login confirmed. Current `3bf370db52da` archive and VSIX pass cold installation and structural admission checks; protected prompt mode refuses | Requires a server-enforced pre-dispatch restriction on unsupported remote actions, followed by authenticated relay and real-host acceptance |
+| Hermes | 0.20.5; upstream `175054c14b54404663d8614a178280cffe6062eb` | Native ChatGPT provider; r15 `625979d53317` wheel passed useful work, denials, budget, cancellation/crash/result-loss recovery, evidence substitutions and owner concurrency; remaining authority reruns underway | Complete exact-artifact matrix and native boundary inventory; release qualification/publication |
+| Pi Agent | `@earendil-works/pi-coding-agent@0.85.1`; upstream `d981de1229ef899957bbe968bc8dcda02a21f477` | Native openai-codex provider; `78257af62fc8` archive passed useful work, denials, 26 authority/fault/recovery suites and aggregate budget | Complete final result-loss/crash/cancellation and lifecycle/native boundary checks; release qualification/publication |
+| OpenClaw | 2026.5.20 (`e510042`); gpt-5.5 | Native openai-codex provider; `10429af214df` archive and `9aed9b78d3a0` image passed useful write/edit/read/list with four native-history acknowledgements and forbidden read/write denial | Complete exact-artifact authority/fault/recovery/lifecycle matrix; release qualification/publication |
 
 All eight gates are open for the program. Individual passed cases in host records
 are bounded to their recorded source, artifact and configuration. Counts from
 different builds cannot be combined into a final passing host matrix. No result
 from one host substitutes for another host's missing case.
+
+## Historical checkpoints below
+
+The following sections preserve earlier source/artifact observations and failures.
+Earlier authentication and credit blockers are superseded by the native subscription
+correction at the end; their passing subsets do not qualify replacement artifacts.
 
 ## Retained delivery failures and repairs
 
@@ -580,3 +586,58 @@ paths. Hermes pip check and CLI loading passed; OpenClaw's packaged native
 plugin entry point loaded. All 47 active and three pending manifest entries
 verify. Records are in `raw/local-delivery-pending-repairs`. These are packaging
 checks and do not replace the blocked provider-backed runs.
+
+
+## Native subscription authentication correction
+
+The owner's local-login challenge exposed an overbroad blocker classification.
+Claude Code 2.1.267 reports a Claude Max login, and Codex 0.153.4 reports a
+ChatGPT login. Each completed a real native inference request with the expected
+response, without an API key and without MFA. The depleted API-key account is
+still a real historical failure, but it does not block these native subscription
+modes. `raw/native-subscription-auth/status.json` records the credential-free
+observations. No credentials or normal profiles are included in evidence.
+
+Codex source `e3df903` adds explicit parent-only native ChatGPT cache selection;
+Claude source `c23dff6` includes native CLI authentication acquisition in the trusted
+parent and OAuth forwarding to the fixed Anthropic Messages endpoint. Both
+sandboxed agents receive only temporary relay credentials. Their archives
+installed offline with empty caches and then performed actual kernel-mediated
+write/read workflows and forbidden-read tests. Independent owner observations
+confirmed the successful effects and zero denied-read dispatches. Initial native
+workflows also demonstrated forbidden-write denial; the subsequent action was
+fenced, so its outcome is not counted as an independent policy denial.
+
+Full changed-artifact matrices are being retained in the owning host records.
+Model refusals without native tool calls are failed qualification attempts, not
+kernel prevention passes. Cursor's designated CLI login has now completed through the existing browser
+session, and native status confirms authentication. Its server-owned action
+restriction remains unresolved. Pi, Hermes and OpenClaw have each completed useful
+work through their native subscription provider and the kernel; their final
+changed-artifact matrices remain independently required. **0/6 accepted; release remains gated.**
+
+
+## Current authentication and artifact correction
+
+The current Claude archive is `8bf565bf5d704b01b0847cda64c4244fc1f15a19bc707f8e3a90aa3798064a23`,
+not the initial `6c8ccd147d37` subscription candidate. Review found that the initial
+relay could attach native OAuth to an explicitly configured localhost fixture.
+The current source refuses subscription forwarding to every origin except the
+fixed Anthropic endpoint, and canonicalizes authentication/supervisor module
+imports. Real provider tests explicitly unset the alternate base URL; no actual
+credential disclosure was observed. Both failed candidates and test-driver model
+refusals remain retained rather than converted into prevention passes.
+
+Two Claude negative cases use the provider's documented declared-tool selection
+to ensure the real model attempts the specified available tool. The test driver
+does not alter tool arguments or fabricate assistant output. Each run records the
+selection and verifies the exact native attempt plus independent resource effects.
+
+Cursor's exact external dependency is documented in its owning repository at
+`evidence/final/CURSOR-AGENT-SERVICE-CONTRACT.md`. Authentication is resolved.
+The pinned wire schema contains remote messaging, agent/cloud-management and PR
+mutation variants without a corresponding client execution/approval handshake.
+That does not prove reachability in a local CLI session, but local flags and
+post-effect notifications cannot establish pre-effect server enforcement.
+A supported upstream capability restriction or verified deployment policy is
+required before opening the protected Run relay.

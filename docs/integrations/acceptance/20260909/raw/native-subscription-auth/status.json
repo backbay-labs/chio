@@ -1,0 +1,93 @@
+{
+  "observedAt": "2026-09-10T01:45:38.749130+00:00",
+  "priorBlockerCorrection": "Missing API credits did not imply unavailable native Claude or Codex subscription authentication. The API-only launcher implementation caused that limitation.",
+  "claude": {
+    "version": "2.1.267",
+    "login": {
+      "loggedIn": true,
+      "authMethod": "claude.ai",
+      "apiProvider": "firstParty",
+      "subscriptionType": "max"
+    },
+    "directNativeInference": {
+      "exitCode": 0,
+      "expectedResponse": "NATIVE_SUBSCRIPTION_OK",
+      "responseObserved": true,
+      "toolsDisabled": true,
+      "customizationsDisabled": true
+    },
+    "coldInstall": {
+      "offline": true,
+      "emptyCache": true,
+      "exitCode": 0
+    },
+    "nativeKernelInitial": {
+      "successfulResourceCalls": 2,
+      "hostDeliveryConfirmed": 2,
+      "forbiddenWriteDispatched": false,
+      "forbiddenReadSeparateCaseDispatched": false
+    },
+    "initialCandidateSource": "249b52a",
+    "initialCandidateSha256": "6c8ccd147d37dd12873237c664d0d20396a1e804cee4d0142b3ca0a2fd051885",
+    "currentCandidateSource": "c23dff6",
+    "currentCandidateSha256": "8bf565bf5d704b01b0847cda64c4244fc1f15a19bc707f8e3a90aa3798064a23"
+  },
+  "codex": {
+    "version": "0.153.4",
+    "login": "Logged in using ChatGPT",
+    "directNativeInference": {
+      "exitCode": 0,
+      "expectedResponse": "NATIVE_SUBSCRIPTION_OK",
+      "responseObserved": true,
+      "ephemeral": true,
+      "sandbox": "read-only",
+      "shellDisabled": true
+    },
+    "candidateSource": "e3df903",
+    "candidateSha256": "ac4f14ee4073abdc0c9ff2b4771e99adf7a871d084a9b488513f5d28eae56874",
+    "coldInstall": {
+      "offline": true,
+      "emptyCache": true,
+      "exitCode": 0
+    },
+    "nativeKernelInitial": {
+      "successfulResourceCalls": 2,
+      "hostDeliveryConfirmed": 2,
+      "forbiddenWriteDispatched": false,
+      "forbiddenReadSeparateCaseDispatched": false
+    }
+  },
+  "cursor": {
+    "version": "2026.09.08-6caf4ff",
+    "cliStatus": "authenticated",
+    "statusExitCode": 0,
+    "isolatedLogin": "completed through existing browser session; no MFA needed",
+    "hostedProtocol": "protected prompt mode refuses until server-enforced pre-dispatch restriction and bounded relay are qualified"
+  },
+  "acceptance": "0/6; bounded new evidence only",
+  "updatedAt": "2026-09-10T02:11:38.357559+00:00",
+  "pi": {
+    "nativeSubscription": "ChatGPT via pinned host-supported openai-codex provider",
+    "candidateSha256": "78257af62fc840d8806dd9d90f124ff8c0a2a9b63f3588a4adb6bee4a44a6960",
+    "usefulResourceCalls": 4,
+    "hostDeliveryConfirmed": 4,
+    "forbiddenReadWriteDispatched": false,
+    "fullAcceptance": false
+  },
+  "hermes": {
+    "nativeSubscription": "ChatGPT via pinned host-supported openai-codex provider",
+    "candidateSha256": "625979d5331796e7aef5906e69e3e2c746796aa570291af026c305ed4227c818",
+    "usefulResourceCalls": 4,
+    "hostDeliveryConfirmed": 4,
+    "forbiddenReadWriteDispatched": false,
+    "fullAcceptance": false
+  },
+  "openclaw": {
+    "nativeSubscription": "ChatGPT via pinned host-supported openai-codex provider",
+    "candidateSha256": "10429af214dfd12f4383749e1c106babd876a1377d53d55125630a2054dcec2c",
+    "usefulResourceCalls": 4,
+    "hostDeliveryConfirmed": 4,
+    "forbiddenReadWriteDispatched": false,
+    "fullAcceptance": false
+  }
+}
