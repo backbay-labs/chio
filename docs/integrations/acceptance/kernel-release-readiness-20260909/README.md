@@ -59,3 +59,12 @@ Preserve SHA-identical Git objects when copying Arc source refs to Chio. The his
 ## Evidence and reproduction
 
 Raw commands, timestamps, results, logs, rejected candidate patch, supplier diffs, hosted API snapshot and diagnostic-only test change are retained under raw/. SHA256SUMS.json covers this record's files. The normal source repairs are separate commits; this evidence commit changes no runtime behavior. Required gates not executed to completion remain unresolved, including the full repaired TypeScript lane and full exact-candidate Linux qualification. No evidence from another host or an older public release is promoted into acceptance here.
+
+## Raw evidence storage
+
+Selected terminal logs and nested patches are retained as lossless `.gz` files.
+Use `gzip -dc FILE.gz` to read their original bytes. The
+[encoding map](../raw-evidence-encoding-20260910/manifest.json) records original
+Git blobs and both compressed/decompressed hashes; current checksums refer to
+stored files. Historical paths inside raw metadata map to those original bytes.
+The unchanged repository whitespace gate applies to all authored text.

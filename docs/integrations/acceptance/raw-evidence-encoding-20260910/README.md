@@ -40,6 +40,12 @@ python3 docs/integrations/acceptance/raw-evidence-encoding-20260910/validate.py
 git diff --check f5566d9a765c21cb36652a99c79de64968a656bf...HEAD
 ```
 
+A subsequent readiness evidence commit `a1b8f0453` added 23 more raw logs,
+dependency-tree outputs and nested patches with the same representation issue.
+Those files use the same lossless encoding and mapping. Its authored report
+remains text, and its child checksum manifest is updated. No additional
+PostgreSQL or runtime failure is inferred from these retained historical logs.
+
 Confidence: high in the exact failure cause and byte-preserving representation
 repair. Neither this packaging check nor the job's title establishes PostgreSQL
 test success.
