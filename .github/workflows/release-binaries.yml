@@ -154,14 +154,57 @@ jobs:
         shell: bash
         run: cargo install cargo-auditable --locked --version 0.7.4
 
+      - name: Prepare pinned static OpenSSL (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CHIO_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          python scripts/prepare-macos-release-openssl.py \
+            --target "${CHIO_TARGET}" \
+            --output "${RUNNER_TEMP}/chio-openssl-${CHIO_TARGET}" \
+            --jobs 2
+
       - name: Build (native)
         if: matrix.cross == false
         shell: bash
         run: |
+          set -euo pipefail
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            source "${RUNNER_TEMP}/chio-openssl-${{ matrix.target }}/cargo-env.sh"
+          fi
           cargo auditable build --release --locked \
             --package "${CARGO_PACKAGE}" \
             --bin "${BINARY_NAME}" \
             --target "${{ matrix.target }}"
+
+      - name: Qualify macOS linkage and retain native materials
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CHIO_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          native_root="${RUNNER_TEMP}/chio-openssl-${CHIO_TARGET}"
+          mkdir -p out/native
+          python scripts/check-macos-release-linkage.py \
+            --binary "target/${CHIO_TARGET}/release/${BINARY_NAME}" \
+            --target "${CHIO_TARGET}" \
+            --expected-version "${GITHUB_REF_NAME#v}" \
+            --output "out/native/chio-${CHIO_TARGET}.linkage.json"
+          cp "${native_root}/native-openssl.json" "out/native/chio-${CHIO_TARGET}.native-openssl.json"
+          native_version="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "${native_root}/native-openssl.json")"
+          cp "${native_root}/source/openssl-${native_version}/LICENSE.txt" "out/native/chio-${CHIO_TARGET}.openssl-LICENSE.txt"
+
+      - name: Upload native macOS materials
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-${{ matrix.target }}
+          path: out/native/
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Build (cross)
         # cross v0.2.5 does NOT recognise `auditable` as a build
@@ -354,6 +397,11 @@ jobs:
           cp "target/${CHIO_TARGET}/release/${BINARY_NAME}${CHIO_BIN_SUFFIX}" "dist/${stage_dir}/"
           cp "out/sbom/chio-${CHIO_TARGET}.cyclonedx.json" "dist/${stage_dir}/"
           cp "out/sbom/chio-${CHIO_TARGET}.validation.json" "dist/${stage_dir}/"
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            cp "out/native/chio-${CHIO_TARGET}.native-openssl.json" "dist/${stage_dir}/"
+            cp "out/native/chio-${CHIO_TARGET}.linkage.json" "dist/${stage_dir}/"
+            cp "out/native/chio-${CHIO_TARGET}.openssl-LICENSE.txt" "dist/${stage_dir}/"
+          fi
           cp README.md LICENSE "dist/${stage_dir}/" 2>/dev/null || true
           (cd dist && tar czf "${stage_dir}.tar.gz" "${stage_dir}")
           (cd dist && shasum -a 256 "${stage_dir}.tar.gz" > "${stage_dir}.tar.gz.sha256")
@@ -602,6 +650,7 @@ jobs:
           # The same SBOM and report are inside each signed archive. Also attach
           # them directly so consumers can inspect the inventory before extraction.
           find artifacts -type f \( -name "*.cyclonedx.json" -o -name "*.validation.json" \) -exec cp {} release/ \;
+          find artifacts -type f \( -name "*.native-openssl.json" -o -name "*.linkage.json" -o -name "*.openssl-LICENSE.txt" \) -exec cp {} release/ \;
           find release -type f -name "*.sha256" -exec perl -0pi -e 's/\r\n/\n/g; s/\r/\n/g' {} +
           # Concatenate the per-archive .sha256 files into the combined
           # SHA256SUMS for `shasum -a 256 -c`.
@@ -725,6 +774,9 @@ jobs:
             release/*.pem
             release/*.cyclonedx.json
             release/*.validation.json
+            release/*.native-openssl.json
+            release/*.linkage.json
+            release/*.openssl-LICENSE.txt
             release/SHA256SUMS
             release/chio.rb
 

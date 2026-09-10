@@ -1,0 +1,140 @@
+{
+  "schema": "chio.macos-native-workflow-wiring.v1",
+  "upstreamPortabilityCommit": "e9527a6ce43842fefbfe33f9f48ae9fdf57e26fc",
+  "localPortabilityCommit": "24e71237e59c1ee7a7f7df288b079b626e516dc8",
+  "commands": [
+    {
+      "name": "binary-sbom-controls",
+      "argv": [
+        "python3",
+        "scripts/tests/check-release-binary-sbom.test.py"
+      ],
+      "exitCode": 0,
+      "observedAtUtc": "2026-09-10T06:03:28.100560+00:00"
+    },
+    {
+      "name": "macos-portability-controls",
+      "argv": [
+        "python3",
+        "scripts/tests/macos-release-portability.test.py"
+      ],
+      "exitCode": 0,
+      "observedAtUtc": "2026-09-10T06:03:28.303683+00:00"
+    },
+    {
+      "name": "actionlint",
+      "argv": [
+        "actionlint",
+        ".github/workflows/release-binaries.yml",
+        ".github/workflows/ci.yml"
+      ],
+      "exitCode": 0,
+      "observedAtUtc": "2026-09-10T06:03:28.837717+00:00"
+    },
+    {
+      "name": "release-assurance",
+      "argv": [
+        "bash",
+        "scripts/tests/ci-release-assurance.test.sh"
+      ],
+      "exitCode": 0,
+      "observedAtUtc": "2026-09-10T06:03:28.892119+00:00"
+    }
+  ],
+  "syntheticTests": {
+    "binarySbomAndWiring": 13,
+    "macosPortability": 7,
+    "skipped": 0
+  },
+  "actualPortableBinaryAcceptance": "unresolved",
+  "nativeVulnerabilityScan": "unresolved",
+  "scope": "Workflow ordering, required gates and archive delivery of recorded native build materials. A successful static OpenSSL build, native vulnerability scan and final portable CLI/host qualification are separately required.",
+  "sourceFiles": [
+    {
+      "path": ".github/workflows/release-binaries.yml",
+      "sha256": "78c627ef9c13feb5b2d0b753a16be6d605380d301557417ca6b5c0b0b12f9ed0",
+      "gitBlob": "2fb329a62416fcb08222e7c95503550df621a82b"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "bef22faa24b913c6bb295a98cc0ef048bfee3e434d2db0030c4c18803043300d",
+      "gitBlob": "0f0874ec5c87f68829db4d752cc5d9b7f2f46447"
+    },
+    {
+      "path": "scripts/ci-workspace.sh",
+      "sha256": "00e3bc28854953857ab6cc4dc29bb1ea690ec8abe440a5f2a4be2bd16e6cfeb7",
+      "gitBlob": "22423c803834936a04fd8789d5e984b727d2f4ec"
+    },
+    {
+      "path": "scripts/tests/check-release-binary-sbom.test.py",
+      "sha256": "7fc86a5a1dae7914a8aaf06578528f2912d7a0c905679baa44d21c5cb9af7b74",
+      "gitBlob": "771215b7c3620cb0a11b0efde12a995cf3843f94"
+    }
+  ],
+  "artifacts": [
+    {
+      "storedPath": "binary-sbom-controls.stdout.gz",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedBytes": 20,
+      "storedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "binary-sbom-controls.stderr.gz",
+      "originalBytes": 112,
+      "originalSha256": "df146a7a5bdc36393c7e593d769b061df414cb8dec3bcd64b6520b3d19183620",
+      "storedBytes": 55,
+      "storedSha256": "1afc098d8811dc44c70420e0eb27b7651573312af3ce1072195dc69f5cba80f2",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "macos-portability-controls.stdout.gz",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedBytes": 20,
+      "storedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "macos-portability-controls.stderr.gz",
+      "originalBytes": 105,
+      "originalSha256": "9ec9e3c52e7908b746c625587944c7e1eb71f90fc834fbb4527d510523684dd2",
+      "storedBytes": 54,
+      "storedSha256": "555ced361925445a325f40a99936c106a277ddeed340f570b3db4ed1f45693e1",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "actionlint.stdout.gz",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedBytes": 20,
+      "storedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "actionlint.stderr.gz",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedBytes": 20,
+      "storedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "release-assurance.stdout.gz",
+      "originalBytes": 48,
+      "originalSha256": "a0cd8909eb60259cd18410bc80511911d706c3a512d4a13a2f33d525da4d71b7",
+      "storedBytes": 68,
+      "storedSha256": "686bbc4821298a2bcd6761b18359548dee7264dbe69608ec52258f7fc9f40f66",
+      "gzipMtime": 0
+    },
+    {
+      "storedPath": "release-assurance.stderr.gz",
+      "originalBytes": 0,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedBytes": 20,
+      "storedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "gzipMtime": 0
+    }
+  ]
+}

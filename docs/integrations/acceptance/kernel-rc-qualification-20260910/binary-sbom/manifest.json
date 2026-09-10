@@ -283,23 +283,29 @@
   "sourceFiles": [
     {
       "path": "scripts/check-release-binary-sbom.py",
-      "sha256": "db25f919f879bf971f09f09cd0dd1d1b8b0397743ebc782e7c9700d9884863ef"
+      "sha256": "db25f919f879bf971f09f09cd0dd1d1b8b0397743ebc782e7c9700d9884863ef",
+      "gitBlob": "c30824ae2e4be1ebc064b3ef62919ae966479e5b"
     },
     {
       "path": "scripts/tests/check-release-binary-sbom.test.py",
-      "sha256": "edf2f79b7c6ffd3ce0c024f389db467ef1f6b30879c55a854eb5900064238af1"
+      "sha256": "edf2f79b7c6ffd3ce0c024f389db467ef1f6b30879c55a854eb5900064238af1",
+      "gitBlob": "18b8716ea5f0ccc2ffa9db1f78a33c086f841439"
     },
     {
       "path": ".github/workflows/release-binaries.yml",
-      "sha256": "aea2cc284b82c6a9cfe5875732ccdb77c0b6a54afc87ed2c88a9f56d3ba8d272"
+      "sha256": "aea2cc284b82c6a9cfe5875732ccdb77c0b6a54afc87ed2c88a9f56d3ba8d272",
+      "gitBlob": "27f1d0350ae2e7d833e2dd3335ae7ceb08531c31"
     },
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "37a257a201a1c1841eb6d3593d5dda9df83d4883cd5e8a8bfdab4e6547cb4df2"
+      "sha256": "37a257a201a1c1841eb6d3593d5dda9df83d4883cd5e8a8bfdab4e6547cb4df2",
+      "gitBlob": "b47c16df2d50a146a873c24dd96f1c58e20d092d"
     },
     {
       "path": "scripts/ci-workspace.sh",
-      "sha256": "e0b15a37e5393c35ea0cf3b415e7f3de3602b0b1167f51b224fcddf1d47019fd"
+      "sha256": "e0b15a37e5393c35ea0cf3b415e7f3de3602b0b1167f51b224fcddf1d47019fd",
+      "gitBlob": "1dd5a0b8e61a36eed22337a3e8a760462ef075d3"
     }
-  ]
+  ],
+  "validatedSourceCommit": "837dc6d36738564baa51d8f69b6308f9a4920292"
 }

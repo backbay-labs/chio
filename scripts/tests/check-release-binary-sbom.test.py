@@ -202,6 +202,32 @@ class BinaryInventoryGate(unittest.TestCase):
         for path in [".github/workflows/ci.yml", "scripts/ci-workspace.sh"]:
             self.assertIn("scripts/tests/check-release-binary-sbom.test.py", (root / path).read_text())
 
+    def test_macos_native_materials_are_required_and_travel_inside_signed_archive(self):
+        root = SCRIPT.parents[1]
+        workflow = (root / ".github/workflows/release-binaries.yml").read_text()
+        prepare = workflow.index("      - name: Prepare pinned static OpenSSL (macOS)")
+        build = workflow.index("      - name: Build (native)")
+        linkage = workflow.index("      - name: Qualify macOS linkage and retain native materials")
+        inventory = workflow.index("      - name: Validate executable dependency inventory")
+        sign = workflow.index("      - name: Cosign sign-blob release archive")
+        self.assertLess(prepare, build)
+        self.assertLess(build, linkage)
+        self.assertLess(linkage, inventory)
+        self.assertLess(inventory, sign)
+        build_block = workflow[build:linkage]
+        self.assertLess(build_block.index("cargo-env.sh"), build_block.index("cargo auditable build"))
+        self.assertIn('if [[ "${RUNNER_OS}" == "macOS" ]]', build_block)
+        native_block = workflow[linkage:workflow.index("      - name: Build (cross)")]
+        self.assertIn("python scripts/check-macos-release-linkage.py", native_block)
+        self.assertIn("LICENSE.txt", native_block)
+        stage = workflow[workflow.index("      - name: Stage artifacts (unix)"):
+                         workflow.index("      - name: Stage artifacts (windows)")]
+        for suffix in ["native-openssl.json", "linkage.json", "openssl-LICENSE.txt"]:
+            self.assertIn(f'cp "out/native/chio-${{CHIO_TARGET}}.{suffix}" "dist/${{stage_dir}}/"', stage)
+            self.assertIn(f"            release/*.{suffix}", workflow)
+        for path in [".github/workflows/ci.yml", "scripts/ci-workspace.sh"]:
+            self.assertIn("scripts/tests/macos-release-portability.test.py", (root / path).read_text())
+
 
 if __name__ == "__main__":
     unittest.main()
