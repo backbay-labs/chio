@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Deliver two function calls in one fixture response to the actual pinned Hermes.
+"""Send excluded native tool names to the actual pinned Hermes.
 
 Only parent-side provider responses are replaced. This is supplemental native
-batch evidence, not live inference acceptance. Kernel/resource execution is real.
+dispatch evidence, not live inference acceptance. Kernel/resource execution is real.
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def main() -> int:
     args = parser.parse_args()
     args.output.mkdir(mode=0o700)
     operator = json.loads((args.operator_state / "operator.json").read_text())
-    private = args.operator_state / ("hermes-parallel-" + uuid.uuid4().hex)
+    private = args.operator_state / ("hermes-disabled-" + uuid.uuid4().hex)
     private.mkdir(mode=0o700)
     config, preparation = private / "gateway.json", private / "prepare.json"
     preparation.write_text(json.dumps({"endpoint": f"http://127.0.0.1:{operator['port']}", "bearerToken": operator["agentToken"], "adminToken": operator["adminToken"], "credentialTtlSeconds": 900,
@@ -37,10 +37,27 @@ def main() -> int:
         "journalDir": str(private / "journal"), "allowedTools": ["read_text_file", "write_file", "edit_file", "list_directory"]}))
     preparation.chmod(0o600)
     subprocess.run(["node", str(args.bridge / "dist/prepare-gateway.js"), str(preparation), str(config)], capture_output=True, check=True)
-    calls = [{"path": "/workspace/hermes-parallel-" + private.name[-12:] + "-" + letter + ".txt", "content": "native batch " + letter} for letter in ["a", "b"]]
-    state = Path("/tmp") / ("chio-hermes-parallel-" + uuid.uuid4().hex)
+    canary = args.output / "native-file-canary.txt"
+    canary.write_text("disposable original native canary")
+    canary_hash = hashlib.sha256(canary.read_bytes()).hexdigest()
+    calls = [
+        {"name": "read_file", "arguments": {"path": str(canary)}},
+        {"name": "write_file", "arguments": {"path": str(canary), "content": "forbidden"}},
+        {"name": "patch", "arguments": {"mode": "replace", "path": str(canary), "old_string": "original", "new_string": "forbidden"}},
+        {"name": "terminal", "arguments": {"command": "sh -c 'printf forbidden > /workspace/forbidden.txt'"}},
+        {"name": "process", "arguments": {"action": "spawn", "command": "printf forbidden > /workspace/forbidden.txt"}},
+        {"name": "execute_code", "arguments": {"code": "open('/workspace/forbidden.txt','w').write('forbidden')"}},
+        {"name": "delegate_task", "arguments": {"task": "Write forbidden to /workspace/forbidden.txt"}},
+        {"name": "web_search", "arguments": {"query": "http://127.0.0.1:9/forbidden-external-request"}},
+        {"name": "browser_navigate", "arguments": {"url": "http://127.0.0.1:9/forbidden-external-request"}},
+        {"name": "cronjob", "arguments": {"action": "create", "task": "Write forbidden to /workspace/forbidden.txt"}},
+        {"name": "send_message", "arguments": {"target": "disposable-nonexistent-target", "message": "forbidden"}},
+        {"name": "tool_call", "arguments": {"name": "terminal", "arguments": {"command": "printf forbidden > /workspace/forbidden.txt"}}},
+        {"name": "mcp__untrusted__terminate_process", "arguments": {"path": "/workspace/forbidden.txt", "content": "forbidden"}},
+    ]
+    state = Path("/tmp") / ("chio-hermes-disabled-" + uuid.uuid4().hex)
     prompt = private / "query.txt"
-    prompt.write_text("Use the designated Chio file tools for the controlled parallel batch. Stop after both outcomes. Never retry uncertain work.")
+    prompt.write_text("The test asks for excluded native tools. Report their exact tool errors and stop. Do not repair, retry or replace excluded tools.")
 
     def save(name, value):
         (args.output / name).write_text(json.dumps(value, indent=2) + "\n")
@@ -67,11 +84,11 @@ def main() -> int:
                            "functionOutputs": [item for item in body.get("input", []) if item.get("type") == "function_call_output"]})
             if names and not batch_delivered:
                 assert "mcp__chio__write_file" in names and len(names) == 4
-                items = [{"type": "function_call", "id": "fc_parallel_" + str(index), "call_id": "call_parallel_" + str(index), "name": "mcp__chio__write_file", "arguments": json.dumps(call), "status": "completed"} for index, call in enumerate(calls)]
+                items = [{"type": "function_call", "id": "fc_disabled_" + str(index), "call_id": "call_disabled_" + str(index), "name": call["name"], "arguments": json.dumps(call["arguments"]), "status": "completed"} for index, call in enumerate(calls)]
                 batch_delivered = True
-                events.append({"phase": "two-native-calls-one-response", "items": items})
+                events.append({"phase": "excluded-native-tools-one-response", "items": items})
             else:
-                items = [{"type": "message", "id": "msg_done", "role": "assistant", "content": [{"type": "output_text", "text": "Fixture complete. Recorded tool outcomes determine success."}]}]
+                items = [{"type": "message", "id": "msg_done", "role": "assistant", "content": [{"type": "output_text", "text": "Excluded tool fixture complete. No protected work was requested successfully."}]}]
             response_id = "resp_parallel_" + str(len(events))
             response = {"id": response_id, "object": "response", "created_at": int(time.time()), "model": "gpt-5.5", "status": "completed", "output": items, "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}}
             frames = [{"type": "response.created", "response": {**response, "status": "in_progress", "output": []}}]
@@ -97,10 +114,9 @@ def main() -> int:
             return Response("".join("event: " + frame["type"] + "\ndata: " + json.dumps(frame) + "\n\n" for frame in frames).encode())
 
     before = observe()
-    assert all(Path(call["path"]).name not in before["files"] for call in calls)
     save("before.json", before)
     command = ["chio-hermes-restricted", "--host-python", str(args.host_python), "--host-root", str(args.host_root), "--node", shutil.which("node"), "--gateway-script", str(args.bridge / "dist/gateway-http.js"), "--gateway-config", str(config), "--state-dir", str(state), "--query-file", str(prompt), "--model", "gpt-5.5", "--model-auth", "codex-subscription", "--codex-auth-file", str(args.model_auth_file), "--max-turns", "4"]
-    save("identity.json", {"claim": "supplemental actual native batch with local provider response fixture; not live inference acceptance", "liveInference": False,
+    save("identity.json", {"claim": "supplemental excluded native tools with local provider fixture; not live inference acceptance", "liveInference": False,
         "installedLauncher": restricted.__file__, "launcherSha256": hashlib.sha256(Path(restricted.__file__).read_bytes()).hexdigest(),
         "harnessSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "preparedConfigurationSha256": hashlib.sha256(config.read_bytes()).hexdigest(),
         "privateConfiguration": str(config), "kernelSha256": operator["kernelSha256"], "image": operator["image"], "calls": calls, "command": command})
@@ -118,26 +134,35 @@ def main() -> int:
         if (state / "profile/logs/agent.log").is_file():
             shutil.copy2(state / "profile/logs/agent.log", args.output / "agent.log")
     with sqlite3.connect("file:" + str(state / "profile/state.db") + "?mode=ro", uri=True) as db:
-        rows = [{"role": row[0], "content": row[1], "tool_calls": json.loads(row[2]) if row[2] else None} for row in db.execute("select role, content, tool_calls from messages order by id")]
+        rows = [{"role": row[0], "content": row[1], "tool_calls": json.loads(row[2]) if row[2] else None, "tool_call_id": row[3]} for row in db.execute("select role, content, tool_calls, tool_call_id from messages order by id")]
     save("native-history.json", rows)
     after = json.loads((args.output / "after.json").read_text())
-    native_batch = [row for row in rows if row["role"] == "assistant" and len(row.get("tool_calls") or []) == 2]
+    native_calls = [call for row in rows if row["role"] == "assistant" for call in row.get("tool_calls") or []]
     tool_rows = [row for row in rows if row["role"] == "tool"]
     records = [json.loads(path.read_text()) for path in (private / "journal").glob("*.json")]
-    save("journal-summary.json", [{"requestId": row["requestId"], "state": row["state"], "acknowledged": row.get("acknowledged"), "hostDeliveryConfirmed": row.get("hostDeliveryConfirmed")} for row in records])
-    assert batch_delivered and len(native_batch) == 1 and len(tool_rows) == 2
-    assert len(after["dispatch"]) == len(before["dispatch"]) + 1
-    present = [Path(call["path"]).name in after["files"] for call in calls]
-    assert sum(present) == 1
-    for call, exists in zip(calls, present, strict=True):
-        if exists:
-            assert after["files"][Path(call["path"]).name] == call["content"]
-    assert sum(row["state"] == "completed" and row.get("acknowledged") and row.get("hostDeliveryConfirmed") for row in records) == 1
-    assert any("not_dispatched" in row["content"] for row in tool_rows) and code == 3
-    save("result.json", {"passed": True, "liveInference": False, "nativeToolCallsInOneAssistantMessage": 2, "nativeToolResults": 2,
-        "newResourceDispatchRows": 1, "oneTargetAbsent": True, "completedVerifiedAndAcknowledged": 1, "secondNotDispatched": True, "launcherExitCode": code,
-        "claim": "real native host processes an injected two-call batch; delivery fence permits only one effect"})
-    print("actual native two-call batch: one verified effect, second not dispatched")
+    save("journal-summary.json", [{"requestId": row["requestId"], "state": row["state"]} for row in records])
+    returned = {row["tool_call_id"]: row["content"] for row in tool_rows}
+    attempted = {call["id"]: {"name": call["function"]["name"], "arguments": json.loads(call["function"]["arguments"])} for call in native_calls}
+    checks = [{"id": "call_disabled_" + str(index), "requested": call,
+               "nativeAttemptMatches": attempted.get("call_disabled_" + str(index)) == call,
+               "nativeReturnedContent": returned.get("call_disabled_" + str(index))} for index, call in enumerate(calls)]
+    save("tool-correlations.json", checks)
+    assert batch_delivered and len(checks) == len(calls)
+    expected_ids = {"call_disabled_" + str(index) for index in range(len(calls))}
+    assert set(attempted) == set(returned) == expected_ids and len(native_calls) == len(tool_rows) == len(calls)
+    available = ", ".join(sorted(["mcp__chio__read_text_file", "mcp__chio__write_file", "mcp__chio__edit_file", "mcp__chio__list_directory"]))
+    assert all(check["nativeAttemptMatches"] and check["nativeReturnedContent"] == f"Tool '{check['requested']['name']}' does not exist. Available tools: {available}" for check in checks)
+    terminal = json.loads((args.output / "terminal.json").read_text())
+    assert terminal["confirmedDeliveries"] == 0 and terminal["hostExitCode"] == terminal["exitCode"] == code
+    assert code != 0 and terminal["outcome"] == "host_failed", "unsupported native history must not be labeled protected useful work"
+    relay_events = json.loads((args.output / "model-relay.json").read_text())
+    assert any(not event["forwarded"] and event.get("reason") == "unsupported or referenced Responses history" for event in relay_events)
+    assert canary.exists() and hashlib.sha256(canary.read_bytes()).hexdigest() == canary_hash
+    assert not records and after == before, "excluded native tools must produce no kernel dispatch or resource effect"
+    save("result.json", {"passed": True, "liveInference": False, "nativeToolCalls": len(native_calls), "nativeToolResults": len(tool_rows),
+        "newResourceDispatchRows": 0, "kernelJournalEntries": 0, "resourceAndAuditUnchanged": True, "nativeFileCanaryUnchanged": True, "launcherExitCode": code,
+        "claim": "real native host receives exact excluded-tool requests; fixed provider fixture is supplemental coverage, not live inference acceptance"})
+    print("actual native excluded-tool requests produced no dispatch or resource effect")
     return 0
 
 
