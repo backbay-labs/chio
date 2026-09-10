@@ -130,3 +130,15 @@ excluded from public evidence. `raw/credential-exclusion.json` records the scan
 scope; `raw/SHA256SUMS.json` verifies the compressed set. Reproduce by using the
 retained driver snapshots and exact archived runtime inputs with fresh named
 owners and ports; never reuse or clear the original failed authorities.
+
+## Final scoped owner stop
+
+After all assigned host cases completed, the coordinator explicitly authorized
+stopping the remaining 5 solely owned Hermes test kernels, including failed
+and intentionally unknown cases. The supported helper checked each exact PID
+and owner database path before signaling it. Configuration, credentials and
+journal bytes were unchanged; database files, resource volumes and audit volumes
+remain retained. No unknown result was recovered and no authority was renewed.
+The separate `owner-drain/` export contains 13 lossless files and exact stop
+commands, streams, file hashes and retained-state observations. This drain does
+not change any preceding failure or acceptance assertion.
