@@ -1,13 +1,13 @@
 # Syft configuration for Chio release SBOM generation.
 #
-# Pinned tool: anchore/syft v1.18.1 (see release-binaries.yml).
+# Pinned tool: anchore/syft v1.51.1 (see release-binaries.yml).
 # Output: CycloneDX JSON, schema version 1.6.
 # Consumed by the "Emit CycloneDX SBOM" step in
 # .github/workflows/release-binaries.yml and by
 # .github/workflows/sbom.yml. Binary paths and source-tree scans are
 # supplied as positional arguments so this file stays matrix-agnostic.
 # Source-tree SBOMs pass `dir:.` to syft and reuse the same excludes
-# as binary archive scans.
+# as executable scans.
 
 # CycloneDX 1.6 JSON. Syft accepts the schema version as a suffix on
 # the format identifier; without it, syft picks its current default
@@ -29,7 +29,7 @@ exclude:
 # components below an arbitrary confidence threshold.
 #
 # `scope` is a top-level syft config key (not nested under `package`),
-# and cataloger selection in v1.18.x uses top-level
+# and cataloger selection in v1.51.x uses top-level
 # `default-catalogers` / `select-catalogers`.
 scope: all-layers
 default-catalogers:

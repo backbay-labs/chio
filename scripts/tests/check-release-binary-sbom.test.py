@@ -54,7 +54,7 @@ class BinaryInventoryGate(unittest.TestCase):
         self.document = {"bomFormat": "CycloneDX", "specVersion": "1.6",
                          "metadata": {"component": {"type": "file", "bom-ref": "binary",
                                                      "version": "sha256:" + GATE.digest(self.binary)},
-                                      "tools": {"components": [{"name": "syft", "version": "1.18.1"}]}},
+                                      "tools": {"components": [{"name": "syft", "version": "1.51.1"}]}},
                          "components": components,
                          "dependencies": [{"ref": "ref-chio-cli", "dependsOn": [
                              "ref-" + name for name in GATE.CRITICAL]}]}

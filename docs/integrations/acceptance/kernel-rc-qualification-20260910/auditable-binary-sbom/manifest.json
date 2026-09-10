@@ -1,0 +1,180 @@
+{
+  "schema": "chio.release-scanner-qualification.v1",
+  "binarySourceCommit": "0599e9fa3ee337719986f6fd88466f75ba0290dd",
+  "binarySha256": "ca9b669d333a5f592d13d032b37941c06d933b6bf522372c885d77ec1d32b093",
+  "validatorWorkingBase": "bafa02b06de93553cecb6f60b340f3dd8fd9b401",
+  "validatorSha256": "429e2f7cddb4d817fd3c6f8ed38f2d3c056a645c5507102ad15d3681a8d7e09b",
+  "scannerVersion": "1.51.1",
+  "scannerArchiveSha256": "ac063af3b9874769deb7ea1e6d76841e68f9e3bb50cd654226fc977de65532c1",
+  "passed": true,
+  "rustComponents": 742,
+  "inventoryComponents": 743,
+  "dependencyEntries": 570,
+  "oldScannerResult": "Syft 1.18.1 Rust parser rejected little-endian Mach-O as unknown file format and returned no components. Gate refused.",
+  "plainBinaryControl": "Same new scanner still refuses the actual non-auditable binary because its dependency inventory is empty.",
+  "scope": "Actual diagnostic Mach-O Rust inventory only. Source 0599 binary retains Homebrew dynamic linkage. Portable final binary, other target platforms, release provenance and six-host acceptance remain separate.",
+  "files": [
+    {
+      "file": "old-cdx-commands.json.gz",
+      "rawBytes": 980,
+      "rawSha256": "3e3b51709ed7bf351a5767a17b6c699050f078cbd53f596be5d0bd7c63aa532e",
+      "storedSha256": "98b96ce746c547e0df6b7e6fbea38b3d7af36d1ae2e9f7d521bdf8f72c70d302"
+    },
+    {
+      "file": "old-cdx-sbom.json.gz",
+      "rawBytes": 523,
+      "rawSha256": "47127cafb1508ac97736724da257ca32aa189fca93424f03a69429ef9c759ce1",
+      "storedSha256": "61beb337c564c69d04a33e11e8654128e4354a50a569fe8ccc2c616bf4a87804"
+    },
+    {
+      "file": "old-cdx-syft.stderr.gz",
+      "rawBytes": 0,
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+    },
+    {
+      "file": "old-cdx-syft.stdout.gz",
+      "rawBytes": 0,
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+    },
+    {
+      "file": "old-cdx-validator.stderr.gz",
+      "rawBytes": 58,
+      "rawSha256": "9f0ae7749984be0b005e93f9f73459db21bfa1cbecb2fc21933513ce070a6756",
+      "storedSha256": "da0a77536b08b6a3fd7b107f3f71cf3c065dc883414ae90730d84e71a9a9e29d"
+    },
+    {
+      "file": "old-cdx-validator.stdout.gz",
+      "rawBytes": 0,
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+    },
+    {
+      "file": "old-debug-stderr.log.gz",
+      "rawBytes": 3484,
+      "rawSha256": "e8c66c42b307340b6d4daef0d740185d99e61d30d8c83b4fbcd5d3265d35fdfc",
+      "storedSha256": "720216ef3296613d89af2460b470beb4f22fc0fdf4a54b0a6e4413194288acd6"
+    },
+    {
+      "file": "old-debug-stdout.log.gz",
+      "rawBytes": 0,
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+    },
+    {
+      "file": "old-debug-syft.json.gz",
+      "rawBytes": 4066,
+      "rawSha256": "9a3cd400bd016bfd1b7524b127e924ccc602702b9be998feee74574f3ebf649c",
+      "storedSha256": "22a5b059bae20439440cc047a6564e285d886eea3a329fbfc806e187f265adc1"
+    },
+    {
+      "file": "new-actual-positive.stderr.gz",
+      "rawBytes": 0,
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+    },
+    {
+      "file": "new-actual-positive.stdout.gz",
+      "rawBytes": 879,
+      "rawSha256": "db3b8c21f19fdb09e8315977a55557f5aefeeae235e09142f31181dcf7de6618",
+      "storedSha256": "69f3f85a4f16d82df2757cb4b5e0c1ce0abbc2e0fb448526c96fa5cf69dc1a31"
+    },
+    {
+      "file": "new-checks.json.gz",
+      "rawBytes": 1517,
+      "rawSha256": "e0a2c913b814aa9ee32d6a7c180c4b45e77098d0d57610d5835fb9fb549cc59c",
+      "storedSha256": "115c218eb9c08dbcedce12d92afb58b00434b9b6a159d6ba978232c65f0e7647"
+    },
+    {
+      "file": "new-command.json.gz",
+      "rawBytes": 414,
+      "rawSha256": "06481ffe47eb62cb8cc5bf3654186608f688af7adbdb971b8f4870efb9b1314b",
+      "storedSha256": "b45a91f64edb5a43398d2a3a0cb6d8973b1fb8aeb0875ddcf5a62c1c18f256d7"
+    },
+    {
+      "file": "new-mutation-controls.stderr.gz",
+      "rawBytes": 112,
+      "rawSha256": "825a2d428f0bf50da4d69565477f10727855aa1625f4ae11e3bc3865aacbb24b",
+      "storedSha256": "48030b3c1765b9d1c786c3663a8f2e7695f1ccfc799c64c4bd783a2c0f84c12a"
+    },
+    {
+      "file": "new-mutation-controls.stdout.gz",
+      "rawBytes": 0,
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+    },
+    {
+      "file": "new-plain-refusal.stderr.gz",
+      "rawBytes": 58,
+      "rawSha256": "9f0ae7749984be0b005e93f9f73459db21bfa1cbecb2fc21933513ce070a6756",
+      "storedSha256": "da0a77536b08b6a3fd7b107f3f71cf3c065dc883414ae90730d84e71a9a9e29d"
+    },
+    {
+      "file": "new-plain-refusal.stdout.gz",
+      "rawBytes": 0,
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+    },
+    {
+      "file": "new-plain-scan.stderr.gz",
+      "rawBytes": 218,
+      "rawSha256": "15940a45b397e5a02770884e7e7c3c3cbc1545dd23c29fe177159bc8f82c8701",
+      "storedSha256": "8e5cf63dbf9ef90ad6b62a3d8911a62658b403416a191c744c1dc55b4911f25a"
+    },
+    {
+      "file": "new-plain-scan.stdout.gz",
+      "rawBytes": 0,
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+    },
+    {
+      "file": "new-plain.cdx.json.gz",
+      "rawBytes": 516,
+      "rawSha256": "be006bf45fcfd09430dd94fa39f8d989c69644c7178a6634d0992a2d803a9f2b",
+      "storedSha256": "b1fec1c3a90b2948a802b1449bd450adc8522e3dace7d84bbb02d927f1f178ef"
+    },
+    {
+      "file": "new-sbom.json.gz",
+      "rawBytes": 1024304,
+      "rawSha256": "68480305bed4c874efc1aa9fb59f6ce7cccaf033be461d5b53296d36ae837283",
+      "storedSha256": "d841bedfece137171088e9138963329ba2b0c857505bcf7ec16e0acd1f067a9e"
+    },
+    {
+      "file": "new-stderr.log.gz",
+      "rawBytes": 218,
+      "rawSha256": "15940a45b397e5a02770884e7e7c3c3cbc1545dd23c29fe177159bc8f82c8701",
+      "storedSha256": "8e5cf63dbf9ef90ad6b62a3d8911a62658b403416a191c744c1dc55b4911f25a"
+    },
+    {
+      "file": "new-stdout.log.gz",
+      "rawBytes": 0,
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedSha256": "f1b651238a58fe290baec6c5e32f3bdb1943dd2bd582f02569231f7a757c7837"
+    },
+    {
+      "file": "new-syft.json.gz",
+      "rawBytes": 1243531,
+      "rawSha256": "efba56c6e91ac3a35e2223bad15f34dc0538fa98b3dc3cf1f0aa8847b6ff1662",
+      "storedSha256": "74af21f5fa483396b8204869674d4c00657bef0f122c348ec794e10260bffdbd"
+    },
+    {
+      "file": "new-validation.json.gz",
+      "rawBytes": 879,
+      "rawSha256": "db3b8c21f19fdb09e8315977a55557f5aefeeae235e09142f31181dcf7de6618",
+      "storedSha256": "69f3f85a4f16d82df2757cb4b5e0c1ce0abbc2e0fb448526c96fa5cf69dc1a31"
+    },
+    {
+      "file": "syft-1.51.1-checksums.txt.gz",
+      "rawBytes": 2690,
+      "rawSha256": "105346699e7cb694afa37a21e2386432df6278c99f71331c24b1e0bb0f38cc75",
+      "storedSha256": "273ce6094e2675a624d237cb5cc3262db4cf9130137397762b9a75be03294611"
+    },
+    {
+      "file": "frozen-binary.json.gz",
+      "rawBytes": 669,
+      "rawSha256": "4df393e55ea9f3f8cf099f94932332cdbc5325dd41c8e0d5e0e3472befb7d9e0",
+      "storedSha256": "f3230acb75e96edd3d28639c78d8e4c7aeddff42c6c6ff31ba57397c2132b50e"
+    }
+  ]
+}

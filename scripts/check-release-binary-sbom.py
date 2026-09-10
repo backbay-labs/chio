@@ -12,7 +12,7 @@ from urllib.parse import quote
 
 
 CATALOGER = "cargo-auditable-binary-cataloger"
-SYFT_VERSION = "1.18.1"
+SYFT_VERSION = "1.51.1"
 # These are nonoptional runtime dependencies of the CLI, not a package-count floor.
 CRITICAL = ("chio-core", "chio-guards", "chio-kernel", "chio-runtime")
 CLI_MANIFEST = "crates/products/chio-cli/Cargo.toml"

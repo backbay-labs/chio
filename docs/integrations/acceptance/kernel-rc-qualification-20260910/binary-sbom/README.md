@@ -39,12 +39,12 @@ missing critical packages, invalid graph references, and stale report refusal.
 Actionlint, existing release-assurance checks and release-input checks pass.
 These are validator tests, not six-host integration acceptance.
 
-The actual cargo-auditable binary positive is pending. The separately running
-build must produce an inventory that passes this gate. That diagnostic binary
-still depends on local Homebrew libraries and cannot establish portable final
-delivery. The final portable artifact must undergo its own native host
-qualification. Neither the synthetic positive fixture nor the plain-binary
-negative control closes those requirements.
+The [actual cargo-auditable diagnostic positive](../auditable-binary-sbom/README.md)
+now passes with Syft 1.51.1. The original 1.18.1 reader rejected the real
+little-endian Mach-O format before examining its embedded inventory. The
+follow-up records both the old refusal and qualified new scanner result.
+The diagnostic binary retains Homebrew dynamic linkage; final portable
+artifact and real-host qualification remain separate requirements.
 
-Confidence: high in the reproduced empty-inventory failure and negative gate
-behavior. Actual positive compatibility is unresolved until that binary runs.
+Confidence: high in the reproduced empty-inventory refusal and the linked
+actual scanner compatibility result. No six-host acceptance is claimed here.
