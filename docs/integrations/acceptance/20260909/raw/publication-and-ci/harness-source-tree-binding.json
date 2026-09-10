@@ -1,0 +1,26 @@
+{
+  "repository": "backbay-labs/chio-test-harness",
+  "pr": "https://github.com/backbay-labs/chio-test-harness/pull/1",
+  "headSha": "98a0f5e33d63ded80cf36434c448b7ec45c3b413",
+  "currentPrMergeSha": "51c0284d9724d658e4ffb793cba6b40e2ffe2398",
+  "headTree": "5a0601c5cda1442eb909a3c4dde6e440c5fc8eb1",
+  "capturedAt": "2026-09-10T04:08:16.224597+00:00",
+  "runId": 34435362383,
+  "logUncompressedSha256": "0ac5c6bfe63b09814cc241a2a6f5b2efb0875ace3e17905ff946f519ced8e50e",
+  "testedCheckouts": [
+    {
+      "step": "Checkout chio-test-harness",
+      "repository": "backbay-labs/chio-test-harness",
+      "sha": "51c0284d9724d658e4ffb793cba6b40e2ffe2398",
+      "tree": "5a0601c5cda1442eb909a3c4dde6e440c5fc8eb1"
+    },
+    {
+      "step": "Checkout exact kernel source",
+      "repository": "bb-connor/arc",
+      "sha": "d8c5f53705173e614a853bad6c0a85acfdf1212b",
+      "tree": "2605ea628cdd1dabb46a44fdebe7d0612d6b5d21"
+    }
+  ],
+  "testedRepositoryCheckoutTreeEqualsHead": true,
+  "additionalKernelCheckoutIsSeparate": true
+}

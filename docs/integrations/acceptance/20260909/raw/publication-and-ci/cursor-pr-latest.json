@@ -1,0 +1,25 @@
+{
+  "capturedAt": "2026-09-10T04:07:25.740668+00:00",
+  "repository": "backbay-labs/chio-cursor-plugin",
+  "result": {
+    "headRefName": "codex/required-agent-integrations-20260909",
+    "headRefOid": "1dbb2b57ab333b8528ab0481fc4cae1e45810098",
+    "isDraft": true,
+    "number": 1,
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:40:25Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/backbay-labs/chio-cursor-plugin/actions/runs/34434175295/job/102735716963",
+        "name": "test",
+        "startedAt": "2026-09-10T03:39:47Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      }
+    ],
+    "updatedAt": "2026-09-10T03:39:41Z",
+    "url": "https://github.com/backbay-labs/chio-cursor-plugin/pull/1"
+  }
+}

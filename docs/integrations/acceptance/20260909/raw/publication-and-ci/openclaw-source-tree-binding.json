@@ -1,0 +1,22 @@
+{
+  "repository": "backbay-labs/chio-open-claw-plugin",
+  "pr": "https://github.com/backbay-labs/chio-open-claw-plugin/pull/1",
+  "headSha": "647c4fef2b775be84c554ecc03403e2418fb0879",
+  "currentPrMergeSha": "127ea1ef93a45c9b480b192aada57219729312f4",
+  "headTree": "45fffa4caec7f74a4e3c1c1090b80065bd1b6d1a",
+  "capturedAt": "2026-09-10T04:07:26.010325+00:00",
+  "runId": 34434447182,
+  "logUncompressedSha256": "b8833326c5f709d58581a86f644e8c1cd23d97483296976fa294b8f970341fdb",
+  "checkoutShas": [
+    "127ea1ef93a45c9b480b192aada57219729312f4"
+  ],
+  "testedCheckouts": [
+    {
+      "sha": "127ea1ef93a45c9b480b192aada57219729312f4",
+      "tree": "45fffa4caec7f74a4e3c1c1090b80065bd1b6d1a"
+    }
+  ],
+  "testedCheckoutTreesEqualHead": true,
+  "currentPrMergeTree": "45fffa4caec7f74a4e3c1c1090b80065bd1b6d1a",
+  "currentPrMergeTreeEqualsHead": true
+}

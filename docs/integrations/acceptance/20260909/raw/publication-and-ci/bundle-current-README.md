@@ -34,12 +34,12 @@ actual kernel admission and receipt-storage failure cases, with original-authori
 retry/restart fencing and independent resource observations. No archive is accepted.
 
 Public draft source PRs and captured hosted checks are recorded in
-[the source and CI checkpoint](PUBLIC-SOURCE-AND-CI.md). Five standalone plugin
+[the source and CI checkpoint](https://github.com/bb-connor/arc/pull/1156). Five standalone plugin
 source CI runs and the shared harness passed; bridge CI was still running at the
 2026-09-10 04:07 UTC snapshot. Successful checks used synthetic PR merges whose
 Git trees match the recorded source heads. Hermes remains in the separate ARC
 source/release lane. These source
-checks do not replace the [kernel release-readiness gates](../kernel-release-readiness-20260909/README.md),
+checks do not replace the [kernel release-readiness gates](https://github.com/bb-connor/arc/pull/1156),
 Cursor's missing enforcement contract, or compatible-combination publication.
 The selected 48-entry artifact manifest remains a local candidate selection.
 Released storage-test owners were stopped without deleting databases, journals,

@@ -1,0 +1,10 @@
+{
+  "repository": "backbay-labs/chio-bridge",
+  "pr": "https://github.com/backbay-labs/chio-bridge/pull/1",
+  "headSha": "e3a9ab685f901c4fa54f31551ff7484a47e673d4",
+  "currentPrMergeSha": "75d598ef43ed685480fb65961cbf63f3816b36b1",
+  "headTree": "f0b0de932029b576c811604587a9d9a5a63eb7ea",
+  "capturedAt": "2026-09-10T04:07:29.902525+00:00",
+  "currentPrMergeTree": "f0b0de932029b576c811604587a9d9a5a63eb7ea",
+  "currentPrMergeTreeEqualsHead": true
+}

@@ -1,0 +1,22 @@
+{
+  "repository": "backbay-labs/chio-claude-code-plugin",
+  "pr": "https://github.com/backbay-labs/chio-claude-code-plugin/pull/1",
+  "headSha": "34c7d7b1976d7bc672988c1b3ed7b26073133e79",
+  "currentPrMergeSha": "47493b0777ca7ae19d7be4df943073f4f4a437a5",
+  "headTree": "2dd446355c9d86176f01bb255684bc8ed9944e85",
+  "capturedAt": "2026-09-10T04:07:25.607449+00:00",
+  "runId": 34434143983,
+  "logUncompressedSha256": "ecfd600962e826cc73d73c9ea02a4b60af7b7b845b28056ccf17779af1159b73",
+  "checkoutShas": [
+    "47493b0777ca7ae19d7be4df943073f4f4a437a5"
+  ],
+  "testedCheckouts": [
+    {
+      "sha": "47493b0777ca7ae19d7be4df943073f4f4a437a5",
+      "tree": "2dd446355c9d86176f01bb255684bc8ed9944e85"
+    }
+  ],
+  "testedCheckoutTreesEqualHead": true,
+  "currentPrMergeTree": "2dd446355c9d86176f01bb255684bc8ed9944e85",
+  "currentPrMergeTreeEqualsHead": true
+}

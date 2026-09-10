@@ -1,0 +1,25 @@
+{
+  "capturedAt": "2026-09-10T04:07:25.607449+00:00",
+  "repository": "backbay-labs/chio-claude-code-plugin",
+  "result": {
+    "headRefName": "codex/required-agent-integrations-20260909",
+    "headRefOid": "34c7d7b1976d7bc672988c1b3ed7b26073133e79",
+    "isDraft": true,
+    "number": 1,
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:39:49Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/backbay-labs/chio-claude-code-plugin/actions/runs/34434143983/job/102735624251",
+        "name": "source-package",
+        "startedAt": "2026-09-10T03:39:15Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      }
+    ],
+    "updatedAt": "2026-09-10T03:39:09Z",
+    "url": "https://github.com/backbay-labs/chio-claude-code-plugin/pull/1"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "host": "cursor",
+  "repository": "backbay-labs/chio-cursor-plugin",
+  "head": "1dbb2b57ab333b8528ab0481fc4cae1e45810098",
+  "branch": "codex/required-agent-integrations-20260909",
+  "actions": [
+    {
+      "command": [
+        "git",
+        "push",
+        "--no-follow-tags",
+        "origin",
+        "1dbb2b57ab333b8528ab0481fc4cae1e45810098:refs/heads/codex/required-agent-integrations-20260909"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "remote: \nremote: Create a pull request for 'codex/required-agent-integrations-20260909' on GitHub by visiting:        \nremote:      https://github.com/backbay-labs/chio-cursor-plugin/pull/new/codex/required-agent-integrations-20260909        \nremote: \nTo https://github.com/backbay-labs/chio-cursor-plugin.git\n * [new branch]      1dbb2b57ab333b8528ab0481fc4cae1e45810098 -> codex/required-agent-integrations-20260909\n"
+    },
+    {
+      "command": [
+        "gh",
+        "pr",
+        "create",
+        "--repo",
+        "backbay-labs/chio-cursor-plugin",
+        "--base",
+        "main",
+        "--head",
+        "codex/required-agent-integrations-20260909",
+        "--draft",
+        "--title",
+        "fix: isolate Cursor MCP discovery and refuse unqualified execution",
+        "--body-file",
+        "/tmp/chio-plugin-ci-preparation-20260909/prs/cursor-body.md"
+      ],
+      "exitCode": 0,
+      "stdout": "https://github.com/backbay-labs/chio-cursor-plugin/pull/1\n",
+      "stderr": ""
+    }
+  ]
+}

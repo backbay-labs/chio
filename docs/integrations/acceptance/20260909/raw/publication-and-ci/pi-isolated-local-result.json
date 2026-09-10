@@ -1,0 +1,30 @@
+{
+  "source": "82aa3dd + test-only auth fix",
+  "environmentKeys": [
+    "HOME",
+    "LANG",
+    "PATH",
+    "PI_CODING_AGENT_DIR",
+    "TMPDIR",
+    "XDG_CONFIG_HOME"
+  ],
+  "isolatedHome": "/tmp/chio-pi-ci-fixture-auth-final-20260910-msljw0br/home",
+  "providerEnvironmentVariables": "none inherited; child receives only listed environment keys",
+  "results": [
+    {
+      "command": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "exitCode": 0
+    },
+    {
+      "command": [
+        "npm",
+        "test"
+      ],
+      "exitCode": 0
+    }
+  ]
+}

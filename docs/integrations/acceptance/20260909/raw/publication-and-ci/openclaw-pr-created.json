@@ -1,0 +1,41 @@
+{
+  "host": "openclaw",
+  "repository": "backbay-labs/chio-open-claw-plugin",
+  "head": "647c4fef2b775be84c554ecc03403e2418fb0879",
+  "branch": "codex/required-agent-integrations-20260909",
+  "actions": [
+    {
+      "command": [
+        "git",
+        "push",
+        "--no-follow-tags",
+        "origin",
+        "647c4fef2b775be84c554ecc03403e2418fb0879:refs/heads/codex/required-agent-integrations-20260909"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "remote: \nremote: Create a pull request for 'codex/required-agent-integrations-20260909' on GitHub by visiting:        \nremote:      https://github.com/backbay-labs/chio-open-claw-plugin/pull/new/codex/required-agent-integrations-20260909        \nremote: \nTo https://github.com/backbay-labs/chio-open-claw-plugin.git\n * [new branch]      647c4fef2b775be84c554ecc03403e2418fb0879 -> codex/required-agent-integrations-20260909\n"
+    },
+    {
+      "command": [
+        "gh",
+        "pr",
+        "create",
+        "--repo",
+        "backbay-labs/chio-open-claw-plugin",
+        "--base",
+        "main",
+        "--head",
+        "codex/required-agent-integrations-20260909",
+        "--draft",
+        "--title",
+        "feat: add native OpenClaw kernel execution with isolated authority",
+        "--body-file",
+        "/tmp/chio-plugin-ci-preparation-20260909/prs/openclaw-body.md"
+      ],
+      "exitCode": 0,
+      "stdout": "https://github.com/backbay-labs/chio-open-claw-plugin/pull/1\n",
+      "stderr": ""
+    }
+  ]
+}

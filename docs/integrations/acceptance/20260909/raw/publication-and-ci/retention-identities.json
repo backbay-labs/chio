@@ -1,0 +1,82 @@
+[
+  {
+    "source": "/tmp/chio-storage-owner-shutdown-20260910.json",
+    "retained": "storage-owner-shutdown.json",
+    "sha256": "ba54f23277ea582ecf5a95669d6da0f12cc44eb579850c89da82254e8c928718",
+    "byteExact": true
+  },
+  {
+    "source": "/tmp/chio-root-source-publication-20260909.json",
+    "retained": "source-publication.json",
+    "sha256": "274b1885ceb9e210204ca794660d4c03a41069d34169085d77ebaac158bbbe08",
+    "byteExact": true
+  },
+  {
+    "source": "/tmp/chio-root-lfs-mirror-verification-20260909.json",
+    "retained": "lfs-mirror-verification.json",
+    "sha256": "dfc1b9749217fae95e08382f4b47529dc55d49dc278d5c62c01b8347b89e913d",
+    "byteExact": true
+  },
+  {
+    "source": "/tmp/chio-root-release-run-20260910.json",
+    "retained": "root-release-run-start.json",
+    "sha256": "9cbaa039d6d6d0b093007098fc8afb0c0d1bec37a684664b405a9b0416924745",
+    "byteExact": true
+  },
+  {
+    "source": "/tmp/chio-pi-first-hosted-ci-failure-20260909.log",
+    "retained": "pi-first-hosted-ci-failure.log.gz",
+    "encoding": "gzip",
+    "uncompressedSha256": "5eaea8ead5913b858bd2de9005b192eef2a5ccf1b7f82bac083a639c76cc9d1e",
+    "compressedSha256": "1f068c7e41504698c80fe5f0574e24b5aa911fb2a89f0fdc4cc9ee7d7fa472b3",
+    "roundTripByteExact": true
+  },
+  {
+    "source": "/tmp/chio-current-publication-ci-20260910/pi-fixed-success.log",
+    "retained": "pi-fixed-hosted-ci-success.log.gz",
+    "encoding": "gzip",
+    "uncompressedSha256": "be745fd45fa1bc0284f4de1f13da457cc7049b7c6997f85ade33449beb6b4e7e",
+    "compressedSha256": "7e9acff762518d6c791a12b73cfbed91c1ef0e15aef40788de1000b937000214",
+    "roundTripByteExact": true
+  },
+  {
+    "source": "/tmp/chio-pi-ci-fixture-auth-final-20260910-msljw0br/typecheck.stdout",
+    "retained": "pi-isolated-local-typecheck.stdout.gz",
+    "encoding": "gzip",
+    "uncompressedSha256": "dd9f714e53ef88d74661cd603f34a1b31ace434cd88691563f5b6ae66ff632a0",
+    "compressedSha256": "2fca7a74475484dad559cd79fd2aba8685a1298ac47499e9a923a0c7c9582719",
+    "roundTripByteExact": true
+  },
+  {
+    "source": "/tmp/chio-pi-ci-fixture-auth-final-20260910-msljw0br/typecheck.stderr",
+    "retained": "pi-isolated-local-typecheck.stderr.gz",
+    "encoding": "gzip",
+    "uncompressedSha256": "41dbe01d0aca81aba3b1a2e35261214ea4be6286c4a0f38509a81428e6e90264",
+    "compressedSha256": "54aef8a6a45bbee2a7627823cdd1f7706f13a8c124ce79fd1971c4c8dd12f4cc",
+    "roundTripByteExact": true
+  },
+  {
+    "source": "/tmp/chio-pi-ci-fixture-auth-final-20260910-msljw0br/tests.stdout",
+    "retained": "pi-isolated-local-tests.stdout.gz",
+    "encoding": "gzip",
+    "uncompressedSha256": "ecc75c912e8af8bf6c5a49e50f9a3459ef61f9943ea433395ef924aab6bb563e",
+    "compressedSha256": "5028f7e211768928c48c7387c428dc986ef3b00deed877e9da13fb5264b744bc",
+    "roundTripByteExact": true
+  },
+  {
+    "source": "/tmp/chio-pi-ci-fixture-auth-final-20260910-msljw0br/tests.stderr",
+    "retained": "pi-isolated-local-tests.stderr.gz",
+    "encoding": "gzip",
+    "uncompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "compressedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "roundTripByteExact": true
+  },
+  {
+    "source": "git show b24b14e -- test/host-contract.test.mjs",
+    "retained": "pi-fixture-auth-fix.patch.gz",
+    "encoding": "gzip",
+    "uncompressedSha256": "c19a844de0faa2b55560198592b74fbac9e8fc5489b647089260da9d11ea5c12",
+    "compressedSha256": "ad94eadb373e48d34c6a755d1e7a302df16657c821302308cdc66a9ee71fe7d2",
+    "roundTripByteExact": true
+  }
+]

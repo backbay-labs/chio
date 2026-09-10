@@ -1,0 +1,322 @@
+{
+  "schema": "chio.required-agent-candidates.v1",
+  "status": "unaccepted qualification candidates, 0 of 6 accepted",
+  "operatingSystem": "macOS arm64; OpenClaw runs in Docker Linux arm64",
+  "kernelSource": "d8c5f53705173e614a853bad6c0a85acfdf1212b",
+  "kernelVersionWarning": "Both original shipped CLI and candidate report 0.1.0; select exact SHA256 only",
+  "entries": [
+    {
+      "component": "kernel",
+      "path": "bin/chio",
+      "sha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+      "bytes": 320619840
+    },
+    {
+      "component": "sdk",
+      "path": "packages/chio-protocol-sdk-0.1.1-rc.1.tgz",
+      "sha256": "ea8639364db147ed0a9d590f58d532f93c84200a47c3245b1facdaf8f776eb90",
+      "bytes": 55457
+    },
+    {
+      "component": "bridge",
+      "path": "packages/chio-bridge-0.3.0.tgz",
+      "sha256": "7d9e34f7408a316e35125982a23faaecfd2f31f4da6b50ca8eab287c2c918f67",
+      "bytes": 935678
+    },
+    {
+      "component": "claude",
+      "path": "packages/chio-claude-code-plugin-0.3.0.tgz",
+      "sha256": "0dd0d906fc34b3ac7d09e3b7f6cdee9f13f511731b25ec761feca7172c9b1158",
+      "bytes": 4952176,
+      "sourceRevision": "c91cd81",
+      "qualification": "Current r5 native shared, useful, fault, storage, authority, recovery, confinement and lifecycle cases passed; public release remains gated."
+    },
+    {
+      "component": "codex",
+      "path": "packages/chio-codex-plugin-0.3.0.tgz",
+      "sha256": "ac4f14ee4073abdc0c9ff2b4771e99adf7a871d084a9b488513f5d28eae56874",
+      "bytes": 5135043,
+      "sourceRevision": "e3df903",
+      "qualification": "current local candidate; full I01-I08 unresolved"
+    },
+    {
+      "component": "cursor",
+      "path": "packages/chio-cursor-0.3.0.tgz",
+      "sha256": "3bf370db52da7e5b6811ede6e74c5b3d197b96666b80e78c186d441feb4cde4a",
+      "bytes": 3410309,
+      "sourceRevision": "cb39b30",
+      "qualification": "authenticated status and installation only; protected prompt mode refuses pending server enforcement contract"
+    },
+    {
+      "component": "pi",
+      "path": "packages/chio-pi-plugin-0.1.0.tgz",
+      "sha256": "ec6095390b9eae233540b73aee0ad2fef6977c36122dd30aa2779329b1897aa1",
+      "bytes": 5620966,
+      "sourceRevision": "2ccc027",
+      "qualification": "current local candidate; full I01-I08 unresolved"
+    },
+    {
+      "component": "openclaw",
+      "path": "packages/chio-openclaw-kernel-0.1.0.tgz",
+      "sha256": "a79dbffa8356a608f22db847e100d1989cb7ff322ab1315144774decb2b13ab4",
+      "bytes": 4663730,
+      "sourceRevision": "f6627ae",
+      "qualification": "current local candidate; full I01-I08 unresolved",
+      "imageId": "sha256:7f925d68ced724f4a6314ab76dc117e9000515ba62149ee971a11c510be6637f"
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/anyio-4.15.1-py3-none-any.whl",
+      "sha256": "6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101",
+      "bytes": 132079
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/chio_code_agent-0.1.0-py3-none-any.whl",
+      "sha256": "5d7964db8cf91bb045990f887f66f2e28abf3382e28f236b6a16b7eb8b9f2098",
+      "bytes": 14932
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/httpx-0.28.1-py3-none-any.whl",
+      "sha256": "d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad",
+      "bytes": 73517
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/idna-3.19-py3-none-any.whl",
+      "sha256": "815e7be7a7806d54abb586dc943addc79e8b2ee16915059658cbeff4b1b43bf4",
+      "bytes": 68550
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/chio_hermes-0.1.2-py3-none-any.whl",
+      "sha256": "625979d5331796e7aef5906e69e3e2c746796aa570291af026c305ed4227c818",
+      "bytes": 60406,
+      "sourceRevision": "476ab366b",
+      "bridgeArchive": "packages/chio-bridge-hermes-0.3.0-b7785282b4f4.tgz",
+      "qualification": "current local candidate; full I01-I08 unresolved"
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/chio_adapter_base-0.2.0-py3-none-any.whl",
+      "sha256": "1b19a256d049a6addd1f2e7548b36be078d5f5bb55813be808df53a288e002fb",
+      "bytes": 43217
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/pyyaml-6.0.3-cp311-cp311-macosx_11_0_arm64.whl",
+      "sha256": "652cb6edd41e718550aad172851962662ff2681490a8a711af6a4d288dd96824",
+      "bytes": 175577
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/typing_inspection-0.4.4-py3-none-any.whl",
+      "sha256": "65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147",
+      "bytes": 14750
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/h11-0.16.0-py3-none-any.whl",
+      "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86",
+      "bytes": 37515
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/pydantic_core-2.46.5-cp311-cp311-macosx_11_0_arm64.whl",
+      "sha256": "d625a186a65201c23a9e3b8ed9c47e90a026e03256608cc91851c6709096844f",
+      "bytes": 1921751
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/chio_sdk_python-0.1.0-py3-none-any.whl",
+      "sha256": "d111fb935e4fcf7a3ccf6d11be662905d597eceb67a2cc716db21b6feb6744d4",
+      "bytes": 119761
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/httpcore-1.0.9-py3-none-any.whl",
+      "sha256": "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55",
+      "bytes": 78784
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/annotated_types-0.8.0-py3-none-any.whl",
+      "sha256": "f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0",
+      "bytes": 13427
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/typing_extensions-4.16.0-py3-none-any.whl",
+      "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+      "bytes": 45571
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/certifi-2026.7.22-py3-none-any.whl",
+      "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",
+      "bytes": 136983
+    },
+    {
+      "component": "hermes-wheelhouse",
+      "path": "hermes-wheelhouse/pydantic-2.13.5-py3-none-any.whl",
+      "sha256": "346a034f080da3755d8e9cb5e00e8b07de1d39e4f6e2c87d8ab7cafa0b269a73",
+      "bytes": 472589
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/filesystem-policy.yaml",
+      "sha256": "8c2c732d9115799b13150f7924da0e68fc1f9b2d42a2618912511d407035cc66",
+      "bytes": 631
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/serve-filesystem.py",
+      "sha256": "24187dd47e497d226fb0b1f6652a006a2514cff6bc84fea9b35361e948ed6399",
+      "bytes": 7273
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/README.md",
+      "sha256": "001c1e8e90cadadbb246608a95fc78777e186a6091488aaa515e1035ae523afa",
+      "bytes": 9359
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/.gitignore",
+      "sha256": "fd4494072f5f5838730afe8f712bd9979b08ac5d7c610cc5dcf7a37c0bf7c4d2",
+      "bytes": 41
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/filesystem/audit-tool-server.mjs",
+      "sha256": "23c83a3568a5d42af9a99e8bc837d4f17ef5b5bb18efeec4af502b5f7779c2ef",
+      "bytes": 3242
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/filesystem/Dockerfile",
+      "sha256": "77f2663126d62d2389b5545b9d5b9b81fa48d8d9a4c60f2d988985f303ae8404",
+      "bytes": 340
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/filesystem/.dockerignore",
+      "sha256": "91fb37c057288d275a49e56486329c2acd81ec919620989a6dc894b458c3260f",
+      "bytes": 18
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/filesystem/package-lock.json",
+      "sha256": "4384dc77e864e86fc303e37e8311e46d50eb11797f9731244e6c095d6509c0d3",
+      "bytes": 46343
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/filesystem/package.json",
+      "sha256": "d8de419c0eca84eea6b32b9959b628e329a4bcc6275b9f4b582a0fa0056e4eaf",
+      "bytes": 337
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/qualification/stdio_response_barrier.py",
+      "sha256": "a690f141d14fb3b9a18a8541e89bb5eabf76a18f71e504ad16cd2878bec398b6",
+      "bytes": 1775
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/qualification/shared_kernel.py",
+      "sha256": "0d100b8836de951c3e3ac5f6c0830c71c8d25eb50f0bfef20443832246a49e22",
+      "bytes": 38395
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/qualification/operator_approval.py",
+      "sha256": "53c2f473b620b7d847d31da2a927202e6476aee6c1b940b7bfaf02728f46abf8",
+      "bytes": 3114
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/qualification/README.md",
+      "sha256": "5b4726bf13d346059a1f96cb87d62eec430e89576aed48bab9b6ad9b802d1fe6",
+      "bytes": 5978
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/qualification/APPROVALS.md",
+      "sha256": "52cbfb054abc4fafaaed83737edfee32047bb26d9acf840473cf0e8332924ee6",
+      "bytes": 4133
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/qualification/approval-policy.yaml",
+      "sha256": "949ed40e3dce6f2f02b5a5246ea9d0adc7d4bfd45faeff0e18d748a6f0314650",
+      "bytes": 506
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/qualification/resource_audit.py",
+      "sha256": "6a61f43e8c6d182d2da6083990f2c4e805f7629157f3c2e28f14265104238582",
+      "bytes": 6425
+    },
+    {
+      "component": "docker-image",
+      "path": "images/filesystem-owner.tar",
+      "sha256": "e7cc7dd9f0f35a1aa1926c9c3aff733d9d07c716a5314885a49fc0579ba05358",
+      "bytes": 90001408,
+      "imageId": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0"
+    },
+    {
+      "component": "docker-image",
+      "path": "images/openclaw-host.tar",
+      "sha256": "2a8c1471a1126b2390a2d98ce727cea052f46b5c66c98b5a71b7ff5461bbdb6c",
+      "bytes": 354181120,
+      "imageId": "sha256:7f925d68ced724f4a6314ab76dc117e9000515ba62149ee971a11c510be6637f"
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/prepare-session.py",
+      "sha256": "662986b01bca757163b48e2b5179b3a3a58d7f619950dbc16c43c6c09deba863",
+      "bytes": 1816
+    },
+    {
+      "component": "instructions",
+      "path": "README.md",
+      "sha256": "f5af3be025a563a7e1201c1721eb1b8e88a4e72795490f218a71564ee38da0fc",
+      "bytes": 13796
+    },
+    {
+      "component": "hermes-bridge",
+      "path": "packages/chio-bridge-hermes-0.3.0-b7785282b4f4.tgz",
+      "sha256": "b7785282b4f4e4da42e4158c7390a2d1411ba2763b01956b07896aadf6dcc6d9",
+      "bytes": 934950
+    },
+    {
+      "component": "operator-bridge",
+      "path": "packages/chio-bridge-operator-0.3.0-02a0e4ad4e61.tgz",
+      "sha256": "02a0e4ad4e61ffb989302cae8774a9ae9ab8f647473f1926d1e671673169a37b",
+      "bytes": 939735
+    },
+    {
+      "component": "resource-owner",
+      "path": "resource-owner/export-owner-outcome.py",
+      "sha256": "b795973deadfa255768a4e4eb07e9755decc4de1f75746e49f6a19f2f4ba12fb",
+      "bytes": 2858
+    },
+    {
+      "component": "cursor-vsix",
+      "path": "packages/chio-cursor-0.3.0.vsix",
+      "sha256": "e2a8023475fea4ceb9464423e548a1aed0129872fe0d6d75f48bea32e98517f4",
+      "bytes": 496699,
+      "sourceRevision": "cb39b30",
+      "qualification": "current local candidate; full I01-I08 unresolved"
+    }
+  ],
+  "missing": [
+    "Cursor server-enforced pre-dispatch restriction and bounded authenticated relay",
+    "Exact-source hosted release/security qualification",
+    "Compatible-combination public publication"
+  ],
+  "superseded": "superseded/pre-native-subscriptions, pre-host-supervision and hermes-r9 retain prior selections; never combine their results with current artifacts",
+  "qualificationStatus": "Five hosts passed their retained current-artifact local functional and failure cases. Cursor and all public release gates remain unresolved. Zero of six accepted."
+}

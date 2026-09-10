@@ -14,6 +14,30 @@ revisions, dirty files, environment and document hashes are in
 [source-baseline.json](raw/source-baseline.json). All six remain mandatory;
 three accepted systems would only be an intermediate milestone.
 
+## Current source, storage and release checkpoint (2026-09-10 UTC)
+
+The five working hosts completed their separate current-artifact admission-store
+and receipt-store failure cases, including useful positive controls, original-authority
+retry and same-owner restart. Cursor's server-owned enforcement boundary remains
+unresolved. No host is accepted and no runtime archive has been promoted.
+
+The [public source and CI record](PUBLIC-SOURCE-AND-CI.md) binds the seven draft
+plugin/bridge/harness PRs to exact heads and captured checks. Five standalone plugin
+source CI runs and the separate harness check passed; bridge CI was still running
+at the 04:07 UTC snapshot. Checkout logs and Git tree identities bind the passing
+merge checks to the recorded source heads. Hermes is part of the ARC source PR. ARC's own failed and
+unfinished checks and its queued full release qualifier remain independent gates.
+The [kernel release-readiness report](../kernel-release-readiness-20260909/README.md)
+retains the yanked dependency blocker, incomplete full qualifier and rejected
+TypeScript release-driver success. Green plugin source CI does not close them.
+
+All 15 released storage-test kernels on ports 58512-58526 were stopped with the
+supported launcher; three rejected Claude setup owners were already stopped.
+The [byte-exact shutdown record](raw/publication-and-ci/storage-owner-shutdown.json)
+records unchanged logical database contents, configs/journals and 36 retained
+resource/audit volumes. The six excluded healthy listener PIDs were unchanged.
+This process cleanup preserves unknown outcomes and is not a new acceptance test.
+
 ## Current host records
 
 Paths in this table are relative to `/Users/connor/Medica/backbay/standalone`.
@@ -703,9 +727,9 @@ failure observations. These local journal faults are separate from kernel store
 failures. [Shared kernel storage qualification](../shared-kernel-storage-qualification-20260909/REPORT.md)
 records three actual SQLite failure cutpoints, including restart and signed
 fences. Before admission there were zero effects. Both post-effect cuts retained
-one effect and caller uncertainty, with no automatic redispatch. Every host is
-running these same storage cuts independently; the shared probe does not count
-as host acceptance. The selected inline software Ed25519 signer has no recoverable
+one effect and caller uncertainty, with no automatic redispatch. Each of the five working hosts subsequently completed these storage cuts
+independently, as recorded in the five-host completion section below; the shared
+probe does not count as host acceptance. The selected inline software Ed25519 signer has no recoverable
 primitive-error branch or external signing queue. That source conclusion is
 separate from the executed failures of the surrounding durable stores.
 

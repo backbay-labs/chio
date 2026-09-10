@@ -1,0 +1,35 @@
+{
+  "capturedAt": "2026-09-10T04:01:04.288260+00:00",
+  "repository": "backbay-labs/chio-pi-plugin",
+  "command": [
+    "gh",
+    "pr",
+    "view",
+    "1",
+    "--repo",
+    "backbay-labs/chio-pi-plugin",
+    "--json",
+    "number,url,isDraft,headRefOid,headRefName,state,updatedAt,statusCheckRollup"
+  ],
+  "result": {
+    "headRefName": "codex/pi-kernel-integration",
+    "headRefOid": "b24b14e9c4d69261ab39eb9507db45bc07cba96f",
+    "isDraft": true,
+    "number": 1,
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:58:16Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/backbay-labs/chio-pi-plugin/actions/runs/34435298347/job/102738991841",
+        "name": "test",
+        "startedAt": "2026-09-10T03:57:32Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      }
+    ],
+    "updatedAt": "2026-09-10T03:57:25Z",
+    "url": "https://github.com/backbay-labs/chio-pi-plugin/pull/1"
+  }
+}

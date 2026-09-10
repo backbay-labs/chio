@@ -1,0 +1,22 @@
+{
+  "repository": "backbay-labs/chio-pi-plugin",
+  "pr": "https://github.com/backbay-labs/chio-pi-plugin/pull/1",
+  "headSha": "b24b14e9c4d69261ab39eb9507db45bc07cba96f",
+  "currentPrMergeSha": "74fd0e9689a37e93248e373ef133070ce1159c65",
+  "headTree": "ac54d3c51cdfada1bb7cafe7817ff5f5095f6930",
+  "capturedAt": "2026-09-10T04:07:29.657751+00:00",
+  "runId": 34435298347,
+  "logUncompressedSha256": "be745fd45fa1bc0284f4de1f13da457cc7049b7c6997f85ade33449beb6b4e7e",
+  "checkoutShas": [
+    "74fd0e9689a37e93248e373ef133070ce1159c65"
+  ],
+  "testedCheckouts": [
+    {
+      "sha": "74fd0e9689a37e93248e373ef133070ce1159c65",
+      "tree": "ac54d3c51cdfada1bb7cafe7817ff5f5095f6930"
+    }
+  ],
+  "testedCheckoutTreesEqualHead": true,
+  "currentPrMergeTree": "ac54d3c51cdfada1bb7cafe7817ff5f5095f6930",
+  "currentPrMergeTreeEqualsHead": true
+}

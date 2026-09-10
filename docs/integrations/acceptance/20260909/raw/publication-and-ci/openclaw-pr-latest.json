@@ -1,0 +1,25 @@
+{
+  "capturedAt": "2026-09-10T04:07:26.010325+00:00",
+  "repository": "backbay-labs/chio-open-claw-plugin",
+  "result": {
+    "headRefName": "codex/required-agent-integrations-20260909",
+    "headRefOid": "647c4fef2b775be84c554ecc03403e2418fb0879",
+    "isDraft": true,
+    "number": 1,
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:44:26Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/backbay-labs/chio-open-claw-plugin/actions/runs/34434447182/job/102736507159",
+        "name": "test",
+        "startedAt": "2026-09-10T03:44:01Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      }
+    ],
+    "updatedAt": "2026-09-10T03:43:56Z",
+    "url": "https://github.com/backbay-labs/chio-open-claw-plugin/pull/1"
+  }
+}

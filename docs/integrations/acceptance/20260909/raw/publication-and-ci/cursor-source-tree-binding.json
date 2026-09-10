@@ -1,0 +1,22 @@
+{
+  "repository": "backbay-labs/chio-cursor-plugin",
+  "pr": "https://github.com/backbay-labs/chio-cursor-plugin/pull/1",
+  "headSha": "1dbb2b57ab333b8528ab0481fc4cae1e45810098",
+  "currentPrMergeSha": "8818160c1ca52d036dd3172a07c5fa843f17f124",
+  "headTree": "fbcff80350c3e7cd5f0741100c3b52339d265f48",
+  "capturedAt": "2026-09-10T04:07:25.740668+00:00",
+  "runId": 34434175295,
+  "logUncompressedSha256": "910791598295909fae96a3d31422d28b77a8049fe35fae245ad371614b283149",
+  "checkoutShas": [
+    "8818160c1ca52d036dd3172a07c5fa843f17f124"
+  ],
+  "testedCheckouts": [
+    {
+      "sha": "8818160c1ca52d036dd3172a07c5fa843f17f124",
+      "tree": "fbcff80350c3e7cd5f0741100c3b52339d265f48"
+    }
+  ],
+  "testedCheckoutTreesEqualHead": true,
+  "currentPrMergeTree": "fbcff80350c3e7cd5f0741100c3b52339d265f48",
+  "currentPrMergeTreeEqualsHead": true
+}

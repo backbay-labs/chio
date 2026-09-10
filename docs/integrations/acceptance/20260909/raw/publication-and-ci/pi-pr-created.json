@@ -1,0 +1,41 @@
+{
+  "host": "pi",
+  "repository": "backbay-labs/chio-pi-plugin",
+  "head": "82aa3dd9b8126941c7fa3ea800bcb26a2cb1684c",
+  "branch": "codex/pi-kernel-integration",
+  "actions": [
+    {
+      "command": [
+        "git",
+        "push",
+        "--no-follow-tags",
+        "origin",
+        "82aa3dd9b8126941c7fa3ea800bcb26a2cb1684c:refs/heads/codex/pi-kernel-integration"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "remote: \nremote: Create a pull request for 'codex/pi-kernel-integration' on GitHub by visiting:        \nremote:      https://github.com/backbay-labs/chio-pi-plugin/pull/new/codex/pi-kernel-integration        \nremote: \nTo https://github.com/backbay-labs/chio-pi-plugin.git\n * [new branch]      82aa3dd9b8126941c7fa3ea800bcb26a2cb1684c -> codex/pi-kernel-integration\n"
+    },
+    {
+      "command": [
+        "gh",
+        "pr",
+        "create",
+        "--repo",
+        "backbay-labs/chio-pi-plugin",
+        "--base",
+        "main",
+        "--head",
+        "codex/pi-kernel-integration",
+        "--draft",
+        "--title",
+        "feat: add isolated Pi kernel execution and native subscription support",
+        "--body-file",
+        "/tmp/chio-plugin-ci-preparation-20260909/prs/pi-body.md"
+      ],
+      "exitCode": 0,
+      "stdout": "https://github.com/backbay-labs/chio-pi-plugin/pull/1\n",
+      "stderr": ""
+    }
+  ]
+}

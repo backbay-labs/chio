@@ -1,0 +1,35 @@
+{
+  "capturedAt": "2026-09-10T04:01:04.292027+00:00",
+  "repository": "backbay-labs/chio-codex-plugin",
+  "command": [
+    "gh",
+    "pr",
+    "view",
+    "1",
+    "--repo",
+    "backbay-labs/chio-codex-plugin",
+    "--json",
+    "number,url,isDraft,headRefOid,headRefName,state,updatedAt,statusCheckRollup"
+  ],
+  "result": {
+    "headRefName": "codex/required-agent-integrations-20260909",
+    "headRefOid": "9e1afda3940292c314820553f48f366286bba52d",
+    "isDraft": true,
+    "number": 1,
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:40:16Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/backbay-labs/chio-codex-plugin/actions/runs/34434164364/job/102735684503",
+        "name": "test",
+        "startedAt": "2026-09-10T03:39:36Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      }
+    ],
+    "updatedAt": "2026-09-10T03:39:30Z",
+    "url": "https://github.com/backbay-labs/chio-codex-plugin/pull/1"
+  }
+}

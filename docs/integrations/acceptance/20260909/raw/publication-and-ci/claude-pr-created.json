@@ -1,0 +1,41 @@
+{
+  "host": "claude",
+  "repository": "backbay-labs/chio-claude-code-plugin",
+  "head": "34c7d7b1976d7bc672988c1b3ed7b26073133e79",
+  "branch": "codex/required-agent-integrations-20260909",
+  "actions": [
+    {
+      "command": [
+        "git",
+        "push",
+        "--no-follow-tags",
+        "origin",
+        "34c7d7b1976d7bc672988c1b3ed7b26073133e79:refs/heads/codex/required-agent-integrations-20260909"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "remote: \nremote: Create a pull request for 'codex/required-agent-integrations-20260909' on GitHub by visiting:        \nremote:      https://github.com/backbay-labs/chio-claude-code-plugin/pull/new/codex/required-agent-integrations-20260909        \nremote: \nTo https://github.com/backbay-labs/chio-claude-code-plugin.git\n * [new branch]      34c7d7b1976d7bc672988c1b3ed7b26073133e79 -> codex/required-agent-integrations-20260909\n"
+    },
+    {
+      "command": [
+        "gh",
+        "pr",
+        "create",
+        "--repo",
+        "backbay-labs/chio-claude-code-plugin",
+        "--base",
+        "main",
+        "--head",
+        "codex/required-agent-integrations-20260909",
+        "--draft",
+        "--title",
+        "feat: add isolated Claude kernel execution and candidate delivery",
+        "--body-file",
+        "/tmp/chio-plugin-ci-preparation-20260909/prs/claude-body.md"
+      ],
+      "exitCode": 0,
+      "stdout": "https://github.com/backbay-labs/chio-claude-code-plugin/pull/1\n",
+      "stderr": ""
+    }
+  ]
+}

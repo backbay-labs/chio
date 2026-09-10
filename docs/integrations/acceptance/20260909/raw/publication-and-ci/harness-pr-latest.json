@@ -1,0 +1,25 @@
+{
+  "capturedAt": "2026-09-10T04:07:30.098964+00:00",
+  "repository": "backbay-labs/chio-test-harness",
+  "result": {
+    "headRefName": "codex/durable-harness-20260909",
+    "headRefOid": "98a0f5e33d63ded80cf36434c448b7ec45c3b413",
+    "isDraft": true,
+    "number": 1,
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T04:05:06Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/backbay-labs/chio-test-harness/actions/runs/34435362383/job/102739187548",
+        "name": "self-test",
+        "startedAt": "2026-09-10T03:58:39Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      }
+    ],
+    "updatedAt": "2026-09-10T03:58:34Z",
+    "url": "https://github.com/backbay-labs/chio-test-harness/pull/1"
+  }
+}

@@ -29,22 +29,8 @@ Do not combine tests across these archives. Claude r5 is source `c91cd81`, archi
 The current replacements repair Claude native initialization and unsuccessful-result reporting, Pi's
 completed tool-error acknowledgement and OpenClaw's concurrent model-request
 limit. Their regressions, broad host matrices and launcher journal/cancellation
-cutpoints pass. Claude, Codex, Hermes, Pi and OpenClaw also completed their own
-actual kernel admission and receipt-storage failure cases, with original-authority
-retry/restart fencing and independent resource observations. No archive is accepted.
-
-Public draft source PRs and captured hosted checks are recorded in
-[the source and CI checkpoint](PUBLIC-SOURCE-AND-CI.md). Five standalone plugin
-source CI runs and the shared harness passed; bridge CI was still running at the
-2026-09-10 04:07 UTC snapshot. Successful checks used synthetic PR merges whose
-Git trees match the recorded source heads. Hermes remains in the separate ARC
-source/release lane. These source
-checks do not replace the [kernel release-readiness gates](../kernel-release-readiness-20260909/README.md),
-Cursor's missing enforcement contract, or compatible-combination publication.
-The selected 48-entry artifact manifest remains a local candidate selection.
-Released storage-test owners were stopped without deleting databases, journals,
-credentials, unknown outcomes or resource/audit volumes; this bundle includes
-none of those private owner states.
+cutpoints pass. Actual kernel admission and receipt-storage failures are being
+qualified separately through each host. No archive is yet accepted.
 
 Cursor protected prompt mode refuses before starting the host. Its server-owned
 messaging, cloud/agent management and PR mutation paths require a supported

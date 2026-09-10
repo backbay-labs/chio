@@ -1,0 +1,25 @@
+{
+  "capturedAt": "2026-09-10T04:07:29.902525+00:00",
+  "repository": "backbay-labs/chio-bridge",
+  "result": {
+    "headRefName": "codex/required-agent-integrations-20260909",
+    "headRefOid": "e3a9ab685f901c4fa54f31551ff7484a47e673d4",
+    "isDraft": true,
+    "number": 1,
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/backbay-labs/chio-bridge/actions/runs/34435801997/job/102740489703",
+        "name": "test",
+        "startedAt": "2026-09-10T04:05:24Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "ci"
+      }
+    ],
+    "updatedAt": "2026-09-10T04:05:19Z",
+    "url": "https://github.com/backbay-labs/chio-bridge/pull/1"
+  }
+}

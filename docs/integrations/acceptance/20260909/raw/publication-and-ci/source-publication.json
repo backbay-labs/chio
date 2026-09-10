@@ -1,0 +1,51 @@
+{
+  "sourceHead": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+  "branch": "codex/required-agent-integrations-20260909",
+  "actions": [
+    {
+      "command": [
+        "git",
+        "push",
+        "--no-follow-tags",
+        "origin",
+        "aed14bf728f463f82bbb68babd4004d29491b0f6:refs/heads/codex/required-agent-integrations-20260909"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "remote: \nremote: Create a pull request for 'codex/required-agent-integrations-20260909' on GitHub by visiting:        \nremote:      https://github.com/bb-connor/arc/pull/new/codex/required-agent-integrations-20260909        \nremote: \nTo https://github.com/bb-connor/arc.git\n * [new branch]          aed14bf728f463f82bbb68babd4004d29491b0f6 -> codex/required-agent-integrations-20260909\n"
+    },
+    {
+      "command": [
+        "git",
+        "push",
+        "--no-follow-tags",
+        "chio",
+        "aed14bf728f463f82bbb68babd4004d29491b0f6:refs/heads/codex/required-agent-integrations-20260909"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "remote: \nremote: Create a pull request for 'codex/required-agent-integrations-20260909' on GitHub by visiting:        \nremote:      https://github.com/backbay-labs/chio/pull/new/codex/required-agent-integrations-20260909        \nremote: \nTo https://github.com/backbay-labs/chio.git\n * [new branch]          aed14bf728f463f82bbb68babd4004d29491b0f6 -> codex/required-agent-integrations-20260909\n"
+    },
+    {
+      "command": [
+        "gh",
+        "pr",
+        "create",
+        "--repo",
+        "bb-connor/arc",
+        "--base",
+        "main",
+        "--head",
+        "codex/required-agent-integrations-20260909",
+        "--draft",
+        "--title",
+        "feat: qualify required native agent execution and durable recovery",
+        "--body-file",
+        "/tmp/chio-required-program-pr-20260909.md"
+      ],
+      "exitCode": 0,
+      "stdout": "https://github.com/bb-connor/arc/pull/1156\n",
+      "stderr": ""
+    }
+  ]
+}

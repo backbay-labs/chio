@@ -1,0 +1,945 @@
+{
+  "capturedAt": "2026-09-10T04:01:05.079473+00:00",
+  "repository": "bb-connor/arc",
+  "command": [
+    "gh",
+    "pr",
+    "view",
+    "1156",
+    "--repo",
+    "bb-connor/arc",
+    "--json",
+    "number,url,isDraft,headRefOid,headRefName,state,updatedAt,statusCheckRollup"
+  ],
+  "result": {
+    "headRefName": "codex/required-agent-integrations-20260909",
+    "headRefOid": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+    "isDraft": true,
+    "number": 1156,
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:49:42Z",
+        "conclusion": "FAILURE",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434602977/job/102736958085",
+        "name": "cargo-audit and osv-scanner",
+        "startedAt": "2026-09-10T03:46:25Z",
+        "status": "COMPLETED",
+        "workflowName": "CVE Monitor"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:54:48Z",
+        "conclusion": "FAILURE",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603170/job/102736958798",
+        "name": "Cognition market PostgreSQL isolation",
+        "startedAt": "2026-09-10T03:50:03Z",
+        "status": "COMPLETED",
+        "workflowName": "Cognition market hosted"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603149/job/102736959140",
+        "name": "runtime (ops-hardening)",
+        "startedAt": "2026-09-10T03:46:23Z",
+        "status": "QUEUED",
+        "workflowName": "Chio Runtime"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603167/job/102736959361",
+        "name": "codegen-no-diff (rust+python+ts+go)",
+        "startedAt": "2026-09-10T03:46:23Z",
+        "status": "QUEUED",
+        "workflowName": "spec-drift"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603153/job/102736959077",
+        "name": "Build, lint, test",
+        "startedAt": "2026-09-10T03:53:40Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603158/job/102736958976",
+        "name": "live-treaty-buyer-closure",
+        "startedAt": "2026-09-10T03:56:18Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "Chio Live Treaty Buyer Closure"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603050/job/102736958718",
+        "name": "chio-pheromone-relay-alert-assurance-archive-package",
+        "startedAt": "2026-09-10T03:53:38Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "Chio Pheromone Relay Alert Assurance Archive Package"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603174/job/102736958723",
+        "name": "chio-pheromone-relay-alert-delivery",
+        "startedAt": "2026-09-10T03:55:01Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "Chio Pheromone Relay Alert Delivery"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603178/job/102736958960",
+        "name": "chio-pheromone-relay-alert-handoff",
+        "startedAt": "2026-09-10T04:01:00Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "Chio Pheromone Relay Alert Handoff"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603181/job/102736959105",
+        "name": "SDK parity contract lane",
+        "startedAt": "2026-09-10T03:59:13Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "SDK Parity"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603060/job/102736958591",
+        "name": "Build sidecar image (linux/amd64)",
+        "startedAt": "2026-09-10T03:46:25Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "Sidecar Image"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603152/job/102736959132",
+        "name": "Windows authority guard and init",
+        "startedAt": "2026-09-10T03:46:32Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "Windows Secure Scaffold"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603015/job/102736958491",
+        "name": "chio-tee image smoke",
+        "startedAt": "2026-09-10T03:46:26Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "chio-tee-image"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603147/job/102736959141",
+        "name": "verdict_matrix rust-kernel",
+        "startedAt": "2026-09-10T03:57:05Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "verdict-matrix"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:46:23Z",
+        "conclusion": "SKIPPED",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603017/job/102736959217",
+        "name": "chio chaos",
+        "startedAt": "2026-09-10T03:46:23Z",
+        "status": "COMPLETED",
+        "workflowName": "chio-chaos-nightly"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:48:57Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603106/job/102736958734",
+        "name": "CMake package (ubuntu-latest)",
+        "startedAt": "2026-09-10T03:46:25Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:48:51Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434584736/job/102736904103",
+        "name": "CMake package (ubuntu-latest)",
+        "startedAt": "2026-09-10T03:46:08Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:57:39Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603195/job/102736958648",
+        "name": "chio-pheromone-relay-alert-assurance",
+        "startedAt": "2026-09-10T03:49:05Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio Pheromone Relay Alert Assurance"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:53:37Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603020/job/102736958227",
+        "name": "chio-pheromone-relay-alert-assurance-archive",
+        "startedAt": "2026-09-10T03:46:25Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio Pheromone Relay Alert Assurance Archive"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:55:48Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603154/job/102736958470",
+        "name": "chio-pheromone-relay-alert-assurance-archive-hardening",
+        "startedAt": "2026-09-10T03:48:36Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio Pheromone Relay Alert Assurance Archive Hardening"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:58:47Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603148/job/102736958476",
+        "name": "chio-pheromone-relay-alert-assurance-export",
+        "startedAt": "2026-09-10T03:48:58Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio Pheromone Relay Alert Assurance Export"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:54:59Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603159/job/102736958771",
+        "name": "chio-pheromone-relay-alert-assurance-external-retention",
+        "startedAt": "2026-09-10T03:49:54Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio Pheromone Relay Alert Assurance External Retention"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T04:00:49Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603140/job/102736958424",
+        "name": "chio-pheromone-relay-alert-routing",
+        "startedAt": "2026-09-10T03:52:22Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio Pheromone Relay Alert Routing"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T04:00:44Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603119/job/102736958845",
+        "name": "OpenAI provider replay fixtures",
+        "startedAt": "2026-09-10T03:57:59Z",
+        "status": "COMPLETED",
+        "workflowName": "Provider conformance"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:58:18Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603201/job/102736959126",
+        "name": "SDKs and examples",
+        "startedAt": "2026-09-10T03:50:57Z",
+        "status": "COMPLETED",
+        "workflowName": "Transitive Surface"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:57:41Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603033/job/102736958923",
+        "name": "apalache-contracts",
+        "startedAt": "2026-09-10T03:57:29Z",
+        "status": "COMPLETED",
+        "workflowName": "apalache-safety"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:52:00Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603177/job/102736959022",
+        "name": "cargo-vet (locked supply-chain audit)",
+        "startedAt": "2026-09-10T03:49:44Z",
+        "status": "COMPLETED",
+        "workflowName": "cargo-vet"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:53:46Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603115/job/102736958949",
+        "name": "fuzz-budget",
+        "startedAt": "2026-09-10T03:53:10Z",
+        "status": "COMPLETED",
+        "workflowName": "cflite_pr"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:56:16Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603151/job/102736958822",
+        "name": "no-implementation-backed",
+        "startedAt": "2026-09-10T03:56:07Z",
+        "status": "COMPLETED",
+        "workflowName": "check-registries"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:56:12Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603042/job/102736958402",
+        "name": "arena-determinism (linux)",
+        "startedAt": "2026-09-10T03:52:25Z",
+        "status": "COMPLETED",
+        "workflowName": "chio-arena-determinism"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T04:00:11Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603144/job/102736958831",
+        "name": "replay-gate (linux)",
+        "startedAt": "2026-09-10T03:57:43Z",
+        "status": "COMPLETED",
+        "workflowName": "chio-replay-gate"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:53:35Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603122/job/102736958781",
+        "name": "chio-tee fips smoke",
+        "startedAt": "2026-09-10T03:48:18Z",
+        "status": "COMPLETED",
+        "workflowName": "chio-tee-fips"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:52:20Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603193/job/102736958855",
+        "name": "formal scope",
+        "startedAt": "2026-09-10T03:52:02Z",
+        "status": "COMPLETED",
+        "workflowName": "formal-pr-smoke"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:53:50Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603165/job/102736959103",
+        "name": "proof-mutants-controls",
+        "startedAt": "2026-09-10T03:53:38Z",
+        "status": "COMPLETED",
+        "workflowName": "proof-mutants"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603149/job/102736959240",
+        "name": "runtime (orchestration)",
+        "startedAt": "2026-09-10T03:46:23Z",
+        "status": "QUEUED",
+        "workflowName": "Chio Runtime"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603060/job/102736958481",
+        "name": "Build sidecar image (linux/arm64)",
+        "startedAt": "2026-09-10T03:46:28Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "Sidecar Image"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:50:02Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603106/job/102736958634",
+        "name": "CMake package (macos-latest)",
+        "startedAt": "2026-09-10T03:46:30Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:49:52Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434584736/job/102736904219",
+        "name": "CMake package (macos-latest)",
+        "startedAt": "2026-09-10T03:46:15Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603149/job/102736959202",
+        "name": "runtime (attack-simulation)",
+        "startedAt": "2026-09-10T03:46:23Z",
+        "status": "QUEUED",
+        "workflowName": "Chio Runtime"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:56:05Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603106/job/102736958683",
+        "name": "CMake package (windows-latest)",
+        "startedAt": "2026-09-10T03:46:25Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:51:18Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434584736/job/102736904256",
+        "name": "CMake package (windows-latest)",
+        "startedAt": "2026-09-10T03:46:08Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603149/job/102736959138",
+        "name": "runtime (chaos)",
+        "startedAt": "2026-09-10T03:46:23Z",
+        "status": "QUEUED",
+        "workflowName": "Chio Runtime"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:57:18Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603149/job/102736958967",
+        "name": "runtime (policy)",
+        "startedAt": "2026-09-10T03:47:02Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio Runtime"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603149/job/102736959242",
+        "name": "runtime (proof-parity)",
+        "startedAt": "2026-09-10T03:46:23Z",
+        "status": "QUEUED",
+        "workflowName": "Chio Runtime"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603149/job/102736959338",
+        "name": "runtime (spine)",
+        "startedAt": "2026-09-10T03:46:23Z",
+        "status": "QUEUED",
+        "workflowName": "Chio Runtime"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603115/job/102738314531",
+        "name": "changed-target-sampling",
+        "startedAt": "2026-09-10T03:53:46Z",
+        "status": "QUEUED",
+        "workflowName": "cflite_pr"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603153/job/102736959131",
+        "name": "MSRV build and test",
+        "startedAt": "2026-09-10T03:57:42Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603106/job/102736958878",
+        "name": "Live C++ conformance",
+        "startedAt": "2026-09-10T03:55:23Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:52:20Z",
+        "conclusion": "SKIPPED",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603193/job/102738057973",
+        "name": "fuzz-corpus-smoke-pr (locked replay)",
+        "startedAt": "2026-09-10T03:52:21Z",
+        "status": "COMPLETED",
+        "workflowName": "formal-pr-smoke"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:53:51Z",
+        "conclusion": "SKIPPED",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603165/job/102738327882",
+        "name": "lean-mutants",
+        "startedAt": "2026-09-10T03:53:51Z",
+        "status": "COMPLETED",
+        "workflowName": "proof-mutants"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:58:40Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434584736/job/102736903853",
+        "name": "Live C++ conformance",
+        "startedAt": "2026-09-10T03:46:09Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T04:00:17Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603119/job/102736958622",
+        "name": "OpenAI verdict latency budget",
+        "startedAt": "2026-09-10T03:53:48Z",
+        "status": "COMPLETED",
+        "workflowName": "Provider conformance"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:57:36Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603033/job/102736958968",
+        "name": "apalache-safety-monotone-log",
+        "startedAt": "2026-09-10T03:57:20Z",
+        "status": "COMPLETED",
+        "workflowName": "apalache-safety"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:51:35Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603017/job/102736958441",
+        "name": "chio chaos windows compile",
+        "startedAt": "2026-09-10T03:46:25Z",
+        "status": "COMPLETED",
+        "workflowName": "chio-chaos-nightly"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:48:46Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603144/job/102736958779",
+        "name": "replay-gate (macos read-only)",
+        "startedAt": "2026-09-10T03:46:30Z",
+        "status": "COMPLETED",
+        "workflowName": "chio-replay-gate"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T04:00:58Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603167/job/102736959211",
+        "name": "header-stamp-untouched (do-not-edit grep gate)",
+        "startedAt": "2026-09-10T04:00:47Z",
+        "status": "COMPLETED",
+        "workflowName": "spec-drift"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T04:00:36Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603033/job/102736958927",
+        "name": "apalache-safety-revocation-cut",
+        "startedAt": "2026-09-10T03:59:42Z",
+        "status": "COMPLETED",
+        "workflowName": "apalache-safety"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:55:18Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603033/job/102736958910",
+        "name": "apalache-safety-receipt-before-allow",
+        "startedAt": "2026-09-10T03:53:52Z",
+        "status": "COMPLETED",
+        "workflowName": "apalache-safety"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603033/job/102736959089",
+        "name": "apalache-safety-transition-cancel",
+        "startedAt": "2026-09-10T03:46:23Z",
+        "status": "QUEUED",
+        "workflowName": "apalache-safety"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603033/job/102736959179",
+        "name": "apalache-safety-post-admission",
+        "startedAt": "2026-09-10T04:00:14Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "apalache-safety"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603033/job/102736959046",
+        "name": "apalache-safety-revocation-propagation",
+        "startedAt": "2026-09-10T03:58:49Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "apalache-safety"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:57:57Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603033/job/102736959076",
+        "name": "apalache-safety-distributed-domains",
+        "startedAt": "2026-09-10T03:57:37Z",
+        "status": "COMPLETED",
+        "workflowName": "apalache-safety"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:53:36Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603033/job/102736958939",
+        "name": "apalache-safety-distributed-behavior",
+        "startedAt": "2026-09-10T03:51:19Z",
+        "status": "COMPLETED",
+        "workflowName": "apalache-safety"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:57:27Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603033/job/102736959034",
+        "name": "apalache-safety-delegation-depth",
+        "startedAt": "2026-09-10T03:56:13Z",
+        "status": "COMPLETED",
+        "workflowName": "apalache-safety"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603119/job/102736958950",
+        "name": "Cross-provider verdict equality (8 providers, required-CI)",
+        "startedAt": "2026-09-10T04:00:40Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "Provider conformance"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:46:23Z",
+        "conclusion": "SKIPPED",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603033/job/102736959755",
+        "name": "apalache-scheduled-bounds-and-refinement",
+        "startedAt": "2026-09-10T03:46:23Z",
+        "status": "COMPLETED",
+        "workflowName": "apalache-safety"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:52:20Z",
+        "conclusion": "SKIPPED",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603193/job/102738057056",
+        "name": "lean-build (lake + sorry scan + manifest cross-ref)",
+        "startedAt": "2026-09-10T03:52:21Z",
+        "status": "COMPLETED",
+        "workflowName": "formal-pr-smoke"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:53:51Z",
+        "conclusion": "SKIPPED",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603165/job/102738328145",
+        "name": "proof-mutants",
+        "startedAt": "2026-09-10T03:53:51Z",
+        "status": "COMPLETED",
+        "workflowName": "proof-mutants"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:50:55Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603153/job/102736959027",
+        "name": "cargo-vet (locked supply-chain audit)",
+        "startedAt": "2026-09-10T03:48:49Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:48:34Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603106/job/102736958517",
+        "name": "Sanitizers and leaks",
+        "startedAt": "2026-09-10T03:46:25Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:48:16Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434584736/job/102736904142",
+        "name": "Sanitizers and leaks",
+        "startedAt": "2026-09-10T03:46:08Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:49:03Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603144/job/102736958551",
+        "name": "seed-immutable",
+        "startedAt": "2026-09-10T03:48:53Z",
+        "status": "COMPLETED",
+        "workflowName": "chio-replay-gate"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:53:38Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603167/job/102736959110",
+        "name": "vectors-byte-stable (freeze-vectors --check)",
+        "startedAt": "2026-09-10T03:51:58Z",
+        "status": "COMPLETED",
+        "workflowName": "spec-drift"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603193/job/102738056417",
+        "name": "kani-public-pr (lanes.pr sweep)",
+        "startedAt": "2026-09-10T03:52:20Z",
+        "status": "QUEUED",
+        "workflowName": "formal-pr-smoke"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603153/job/102736958990",
+        "name": "cargo-deny (supply-chain bans/advisories/licenses)",
+        "startedAt": "2026-09-10T04:00:20Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603144/job/102736958847",
+        "name": "proptest",
+        "startedAt": "2026-09-10T03:58:41Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "chio-replay-gate"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:53:09Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603106/job/102736958763",
+        "name": "Conan and vcpkg",
+        "startedAt": "2026-09-10T03:47:25Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:52:23Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434584736/job/102736904038",
+        "name": "Conan and vcpkg",
+        "startedAt": "2026-09-10T03:46:08Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:59:41Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603119/job/102736958969",
+        "name": "New-provider replay corpora",
+        "startedAt": "2026-09-10T03:58:20Z",
+        "status": "COMPLETED",
+        "workflowName": "Provider conformance"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:59:11Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603033/job/102736958775",
+        "name": "apalache-negative",
+        "startedAt": "2026-09-10T03:55:50Z",
+        "status": "COMPLETED",
+        "workflowName": "apalache-safety"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:58:03Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603167/job/102736959003",
+        "name": "schema-coverage (vectors_schema_pair)",
+        "startedAt": "2026-09-10T03:53:37Z",
+        "status": "COMPLETED",
+        "workflowName": "spec-drift"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603193/job/102738056387",
+        "name": "kani-manifest-pr (non-core lanes.pr sweep)",
+        "startedAt": "2026-09-10T03:52:20Z",
+        "status": "QUEUED",
+        "workflowName": "formal-pr-smoke"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603144/job/102736958896",
+        "name": "differential",
+        "startedAt": "2026-09-10T03:58:05Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "chio-replay-gate"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603167/job/102736959314",
+        "name": "cross-lang-bytes (canonical_json_diff proptest)",
+        "startedAt": "2026-09-10T04:00:51Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "spec-drift"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:46:23Z",
+        "conclusion": "SKIPPED",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603033/job/102736959514",
+        "name": "spec-mutants",
+        "startedAt": "2026-09-10T03:46:23Z",
+        "status": "COMPLETED",
+        "workflowName": "apalache-safety"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:47:23Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603106/job/102736958642",
+        "name": "Guard and kernel packages",
+        "startedAt": "2026-09-10T03:46:25Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:47:00Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434584736/job/102736904149",
+        "name": "Guard and kernel packages",
+        "startedAt": "2026-09-10T03:46:08Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:57:03Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603119/job/102736958838",
+        "name": "Ollama localhost integration replay",
+        "startedAt": "2026-09-10T03:54:50Z",
+        "status": "COMPLETED",
+        "workflowName": "Provider conformance"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603144/job/102739473294",
+        "name": "cross-version",
+        "startedAt": "2026-09-10T04:00:12Z",
+        "status": "QUEUED",
+        "workflowName": "chio-replay-gate"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:52:20Z",
+        "conclusion": "SKIPPED",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603193/job/102738057332",
+        "name": "rust-verification-metadata (schema only, no proofs)",
+        "startedAt": "2026-09-10T03:52:21Z",
+        "status": "COMPLETED",
+        "workflowName": "formal-pr-smoke"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:51:56Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434603106/job/102736958745",
+        "name": "Drogon package",
+        "startedAt": "2026-09-10T03:51:36Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-10T03:46:30Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/bb-connor/arc/actions/runs/34434584736/job/102736904099",
+        "name": "Drogon package",
+        "startedAt": "2026-09-10T03:46:08Z",
+        "status": "COMPLETED",
+        "workflowName": "Chio C++ SDK"
+      }
+    ],
+    "updatedAt": "2026-09-10T03:46:17Z",
+    "url": "https://github.com/bb-connor/arc/pull/1156"
+  }
+}

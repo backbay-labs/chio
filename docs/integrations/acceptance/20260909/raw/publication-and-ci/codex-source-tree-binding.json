@@ -1,0 +1,22 @@
+{
+  "repository": "backbay-labs/chio-codex-plugin",
+  "pr": "https://github.com/backbay-labs/chio-codex-plugin/pull/1",
+  "headSha": "9e1afda3940292c314820553f48f366286bba52d",
+  "currentPrMergeSha": "bc158a970c6cc188df2dfa922ba25723780fcb59",
+  "headTree": "ae49887a0763accfb833bd4762a1f8a6d17f433b",
+  "capturedAt": "2026-09-10T04:07:25.992319+00:00",
+  "runId": 34434164364,
+  "logUncompressedSha256": "18cf26aac828d775872b032c69029a6699333ca4061a6ec4203c615e8082f2fd",
+  "checkoutShas": [
+    "bc158a970c6cc188df2dfa922ba25723780fcb59"
+  ],
+  "testedCheckouts": [
+    {
+      "sha": "bc158a970c6cc188df2dfa922ba25723780fcb59",
+      "tree": "ae49887a0763accfb833bd4762a1f8a6d17f433b"
+    }
+  ],
+  "testedCheckoutTreesEqualHead": true,
+  "currentPrMergeTree": "ae49887a0763accfb833bd4762a1f8a6d17f433b",
+  "currentPrMergeTreeEqualsHead": true
+}

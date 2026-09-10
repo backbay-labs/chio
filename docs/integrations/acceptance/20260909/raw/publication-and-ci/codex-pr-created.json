@@ -1,0 +1,41 @@
+{
+  "host": "codex",
+  "repository": "backbay-labs/chio-codex-plugin",
+  "head": "9e1afda3940292c314820553f48f366286bba52d",
+  "branch": "codex/required-agent-integrations-20260909",
+  "actions": [
+    {
+      "command": [
+        "git",
+        "push",
+        "--no-follow-tags",
+        "origin",
+        "9e1afda3940292c314820553f48f366286bba52d:refs/heads/codex/required-agent-integrations-20260909"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "remote: \nremote: Create a pull request for 'codex/required-agent-integrations-20260909' on GitHub by visiting:        \nremote:      https://github.com/backbay-labs/chio-codex-plugin/pull/new/codex/required-agent-integrations-20260909        \nremote: \nTo https://github.com/backbay-labs/chio-codex-plugin.git\n * [new branch]      9e1afda3940292c314820553f48f366286bba52d -> codex/required-agent-integrations-20260909\n"
+    },
+    {
+      "command": [
+        "gh",
+        "pr",
+        "create",
+        "--repo",
+        "backbay-labs/chio-codex-plugin",
+        "--base",
+        "main",
+        "--head",
+        "codex/required-agent-integrations-20260909",
+        "--draft",
+        "--title",
+        "feat: add isolated Codex kernel execution and recovery evidence",
+        "--body-file",
+        "/tmp/chio-plugin-ci-preparation-20260909/prs/codex-body.md"
+      ],
+      "exitCode": 0,
+      "stdout": "https://github.com/backbay-labs/chio-codex-plugin/pull/1\n",
+      "stderr": ""
+    }
+  ]
+}
