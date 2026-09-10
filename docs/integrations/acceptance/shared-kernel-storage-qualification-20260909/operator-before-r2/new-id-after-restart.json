@@ -1,0 +1,52 @@
+{
+  "request": {
+    "tool": "write_file",
+    "arguments": {
+      "path": "/workspace/must-not-write-restart.txt",
+      "content": "kernel storage fault operator-before-fault-r2-fresh-after-restart\n"
+    },
+    "requestId": "operator-before-fault-r2-fresh-after-restart"
+  },
+  "result": {
+    "state": "unknown",
+    "evidence": "unverified",
+    "requestId": "operator-before-fault-r2-fresh-after-restart",
+    "reason": "execution outcome unknown; no automatic retry"
+  },
+  "responses": [
+    {
+      "url": "http://127.0.0.1:58508/mcp",
+      "method": "POST",
+      "status": 200,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "chio/execution-context"
+      },
+      "body": "id: 668369a734b7a5931f68968061ae6cca00a60134dc9dcbfdd2f8385df301332f-3\nretry: 1000\n\nid: 668369a734b7a5931f68968061ae6cca00a60134dc9dcbfdd2f8385df301332f-4\ndata: {\"id\":2,\"jsonrpc\":\"2.0\",\"result\":{\"capabilityIds\":[\"cap-01a08944-7b3a-7b73-8024-1ffd2553a71e\"],\"deliveryAcknowledgementVersion\":\"1\",\"evidenceVersion\":\"1\",\"schema\":\"chio.mcp.execution-context.v1\",\"serverId\":\"fs\",\"serverIds\":[\"fs\"],\"sessionCredential\":{\"allowedTools\":[\"edit_file\",\"list_directory\",\"read_text_file\",\"write_file\"],\"capabilityIds\":[\"cap-01a08944-7b3a-7b73-8024-1ffd2553a71e\"],\"endpointPath\":\"/mcp\",\"expiresAt\":1789012961,\"issuedAt\":1789009361,\"schema\":\"chio.mcp.session-credential.v1\",\"serverId\":\"fs\",\"sessionId\":\"668369a734b7a5931f68968061ae6cca00a60134dc9dcbfdd2f8385df301332f\",\"subjectKey\":\"f13befdb52a0c4e25c2bc37e03dbd7ba584145b3210e61225bf462917e9170e2\"},\"subjectKey\":\"f13befdb52a0c4e25c2bc37e03dbd7ba584145b3210e61225bf462917e9170e2\"}}\n\n",
+      "observedAt": 1789009607185
+    },
+    {
+      "url": "http://127.0.0.1:58508/mcp",
+      "method": "POST",
+      "status": 409,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+          "name": "write_file",
+          "arguments": {
+            "content": "kernel storage fault operator-before-fault-r2-fresh-after-restart\n",
+            "path": "/workspace/must-not-write-restart.txt"
+          },
+          "_meta": {
+            "chioRequestId": "operator-before-fault-r2-fresh-after-restart"
+          }
+        }
+      },
+      "body": "session credential has a pending or uncertain call; operator reconciliation is required",
+      "observedAt": 1789009607197
+    }
+  ]
+}

@@ -1,0 +1,146 @@
+{
+  "request": {
+    "tool": "write_file",
+    "arguments": {
+      "path": "/workspace/positive.txt",
+      "content": "kernel storage fault operator-before-positive\n"
+    },
+    "requestId": "operator-before-positive"
+  },
+  "result": {
+    "state": "completed",
+    "evidence": "verified",
+    "requestId": "operator-before-positive",
+    "receipt": {
+      "action": {
+        "parameter_hash": "8bffd794f84b275e559b9892dcd072840ca526b8a073f103ec93ce5e8fbacc9e",
+        "parameters": {
+          "content": "kernel storage fault operator-before-positive\n",
+          "path": "/workspace/positive.txt"
+        }
+      },
+      "boundary_class": "prevent",
+      "capability_id": "cap-01a08942-2b0e-7d21-8d1c-5c1590a448d2",
+      "content_hash": "d6a9173c3894c4cdfedaffa6b86705e9f7b5405fa76dd50e12475f99bebcfcca",
+      "decision": {
+        "verdict": "allow"
+      },
+      "id": "472fa9dfd3dc2caea25af5f64343575640019bb567d29bee2facde3a22f7fb16",
+      "kernel_key": "538baac3268b2a893ed53d55e273197f6f242fe3bf8be54d98d6f2050c0d4ed3",
+      "metadata": {
+        "admission_operation": {
+          "compensation_status": "not_compensated",
+          "coordinator_lease_epoch": 2,
+          "coordinator_lease_id": "01a08942-25c2-7303-9270-01db0403e815",
+          "operation_id": "78ce6e6d9104e8da4b6b4ffadfb69d9acd143d5ab507672ce96adcd944263218",
+          "projected_dispatch_state": "terminal",
+          "projected_operation_version": 8,
+          "projected_state": "completed",
+          "request_binding_hash": "b28d40d5d1c1d8b95309353ab102942e5ffbd77982ec9c6ea81b6f8eb356dd2b",
+          "request_id": "operator-before-positive",
+          "request_namespace_digest": "cadc2a7ef6e6d20b4ee880e0a42194f37a50d7547dd20edab81ffd22588626ed",
+          "retained_dispatch_commit": {
+            "committed_version": 6,
+            "coordinator_lease_epoch": 2,
+            "coordinator_lease_id": "01a08942-25c2-7303-9270-01db0403e815",
+            "provider_attempt": {
+              "attempt_id": "attempt:78ce6e6d9104e8da4b6b4ffadfb69d9acd143d5ab507672ce96adcd944263218",
+              "operation_id": "78ce6e6d9104e8da4b6b4ffadfb69d9acd143d5ab507672ce96adcd944263218",
+              "transport_id": "kernel-tool-server:fs",
+              "transport_key_epoch": 2
+            },
+            "store_fence": {
+              "lease_id": "01a08942-25c2-7303-9270-01db0403e815",
+              "owner_epoch": 2,
+              "store_uuid": "01a08942-1ff5-73a0-9afb-e1e9289e2217"
+            }
+          },
+          "schema": "chio.admission-receipt.v1",
+          "store_fence": {
+            "lease_id": "01a08942-25c2-7303-9270-01db0403e815",
+            "owner_epoch": 2,
+            "store_uuid": "01a08942-1ff5-73a0-9afb-e1e9289e2217"
+          },
+          "tool_outcome_id": "4278ac0e2d152d02b96c5ec09cd484b41cdf9e9463282b2b2ed2972c7d8fe9ed",
+          "tool_outcome_version": 2,
+          "trusted_time_unix_ms": 1789009251547
+        },
+        "attribution": {
+          "delegation_depth": 0,
+          "grant_index": 0,
+          "issuer_key": "345fdea6c58331161351bc8e95091f75716dbd55c3156965f6a05aea3da9433e",
+          "subject_key": "4a2edac60c2f928f673496cd96f8d9f9e9c4969012fbfbc95ae89668fd2862a5"
+        },
+        "chio_receipt_signing_nonce": "rcpt-01a08942-ce10-7232-9128-0263cf3ef23b",
+        "receipt_context": {
+          "request_id": "operator-before-positive"
+        }
+      },
+      "policy_hash": "057b9a8160375e7d90841325639bdd66050a454f393dae23e8c813b8df74b84e",
+      "receipt_kind": "mediated_decision",
+      "redaction_mode": "none",
+      "signature": "a9b4b34998de588d59643b0a2de4369e0e904d4ea603f5b8ddfb879a70d16c2cccd27a8d3c2767d1c14eb758ec0aa00b93a3aa84bd83362c07ac298e8145fb0d",
+      "timestamp": 1789009251,
+      "tool_name": "write_file",
+      "tool_origin": "caller_executed",
+      "tool_server": "fs",
+      "trust_level": "mediated"
+    },
+    "result": {
+      "content": [
+        {
+          "text": "Successfully wrote to /workspace/positive.txt",
+          "type": "text"
+        }
+      ],
+      "isError": false,
+      "structuredContent": {
+        "content": "Successfully wrote to /workspace/positive.txt"
+      }
+    },
+    "delivery": {
+      "acknowledgement": "VqipPm0VaSNmguPySx2ROmze918sfBup_6c2dFAlOIk",
+      "receiptId": "472fa9dfd3dc2caea25af5f64343575640019bb567d29bee2facde3a22f7fb16",
+      "requestHash": "18bd5d3d8cd558ab6df576d76e1e7858afb5c6024d05adde9052c16fc0746c63",
+      "requestId": "operator-before-positive",
+      "resultHash": "d6a9173c3894c4cdfedaffa6b86705e9f7b5405fa76dd50e12475f99bebcfcca",
+      "schema": "chio.mcp.delivery-ack.v1"
+    }
+  },
+  "responses": [
+    {
+      "url": "http://127.0.0.1:58506/mcp",
+      "method": "POST",
+      "status": 200,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "chio/execution-context"
+      },
+      "body": "id: 6088ef13b2b6c4a5edfc5e24b164299c342d4bb764a59731a5f3aa30b4b18dbc-15\nretry: 1000\n\nid: 6088ef13b2b6c4a5edfc5e24b164299c342d4bb764a59731a5f3aa30b4b18dbc-16\ndata: {\"id\":2,\"jsonrpc\":\"2.0\",\"result\":{\"capabilityIds\":[\"cap-01a08942-2b0e-7d21-8d1c-5c1590a448d2\"],\"deliveryAcknowledgementVersion\":\"1\",\"evidenceVersion\":\"1\",\"schema\":\"chio.mcp.execution-context.v1\",\"serverId\":\"fs\",\"serverIds\":[\"fs\"],\"sessionCredential\":{\"allowedTools\":[\"edit_file\",\"list_directory\",\"read_text_file\",\"write_file\"],\"capabilityIds\":[\"cap-01a08942-2b0e-7d21-8d1c-5c1590a448d2\"],\"endpointPath\":\"/mcp\",\"expiresAt\":1789012810,\"issuedAt\":1789009210,\"schema\":\"chio.mcp.session-credential.v1\",\"serverId\":\"fs\",\"sessionId\":\"6088ef13b2b6c4a5edfc5e24b164299c342d4bb764a59731a5f3aa30b4b18dbc\",\"subjectKey\":\"4a2edac60c2f928f673496cd96f8d9f9e9c4969012fbfbc95ae89668fd2862a5\"},\"subjectKey\":\"4a2edac60c2f928f673496cd96f8d9f9e9c4969012fbfbc95ae89668fd2862a5\"}}\n\n",
+      "observedAt": 1789009623975
+    },
+    {
+      "url": "http://127.0.0.1:58506/mcp",
+      "method": "POST",
+      "status": 200,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+          "name": "write_file",
+          "arguments": {
+            "content": "kernel storage fault operator-before-positive\n",
+            "path": "/workspace/positive.txt"
+          },
+          "_meta": {
+            "chioRequestId": "operator-before-positive"
+          }
+        }
+      },
+      "body": "{\"id\":3,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"chioDelivery\":{\"acknowledgement\":\"VqipPm0VaSNmguPySx2ROmze918sfBup_6c2dFAlOIk\",\"receiptId\":\"472fa9dfd3dc2caea25af5f64343575640019bb567d29bee2facde3a22f7fb16\",\"requestHash\":\"18bd5d3d8cd558ab6df576d76e1e7858afb5c6024d05adde9052c16fc0746c63\",\"requestId\":\"operator-before-positive\",\"resultHash\":\"d6a9173c3894c4cdfedaffa6b86705e9f7b5405fa76dd50e12475f99bebcfcca\",\"schema\":\"chio.mcp.delivery-ack.v1\"},\"chioEvidence\":{\"output\":{\"content\":[{\"text\":\"Successfully wrote to /workspace/positive.txt\",\"type\":\"text\"}],\"isError\":false,\"structuredContent\":{\"content\":\"Successfully wrote to /workspace/positive.txt\"}},\"outputKind\":\"value\",\"receipt\":{\"action\":{\"parameter_hash\":\"8bffd794f84b275e559b9892dcd072840ca526b8a073f103ec93ce5e8fbacc9e\",\"parameters\":{\"content\":\"kernel storage fault operator-before-positive\\n\",\"path\":\"/workspace/positive.txt\"}},\"boundary_class\":\"prevent\",\"capability_id\":\"cap-01a08942-2b0e-7d21-8d1c-5c1590a448d2\",\"content_hash\":\"d6a9173c3894c4cdfedaffa6b86705e9f7b5405fa76dd50e12475f99bebcfcca\",\"decision\":{\"verdict\":\"allow\"},\"id\":\"472fa9dfd3dc2caea25af5f64343575640019bb567d29bee2facde3a22f7fb16\",\"kernel_key\":\"538baac3268b2a893ed53d55e273197f6f242fe3bf8be54d98d6f2050c0d4ed3\",\"metadata\":{\"admission_operation\":{\"compensation_status\":\"not_compensated\",\"coordinator_lease_epoch\":2,\"coordinator_lease_id\":\"01a08942-25c2-7303-9270-01db0403e815\",\"operation_id\":\"78ce6e6d9104e8da4b6b4ffadfb69d9acd143d5ab507672ce96adcd944263218\",\"projected_dispatch_state\":\"terminal\",\"projected_operation_version\":8,\"projected_state\":\"completed\",\"request_binding_hash\":\"b28d40d5d1c1d8b95309353ab102942e5ffbd77982ec9c6ea81b6f8eb356dd2b\",\"request_id\":\"operator-before-positive\",\"request_namespace_digest\":\"cadc2a7ef6e6d20b4ee880e0a42194f37a50d7547dd20edab81ffd22588626ed\",\"retained_dispatch_commit\":{\"committed_version\":6,\"coordinator_lease_epoch\":2,\"coordinator_lease_id\":\"01a08942-25c2-7303-9270-01db0403e815\",\"provider_attempt\":{\"attempt_id\":\"attempt:78ce6e6d9104e8da4b6b4ffadfb69d9acd143d5ab507672ce96adcd944263218\",\"operation_id\":\"78ce6e6d9104e8da4b6b4ffadfb69d9acd143d5ab507672ce96adcd944263218\",\"transport_id\":\"kernel-tool-server:fs\",\"transport_key_epoch\":2},\"store_fence\":{\"lease_id\":\"01a08942-25c2-7303-9270-01db0403e815\",\"owner_epoch\":2,\"store_uuid\":\"01a08942-1ff5-73a0-9afb-e1e9289e2217\"}},\"schema\":\"chio.admission-receipt.v1\",\"store_fence\":{\"lease_id\":\"01a08942-25c2-7303-9270-01db0403e815\",\"owner_epoch\":2,\"store_uuid\":\"01a08942-1ff5-73a0-9afb-e1e9289e2217\"},\"tool_outcome_id\":\"4278ac0e2d152d02b96c5ec09cd484b41cdf9e9463282b2b2ed2972c7d8fe9ed\",\"tool_outcome_version\":2,\"trusted_time_unix_ms\":1789009251547},\"attribution\":{\"delegation_depth\":0,\"grant_index\":0,\"issuer_key\":\"345fdea6c58331161351bc8e95091f75716dbd55c3156965f6a05aea3da9433e\",\"subject_key\":\"4a2edac60c2f928f673496cd96f8d9f9e9c4969012fbfbc95ae89668fd2862a5\"},\"chio_receipt_signing_nonce\":\"rcpt-01a08942-ce10-7232-9128-0263cf3ef23b\",\"receipt_context\":{\"request_id\":\"operator-before-positive\"}},\"policy_hash\":\"057b9a8160375e7d90841325639bdd66050a454f393dae23e8c813b8df74b84e\",\"receipt_kind\":\"mediated_decision\",\"redaction_mode\":\"none\",\"signature\":\"a9b4b34998de588d59643b0a2de4369e0e904d4ea603f5b8ddfb879a70d16c2cccd27a8d3c2767d1c14eb758ec0aa00b93a3aa84bd83362c07ac298e8145fb0d\",\"timestamp\":1789009251,\"tool_name\":\"write_file\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"fs\",\"trust_level\":\"mediated\"},\"requestId\":\"operator-before-positive\",\"schema\":\"chio.mcp.execution-evidence.v1\",\"terminalState\":\"completed\"}},\"content\":[{\"text\":\"Successfully wrote to /workspace/positive.txt\",\"type\":\"text\"}],\"isError\":false,\"structuredContent\":{\"content\":\"Successfully wrote to /workspace/positive.txt\"}}}",
+      "observedAt": 1789009623983
+    }
+  ]
+}

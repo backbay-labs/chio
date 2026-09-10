@@ -1,0 +1,52 @@
+{
+  "request": {
+    "tool": "write_file",
+    "arguments": {
+      "path": "/workspace/before-fault.txt",
+      "content": "kernel storage fault operator-before-fault\n"
+    },
+    "requestId": "operator-before-fault"
+  },
+  "result": {
+    "state": "unknown",
+    "evidence": "unverified",
+    "requestId": "operator-before-fault",
+    "reason": "execution outcome unknown; no automatic retry"
+  },
+  "responses": [
+    {
+      "url": "http://127.0.0.1:58506/mcp",
+      "method": "POST",
+      "status": 200,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "chio/execution-context"
+      },
+      "body": "id: 6088ef13b2b6c4a5edfc5e24b164299c342d4bb764a59731a5f3aa30b4b18dbc-13\nretry: 1000\n\nid: 6088ef13b2b6c4a5edfc5e24b164299c342d4bb764a59731a5f3aa30b4b18dbc-14\ndata: {\"id\":2,\"jsonrpc\":\"2.0\",\"result\":{\"capabilityIds\":[\"cap-01a08942-2b0e-7d21-8d1c-5c1590a448d2\"],\"deliveryAcknowledgementVersion\":\"1\",\"evidenceVersion\":\"1\",\"schema\":\"chio.mcp.execution-context.v1\",\"serverId\":\"fs\",\"serverIds\":[\"fs\"],\"sessionCredential\":{\"allowedTools\":[\"edit_file\",\"list_directory\",\"read_text_file\",\"write_file\"],\"capabilityIds\":[\"cap-01a08942-2b0e-7d21-8d1c-5c1590a448d2\"],\"endpointPath\":\"/mcp\",\"expiresAt\":1789012810,\"issuedAt\":1789009210,\"schema\":\"chio.mcp.session-credential.v1\",\"serverId\":\"fs\",\"sessionId\":\"6088ef13b2b6c4a5edfc5e24b164299c342d4bb764a59731a5f3aa30b4b18dbc\",\"subjectKey\":\"4a2edac60c2f928f673496cd96f8d9f9e9c4969012fbfbc95ae89668fd2862a5\"},\"subjectKey\":\"4a2edac60c2f928f673496cd96f8d9f9e9c4969012fbfbc95ae89668fd2862a5\"}}\n\n",
+      "observedAt": 1789009282316
+    },
+    {
+      "url": "http://127.0.0.1:58506/mcp",
+      "method": "POST",
+      "status": 409,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+          "name": "write_file",
+          "arguments": {
+            "content": "kernel storage fault operator-before-fault\n",
+            "path": "/workspace/before-fault.txt"
+          },
+          "_meta": {
+            "chioRequestId": "operator-before-fault"
+          }
+        }
+      },
+      "body": "session credential has a pending or uncertain call; operator reconciliation is required",
+      "observedAt": 1789009282323
+    }
+  ]
+}

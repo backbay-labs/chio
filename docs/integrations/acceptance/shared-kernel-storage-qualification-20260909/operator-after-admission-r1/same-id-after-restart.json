@@ -1,0 +1,52 @@
+{
+  "request": {
+    "tool": "write_file",
+    "arguments": {
+      "path": "/workspace/uncertain.txt",
+      "content": "kernel storage fault operator-after-admission-fault\n"
+    },
+    "requestId": "operator-after-admission-fault"
+  },
+  "result": {
+    "state": "unknown",
+    "evidence": "unverified",
+    "requestId": "operator-after-admission-fault",
+    "reason": "missing or substituted execution evidence"
+  },
+  "responses": [
+    {
+      "url": "http://127.0.0.1:58509/mcp",
+      "method": "POST",
+      "status": 200,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "chio/execution-context"
+      },
+      "body": "id: cae3657222b51746e50808b0f7a7590ecde3b98a8ff1eb448917fdeb9457636e-1\nretry: 1000\n\nid: cae3657222b51746e50808b0f7a7590ecde3b98a8ff1eb448917fdeb9457636e-2\ndata: {\"id\":2,\"jsonrpc\":\"2.0\",\"result\":{\"capabilityIds\":[\"cap-01a08945-5fbe-7380-87b3-4db3b3e4ca85\"],\"deliveryAcknowledgementVersion\":\"1\",\"evidenceVersion\":\"1\",\"schema\":\"chio.mcp.execution-context.v1\",\"serverId\":\"fs\",\"serverIds\":[\"fs\"],\"sessionCredential\":{\"allowedTools\":[\"edit_file\",\"list_directory\",\"read_text_file\",\"write_file\"],\"capabilityIds\":[\"cap-01a08945-5fbe-7380-87b3-4db3b3e4ca85\"],\"endpointPath\":\"/mcp\",\"expiresAt\":1789013020,\"issuedAt\":1789009420,\"schema\":\"chio.mcp.session-credential.v1\",\"serverId\":\"fs\",\"sessionId\":\"cae3657222b51746e50808b0f7a7590ecde3b98a8ff1eb448917fdeb9457636e\",\"subjectKey\":\"d4ffa3ab84decdb9288e0348cadb2697a6e931e4cc919bdd28220d20affeb4e8\"},\"subjectKey\":\"d4ffa3ab84decdb9288e0348cadb2697a6e931e4cc919bdd28220d20affeb4e8\"}}\n\n",
+      "observedAt": 1789009686724
+    },
+    {
+      "url": "http://127.0.0.1:58509/mcp",
+      "method": "POST",
+      "status": 200,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+          "name": "write_file",
+          "arguments": {
+            "content": "kernel storage fault operator-after-admission-fault\n",
+            "path": "/workspace/uncertain.txt"
+          },
+          "_meta": {
+            "chioRequestId": "operator-after-admission-fault"
+          }
+        }
+      },
+      "body": "{\"id\":3,\"jsonrpc\":\"2.0\",\"result\":{\"content\":[{\"text\":\"durable admission failed: admission operation store is unavailable: database is locked\",\"type\":\"text\"}],\"isError\":true}}",
+      "observedAt": 1789009686730
+    }
+  ]
+}

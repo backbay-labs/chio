@@ -1,0 +1,36 @@
+{
+  "owner": "/Users/connor/.local/share/chio-required-operators/kernel-storage-fault-20260909/operator-after-receipt-r1",
+  "gatewayConfig": "/Users/connor/.local/share/chio-required-operators/kernel-storage-fault-20260909/operator-after-receipt-r1/gateway.json",
+  "output": "/private/tmp/chio-kernel-storage-fault-20260909/operator-after-receipt-r1",
+  "endpoint": "http://127.0.0.1:58507",
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "image": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "volume": "chio-required-kernel-store-operator-after-receipt-r1",
+  "auditVolume": "chio-required-kernel-store-operator-after-receipt-r1-audit",
+  "policySha256": "8c2c732d9115799b13150f7924da0e68fc1f9b2d42a2618912511d407035cc66",
+  "ownerLauncher": "/Users/connor/Medica/backbay/standalone/arc/.worktrees/required-agent-integrations-20260909/integrations/required-agents/serve-filesystem.py",
+  "ownerLauncherSha256": "24187dd47e497d226fb0b1f6652a006a2514cff6bc84fea9b35361e948ed6399",
+  "barrierSha256": "a690f141d14fb3b9a18a8541e89bb5eabf76a18f71e504ad16cd2878bec398b6",
+  "helperSha256": "eaca17f8e3465711aedad0c06094b4cdefe735498a476b65860db94a8606a033",
+  "prepareGatewaySha256": "9dacf32a85c2083f0d3804771dc8a648d0eeff9c6faa5440b44f008bc1c43892",
+  "sessionCredential": {
+    "schema": "chio.mcp.session-credential.v1",
+    "sessionId": "dccf181c404cde1f7658aa8566bd68aec20288c5319616444bc24917a0f1202f",
+    "subjectKey": "8ffb64f27ca4f4940bc575fb796393fc1d852509130693a628c5cda50470e83c",
+    "capabilityIds": [
+      "cap-01a08942-e3eb-7890-b6a6-02f96dd21b96"
+    ],
+    "serverId": "fs",
+    "endpointPath": "/mcp",
+    "allowedTools": [
+      "edit_file",
+      "list_directory",
+      "read_text_file",
+      "write_file"
+    ],
+    "issuedAt": 1789009257,
+    "expiresAt": 1789012857
+  },
+  "createdAtEpoch": 1789009257.688181,
+  "testOnlyTransportCutpoint": "/workspace/uncertain.txt reply held after resource returns"
+}

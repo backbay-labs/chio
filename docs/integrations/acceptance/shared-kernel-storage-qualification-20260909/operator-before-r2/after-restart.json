@@ -1,0 +1,36 @@
+{
+  "observation": {
+    "observedAtEpoch": 1789009687.870045,
+    "files": {
+      "forbidden.txt": "independent forbidden observer\n",
+      "secret.txt": "sensitive observer\n"
+    },
+    "dispatch": []
+  },
+  "databases": {
+    "sessions.sqlite": {
+      "remote_session_credential_calls": [
+        {
+          "session_id": "668369a734b7a5931f68968061ae6cca00a60134dc9dcbfdd2f8385df301332f",
+          "request_id": "operator-before-fault-r2",
+          "record_json": "{\"schema\":\"chio.mcp.session-credential-call.v1\",\"sessionId\":\"668369a734b7a5931f68968061ae6cca00a60134dc9dcbfdd2f8385df301332f\",\"subjectKey\":\"f13befdb52a0c4e25c2bc37e03dbd7ba584145b3210e61225bf462917e9170e2\",\"capabilityIds\":[\"cap-01a08944-7b3a-7b73-8024-1ffd2553a71e\"],\"serverId\":\"fs\",\"requestId\":\"operator-before-fault-r2\",\"requestHash\":\"b1c81bdc532af83a200f5110393b679487c114126e29dd6225a2706d399bc47f\",\"toolName\":\"write_file\",\"parameterHash\":\"b3ac41f592a0f9bc309aaae945d93609303e404c54c8933dcf8073d4bb1e9aa3\",\"startedAt\":1789009414,\"state\":\"fenced\",\"response\":{\"id\":3,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"chioEvidence\":{\"output\":null,\"outputKind\":\"none\",\"receipt\":{\"action\":{\"parameter_hash\":\"b3ac41f592a0f9bc309aaae945d93609303e404c54c8933dcf8073d4bb1e9aa3\",\"parameters\":{\"content\":\"kernel storage fault operator-before-fault-r2\\n\",\"path\":\"/workspace/before-fault.txt\"}},\"boundary_class\":\"prevent\",\"capability_id\":\"cap-01a08944-7b3a-7b73-8024-1ffd2553a71e\",\"content_hash\":\"74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b\",\"decision\":{\"guard\":\"kernel\",\"reason\":\"durable admission failed: admission operation store is unavailable: database is locked\",\"verdict\":\"deny\"},\"id\":\"9bec08d18be0c62dedfd633c6d0fc97a6f249f265b84bc2e77ae66bcdadc8e2a\",\"kernel_key\":\"f6539156b465075e2c59b9516eb068d172eec477ed5b3d8a51d7fefde9f7c676\",\"metadata\":{\"attribution\":{\"delegation_depth\":0,\"issuer_key\":\"182feb78b6d24e5cdc492f336b7d13e2fc5b0b07dd53503ec5a75673b7951fb8\",\"subject_key\":\"f13befdb52a0c4e25c2bc37e03dbd7ba584145b3210e61225bf462917e9170e2\"},\"chio_receipt_signing_nonce\":\"rcpt-01a08945-5d39-7661-a22c-c1bf8ce8e140\",\"receipt_context\":{\"request_id\":\"operator-before-fault-r2\"}},\"policy_hash\":\"057b9a8160375e7d90841325639bdd66050a454f393dae23e8c813b8df74b84e\",\"receipt_kind\":\"mediated_decision\",\"redaction_mode\":\"none\",\"signature\":\"b3017edb84ba74e5ba7fc4bf07f426ed6de09a0b24583e68d35babc4afe0cadccfaa84936a67af2a02db4e1d862a6943475e30be8e4547325a457d8dc136b309\",\"timestamp\":1789009414,\"tool_name\":\"write_file\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"fs\",\"trust_level\":\"mediated\"},\"requestId\":\"operator-before-fault-r2\",\"schema\":\"chio.mcp.execution-evidence.v1\",\"terminalState\":\"completed\"}},\"content\":[{\"text\":\"durable admission failed: admission operation store is unavailable: database is locked\",\"type\":\"text\"}],\"isError\":true}}}",
+          "signature": "892d071a0f971a45a46fd46691b4c4e8a736518ee2041f6e348400e7299113686eccac080d937547c4f520de333599b5603c1711895f54bedc4dde4cde73610e"
+        }
+      ],
+      "remote_session_credential_latches": [
+        {
+          "session_id": "668369a734b7a5931f68968061ae6cca00a60134dc9dcbfdd2f8385df301332f",
+          "request_id": "operator-before-fault-r2",
+          "record_json": "{\"schema\":\"chio.mcp.session-credential-call.v1\",\"sessionId\":\"668369a734b7a5931f68968061ae6cca00a60134dc9dcbfdd2f8385df301332f\",\"subjectKey\":\"f13befdb52a0c4e25c2bc37e03dbd7ba584145b3210e61225bf462917e9170e2\",\"capabilityIds\":[\"cap-01a08944-7b3a-7b73-8024-1ffd2553a71e\"],\"serverId\":\"fs\",\"requestId\":\"operator-before-fault-r2\",\"requestHash\":\"b1c81bdc532af83a200f5110393b679487c114126e29dd6225a2706d399bc47f\",\"toolName\":\"write_file\",\"parameterHash\":\"b3ac41f592a0f9bc309aaae945d93609303e404c54c8933dcf8073d4bb1e9aa3\",\"startedAt\":1789009414,\"state\":\"fenced\",\"response\":{\"id\":3,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"chioEvidence\":{\"output\":null,\"outputKind\":\"none\",\"receipt\":{\"action\":{\"parameter_hash\":\"b3ac41f592a0f9bc309aaae945d93609303e404c54c8933dcf8073d4bb1e9aa3\",\"parameters\":{\"content\":\"kernel storage fault operator-before-fault-r2\\n\",\"path\":\"/workspace/before-fault.txt\"}},\"boundary_class\":\"prevent\",\"capability_id\":\"cap-01a08944-7b3a-7b73-8024-1ffd2553a71e\",\"content_hash\":\"74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b\",\"decision\":{\"guard\":\"kernel\",\"reason\":\"durable admission failed: admission operation store is unavailable: database is locked\",\"verdict\":\"deny\"},\"id\":\"9bec08d18be0c62dedfd633c6d0fc97a6f249f265b84bc2e77ae66bcdadc8e2a\",\"kernel_key\":\"f6539156b465075e2c59b9516eb068d172eec477ed5b3d8a51d7fefde9f7c676\",\"metadata\":{\"attribution\":{\"delegation_depth\":0,\"issuer_key\":\"182feb78b6d24e5cdc492f336b7d13e2fc5b0b07dd53503ec5a75673b7951fb8\",\"subject_key\":\"f13befdb52a0c4e25c2bc37e03dbd7ba584145b3210e61225bf462917e9170e2\"},\"chio_receipt_signing_nonce\":\"rcpt-01a08945-5d39-7661-a22c-c1bf8ce8e140\",\"receipt_context\":{\"request_id\":\"operator-before-fault-r2\"}},\"policy_hash\":\"057b9a8160375e7d90841325639bdd66050a454f393dae23e8c813b8df74b84e\",\"receipt_kind\":\"mediated_decision\",\"redaction_mode\":\"none\",\"signature\":\"b3017edb84ba74e5ba7fc4bf07f426ed6de09a0b24583e68d35babc4afe0cadccfaa84936a67af2a02db4e1d862a6943475e30be8e4547325a457d8dc136b309\",\"timestamp\":1789009414,\"tool_name\":\"write_file\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"fs\",\"trust_level\":\"mediated\"},\"requestId\":\"operator-before-fault-r2\",\"schema\":\"chio.mcp.execution-evidence.v1\",\"terminalState\":\"completed\"}},\"content\":[{\"text\":\"durable admission failed: admission operation store is unavailable: database is locked\",\"type\":\"text\"}],\"isError\":true}}}",
+          "signature": "892d071a0f971a45a46fd46691b4c4e8a736518ee2041f6e348400e7299113686eccac080d937547c4f520de333599b5603c1711895f54bedc4dde4cde73610e"
+        }
+      ]
+    },
+    "sessions.sqlite.admission": {
+      "admission_operations": [],
+      "admission_operation_terminal_projections": [],
+      "tool_outcomes": []
+    },
+    "receipts.sqlite": {}
+  }
+}

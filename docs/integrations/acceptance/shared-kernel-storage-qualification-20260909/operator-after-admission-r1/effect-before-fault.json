@@ -1,0 +1,21 @@
+{
+  "observedAtEpoch": 1789009506.2714748,
+  "files": {
+    "forbidden.txt": "independent forbidden observer\n",
+    "secret.txt": "sensitive observer\n",
+    "uncertain.txt": "kernel storage fault operator-after-admission-fault\n"
+  },
+  "dispatch": [
+    {
+      "schema": "chio.resource-dispatch-observation.v1",
+      "processId": 1,
+      "sequence": 1,
+      "observedAt": "2026-09-10T03:05:06.318Z",
+      "upstreamRequestId": 3,
+      "tool": "write_file",
+      "path": "/workspace/uncertain.txt",
+      "argumentsSha256": "d9c79d792a87220b277cd6cccdd27f56aa1abedf699916f3d3efe44fe822657c",
+      "frameSha256": "a893c87e9cfd29aaba7219e88b8f662097518879cd3c724ac1e3f5a08e90d6a1"
+    }
+  ]
+}

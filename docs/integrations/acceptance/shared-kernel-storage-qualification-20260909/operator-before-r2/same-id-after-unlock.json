@@ -1,0 +1,91 @@
+{
+  "request": {
+    "tool": "write_file",
+    "arguments": {
+      "path": "/workspace/before-fault.txt",
+      "content": "kernel storage fault operator-before-fault-r2\n"
+    },
+    "requestId": "operator-before-fault-r2"
+  },
+  "result": {
+    "state": "unknown",
+    "evidence": "verified",
+    "requestId": "operator-before-fault-r2",
+    "receipt": {
+      "action": {
+        "parameter_hash": "b3ac41f592a0f9bc309aaae945d93609303e404c54c8933dcf8073d4bb1e9aa3",
+        "parameters": {
+          "content": "kernel storage fault operator-before-fault-r2\n",
+          "path": "/workspace/before-fault.txt"
+        }
+      },
+      "boundary_class": "prevent",
+      "capability_id": "cap-01a08944-7b3a-7b73-8024-1ffd2553a71e",
+      "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "decision": {
+        "guard": "kernel",
+        "reason": "durable admission failed: admission operation store is unavailable: database is locked",
+        "verdict": "deny"
+      },
+      "id": "9bec08d18be0c62dedfd633c6d0fc97a6f249f265b84bc2e77ae66bcdadc8e2a",
+      "kernel_key": "f6539156b465075e2c59b9516eb068d172eec477ed5b3d8a51d7fefde9f7c676",
+      "metadata": {
+        "attribution": {
+          "delegation_depth": 0,
+          "issuer_key": "182feb78b6d24e5cdc492f336b7d13e2fc5b0b07dd53503ec5a75673b7951fb8",
+          "subject_key": "f13befdb52a0c4e25c2bc37e03dbd7ba584145b3210e61225bf462917e9170e2"
+        },
+        "chio_receipt_signing_nonce": "rcpt-01a08945-5d39-7661-a22c-c1bf8ce8e140",
+        "receipt_context": {
+          "request_id": "operator-before-fault-r2"
+        }
+      },
+      "policy_hash": "057b9a8160375e7d90841325639bdd66050a454f393dae23e8c813b8df74b84e",
+      "receipt_kind": "mediated_decision",
+      "redaction_mode": "none",
+      "signature": "b3017edb84ba74e5ba7fc4bf07f426ed6de09a0b24583e68d35babc4afe0cadccfaa84936a67af2a02db4e1d862a6943475e30be8e4547325a457d8dc136b309",
+      "timestamp": 1789009414,
+      "tool_name": "write_file",
+      "tool_origin": "caller_executed",
+      "tool_server": "fs",
+      "trust_level": "mediated"
+    },
+    "reason": "durable admission rejected this attempt; the original operation requires reconciliation"
+  },
+  "responses": [
+    {
+      "url": "http://127.0.0.1:58508/mcp",
+      "method": "POST",
+      "status": 200,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "chio/execution-context"
+      },
+      "body": "id: 668369a734b7a5931f68968061ae6cca00a60134dc9dcbfdd2f8385df301332f-13\nretry: 1000\n\nid: 668369a734b7a5931f68968061ae6cca00a60134dc9dcbfdd2f8385df301332f-14\ndata: {\"id\":2,\"jsonrpc\":\"2.0\",\"result\":{\"capabilityIds\":[\"cap-01a08944-7b3a-7b73-8024-1ffd2553a71e\"],\"deliveryAcknowledgementVersion\":\"1\",\"evidenceVersion\":\"1\",\"schema\":\"chio.mcp.execution-context.v1\",\"serverId\":\"fs\",\"serverIds\":[\"fs\"],\"sessionCredential\":{\"allowedTools\":[\"edit_file\",\"list_directory\",\"read_text_file\",\"write_file\"],\"capabilityIds\":[\"cap-01a08944-7b3a-7b73-8024-1ffd2553a71e\"],\"endpointPath\":\"/mcp\",\"expiresAt\":1789012961,\"issuedAt\":1789009361,\"schema\":\"chio.mcp.session-credential.v1\",\"serverId\":\"fs\",\"sessionId\":\"668369a734b7a5931f68968061ae6cca00a60134dc9dcbfdd2f8385df301332f\",\"subjectKey\":\"f13befdb52a0c4e25c2bc37e03dbd7ba584145b3210e61225bf462917e9170e2\"},\"subjectKey\":\"f13befdb52a0c4e25c2bc37e03dbd7ba584145b3210e61225bf462917e9170e2\"}}\n\n",
+      "observedAt": 1789009529969
+    },
+    {
+      "url": "http://127.0.0.1:58508/mcp",
+      "method": "POST",
+      "status": 200,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+          "name": "write_file",
+          "arguments": {
+            "content": "kernel storage fault operator-before-fault-r2\n",
+            "path": "/workspace/before-fault.txt"
+          },
+          "_meta": {
+            "chioRequestId": "operator-before-fault-r2"
+          }
+        }
+      },
+      "body": "{\"id\":3,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"chioEvidence\":{\"output\":null,\"outputKind\":\"none\",\"receipt\":{\"action\":{\"parameter_hash\":\"b3ac41f592a0f9bc309aaae945d93609303e404c54c8933dcf8073d4bb1e9aa3\",\"parameters\":{\"content\":\"kernel storage fault operator-before-fault-r2\\n\",\"path\":\"/workspace/before-fault.txt\"}},\"boundary_class\":\"prevent\",\"capability_id\":\"cap-01a08944-7b3a-7b73-8024-1ffd2553a71e\",\"content_hash\":\"74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b\",\"decision\":{\"guard\":\"kernel\",\"reason\":\"durable admission failed: admission operation store is unavailable: database is locked\",\"verdict\":\"deny\"},\"id\":\"9bec08d18be0c62dedfd633c6d0fc97a6f249f265b84bc2e77ae66bcdadc8e2a\",\"kernel_key\":\"f6539156b465075e2c59b9516eb068d172eec477ed5b3d8a51d7fefde9f7c676\",\"metadata\":{\"attribution\":{\"delegation_depth\":0,\"issuer_key\":\"182feb78b6d24e5cdc492f336b7d13e2fc5b0b07dd53503ec5a75673b7951fb8\",\"subject_key\":\"f13befdb52a0c4e25c2bc37e03dbd7ba584145b3210e61225bf462917e9170e2\"},\"chio_receipt_signing_nonce\":\"rcpt-01a08945-5d39-7661-a22c-c1bf8ce8e140\",\"receipt_context\":{\"request_id\":\"operator-before-fault-r2\"}},\"policy_hash\":\"057b9a8160375e7d90841325639bdd66050a454f393dae23e8c813b8df74b84e\",\"receipt_kind\":\"mediated_decision\",\"redaction_mode\":\"none\",\"signature\":\"b3017edb84ba74e5ba7fc4bf07f426ed6de09a0b24583e68d35babc4afe0cadccfaa84936a67af2a02db4e1d862a6943475e30be8e4547325a457d8dc136b309\",\"timestamp\":1789009414,\"tool_name\":\"write_file\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"fs\",\"trust_level\":\"mediated\"},\"requestId\":\"operator-before-fault-r2\",\"schema\":\"chio.mcp.execution-evidence.v1\",\"terminalState\":\"completed\"}},\"content\":[{\"text\":\"durable admission failed: admission operation store is unavailable: database is locked\",\"type\":\"text\"}],\"isError\":true}}",
+      "observedAt": 1789009529975
+    }
+  ]
+}

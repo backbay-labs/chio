@@ -1,0 +1,52 @@
+{
+  "request": {
+    "tool": "write_file",
+    "arguments": {
+      "path": "/workspace/uncertain.txt",
+      "content": "kernel storage fault operator-after-receipt-fault\n"
+    },
+    "requestId": "operator-after-receipt-fault"
+  },
+  "result": {
+    "state": "unknown",
+    "evidence": "unverified",
+    "requestId": "operator-after-receipt-fault",
+    "reason": "missing or substituted execution evidence"
+  },
+  "responses": [
+    {
+      "url": "http://127.0.0.1:58507/mcp",
+      "method": "POST",
+      "status": 200,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "chio/execution-context"
+      },
+      "body": "id: dccf181c404cde1f7658aa8566bd68aec20288c5319616444bc24917a0f1202f-9\nretry: 1000\n\nid: dccf181c404cde1f7658aa8566bd68aec20288c5319616444bc24917a0f1202f-10\ndata: {\"id\":2,\"jsonrpc\":\"2.0\",\"result\":{\"capabilityIds\":[\"cap-01a08942-e3eb-7890-b6a6-02f96dd21b96\"],\"deliveryAcknowledgementVersion\":\"1\",\"evidenceVersion\":\"1\",\"schema\":\"chio.mcp.execution-context.v1\",\"serverId\":\"fs\",\"serverIds\":[\"fs\"],\"sessionCredential\":{\"allowedTools\":[\"edit_file\",\"list_directory\",\"read_text_file\",\"write_file\"],\"capabilityIds\":[\"cap-01a08942-e3eb-7890-b6a6-02f96dd21b96\"],\"endpointPath\":\"/mcp\",\"expiresAt\":1789012857,\"issuedAt\":1789009257,\"schema\":\"chio.mcp.session-credential.v1\",\"serverId\":\"fs\",\"sessionId\":\"dccf181c404cde1f7658aa8566bd68aec20288c5319616444bc24917a0f1202f\",\"subjectKey\":\"8ffb64f27ca4f4940bc575fb796393fc1d852509130693a628c5cda50470e83c\"},\"subjectKey\":\"8ffb64f27ca4f4940bc575fb796393fc1d852509130693a628c5cda50470e83c\"}}\n\n",
+      "observedAt": 1789009299224
+    },
+    {
+      "url": "http://127.0.0.1:58507/mcp",
+      "method": "POST",
+      "status": 200,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+          "name": "write_file",
+          "arguments": {
+            "content": "kernel storage fault operator-after-receipt-fault\n",
+            "path": "/workspace/uncertain.txt"
+          },
+          "_meta": {
+            "chioRequestId": "operator-after-receipt-fault"
+          }
+        }
+      },
+      "body": "id: dccf181c404cde1f7658aa8566bd68aec20288c5319616444bc24917a0f1202f-11\nretry: 1000\n\nid: dccf181c404cde1f7658aa8566bd68aec20288c5319616444bc24917a0f1202f-13\ndata: {\"id\":3,\"jsonrpc\":\"2.0\",\"result\":{\"content\":[{\"text\":\"receipt persistence failed: sqlite receipt commit append timed out after 5000ms\",\"type\":\"text\"}],\"isError\":true}}\n\n",
+      "observedAt": 1789009304994
+    }
+  ]
+}

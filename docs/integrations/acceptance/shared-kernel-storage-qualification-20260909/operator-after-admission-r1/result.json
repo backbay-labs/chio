@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "resourceDispatchesAfterRetriesAndRestart": 1,
+  "signedFences": [
+    {
+      "table": "remote_session_credential_calls",
+      "state": "fenced",
+      "signatureVerifiedAgainstPinnedKernel": true
+    },
+    {
+      "table": "remote_session_credential_latches",
+      "state": "fenced",
+      "signatureVerifiedAgainstPinnedKernel": true
+    }
+  ],
+  "newEffectsAfterFaultResponse": 0,
+  "hostAcceptanceClaim": false
+}

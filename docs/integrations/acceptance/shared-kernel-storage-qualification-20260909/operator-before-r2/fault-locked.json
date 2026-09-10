@@ -1,0 +1,8 @@
+{
+  "database": "/Users/connor/.local/share/chio-required-operators/kernel-storage-fault-20260909/operator-before-r2/sessions.sqlite.admission",
+  "cutpoint": "before-admission",
+  "lockedAtEpoch": 1789009397.7013068,
+  "mutation": "none; BEGIN IMMEDIATE held, then ROLLBACK",
+  "holdSeconds": 90,
+  "pid": 59473
+}

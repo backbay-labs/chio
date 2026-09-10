@@ -1,0 +1,8 @@
+remote MCP edge listening on http://127.0.0.1:58509/mcp
+remote MCP edge listening on http://127.0.0.1:58509/mcp
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio
+WARN chio_mcp_adapter::stderr message=No valid root directories provided by client
+WARN chio_kernel::kernel::evaluation::nested_flow_evaluation message=nested tool return could not be durably recorded request_id=operator-after-admission-fault reason=durable admission failed: admission operation store is unavailable: database is locked
+WARN chio_mcp_adapter::stderr message=Secure MCP Filesystem Server running on stdio
+WARN chio_mcp_adapter::stderr message=No valid root directories provided by client
+remote MCP edge listening on http://127.0.0.1:58509/mcp
