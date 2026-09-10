@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-09-10T03:19:58.474332+00:00",
+  "generated_at_utc": "2026-09-10T05:26:39.584854+00:00",
   "files": [
     {
       "path": "REPORT.md",
@@ -332,9 +332,9 @@
       "bytes": 0
     },
     {
-      "path": "bb-connor--arc--main-compare.stdout.json",
-      "sha256": "72c4a82c4de53ade03420c6059e8f0f6f9cc968b551a7e7cb8733c583d50a306",
-      "bytes": 439253
+      "path": "bb-connor--arc--main-compare.stdout.json.gz",
+      "sha256": "44520013a11f126612668a56773f66ee55633ab349652133cdd907a04f68c2a4",
+      "bytes": 85454
     },
     {
       "path": "bb-connor--arc--main-rules.meta.json",

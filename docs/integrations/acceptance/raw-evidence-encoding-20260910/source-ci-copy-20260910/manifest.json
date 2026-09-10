@@ -1,0 +1,156 @@
+{
+  "schema": "chio.source-ci-evidence-repair.v1",
+  "observedAtUtc": "2026-09-10T05:28:44.705500+00:00",
+  "failingSource": "a471ae3401e331f595d9fd9b2c2890949f2b67b6",
+  "hostedJob": {
+    "repository": "bb-connor/arc",
+    "runId": 34439683505,
+    "jobId": 102751928379,
+    "attempt": 1,
+    "conclusion": "failure",
+    "step": "Workspace structural gates"
+  },
+  "cause": "A raw historical GitHub comparison response was interpreted as authored product copy. Its original bytes are preserved by the existing lossless encoding map.",
+  "scope": "Evidence representation only; no runtime, workflow, gate, selector or test source changes. Full hosted CI and six-host acceptance remain unresolved.",
+  "commands": [
+    {
+      "argv": [
+        "bash",
+        "scripts/check-chio-proof-room-release-truth.sh"
+      ],
+      "stage": "before",
+      "exitCode": 1,
+      "output": "copy-before.log.gz"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/check-chio-proof-room-release-truth.sh"
+      ],
+      "stage": "after",
+      "exitCode": 0,
+      "output": "copy-after.log.gz"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/tests/check-chio-proof-room-release-truth.test.sh"
+      ],
+      "exitCode": 0,
+      "output": "copy-regressions.log.gz"
+    },
+    {
+      "argv": [
+        "python3",
+        "docs/integrations/acceptance/raw-evidence-encoding-20260910/validate.py"
+      ],
+      "exitCode": 0,
+      "output": "encoding-check.log.gz"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/check-chio-proof-room-release-truth.sh"
+      ],
+      "stage": "after evidence and authored record added",
+      "exitCode": 0,
+      "output": "copy-final.log.gz"
+    }
+  ],
+  "unchangedSourceFiles": [
+    {
+      "path": "scripts/check-chio-proof-room-release-truth.sh",
+      "sha256": "e1d6a2d94eab5016fee17f8e796a5ac4cd5b9ec255a51f63e6b62f8d041c0ffe",
+      "unchangedFromSource": "a471ae3401e331f595d9fd9b2c2890949f2b67b6"
+    },
+    {
+      "path": "scripts/tests/check-chio-proof-room-release-truth.test.sh",
+      "sha256": "fa9c0abd24f3e36c3964d5677ee8d1d316ac96d4a601f55731714faa7d5cbefc",
+      "unchangedFromSource": "a471ae3401e331f595d9fd9b2c2890949f2b67b6"
+    },
+    {
+      "path": "docs/integrations/acceptance/raw-evidence-encoding-20260910/validate.py",
+      "sha256": "aae926e76484cc51ea8a656b70281cae14f33149dccd95a981e9e39383a3a419",
+      "unchangedFromSource": "a471ae3401e331f595d9fd9b2c2890949f2b67b6"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "04e3d29e73341f4826c8bd9843d2df8d3d34a47160cc337129243f31a54f0dcc",
+      "unchangedFromSource": "a471ae3401e331f595d9fd9b2c2890949f2b67b6"
+    }
+  ],
+  "artifacts": [
+    {
+      "originalName": "hosted-failure.log",
+      "storedPath": "hosted-failure.log.gz",
+      "originalBytes": 380031,
+      "originalSha256": "07970a8c3634c85ffaee1c1ccb58416bf4b72161d5f53c9c05d719cddaf31b04",
+      "storedBytes": 72544,
+      "storedSha256": "6a497510e277d4a260c6faf8866718c1f83f706aaafe75e81f31820df6ff4653",
+      "gzipMtime": 0
+    },
+    {
+      "originalName": "hosted-job.json",
+      "storedPath": "hosted-job.json.gz",
+      "originalBytes": 8948,
+      "originalSha256": "7a35464e1ef6a1350e25b9694a2bd0922c443a6a9cd03fa7750f4d36ca7667fc",
+      "storedBytes": 1561,
+      "storedSha256": "4ee132bc0954561915b614bc32842fa504be80ed098011d56572fb5e470123e8",
+      "gzipMtime": 0
+    },
+    {
+      "originalName": "copy-before.log",
+      "storedPath": "copy-before.log.gz",
+      "originalBytes": 210,
+      "originalSha256": "9b18580eeb004e8e10e27e30fc8aedc79ee16393aa1f952b8299048c22a52a32",
+      "storedBytes": 177,
+      "storedSha256": "d809409a810c5601384aa40efa544369f0849c592a5c627a23405d862d0276bd",
+      "gzipMtime": 0
+    },
+    {
+      "originalName": "copy-after.log",
+      "storedPath": "copy-after.log.gz",
+      "originalBytes": 28,
+      "originalSha256": "a1d0a08a627700e626e18fc189d7b89281565fc5c76b13b6ecf530eace65af25",
+      "storedBytes": 48,
+      "storedSha256": "17855693943a71b0b214f066c5a0ac947dadc947016a45c9406c46a82cb6fa02",
+      "gzipMtime": 0
+    },
+    {
+      "originalName": "copy-regressions.log",
+      "storedPath": "copy-regressions.log.gz",
+      "originalBytes": 146,
+      "originalSha256": "29210f83da4ef07d063e2f508f08d528a624e89d28f36b4c465918662e0e5d30",
+      "storedBytes": 112,
+      "storedSha256": "e1b9f38ed2306cba620e99abbbda6bb0f7782404a4925bec122e035cafd5315e",
+      "gzipMtime": 0
+    },
+    {
+      "originalName": "encoding-check.log",
+      "storedPath": "encoding-check.log.gz",
+      "originalBytes": 58,
+      "originalSha256": "688b01661547fdd57df86acfcd1a7c34f23ec67d0715c5a459b4b8dbd3316d41",
+      "storedBytes": 76,
+      "storedSha256": "d1b741ad23644a5e118864558e0e389e7d17446066bd486011f743580232035f",
+      "gzipMtime": 0
+    },
+    {
+      "originalName": "pr-checks.json",
+      "storedPath": "pr-checks.json.gz",
+      "originalBytes": 15868,
+      "originalSha256": "5d92e501035e296b4d36e77b2382fec3cdff4260a63fbfd96479d4a503d0b519",
+      "storedBytes": 2535,
+      "storedSha256": "20a03dd79b53ac6fc68afbc5c551407363b37d6d206554fafe29bc6f6165cf8f",
+      "gzipMtime": 0
+    },
+    {
+      "originalName": "copy-final.log",
+      "storedPath": "copy-final.log.gz",
+      "originalBytes": 28,
+      "originalSha256": "a1d0a08a627700e626e18fc189d7b89281565fc5c76b13b6ecf530eace65af25",
+      "storedBytes": 48,
+      "storedSha256": "17855693943a71b0b214f066c5a0ac947dadc947016a45c9406c46a82cb6fa02",
+      "gzipMtime": 0
+    }
+  ]
+}

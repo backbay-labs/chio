@@ -51,3 +51,17 @@ repair. Neither this packaging check nor the job's title establishes PostgreSQL
 test success.
 
 The historical binary-workflow API snapshot is also stored losslessly as gzip. Its old branch identifiers were being interpreted as current owned protocol versions by the unchanged version guard. The snapshot remains historical evidence; no guard exclusion was added.
+
+The source `a471ae3401e331f595d9fd9b2c2890949f2b67b6` structural lane stopped
+when the release-copy gate interpreted a historical commit message inside a
+retained GitHub comparison response as current product prose. The comparison
+response now uses the same lossless gzip representation. Its original logical
+path and Git blob remain in the encoding map; independent command metadata is
+unchanged. The current nested checksum manifests identify the stored bytes.
+
+[The source-CI repair record](source-ci-copy-20260910/manifest.json) retains the
+hosted job, exact failure log, local failing control, passing copy gate and
+existing positive/negative suite. No workflow, selector, copy policy, runtime,
+or acceptance gate is changed. These checks establish evidence packaging and
+copy-gate behavior only. The full hosted source run and six real-host acceptance
+records remain separate requirements.
