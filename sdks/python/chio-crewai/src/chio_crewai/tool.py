@@ -23,6 +23,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from chio_adapter_base.mcp import McpToolBinding
 from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
@@ -90,6 +91,7 @@ class ChioBaseTool(BaseTool):
     # Implementation + runtime collaborators are kept in private attrs so
     # pydantic does not try to validate them and so the public
     # ``model_dump`` stays compact.
+    _mcp_binding: McpToolBinding | None = PrivateAttr(default=None)
     _executor: ToolExecutor | None = PrivateAttr(default=None)
     _chio_client: ChioClientLike | None = PrivateAttr(default=None)
     _last_receipt: ChioReceipt | None = PrivateAttr(default=None)
@@ -115,6 +117,21 @@ class ChioBaseTool(BaseTool):
         if redaction_policy is not None:
             self._redaction_policy = redaction_policy
 
+    @classmethod
+    def from_mcp(cls, session, *, tool_name, args_schema, description, name=None):
+        """Execute a named tool on the supplied Chio MCP session.
+
+        The session owns its grant and lifetime. No local executor is installed.
+        last_mcp_execution retains the host's receipt association, including errors.
+        """
+        tool = cls(name=name or tool_name, description=description, args_schema=args_schema)
+        tool._mcp_binding = McpToolBinding(session, tool_name)
+        return tool
+
+    @property
+    def last_mcp_execution(self):
+        return self._mcp_binding.last_execution if self._mcp_binding else None
+
     # ------------------------------------------------------------------
     # Introspection
     # ------------------------------------------------------------------
@@ -134,6 +151,8 @@ class ChioBaseTool(BaseTool):
         :class:`ChioCrew` calls this when it assigns per-role capabilities
         to agent-owned tools.
         """
+        if self._mcp_binding is not None:
+            raise ValueError("MCP authority belongs to the session; bind a separately authorized session for each role")
         self.capability_id = capability_id
 
     # ------------------------------------------------------------------
@@ -166,6 +185,9 @@ class ChioBaseTool(BaseTool):
 
     async def _arun(self, **kwargs: Any) -> Any:
         """Evaluate the tool call with Chio and, on allow, run the body."""
+        if self._mcp_binding is not None:
+            arguments = self.args_schema.model_validate(kwargs).model_dump(mode="json", by_alias=True)
+            return (await self._mcp_binding.aexecute(arguments)).text
         # Redact body fields (e.g. chio_file_write.content) before they
         # cross into the sidecar so the receipt log never carries the raw
         # secret bytes. The underlying executor still receives the real

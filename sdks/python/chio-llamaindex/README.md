@@ -1,5 +1,14 @@
 # chio-llamaindex
 
+## Execute through your Chio MCP host
+
+Use `ChioFunctionTool.from_mcp(binding, fn_schema=CreateNoteInput, description="Save a note")`, where `binding` is `McpToolBinding(session, "createNote")`. This returns a native LlamaIndex FunctionTool with synchronous and asynchronous execution through the application's existing MCP session. `binding.last_execution` retains the terminal request and receipt association.
+
+The complete [framework notes application](https://www.chio.computer/docs/examples/agent-framework-sdks) includes input models, host, launcher, role policies and an independent receipt verifier. Its bundled adapters are source candidates; installing an older registry distribution does not add these APIs.
+
+Legacy local-executor and signerless-delegation APIs below have different authority requirements. An ID-only sidecar gate continues to refuse execution, and a sidecar without the parent subject signer cannot manufacture a delegated capability.
+
+
 LlamaIndex integration for the [Chio protocol](../../../spec/PROTOCOL.md).
 Wraps `llama_index.core.tools.FunctionTool` and
 `llama_index.core.tools.QueryEngineTool` so every tool dispatch an

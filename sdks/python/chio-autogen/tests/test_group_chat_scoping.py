@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from chio_sdk.errors import ChioDeniedError
 from chio_sdk.errors import ChioValidationError
 from chio_sdk.models import ChioScope, Operation, ToolGrant
 from chio_sdk.testing import MockChioClient, MockVerdict
@@ -266,7 +267,7 @@ class TestResearcherWriterScoping:
 
 
 class TestNestedChatAttenuation:
-    async def test_nested_spawn_gets_attenuated_token(self) -> None:
+    async def test_nested_spawn_requires_subject_signer(self) -> None:
         chio = _instrumented_client()
 
         parent = _make_agent("lead")
@@ -309,40 +310,15 @@ class TestNestedChatAttenuation:
         # Before attenuation, child can write using its own role token.
         assert child_recipient.function_map["write"](path="/x") == "child-write"
 
-        # Register nested chat with an attenuated "search-only" scope.
-        child_token = await register_nested_chats_with_attenuation(
-            parent_agent=parent,
-            child_configs=[
-                {
-                    "recipient": child_recipient,
-                    "message": "handoff",
-                    "max_turns": 1,
-                }
-            ],
-            parent_capability=parent_token,
-            child_scope=_scope("search"),
-            chio_client=chio,
-        )
-
-        # Strict subset of the parent capability.
-        assert child_token.scope.is_subset_of(parent_token.scope)
-        assert not parent_token.scope.is_subset_of(child_token.scope)
-
-        # The child's registry is now bound to the attenuated token, so
-        # a write attempt from the nested chat is denied even though
-        # the child's original role scope allowed it.
-        assert child_reg.capability_id == child_token.id
-        with pytest.raises(ChioToolError) as exc_info:
-            child_recipient.function_map["write"](path="/x")
-        assert exc_info.value.guard == "ScopeGuard"
-
-        # Search remains allowed through the attenuated token.
-        assert (
-            child_recipient.function_map["search"](q="papers")
-            == "child-search"
-        )
-
-        # Parent's registry was not touched by the attenuation.
+        original = child_reg.capability_id
+        with pytest.raises(ChioDeniedError) as error:
+            await register_nested_chats_with_attenuation(
+                parent_agent=parent,
+                child_configs=[{"recipient": child_recipient, "message": "handoff", "max_turns": 1}],
+                parent_capability=parent_token, child_scope=_scope("search"), chio_client=chio,
+            )
+        assert error.value.reason_code == "chio_attenuation_requires_subject_signer"
+        assert child_reg.capability_id == original
         assert parent_reg.capability_id == parent_token.id
 
     async def test_nested_cannot_escalate_beyond_parent(self) -> None:
@@ -387,7 +363,7 @@ class TestNestedChatAttenuation:
                 chio_client=chio,
             )
 
-    async def test_attenuate_for_handoff_narrows_role(self) -> None:
+    async def test_attenuate_for_handoff_requires_subject_signer(self) -> None:
         chio = _instrumented_client()
         lead = _make_agent("lead")
         junior = _make_agent("junior")
@@ -423,12 +399,10 @@ class TestNestedChatAttenuation:
         )
         await manager.provision_capabilities()
 
-        child = await manager.attenuate_for_handoff(
-            delegator_role="lead",
-            delegate_role="junior",
-            new_scope=_scope("search"),
-        )
-        parent = manager.token_for("lead")
-        assert parent is not None
-        assert child.scope.is_subset_of(parent.scope)
-        assert not parent.scope.is_subset_of(child.scope)
+        original = manager.token_for("junior")
+        with pytest.raises(ChioDeniedError) as error:
+            await manager.attenuate_for_handoff(
+                delegator_role="lead", delegate_role="junior", new_scope=_scope("search"),
+            )
+        assert error.value.reason_code == "chio_attenuation_requires_subject_signer"
+        assert manager.token_for("junior") == original

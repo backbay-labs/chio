@@ -3,6 +3,11 @@ on:
   pull_request:
     paths:
       - 'crates/protocol/chio-envoy-ext-authz/**'
+      - 'crates/protocol/chio-mcp-edge/**'
+      - 'sdks/python/chio-adapter-base/**'
+      - 'sdks/python/chio-crewai/**'
+      - 'sdks/python/chio-autogen/**'
+      - 'sdks/python/chio-llamaindex/**'
       - 'examples/istio-ext-authz/**'
       - 'examples/hello-receipt-verify/**'
       - '.github/workflows/builder-examples.yml'
@@ -32,6 +37,8 @@ jobs:
           key: builder-envoy
       - name: Protocol and authority regressions
         run: |
+          cargo test --locked -p chio-mcp-edge --lib
+          cargo clippy --locked -p chio-mcp-edge --all-targets -- -D warnings
           cargo test --locked -p chio-envoy-ext-authz --features runtime
           cargo clippy --locked -p chio-envoy-ext-authz --features runtime --all-targets -- -D warnings
       - name: Build the runtime and CLI
@@ -51,6 +58,15 @@ jobs:
           docker build -f examples/istio-ext-authz/Dockerfile -t chio-ext-authz:qualification .
           docker run --rm chio-ext-authz:qualification --help
           docker image inspect chio-ext-authz:qualification --format '{{.Id}}' > envoy-image-id.txt
+          cat > /tmp/chio-container-authorization <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec docker run --rm --network host --volume "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE:ro" chio-ext-authz:qualification "$@"
+          SH
+          chmod +x /tmp/chio-container-authorization
+          CHIO_BIN="$PWD/target/debug/chio" CHIO_EXT_AUTHZ_BIN=/tmp/chio-container-authorization \
+            ENVOY_BIN="$PWD/examples/istio-ext-authz/local/.bin/envoy" \
+            python3 examples/istio-ext-authz/local/run.py --check
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -60,3 +76,15 @@ jobs:
             examples/istio-ext-authz/local/.state/*.log
             examples/hello-receipt-verify/.artifacts/*/summary.json
             envoy-image-id.txt
+  python-adapters:
+    name: Python adapter regression suite (${{ matrix.package }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [chio-adapter-base, chio-crewai, chio-autogen, chio-llamaindex]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39
+      - run: uv run --python 3.12 --project sdks/python/${{ matrix.package }} --extra dev pytest sdks/python/${{ matrix.package }}/tests -q
