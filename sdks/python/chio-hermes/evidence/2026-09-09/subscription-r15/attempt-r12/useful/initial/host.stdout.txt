@@ -1,0 +1,1 @@
+HTTP 400: {"detail":"The 'gpt-5.4' model is not supported when using Codex with a ChatGPT account."}

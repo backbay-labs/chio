@@ -1,0 +1,1 @@
+Denied: the write to /workspace/forbidden.txt was blocked by the guard (“forbidden-path”).

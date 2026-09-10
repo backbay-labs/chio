@@ -1,0 +1,21 @@
+[
+  {
+    "method": "POST",
+    "path": "/api/show",
+    "forwarded": false,
+    "error_type": "ValueError",
+    "reason": "route or authentication refused"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/responses",
+    "forwarded": true,
+    "upstream_status": 400
+  },
+  {
+    "method": "POST",
+    "path": "/v1/responses",
+    "forwarded": true,
+    "upstream_status": 400
+  }
+]

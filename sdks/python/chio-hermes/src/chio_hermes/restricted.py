@@ -12,8 +12,8 @@ import argparse
 import hashlib
 import json
 import os
-import signal
 import re
+import signal
 import stat
 import subprocess
 import sys
@@ -23,12 +23,17 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .gateway_transport import GatewayTransport
-from .model_relay import ModelRelay
+from .model_relay import CodexSubscription, ModelRelay
 
 HOST_REVISION = "175054c14b54404663d8614a178280cffe6062eb"
 # Compatibility checks on the inspected dispatch/configuration contract. The
 # operator must still install the complete pinned upstream revision.
 HOST_CONTRACT_HASHES = {
+    "hermes_cli/runtime_provider.py": "1d8651d7339692e9a1b141049c1cde0713d11f0488bee57c1da423db2701e1bd",
+    "hermes_cli/auth.py": "30320e54d91f06f530e4784bdcda78db9ddf96ea76335de2c2bdda80d29fa3f4",
+    "agent/transports/codex.py": "f9c87b38c6a97f57d11e385bb4d2e8ba88bffd3dbc1713b2504715f477f615ee",
+    "agent/codex_responses_adapter.py": "d47aa67bffc2f7175b4f0b75e1e436e24de7ebaeeea1097c7d8fd649cd1559c7",
+    "agent/codex_runtime.py": "cae3abcfd43a833f1ee469270b107ce0149552e8fddfae304a601596fa8dbf79",
     "agent/tool_dispatch_helpers.py": "5745840851e82e4277a85d4987f9c879978b7abe2f50e9b15f9aaf8139fcb6b0",
     "cli.py": "6d343fef18bf359c0b7c72345a801cf99d5f82d30d5b861f47c1fab6e5da60ac",
     "hermes": "6e1adae1e73ce67121d4ec380a5b66b8fb84f02dd8004b3a9988c39660139417",
@@ -236,7 +241,9 @@ def prepare(args: argparse.Namespace) -> tuple[list[str], dict[str, str], Path]:
     workspace.mkdir(mode=0o700)
     (profile / ".env").write_text("# No stored credentials in the agent profile.\n")
     private_paths = [config_path.resolve(), Path(gateway["journalDir"]).resolve()]
-    readable_roots = [state.resolve(), host_root, args.host_python.absolute().parent.parent.resolve(), python_runtime_root(args.host_python)]
+    if getattr(args, "codex_auth_file", None):
+        private_paths.append(args.codex_auth_file.resolve())
+    readable_roots = [state.resolve(), host_root, args.host_python.absolute().parent.parent.resolve(), python_runtime_root(args.host_python), args.query_file.resolve()]
     if any(secret == root or root in secret.parents for secret in private_paths for root in readable_roots):
         raise ValueError("kernel credentials and journal must stay outside host-readable paths")
     config = {
@@ -244,7 +251,7 @@ def prepare(args: argparse.Namespace) -> tuple[list[str], dict[str, str], Path]:
         "providers": {"chio-model": {
             "base_url": transport_url,
             "api_key": "${CHIO_HERMES_MODEL_API_KEY}",
-            "api_mode": "chat_completions",
+            "api_mode": getattr(args, "model_api_mode", "chat_completions"),
         }},
         "plugins": {"enabled": [], "disabled": ["chio"]},
         "hooks": {},
@@ -382,21 +389,31 @@ def main() -> int:
                  "state-dir", "query-file"):
         parser.add_argument(f"--{name}", type=Path, required=True)
     parser.add_argument("--model", required=True)
-    parser.add_argument("--model-base-url", required=True)
+    parser.add_argument("--model-base-url")
+    parser.add_argument("--model-auth", choices=["api-key", "codex-subscription"], default="api-key")
+    parser.add_argument("--codex-auth-file", type=Path)
     parser.add_argument("--model-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--max-turns", type=int, default=20, choices=range(1, 101), metavar="1..100")
     args = parser.parse_args()
     try:
-        if args.model_base_url.rstrip("/") != "https://api.openai.com/v1":
-            raise ValueError("this candidate qualifies only the fixed OpenAI chat-completions route")
-        model_key = os.environ.get(args.model_key_env, "")
-        if not model_key:
-            raise ValueError(f"model credential environment variable {args.model_key_env} is unset")
+        if args.model_auth == "codex-subscription":
+            if not args.codex_auth_file:
+                raise ValueError("subscription mode requires an explicit operator-owned native Codex auth cache")
+            if args.model_base_url and args.model_base_url.rstrip("/") != "https://chatgpt.com/backend-api/codex":
+                raise ValueError("subscription mode requires the fixed ChatGPT Codex route")
+            model_key = CodexSubscription.from_cache(_private_json(args.codex_auth_file.absolute()))
+        else:
+            if args.codex_auth_file or args.model_base_url and args.model_base_url.rstrip("/") != "https://api.openai.com/v1":
+                raise ValueError("API mode requires the fixed OpenAI chat-completions route")
+            model_key = os.environ.get(args.model_key_env, "")
+            if not model_key:
+                raise ValueError(f"model credential environment variable {args.model_key_env} is unset")
         names = gateway_tool_names(_private_json(args.gateway_config.absolute()))
         with GatewayTransport(args.node.resolve(), args.gateway_script.resolve(), args.gateway_config.resolve()) as gateway:
             args.gateway_transport_url, args.gateway_transport_token = gateway.url, gateway.token
             with ModelRelay(model_key, args.model, {"mcp__chio__" + name for name in names}, args.max_turns + 4, gateway.receive_host_results) as relay:
                 args.model_relay_url, args.model_relay_token = relay.base_url, relay.token
+                args.model_api_mode = relay.api_mode
                 command, env, workspace = prepare(args)
                 try:
                     host_code, interrupted = run_host(command, env, workspace)

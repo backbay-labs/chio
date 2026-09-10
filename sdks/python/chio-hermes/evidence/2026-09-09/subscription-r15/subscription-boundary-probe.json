@@ -1,0 +1,20 @@
+{
+  "command": [
+    "/usr/bin/sandbox-exec",
+    "-f",
+    "/tmp/chio-hermes-qualified-3ae252974e0749dfae6ef0a30ecaa259/host.sb",
+    "/tmp/chio-hermes-20260909/clean-host-venv/bin/python",
+    "-I",
+    "-c",
+    "import json,socket,subprocess\npaths={'nativeSubscriptionAuthReadable': '/Users/connor/.local/share/chio-required-operators/native-subscription-auth-20260909/codex/profile/auth.json', 'nativeSubscriptionDataAliasReadable': '/System/Volumes/Data/Users/connor/.local/share/chio-required-operators/native-subscription-auth-20260909/codex/profile/auth.json', 'gatewayConfigReadable': '/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-useful-515d91c52cc64b46b54fce5a4e60277f/gateway.json'}\nresult={}\nfor name,path in paths.items():\n try:\n  with open(path,'rb') as f:f.read(1)\n  result[name]=True\n except PermissionError:result[name]=False\n except Exception as e:result[name]=type(e).__name__\ns=socket.socket();s.settimeout(1)\ntry:s.connect(('127.0.0.1',58503));result['kernelDirectConnect']=True\nexcept PermissionError:result['kernelDirectConnect']=False\nexcept Exception as e:result['kernelDirectConnect']=type(e).__name__\nfinally:s.close()\nprint(json.dumps(result))\n"
+  ],
+  "exitCode": 0,
+  "observed": {
+    "nativeSubscriptionAuthReadable": false,
+    "nativeSubscriptionDataAliasReadable": false,
+    "gatewayConfigReadable": false,
+    "kernelDirectConnect": false
+  },
+  "stderr": "",
+  "claim": "direct OS read/network probe under exact successful native host profile; no credential values read or recorded"
+}

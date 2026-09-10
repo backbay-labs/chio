@@ -1,0 +1,17 @@
+[
+  {
+    "case": "useful",
+    "passed": false,
+    "exitCode": 1,
+    "terminal": {
+      "hostExitCode": 1,
+      "exitCode": 1,
+      "outcome": "host_failed",
+      "operatorInterrupt": null,
+      "confirmedDeliveries": 0
+    },
+    "newDispatchRows": 0,
+    "acknowledgements": [],
+    "privateState": "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-useful-c2eb2f394690438597a9eb7ce5226eb6"
+  }
+]

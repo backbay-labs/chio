@@ -1,0 +1,30 @@
+{
+  "command": [
+    "/tmp/chio-hermes-subscription-consumer-r13-20260909/bin/python",
+    "-m",
+    "chio_hermes.restricted",
+    "--host-python",
+    "/tmp/chio-hermes-20260909/clean-host-venv/bin/python",
+    "--host-root",
+    "/tmp/chio-hermes-20260909/public-upstream-source",
+    "--node",
+    "/opt/homebrew/bin/node",
+    "--gateway-script",
+    "/tmp/chio-bridge-host-delivery-cold-consumer-r2-20260909/node_modules/@chio/bridge/dist/gateway-http.js",
+    "--gateway-config",
+    "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-useful-c2eb2f394690438597a9eb7ce5226eb6/gateway.json",
+    "--state-dir",
+    "/tmp/chio-hermes-qualified-ec9e346c64b041a0b010016d7896e1c9",
+    "--query-file",
+    "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-useful-c2eb2f394690438597a9eb7ce5226eb6/initial.txt",
+    "--model",
+    "gpt-5.5",
+    "--model-auth",
+    "codex-subscription",
+    "--max-turns",
+    "12",
+    "--codex-auth-file",
+    "/Users/connor/.local/share/chio-required-operators/native-subscription-auth-20260909/codex/profile/auth.json"
+  ],
+  "exitCode": 1
+}

@@ -1,0 +1,51 @@
+{
+  "claim": "bounded native Hermes subscription evidence; not I01-I08 acceptance",
+  "hostRevision": "175054c14b54404663d8614a178280cffe6062eb",
+  "baseImplementationRevision": "7cfc241f6d6a51d669c41e06227177f6bd2b181d",
+  "supervisorRepair": "049018b78",
+  "model": "gpt-5.5",
+  "authMode": "native Codex ChatGPT cache read only in parent relay",
+  "providerRoute": "https://chatgpt.com/backend-api/codex/responses",
+  "python": "Python 3.11.3",
+  "artifacts": [
+    {
+      "candidate": "r12",
+      "wheel": "/tmp/chio-hermes-subscription-wheel-r12-20260909/chio_hermes-0.1.2-py3-none-any.whl",
+      "sha256": "6937e8325243850b4e33f6111b8aceb168d03963b609de32cc73110d1c925dc4"
+    },
+    {
+      "candidate": "r13",
+      "wheel": "/tmp/chio-hermes-subscription-wheel-r13-20260909/chio_hermes-0.1.2-py3-none-any.whl",
+      "sha256": "38c34b52183bb54c15a8052ad18dc87e6dbb2bbe6faf4de5158f4553ad675278"
+    },
+    {
+      "candidate": "r14",
+      "wheel": "/tmp/chio-hermes-subscription-wheel-r14-20260909/chio_hermes-0.1.2-py3-none-any.whl",
+      "sha256": "dfe1f1df6c42a205f1904b9ccb284fea5bcb1ef94385073f7bb8faf5eb27d415"
+    },
+    {
+      "candidate": "r15",
+      "wheel": "/tmp/chio-hermes-subscription-wheel-r15-20260909/chio_hermes-0.1.2-py3-none-any.whl",
+      "sha256": "625979d5331796e7aef5906e69e3e2c746796aa570291af026c305ed4227c818"
+    }
+  ],
+  "sourceFiles": {
+    "src/chio_hermes/model_relay.py": "a1ac2abb4247e4e6bc0201e55fb4d839263525c682412d09e971e133b2fe2e71",
+    "src/chio_hermes/hooks.py": "201f1fdbf57a2cb7bdd7f35d26ce3cace205c862094745418023707a6b3d6b2f",
+    "src/chio_hermes/gateway_runner.mjs": "7ac2cb5b502f93a9e243f0794a5e0ef13cf01c0ddc2bc350e326c7b311baaa22",
+    "src/chio_hermes/receipts.py": "29021c990c65c118c8bfc31c7592c72e03ca1b102ea2067a47154522efc9eb92",
+    "src/chio_hermes/manifest.py": "649f7d1066a617df8cb32f54495f786499070e8b45ed002802d7be4e4ae5237f",
+    "src/chio_hermes/handlers.py": "a0301bcfc09d0564c4c1c4b248b3dbb636c49f81880f354117f90a64dc847b0c",
+    "src/chio_hermes/__init__.py": "12761d77925fb622613a3de24b08ade9f72ba2720016f0c55995590a72be86eb",
+    "src/chio_hermes/runtime.py": "bf7d95d5fb21adc2d2805648a66e870504a271a8661217e12727d2b5796511ea",
+    "src/chio_hermes/gateway_transport.py": "d89109656d2733e7adbfd1a81e578a1c74d0caead339d21daeffe21a7da49f4f",
+    "src/chio_hermes/executors.py": "103407888daf53bc19e7ec074f996da9e7162e5fe9763b91b46cbc21a81adcba",
+    "src/chio_hermes/schemas.py": "f07d53e67f08fb27fc75962519fad475cbca73256a73b02d5ce63d83ca19e830",
+    "src/chio_hermes/cli.py": "fd08f188ced2c52c436db0959267ca9b3f6708c2cede37f23a67ec6f2a53cb32",
+    "src/chio_hermes/host_supervisor.py": "686cc482677c0c91c6bac6dbc8bc0bf1d9f6c60ba208c13e6a0e55890ca863a5",
+    "src/chio_hermes/plugin.py": "c1c763391a9a9b2b81787000ce3d96fb054bf4dac04a5629976e4eb87ff632ea",
+    "src/chio_hermes/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/chio_hermes/restricted.py": "e1fe2be691cdb9a87e9090f32b1cb1e053b8bfc43f26fe75b0f0071cabce0ea7",
+    "src/chio_hermes/commands.py": "f43e7b223029f8ad1dbfb95ee0fe84b84918b7315c1dcc7d328708340c2dd748"
+  }
+}

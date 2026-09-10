@@ -155,3 +155,20 @@ def test_legacy_or_mismatched_session_credentials_refuse_before_host_start(
         config["sessionCredential"]["expiresAt"] = int(time.time()) - 1
     with pytest.raises(ValueError, match="session credential"):
         restricted.gateway_tool_names(config)
+
+
+def test_subscription_uses_native_transport_without_guest_native_auth(launch_args: argparse.Namespace) -> None:
+    launch_args.model_api_mode = "codex_responses"
+    launch_args.codex_auth_file = launch_args.gateway_config.parent / "operator-auth.json"
+    launch_args.codex_auth_file.write_text('{"tokens":{"access_token":"private-subscription"}}')
+    _, env, _ = restricted.prepare(launch_args)
+    profile = (launch_args.state_dir / "profile/config.yaml").read_text()
+    assert json.loads(profile)["providers"]["chio-model"]["api_mode"] == "codex_responses"
+    assert "private-subscription" not in profile + json.dumps(env)
+    assert str(launch_args.codex_auth_file.resolve()) not in (launch_args.state_dir / "host.sb").read_text()
+
+
+def test_subscription_auth_cannot_be_selected_as_guest_query(launch_args: argparse.Namespace) -> None:
+    launch_args.codex_auth_file = launch_args.query_file
+    with pytest.raises(ValueError, match="outside host-readable"):
+        restricted.prepare(launch_args)

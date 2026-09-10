@@ -8,6 +8,7 @@ import ssl
 import threading
 import urllib.error
 import urllib.request
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -85,15 +86,150 @@ def validate_request(body: Any, model: str, tool_names: set[str]) -> None:
                 raise ValueError("alternate function history refused")
 
 
+@dataclass(frozen=True)
+class CodexSubscription:
+    """Read-only native login material. Native Codex owns login and refresh."""
+
+    access_token: str = field(repr=False)
+    account_id: str = field(repr=False)
+
+    @classmethod
+    def from_cache(cls, value: Any) -> CodexSubscription:
+        tokens = value.get("tokens") if isinstance(value, dict) else None
+        if (not isinstance(value, dict) or value.get("auth_mode") not in [None, "chatgpt"]
+                or value.get("OPENAI_API_KEY") or not isinstance(tokens, dict)
+                or any(not isinstance(tokens.get(key), str) or not tokens[key].strip()
+                       or any(char in tokens[key] for char in "\r\n")
+                       for key in ["access_token", "account_id"])):
+            raise ValueError("native ChatGPT login cache required; use Codex login to refresh")
+        return cls(tokens["access_token"], tokens["account_id"])
+
+
+def _inline_text(value: Any) -> bool:
+    return isinstance(value, str) or isinstance(value, list) and all(
+        isinstance(part, dict) and not set(part) - {"type", "text", "annotations"}
+        and part.get("type") in ["input_text", "output_text", "text"]
+        and isinstance(part.get("text"), str) and part.get("annotations", []) == []
+        for part in value
+    )
+
+
+def validate_responses_request(body: Any, model: str, tool_names: set[str]) -> list[dict[str, Any]]:
+    """Validate native inline Responses history and return tool observations.
+
+    Provider object references, hosted tools, encrypted history and account
+    mutations cannot cross this relay. IDs attached to complete inline items
+    are discarded; they never become remote object authority.
+    """
+    allowed = {"model", "instructions", "input", "tools", "tool_choice", "parallel_tool_calls",
+               "stream", "store", "reasoning", "include", "prompt_cache_key", "prompt_cache_retention",
+               "max_output_tokens", "temperature", "top_p", "text"}
+    if (not isinstance(body, dict) or set(body) - allowed or body.get("model") != model
+            or body.get("store") is not False or body.get("stream") is not True
+            or not isinstance(body.get("instructions", ""), str)):
+        raise ValueError("request exceeds selected native Responses mode")
+    inputs = body.get("input")
+    if not isinstance(inputs, list) or not 1 <= len(inputs) <= 512:
+        raise ValueError("complete inline Responses history required")
+    tools = body.get("tools", [])
+    if not isinstance(tools, list):
+        raise ValueError("tools must be a list")
+    for tool in tools:
+        if (not isinstance(tool, dict) or set(tool) - {"type", "name", "description", "parameters", "strict"}
+                or tool.get("type") != "function" or not isinstance(tool.get("name"), str) or tool.get("name") not in tool_names
+                or not isinstance(tool.get("parameters"), dict)):
+            raise ValueError("hosted or alternate functions refused")
+    choice = body.get("tool_choice", "auto")
+    if isinstance(choice, dict):
+        if set(choice) != {"type", "name"} or choice["type"] != "function" or not isinstance(choice["name"], str) or choice["name"] not in tool_names:
+            raise ValueError("alternate tool choice refused")
+    elif choice not in ["auto", "none", "required"]:
+        raise ValueError("alternate tool choice refused")
+    if "parallel_tool_calls" in body and type(body["parallel_tool_calls"]) is not bool:
+        raise ValueError("parallel tool mode refused")
+    reasoning = body.get("reasoning", {})
+    if (not isinstance(reasoning, dict) or set(reasoning) - {"effort", "summary"}
+            or reasoning.get("effort", "medium") not in ["none", "minimal", "low", "medium", "high", "xhigh"]
+            or reasoning.get("summary", "auto") not in ["auto", "concise", "detailed"]):
+        raise ValueError("reasoning options refused")
+    if body.get("include", []) not in [[], ["reasoning.encrypted_content"]]:
+        raise ValueError("provider includes refused")
+    if "max_output_tokens" in body and (type(body["max_output_tokens"]) is not int or not 0 < body["max_output_tokens"] <= 4096):
+        raise ValueError("output budget refused")
+    for key, maximum in [("temperature", 2), ("top_p", 1)]:
+        if key in body and (type(body[key]) not in [int, float] or not 0 <= body[key] <= maximum):
+            raise ValueError("sampling parameters refused")
+    text_options = body.get("text", {})
+    if (not isinstance(text_options, dict) or set(text_options) - {"verbosity", "format"}
+            or text_options.get("verbosity", "medium") not in ["low", "medium", "high"]
+            or text_options.get("format", {"type": "text"}) != {"type": "text"}):
+        raise ValueError("text format refused")
+    # Cache hints carry no application semantics and are not forwarded.
+    body.pop("prompt_cache_key", None)
+    body.pop("prompt_cache_retention", None)
+    body["include"] = []
+    # Native ChatGPT rejects this Chat Completions-derived custom-provider
+    # limit. Bound requests locally; do not claim an upstream output-token cap.
+    body.pop("max_output_tokens", None)
+    observations = []
+    calls = set()
+    inline_items = []
+    for item in inputs:
+        if not isinstance(item, dict):
+            raise ValueError("complete inline Responses item required")
+        kind = item.get("type", "message")
+        if kind == "reasoning":
+            if (set(item) - {"type", "id", "summary", "encrypted_content", "status"}
+                    or not isinstance(item.get("encrypted_content"), str)
+                    or not isinstance(item.get("summary"), list)
+                    or not all(isinstance(part, dict) and set(part) == {"type", "text"}
+                               and part["type"] == "summary_text" and isinstance(part["text"], str)
+                               for part in item["summary"])):
+                raise ValueError("unsupported opaque Responses history")
+            # Some ChatGPT models return encrypted reasoning even with include=[].
+            # It is unnecessary authority: discard it, keeping full inline text
+            # and function history. Never ask the provider to resolve it.
+            continue
+        if (kind == "message" and not set(item) - {"type", "id", "role", "content", "status", "phase"}
+                and item.get("role") in ["system", "developer", "user", "assistant"]
+                and _inline_text(item.get("content"))
+                and item.get("phase") in [None, "commentary", "final_answer"]):
+            pass
+        elif (kind == "function_call" and not set(item) - {"type", "id", "call_id", "name", "arguments", "status"}
+              and isinstance(item.get("name"), str) and item["name"] in tool_names
+              and isinstance(item.get("arguments"), str) and isinstance(item.get("call_id"), str)):
+            calls.add(item["call_id"])
+        elif (kind == "function_call_output" and not set(item) - {"type", "id", "call_id", "output", "status"}
+              and isinstance(item.get("call_id"), str) and item["call_id"] in calls
+              and _inline_text(item.get("output"))):
+            content = item["output"]
+            if isinstance(content, list):
+                content = [{"type": "text", "text": part["text"]} for part in content]
+            observations.append({"role": "tool", "tool_call_id": item["call_id"], "content": content})
+        else:
+            raise ValueError("unsupported or referenced Responses history")
+        item.pop("id", None)
+        item.pop("status", None)
+        inline_items.append(item)
+    if not inline_items:
+        raise ValueError("complete inline Responses history required")
+    body["input"] = inline_items
+    return observations
+
+
 class ModelRelay:
     """The model key stays in this unsandboxed operator process, never the host."""
 
-    def __init__(self, api_key: str, model: str, tool_names: set[str], max_requests: int = 100, on_tool_results=None) -> None:
+    def __init__(self, api_key: str | CodexSubscription, model: str, tool_names: set[str], max_requests: int = 100, on_tool_results=None) -> None:
         self.token = secrets.token_hex(32)
         self.events: list[dict[str, Any]] = []
         self._admission = threading.Lock()
         self._remaining = max_requests
         owner = self
+        subscription = isinstance(api_key, CodexSubscription)
+        self.api_mode = "codex_responses" if subscription else "chat_completions"
+        route = "/v1/responses" if subscription else "/v1/chat/completions"
+        endpoint = "https://chatgpt.com/backend-api/codex/responses" if subscription else "https://api.openai.com/v1/chat/completions"
         tls_context = ssl.create_default_context(cafile=certifi.where())
 
         class Handler(BaseHTTPRequestHandler):
@@ -106,26 +242,37 @@ class ModelRelay:
                 headers_sent = False
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
-                    if (self.path != "/v1/chat/completions" or self.headers.get("Authorization") != "Bearer " + owner.token
+                    if (self.path != route or self.headers.get("Authorization") != "Bearer " + owner.token
+                            or self.headers.get("Origin") is not None
+                            or self.headers.get("Host") != f"127.0.0.1:{owner.server.server_port}"
                             or not 0 < length <= 8 * 1024 * 1024):
                         raise ValueError("route or authentication refused")
                     raw = self.rfile.read(length)
                     body = json.loads(raw)
-                    validate_request(body, model, tool_names)
+                    if subscription:
+                        observations = validate_responses_request(body, model, tool_names)
+                    else:
+                        validate_request(body, model, tool_names)
+                        observations = body["messages"]
                     if on_tool_results:
-                        on_tool_results(body["messages"])
+                        on_tool_results(observations)
                     with owner._admission:
                         if owner._remaining <= 0:
                             raise ValueError("model request budget exhausted")
                         owner._remaining -= 1
                     body["store"] = False
                     body["parallel_tool_calls"] = False
-                    if not {"max_tokens", "max_completion_tokens"}.intersection(body):
+                    if not subscription and not {"max_tokens", "max_completion_tokens"}.intersection(body):
                         body["max_tokens"] = 4096
                     # Never forward client headers, URLs, provider references or
                     # hosted tools. This is the one qualified upstream route.
-                    request = urllib.request.Request("https://api.openai.com/v1/chat/completions", data=json.dumps(body).encode(),
-                        headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"})
+                    headers = {"Content-Type": "application/json"}
+                    if subscription:
+                        headers.update({"Authorization": "Bearer " + api_key.access_token,
+                                        "ChatGPT-Account-Id": api_key.account_id})
+                    else:
+                        headers["Authorization"] = "Bearer " + api_key
+                    request = urllib.request.Request(endpoint, data=json.dumps(body).encode(), headers=headers)
                     opener = urllib.request.build_opener(NoRedirect(), urllib.request.HTTPSHandler(context=tls_context))
                     event["forwarded"] = True
                     try:

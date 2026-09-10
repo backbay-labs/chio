@@ -4,6 +4,47 @@ Status: **not accepted**. This is one required integration in the six-host
 program. No result establishes another host's acceptance. Confidence in source
 inspection and retained observations is high; completion remains unresolved.
 
+## Subscription continuation candidate (r15)
+
+The API-credit failure retained with r11 is no longer an inference blocker.
+Pinned Hermes supports native `codex_responses`; the installed r15 candidate
+uses that transport through the protected parent relay with the existing native
+Codex ChatGPT login cache and explicit `gpt-5.5` model. The guest receives only
+an ephemeral loopback token. It receives neither the provider credential nor
+kernel/journal authority. Native login owns token renewal.
+
+[Subscription evidence](evidence/2026-09-09/subscription-r15/) identifies the
+cold-installed wheel, source hashes, commands, raw host output, gateway delivery
+records and independent resource observations. Wheel SHA-256:
+`625979d5331796e7aef5906e69e3e2c746796aa570291af026c305ed4227c818`.
+It retains supervisor repair `049018b78` from source base `7cfc241f6`.
+The designated kernel binary is
+`33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25`;
+resource image `sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0`.
+
+Actual subscription inference passed write/edit/read/list: four resource-side
+dispatch rows, four completed verified outcomes, four native-history delivery
+acknowledgments, and exact independently observed final contents. Secret read
+and forbidden write each reached the real host tool path, returned denied and
+produced zero new dispatches or resource changes. Direct probes under the exact
+successful sandbox could not read the native auth cache (including its Data
+volume alias), read the gateway configuration, or connect to the kernel port.
+
+Failed predecessors are retained separately. r12 requested `gpt-5.4`, which
+this subscription rejected; r13 sent the unsupported `max_output_tokens`
+parameter. Both produced zero tool dispatches. r14 completed one real write,
+then refused opaque provider reasoning on the next model request and correctly
+reported unresolved with no delivery acknowledgment. Explicit operator delivery
+export and acknowledgment subsequently reconciled that same retained authority;
+one native read followed, with no repeated write or resource-byte change.
+r15 removes opaque reasoning and provider item references while preserving
+complete inline function history for signed outcome verification.
+
+Owned component suite: **261 passed, four legacy opt-in skips unresolved**.
+The remaining r15 budget, evidence, concurrency, interruption and recovery
+matrix must be recorded independently. These useful and denial results are
+bounded evidence, not six-host program completion or accepted publication.
+
 ## Candidate and baseline identities
 
 - Chio base: `f5566d9a765c21cb36652a99c79de64968a656bf`.
@@ -33,7 +74,7 @@ inspection and retained observations is high; completion remains unresolved.
   hashes. The final-candidate evidence directory records immutable kernel and
   wheel/bridge identities; newer session-credential changes need another rerun.
 
-## Gate status
+## Historical gate status (original packed candidate)
 
 | Gate | Observed | Remaining acceptance |
 | --- | --- | --- |

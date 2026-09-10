@@ -114,6 +114,55 @@ credential in the operator launcher only. The host receives a per-run relay toke
 that cannot call another provider route. The gateway configuration is private (mode `0600`); the gateway
 journal is private (mode `0700`).
 
+## ChatGPT subscription model transport
+
+The same restricted launcher also supports the pinned Hermes native
+`codex_responses` transport through the parent relay. Select it explicitly:
+
+```bash
+chio-hermes-restricted \
+  --host-python /opt/hermes/venv/bin/python \
+  --host-root /opt/hermes/pinned-source \
+  --node /opt/node/bin/node \
+  --gateway-script /opt/chio-bridge/dist/gateway-http.js \
+  --gateway-config /private/operator/hermes-gateway.json \
+  --state-dir /private/operator/runs/hermes-unique-run \
+  --query-file /private/operator/task.txt \
+  --model gpt-5.5 \
+  --model-auth codex-subscription \
+  --codex-auth-file /private/operator/codex-profile/auth.json
+```
+
+The auth file must be an explicit private regular native Codex ChatGPT login
+cache containing an access token and account identity. Keep it outside every
+host-readable runtime, source and state directory. The parent reads it once;
+it never copies it into the host profile or environment, sends it to the guest,
+or refreshes it. Use native Codex login to renew expired authentication, then
+start a fresh launcher while preserving any unresolved operation authority.
+An authentication error does not authorize replay of a protected effect.
+
+Only `https://chatgpt.com/backend-api/codex/responses` receives that credential,
+with the native account header. Hermes uses the supported named custom provider
+configuration with `api_mode: codex_responses` pointing at the private local
+relay. This uses Hermes's native Responses conversion and stream handling.
+The relay accepts complete inline text and the exact Chio function declarations;
+it rejects remote item references, hosted tools, account storage, other routes,
+and other model names. Opaque reasoning history, provider item IDs and cache
+hints are removed; complete inline text and function history remain. Function output history reaches the same signed-result and
+request-binding verifier before delivery acknowledgment. Gateway mediation and
+the r11 parent-liveness supervisor are unchanged.
+
+Available model names depend on the account. The qualification account accepted
+`gpt-5.5`; its `gpt-5.4` request returned HTTP 400 before any protected dispatch.
+The API key mode remains explicit and separate. A depleted API account does not
+prove a subscription-mode blocker. The subscription route has a per-run request
+budget; its upstream output token controls differ from Chat Completions.
+
+Pinned upstream contracts: [provider resolution](https://github.com/NousResearch/hermes-agent/blob/175054c14b54404663d8614a178280cffe6062eb/hermes_cli/runtime_provider.py),
+[native Responses transport](https://github.com/NousResearch/hermes-agent/blob/175054c14b54404663d8614a178280cffe6062eb/agent/transports/codex.py),
+and [native authentication](https://github.com/NousResearch/hermes-agent/blob/175054c14b54404663d8614a178280cffe6062eb/hermes_cli/auth.py).
+These source files are included in launcher compatibility checks.
+
 ## Recovery, upgrade, and removal
 
 The launcher gives its trusted host supervisor a private liveness pipe. The

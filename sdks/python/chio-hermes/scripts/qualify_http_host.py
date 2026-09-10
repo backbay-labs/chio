@@ -24,6 +24,9 @@ parser = argparse.ArgumentParser(description=__doc__)
 for name in ["operator-state", "launcher-python", "host-python", "host-root", "bridge", "output"]:
     parser.add_argument("--" + name, type=Path, required=True)
 parser.add_argument("--fault-injector", type=Path)
+parser.add_argument("--model-auth", choices=["api-key", "codex-subscription"], default="api-key")
+parser.add_argument("--codex-auth-file", type=Path)
+parser.add_argument("--model", default="gpt-4.1-2025-04-14")
 parser.add_argument("--cases", nargs="+", choices=["useful", "secret", "forbidden-write", "host-response-loss", "aggregate-budget", "gateway-crash", "launcher-crash"], default=["useful", "secret", "forbidden-write"])
 a = parser.parse_args()
 a.output.mkdir(mode=0o700)
@@ -64,7 +67,9 @@ for case in a.cases:
         command = [str(a.launcher_python), "-m", "chio_hermes.restricted", "--host-python", str(a.host_python),
             "--host-root", str(a.host_root), "--node", shutil.which("node"), "--gateway-script", str(a.bridge / "dist/gateway-http.js"),
             "--gateway-config", str(config), "--state-dir", str(runtime), "--query-file", str(query),
-            "--model", "gpt-4.1-2025-04-14", "--model-base-url", "https://api.openai.com/v1", "--max-turns", "12"]
+            "--model", a.model, "--model-auth", a.model_auth, "--max-turns", "12"]
+        if a.codex_auth_file:
+            command += ["--codex-auth-file", str(a.codex_auth_file)]
         env = os.environ.copy()
         if fault:
             if not a.fault_injector or not a.fault_injector.is_file():
@@ -107,7 +112,7 @@ for case in a.cases:
         target = evidence / label; target.mkdir(mode=0o700)
         (target / "host.stdout.txt").write_text(completed.stdout)
         (target / "host.stderr.txt").write_text(completed.stderr)
-        for filename in ["launch.json", "terminal.json", "model-relay.json", "host-delivery.json", "sandbox.sb"]:
+        for filename in ["launch.json", "terminal.json", "model-relay.json", "host-delivery.json", "host.sb"]:
             if (runtime / filename).is_file():
                 shutil.copy2(runtime / filename, target / filename)
         terminal = json.loads((runtime / "terminal.json").read_text()) if (runtime / "terminal.json").exists() else {}
