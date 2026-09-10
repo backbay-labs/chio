@@ -1,0 +1,156 @@
+{
+  "schema": "chio.raw-evidence-encoding.v1",
+  "purpose": "Lossless raw artifact storage compatible with the unchanged Git whitespace gate. No authored source/prose exemption.",
+  "entries": [
+    {
+      "originalPath": "docs/integrations/acceptance/20260909/session-startup/aggregate-tests.log",
+      "originalSourceCommit": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+      "originalGitBlob": "be94cea7165a67d0e209e5c45a3c093a2e1936d1",
+      "originalBytes": 216787,
+      "originalSha256": "6bd4d268080e8747f03b65cd792abd665c5d6c6dc007284fd72fc6f8d6bf3c0d",
+      "storedPath": "docs/integrations/acceptance/20260909/session-startup/aggregate-tests.log.gz",
+      "storedBytes": 36821,
+      "storedSha256": "bf520a028889bbb1e24dcc6e9e6539088fb491fb1eea3a06fd14e22af59d0db9",
+      "encoding": "gzip",
+      "gzipMtime": 0,
+      "roundTripMatchesOriginalGitBlob": true
+    },
+    {
+      "originalPath": "docs/integrations/acceptance/20260909/session-startup/edge-tests.log",
+      "originalSourceCommit": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+      "originalGitBlob": "b7bf4bc3af8461dff53cc674fda46405ee6925f2",
+      "originalBytes": 16683,
+      "originalSha256": "058d9ae0df238c604b024891866ced18d98ca056d2aec41ba376eeaffad7e2b2",
+      "storedPath": "docs/integrations/acceptance/20260909/session-startup/edge-tests.log.gz",
+      "storedBytes": 3063,
+      "storedSha256": "fce650aa9ad8abad85e35744bc48daf1e71eacad71395e59d66088e22493ea46",
+      "encoding": "gzip",
+      "gzipMtime": 0,
+      "roundTripMatchesOriginalGitBlob": true
+    },
+    {
+      "originalPath": "docs/integrations/acceptance/20260909/session-startup/kernel-base-tests.log",
+      "originalSourceCommit": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+      "originalGitBlob": "2736bbaabf5e294aebd66587fb0c485a6d316006",
+      "originalBytes": 100916,
+      "originalSha256": "be1bc4250e8f066e9a30b1a96dfa03817fc23b0caa4765c920b2bdbef5c65454",
+      "storedPath": "docs/integrations/acceptance/20260909/session-startup/kernel-base-tests.log.gz",
+      "storedBytes": 19612,
+      "storedSha256": "e71b09707671d368a41723c67a87a6aa9b100b9634a89900840758f2f50d121d",
+      "encoding": "gzip",
+      "gzipMtime": 0,
+      "roundTripMatchesOriginalGitBlob": true
+    },
+    {
+      "originalPath": "docs/integrations/acceptance/20260909/session-startup/reader-test.log",
+      "originalSourceCommit": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+      "originalGitBlob": "f5bbe3214f4498aadbd837f406d969cc9a0201cf",
+      "originalBytes": 403,
+      "originalSha256": "0f53450aaa61947c4ca0e719ca75cebd4b1d587e65872a2ed1b9505bbfdd49c9",
+      "storedPath": "docs/integrations/acceptance/20260909/session-startup/reader-test.log.gz",
+      "storedBytes": 294,
+      "storedSha256": "b49540e630cfd1a101abaa86dee330ae6e23cb8bee3c6de61e7da12659c99261",
+      "encoding": "gzip",
+      "gzipMtime": 0,
+      "roundTripMatchesOriginalGitBlob": true
+    },
+    {
+      "originalPath": "docs/integrations/acceptance/20260909/session-startup/schema-tests.log",
+      "originalSourceCommit": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+      "originalGitBlob": "6d42765f6a03eb646c70b5bc9d39ad7e7c9c221e",
+      "originalBytes": 1570,
+      "originalSha256": "a8e8a30bf4478676fd1371f76b2ac2cb002311bab6fff913a3a9aa28d5648254",
+      "storedPath": "docs/integrations/acceptance/20260909/session-startup/schema-tests.log.gz",
+      "storedBytes": 645,
+      "storedSha256": "f6ff3738e618ec31058f55d11f47073f48ba412de72dbb43f8edf844c91cce22",
+      "encoding": "gzip",
+      "gzipMtime": 0,
+      "roundTripMatchesOriginalGitBlob": true
+    },
+    {
+      "originalPath": "docs/integrations/acceptance/20260909/session-startup/sqlite-tests.log",
+      "originalSourceCommit": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+      "originalGitBlob": "e9faca69b4ea543ec71425ea281de246359ee038",
+      "originalBytes": 1450,
+      "originalSha256": "0c61e939418dbd2ad5d89d6efd82eea0fc5a4c11a4a733a114467df9ee259736",
+      "storedPath": "docs/integrations/acceptance/20260909/session-startup/sqlite-tests.log.gz",
+      "storedBytes": 564,
+      "storedSha256": "16183a4f32744143b9fe979642df64b26c39e18029b44b5b0b87e81dc238fc97",
+      "encoding": "gzip",
+      "gzipMtime": 0,
+      "roundTripMatchesOriginalGitBlob": true
+    },
+    {
+      "originalPath": "docs/integrations/acceptance/shared-approval-qualification-20260909/candidate-source/working-tree.patch",
+      "originalSourceCommit": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+      "originalGitBlob": "7dfa5d45f6406290dea3372546b22cec937dfe0c",
+      "originalBytes": 118434,
+      "originalSha256": "17cabc4a48c0bfb53e4c30f2a8ab138447a85f41f9acf8728113192af71f3fcc",
+      "storedPath": "docs/integrations/acceptance/shared-approval-qualification-20260909/candidate-source/working-tree.patch.gz",
+      "storedBytes": 16987,
+      "storedSha256": "66f74dbdaff62ba59c5fedc86108a69fdccc2df4ba9f89ac1f31604a4636f9fd",
+      "encoding": "gzip",
+      "gzipMtime": 0,
+      "roundTripMatchesOriginalGitBlob": true
+    },
+    {
+      "originalPath": "sdks/python/chio-hermes/evidence/2026-09-09/history-cache-r9/cache-before.txt",
+      "originalSourceCommit": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+      "originalGitBlob": "f5f70c08cdfaebb2e400c5d6fed07bb96e14faee",
+      "originalBytes": 1884,
+      "originalSha256": "426b3998bf194cdfc7e2052e08dfd8feb6127bc4c62e73852f976e084c97d73c",
+      "storedPath": "sdks/python/chio-hermes/evidence/2026-09-09/history-cache-r9/cache-before.txt.gz",
+      "storedBytes": 743,
+      "storedSha256": "66afa25033b291bee171e2491e3a6821ef9a53025722613d20e1c32ecb16e5e6",
+      "encoding": "gzip",
+      "gzipMtime": 0,
+      "roundTripMatchesOriginalGitBlob": true
+    },
+    {
+      "originalPath": "sdks/python/chio-hermes/evidence/2026-09-09/subscription-r15/harnesses/kernel-storage-helper-change.diff",
+      "originalSourceCommit": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+      "originalGitBlob": "645b391b95ddef38a99a0a592ba85bc553ffa6c3",
+      "originalBytes": 1710,
+      "originalSha256": "2485daef7dac3c2056fb63b9ed3cb4b7666d1aaef9710b1da333613247c1e3c1",
+      "storedPath": "sdks/python/chio-hermes/evidence/2026-09-09/subscription-r15/harnesses/kernel-storage-helper-change.diff.gz",
+      "storedBytes": 717,
+      "storedSha256": "fc8a6bb02827f29778bda193a6f210e45f2750789b48faffbf43a6c46a4e2e04",
+      "encoding": "gzip",
+      "gzipMtime": 0,
+      "roundTripMatchesOriginalGitBlob": true
+    },
+    {
+      "originalPath": "sdks/python/chio-hermes/evidence/2026-09-09/subscription-r15/operational-timing/driver.log",
+      "originalSourceCommit": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+      "originalGitBlob": "2b2fb463af871833119512ec7fcb5235796491f6",
+      "originalBytes": 1407,
+      "originalSha256": "f5170f4a38c9db014e714d3904be7d6f9ae218fbcc2b8b998c6647b85271df6f",
+      "storedPath": "sdks/python/chio-hermes/evidence/2026-09-09/subscription-r15/operational-timing/driver.log.gz",
+      "storedBytes": 809,
+      "storedSha256": "c73d10ff1fada378ef26b00f0fc4901e499d2256536e2217337de91befdcbb12",
+      "encoding": "gzip",
+      "gzipMtime": 0,
+      "roundTripMatchesOriginalGitBlob": true
+    }
+  ],
+  "originalChecksumManifests": [
+    {
+      "path": "docs/integrations/acceptance/20260909/session-startup/SHA256SUMS",
+      "sourceCommit": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+      "sha256": "9362103c8602812157bb4b8e017bdbb1119f9901891e24e632fee71083b72d06",
+      "gitBlob": "4a5e3981ccc366cecc43b233de0656cdba03266a"
+    },
+    {
+      "path": "docs/integrations/acceptance/shared-approval-qualification-20260909/SHA256SUMS",
+      "sourceCommit": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+      "sha256": "686ce837fdb2cff66e55077d4337195f8a551f78db5d4f83b74eaca38296455d",
+      "gitBlob": "64e686e30868b064a51032ef6fed7198bd567a7b"
+    },
+    {
+      "path": "sdks/python/chio-hermes/evidence/2026-09-09/subscription-r15/SHA256SUMS.json",
+      "sourceCommit": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+      "sha256": "072e93c16097f257c6128ca6301912ffe8455b26434f99646fca8017841c74f1",
+      "gitBlob": "f4395c7f5035fa0542161a9a2dd93be92bd1d40f"
+    }
+  ]
+}

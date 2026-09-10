@@ -24,8 +24,8 @@ against a separate real kernel and resource, writing mode-0600 artifacts.
 - Binary: `/tmp/chio-approval-candidate-20260909/chio`.
 - SHA-256: `82e70065d44ce8e09ea1d9c891568eb41bcac6a45ec8d19c0a3480339505cb48`.
 - Built base: `b39728c58fc87caabed76f0b2f7f88e863307767`, plus the retained
-  `candidate-source/working-tree.patch` and new `candidate-source/crates/protocol/chio-mcp-remote/src/remote_mcp/approvals.rs`.
-- Tracked source patch SHA-256:
+  `candidate-source/working-tree.patch.gz` (decompress with `gzip -dc`) and new `candidate-source/crates/protocol/chio-mcp-remote/src/remote_mcp/approvals.rs`.
+- Decompressed original source patch SHA-256:
   `17cabc4a48c0bfb53e4c30f2a8ab138447a85f41f9acf8728113192af71f3fcc`.
 - Final implementation commit: `3ee1169960d5094339f6085ab97ac6bf17537433`.
 - Resource image: `sha256:0106edcb15a1c0d12d914ea0504f0e63ec85f5e6fdd3825b4d7a0d1367af3991`.

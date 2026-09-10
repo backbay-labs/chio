@@ -1,0 +1,58 @@
+[
+  {
+    "originalFilename": "candidate-whitespace.log",
+    "storedFilename": "candidate-whitespace.log.gz",
+    "originalBytes": 7647,
+    "originalSha256": "7bb8007f8a4741e7e748890f4ad3f8696769defa8dede00d1ca6f572641e8b52",
+    "storedSha256": "37ad89ab3e7c1e654c9a20538c2827b1ed13fac0d06ba8e6a30ac18b0e2d20f4"
+  },
+  {
+    "originalFilename": "candidate-whitespace.log.meta.json",
+    "storedFilename": "candidate-whitespace.log.meta.json.gz",
+    "originalBytes": 184,
+    "originalSha256": "2eb2d44522c9157505abce701d6d5ffa4b5fdf6355fbff11f6c72aa7a2e77bca",
+    "storedSha256": "8bbd098200d3aff0f6c955a63787a489c1d542f09679f1ebbbaeb13a324c30ba"
+  },
+  {
+    "originalFilename": "failed-job.log",
+    "storedFilename": "failed-job.log.gz",
+    "originalBytes": 20998,
+    "originalSha256": "bb5a31300de89a83cae1927c498796f74db6487882d28bca1f56d02ef791e1c5",
+    "storedSha256": "a126958d3421bde270d92035ec7968baae04ab296fdc64fc3c55235fa74bcff2"
+  },
+  {
+    "originalFilename": "failed-job.log.meta.json",
+    "storedFilename": "failed-job.log.meta.json.gz",
+    "originalBytes": 195,
+    "originalSha256": "8d32b4e3adc76b88e1316546b4fc43178793b90f3cf0ec47d3d82e34b2a443a0",
+    "storedSha256": "7e34e7da6f275eddfa3d17799b25ac3cc6d34dab642f78c8f473b09ad040337d"
+  },
+  {
+    "originalFilename": "job.json",
+    "storedFilename": "job.json.gz",
+    "originalBytes": 3769,
+    "originalSha256": "f63fba80483cebbd04a080751c12ae27abcd099528b70c4ae92aa9648b30ecc9",
+    "storedSha256": "f6633595f5e8c82ecbbe837fb194f7a22b6a9507a422e2893d8ecc2ffffaf696"
+  },
+  {
+    "originalFilename": "job.json.meta.json",
+    "storedFilename": "job.json.meta.json.gz",
+    "originalBytes": 129,
+    "originalSha256": "3e2d0840875b9f80bec1de06b2dbd66dfaed382205322e226065f346fba9b74f",
+    "storedSha256": "03b06f0c201c78368575bbab66164c1ad4f9434fb79c64ad6c52451a2049811a"
+  },
+  {
+    "originalFilename": "run.json",
+    "storedFilename": "run.json.gz",
+    "originalBytes": 12092,
+    "originalSha256": "0f51a59c97395521247c6dd5eb1b8d128d300e2849fc88d8b650a35b0f81262b",
+    "storedSha256": "3a69c563821d42c06e127d51192b32029a61785fb91b778e5c4c9b9f973617a7"
+  },
+  {
+    "originalFilename": "run.json.meta.json",
+    "storedFilename": "run.json.meta.json.gz",
+    "originalBytes": 128,
+    "originalSha256": "c10d0c71e09bd5a89beb41f3ca5774737016628e260a1d75ece355e3e29d80e0",
+    "storedSha256": "e82d9a66c3eb19f6fdbe5a7a3e1a33796e082e4c7fe217c17f79ac29dcfe4eb4"
+  }
+]

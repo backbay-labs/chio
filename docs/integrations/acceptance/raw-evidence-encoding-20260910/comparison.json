@@ -1,0 +1,17 @@
+{
+  "baseRevision": "f5566d9a765c21cb36652a99c79de64968a656bf",
+  "candidateRevision": "aed14bf728f463f82bbb68babd4004d29491b0f6",
+  "jobUrl": "https://github.com/bb-connor/arc/actions/runs/34434603170/job/102736958798",
+  "failure": "patch-integrity git diff --check; PostgreSQL tests were not reached",
+  "qualificationSourceUnchanged": {
+    "scripts/qualify-cognition-market-hosted.sh": {
+      "baseSha256": "33f9293c955ac71bb0840189300c66cad24b1b266365f130f2cd78c371f7ca63",
+      "candidateSha256": "33f9293c955ac71bb0840189300c66cad24b1b266365f130f2cd78c371f7ca63"
+    },
+    ".github/workflows/cognition-market-hosted.yml": {
+      "baseSha256": "04fed9718db3fb68c0733370acef0b98697fc0a5f5846e54d26d6e6bcb0c08f3",
+      "candidateSha256": "04fed9718db3fb68c0733370acef0b98697fc0a5f5846e54d26d6e6bcb0c08f3"
+    }
+  },
+  "allOffendingRawFilesAddedByCandidate": true
+}
