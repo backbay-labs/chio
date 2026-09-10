@@ -34,9 +34,20 @@ esac
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/chio-sdk-release.XXXXXX")"
+qualification_complete=0
 
 cleanup() {
-  rm -rf "${work_dir}"
+  local status=$?
+  if ! rm -rf "${work_dir}"; then
+    status=1
+  fi
+  # Bash 3.2 can report status zero to EXIT after a nounset failure. Success
+  # requires reaching the end of the complete qualification driver.
+  if [[ "${status}" == "0" && "${qualification_complete}" != "1" ]]; then
+    status=1
+  fi
+  trap - EXIT
+  exit "${status}"
 }
 trap cleanup EXIT
 
@@ -713,11 +724,13 @@ NODE
       local dep_name
       local -a requested_dep_names=()
 
-      for existing_name in "${install_arg_names[@]}"; do
-        if [[ "${existing_name}" == "${requested_name}" ]]; then
-          return 0
-        fi
-      done
+      if [[ "${#install_arg_names[@]}" -gt 0 ]]; then
+        for existing_name in "${install_arg_names[@]}"; do
+          if [[ "${existing_name}" == "${requested_name}" ]]; then
+            return 0
+          fi
+        done
+      fi
 
       if ! requested_index="$(packed_package_index_for "${requested_name}")"; then
         echo "TypeScript release smoke is missing packed local dependency ${requested_name}" >&2
@@ -910,3 +923,5 @@ NODE
     exit 2
     ;;
 esac
+
+qualification_complete=1
