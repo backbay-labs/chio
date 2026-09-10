@@ -1,0 +1,45 @@
+{
+  "scope": "Actual prepared native OpenSSL3.6.4 on aarch64-apple-darwin, not full Chio binary or host acceptance",
+  "files": [
+    {
+      "path": "grype.yaml.gz",
+      "sha256": "ac5c50c57882ea1d9908bcef8b7f8698b3a75e731b8831008feb5a11c8074036",
+      "raw_sha256": "53ac5761c14bf178362e96eaefb321331c4648e3a3b1a6d87bff165d116eae99"
+    },
+    {
+      "path": "commands.json.gz",
+      "sha256": "52cf0d5ab48a2aa2699ac46a2d1e4d8515f4dd6f95c7a7ec15ed92249ecf16e3",
+      "raw_sha256": "4e1a15390e374767828c8adeccafbfffb3278a2b376c629d8cc49cab0d8cf268"
+    },
+    {
+      "path": "version.log.gz",
+      "sha256": "a897c4db06323a95ba3cdacecc2b512c39eaec4f18f9ef4bda07a49faabb7fde",
+      "raw_sha256": "09fc9eed597ef840716614068c9c75f48cc91896835277868237319511e64f6a"
+    },
+    {
+      "path": "scan.log.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-openssl.catalog.cdx.json.gz",
+      "sha256": "b73af5b600a4a58899edf7805fbd66221dc612cc770bbca7ae07fde34ddcbdb4",
+      "raw_sha256": "797d9bb3fc85bf01a6f89e929ad8f0265d6334840d3c9f5c737306944ddc1be7"
+    },
+    {
+      "path": "native-openssl.grype.json.gz",
+      "sha256": "f33da8a5258e9281a9fd6c350b124f46357e0040ef7906165f2c02bed009b5be",
+      "raw_sha256": "f177b5412926ebba9b9f5f934863f72236cfe3e49f1586e075f62d123cdccc05"
+    },
+    {
+      "path": "native-openssl-scan.json.gz",
+      "sha256": "536ec4c2b23ae903b7d4e0d92199c1b74da673cdefff17d0bc9afb1c791eb5e7",
+      "raw_sha256": "b73c0b86b1af91c3acfd62085aca3642255f96b7206e49d92e6600e92e34a348"
+    },
+    {
+      "path": "native-openssl.json.gz",
+      "sha256": "c9789b45ba342ff1cb7f262062d28f335726067ca1c12620ca1866e5d5f6d1a3",
+      "raw_sha256": "53ce9d512229466d076ba56302fa7af9960ea78d6a5f5a5295dfb36c2ffebbb2"
+    }
+  ]
+}

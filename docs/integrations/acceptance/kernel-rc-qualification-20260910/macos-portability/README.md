@@ -87,12 +87,14 @@ wrong-architecture refusal, and native scan identity, findings, filtering and
 database freshness. Synthetic report fixtures exercise validator refusal only.
 The two actual binary gate controls are retained.
 
-The source-preparation recipe was handed to the coordinating worker for an
-independent real build. This record does not claim that its build or upstream
-test suite has completed. All upstream failures/skips, the eventual static
-binary hash, native scanner result, protected-host tests and real installer
-qualification must remain explicit in subsequent records. Do not inherit the
-older candidate's host results or promote a plain build to a signed release.
+The coordinating worker independently completed the source-preparation recipe
+on Apple Silicon. The upstream test command exited successfully and reported
+355 recipe files and 4,046 tests. This is not a zero-skip claim for the upstream
+suite: the coordinating worker retains its full logs and skip classification.
+The resulting native binary passed the scanner below. The eventual complete
+Chio binary, protected-host tests and real installer qualification must remain
+explicit in subsequent records. Do not inherit the older candidate's host
+results or promote a plain build to a signed release.
 
 ## Native vulnerability inventory
 
@@ -139,5 +141,17 @@ rules, with no ignored matches. Subsequent `controlled-*` reports have an empty
 effective ignore list. These records do not label the initial configuration as
 unfiltered. No findings were suppressed to obtain a passing OpenSSL result.
 
-The real prepared binary, exact complete Chio executable inventory, signed
-release assets, and host qualification remain separate required observations.
+The complete native scan helper subsequently passed against the actual prepared
+Apple Silicon OpenSSL 3.6.4 executable, SHA-256
+`0e33e7613dd8487f3055ce2bcb35f18bb59451293c0d7d9caeacae7a609bf9a9`.
+Its discovered catalog, scanner report, controlled configuration and binding
+report are retained in `actual-native-scan/`. It reports zero findings and zero
+ignored findings. The bound native manifest hashes to
+`53ce9d512229466d076ba56302fa7af9960ea78d6a5f5a5295dfb36c2ffebbb2`;
+the library inputs are:
+
+- `libssl.a`: `42069924fa08c872360519b2b2552acbb5f97bf62c642321f87f446461c3e6f3`
+- `libcrypto.a`: `718e86bcdf513257e662647015ae7577ea9e09a478592a1826349e9ccba15882`
+
+The Intel build, exact complete Chio executable inventory, signed release assets,
+and protected-host qualification remain separate required observations.

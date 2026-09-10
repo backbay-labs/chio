@@ -53,9 +53,10 @@
   ],
   "claims": {
     "loader_regression_reproduced": true,
-    "new_static_openssl_build_completed": false,
+    "new_static_openssl_build_completed": true,
     "new_kernel_build_completed": false,
-    "new_host_acceptance": false
+    "new_host_acceptance": false,
+    "actual_prepared_openssl_scan_passed": true
   },
   "unit_test_exit": 0,
   "unit_test_count": 16,
