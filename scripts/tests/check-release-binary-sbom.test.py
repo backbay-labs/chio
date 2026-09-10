@@ -206,11 +206,13 @@ class BinaryInventoryGate(unittest.TestCase):
         root = SCRIPT.parents[1]
         workflow = (root / ".github/workflows/release-binaries.yml").read_text()
         prepare = workflow.index("      - name: Prepare pinned static OpenSSL (macOS)")
+        scan = workflow.index("      - name: Scan prepared native OpenSSL (macOS)")
         build = workflow.index("      - name: Build (native)")
         linkage = workflow.index("      - name: Qualify macOS linkage and retain native materials")
         inventory = workflow.index("      - name: Validate executable dependency inventory")
         sign = workflow.index("      - name: Cosign sign-blob release archive")
-        self.assertLess(prepare, build)
+        self.assertLess(prepare, scan)
+        self.assertLess(scan, build)
         self.assertLess(build, linkage)
         self.assertLess(linkage, inventory)
         self.assertLess(inventory, sign)
@@ -220,9 +222,13 @@ class BinaryInventoryGate(unittest.TestCase):
         native_block = workflow[linkage:workflow.index("      - name: Build (cross)")]
         self.assertIn("python scripts/check-macos-release-linkage.py", native_block)
         self.assertIn("LICENSE.txt", native_block)
+        self.assertIn("python scripts/scan-macos-release-openssl.py", workflow[scan:build])
+        self.assertNotIn("continue-on-error", workflow[scan:build])
         stage = workflow[workflow.index("      - name: Stage artifacts (unix)"):
                          workflow.index("      - name: Stage artifacts (windows)")]
-        for suffix in ["native-openssl.json", "linkage.json", "openssl-LICENSE.txt"]:
+        for suffix in ["native-openssl.json", "linkage.json", "openssl-LICENSE.txt",
+                       "native-openssl.catalog.cdx.json", "native-openssl.grype.json",
+                       "native-openssl-scan.json"]:
             self.assertIn(f'cp "out/native/chio-${{CHIO_TARGET}}.{suffix}" "dist/${{stage_dir}}/"', stage)
             self.assertIn(f"            release/*.{suffix}", workflow)
         for path in [".github/workflows/ci.yml", "scripts/ci-workspace.sh"]:

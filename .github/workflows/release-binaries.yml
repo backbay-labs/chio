@@ -166,6 +166,18 @@ jobs:
             --output "${RUNNER_TEMP}/chio-openssl-${CHIO_TARGET}" \
             --jobs 2
 
+      - name: Scan prepared native OpenSSL (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CHIO_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          python scripts/scan-macos-release-openssl.py \
+            --prepared "${RUNNER_TEMP}/chio-openssl-${CHIO_TARGET}" \
+            --target "${CHIO_TARGET}" \
+            --output "${RUNNER_TEMP}/chio-openssl-scan-${CHIO_TARGET}"
+
       - name: Build (native)
         if: matrix.cross == false
         shell: bash
@@ -187,6 +199,7 @@ jobs:
         run: |
           set -euo pipefail
           native_root="${RUNNER_TEMP}/chio-openssl-${CHIO_TARGET}"
+          scan_root="${RUNNER_TEMP}/chio-openssl-scan-${CHIO_TARGET}"
           mkdir -p out/native
           python scripts/check-macos-release-linkage.py \
             --binary "target/${CHIO_TARGET}/release/${BINARY_NAME}" \
@@ -196,6 +209,9 @@ jobs:
           cp "${native_root}/native-openssl.json" "out/native/chio-${CHIO_TARGET}.native-openssl.json"
           native_version="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "${native_root}/native-openssl.json")"
           cp "${native_root}/source/openssl-${native_version}/LICENSE.txt" "out/native/chio-${CHIO_TARGET}.openssl-LICENSE.txt"
+          cp "${scan_root}/native-openssl.catalog.cdx.json" "out/native/chio-${CHIO_TARGET}.native-openssl.catalog.cdx.json"
+          cp "${scan_root}/native-openssl.grype.json" "out/native/chio-${CHIO_TARGET}.native-openssl.grype.json"
+          cp "${scan_root}/native-openssl-scan.json" "out/native/chio-${CHIO_TARGET}.native-openssl-scan.json"
 
       - name: Upload native macOS materials
         if: runner.os == 'macOS'
@@ -401,6 +417,9 @@ jobs:
             cp "out/native/chio-${CHIO_TARGET}.native-openssl.json" "dist/${stage_dir}/"
             cp "out/native/chio-${CHIO_TARGET}.linkage.json" "dist/${stage_dir}/"
             cp "out/native/chio-${CHIO_TARGET}.openssl-LICENSE.txt" "dist/${stage_dir}/"
+            cp "out/native/chio-${CHIO_TARGET}.native-openssl.catalog.cdx.json" "dist/${stage_dir}/"
+            cp "out/native/chio-${CHIO_TARGET}.native-openssl.grype.json" "dist/${stage_dir}/"
+            cp "out/native/chio-${CHIO_TARGET}.native-openssl-scan.json" "dist/${stage_dir}/"
           fi
           cp README.md LICENSE "dist/${stage_dir}/" 2>/dev/null || true
           (cd dist && tar czf "${stage_dir}.tar.gz" "${stage_dir}")
@@ -651,6 +670,7 @@ jobs:
           # them directly so consumers can inspect the inventory before extraction.
           find artifacts -type f \( -name "*.cyclonedx.json" -o -name "*.validation.json" \) -exec cp {} release/ \;
           find artifacts -type f \( -name "*.native-openssl.json" -o -name "*.linkage.json" -o -name "*.openssl-LICENSE.txt" \) -exec cp {} release/ \;
+          find artifacts -type f \( -name "*.native-openssl.catalog.cdx.json" -o -name "*.native-openssl.grype.json" -o -name "*.native-openssl-scan.json" \) -exec cp {} release/ \;
           find release -type f -name "*.sha256" -exec perl -0pi -e 's/\r\n/\n/g; s/\r/\n/g' {} +
           # Concatenate the per-archive .sha256 files into the combined
           # SHA256SUMS for `shasum -a 256 -c`.
@@ -777,6 +797,9 @@ jobs:
             release/*.native-openssl.json
             release/*.linkage.json
             release/*.openssl-LICENSE.txt
+            release/*.native-openssl.catalog.cdx.json
+            release/*.native-openssl.grype.json
+            release/*.native-openssl-scan.json
             release/SHA256SUMS
             release/chio.rb
 
