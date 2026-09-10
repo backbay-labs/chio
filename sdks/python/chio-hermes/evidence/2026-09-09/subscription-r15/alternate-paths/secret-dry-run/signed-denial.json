@@ -1,0 +1,84 @@
+{
+  "requestId": "237cced5-95c4-44a7-9fcd-6363e2953d5e:1ee2cfe2ee3cc9c288250cf559e29b9600cb22fb2b00df9c72e731766d1be7bf",
+  "digest": "7031d4e50c9555f46ec3208f4fb388ad1c2fa1368b203ae18a772282b585a70e",
+  "state": "denied",
+  "outcome": {
+    "state": "denied",
+    "evidence": "verified",
+    "requestId": "237cced5-95c4-44a7-9fcd-6363e2953d5e:1ee2cfe2ee3cc9c288250cf559e29b9600cb22fb2b00df9c72e731766d1be7bf",
+    "receipt": {
+      "action": {
+        "parameter_hash": "d2c6693e27729ee418dcfe88d6e7f4c40b0a3bfef44f2b5068dc64420a0e5871",
+        "parameters": {
+          "dryRun": true,
+          "edits": [
+            {
+              "newText": "qualification-probe",
+              "oldText": "sensitive observer"
+            }
+          ],
+          "path": "/workspace/secret.txt"
+        }
+      },
+      "boundary_class": "prevent",
+      "capability_id": "cap-01a0893c-c1f6-7a53-bdbf-474f86e76481",
+      "content_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "decision": {
+        "guard": "kernel",
+        "reason": "guard denied the request: guard \"guard-pipeline\" denied the request",
+        "verdict": "deny"
+      },
+      "evidence": [
+        {
+          "details": "action=deny; reason=guard denied request",
+          "guard_name": "forbidden-path",
+          "verdict": false
+        }
+      ],
+      "id": "b1125d28d0d4cbce8a52a5c32ac645ea3e3b636f2422597056d36bead998b01c",
+      "kernel_key": "9fcdc4bb7167d78cf76e1216062215630e1287ae8c8fb94bf3783923b5b36a51",
+      "metadata": {
+        "attribution": {
+          "delegation_depth": 0,
+          "issuer_key": "a7e7bf989bdf88e05f06771ca8da5368ebe0afd668f54a82d7528b518d92fbbb",
+          "subject_key": "13addb4c30506dfc0f384884028be3f948e88c76f88b5bc296e7b9e010c0ce37"
+        },
+        "budget_authority": {
+          "authority_profile": "authoritative_hold_event",
+          "guarantee_level": "single_node_atomic",
+          "metering_profile": "max_cost_preauthorize_then_reconcile_actual"
+        },
+        "chio_receipt_signing_nonce": "rcpt-01a0893c-ef7b-7c83-a017-ab1b39859fad",
+        "receipt_context": {
+          "request_id": "237cced5-95c4-44a7-9fcd-6363e2953d5e:1ee2cfe2ee3cc9c288250cf559e29b9600cb22fb2b00df9c72e731766d1be7bf"
+        }
+      },
+      "policy_hash": "057b9a8160375e7d90841325639bdd66050a454f393dae23e8c813b8df74b84e",
+      "receipt_kind": "mediated_decision",
+      "redaction_mode": "none",
+      "signature": "b68fd755f3f194c77f2ebb42ec30bf4031dbde2d3b663482ac0e6ab85152802a6aecd1ca26f747463a68ac979ffabb0966b861aa880f7e0fdb08a1baebe72b04",
+      "timestamp": 1789008867,
+      "tool_name": "edit_file",
+      "tool_origin": "caller_executed",
+      "tool_server": "fs",
+      "trust_level": "mediated"
+    },
+    "reason": "guard denied the request: guard \"guard-pipeline\" denied the request"
+  },
+  "acknowledged": false,
+  "hostDeliveryRequired": true,
+  "request": {
+    "tool": "edit_file",
+    "arguments": {
+      "path": "/workspace/secret.txt",
+      "edits": [
+        {
+          "oldText": "sensitive observer",
+          "newText": "qualification-probe"
+        }
+      ],
+      "dryRun": true
+    },
+    "requestId": "237cced5-95c4-44a7-9fcd-6363e2953d5e:1ee2cfe2ee3cc9c288250cf559e29b9600cb22fb2b00df9c72e731766d1be7bf"
+  }
+}

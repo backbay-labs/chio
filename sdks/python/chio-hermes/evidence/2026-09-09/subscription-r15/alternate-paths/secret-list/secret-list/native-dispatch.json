@@ -1,0 +1,17 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_PI84a5AXmle8j2p5I3AX2hN7",
+      "name": "mcp__chio__list_directory",
+      "arguments": {
+        "path": "/workspace/secret.txt"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_PI84a5AXmle8j2p5I3AX2hN7"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

@@ -1,0 +1,17 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_wpfCWPYabbepyQU0oIqY7pfu",
+      "name": "mcp__chio__read_text_file",
+      "arguments": {
+        "path": "/workspace/../workspace/secret.txt"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_wpfCWPYabbepyQU0oIqY7pfu"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

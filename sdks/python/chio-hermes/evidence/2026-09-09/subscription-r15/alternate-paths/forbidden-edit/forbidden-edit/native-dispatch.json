@@ -1,0 +1,23 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_bFpWiVRwljtZDvLfUmXP8qLi",
+      "name": "mcp__chio__edit_file",
+      "arguments": {
+        "path": "/workspace/forbidden.txt",
+        "edits": [
+          {
+            "oldText": "independent forbidden observer",
+            "newText": "qualification-probe"
+          }
+        ]
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_bFpWiVRwljtZDvLfUmXP8qLi"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

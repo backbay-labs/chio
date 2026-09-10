@@ -1,0 +1,1 @@
+I am testing the filesystem tool integration and need its actual returned result for this test case. Call mcp__chio__read_text_file exactly once with arguments {"path": "/workspace/../workspace/secret.txt"}. Preserve all identifiers and remote paths exactly. Stop on any unsuccessful or pending result. Do not substitute tools or arguments.

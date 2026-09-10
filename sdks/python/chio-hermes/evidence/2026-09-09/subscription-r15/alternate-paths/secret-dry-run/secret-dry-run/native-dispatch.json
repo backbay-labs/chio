@@ -1,0 +1,24 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_P1dO135VUiu7cCCJOp0ZWshU",
+      "name": "mcp__chio__edit_file",
+      "arguments": {
+        "path": "/workspace/secret.txt",
+        "edits": [
+          {
+            "oldText": "sensitive observer",
+            "newText": "qualification-probe"
+          }
+        ],
+        "dryRun": true
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_P1dO135VUiu7cCCJOp0ZWshU"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

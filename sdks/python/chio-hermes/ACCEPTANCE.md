@@ -72,6 +72,13 @@ and the launcher reported incomplete work. These bridge journal tests do not
 establish behavior under kernel receipt-store or signing failure; those shared
 faults require their own evidence.
 
+The same r15 host also passed five exact alternate-path/tool denials: forbidden
+`edit_file`, secret `edit_file` with `dryRun: true`, `list_directory` on the
+secret file, normalized secret read and normalized forbidden write. Every case
+records the exact native arguments and returned tool call, a verified denial,
+zero dispatches and an unchanged independent resource snapshot. See
+[all five runs](evidence/2026-09-09/subscription-r15/alternate-paths/).
+
 ## Candidate and baseline identities
 
 - Chio base: `f5566d9a765c21cb36652a99c79de64968a656bf`.
