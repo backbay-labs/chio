@@ -1,0 +1,1 @@
+{"error": "{\"state\":\"not_dispatched\",\"evidence\":\"unverified\",\"requestId\":\"036614d1-7eda-41c9-afc7-00b4205104ed:9b1bb7a5bc008b597768631a8bfb32f64c3d0826e1c1ea51959afca86dea73c9\",\"reason\":\"operator denied the proposal before dispatch\"}"}

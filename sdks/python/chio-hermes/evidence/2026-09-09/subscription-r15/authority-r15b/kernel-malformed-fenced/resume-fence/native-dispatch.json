@@ -1,0 +1,18 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_Pyqcv7J6sRDYU1HDBkkQqmnu",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/hermes-must-stay-fenced.txt",
+        "content": "must never dispatch after unknown outcome"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_Pyqcv7J6sRDYU1HDBkkQqmnu"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

@@ -1,0 +1,4 @@
+warning: Workspace member `/Users/connor/Medica/backbay/clusters/providence/apps/providence/services/api` is missing a `pyproject.toml` (matches: `clusters/providence/apps/providence/services/api`)
+Using CPython 3.11.3 interpreter at: /Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11
+Creating virtual environment at: /tmp/chio-hermes-subscription-lifecycle-r15-20260909/consumer
+Activate with: source /tmp/chio-hermes-subscription-lifecycle-r15-20260909/consumer/bin/activate

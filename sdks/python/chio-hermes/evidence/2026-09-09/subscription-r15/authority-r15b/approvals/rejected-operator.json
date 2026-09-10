@@ -1,0 +1,15 @@
+{
+  "submission": {
+    "output": "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-approvals-c7f99956689a497594c965333f39f0a9/rejected-submission.json",
+    "status": "pending",
+    "approvalId": "approval-31b20ab6ac75f9770af2865f27d5cdaa2c0bf495f21e9e3fe2edd0304038b4ea",
+    "protectedDispatch": false
+  },
+  "decision": {
+    "output": "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-approvals-c7f99956689a497594c965333f39f0a9/journal/approvals/3c18d07f3835e7774431b1a27006b44f8284ad7a0ab08965b850c006c5d1e831.json",
+    "status": "denied",
+    "approvalId": "approval-31b20ab6ac75f9770af2865f27d5cdaa2c0bf495f21e9e3fe2edd0304038b4ea",
+    "protectedDispatch": false
+  },
+  "protectedDispatch": false
+}

@@ -1,0 +1,23 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_M6tSA04ZWM5TywtxWHYHWiYK",
+      "name": "mcp__chio__edit_file",
+      "arguments": {
+        "path": "/workspace/hermes-budget-3f3ddf2667b8.txt",
+        "edits": [
+          {
+            "oldText": "original",
+            "newText": "edited"
+          }
+        ]
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_M6tSA04ZWM5TywtxWHYHWiYK"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

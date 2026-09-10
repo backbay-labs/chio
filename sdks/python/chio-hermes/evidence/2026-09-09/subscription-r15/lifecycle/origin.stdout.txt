@@ -1,0 +1,1 @@
+{"origin": "/private/tmp/chio-hermes-subscription-lifecycle-r15-20260909/consumer/lib/python3.11/site-packages/chio_hermes/__init__.py"}

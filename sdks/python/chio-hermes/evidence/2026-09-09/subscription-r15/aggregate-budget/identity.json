@@ -1,0 +1,13 @@
+{
+  "host": "hermes",
+  "suite": "aggregate-budget",
+  "cases": 4,
+  "skips": 0,
+  "kernelSha256": "33dd1dea21a4ca5ecddeab4f30f6b06b0b90c513f0987aef552b0633d9da1e25",
+  "resourceImage": "sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0",
+  "hostImage": null,
+  "packageDirectory": "/tmp/chio-bridge-host-delivery-cold-consumer-r2-20260909/node_modules/@chio/bridge",
+  "privateConfiguration": "/Users/connor/.local/share/chio-required-operators/budget3-hosts-20260909/hermes-approvals-48ee6fb281044c0f87163f3ddf2667b8/gateway.json",
+  "configurationSha256": "eea358cd2115bd3c2673fcad6d0e9554b2e878a02812ae024208b5cac804b2ec",
+  "claim": "bounded real-host authority and explicit launcher refusal cases; full acceptance remains open"
+}

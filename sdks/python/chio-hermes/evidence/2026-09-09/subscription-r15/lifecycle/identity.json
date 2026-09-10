@@ -1,0 +1,8 @@
+{
+  "claim": "isolated candidate replacement/removal; not public release",
+  "artifacts": {
+    "/tmp/chio-hermes-supervisor-wheel-r11-20260909/chio_hermes-0.1.2-py3-none-any.whl": "f2c3d0e79a04c496c80950dccaa5752177216e7d2d267deb78c6b5c3f953b4f3",
+    "/tmp/chio-hermes-subscription-wheel-r15-20260909/chio_hermes-0.1.2-py3-none-any.whl": "625979d5331796e7aef5906e69e3e2c746796aa570291af026c305ed4227c818"
+  },
+  "normalHostProfileChanged": false
+}

@@ -1,0 +1,7 @@
+Using Python 3.11.3 environment at: /private/tmp/chio-hermes-subscription-lifecycle-r15-20260909/consumer
+Resolved 16 packages in 4ms
+Prepared 1 package in 15ms
+Uninstalled 1 package in 4ms
+Installed 1 package in 3ms
+ - chio-hermes==0.1.2 (from file:///tmp/chio-hermes-supervisor-wheel-r11-20260909/chio_hermes-0.1.2-py3-none-any.whl)
+ + chio-hermes==0.1.2 (from file:///tmp/chio-hermes-subscription-wheel-r15-20260909/chio_hermes-0.1.2-py3-none-any.whl)

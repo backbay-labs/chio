@@ -1,0 +1,1 @@
+Refused by tool: the write was not dispatched because an unresolved operation fences this gateway; operator reconciliation is required.

@@ -1,0 +1,1 @@
+{"home_read": "denied", "home_write": "denied", "unix_connect": "denied", "other_profile_read": "denied", "other_profile_write": "denied", "data_alias_read": "denied", "symlink_read": "denied", "hardlink": "denied", "shell_spawn": "denied", "unrelated_tcp": "denied", "selected_tcp": "allowed"}

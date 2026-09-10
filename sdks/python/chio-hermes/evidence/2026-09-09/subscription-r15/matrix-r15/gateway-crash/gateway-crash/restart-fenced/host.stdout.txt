@@ -1,0 +1,4 @@
+Refused/stopped as requested. The write_file call did not complete; it returned:
+
+state: not_dispatched
+reason: an unresolved operation fences this gateway; operator reconciliation required

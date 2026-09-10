@@ -1,0 +1,4 @@
+{"case": "budget-write", "exitCode": 0, "newDispatchRows": 1}
+{"case": "budget-edit", "exitCode": 0, "newDispatchRows": 1}
+{"case": "budget-read", "exitCode": 0, "newDispatchRows": 1}
+{"case": "budget-exhausted", "exitCode": 3, "newDispatchRows": 0}

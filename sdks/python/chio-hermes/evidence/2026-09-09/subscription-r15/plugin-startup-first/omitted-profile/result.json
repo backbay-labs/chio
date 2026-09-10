@@ -1,0 +1,13 @@
+{
+  "fault": "omitted-profile",
+  "claim": "bounded current artifact plugin dependency fault, not useful-work acceptance",
+  "nativeHostStarted": true,
+  "installedLauncher": "/private/tmp/chio-hermes-subscription-consumer-r15-20260909/lib/python3.11/site-packages/chio_hermes/restricted.py",
+  "launcherSha256": "e1fe2be691cdb9a87e9090f32b1cb1e053b8bfc43f26fe75b0f0071cabce0ea7",
+  "configurationBeforeSha256": "cfcd985870af383c9515b3c9744dfd8e38ff6a286b864df68177a5739b28c062",
+  "configurationAfterSha256": "c089b4dc3e57f6a85dd6fa0ea2e82984b7bf9e0cef0681ba7d17f831b7339da9",
+  "launcherExitCode": 0,
+  "resourceUnchanged": true,
+  "newDispatchRows": 0,
+  "passedBoundedFaultObservation": true
+}

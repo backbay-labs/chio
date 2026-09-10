@@ -1,0 +1,20 @@
+Using Python 3.11.3 environment at: /private/tmp/chio-hermes-subscription-lifecycle-r15-20260909/consumer
+Resolved 16 packages in 14ms
+Prepared 16 packages in 78ms
+Installed 16 packages in 17ms
+ + annotated-types==0.8.0
+ + anyio==4.15.1
+ + certifi==2026.7.22
+ + chio-adapter-base==0.2.0
+ + chio-code-agent==0.1.0
+ + chio-hermes==0.1.2 (from file:///tmp/chio-hermes-supervisor-wheel-r11-20260909/chio_hermes-0.1.2-py3-none-any.whl)
+ + chio-sdk-python==0.1.0
+ + h11==0.16.0
+ + httpcore==1.0.9
+ + httpx==0.28.1
+ + idna==3.19
+ + pydantic==2.13.5
+ + pydantic-core==2.46.5
+ + pyyaml==6.0.3
+ + typing-extensions==4.16.0
+ + typing-inspection==0.4.4

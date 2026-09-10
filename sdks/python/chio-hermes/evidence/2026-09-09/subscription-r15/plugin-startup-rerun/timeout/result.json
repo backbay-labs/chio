@@ -1,0 +1,13 @@
+{
+  "fault": "timeout",
+  "claim": "bounded current artifact plugin dependency fault, not useful-work acceptance",
+  "nativeHostStarted": false,
+  "installedLauncher": "/private/tmp/chio-hermes-subscription-consumer-r15-20260909/lib/python3.11/site-packages/chio_hermes/restricted.py",
+  "launcherSha256": "e1fe2be691cdb9a87e9090f32b1cb1e053b8bfc43f26fe75b0f0071cabce0ea7",
+  "failureModule": "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-plugin-startup-3e5617ed4b8448d3b94441e1c29308b5/gateway-http.mjs",
+  "failureModuleSha256": "f14d9aec6304f7e741fe497fa8d9145cfec797dbf8b57e5ecba6952b9490c1f1",
+  "launcherExitCode": 2,
+  "resourceUnchanged": true,
+  "newDispatchRows": 0,
+  "passedBoundedFaultObservation": true
+}

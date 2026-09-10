@@ -1,0 +1,3 @@
+Refused/stopped by tool gateway.
+
+The requested write was not completed. Error: an unresolved operation fences this gateway; operator reconciliation required.

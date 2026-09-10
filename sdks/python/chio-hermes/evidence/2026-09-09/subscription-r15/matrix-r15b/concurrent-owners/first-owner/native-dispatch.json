@@ -1,0 +1,18 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_HeT6N33DDg0NnpQ01WGbZsT9",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/hermes-parallel-293654bd5817.txt",
+        "content": "only the live owner may write"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_HeT6N33DDg0NnpQ01WGbZsT9"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

@@ -1,0 +1,34 @@
+[
+  {
+    "case": "wrong-session",
+    "exitCode": 2,
+    "command": [
+      "/tmp/chio-hermes-subscription-consumer-r15-20260909/bin/python",
+      "-m",
+      "chio_hermes.restricted",
+      "--host-python",
+      "/tmp/chio-hermes-20260909/clean-host-venv/bin/python",
+      "--host-root",
+      "/tmp/chio-hermes-20260909/public-upstream-source",
+      "--node",
+      "/opt/homebrew/bin/node",
+      "--gateway-script",
+      "/tmp/chio-bridge-host-delivery-cold-consumer-r2-20260909/node_modules/@chio/bridge/dist/gateway-http.js",
+      "--gateway-config",
+      "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-approvals-37896a91632940a39253a6865efc06ee/gateway.json",
+      "--state-dir",
+      "/tmp/chio-hermes-approval-runtime-4dfe128101ee472c9d2197f27198228f",
+      "--query-file",
+      "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-approvals-37896a91632940a39253a6865efc06ee/wrong-session.txt",
+      "--model",
+      "gpt-5.5",
+      "--max-turns",
+      "8",
+      "--model-auth",
+      "codex-subscription",
+      "--codex-auth-file",
+      "/Users/connor/.local/share/chio-required-operators/native-subscription-auth-20260909/codex/profile/auth.json"
+    ],
+    "newDispatchRows": 0
+  }
+]

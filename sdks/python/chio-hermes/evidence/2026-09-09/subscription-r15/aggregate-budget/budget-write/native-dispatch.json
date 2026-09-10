@@ -1,0 +1,18 @@
+{
+  "launchPreflightRefused": false,
+  "calls": [
+    {
+      "id": "call_1UZZjyL3m8zkxDR7pbgRT7wr",
+      "name": "mcp__chio__write_file",
+      "arguments": {
+        "path": "/workspace/hermes-budget-3f3ddf2667b8.txt",
+        "content": "native aggregate original"
+      }
+    }
+  ],
+  "returnedToolCallIds": [
+    "call_1UZZjyL3m8zkxDR7pbgRT7wr"
+  ],
+  "expectedAttemptObserved": true,
+  "attemptCount": 1
+}

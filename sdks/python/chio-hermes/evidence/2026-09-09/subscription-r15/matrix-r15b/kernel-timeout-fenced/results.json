@@ -1,0 +1,34 @@
+[
+  {
+    "case": "resume-fence",
+    "exitCode": 2,
+    "command": [
+      "/tmp/chio-hermes-subscription-consumer-r15-20260909/bin/python",
+      "-m",
+      "chio_hermes.restricted",
+      "--host-python",
+      "/tmp/chio-hermes-20260909/clean-host-venv/bin/python",
+      "--host-root",
+      "/tmp/chio-hermes-20260909/public-upstream-source",
+      "--node",
+      "/opt/homebrew/bin/node",
+      "--gateway-script",
+      "/tmp/chio-bridge-host-delivery-cold-consumer-r2-20260909/node_modules/@chio/bridge/dist/gateway-http.js",
+      "--gateway-config",
+      "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-approvals-cfb61c96e2db46f7b236ca75e09657f1/gateway.json",
+      "--state-dir",
+      "/tmp/chio-hermes-approval-runtime-3dd404e40fbd4ba693429bb46951ed56",
+      "--query-file",
+      "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-approvals-cfb61c96e2db46f7b236ca75e09657f1/resume-fence.txt",
+      "--model",
+      "gpt-5.5",
+      "--max-turns",
+      "8",
+      "--model-auth",
+      "codex-subscription",
+      "--codex-auth-file",
+      "/Users/connor/.local/share/chio-required-operators/native-subscription-auth-20260909/codex/profile/auth.json"
+    ],
+    "newDispatchRows": 0
+  }
+]

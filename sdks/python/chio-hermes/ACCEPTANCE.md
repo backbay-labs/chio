@@ -41,9 +41,26 @@ r15 removes opaque reasoning and provider item references while preserving
 complete inline function history for signed outcome verification.
 
 Owned component suite: **261 passed, four legacy opt-in skips unresolved**.
-The remaining r15 budget, evidence, concurrency, interruption and recovery
-matrix must be recorded independently. These useful and denial results are
-bounded evidence, not six-host program completion or accepted publication.
+The current installed candidate also completed aggregate budget exhaustion,
+capability and credential revocation, actual capability expiry, wrong identity
+and scope, seven approval stages, foreign receipt/wrong signer/request-ID
+substitution, native-history result substitution, concurrent owners, kernel
+loss/malformed response/timeout, gateway loss, SIGTERM cancellation and launcher
+SIGKILL. Original authorities remained fenced after uncertain results. Where a
+trusted completed owner result existed, explicit import or delivery export and
+acknowledgment restored a native read without repeating the write.
+
+The [current gate and boundary record](evidence/2026-09-09/subscription-r15/COVERAGE.md)
+maps each observation to retained raw evidence, separates startup refusals from
+native dispatch tests, and names the four unresolved legacy tests. Current
+plugin omission exposed no alternate tools; missing, crashed and timed-out
+gateway startup prevented the native host from starting. Current OS probes
+denied direct and descendant access to operator data, cross-profile data,
+unrelated network and shell execution. Offline candidate replacement and
+removal were rehearsed. This is a qualified local candidate, **not accepted
+publication**: I08 still requires publication of the compatible artifact set
+and the applicable release checks. These observations do not accept other
+hosts or the six-host program.
 
 ## Candidate and baseline identities
 

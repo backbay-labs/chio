@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "actualNativeHostReceivedSubstitutedBytes": true,
+  "substitutionAcknowledged": false,
+  "newModelTurnRefused": true,
+  "restartFenced": true,
+  "originalAuthorityReconciled": true,
+  "recoveryRepeatedWrites": 0,
+  "privateConfiguration": "/Users/connor/.local/share/chio-required-operators/hermes-cancellation-r10-20260909/hermes-native-history-04fd4ba557f740f8a64dfbe853b39a97/gateway.json",
+  "claim": "bounded final-hop result-binding and explicit delivery recovery"
+}

@@ -1,0 +1,5 @@
+Second write_file call returned an unsuccessful/unknown result, so I stopped as requested.
+
+Actual returned result:
+
+{"error": "{\"state\":\"unknown\",\"evidence\":\"unverified\",\"requestId\":\"897adc21-b82d-4281-90ba-b1d942cb7bf0:13c9a50e648945cb756271cbbe742d6d3436fc463a7d7dd9450dc472f4553de0\",\"reason\":\"execution outcome unknown; no automatic retry\"}"}

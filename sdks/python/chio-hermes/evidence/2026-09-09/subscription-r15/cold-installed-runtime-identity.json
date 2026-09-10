@@ -1,0 +1,31 @@
+{
+  "implementationRevision": "476ab366b",
+  "wheelSha256": "625979d5331796e7aef5906e69e3e2c746796aa570291af026c305ed4227c818",
+  "runtimeFilesMatchCommittedSource": {
+    "model_relay.py": true,
+    "hooks.py": true,
+    "gateway_runner.mjs": true,
+    "receipts.py": true,
+    "manifest.py": true,
+    "handlers.py": true,
+    "__init__.py": true,
+    "runtime.py": true,
+    "gateway_transport.py": true,
+    "executors.py": true,
+    "schemas.py": true,
+    "cli.py": true,
+    "host_supervisor.py": true,
+    "plugin.py": true,
+    "restricted.py": true,
+    "commands.py": true
+  },
+  "node": "v25.5.0",
+  "bridgePackageVersion": "0.3.0",
+  "bridgeFiles": {
+    "dist/gateway-http.js": "753e9e168417fb82261a55d60046d34f8e50233ebaedcccfc32dcb0167394ddc",
+    "dist/execution.js": "7bb3a5d1f0b31bb0cd35d224c640cbefecb233e1d3c1a54b18493e2c77600fe0",
+    "dist/gateway-operator.js": "84602a3f626ecf47283f0ada72fd4d2116104b167adc16eedd02e45d23306ac8",
+    "dist/prepare-gateway.js": "9dacf32a85c2083f0d3804771dc8a648d0eeff9c6faa5440b44f008bc1c43892"
+  },
+  "installedModuleOrigin": "/private/tmp/chio-hermes-subscription-consumer-r15-20260909/lib/python3.11/site-packages/chio_hermes/__init__.py"
+}

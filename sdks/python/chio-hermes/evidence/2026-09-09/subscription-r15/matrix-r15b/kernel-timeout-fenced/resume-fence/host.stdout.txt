@@ -1,0 +1,1 @@
+{"error": "{\"state\":\"not_dispatched\",\"evidence\":\"unverified\",\"requestId\":\"230ef5d1-2184-47c4-9e7b-39e980ba90a7:3202a7f8b9636bdf845297972bcac19830d4edfb98d3817e004cee3da2994a69\",\"reason\":\"an unresolved operation fences this gateway; operator reconciliation required\"}"}

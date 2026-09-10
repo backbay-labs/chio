@@ -1,0 +1,5 @@
+Second call was unsuccessful, so I stopped.
+
+Actual returned result for the second call:
+
+{"error": "{\"state\":\"unknown\",\"evidence\":\"unverified\",\"requestId\":\"d575fe5c-949e-4b77-aa60-3573a8f12284:9e783009d3f85497544fd5b03ff36016541462a89de380c673df6459ad9f3213\",\"reason\":\"execution receipt failed trusted request verification\"}"}

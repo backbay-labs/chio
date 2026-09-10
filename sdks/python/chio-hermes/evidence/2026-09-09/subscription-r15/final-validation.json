@@ -1,0 +1,32 @@
+{
+  "wheelSha256": "625979d5331796e7aef5906e69e3e2c746796aa570291af026c305ed4227c818",
+  "runtimeSourcesUnchanged": true,
+  "moduleChecks": {
+    "chio_hermes/model_relay.py": true,
+    "chio_hermes/hooks.py": true,
+    "chio_hermes/gateway_runner.mjs": true,
+    "chio_hermes/receipts.py": true,
+    "chio_hermes/manifest.py": true,
+    "chio_hermes/handlers.py": true,
+    "chio_hermes/__init__.py": true,
+    "chio_hermes/runtime.py": true,
+    "chio_hermes/gateway_transport.py": true,
+    "chio_hermes/executors.py": true,
+    "chio_hermes/schemas.py": true,
+    "chio_hermes/cli.py": true,
+    "chio_hermes/host_supervisor.py": true,
+    "chio_hermes/plugin.py": true,
+    "chio_hermes/restricted.py": true,
+    "chio_hermes/commands.py": true
+  },
+  "harnessValidation": {
+    "ruff": "all checks passed on three changed qualification scripts",
+    "pythonCompile": "passed on three changed qualification scripts"
+  },
+  "componentSuite": {
+    "passed": 261,
+    "skipped": 4,
+    "reason": "legacy opt-in sidecar compatibility; see COVERAGE.md"
+  },
+  "scope": "No production module changed after the qualified r15 artifact; current commit adds test harnesses and records."
+}
