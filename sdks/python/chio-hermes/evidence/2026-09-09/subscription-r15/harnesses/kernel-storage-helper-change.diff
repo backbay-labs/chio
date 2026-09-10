@@ -1,0 +1,29 @@
+diff --git a/integrations/required-agents/qualification/storage_fault.py b/integrations/required-agents/qualification/storage_fault.py
+index 828f472b3c..c34640d9eb 100644
+--- a/integrations/required-agents/qualification/storage_fault.py
++++ b/integrations/required-agents/qualification/storage_fault.py
+@@ -15,6 +15,7 @@ import sqlite3
+ import subprocess
+ import sys
+ import time
++import uuid
+ 
+ 
+ def write(path, value, private=False):
+@@ -88,7 +89,7 @@ def create(args):
+                "bearerToken": operator["agentToken"], "adminToken": operator["adminToken"],
+                "credentialTtlSeconds": 3600,
+                "trustedSigners": [(state / "sessions.sqlite.admission.kernel.pub").read_text().strip()],
+-               "serverId": "fs", "sessionId": "storage-fault-" + args.name,
++               "serverId": "fs", "sessionId": str(uuid.uuid4()),
+                "journalDir": str(state / "gateway-journal"),
+                "allowedTools": ["read_text_file", "write_file", "edit_file", "list_directory"]}
+     write(state / "prepare.json", prepare, True)
+@@ -105,6 +106,7 @@ def create(args):
+                 "barrierSha256": hashlib.sha256(barrier.read_bytes()).hexdigest(),
+                 "helperSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                 "prepareGatewaySha256": hashlib.sha256((bridge / "dist/prepare-gateway.js").read_bytes()).hexdigest(),
++                "hostSessionId": config["sessionId"],
+                 "sessionCredential": config["sessionCredential"], "createdAtEpoch": time.time(),
+                 "testOnlyTransportCutpoint": "/workspace/uncertain.txt reply held after resource returns"}
+     write(output / "manifest.json", manifest)

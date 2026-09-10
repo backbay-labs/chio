@@ -19,6 +19,27 @@
   "validation": {
     "ruff": "two new owned scripts passed",
     "pythonCompile": "two new owned scripts passed",
-    "runtimeModulesMatchingFrozenWheel": 16
+    "runtimeModulesMatchingFrozenWheel": 16,
+    "rawEvidenceWhitespace": "operational-timing/driver.log intentionally retains original trailing blank line; authored files checked separately"
+  },
+  "qualificationHelperVersions": [
+    {
+      "commit": "4cdf223a8a0eb95a9f193681f140b30da2e7fb58",
+      "gitBlob": "828f472b3c92463ef0ed59f1f24babd8ecd63332",
+      "sha256": "5da5e9d5743a3da8f045b4fd35f7597ac9890691f8f17dd6815ebaa6e8e6dcd7",
+      "retainedPath": "harnesses/kernel-storage_fault-initial.py"
+    },
+    {
+      "commit": "6459e583b2755a4bb87f8d81c8b021f14044e62a",
+      "gitBlob": "c34640d9eb055bb6798c7f039cf9d40a641c427c",
+      "sha256": "7de25889696ee9c1cca324130c6f10e34a41bdce555495a118673ad1336dd8d5",
+      "retainedPath": "harnesses/kernel-storage_fault.py"
+    }
+  ],
+  "helperChange": "Only owner creation changed: uuid import, random UUID host sessionId instead of storage-fault-NAME, and hostSessionId added to the public manifest. Fault, snapshot, unlock and restart logic are identical. First two creation manifests bind the initial revision; the third binds the second revision. Helpers were not copied per invocation during execution, so no stronger per-invocation identity is claimed.",
+  "ownerCreationHelperSha256": {
+    "after-receipt": "5da5e9d5743a3da8f045b4fd35f7597ac9890691f8f17dd6815ebaa6e8e6dcd7",
+    "before-admission": "5da5e9d5743a3da8f045b4fd35f7597ac9890691f8f17dd6815ebaa6e8e6dcd7",
+    "after-admission": "7de25889696ee9c1cca324130c6f10e34a41bdce555495a118673ad1336dd8d5"
   }
 }

@@ -86,6 +86,14 @@ The controller independently observes the file and audited write, acquires the
 database lock, and only then forwards the unchanged reply. Source and artifact
 hashes, raw commands, lock/release markers and snapshots are retained per owner.
 
+The shared qualification helper changed during the suite. Both exact Git
+versions and their diff are retained under `harnesses`, with each owner creation
+manifest bound in `kernel-storage-provenance.json`. The change uses a random
+UUID for a newly created host session and records that ID in the manifest.
+Fault, snapshot, unlock and restart code did not change. Existing authorities
+were never rewritten; per-invocation helper identity beyond these records is
+not asserted. Runtime artifacts remained unchanged.
+
 Each owner first completes one real native write with one verified delivery
 ACK. The fault then receives an exact native write and produces an unresolved
 caller result with zero ACKs. After unlock, both the same action and a new
