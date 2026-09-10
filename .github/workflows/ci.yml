@@ -98,6 +98,7 @@ jobs:
         run: |
           ./scripts/check-release-inputs.sh
           python3 scripts/tests/check-release-source-gates.test.py
+          python3 scripts/tests/check-release-binary-sbom.test.py
           ./scripts/check-web3-contract-parity.sh
           ./scripts/check-workspace-layering.sh
           python3 scripts/check-review-slices.py

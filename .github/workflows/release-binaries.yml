@@ -115,6 +115,11 @@ jobs:
             exit 1
           fi
 
+      - name: Install Python for binary inventory validation
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
       - name: Install Rust toolchain
         shell: bash
         run: |
@@ -260,7 +265,7 @@ jobs:
         if: runner.os != 'Windows'
         # Generates a CycloneDX 1.6 JSON SBOM. The binary already carries the
         # cargo-auditable dep graph; syft adds a standards-based external SBOM.
-        # The jq assertion fails loudly if syft changes its default schema version.
+        # A shared gate below validates the actual executable inventory and binding.
         shell: bash
         env:
           CHIO_BIN_SUFFIX: ${{ matrix.bin_suffix }}
@@ -272,8 +277,6 @@ jobs:
           syft --config deploy/sbom/syft.yaml \
             -o "cyclonedx-json@1.6=${out_file}" \
             "target/${CHIO_TARGET}/release/${BINARY_NAME}${CHIO_BIN_SUFFIX}"
-          jq -e '.bomFormat == "CycloneDX" and .specVersion == "1.6"' \
-            "${out_file}" > /dev/null
 
       - name: Emit CycloneDX 1.6 SBOM (windows)
         if: runner.os == 'Windows'
@@ -288,11 +291,20 @@ jobs:
           syft --config deploy/sbom/syft.yaml `
             -o "cyclonedx-json@1.6=$outFile" `
             "$binary"
-          $sbom = Get-Content -Raw $outFile | ConvertFrom-Json
-          if ($sbom.bomFormat -ne "CycloneDX" -or $sbom.specVersion -ne "1.6") {
-            Write-Error "Syft did not emit CycloneDX 1.6 SBOM at $outFile"
-            exit 1
-          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate executable dependency inventory
+        shell: bash
+        env:
+          CHIO_BIN_SUFFIX: ${{ matrix.bin_suffix }}
+          CHIO_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          python scripts/check-release-binary-sbom.py \
+            --sbom "out/sbom/chio-${CHIO_TARGET}.cyclonedx.json" \
+            --binary "target/${CHIO_TARGET}/release/${BINARY_NAME}${CHIO_BIN_SUFFIX}" \
+            --expected-version "${GITHUB_REF_NAME#v}" \
+            --report "out/sbom/chio-${CHIO_TARGET}.validation.json"
 
       - name: Upload SBOM
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -340,6 +352,8 @@ jobs:
           stage_dir="chio-${CHIO_VERSION}-${CHIO_TARGET}"
           mkdir -p "dist/${stage_dir}"
           cp "target/${CHIO_TARGET}/release/${BINARY_NAME}${CHIO_BIN_SUFFIX}" "dist/${stage_dir}/"
+          cp "out/sbom/chio-${CHIO_TARGET}.cyclonedx.json" "dist/${stage_dir}/"
+          cp "out/sbom/chio-${CHIO_TARGET}.validation.json" "dist/${stage_dir}/"
           cp README.md LICENSE "dist/${stage_dir}/" 2>/dev/null || true
           (cd dist && tar czf "${stage_dir}.tar.gz" "${stage_dir}")
           (cd dist && shasum -a 256 "${stage_dir}.tar.gz" > "${stage_dir}.tar.gz.sha256")
@@ -356,6 +370,8 @@ jobs:
           $stage = "chio-${env:CHIO_VERSION}-${env:CHIO_TARGET}"
           New-Item -ItemType Directory -Force -Path "dist/$stage" | Out-Null
           Copy-Item "target/${env:CHIO_TARGET}/release/${env:BINARY_NAME}${env:CHIO_BIN_SUFFIX}" "dist/$stage/"
+          Copy-Item "out/sbom/chio-${env:CHIO_TARGET}.cyclonedx.json" "dist/$stage/"
+          Copy-Item "out/sbom/chio-${env:CHIO_TARGET}.validation.json" "dist/$stage/"
           if (Test-Path README.md) { Copy-Item README.md "dist/$stage/" }
           if (Test-Path LICENSE) { Copy-Item LICENSE "dist/$stage/" }
           Compress-Archive -Path "dist/$stage" -DestinationPath "dist/$stage.zip"
@@ -583,6 +599,9 @@ jobs:
           # Carry the cosign sign-blob siblings (`.sig` and `.pem`) into
           # `release/` so the `softprops/action-gh-release` step attaches them.
           find artifacts -type f \( -name "*.sig" -o -name "*.pem" \) -exec cp {} release/ \;
+          # The same SBOM and report are inside each signed archive. Also attach
+          # them directly so consumers can inspect the inventory before extraction.
+          find artifacts -type f \( -name "*.cyclonedx.json" -o -name "*.validation.json" \) -exec cp {} release/ \;
           find release -type f -name "*.sha256" -exec perl -0pi -e 's/\r\n/\n/g; s/\r/\n/g' {} +
           # Concatenate the per-archive .sha256 files into the combined
           # SHA256SUMS for `shasum -a 256 -c`.
@@ -704,6 +723,8 @@ jobs:
             release/*.sha256
             release/*.sig
             release/*.pem
+            release/*.cyclonedx.json
+            release/*.validation.json
             release/SHA256SUMS
             release/chio.rb
 
