@@ -1,0 +1,23 @@
+{
+  "bun.lock": "1fce9ada485f0a4144592d7168d933541e5c9aa31db443d8c055b4a7d7981c70",
+  "package.json": "31c67ed1bff305df653ddc1d66d202b7e472dbb4943354542d4edb3a6fbb44d9",
+  "sdks/typescript/package-lock.json": "3d53935e3978dcd2e121b688d1528e3e3dad220e852bbae2b9e06e89f1c8353f",
+  "sdks/typescript/package.json": "4b6da1280a6c13f22495d9171879866bb4c3bc3f13af3b01fd6075d19387754a",
+  "sdks/typescript/packages/ai-sdk/package-lock.json": "1dfcafebb40cc5b80152682d69b523e6a0dd83541c3079176b0702e5cf74c31e",
+  "sdks/typescript/packages/ai-sdk/package.json": "7344da83586dbadd142df4ddc11a201a730c800f9ae6f9e463f5a3a05316617d",
+  "sdks/typescript/packages/conformance/package-lock.json": "d3a55d34f97242dc963de9ad16e9056c27955d3f374d7c1abaef50d753b1015a",
+  "sdks/typescript/packages/conformance/package.json": "99a3738293ff5abf0d8d2105d2bebf842bb1347347bfc57f5e88982619499856",
+  "sdks/typescript/packages/conformance/test/e2e/express-e2e.test.ts": "0aef15693a309321d9f783cfaea0869ebc20ca366e8c65b4a8cb39c7999b8d65",
+  "sdks/typescript/packages/conformance/test/e2e/fastify-e2e.test.ts": "101df0efdc76b572a0771d46206c45115a420d623929150e9000ede5e6ec9beb",
+  "sdks/typescript/packages/conformance/test/verdict_matrix.test.ts": "5b43eb427e0ca325307aae7e7e492c0c37ef93b960684153b9ca21d4dc616346",
+  "sdks/typescript/packages/elysia/package-lock.json": "f27c002d76f1238ef35f72a92de3c9a49466ae4bca805953e6127b03777ebfaa",
+  "sdks/typescript/packages/elysia/package.json": "a092fea53a431e47c98dcdbf21246cbed10e734b7a63339883b8b2504710a0a8",
+  "sdks/typescript/packages/express/package-lock.json": "992661822d32365b800813a02e23de58da806836c0df88886191856bfbe5952d",
+  "sdks/typescript/packages/express/package.json": "fbc3ff417df2ea7a26cc8901f7ed6282076f6d35c138eb4eed61f6579ad6d764",
+  "sdks/typescript/packages/fastify/package-lock.json": "7842c7836288535f02f1493d087310ccfe32284d20cd4886f0b62b688ac14611",
+  "sdks/typescript/packages/fastify/package.json": "032ec0b024450dc517b3d8708c58fa2792b06b08aadf2e9502fbd2446f6c0367",
+  "sdks/typescript/packages/node-http/package-lock.json": "eb0cb557c0969b9779ac5fee565ee3536e6a860756bdd39820f930caba52fbc5",
+  "sdks/typescript/packages/node-http/package.json": "8df76c3601ce48a074125b929db88d4d7c4a96e5f2b562e66c33429c1583e3c8",
+  "sdks/typescript/scripts/package-lock.json": "73382273632fe6d9b32711b85ed29b71b221e16beffad4c4ba8608d07617976f",
+  "sdks/typescript/packages/conformance/test/e2e/receipt-fixture.ts": "1e417f07bc00e12f225426a7a3f3ea01daaa7d30e2f0f01308608a2b11fc9aec"
+}

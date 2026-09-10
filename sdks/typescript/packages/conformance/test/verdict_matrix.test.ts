@@ -22,8 +22,8 @@ describe("verdict matrix TypeScript node-http driver", () => {
       const unsupported = outcomes.filter((outcome) => outcome.status === "unsupported");
       const failures = outcomes.filter((outcome) => outcome.status === "fail");
 
-      expect(outcomes).toHaveLength(48);
-      expect(unsupported).toHaveLength(48);
+      expect(outcomes).toHaveLength(72);
+      expect(unsupported).toHaveLength(72);
       expect(failures).toEqual([]);
     } finally {
       restoreEnv("CHIO_VERDICT_MATRIX_SIDECAR_URL", previousMatrixSidecarUrl);

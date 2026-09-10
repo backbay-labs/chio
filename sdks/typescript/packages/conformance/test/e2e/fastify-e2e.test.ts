@@ -16,11 +16,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import Fastify from "fastify";
 import http from "node:http";
-import { createHash, randomUUID } from "node:crypto";
 import { chio } from "@chio-protocol/fastify";
-import type { HttpReceipt, EvaluateResponse, Verdict } from "@chio-protocol/node-http";
+import type { HttpReceipt, EvaluateResponse } from "@chio-protocol/node-http";
 import { validateReceiptStructure, assertVerdictMatch } from "../../src/verify.js";
-import { canonicalJsonString } from "../../src/canonical.js";
+import { createMockReceipt, verifyMockReceipt } from "./receipt-fixture.js";
 
 // -- Mock sidecar server --
 
@@ -39,9 +38,8 @@ function createMockSidecar(): {
     req.on("end", () => {
       const body = Buffer.concat(chunks).toString("utf-8");
       const parsed = JSON.parse(body);
-      lastReq = parsed;
-
       if (req.url === "/chio/evaluate") {
+        lastReq = parsed;
         const receipt = createMockReceipt(parsed, verdictMode);
         const response: EvaluateResponse = {
           verdict: receipt.verdict,
@@ -50,6 +48,9 @@ function createMockSidecar(): {
         };
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(response));
+      } else if (req.url === "/chio/verify") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(verifyMockReceipt(parsed)));
       } else if (req.url === "/chio/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "ok" }));
@@ -70,58 +71,6 @@ function createMockSidecar(): {
       verdictMode = mode;
     },
     lastRequest: () => lastReq,
-  };
-}
-
-function createMockReceipt(
-  chioReq: { request_id: string; method: string; route_pattern: string; path: string; query: Record<string, string>; caller: { subject: string } },
-  mode: "allow" | "deny",
-): HttpReceipt {
-  const verdict: Verdict =
-    mode === "allow"
-      ? { verdict: "allow" }
-      : {
-          verdict: "deny",
-          reason: "side-effect route requires a capability token",
-          guard: "CapabilityGuard",
-          http_status: 403,
-        };
-
-  const binding = {
-    body_hash: null,
-    method: chioReq.method,
-    path: chioReq.path,
-    query: chioReq.query,
-    route_pattern: chioReq.route_pattern,
-  };
-  const contentHash = createHash("sha256")
-    .update(canonicalJsonString(binding))
-    .digest("hex");
-
-  const callerHash = createHash("sha256")
-    .update(canonicalJsonString({ auth_method: { method: "anonymous" }, subject: chioReq.caller.subject, verified: false }))
-    .digest("hex");
-
-  return {
-    id: `receipt-${randomUUID()}`,
-    request_id: chioReq.request_id,
-    route_pattern: chioReq.route_pattern,
-    method: chioReq.method as "GET",
-    caller_identity_hash: callerHash,
-    verdict,
-    evidence: [
-      {
-        guard_name: mode === "allow" ? "DefaultPolicyGuard" : "CapabilityGuard",
-        verdict: mode === "allow",
-        details: mode === "allow" ? "safe method, session-scoped allow" : "no capability token",
-      },
-    ],
-    response_status: mode === "allow" ? 200 : 403,
-    timestamp: Math.floor(Date.now() / 1000),
-    content_hash: contentHash,
-    policy_hash: createHash("sha256").update("test-policy").digest("hex"),
-    kernel_key: "mock-kernel-key-" + "a".repeat(48),
-    signature: "mock-signature-" + "b".repeat(49),
   };
 }
 
@@ -263,7 +212,7 @@ describe("Fastify E2E conformance", () => {
     expect(lastReq.caller.auth_method.key_hash).toHaveLength(64);
   });
 
-  it("receipt ID format is valid UUID", async () => {
+  it("receipt ID has the content-addressed format", async () => {
     mock.setVerdictMode("allow");
     const resp = await fastify.inject({
       method: "GET",
@@ -271,8 +220,8 @@ describe("Fastify E2E conformance", () => {
     });
     const receiptId = resp.headers["x-chio-receipt-id"];
     expect(typeof receiptId).toBe("string");
-    // Receipt ID should contain UUID-like characters
-    expect(receiptId).toMatch(/^receipt-[0-9a-f-]+$/);
+    // HTTP receipt IDs are lowercase SHA-256 content addresses.
+    expect(receiptId).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("mock receipt passes structural validation", async () => {
