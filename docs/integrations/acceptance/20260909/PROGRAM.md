@@ -14,7 +14,64 @@ revisions, dirty files, environment and document hashes are in
 [source-baseline.json](raw/source-baseline.json). All six remain mandatory;
 three accepted systems would only be an intermediate milestone.
 
-## Current source, storage and release checkpoint (2026-09-10 UTC)
+## Current static kernel checkpoint (2026-09-10 UTC)
+
+The selected local kernel reports `chio-cli 0.1.1-rc.1`, was built from
+`bafa02b06de93553cecb6f60b340f3dd8fd9b401`, and has SHA256
+`c03a8a711dbbd15da2c59655d9ab6d8f0068a20187363db7a78f4b5422ded93e`.
+Its actual macOS loader starts with local package-manager library directories
+denied. The embedded Rust dependency inventory passes validation. Exact build,
+native dependency and validation-tool identities, including the differences
+between build source and validation source, are retained in the
+[static build record](../kernel-rc-static-build-20260910/README.md).
+This local binary is not a published or hosted release artifact.
+
+Claude Code, Codex, Hermes, Pi and native OpenClaw each completed the new binary's
+useful four-tool workflow and 33-command authority, denial, kernel-failure,
+evidence-substitution and recovery matrix. Each host ran 37 commands: three setup
+commands, one useful workflow and 33 matrix commands. These are 185 driver
+commands across five hosts, not 185 distinct acceptance tests. Their separate
+lifecycle, storage, installation and timing records remain necessary. Supplemental
+expiry testing must distinguish launch-time rejection from expiry during a live
+native tool request. No full host acceptance is claimed.
+
+All 11 shared kernel suites passed on the immutable audited filesystem image
+`sha256:188cb84d5d0bb4063d4ce5a3b9c3832445a5acda5604911cda80a9136d1850a0`.
+The [complete shared record](../kernel-rc-static-shared-20260910/README.md)
+also retains the failed original run, which selected an image without the audit
+wrapper. The repaired runner refuses that image before creating an owner and
+records observer failures as failures. The original nine nominal passes are not
+transferred to the intended image combination.
+
+The current Claude archive is `0.3.1-rc.1`, SHA256
+`1258385647d228ebeed32662091ed721aeda3b60450cabae480ca0d4292fbe0a`.
+Codex `ac4f14ee4073`, Hermes `625979d53317`, Pi `ec6095390b9e` and OpenClaw
+`a79dbffa8356` retain the archive identities recorded below. Hermes now uses a
+fresh installation from its pinned public upstream source. Historical passes
+on the prior kernel or Claude archives do not qualify these replacements.
+
+Native Claude, Codex and Cursor authentication works. Cursor remains blocked on
+a supported server-enforced restriction that prevents unsupported remote actions
+before dispatch; its current client tool filters do not establish that guarantee.
+An MFA prompt or another local installation does not resolve that contract gap.
+
+Colima's 4 GB VM ran out of memory during concurrent qualification and killed
+OpenClaw processes. Those failed runs remain recorded. Completed test owners
+were stopped with their databases, journals and resource/audit volumes retained;
+subsequent OpenClaw work uses one native execution lane. Required failed or
+unexecuted cases remain open until their own successful, bound rerun.
+
+The delivery bundle's cold installation and explicit revocation procedure have
+real local observations. The operator preparation helper now waits for the
+intended live kernel's signer before allocating a new session. Its updated
+bundle procedure still needs its own final qualification. Source repairs also
+bind release provenance to the original tagged run and authenticate the exact
+builder, source and subjects before attachment. An actual upstream signed fixture
+and rejection controls establish compatibility; the actual Chio hosted release
+must still pass. Source CI, hosted artifact verification, published compatible
+versions and all six per-host acceptance decisions remain separate gates.
+
+## Previous source, storage and release checkpoint (2026-09-10 UTC)
 
 The five working hosts completed their separate current-artifact admission-store
 and receipt-store failure cases, including useful positive controls, original-authority
@@ -38,7 +95,7 @@ records unchanged logical database contents, configs/journals and 36 retained
 resource/audit volumes. The six excluded healthy listener PIDs were unchanged.
 This process cleanup preserves unknown outcomes and is not a new acceptance test.
 
-## Current host records
+## Earlier host records for the preceding kernel candidate
 
 Paths in this table are relative to `/Users/connor/Medica/backbay/standalone`.
 Each plugin worktree is `.worktrees/required-agent-integrations-20260909` unless
