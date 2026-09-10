@@ -50,7 +50,10 @@ version form above expresses the same version prerequisite. New empty
 previous package cache state. The pinned project configuration remains active.
 The selected Chio wheel's `validate_host` function also accepts every pinned
 host contract file in this new checkout; its output is retained separately.
-No native model session ran as part of these installation checks.
+The actual pinned `hermes --version` entry point also exits 0 from a separate
+empty profile and reports Hermes v0.20.5, Python 3.11.3 and OpenAI SDK 2.24.0.
+No provider credentials were supplied and no native model session ran as part
+of these installation checks.
 
 Two failed harness attempts remain visible:
 
