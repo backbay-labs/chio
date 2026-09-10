@@ -606,6 +606,13 @@ impl BilateralCoSigningProtocol for IrohBilateralCoSigner {
 /// `InProcessCoSigner::request_dsse_cosignature` does, plus the transport-origin
 /// binding (the authenticated `EndpointId` must resolve to the claimed
 /// `org_b_kernel_id`).
+/// Optional member-owned decision over the authenticated request. The hook runs
+/// after origin/signature verification and before producing a co-signature.
+/// An error refuses signing. Applications use it to bind their action schema,
+/// scope, limits, validity window, and local operator policy.
+pub type BilateralCoSignPolicy =
+    Arc<dyn Fn(&DsseCoSigningRequest) -> Result<(), BilateralCoSigningError> + Send + Sync>;
+
 pub struct BilateralCoSignHandler {
     /// Resolves the authenticated `EndpointId` to its admitted `kernel_id`
     /// (shares the exact resolution the accept-time gate admitted on).
@@ -615,6 +622,7 @@ pub struct BilateralCoSignHandler {
     /// Org A's co-signing keypair. Mirrors `InProcessCoSigner::origin_keypair`;
     /// Org A signs `pae_bytes` with `Ed25519Backend`.
     origin_keypair: Keypair,
+    request_policy: Option<BilateralCoSignPolicy>,
     /// Pinned Org B passport keys (algorithm-agnostic), keyed by `kernel_id`.
     passport_keys: Arc<dyn PinnedPassportKeys>,
     /// Shared slowloris / resource-exhaustion bounds (per-phase timeouts + an
@@ -645,9 +653,19 @@ impl BilateralCoSignHandler {
             gate,
             origin_kernel_id: origin_kernel_id.into(),
             origin_keypair,
+            request_policy: None,
             passport_keys,
             limiter: AcceptLimiter::default(),
         }
+    }
+
+    /// Require this member's action policy to accept the exact authenticated
+    /// request before the member signs. The default constructor provides only
+    /// cryptographic co-signing; it does not infer application approval.
+    #[must_use]
+    pub fn with_request_policy(mut self, policy: BilateralCoSignPolicy) -> Self {
+        self.request_policy = Some(policy);
+        self
     }
 
     /// Override the default accept-hardening bounds (per-phase timeouts + the
@@ -757,6 +775,10 @@ impl BilateralCoSignHandler {
         // match it).
         if !directory_key.verify(&request.pae_bytes, &request.org_b_signature) {
             return Err(BilateralCoSigningError::OrgBSignatureInvalid);
+        }
+
+        if let Some(policy) = &self.request_policy {
+            policy(request)?;
         }
 
         // Success: sign the SAME opaque pae_bytes (never re-derived).
@@ -1213,6 +1235,58 @@ mod tests {
             matches!(result, Err(BilateralCoSigningError::TransportFailure(_))),
             "an unadmitted endpoint is rejected by the gate; got {result:?}"
         );
+    }
+
+    #[test]
+    fn member_policy_refuses_authenticated_requests_before_signing() {
+        let org_a = Peer::new(ORIGIN_KERNEL, 10, 1);
+        let org_b = Peer::new(TOOL_HOST_KERNEL, 11, 2);
+        let gate = DirectoryGate::new(verified_directory(&[&org_a, &org_b]));
+        let handler = BilateralCoSignHandler::new(
+            gate,
+            ORIGIN_KERNEL,
+            org_a.passport.clone(),
+            pinned_org_b(&org_b),
+        )
+        .with_request_policy(Arc::new(|request| {
+            if request.pae_bytes != b"allowed action" {
+                return Err(BilateralCoSigningError::PeerRejected(
+                    "member limit exceeded".into(),
+                ));
+            }
+            Ok(())
+        }));
+        let bytes = b"denied action".to_vec();
+        let denied = DsseCoSigningRequest::new(
+            org_a.kernel_id.clone(),
+            org_b.kernel_id.clone(),
+            bytes.clone(),
+            org_b.passport.sign(&bytes),
+        );
+        assert_eq!(
+            handler.cosign(&org_b.transport_id, &denied),
+            Err(BilateralCoSigningError::PeerRejected(
+                "member limit exceeded".into()
+            ))
+        );
+        let bytes = b"allowed action".to_vec();
+        let allowed = DsseCoSigningRequest::new(
+            org_a.kernel_id.clone(),
+            org_b.kernel_id.clone(),
+            bytes.clone(),
+            org_b.passport.sign(&bytes),
+        );
+        let response = handler
+            .cosign(&org_b.transport_id, &allowed)
+            .expect("local policy accepts this exact action");
+        assert!(org_a
+            .passport
+            .public_key()
+            .verify_strict(&bytes, &response.org_a_signature));
+        assert!(!org_a
+            .passport
+            .public_key()
+            .verify_strict(b"changed action", &response.org_a_signature));
     }
 
     #[test]

@@ -55,6 +55,7 @@ pub(super) enum ToolCallEdgeOutcome {
     Result(Value),
     Cancelled {
         reason: String,
+        result: Value,
     },
     JsonRpcError {
         code: i64,
@@ -139,7 +140,12 @@ impl EdgeTask {
     pub(super) fn record_outcome(&mut self, outcome: ToolCallEdgeOutcome) {
         match outcome {
             ToolCallEdgeOutcome::Result(result) => self.mark_completed(result),
-            ToolCallEdgeOutcome::Cancelled { reason } => self.mark_cancelled(&reason),
+            ToolCallEdgeOutcome::Cancelled { reason, result } => {
+                self.status = EdgeTaskStatus::Cancelled;
+                self.status_message = Some(reason);
+                self.final_outcome = Some(EdgeTaskFinalOutcome::Result(result));
+                self.touch();
+            }
             ToolCallEdgeOutcome::JsonRpcError {
                 code,
                 message,

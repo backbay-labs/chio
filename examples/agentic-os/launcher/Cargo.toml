@@ -1,0 +1,22 @@
+[package]
+name = "chio-agent-os"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+chio-agent-os-shared = { path = "../shared" }
+chio-mission-host = { path = "../mission-host" }
+chio-worker-fleet = { path = "../worker-fleet" }
+chio-knowledge-network = { path = "../knowledge-network" }
+chio-research-swarm = { path = "../research-swarm" }
+chio-software-factory = { path = "../software-factory" }
+chio-personal-network = { path = "../personal-network" }
+chio-cooperative = { path = "../cooperative" }
+chio-incident-response = { path = "../incident-response" }
+chio-cognition-marketplace = { path = "../cognition-marketplace" }
+chio-operations = { path = "../operations" }
+chio-suite = { path = "../suite" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

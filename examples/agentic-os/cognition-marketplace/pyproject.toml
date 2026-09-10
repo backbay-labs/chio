@@ -1,0 +1,8 @@
+[project]
+name = "chio-cognition-marketplace-client"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["chio-sdk-python"]
+
+[tool.uv.sources]
+chio-sdk-python = { path = "../../../sdks/python/chio-sdk-python" }

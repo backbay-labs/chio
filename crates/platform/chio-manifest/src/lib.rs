@@ -18,6 +18,9 @@ use chio_core::capability::scope::MonetaryAmount;
 use chio_core::crypto::{Keypair, PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 
+mod openai;
+pub use openai::{OpenAiManifestError, ToolGovernance};
+
 mod validation;
 pub use validation::validate_manifest;
 

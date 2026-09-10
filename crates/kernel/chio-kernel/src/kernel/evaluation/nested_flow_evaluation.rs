@@ -1509,6 +1509,7 @@ impl ChioKernel {
                             now,
                             Some(matched_grant_index),
                             self.ambiguous_dispatch_receipt_metadata(
+                                request,
                                 &budget_mutation,
                                 payment_authorization.as_ref(),
                                 runtime_admission_metadata,
@@ -1683,6 +1684,7 @@ impl ChioKernel {
                 post_admission_drop_guard.disarm();
                 drop(post_admission_drop_guard);
                 let metadata = self.ambiguous_dispatch_receipt_metadata(
+                    request,
                     &budget_mutation,
                     payment_authorization.as_ref(),
                     runtime_admission_metadata.clone(),
@@ -1720,6 +1722,7 @@ impl ChioKernel {
                 drop(post_admission_drop_guard);
                 let reason = format!("hot-path deadline exceeded at {stage}: budget {budget_ms}ms");
                 let metadata = self.ambiguous_dispatch_receipt_metadata(
+                    request,
                     &budget_mutation,
                     payment_authorization.as_ref(),
                     runtime_admission_metadata.clone(),
@@ -1752,6 +1755,7 @@ impl ChioKernel {
                 post_admission_drop_guard.disarm();
                 drop(post_admission_drop_guard);
                 let metadata = self.ambiguous_dispatch_receipt_metadata(
+                    request,
                     &budget_mutation,
                     payment_authorization.as_ref(),
                     runtime_admission_metadata.clone(),
@@ -1784,6 +1788,7 @@ impl ChioKernel {
                 drop(post_admission_drop_guard);
                 let msg = error.to_string();
                 let deny_metadata = self.ambiguous_dispatch_receipt_metadata(
+                    request,
                     &budget_mutation,
                     payment_authorization.as_ref(),
                     runtime_admission_metadata.clone(),
@@ -1833,6 +1838,7 @@ impl ChioKernel {
                         "nested tool return could not be durably recorded"
                     );
                     let deny_metadata = self.ambiguous_dispatch_receipt_metadata(
+                        request,
                         &budget_mutation,
                         payment_authorization.as_ref(),
                         runtime_admission_metadata.clone(),

@@ -1,6 +1,6 @@
 use super::*;
 
-use super::sandbox::{add_runtime_mounts, RuntimeMountProfile};
+use super::sandbox::{add_proc_mount, add_runtime_mounts, RuntimeMountProfile};
 
 const APPROVED_ROOT_MOUNT: &str = "/approved";
 const STAGING_ROOT_MOUNT: &str = "/work";
@@ -200,7 +200,11 @@ fn validate_repository_metadata_confined(
             64 * 1024,
             "Git alternates file",
         )?;
-        for entry in entries.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        for entry in entries
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+        {
             let path = Path::new(entry);
             let candidate = if path.is_absolute() {
                 path.to_path_buf()
@@ -237,9 +241,8 @@ fn confined_metadata_path(
     candidate: &Path,
     label: &str,
 ) -> Result<PathBuf, CliError> {
-    let canonical = fs::canonicalize(candidate).map_err(|_| {
-        CliError::cli_other_error(format!("verified-fix {label} is unavailable"))
-    })?;
+    let canonical = fs::canonicalize(candidate)
+        .map_err(|_| CliError::cli_other_error(format!("verified-fix {label} is unavailable")))?;
     if !canonical.starts_with(approved_root) {
         return Err(CliError::cli_other_error(format!(
             "verified-fix {label} is outside the approved repository root"
@@ -280,23 +283,19 @@ fn isolated_git_command(
         "--unshare-cgroup-try",
         "--disable-userns",
         "--clearenv",
-        "--proc",
-        "/proc",
         "--dev",
         "/dev",
         "--dir",
         "/tmp",
     ]);
+    add_proc_mount(&mut command)?;
     add_runtime_mounts(&mut command, RuntimeMountProfile::Git)?;
     command
         .arg("--ro-bind")
         .arg(approved_root)
         .arg(APPROVED_ROOT_MOUNT);
     if let Some(work_root) = work_root {
-        command
-            .arg("--bind")
-            .arg(work_root)
-            .arg(STAGING_ROOT_MOUNT);
+        command.arg("--bind").arg(work_root).arg(STAGING_ROOT_MOUNT);
     }
     command.args([
         "--setenv",

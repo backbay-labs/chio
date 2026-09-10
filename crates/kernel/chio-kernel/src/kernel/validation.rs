@@ -1152,23 +1152,48 @@ impl ChioKernel {
 
     pub(crate) fn ambiguous_dispatch_receipt_metadata(
         &self,
+        request: &ToolCallRequest,
         budget_mutation: &PreExecutionBudgetMutation,
         payment_authorization: Option<&PaymentAuthorization>,
         runtime_metadata: Option<serde_json::Value>,
     ) -> Option<serde_json::Value> {
         let retained = self.retained_admission_receipt_metadata(budget_mutation, runtime_metadata);
-        match payment_authorization {
-            Some(authorization) => merge_metadata_objects(
+        let Some(authorization) = payment_authorization else {
+            return retained;
+        };
+        // A retained authorization is not a completed charge. Monetary receipt
+        // storage still requires the complete financial contract, including the
+        // matching grant and its remaining committed allowance.
+        let Some(charge) = budget_mutation.charge_result() else {
+            return merge_metadata_objects(
                 retained,
                 Some(serde_json::json!({
-                    "financial": {
+                    "retained_payment_authorization": {
                         "payment_reference": authorization.authorization_id,
                         "payment_authorization_retained": true
                     }
                 })),
-            ),
-            None => retained,
-        }
+            );
+        };
+        let financial = FinancialReceiptMetadata {
+            grant_index: charge.grant_index as u32,
+            cost_charged: 0,
+            currency: charge.currency.clone(),
+            budget_remaining: charge
+                .budget_total
+                .saturating_sub(charge.new_committed_cost_units),
+            budget_total: charge.budget_total,
+            delegation_depth: request.capability.delegation_chain.len() as u32,
+            root_budget_holder: request.capability.issuer.to_hex(),
+            payment_reference: Some(authorization.authorization_id.clone()),
+            settlement_status: SettlementStatus::Pending,
+            cost_breakdown: None,
+            oracle_evidence: None,
+            attempted_cost: None,
+        };
+        let mut value = serde_json::json!(financial);
+        value["payment_authorization_retained"] = serde_json::Value::Bool(true);
+        merge_metadata_objects(retained, Some(serde_json::json!({ "financial": value })))
     }
 
     /// Record that an ambiguous post-dispatch outcome retained a budget or

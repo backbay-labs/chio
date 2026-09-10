@@ -185,3 +185,95 @@ fn frost_ceremony_rejects_participant_drift_duplicate_packages_and_tampering() {
         Err(FrostCeremonyError::PackageAuthentication { .. })
     ));
 }
+
+#[test]
+fn scoped_completion_shares_only_public_receipts_and_rejects_private_recipient_drift() {
+    use chio_federation_authority::{
+        complete_frost_ceremony_scoped, verify_frost_ceremony_transcript, FrostDkgPackageReceipt,
+    };
+    let fixtures = fixtures();
+    let mut first = Vec::new();
+    let mut first_secrets = Vec::new();
+    for (index, f) in fixtures.iter().enumerate() {
+        let mut rng = ChaCha20Rng::from_seed([index as u8 + 51; 32]);
+        let t = begin_frost_ceremony(&f.config, &f.transport_key, &mut rng)
+            .unwrap_or_else(|e| panic!("begin: {e}"));
+        first.push(t.package);
+        first_secrets.push(t.secret);
+    }
+    let mut second = Vec::new();
+    let mut second_secrets = Vec::new();
+    for (f, secret) in fixtures.iter().zip(first_secrets) {
+        let t = advance_frost_ceremony(&f.config, &f.transport_key, secret, &first)
+            .unwrap_or_else(|e| panic!("advance: {e}"));
+        second.extend(t.packages);
+        second_secrets.push(t.secret.into_custody_bytes());
+    }
+    let receipts = second
+        .iter()
+        .map(|p| p.public_receipt())
+        .collect::<Vec<_>>();
+    let encoded =
+        serde_json::to_string(&receipts).unwrap_or_else(|e| panic!("receipt encoding: {e}"));
+    assert!(!encoded.contains("packageHex"));
+    let expected = verify_frost_ceremony_transcript(&fixtures[0].config, &first, &second)
+        .unwrap_or_else(|e| panic!("transcript: {e}"));
+    let mut groups = Vec::new();
+    for (f, bytes) in fixtures.iter().zip(second_secrets) {
+        let inbound = second
+            .iter()
+            .filter(|p| p.recipient_participant_id() == Some(&f.config.local_participant_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(inbound.len(), 2);
+        for package in &second {
+            assert_eq!(
+                package.verify_for_recipient(&f.config).is_ok(),
+                package.recipient_participant_id() == Some(f.config.local_participant_id.as_str())
+            );
+        }
+        let mut tampered = serde_json::to_value(&inbound[0]).unwrap();
+        tampered["packageDigest"] = serde_json::json!("ff".repeat(32));
+        let tampered: chio_federation_authority::FrostAuthenticatedDkgPackage =
+            serde_json::from_value(tampered).unwrap();
+        assert!(tampered.verify_for_recipient(&f.config).is_err());
+        let reopen = || {
+            FrostCeremonySecret::from_custody_bytes(FrostCeremonySecretKind::Round2, bytes.clone())
+                .unwrap_or_else(|e| panic!("custody: {e}"))
+        };
+        assert!(
+            complete_frost_ceremony_scoped(&f.config, reopen(), &first, &second, &receipts)
+                .is_err()
+        );
+        assert!(complete_frost_ceremony_scoped(
+            &f.config,
+            reopen(),
+            &first,
+            &inbound[..1],
+            &receipts
+        )
+        .is_err());
+        assert!(complete_frost_ceremony_scoped(
+            &f.config,
+            reopen(),
+            &first,
+            &inbound,
+            &receipts[..5]
+        )
+        .is_err());
+        let mut changed = serde_json::to_value(&receipts).unwrap_or_else(|e| panic!("encode: {e}"));
+        changed[0]["packageDigest"] = serde_json::json!("ff".repeat(32));
+        let changed: Vec<FrostDkgPackageReceipt> =
+            serde_json::from_value(changed).unwrap_or_else(|e| panic!("decode: {e}"));
+        assert!(
+            complete_frost_ceremony_scoped(&f.config, reopen(), &first, &inbound, &changed)
+                .is_err()
+        );
+        let complete =
+            complete_frost_ceremony_scoped(&f.config, reopen(), &first, &inbound, &receipts)
+                .unwrap_or_else(|e| panic!("complete: {e}"));
+        assert_eq!(complete.transcript_digest, expected);
+        groups.push(complete.group_public_key);
+    }
+    assert!(groups.windows(2).all(|pair| pair[0] == pair[1]));
+}

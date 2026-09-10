@@ -581,6 +581,8 @@ fn assert_payment_authorization_retained(
         .as_ref()
         .and_then(|metadata| metadata.get("financial"))
         .ok_or_else(|| std::io::Error::other("financial receipt metadata missing"))?;
+    let _: chio_core::receipt::economics::FinancialReceiptMetadata =
+        serde_json::from_value(financial.clone())?;
     assert!(financial["payment_reference"]
         .as_str()
         .is_some_and(|reference| !reference.is_empty()));
@@ -795,10 +797,7 @@ impl MonetaryFailureFixture {
                 .load(std::sync::atomic::Ordering::SeqCst),
             0
         );
-        assert_eq!(
-            self.executions.load(std::sync::atomic::Ordering::SeqCst),
-            1
-        );
+        assert_eq!(self.executions.load(std::sync::atomic::Ordering::SeqCst), 1);
         Ok(())
     }
 }
@@ -1481,9 +1480,7 @@ async fn nonce_replay_precedes_payment_and_capture_when_release_would_be_unconfi
             assert!(financial
                 .get("payment_reference")
                 .is_none_or(serde_json::Value::is_null));
-            assert!(financial["cost_breakdown"]
-                .get("payment")
-                .is_none());
+            assert!(financial["cost_breakdown"].get("payment").is_none());
             assert!(metadata["budget_authority"]
                 .get("invocation_capture")
                 .is_none());

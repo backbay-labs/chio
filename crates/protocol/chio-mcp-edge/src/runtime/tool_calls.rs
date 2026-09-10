@@ -231,6 +231,8 @@ fn bridge_mcp_tool_call_from_response(
     let mut notifications = Vec::new();
     let mcp_result = kernel_response_to_tool_result(KernelResponseToToolResultArgs {
         pending_notifications: &mut notifications,
+        receipt_id: &response.receipt.id,
+        kernel_request_id: request_id,
         request_id: &json!(request_id),
         output: response.output.clone(),
         reason: response.reason.clone(),
@@ -264,6 +266,8 @@ pub(super) struct ToolCallRequestContext<'a> {
 }
 
 pub(super) struct KernelToolResultArgs<'a> {
+    pub(super) receipt_id: &'a str,
+    pub(super) kernel_request_id: &'a str,
     pub(super) client_request_id: &'a Value,
     pub(super) session_id: &'a SessionId,
     pub(super) output: Option<ToolCallOutput>,
@@ -415,6 +419,8 @@ impl ChioMcpEdge {
         match self.kernel.evaluate_session_operation(context, &operation) {
             Ok(SessionOperationResponse::ToolCall(response)) => self
                 .tool_result_for_kernel_response(KernelToolResultArgs {
+                    receipt_id: &response.receipt.id,
+                    kernel_request_id: context.request_id.as_str(),
                     client_request_id: id,
                     session_id,
                     output: response.output,
@@ -496,6 +502,8 @@ impl ChioMcpEdge {
                 &mut nested_flow_client,
             ) {
             Ok(response) => self.tool_result_for_kernel_response(KernelToolResultArgs {
+                receipt_id: &response.receipt.id,
+                kernel_request_id: context.request_id.as_str(),
                 client_request_id: id,
                 session_id,
                 output: response.output,
@@ -562,6 +570,8 @@ impl ChioMcpEdge {
                 &mut nested_flow_client,
             ) {
             Ok(response) => self.tool_result_for_kernel_response(KernelToolResultArgs {
+                receipt_id: &response.receipt.id,
+                kernel_request_id: context.request_id.as_str(),
                 client_request_id: id,
                 session_id,
                 output: response.output,
@@ -704,6 +714,8 @@ impl ChioMcpEdge {
         args: KernelToolResultArgs<'_>,
     ) -> ToolCallEdgeOutcome {
         let KernelToolResultArgs {
+            receipt_id,
+            kernel_request_id,
             client_request_id,
             session_id,
             output,
@@ -717,6 +729,8 @@ impl ChioMcpEdge {
         crate::metrics::record_receipt_write_verdict(verdict);
         let result = kernel_response_to_tool_result(KernelResponseToToolResultArgs {
             pending_notifications: &mut self.pending_notifications,
+            receipt_id,
+            kernel_request_id,
             request_id: client_request_id,
             output,
             reason,
@@ -727,13 +741,10 @@ impl ChioMcpEdge {
             related_task_id,
         });
 
-        if let Some(reason) = cancellation_reason_from_tool_result(&result) {
-            return ToolCallEdgeOutcome::Cancelled { reason };
-        }
-
         match terminal_state {
             OperationTerminalState::Cancelled { reason } => ToolCallEdgeOutcome::Cancelled {
                 reason: reason.clone(),
+                result,
             },
             _ => ToolCallEdgeOutcome::Result(result),
         }
@@ -747,7 +758,10 @@ impl ChioMcpEdge {
     ) -> ToolCallEdgeOutcome {
         match error {
             chio_kernel::KernelError::RequestCancelled { reason, .. } => {
-                ToolCallEdgeOutcome::Cancelled { reason }
+                ToolCallEdgeOutcome::Cancelled {
+                    result: tool_error_result(&reason),
+                    reason,
+                }
             }
             chio_kernel::KernelError::UrlElicitationsRequired {
                 message,

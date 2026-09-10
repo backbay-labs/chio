@@ -26,5 +26,12 @@ pub use verifier::{
     reserve_swarm_budget_fanout, sign_swarm_continuation_token, sign_swarm_delegation_witness_hop,
     sign_swarm_join_receipt, sign_swarm_revocation_epoch, sign_swarm_route_plan_receipt,
     sign_swarm_task_graph, sign_swarm_terminal_graph_receipt,
-    validate_swarm_budget_pool_accounting, verify_swarm_authority_bundle,
+    validate_swarm_budget_pool_accounting, verify_swarm_admission_bundle,
+    verify_swarm_admission_capability, verify_swarm_authority_bundle,
+};
+
+mod fanout;
+pub use fanout::{
+    complete_swarm_fanout, mint_swarm_fanout, SwarmFanoutRequest, SwarmFanoutTask,
+    SwarmTaskCompletion,
 };

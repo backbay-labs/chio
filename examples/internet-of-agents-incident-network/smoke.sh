@@ -58,6 +58,10 @@ trap cleanup EXIT
   >"${LOG_DIR}/trust.log" 2>&1 &
 BG_PIDS+=($!)
 
+# Trust only the authority started by this isolated smoke.
+wait_for_http "http://127.0.0.1:${TRUST_PORT}/health"
+export CHIO_TRUSTED_ISSUER_KEY="$(trust_authority_public_key "http://127.0.0.1:${TRUST_PORT}" "${SERVICE_TOKEN}")"
+
 # -- Chio MCP edges --
 for spec in \
   "mcp-observability:${OBS_PORT}:observability:tools/observability.py" \

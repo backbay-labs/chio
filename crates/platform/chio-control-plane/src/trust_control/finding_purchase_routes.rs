@@ -475,6 +475,8 @@ impl FindingPurchaseResult {
 /// and never exposes adapter-provided detail.
 #[derive(Debug, thiserror::Error)]
 pub enum FindingPurchaseExecutionError {
+    #[error("bid ceiling is below the quoted price")]
+    BidCeilingTooLow,
     #[error("purchase rejected: {0}")]
     Rejected(String),
     #[error("purchase conflicts with durable state: {0}")]
@@ -1007,6 +1009,13 @@ pub(crate) async fn handle_purchase_finding(
     let execution = runtime.block_on(executor.execute(authenticated_buyer, request.clone()));
     let result = match execution {
         Ok(result) => result,
+        Err(FindingPurchaseExecutionError::BidCeilingTooLow) => {
+            return purchase_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "bid_ceiling_too_low",
+                "bid ceiling is below the offer price; choose an affordable offer or explicitly raise the budget",
+            );
+        }
         Err(FindingPurchaseExecutionError::Rejected(error)) => {
             tracing::warn!(error = %error, finding_id = %finding_id, "finding purchase rejected");
             return purchase_error(

@@ -5,7 +5,7 @@ pub(super) fn chio_swarm_runtime_request(
     bundle_hash: String,
     swarm_context: serde_json::Value,
 ) -> Result<ToolCallRequest, Box<dyn std::error::Error>> {
-    let cap = capability("cap-live-1")?;
+    let cap = swarm_capability()?;
     Ok(ToolCallRequest {
         request_id: "req-live-destructive".to_string(),
         capability: cap.clone(),
@@ -77,4 +77,22 @@ pub(super) fn swarm_runtime_context(
             "sha256": canonical_test_hash(&bundle.budget_pool)?
         }
     }))
+}
+
+pub(super) fn swarm_capability() -> Result<CapabilityToken, Box<dyn std::error::Error>> {
+    let issuer = Keypair::from_seed(&[81u8; 32]);
+    let subject = Keypair::from_seed(&[82u8; 32]);
+    Ok(CapabilityToken::sign(
+        CapabilityTokenBody {
+            id: "cap-live-1".into(),
+            issuer: issuer.public_key(),
+            subject: subject.public_key(),
+            scope: runtime_swarm_scope(1),
+            issued_at: 1_800_000_000,
+            expires_at: 1_800_003_600,
+            delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
+        },
+        &issuer,
+    )?)
 }

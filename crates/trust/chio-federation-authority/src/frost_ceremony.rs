@@ -186,6 +186,22 @@ impl FrostAuthenticatedDkgPackage {
         self.recipient_participant_id.as_deref()
     }
 
+    /// Authenticate a private package at its recipient before retaining it.
+    pub fn verify_for_recipient(
+        &self,
+        config: &FrostCeremonyConfig,
+    ) -> Result<(), FrostCeremonyError> {
+        let context = ValidatedCeremony::new_without_key(config)?;
+        validate_package(&context, self, FrostDkgRound::Round2)?;
+        if self.recipient_participant_id() != Some(config.local_participant_id.as_str()) {
+            return Err(package_authentication_error(
+                &self.sender_participant_id,
+                "package is addressed to another recipient",
+            ));
+        }
+        Ok(())
+    }
+
     #[must_use]
     pub fn package_digest(&self) -> &str {
         &self.package_digest
@@ -563,6 +579,23 @@ fn completion_from_packages(
     round1_packages: Vec<&FrostAuthenticatedDkgPackage>,
     round2_packages: Vec<&FrostAuthenticatedDkgPackage>,
 ) -> Result<FrostCeremonyCompletion, FrostCeremonyError> {
+    let mut transcript = Vec::with_capacity(round1_packages.len() + round2_packages.len());
+    transcript.extend(round1_packages);
+    transcript.extend(round2_packages);
+    completion_with_digest(
+        context,
+        key_package,
+        public_key_package,
+        transcript_digest(&transcript)?,
+    )
+}
+
+fn completion_with_digest(
+    context: &ValidatedCeremony<'_>,
+    key_package: KeyPackage,
+    public_key_package: PublicKeyPackage,
+    transcript_digest: String,
+) -> Result<FrostCeremonyCompletion, FrostCeremonyError> {
     if public_key_package.min_signers() != Some(context.config.threshold)
         || public_key_package.max_signers() != context.participant_count()?
     {
@@ -581,9 +614,6 @@ fn completion_from_packages(
             "upstream public key package omitted a participant".to_string(),
         ));
     }
-    let mut transcript = Vec::with_capacity(round1_packages.len() + round2_packages.len());
-    transcript.extend(round1_packages);
-    transcript.extend(round2_packages);
     Ok(FrostCeremonyCompletion {
         key_package: FrostCeremonySecret::new(
             FrostCeremonySecretKind::KeyPackage,
@@ -597,7 +627,7 @@ fn completion_from_packages(
                 .map_err(crypto_error)?,
         ),
         verification_shares,
-        transcript_digest: transcript_digest(&transcript)?,
+        transcript_digest,
     })
 }
 
@@ -1012,4 +1042,206 @@ fn package_authentication_error(participant_id: &str, detail: &'static str) -> F
 
 fn crypto_error(error: impl std::fmt::Display) -> FrostCeremonyError {
     FrostCeremonyError::Crypto(error.to_string())
+}
+
+/// Public authenticated metadata for a directed DKG package. This record never
+/// contains the round-two secret share. Broadcast receipts, deliver packages
+/// only to their named recipient over a confidential authenticated connection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FrostDkgPackageReceipt {
+    schema: String,
+    ceremony_id: String,
+    participant_set_digest: String,
+    key_epoch: u64,
+    round: FrostDkgRound,
+    sender_participant_id: String,
+    recipient_participant_id: Option<String>,
+    package_digest: String,
+    transport_key_id: String,
+    transport_signature: String,
+}
+impl FrostAuthenticatedDkgPackage {
+    #[must_use]
+    pub fn public_receipt(&self) -> FrostDkgPackageReceipt {
+        FrostDkgPackageReceipt {
+            schema: self.schema.clone(),
+            ceremony_id: self.ceremony_id.clone(),
+            participant_set_digest: self.participant_set_digest.clone(),
+            key_epoch: self.key_epoch,
+            round: self.round,
+            sender_participant_id: self.sender_participant_id.clone(),
+            recipient_participant_id: self.recipient_participant_id.clone(),
+            package_digest: self.package_digest.clone(),
+            transport_key_id: self.transport_key_id.clone(),
+            transport_signature: self.transport_signature.clone(),
+        }
+    }
+}
+impl FrostDkgPackageReceipt {
+    fn validate(&self, context: &ValidatedCeremony<'_>) -> Result<(), FrostCeremonyError> {
+        if self.schema != DKG_PACKAGE_SCHEMA
+            || self.ceremony_id != context.ceremony_id
+            || self.participant_set_digest != context.participant_set_digest
+            || self.key_epoch != context.config.key_epoch
+            || self.round != FrostDkgRound::Round2
+            || !valid_digest(&self.package_digest)
+        {
+            return Err(FrostCeremonyError::Transcript(
+                "receipt does not match this round-two ceremony",
+            ));
+        }
+        let sender = context
+            .config
+            .participants
+            .iter()
+            .find(|p| p.participant_id == self.sender_participant_id)
+            .ok_or(FrostCeremonyError::Transcript(
+                "receipt sender is not a member",
+            ))?;
+        let recipient = self
+            .recipient_participant_id
+            .as_deref()
+            .ok_or(FrostCeremonyError::Transcript("receipt has no recipient"))?;
+        if recipient == self.sender_participant_id
+            || !context.identifiers.contains_key(recipient)
+            || sender.transport_key_id != self.transport_key_id
+        {
+            return Err(FrostCeremonyError::Transcript(
+                "receipt participant or key binding is invalid",
+            ));
+        }
+        let preimage = DkgPackageSigningPreimage {
+            schema: &self.schema,
+            ceremony_id: &self.ceremony_id,
+            participant_set_digest: &self.participant_set_digest,
+            key_epoch: self.key_epoch,
+            round: self.round,
+            sender_participant_id: &self.sender_participant_id,
+            recipient_participant_id: Some(recipient),
+            package_digest: &self.package_digest,
+            transport_key_id: &self.transport_key_id,
+        };
+        let signature = Signature::from_hex(&self.transport_signature)
+            .map_err(|_| FrostCeremonyError::Transcript("receipt signature is invalid"))?;
+        if !sender.transport_public_key.verify_strict(
+            &canonical_prefixed_bytes(DKG_PACKAGE_SIGNING_PREFIX, &preimage)?,
+            &signature,
+        ) {
+            return Err(FrostCeremonyError::Transcript(
+                "receipt signature does not verify",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Finish distributed key generation without disclosing other recipients' shares.
+/// `recipient_packages` must contain exactly the local member's inbound packages.
+/// `round2_receipts` contains every directed package's signed public metadata.
+pub fn complete_frost_ceremony_scoped(
+    config: &FrostCeremonyConfig,
+    secret: FrostCeremonySecret,
+    round1_packages: &[FrostAuthenticatedDkgPackage],
+    recipient_packages: &[FrostAuthenticatedDkgPackage],
+    round2_receipts: &[FrostDkgPackageReceipt],
+) -> Result<FrostCeremonyCompletion, FrostCeremonyError> {
+    let context = ValidatedCeremony::new_without_key(config)?;
+    if secret.kind != FrostCeremonySecretKind::Round2 {
+        return Err(FrostCeremonyError::InvalidSecret(
+            "completion requires round-two custody",
+        ));
+    }
+    let secret_package = round2::SecretPackage::deserialize(secret.custody_bytes())
+        .map_err(|_| FrostCeremonyError::InvalidSecret("round-two package does not decode"))?;
+    if secret_package.identifier() != &context.local_identifier()? {
+        return Err(FrostCeremonyError::InvalidSecret(
+            "custody belongs to another participant",
+        ));
+    }
+    let round1 = validate_round1_transcript(&context, round1_packages)?;
+    let mut receipts = BTreeMap::new();
+    for receipt in round2_receipts {
+        receipt.validate(&context)?;
+        let key = (
+            receipt.sender_participant_id.as_str(),
+            receipt.recipient_participant_id.as_deref(),
+        );
+        if receipts.insert(key, receipt).is_some() {
+            return Err(FrostCeremonyError::Transcript("duplicate directed receipt"));
+        }
+    }
+    let count = config.participants.len();
+    if receipts.len() != count * (count - 1) {
+        return Err(FrostCeremonyError::Transcript(
+            "public transcript must contain every directed receipt",
+        ));
+    }
+    let mut upstream_round1 = BTreeMap::new();
+    for package in &round1 {
+        if package.sender_participant_id == config.local_participant_id {
+            continue;
+        }
+        upstream_round1.insert(
+            context.identifier(&package.sender_participant_id)?,
+            round1::Package::deserialize(&package.package_bytes()?).map_err(crypto_error)?,
+        );
+    }
+    let mut upstream_round2 = BTreeMap::new();
+    for package in recipient_packages {
+        validate_package(&context, package, FrostDkgRound::Round2)?;
+        if package.recipient_participant_id.as_deref() != Some(&config.local_participant_id) {
+            return Err(FrostCeremonyError::Transcript(
+                "private package belongs to another recipient",
+            ));
+        }
+        let key = (
+            package.sender_participant_id.as_str(),
+            package.recipient_participant_id.as_deref(),
+        );
+        if receipts.get(&key).copied() != Some(&package.public_receipt()) {
+            return Err(FrostCeremonyError::Transcript(
+                "private package differs from its public receipt",
+            ));
+        }
+        if upstream_round2
+            .insert(
+                context.identifier(&package.sender_participant_id)?,
+                round2::Package::deserialize(&package.package_bytes()?).map_err(crypto_error)?,
+            )
+            .is_some()
+        {
+            return Err(FrostCeremonyError::Transcript(
+                "duplicate inbound private package",
+            ));
+        }
+    }
+    if upstream_round2.len() != count - 1 {
+        return Err(FrostCeremonyError::Transcript(
+            "local member is missing an inbound private package",
+        ));
+    }
+    let mut entries = round1
+        .iter()
+        .map(|p| TranscriptEntry {
+            round: p.round,
+            sender_participant_id: &p.sender_participant_id,
+            recipient_participant_id: p.recipient_participant_id.as_deref(),
+            package_digest: &p.package_digest,
+            transport_key_id: &p.transport_key_id,
+            transport_signature: &p.transport_signature,
+        })
+        .collect::<Vec<_>>();
+    entries.extend(receipts.values().map(|p| TranscriptEntry {
+        round: p.round,
+        sender_participant_id: &p.sender_participant_id,
+        recipient_participant_id: p.recipient_participant_id.as_deref(),
+        package_digest: &p.package_digest,
+        transport_key_id: &p.transport_key_id,
+        transport_signature: &p.transport_signature,
+    }));
+    let digest = canonical_digest(TRANSCRIPT_DIGEST_PREFIX, &entries)?;
+    let (key, public) =
+        dkg::part3(&secret_package, &upstream_round1, &upstream_round2).map_err(crypto_error)?;
+    completion_with_digest(&context, key, public, digest)
 }

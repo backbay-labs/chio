@@ -1,5 +1,17 @@
 # Internet of Agents Incident Network
 
+For the working application, use [Agentic OS incident response](../agentic-os/incident-response).
+It runs customer, provider, and specialist hosts with independent authority and
+verifies the actual failing service, approved repair, and subsequent health check.
+
+This older Python integration is retained for migration. Its Python/Rust lineage
+signature mismatch is repaired and covered by `check_lineage.py`. The complete
+smoke still reaches a removed `POST /v1/budgets/charge` endpoint and fails before
+the provider operation. Its custom delegation and approval checks also require
+migration to native admission; a valid stored signature alone does not prove
+scope attenuation. Do not use this example as an independently governed
+multi-organization deployment.
+
 Multi-org incident response using Chio for capability-governed tool access.
 Every tool call goes through the Chio kernel (`chio mcp serve-http`), which
 evaluates guard policies and signs receipts.

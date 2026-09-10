@@ -1,0 +1,6 @@
+{
+  "document": "# Release notes\n\n## Shipping\nChio checks authority before tool execution.\n\n[Read the guide](https://chio.computer/docs)\n\n## Operations\nKeep receipts and accounting when restarting a host.",
+  "question": "What must be retained when restarting a host?",
+  "mode": "analyze",
+  "exercise_denials": true
+}

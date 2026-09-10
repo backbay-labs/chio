@@ -8,7 +8,7 @@ pub(super) struct SwarmAuthorityReference {
     pub continuation_token: SwarmEvidenceReference,
     pub route_plan_receipt: SwarmEvidenceReference,
     pub delegation_witness: SwarmEvidenceReference,
-    pub join_receipt: SwarmEvidenceReference,
+    pub join_receipt: Option<SwarmEvidenceReference>,
     pub revocation_epoch: SwarmEvidenceReference,
     pub budget_pool: SwarmEvidenceReference,
 }
@@ -79,12 +79,19 @@ pub(super) fn swarm_ref_from_request(
             "witnessSha256",
         ],
     )?;
-    let join_receipt = required_swarm_evidence_ref(
-        object,
-        &["joinReceipt"],
-        &["joinReceiptId"],
-        &["joinReceiptSha256"],
-    )?;
+    let join_receipt = if ["joinReceipt", "joinReceiptId", "joinReceiptSha256"]
+        .iter()
+        .any(|key| object.contains_key(*key))
+    {
+        Some(required_swarm_evidence_ref(
+            object,
+            &["joinReceipt"],
+            &["joinReceiptId"],
+            &["joinReceiptSha256"],
+        )?)
+    } else {
+        None
+    };
     let revocation_epoch = required_swarm_evidence_ref(
         object,
         &["revocationEpoch"],

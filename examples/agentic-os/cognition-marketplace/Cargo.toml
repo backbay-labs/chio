@@ -1,0 +1,13 @@
+[package]
+name = "chio-cognition-marketplace"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chio-agent-os-shared = { path = "../shared" }
+chio-software-factory = { path = "../software-factory" }
+anyhow.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+reqwest.workspace = true

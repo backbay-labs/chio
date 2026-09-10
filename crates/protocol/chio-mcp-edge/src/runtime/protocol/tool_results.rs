@@ -2,6 +2,8 @@ use super::*;
 
 pub(in crate::runtime) struct KernelResponseToToolResultArgs<'a> {
     pub pending_notifications: &'a mut Vec<Value>,
+    pub receipt_id: &'a str,
+    pub kernel_request_id: &'a str,
     pub request_id: &'a Value,
     pub output: Option<ToolCallOutput>,
     pub reason: Option<String>,
@@ -16,6 +18,8 @@ pub(in crate::runtime) fn kernel_response_to_tool_result(
 ) -> Value {
     let KernelResponseToToolResultArgs {
         pending_notifications,
+        receipt_id,
+        kernel_request_id,
         request_id,
         output,
         reason,
@@ -57,7 +61,16 @@ pub(in crate::runtime) fn kernel_response_to_tool_result(
         Some(ToolCallOutput::Value(value)) => value_to_tool_result(value),
         None => value_to_tool_result(Value::Null),
     };
-    attach_execution_nonce_meta_to_result(result, execution_nonce)
+    let mut result = attach_execution_nonce_meta_to_result(result, execution_nonce);
+    // This association comes from the evaluated kernel response, never tool output.
+    if !result["_meta"].is_object() {
+        result["_meta"] = json!({});
+    }
+    result["_meta"]["chioReceipt"] = json!({
+        "receiptId": receipt_id,
+        "requestId": kernel_request_id,
+    });
+    result
 }
 
 pub(in crate::runtime) fn queue_tool_stream_chunk_notifications(

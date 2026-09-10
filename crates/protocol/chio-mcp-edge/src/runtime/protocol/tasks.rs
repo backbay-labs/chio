@@ -73,29 +73,6 @@ pub(in crate::runtime) fn tool_result_is_error(result: &Value) -> bool {
         .unwrap_or(false)
 }
 
-pub(in crate::runtime) fn cancellation_reason_from_tool_result(result: &Value) -> Option<String> {
-    if !tool_result_is_error(result) {
-        return None;
-    }
-
-    let text = result
-        .get("content")
-        .and_then(Value::as_array)
-        .and_then(|content| content.first())
-        .and_then(|block| block.get("text"))
-        .and_then(Value::as_str)?;
-
-    if let Some((_, reason)) = text.split_once(" was cancelled: ") {
-        return Some(reason.to_string());
-    }
-
-    if text.starts_with("cancelled by client") || text.starts_with("task cancelled by client") {
-        return Some(text.to_string());
-    }
-
-    None
-}
-
 pub(in crate::runtime) fn task_status_message(
     status: &EdgeTaskStatus,
     result: &Value,
