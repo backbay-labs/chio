@@ -1,0 +1,32 @@
+{
+  "at": "2026-09-10T07:33:40.523250+00:00",
+  "recordBaseRevision": "9e3f7c35f95b5afafc56f7f1ba62cb8432755293",
+  "inputs": [
+    {
+      "group": "matrix",
+      "directory": "/tmp/chio-kernel-rc-static-matrix-20260910",
+      "files": 2858,
+      "scope": "Complete regular-file input tree, byte-exact; no host or Docker execution during export"
+    },
+    {
+      "group": "completed-owner-stops",
+      "directory": "/tmp/chio-static-matrix-completed-owner-stop-20260910",
+      "files": 5,
+      "scope": "Complete regular-file input tree, byte-exact; no host or Docker execution during export"
+    },
+    {
+      "group": "completed-resource-drain",
+      "directory": "/tmp/chio-completed-resource-drain-20260910",
+      "files": 24,
+      "scope": "Complete regular-file input tree, byte-exact; no host or Docker execution during export"
+    },
+    {
+      "group": "source-review",
+      "directory": "/tmp/chio-static-matrix-source-review-20260910",
+      "files": 7,
+      "scope": "Complete regular-file input tree, byte-exact; no host or Docker execution during export"
+    }
+  ],
+  "rawFiles": 2894,
+  "exportEncoding": "gzip with mtime 0; SHA-256 of both original and compressed bytes"
+}
