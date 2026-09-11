@@ -150,3 +150,23 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - run: dotnet test sdks/dotnet/ChioMiddleware/ChioMiddleware.sln --verbosity minimal
+
+  istio-kubernetes:
+    name: Istio Kubernetes deployment and signed request path
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39
+      - name: Install checksum-pinned cluster tools
+        run: python3 examples/istio-ext-authz/install-kubernetes-tools.py
+      - name: Deploy the supplied images and exercise the actual sidecar
+        run: uv run --locked examples/istio-ext-authz/kubernetes.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: builder-istio-evidence
+          path: |
+            examples/istio-ext-authz/.kubernetes/*/verification.json
+            examples/istio-ext-authz/.kubernetes/*/images.json
+            examples/istio-ext-authz/.kubernetes/*/commands.log

@@ -69,15 +69,16 @@ class Notes(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8087)
+    parser.add_argument("--host", default="127.0.0.1", help="Bind address; Kubernetes uses 0.0.0.0")
     parser.add_argument("--data", type=Path, default=Path(".notes"))
     args = parser.parse_args()
     args.data.mkdir(mode=0o700, parents=True, exist_ok=True)
     database = args.data / "notes.db"
     with sqlite3.connect(database) as connection:
         connection.execute("CREATE TABLE IF NOT EXISTS notes(id INTEGER PRIMARY KEY, text TEXT NOT NULL)")
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Notes)
+    server = ThreadingHTTPServer((args.host, args.port), Notes)
     server.database = database
-    print(f"Notes API: http://127.0.0.1:{args.port}; data: {database}", flush=True)
+    print(f"Notes API: http://{args.host}:{args.port}; data: {database}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -51,6 +51,21 @@ docker build -f examples/istio-ext-authz/Dockerfile -t chio-ext-authz:local .
 
 The image runs as UID/GID 65532 and exposes 9091 and 9092. Configure its arguments exactly as for the executable. Mount the selected public key read-only. Only the authority holds signing material.
 
+## Run the complete Istio deployment
+
+With Docker running and `uv` installed, these commands install the pinned cluster tools into this example and run the complete Kubernetes application:
+
+```sh
+python3 examples/istio-ext-authz/install-kubernetes-tools.py
+uv run --locked examples/istio-ext-authz/kubernetes.py
+```
+
+The check builds both Chio images from this checkout, pushes them to its own loopback registry, creates a separate kind cluster, and installs Istio 1.31.0 on Kubernetes 1.36.4. Images are deployed by digest. It uses its own kubeconfig for every operation and removes only its cluster and registry on exit. The first build needs Docker build space and time for the Rust dependencies.
+
+The notes API in `03-demo-workload.yaml` stores real notes in SQLite on a persistent volume. A separate pod calls `/notes` through the notes workload's inbound Envoy proxy. The check confirms signed reads and writes, refuses writes without a grant and after revocation, and removes the authority to check that a dependency outage produces 503 without another effect. It verifies each returned receipt independently against the public key selected before requests, including the exact request body and capability association. `/healthz` remains available during the authority outage.
+
+Each invocation retains its image digests, signed admission records, request outcomes and surviving notes in `.kubernetes/<run>/verification.json`. Admission records establish Chio's decision; the resulting notes establish what the application actually saved. This directory also contains private cluster configuration and diagnostics; publish the verification file, not the entire directory.
+
 ## Connect an Istio workload
 
 Use `deployment.json` to select your built image by digest, the authority origin reachable from the adapter, and the public key selected by the authority operator. Generate the concrete Kubernetes resources:
@@ -64,6 +79,6 @@ kubectl apply -f chio-ext-authz.json
 
 Merge the provider from `01-meshconfig-patch.yaml` into your existing Istio installation configuration, preserving other extension providers. Apply `02-authorization-policy.yaml` to workloads labeled `chio.world/secured=true` in `agent-tools`. All their HTTP paths except `/healthz` pass through Chio, including requests with missing credentials. The protected service's OpenAPI policy determines which operations require authority.
 
-The gRPC provider buffers at most 65,536 bytes, rejects partial bodies and disables fail-open and route-cache clearing. Keep the bridge and authority reachable only by trusted infrastructure; the local authority's mint/revoke API is an operator interface. The local Envoy application qualifies the data path independently of Kubernetes. Deployment qualification must also exercise your chosen Istio version, workload routes, networking and image.
+The gRPC provider buffers at most 65,536 bytes, rejects partial bodies and disables fail-open and route-cache clearing. Keep the bridge and authority reachable only by trusted infrastructure; the local authority's mint/revoke API is an operator interface. The Kubernetes check exercises the supplied Istio version, workload routes, networking and built images. Run it again when changing any of those deployment inputs.
 
 See Istio's [gRPC provider contract](https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/#MeshConfig-ExtensionProvider-EnvoyExternalAuthorizationGrpcProvider) and [external authorization setup](https://istio.io/latest/docs/tasks/security/authorization/authz-custom/).
