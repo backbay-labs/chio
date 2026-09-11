@@ -77,3 +77,13 @@ traffic through the sidecar and prints the returned receipts.
 Version `0.1.0`, pre-1.0. Wire formats track the Chio `0.1.x` sidecar
 contract. The API surface may evolve in minor versions before the `1.0`
 stability freeze.
+
+### Request body admission
+
+The middleware reads and hashes the complete request body before contacting
+Chio, including chunked requests without Content-Length. It rewinds the body
+for the application handler. `MaxRequestBodyBytes` defaults to 1 MiB and accepts
+values from 1 byte to 64 MiB. Buffering spills to a bounded temporary file above
+32 KiB. Oversized bodies receive 413; incomplete or unreadable bodies receive
+400. These refusals occur before authority evaluation and have no Chio receipt.
+Place the middleware before components that consume an unbuffered body.
