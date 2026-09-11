@@ -238,7 +238,7 @@ def main():
         outage_status, outage_id, _ = http(
             proxy, "/notes", body, capability=live_issued["capability"]
         )
-        if outage_status not in {403, 503} or not outage_id:
+        if outage_status != 503 or not outage_id:
             raise ValueError("Unavailable revocation authority did not fail closed")
         associations.append(
             ("authority_unavailable", outage_id, "deny", live_issued["capability"]["id"])
