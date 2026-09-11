@@ -8,6 +8,7 @@ on:
       - 'crates/products/chio-api-protect/**'
       - 'crates/guards/chio-guards/**'
       - 'examples/hello-trust-control/application/**'
+      - 'examples/agent-commerce-network/**'
       - 'sdks/python/chio-adapter-base/**'
       - 'sdks/python/chio-py/**'
       - 'sdks/python/chio-crewai/**'
@@ -66,6 +67,14 @@ jobs:
           python3 examples/istio-ext-authz/local/run.py --check
           CHIO_BIN="$PWD/target/debug/chio" examples/hello-receipt-verify/smoke.sh
           CHIO_BIN="$PWD/target/debug/chio" uv run --locked examples/hello-trust-control/application/run.py "Verify durable revocation"
+      - name: Execute durable Commerce and its negative controls
+        working-directory: examples/agent-commerce-network
+        env:
+          CHIO_BIN: ${{ github.workspace }}/target/debug/chio
+        run: |
+          uv run --locked python -m unittest discover -s buyer -p 'test_*.py'
+          uv run --locked python -m unittest discover -s provider -p 'test_*.py'
+          uv run --locked run.py check
       - name: Build the supplied container
         run: |
           docker build -f examples/istio-ext-authz/Dockerfile -t chio-ext-authz:qualification .
@@ -88,6 +97,8 @@ jobs:
             examples/istio-ext-authz/local/.state/verification.json
             examples/istio-ext-authz/local/.state/*.log
             examples/hello-receipt-verify/.artifacts/*/summary.json
+            examples/agent-commerce-network/.state/qualification/*/runs/*/verification.json
+            examples/hello-trust-control/application/.state/runs/*/verification.json
             envoy-image-id.txt
   python-adapters:
     name: Python adapter regression suite (${{ matrix.package }})

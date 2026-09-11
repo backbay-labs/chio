@@ -1,15 +1,17 @@
 """Chio integration: MCP clients and trust-control HTTP interface."""
+
 from __future__ import annotations
 
 import json
 import subprocess
 import sys
+from contextlib import suppress
 from typing import Any
 
 import httpx
 
-
 # -- Chio MCP HTTP client (talks to chio mcp serve-http) -----------------------
+
 
 class ChioMcpClient:
     """Calls MCP tools through an chio mcp serve-http endpoint.
@@ -31,10 +33,8 @@ class ChioMcpClient:
 
     def __exit__(self, *_: Any) -> None:
         if self._session_id:
-            try:
+            with suppress(httpx.HTTPError):
                 self._http.delete(f"{self.base_url}/mcp", headers=self._headers())
-            except httpx.HTTPError:
-                pass
         self._http.close()
 
     def _headers(self) -> dict[str, str]:
@@ -78,11 +78,14 @@ class ChioMcpClient:
         return resp.json()
 
     def _handshake(self) -> None:
-        result = self._rpc("initialize", {
-            "protocolVersion": "2025-11-25",
-            "capabilities": {},
-            "clientInfo": {"name": "agent-commerce-network", "version": "0.2.0"},
-        })
+        result = self._rpc(
+            "initialize",
+            {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": {"name": "agent-commerce-network", "version": "0.2.0"},
+            },
+        )
         # Notifications have no id and no response body
         self._http.post(
             f"{self.base_url}/mcp",
@@ -95,10 +98,13 @@ class ChioMcpClient:
         return self._rpc("tools/list", {}).get("tools", [])
 
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        return self._rpc("tools/call", {"name": name, "arguments": arguments}).get("structuredContent", {})
+        return self._rpc("tools/call", {"name": name, "arguments": arguments}).get(
+            "structuredContent", {}
+        )
 
 
 # -- Stdio MCP client (direct, no Chio kernel) --------------------------------
+
 
 class StdioMcpClient:
     """Talks to an MCP server subprocess over stdio. No Chio mediation."""
@@ -111,14 +117,19 @@ class StdioMcpClient:
     def __enter__(self) -> StdioMcpClient:
         self._proc = subprocess.Popen(
             [sys.executable, self._script],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
         )
-        self._rpc("initialize", {
-            "protocolVersion": "2025-11-25",
-            "capabilities": {},
-            "clientInfo": {"name": "agent-commerce-network", "version": "0.2.0"},
-        })
+        self._rpc(
+            "initialize",
+            {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": {"name": "agent-commerce-network", "version": "0.2.0"},
+            },
+        )
         self._send({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}})
         return self
 
@@ -149,10 +160,13 @@ class StdioMcpClient:
         return self._rpc("tools/list", {}).get("tools", [])
 
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        return self._rpc("tools/call", {"name": name, "arguments": arguments}).get("structuredContent", {})
+        return self._rpc("tools/call", {"name": name, "arguments": arguments}).get(
+            "structuredContent", {}
+        )
 
 
 # -- Trust-control HTTP client ------------------------------------------------
+
 
 class TrustControl:
     """HTTP client for chio trust serve."""
@@ -171,7 +185,8 @@ class TrustControl:
             headers=self._auth(),
             json={"subjectPublicKey": subject_pk, "scope": scope, "ttlSeconds": ttl},
         )
-        r.raise_for_status()
+        if r.is_error:
+            raise RuntimeError(f"Capability issuance refused (HTTP {r.status_code}): {r.text}")
         return r.json()["capability"]
 
     def record_lineage(self, capability: dict, parent_id: str | None) -> None:
@@ -210,8 +225,12 @@ class TrustControl:
     # -- Budget & cost tracking -----------------------------------------------
 
     def charge_budget(
-        self, capability_id: str, grant_index: int, cost_units: int,
-        *, max_invocations: int | None = None,
+        self,
+        capability_id: str,
+        grant_index: int,
+        cost_units: int,
+        *,
+        max_invocations: int | None = None,
         max_cost_per_invocation: int | None = None,
         max_total_cost_units: int | None = None,
     ) -> dict[str, Any]:

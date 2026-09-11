@@ -7,9 +7,9 @@
 """Save a note, revoke its actual capability, then verify the refused repeated write."""
 
 import argparse
+import hashlib
 import json
 import os
-from pathlib import Path
 import secrets
 import shutil
 import socket
@@ -20,8 +20,14 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from pathlib import Path
+
+from chio.invariants import (
+    canonicalize_json,
+    sha256_hex_utf8,
+    verify_http_receipt_with_trusted_signers,
+)
 from nacl.signing import SigningKey
-from chio.invariants import verify_http_receipt_with_trusted_signers
 
 ROOT = Path(__file__).resolve().parent
 
@@ -192,7 +198,6 @@ def main():
         (run / "capability.json").write_text(json.dumps(capability, indent=2))
         (run / "capability.json").chmod(0o600)
         before_payload = http(proxy, "/notes")[2]
-        before = before_payload["notes"]
         body = {"text": args.text}
         status, allowed_id, saved = http(proxy, "/notes", body, capability=capability)
         if status != 201 or not allowed_id:
@@ -263,6 +268,15 @@ def main():
                     or receipt.get("metadata", {}).get("chio_http_status_scope") != "final"
                 ):
                     raise ValueError("Receipt does not describe this final HTTP operation")
+                binding = {
+                    "method": "POST",
+                    "route_pattern": "/notes",
+                    "path": "/notes",
+                    "query": {},
+                    "body_hash": hashlib.sha256(json.dumps(body).encode()).hexdigest(),
+                }
+                if receipt["content_hash"] != sha256_hex_utf8(canonicalize_json(binding)):
+                    raise ValueError("Receipt is bound to different request bytes")
                 verified.append({"case": case, "receipt": receipt, "verification": checks})
         finally:
             connection.close()
@@ -270,8 +284,8 @@ def main():
             "subject": capability["subject"],
             "capability_id": capability["id"],
             "saved_note": saved,
-            "before_count": len(before),
-            "after_count": len(after),
+            "before_count": before_payload["total"],
+            "after_count": before_payload["total"] + 1,
             "repeated_request": body,
             "revocation": revocation,
             "restart_refusal_status": restarted_status,
