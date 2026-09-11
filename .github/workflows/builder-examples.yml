@@ -9,6 +9,7 @@ on:
       - 'crates/guards/chio-guards/**'
       - 'crates/kernel/chio-kernel/**'
       - 'crates/protocol/chio-a2a-edge/**'
+      - 'crates/protocol/chio-acp-edge/**'
       - 'examples/protocol-tools/**'
       - 'examples/hello-trust-control/application/**'
       - 'examples/agent-commerce-network/**'
@@ -53,6 +54,8 @@ jobs:
           cargo clippy --locked -p chio-guards --all-targets -- -D warnings
           cargo test --locked -p chio-api-protect --lib
           cargo clippy --locked -p chio-api-protect --all-targets -- -D warnings
+          cargo test --locked -p chio-acp-edge --lib
+          cargo clippy --locked -p chio-acp-edge --all-targets -- -D warnings
           cargo test --locked -p chio-a2a-edge --lib
           cargo clippy --locked -p chio-a2a-edge --all-targets -- -D warnings
           cargo test --locked -p chio-mcp-remote --lib
@@ -80,6 +83,11 @@ jobs:
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: uv run --locked a2a_client.py
+      - name: Official ACP Python client through the actual stdio host
+        working-directory: examples/protocol-tools
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: uv run --locked acp_client.py
       - name: Execute durable Commerce and its negative controls
         working-directory: examples/agent-commerce-network
         env:
@@ -113,6 +121,7 @@ jobs:
             examples/agent-commerce-network/.state/qualification/*/runs/*/verification.json
             examples/hello-trust-control/application/.state/runs/*/verification.json
             examples/protocol-tools/.state/*/a2a-capture.json
+            examples/protocol-tools/.state/*/acp-capture.json
             envoy-image-id.txt
   python-adapters:
     name: Python adapter regression suite (${{ matrix.package }})

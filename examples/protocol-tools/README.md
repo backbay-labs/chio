@@ -28,3 +28,26 @@ it rejects asynchronous/continuation requests it cannot fulfill.
 `authority.json` controls the tool grant. The qualification client expects the
 default two-invocation allowance to prove its third-call refusal. The host
 accepts only new state directories and never overwrites an earlier run.
+
+## ACP sessions
+
+Run the official ACP Python client against the supplied stdio agent:
+
+```sh
+uv run --locked acp_client.py "Count this release checklist"
+```
+
+This uses agent-client-protocol 0.12.1 with protocol version 1. It initializes
+the connection, opens a caller-owned session and sends three text prompts.
+Each prompt invokes the document-counting tool through the same kernel and
+bounded grant. The client verifies the two completed tool calls and the third
+refusal, and rejects an unknown session. `session/update` carries the tool
+status, exact input/output and signed receipt; the terminal prompt result
+carries the same receipt association. Evidence stays in `.state/acp-<run-id>`.
+
+This agent exposes one bounded blocking tool as a text-prompt capability.
+It does not call a model, expose files or terminals, accept client MCP servers,
+or reload sessions. The stdio process is the trust boundary: only its owning
+client has access to the issued grant. Start a separate process for another
+principal. Calls finish before the host reads the next input frame, so this
+host does not claim to interrupt a running call with a cancellation notification.
