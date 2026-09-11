@@ -166,6 +166,7 @@ jobs:
         if: always()
         with:
           name: builder-istio-evidence
+          include-hidden-files: true
           path: |
             examples/istio-ext-authz/.kubernetes/*/verification.json
             examples/istio-ext-authz/.kubernetes/*/images.json

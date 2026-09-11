@@ -15,13 +15,13 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import time
 import urllib.error
 import urllib.request
 import uuid
+from pathlib import Path
 
 from chio.invariants import (
     canonicalize_json,
@@ -173,9 +173,11 @@ with response:
                     ) as response:
                         if response.status == 200:
                             break
-                except (OSError, urllib.error.URLError):
+                except (OSError, urllib.error.URLError) as error:
                     if time.monotonic() >= deadline:
-                        raise RuntimeError("The owned image registry did not become ready")
+                        raise RuntimeError(
+                            "The owned image registry did not become ready"
+                        ) from error
                     time.sleep(0.2)
             image_references = {}
             for target in ("runtime", "authority"):
@@ -473,10 +475,15 @@ with response:
                     "route_pattern": "/notes",
                     "path": "/notes",
                     "query": {},
+                    "body_hash": None,
                 }
                 if body is not None:
                     binding["body_hash"] = hashlib.sha256(json.dumps(body).encode()).hexdigest()
-                assert receipt["content_hash"] == sha256_hex_utf8(canonicalize_json(binding))
+                assert receipt["content_hash"] == sha256_hex_utf8(canonicalize_json(binding)), {
+                    "receipt_id": receipt["id"],
+                    "expected_binding": binding,
+                    "observed_hash": receipt["content_hash"],
+                }
                 expected_verdict = "deny" if observation["status"] == 403 else "allow"
                 assert receipt["verdict"]["verdict"] == expected_verdict
                 assert receipt.get("capability_id") == observation["capability_id"]
