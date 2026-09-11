@@ -6,6 +6,9 @@ on:
       - 'crates/protocol/chio-mcp-edge/**'
       - 'crates/protocol/chio-mcp-remote/**'
       - 'crates/products/chio-api-protect/**'
+      - 'crates/products/chio-cli/**'
+      - 'crates/platform/chio-control-plane/**'
+      - 'examples/internet-of-agents-web3-network/application/**'
       - 'crates/guards/chio-guards/**'
       - 'crates/guards/chio-wasm-guards/**'
       - 'crates/kernel/chio-kernel/**'
@@ -51,6 +54,8 @@ jobs:
           key: builder-envoy
       - name: Protocol and authority regressions
         run: |
+          cargo test --locked -p chio-cli --test passport
+          cargo test --locked -p chio-control-plane --lib policy::tests
           cargo test --locked -p chio-core-types --lib capability
           cargo test --locked -p chio-kernel-core --lib capability_verify
           cargo test --locked -p chio-kernel --lib two_hop_bound_delegation
@@ -105,6 +110,14 @@ jobs:
           uv run --locked python -m unittest discover -s buyer -p 'test_*.py'
           uv run --locked python -m unittest discover -s provider -p 'test_*.py'
           uv run --locked run.py check
+      - name: Native federation, delegated work and real escrow recovery
+        working-directory: examples/internet-of-agents-web3-network/application
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+          CHIO_WORK_ORDER_CLI: ${{ github.workspace }}/target/debug/chio
+        run: |
+          uv run --locked run.py
+          uv run --locked check_capture.py
       - name: Build the supplied container
         run: |
           docker build -f examples/istio-ext-authz/Dockerfile -t chio-ext-authz:qualification .
@@ -123,6 +136,7 @@ jobs:
         if: always()
         with:
           name: builder-envoy-evidence
+          include-hidden-files: true
           path: |
             examples/istio-ext-authz/local/.state/verification.json
             examples/istio-ext-authz/local/.state/*.log
@@ -131,6 +145,7 @@ jobs:
             examples/hello-trust-control/application/.state/runs/*/verification.json
             examples/protocol-tools/.state/*/a2a-capture.json
             examples/protocol-tools/.state/*/acp-capture.json
+            examples/internet-of-agents-web3-network/application/.state/*/execution.json
             envoy-image-id.txt
   python-adapters:
     name: Python adapter regression suite (${{ matrix.package }})
