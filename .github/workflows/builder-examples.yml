@@ -33,7 +33,8 @@ permissions:
   contents: read
 concurrency:
   group: builder-examples-${{ github.ref }}
-  cancel-in-progress: true
+  # Preserve long-running deployment qualification when another fix is pushed.
+  cancel-in-progress: false
 jobs:
   envoy:
     name: Envoy executable and real request path

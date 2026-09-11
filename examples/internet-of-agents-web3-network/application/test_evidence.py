@@ -33,6 +33,7 @@ class EvidenceTests(unittest.TestCase):
             "contract_source",
             "order",
             "trust_list",
+            "x402_summary",
         ]:
             with self.subTest(mutation=mutation):
                 capture = copy.deepcopy(self.capture)
@@ -63,6 +64,8 @@ class EvidenceTests(unittest.TestCase):
                     capture["chain_source_hash"] = "00" * 32
                 elif mutation == "order":
                     capture["orders"].reverse()
+                elif mutation == "x402_summary":
+                    capture["x402_receipt"] = capture["full_release_receipt"]
                 elif mutation == "trust_list":
                     capture["trusted_kernels"]["atlas"] = "01" * 32
                 else:

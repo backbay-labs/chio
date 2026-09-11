@@ -23,7 +23,7 @@ uv run --locked run.py
 
 The launcher builds the host, installs locked JavaScript dependencies, creates a
 private run directory, starts the four hosts and local chain, and executes both
-orders. It stops its own processes on completion and retains all receipts,
+orders and a standard x402 report purchase. It stops its own processes on completion and retains all receipts,
 transactions, work products, balances and logs. It never overwrites an existing
 run or reads another example's qualification report.
 
@@ -47,6 +47,13 @@ owns `admission.db`, `receipts.db` and `business.db`; `credentials/` and
   quarantine and independent approval. These functions are not agent tools.
 - `chain.mjs` compiles and deploys the actual Chio contracts, funds the order,
   publishes its receipt-bound root and executes release/refund transactions.
+- `x402.mjs` uses the official @x402/core and @x402/evm 2.25.0 client and
+  facilitator for a real HTTP 402 / PAYMENT-SIGNATURE / PAYMENT-RESPONSE
+  exchange. The fixed-price report costs 10,000 local base units. Chio checks
+  its separate signed approval before the wallet authorizes payment.
+- `LocalPaymentToken.sol` is the local EIP-3009 test asset used by that standard
+  exact scheme. It inherits unrestricted test minting and is not a deployable
+  production asset. The application contacts only its private chain 31337.
 - `evidence.py` verifies the independently selected host key, signature, request
   ID, capability, arguments and exact output for each consumed receipt.
 - `run.py` connects the roles and attempts the failure cases through the same
@@ -136,3 +143,27 @@ uv run --locked verify.py execution.json --auditor-key YOUR_SELECTED_AUDITOR_KEY
 It checks every exact request/result against the final auditor's independently
 fetched records, all receipt signatures, the capability catalog, selected hosts,
 order IDs, settlement records, contract source hash and token balances.
+
+## Standard x402 payment
+
+After settling both work orders, Atlas buys the original signed review from a
+local HTTP resource server. This is the standard x402 v2 `exact` EVM scheme,
+using an EIP-3009 authorization. The Chio escrow order itself remains a separate
+receipt-bound settlement flow; it is not relabeled as an x402 payment.
+
+The client allowlists this run's exact asset, chain, recipient and 10,000-unit
+price. The service releases the report only after the official facilitator
+confirms its transfer. Changed amount, recipient, signature and network fail;
+reusing the payment cannot deliver or transfer twice. The receipt retains the
+actual payment headers, transaction, report and before/after balances.
+
+Final balances are buyer 650,000, provider 350,000 and escrow zero, from an
+initial 1,000,000 local test units. The provider received 200,000 for complete
+work, 140,000 for accepted partial work and 10,000 for the x402 report. The
+60,000-unit remainder of the second escrow returned to the buyer.
+
+Payment intent is persisted before transmission. If an x402 publication has an
+uncertain outcome, the application refuses automatic repurchase and retains the
+nonce and any observed transaction for inspection. The escrow's automatic
+recovery demonstrations cover funding, root publication and refund; they do not
+claim automatic recovery of the separate HTTP resource server.

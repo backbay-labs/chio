@@ -84,6 +84,7 @@ fn scope(tools: &[(&str, &str)], calls: u32, delegable: bool) -> ChioScope {
 }
 const TOOLS: &[(&str, &str)] = &[
     ("atlas", "quote"),
+    ("atlas", "buy_report"),
     ("atlas", "reserve"),
     ("atlas", "settle"),
     ("atlas", "refund"),

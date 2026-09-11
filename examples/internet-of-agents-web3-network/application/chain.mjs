@@ -51,6 +51,9 @@ function compile() {
     }
   };
   visit("src");
+  sources["LocalPaymentToken.sol"] = {
+    content: fs.readFileSync(path.join(home, "LocalPaymentToken.sol"), "utf8"),
+  };
   const input = {
     language: "Solidity",
     sources,
@@ -295,10 +298,10 @@ async function serve() {
             "ChioIdentityRegistry",
             "ChioRootRegistry",
             "ChioEscrow",
-            "MockERC20",
+            "LocalPaymentToken",
           ].includes(name)
         )
-          selected[name] = value;
+          selected[name === "LocalPaymentToken" ? "MockERC20" : name] = value;
     const transactions = [];
     const addresses = {};
     const deploy = async (name, args) => {
@@ -328,11 +331,7 @@ async function serve() {
       await identity.getAddress(),
       wallets[0].address,
     ]);
-    const token = await deploy("MockERC20", [
-      "Work order test dollars",
-      "wUSD",
-      6,
-    ]);
+    const token = await deploy("MockERC20", []);
     const kernel = load(path.join(directory, "config.json")).trusted_kernel;
     const operatorKeyHash = "0x" + sha(Buffer.from(kernel, "hex"));
     const binding = await wallets[0].signTypedData(
@@ -439,6 +438,10 @@ async function execute(input) {
   const context = await connect();
   const { config, provider, contract } = context;
   try {
+    if (input.action === "buy_report") {
+      const { purchaseReport } = await import("./x402.mjs");
+      return await purchaseReport(context, input, directory, save);
+    }
     const token = contract("MockERC20", 2);
     const escrow = contract("ChioEscrow", input.action === "refund" ? 2 : 3);
     const registry = contract("ChioRootRegistry", 1);

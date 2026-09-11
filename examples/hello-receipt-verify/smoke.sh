@@ -38,6 +38,8 @@ python3 "${EXAMPLE_ROOT}/verify_artifacts.py" \
   --write-summary \
   > "${ARTIFACT_ROOT}/artifact-validation.json"
 
+python3 "${EXAMPLE_ROOT}/check_rehashed.py" --chio "${CHIO_BIN}" --output "${ARTIFACT_ROOT}/rehashed" > "${ARTIFACT_ROOT}/rehashed-validation.json"
+
 RECEIPT_ID="$(python3 - "${ARTIFACT_ROOT}/summary.json" <<'PY'
 import json
 import sys

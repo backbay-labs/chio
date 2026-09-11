@@ -48,6 +48,25 @@ def verify(capture, auditor_key):
             or result["output"]["escrow"]["state"] != state
         ):
             raise ValueError("Settlement summary is not bound to its actual signed result")
+    payment = by_id[capture["x402_receipt"]]
+    if (
+        payment["receipt"]["tool_name"] != "buy_report"
+        or payment["receipt"]["decision"]["verdict"] != "allow"
+    ):
+        raise ValueError("x402 summary is not bound to a permitted purchase")
+    result = payment["output"]["payment"]
+    if (
+        result["protocol"] != "x402"
+        or result["scheme"] != "exact"
+        or result["deliveries"] != 1
+        or not result["settlement"]["success"]
+    ):
+        raise ValueError("x402 purchase did not settle and deliver once")
+    if (
+        digest(result["report"]) != result["report_hash"]
+        or int(result["before"]["payer"]) - int(result["after"]["payer"]) != 10000
+    ):
+        raise ValueError("x402 report or payment does not match its signed evidence")
     status = [
         operation["result"]["output"]
         for operation in operations

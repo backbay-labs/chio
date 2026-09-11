@@ -37,6 +37,7 @@ def connect(directory):
       CREATE TABLE IF NOT EXISTS requests(id TEXT PRIMARY KEY, binding TEXT NOT NULL, request TEXT NOT NULL, state TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS orders(id TEXT PRIMARY KEY, provider TEXT NOT NULL, amount INTEGER NOT NULL, invoice TEXT NOT NULL, state TEXT NOT NULL, result TEXT);
       CREATE TABLE IF NOT EXISTS native_admissions(id TEXT PRIMARY KEY, presentation_hash TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS report_purchases(id TEXT PRIMARY KEY, report_hash TEXT NOT NULL, amount INTEGER NOT NULL, state TEXT NOT NULL, result TEXT);
       CREATE TABLE IF NOT EXISTS reviews(id TEXT PRIMARY KEY, input_hash TEXT NOT NULL, output TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS observations(id INTEGER PRIMARY KEY, request_id TEXT NOT NULL, tool TEXT NOT NULL, verdict TEXT NOT NULL, reason TEXT NOT NULL, time INTEGER NOT NULL);
     """)
@@ -272,6 +273,41 @@ def business_policy(directory, db, tool, request, trusted):
                 "profile_hash": digest(data["provider"]),
             }
         }
+    if host == "atlas" and tool == "buy_report":
+        result_evidence(data["report"], "proofworks", "review", trusted)
+        require(
+            data["amount"] == 10000 and type(data["amount"]) is int,
+            "Report price must match the fixed quote",
+        )
+        approval = verify_signed(data["approval"], trusted["approval_issuer"])
+        require(
+            approval
+            == {
+                "order_id": order_id,
+                "report_hash": digest(data["report"]),
+                "amount": 10000,
+                "purpose": "x402.report",
+                "expires_at": approval.get("expires_at"),
+            },
+            "Report purchase differs from the approved terms",
+        )
+        require(approval["expires_at"] > time.time(), "Report approval expired")
+        require(
+            db.execute("SELECT id FROM report_purchases WHERE id=?", (order_id,)).fetchone()
+            is None,
+            "Report purchase already prepared; inspect retained payment intent",
+        )
+        exposure = db.execute(
+            "SELECT COALESCE(SUM(amount),0) FROM orders WHERE state IN ('funding','funded','releasing','partial','refunding')"
+        ).fetchone()[0]
+        exposure += db.execute(
+            "SELECT COALESCE(SUM(amount),0) FROM report_purchases WHERE state='prepared'"
+        ).fetchone()[0]
+        require(
+            exposure + 10000 <= trusted["treasury_limit"],
+            "Report purchase exceeds the available treasury",
+        )
+        return {"report_hash": digest(data["report"])}
     if host == "atlas" and tool == "quote":
         admission = result_evidence(data["admission"], "meridian", "admit", trusted, order_id)
         amount = admission["price"]
@@ -318,6 +354,9 @@ def business_policy(directory, db, tool, request, trusted):
         )
         exposure = db.execute(
             "SELECT COALESCE(SUM(amount),0) FROM orders WHERE state NOT IN ('refunded','released')"
+        ).fetchone()[0]
+        exposure += db.execute(
+            "SELECT COALESCE(SUM(amount),0) FROM report_purchases WHERE state='prepared'"
         ).fetchone()[0]
         require(
             exposure + quote["amount"] <= trusted["treasury_limit"],
@@ -551,6 +590,27 @@ def execute(directory, tool, arguments):
             )
             db.commit()
             return output
+        if host == "atlas" and tool == "buy_report":
+            db.execute(
+                "INSERT INTO report_purchases VALUES(?,?,?,'prepared',NULL)",
+                (order_id, decision["report_hash"], data["amount"]),
+            )
+            db.commit()
+            result = chain(
+                directory,
+                {
+                    "action": "buy_report",
+                    "order_id": order_id,
+                    "amount": data["amount"],
+                    "report_hash": decision["report_hash"],
+                    "report_json": canonical(data["report"]).decode(),
+                },
+            )
+            db.execute(
+                "UPDATE report_purchases SET state='settled',result=? WHERE id=?",
+                (json.dumps(result), order_id),
+            )
+            return {"order_id": order_id, "payment": result}
         if host == "atlas" and tool == "reserve":
             quote = decision["quote"]
             db.execute(

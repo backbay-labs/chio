@@ -156,7 +156,10 @@ def main():
             parser.error(
                 executable + " is required; install Node.js before running this application"
             )
-    if not (HERE / "node_modules/ethers/package.json").exists():
+    if not all(
+        (HERE / "node_modules" / package / "package.json").exists()
+        for package in ["ethers", "@x402/core", "@x402/evm", "viem"]
+    ):
         subprocess.run(["npm", "ci", "--no-audit", "--no-fund"], cwd=HERE, check=True)
     if args.binary:
         binary = args.binary.resolve()
@@ -539,6 +542,29 @@ def main():
         assert balances["output"]["escrow"]["beneficiary_balance"] == "340000"
         assert balances["output"]["escrow"]["buyer_balance"] == "660000"
         assert balances["output"]["escrow"]["escrow_balance"] == "0"
+        purchase_id = "report-" + str(uuid.uuid4())
+        purchase = {
+            "order_id": purchase_id,
+            "amount": 10000,
+            "report": history,
+            "approval": operator.signed(
+                {
+                    "order_id": purchase_id,
+                    "amount": 10000,
+                    "report_hash": digest(history),
+                    "purpose": "x402.report",
+                    "expires_at": int(time.time()) + 300,
+                },
+                operator.key(directory / "operator/approval.json"),
+            ),
+        }
+        app.call("buyer", "atlas", "buy_report", {**purchase, "amount": 10001}, expect="deny")
+        paid_report = app.call("buyer", "atlas", "buy_report", purchase)
+        app.call("buyer", "atlas", "buy_report", purchase, expect="deny")
+        balances = app.call("buyer", "atlas", "status", {"order_id": second})
+        assert balances["output"]["escrow"]["buyer_balance"] == "650000"
+        assert balances["output"]["escrow"]["beneficiary_balance"] == "350000"
+
         # Actual unfavorable work changes admission. The small observed sample
         # is reported explicitly instead of fabricated long-term reputation.
         app.call(
@@ -619,6 +645,7 @@ def main():
             "full_release_receipt": released["receipt"]["id"],
             "partial_release_receipt": partial["receipt"]["id"],
             "refund_receipt": refund["receipt"]["id"],
+            "x402_receipt": paid_report["receipt"]["id"],
             "audit": audit,
             "operations": app.operations,
             "chain_source_hash": chain["source_hash"],

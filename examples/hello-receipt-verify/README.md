@@ -46,3 +46,16 @@ python3 -m unittest discover -s . -p 'test_*.py'
 This example stops at offline verification. `chio evidence import` is intentionally stricter and requires a signed bilateral federation policy, so it belongs in a federation-focused example rather than this minimal offline verifier.
 
 The `verify.py`, `verify.mjs`, and `verify.go` programs verify receipts using the matching public Chio SDK source. The documentation download includes those exact SDKs and package-manager setup. They require the trusted-signer APIs from this source revision; the older registry releases do not provide those APIs.
+
+### Rehashed malicious packages
+
+The smoke command also changes signed lineage or receipt content, updates every
+manifest checksum and byte count, and requires the CLI to refuse the package
+semantically. Run these three cases separately with:
+
+```sh
+python3 check_rehashed.py
+```
+
+An unsigned legacy projection cannot replace signed-token provenance. Changing a
+signed capability or receipt still fails after package checksums are recomputed.
