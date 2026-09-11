@@ -75,6 +75,7 @@ fn make_delegated_capability(
     body.id = id.to_string();
     body.delegation_chain = vec![DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: parent_id.to_string(),
             delegator: issuer.public_key(),
             delegatee: subject.public_key(),

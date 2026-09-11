@@ -118,6 +118,7 @@ fn build_validation_fixture() -> (
 
     let link_one = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "cap-root".to_string(),
             delegator: root.public_key(),
             delegatee: delegate_one.public_key(),
@@ -132,6 +133,7 @@ fn build_validation_fixture() -> (
     .bench_unwrap("sign first delegation link");
     let link_two = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "cap-child".to_string(),
             delegator: delegate_one.public_key(),
             delegatee: delegate_two.public_key(),

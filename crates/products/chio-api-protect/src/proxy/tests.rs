@@ -2704,6 +2704,7 @@ fn child_token_with_chain_ancestor(
     let delegatee = Keypair::generate();
     let link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: parent_id.to_string(),
             delegator: delegator.public_key(),
             delegatee: delegatee.public_key(),
@@ -2798,6 +2799,7 @@ async fn sidecar_validate_capability_checks_issuer_trust_before_walking_chain() 
     let delegatee = Keypair::generate();
     let link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: parent_id.to_string(),
             delegator: delegator.public_key(),
             delegatee: delegatee.public_key(),

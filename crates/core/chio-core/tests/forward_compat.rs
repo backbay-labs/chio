@@ -124,6 +124,7 @@ fn make_manifest_body(kp: &Keypair) -> ToolManifestBody {
 
 fn make_delegation_link(delegator_kp: &Keypair, delegatee_kp: &Keypair) -> DelegationLink {
     let body = DelegationLinkBody {
+        child_binding: None,
         capability_id: "cap-fwd-001".to_string(),
         delegator: delegator_kp.public_key(),
         delegatee: delegatee_kp.public_key(),

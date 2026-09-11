@@ -514,6 +514,24 @@ the issuer's actual upstream parent capability. Concretely:
   binds that hash to the predecessor's key, transitively rooting the
   witness in the trust-root authority.
 - A chain whose hops omit `scope_hash` is rejected fail-closed.
+- Multi-hop chains MUST also carry a signed `child_binding` on every link.
+  It binds the child capability ID, issuance and expiry times, budget share,
+  and complete attenuation proof. The next link MUST reference that exact child
+  ID and scope; its lifetime and budget share MUST remain within the signed
+  predecessor's bounds. A child ID MUST NOT reuse an ancestor's ID.
+- The last child binding MUST match the presented token's ID, subject, scope,
+  lifetime, budget share and attenuation proof. Valid signatures on unrelated
+  scope hashes do not satisfy this rule. Both fixed-root and resolver-based
+  verifier entrypoints check every hop.
+
+`issue_delegated_capability` constructs this proof-bearing form for ordinary
+scoped capabilities. The parent holder signs the child binding and the trusted
+issuer signs the resulting token; the holder never receives the issuer's key.
+Legacy single-hop links remain valid, but cannot be extended without the missing
+witness. Caveated parents and multi-hop aggregate-budget or cumulative-approval
+families require their separate issuer/verifier support and are refused by this
+helper. Runtime admission still checks trusted signed ancestor snapshots,
+caller identity, revocation and durable budgets before dispatch.
 
 The portable verifier entrypoint
 `chio_kernel_core::verify_capability_with_floor_and_trust_root(token,

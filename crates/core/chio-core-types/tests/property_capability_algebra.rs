@@ -329,6 +329,7 @@ proptest! {
         let mut chain: Vec<DelegationLink> = Vec::with_capacity(chain_len as usize);
         for i in 0..chain_len as usize {
             let body = DelegationLinkBody {
+                child_binding: None,
                 capability_id: format!("cap-{i}"),
                 delegator: keypairs[i].public_key(),
                 delegatee: keypairs[i + 1].public_key(),
@@ -473,6 +474,7 @@ proptest! {
         let mut chain: Vec<DelegationLink> = Vec::with_capacity(chain_len as usize);
         for i in 0..chain_len as usize {
             let body = DelegationLinkBody {
+                child_binding: None,
                 capability_id: format!("cap-{i}"),
                 delegator: keypairs[i].public_key(),
                 delegatee: keypairs[i + 1].public_key(),

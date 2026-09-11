@@ -1459,6 +1459,7 @@ mod tests {
         };
         let link = DelegationLink::sign(
             DelegationLinkBody {
+                child_binding: None,
                 capability_id: ancestor_id.to_string(),
                 delegator: delegator.public_key(),
                 delegatee: subject.public_key(),

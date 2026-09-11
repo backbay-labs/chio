@@ -103,6 +103,7 @@ fn parent_at_5000_bps_cannot_mint_two_children_at_4000_bps_each() {
     // has length 1: the parent delegated directly to the child.
     let mk_chain = |delegatee: chio_core::crypto::PublicKey| {
         let body = DelegationLinkBody {
+            child_binding: None,
             capability_id: parent_id.to_string(),
             delegator: parent_kp.public_key(),
             delegatee,
@@ -128,6 +129,7 @@ fn parent_at_5000_bps_cannot_mint_two_children_at_4000_bps_each() {
         4_000,
         {
             let body = DelegationLinkBody {
+                child_binding: None,
                 capability_id: parent_id.to_string(),
                 delegator: parent_kp.public_key(),
                 delegatee: child_a_subject.public_key(),

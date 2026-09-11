@@ -68,6 +68,7 @@ fn make_delegated_token(
     body.delegation_chain.push(
         DelegationLink::sign(
             DelegationLinkBody {
+                child_binding: None,
                 capability_id: parent.id.clone(),
                 delegator: delegator_kp.public_key(),
                 delegatee: subject_kp.public_key(),

@@ -8662,6 +8662,40 @@ pub mod agent_tool_call_request {
     ///      "type": "string",
     ///      "minLength": 1
     ///    },
+    ///    "child_binding": {
+    ///      "description": "The exact child authorized by this holder, signed with the link. Every hop in a multi-hop attenuated chain must carry this binding.",
+    ///      "type": "object",
+    ///      "required": [
+    ///        "attenuationProof",
+    ///        "capabilityId",
+    ///        "expiresAt",
+    ///        "issuedAt"
+    ///      ],
+    ///      "properties": {
+    ///        "attenuationProof": {
+    ///          "$ref": "#/$defs/attenuationProof"
+    ///        },
+    ///        "budgetShareBps": {
+    ///          "type": "integer",
+    ///          "maximum": 10000.0,
+    ///          "minimum": 0.0
+    ///        },
+    ///        "capabilityId": {
+    ///          "type": "string",
+    ///          "maxLength": 256,
+    ///          "minLength": 1
+    ///        },
+    ///        "expiresAt": {
+    ///          "type": "integer",
+    ///          "minimum": 0.0
+    ///        },
+    ///        "issuedAt": {
+    ///          "type": "integer",
+    ///          "minimum": 0.0
+    ///        }
+    ///      },
+    ///      "additionalProperties": false
+    ///    },
     ///    "delegatee": {
     ///      "type": "string",
     ///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
@@ -8694,6 +8728,8 @@ pub mod agent_tool_call_request {
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub attenuations: ::std::vec::Vec<DelegationLinkAttenuationsItem>,
         pub capability_id: DelegationLinkCapabilityId,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub child_binding: ::std::option::Option<DelegationLinkChildBinding>,
         pub delegatee: DelegationLinkDelegatee,
         pub delegator: DelegationLinkDelegator,
         ///RFC 8785 canonical scope hash for this delegation hop. Runtime verification rejects links that omit it.
@@ -8873,6 +8909,149 @@ pub mod agent_tool_call_request {
         }
     }
     impl<'de> ::serde::Deserialize<'de> for DelegationLinkCapabilityId {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+    ///The exact child authorized by this holder, signed with the link. Every hop in a multi-hop attenuated chain must carry this binding.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "The exact child authorized by this holder, signed with the link. Every hop in a multi-hop attenuated chain must carry this binding.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "attenuationProof",
+    ///    "capabilityId",
+    ///    "expiresAt",
+    ///    "issuedAt"
+    ///  ],
+    ///  "properties": {
+    ///    "attenuationProof": {
+    ///      "$ref": "#/$defs/attenuationProof"
+    ///    },
+    ///    "budgetShareBps": {
+    ///      "type": "integer",
+    ///      "maximum": 10000.0,
+    ///      "minimum": 0.0
+    ///    },
+    ///    "capabilityId": {
+    ///      "type": "string",
+    ///      "maxLength": 256,
+    ///      "minLength": 1
+    ///    },
+    ///    "expiresAt": {
+    ///      "type": "integer",
+    ///      "minimum": 0.0
+    ///    },
+    ///    "issuedAt": {
+    ///      "type": "integer",
+    ///      "minimum": 0.0
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct DelegationLinkChildBinding {
+        #[serde(rename = "attenuationProof")]
+        pub attenuation_proof: AttenuationProof,
+        #[serde(
+            rename = "budgetShareBps",
+            default,
+            skip_serializing_if = "::std::option::Option::is_none"
+        )]
+        pub budget_share_bps: ::std::option::Option<i64>,
+        #[serde(rename = "capabilityId")]
+        pub capability_id: DelegationLinkChildBindingCapabilityId,
+        #[serde(rename = "expiresAt")]
+        pub expires_at: u64,
+        #[serde(rename = "issuedAt")]
+        pub issued_at: u64,
+    }
+    impl ::std::convert::From<&DelegationLinkChildBinding> for DelegationLinkChildBinding {
+        fn from(value: &DelegationLinkChildBinding) -> Self {
+            value.clone()
+        }
+    }
+    ///`DelegationLinkChildBindingCapabilityId`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "maxLength": 256,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct DelegationLinkChildBindingCapabilityId(::std::string::String);
+    impl ::std::ops::Deref for DelegationLinkChildBindingCapabilityId {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<DelegationLinkChildBindingCapabilityId> for ::std::string::String {
+        fn from(value: DelegationLinkChildBindingCapabilityId) -> Self {
+            value.0
+        }
+    }
+    impl ::std::convert::From<&DelegationLinkChildBindingCapabilityId>
+        for DelegationLinkChildBindingCapabilityId
+    {
+        fn from(value: &DelegationLinkChildBindingCapabilityId) -> Self {
+            value.clone()
+        }
+    }
+    impl ::std::str::FromStr for DelegationLinkChildBindingCapabilityId {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 256usize {
+                return Err("longer than 256 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for DelegationLinkChildBindingCapabilityId {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for DelegationLinkChildBindingCapabilityId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for DelegationLinkChildBindingCapabilityId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for DelegationLinkChildBindingCapabilityId {
         fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
         where
             D: ::serde::Deserializer<'de>,
@@ -22752,6 +22931,40 @@ pub mod kernel_capability_list {
     ///      "type": "string",
     ///      "minLength": 1
     ///    },
+    ///    "child_binding": {
+    ///      "description": "The exact child authorized by this holder, signed with the link. Every hop in a multi-hop attenuated chain must carry this binding.",
+    ///      "type": "object",
+    ///      "required": [
+    ///        "attenuationProof",
+    ///        "capabilityId",
+    ///        "expiresAt",
+    ///        "issuedAt"
+    ///      ],
+    ///      "properties": {
+    ///        "attenuationProof": {
+    ///          "$ref": "#/$defs/attenuationProof"
+    ///        },
+    ///        "budgetShareBps": {
+    ///          "type": "integer",
+    ///          "maximum": 10000.0,
+    ///          "minimum": 0.0
+    ///        },
+    ///        "capabilityId": {
+    ///          "type": "string",
+    ///          "maxLength": 256,
+    ///          "minLength": 1
+    ///        },
+    ///        "expiresAt": {
+    ///          "type": "integer",
+    ///          "minimum": 0.0
+    ///        },
+    ///        "issuedAt": {
+    ///          "type": "integer",
+    ///          "minimum": 0.0
+    ///        }
+    ///      },
+    ///      "additionalProperties": false
+    ///    },
     ///    "delegatee": {
     ///      "type": "string",
     ///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
@@ -22784,6 +22997,8 @@ pub mod kernel_capability_list {
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub attenuations: ::std::vec::Vec<DelegationLinkAttenuationsItem>,
         pub capability_id: DelegationLinkCapabilityId,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub child_binding: ::std::option::Option<DelegationLinkChildBinding>,
         pub delegatee: DelegationLinkDelegatee,
         pub delegator: DelegationLinkDelegator,
         ///RFC 8785 canonical scope hash for this delegation hop. Runtime verification rejects links that omit it.
@@ -22963,6 +23178,149 @@ pub mod kernel_capability_list {
         }
     }
     impl<'de> ::serde::Deserialize<'de> for DelegationLinkCapabilityId {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+    ///The exact child authorized by this holder, signed with the link. Every hop in a multi-hop attenuated chain must carry this binding.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "The exact child authorized by this holder, signed with the link. Every hop in a multi-hop attenuated chain must carry this binding.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "attenuationProof",
+    ///    "capabilityId",
+    ///    "expiresAt",
+    ///    "issuedAt"
+    ///  ],
+    ///  "properties": {
+    ///    "attenuationProof": {
+    ///      "$ref": "#/$defs/attenuationProof"
+    ///    },
+    ///    "budgetShareBps": {
+    ///      "type": "integer",
+    ///      "maximum": 10000.0,
+    ///      "minimum": 0.0
+    ///    },
+    ///    "capabilityId": {
+    ///      "type": "string",
+    ///      "maxLength": 256,
+    ///      "minLength": 1
+    ///    },
+    ///    "expiresAt": {
+    ///      "type": "integer",
+    ///      "minimum": 0.0
+    ///    },
+    ///    "issuedAt": {
+    ///      "type": "integer",
+    ///      "minimum": 0.0
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct DelegationLinkChildBinding {
+        #[serde(rename = "attenuationProof")]
+        pub attenuation_proof: AttenuationProof,
+        #[serde(
+            rename = "budgetShareBps",
+            default,
+            skip_serializing_if = "::std::option::Option::is_none"
+        )]
+        pub budget_share_bps: ::std::option::Option<i64>,
+        #[serde(rename = "capabilityId")]
+        pub capability_id: DelegationLinkChildBindingCapabilityId,
+        #[serde(rename = "expiresAt")]
+        pub expires_at: u64,
+        #[serde(rename = "issuedAt")]
+        pub issued_at: u64,
+    }
+    impl ::std::convert::From<&DelegationLinkChildBinding> for DelegationLinkChildBinding {
+        fn from(value: &DelegationLinkChildBinding) -> Self {
+            value.clone()
+        }
+    }
+    ///`DelegationLinkChildBindingCapabilityId`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "maxLength": 256,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct DelegationLinkChildBindingCapabilityId(::std::string::String);
+    impl ::std::ops::Deref for DelegationLinkChildBindingCapabilityId {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<DelegationLinkChildBindingCapabilityId> for ::std::string::String {
+        fn from(value: DelegationLinkChildBindingCapabilityId) -> Self {
+            value.0
+        }
+    }
+    impl ::std::convert::From<&DelegationLinkChildBindingCapabilityId>
+        for DelegationLinkChildBindingCapabilityId
+    {
+        fn from(value: &DelegationLinkChildBindingCapabilityId) -> Self {
+            value.clone()
+        }
+    }
+    impl ::std::str::FromStr for DelegationLinkChildBindingCapabilityId {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 256usize {
+                return Err("longer than 256 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for DelegationLinkChildBindingCapabilityId {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for DelegationLinkChildBindingCapabilityId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for DelegationLinkChildBindingCapabilityId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for DelegationLinkChildBindingCapabilityId {
         fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
         where
             D: ::serde::Deserializer<'de>,

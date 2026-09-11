@@ -306,6 +306,7 @@ fn cost_attribution_report_aggregates_matching_corpus_and_limits_detail_rows() {
             expires_at: 9_000,
             delegation_chain: vec![chio_core::capability::attenuation::DelegationLink::sign(
                 chio_core::capability::attenuation::DelegationLinkBody {
+                    child_binding: None,
                     capability_id: root.id.clone(),
                     delegator: root_kp.public_key(),
                     delegatee: leaf_kp.public_key(),

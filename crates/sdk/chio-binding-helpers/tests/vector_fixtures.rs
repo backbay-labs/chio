@@ -778,6 +778,7 @@ fn signed_delegation_link(
 ) -> DelegationLink {
     DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: capability_id.to_string(),
             delegator: delegator.public_key(),
             delegatee: delegatee.public_key(),

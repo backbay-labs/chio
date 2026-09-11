@@ -435,6 +435,19 @@
           "type": "string",
           "pattern": "^[0-9a-f]{64}$",
           "description": "RFC 8785 canonical scope hash for this delegation hop. Runtime verification rejects links that omit it."
+        },
+        "child_binding": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The exact child authorized by this holder, signed with the link. Every hop in a multi-hop attenuated chain must carry this binding.",
+          "required": ["capabilityId", "issuedAt", "expiresAt", "attenuationProof"],
+          "properties": {
+            "capabilityId": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "issuedAt": { "type": "integer", "minimum": 0 },
+            "expiresAt": { "type": "integer", "minimum": 0 },
+            "budgetShareBps": { "type": "integer", "minimum": 0, "maximum": 10000 },
+            "attenuationProof": { "$ref": "#/$defs/attenuationProof" }
+          }
         }
       }
     },
