@@ -80,7 +80,24 @@ pub(crate) fn fail_closed_response() -> CheckResponse {
             "{{\"verdict\":\"deny\",\"reason\":{},\"guard\":\"fail_closed\"}}",
             json_string(FAIL_CLOSED_REASON),
         ),
-        Some(fail_closed_dynamic_metadata(FAIL_CLOSED_REASON)),
+        Some(fail_closed_dynamic_metadata(FAIL_CLOSED_REASON, 500)),
+    )
+}
+
+/// An unavailable dependency is retryable, but never authorizes dispatch or
+/// manufactures a receipt that the absent authority did not sign.
+pub(crate) fn unavailable_response() -> CheckResponse {
+    const REASON: &str = "authorization authority unavailable";
+    denied_check_response(
+        Code::Unavailable,
+        REASON.into(),
+        EnvoyStatusCode::ServiceUnavailable as i32,
+        vec![header_option("x-chio-denial-reason", REASON)],
+        format!(
+            "{{\"verdict\":\"deny\",\"reason\":{},\"guard\":\"fail_closed\"}}",
+            json_string(REASON)
+        ),
+        Some(fail_closed_dynamic_metadata(REASON, 503)),
     )
 }
 

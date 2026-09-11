@@ -141,8 +141,15 @@ async fn exercise(behavior: &'static str) {
             assert!(!verdict.is_allowed());
             assert!(!id.unwrap().is_empty());
         }
+        "unavailable" | "timeout" => assert!(matches!(
+            result,
+            Err(chio_envoy_ext_authz::KernelError::Unavailable(_))
+        )),
         _ => assert!(
-            result.is_err(),
+            matches!(
+                result,
+                Err(chio_envoy_ext_authz::KernelError::Evaluation(_))
+            ),
             "{behavior} unexpectedly authorized a request"
         ),
     }

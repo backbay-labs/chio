@@ -99,12 +99,17 @@ impl HttpAuthorityKernel {
         if let Some(token) = call.capability_token {
             post = post.header("x-chio-capability", token);
         }
-        let mut response = post.send().await.map_err(KernelError::evaluation)?;
+        let mut response = post.send().await.map_err(KernelError::unavailable)?;
+        if response.status().is_server_error() {
+            return Err(KernelError::unavailable(
+                "authority could not complete evaluation",
+            ));
+        }
         if !response.status().is_success() {
             return Err(KernelError::evaluation("authority refused evaluation"));
         }
         let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(KernelError::evaluation)? {
+        while let Some(chunk) = response.chunk().await.map_err(KernelError::unavailable)? {
             if bytes.len() + chunk.len() > 1_048_576 {
                 return Err(KernelError::evaluation("authority response exceeded 1 MiB"));
             }

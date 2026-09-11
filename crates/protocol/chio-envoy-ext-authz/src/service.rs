@@ -23,7 +23,7 @@ use crate::translate::{check_request_to_tool_call, ToolCallRequest, Verdict};
 pub trait EnvoyKernel: Send + Sync + 'static {
     /// Evaluate a translated tool call. Implementations must be fail-closed:
     /// return [`KernelError`] rather than panicking on internal faults so the
-    /// adapter can deny with a 500 response.
+    /// adapter can refuse with 500, or 503 when the selected authority is unavailable.
     async fn evaluate(&self, request: ToolCallRequest) -> Result<Verdict, KernelError>;
 
     /// Evaluate and retain a receipt association when the kernel supplies one.
@@ -84,7 +84,10 @@ impl<K: EnvoyKernel> Authorization for ChioExtAuthzService<K> {
             }
             Err(err) => {
                 warn!(error = %err, "ext_authz kernel evaluation failed");
-                Ok(Response::new(fail_closed_response()))
+                Ok(Response::new(match err {
+                    KernelError::Unavailable(_) => crate::response::unavailable_response(),
+                    KernelError::Evaluation(_) => fail_closed_response(),
+                }))
             }
         }
     }

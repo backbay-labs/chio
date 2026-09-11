@@ -42,7 +42,15 @@ REGISTRY_IMAGE = (
 
 
 def main():
-    argparse.ArgumentParser(description=__doc__).parse_args()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--source", type=Path, help="Chio source checkout used as the Docker build context"
+    )
+    args = parser.parse_args()
+    global REPOSITORY
+    REPOSITORY = (args.source or REPOSITORY).resolve()
+    if not (REPOSITORY / "crates/protocol/chio-envoy-ext-authz/Cargo.toml").is_file():
+        parser.error("--source must name a Chio source checkout containing the Envoy adapter")
     installed = ROOT / ".tools"
     os.environ["PATH"] = str(installed) + os.pathsep + os.environ.get("PATH", "")
     for program in ("docker", "kind", "kubectl", "istioctl"):
