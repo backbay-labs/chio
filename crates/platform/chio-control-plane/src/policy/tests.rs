@@ -1566,3 +1566,20 @@ extensions:
         Some("sgx")
     );
 }
+
+#[test]
+fn default_tool_quota_is_retained_in_the_issued_scope_and_runtime_hash() {
+    let mut hashes = std::collections::BTreeSet::new();
+    for (declaration, expected) in [("", None), ("max_invocations: 2", Some(2)), ("max_invocations: 0", Some(0))] {
+        let yaml = format!("capabilities:\n  default:\n    tools:\n      - server: proofworks\n        tool: review\n        ttl: 900\n        {declaration}\n");
+        let policy = parse_policy(&yaml).test_unwrap();
+        let capabilities = build_default_capabilities(&policy.capabilities, policy.kernel.max_capability_ttl).test_unwrap();
+        assert_eq!(capabilities[0].scope.grants[0].max_invocations, expected);
+        hashes.insert(serde_json::to_string(&capabilities[0].scope).test_unwrap());
+    }
+    assert_eq!(hashes.len(), 3, "each quota produces a distinct scope hash preimage");
+    for invalid in ["-1", "4294967296", "many"] {
+        let yaml = format!("capabilities:\n  default:\n    tools:\n      - server: proofworks\n        tool: review\n        max_invocations: {invalid}\n");
+        assert!(parse_policy(&yaml).is_err());
+    }
+}
