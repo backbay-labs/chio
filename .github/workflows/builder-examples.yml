@@ -9,6 +9,8 @@ on:
       - 'crates/guards/chio-guards/**'
       - 'crates/guards/chio-wasm-guards/**'
       - 'crates/kernel/chio-kernel/**'
+      - 'crates/kernel/chio-kernel-core/**'
+      - 'crates/core/chio-core-types/**'
       - 'crates/protocol/chio-a2a-edge/**'
       - 'crates/protocol/chio-acp-edge/**'
       - 'examples/protocol-tools/**'
@@ -49,6 +51,9 @@ jobs:
           key: builder-envoy
       - name: Protocol and authority regressions
         run: |
+          cargo test --locked -p chio-core-types --lib capability
+          cargo test --locked -p chio-kernel-core --lib capability_verify
+          cargo test --locked -p chio-kernel --lib two_hop_bound_delegation
           cargo test --locked -p chio-kernel --lib nested_
           cargo test --locked -p chio-kernel --lib negotiation
           cargo clippy --locked -p chio-kernel --lib -- -D warnings
