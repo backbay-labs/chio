@@ -7,6 +7,7 @@ on:
       - 'crates/protocol/chio-mcp-remote/**'
       - 'crates/products/chio-api-protect/**'
       - 'crates/guards/chio-guards/**'
+      - 'crates/guards/chio-wasm-guards/**'
       - 'crates/kernel/chio-kernel/**'
       - 'crates/protocol/chio-a2a-edge/**'
       - 'crates/protocol/chio-acp-edge/**'
@@ -15,6 +16,7 @@ on:
       - 'examples/agent-commerce-network/**'
       - 'sdks/python/chio-adapter-base/**'
       - 'sdks/python/chio-py/**'
+      - 'sdks/dotnet/ChioMiddleware/**'
       - 'sdks/python/chio-crewai/**'
       - 'sdks/python/chio-autogen/**'
       - 'sdks/python/chio-llamaindex/**'
@@ -50,6 +52,8 @@ jobs:
           cargo test --locked -p chio-kernel --lib nested_
           cargo test --locked -p chio-kernel --lib negotiation
           cargo clippy --locked -p chio-kernel --lib -- -D warnings
+          cargo test --locked -p chio-wasm-guards --test spans_emitted
+          cargo clippy --locked -p chio-wasm-guards --lib -- -D warnings
           cargo test --locked -p chio-guards --lib response_sanitization
           cargo clippy --locked -p chio-guards --all-targets -- -D warnings
           cargo test --locked -p chio-api-protect --lib
@@ -135,3 +139,14 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39
       - run: uv run --python 3.12 --project sdks/python/${{ matrix.package }} --extra dev pytest sdks/python/${{ matrix.package }}/tests -q
+
+  dotnet-middleware:
+    name: ASP.NET Core body and capability regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet test sdks/dotnet/ChioMiddleware/ChioMiddleware.sln --verbosity minimal
