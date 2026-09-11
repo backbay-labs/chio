@@ -1,0 +1,3 @@
+.tools/
+.kubernetes/
+__pycache__/

@@ -22,6 +22,7 @@ pub struct ChioA2aEdge {
     ambiguous_skill_ids: BTreeMap<String, Vec<String>>,
     task_counter: u64,
     tasks: BTreeMap<String, DeferredA2aTask>,
+    v1_tasks: BTreeMap<String, A2aV1Task>,
 }
 
 /// Explicit compatibility-only surface for direct A2A passthrough behavior.
@@ -197,6 +198,7 @@ impl ChioA2aEdge {
             ambiguous_skill_ids,
             task_counter: 0,
             tasks: BTreeMap::new(),
+            v1_tasks: BTreeMap::new(),
         })
     }
 
@@ -601,11 +603,22 @@ impl ChioA2aEdge {
         kernel: &ChioKernel,
         execution: &A2aKernelExecutionContext,
     ) -> A2aJsonRpcResponse {
-        let A2aJsonRpcEnvelope { id, method, params } =
-            match Self::parse_jsonrpc_envelope(&message) {
-                Ok(envelope) => envelope,
-                Err(response) => return A2aJsonRpcResponse::from_optional(response),
-            };
+        if message["method"].as_str().is_some_and(|method| {
+            [
+                "SendMessage",
+                "GetTask",
+                "CancelTask",
+                "SendStreamingMessage",
+            ]
+            .contains(&method)
+        }) {
+            return self.handle_v1_jsonrpc(message, kernel, execution);
+        }
+        let A2aJsonRpcEnvelope { id, method, params } = match Self::parse_jsonrpc_envelope(&message)
+        {
+            Ok(envelope) => envelope,
+            Err(response) => return A2aJsonRpcResponse::from_optional(response),
+        };
         let should_respond = id.is_some();
         let id = id.unwrap_or(Value::Null);
         if let Err(response) = Self::ensure_jsonrpc_params_object_for_supported_method(
@@ -645,11 +658,11 @@ impl ChioA2aEdge {
         message: Value,
         server: &dyn ToolServerConnection,
     ) -> A2aJsonRpcResponse {
-        let A2aJsonRpcEnvelope { id, method, params } =
-            match Self::parse_jsonrpc_envelope(&message) {
-                Ok(envelope) => envelope,
-                Err(response) => return A2aJsonRpcResponse::from_optional(response),
-            };
+        let A2aJsonRpcEnvelope { id, method, params } = match Self::parse_jsonrpc_envelope(&message)
+        {
+            Ok(envelope) => envelope,
+            Err(response) => return A2aJsonRpcResponse::from_optional(response),
+        };
         let should_respond = id.is_some();
         let id = id.unwrap_or(Value::Null);
         if let Err(response) = Self::ensure_jsonrpc_params_object_for_supported_method(
@@ -936,5 +949,4 @@ impl ChioA2aEdgeCompatibility<'_> {
     ) -> A2aJsonRpcResponse {
         self.edge.handle_jsonrpc_passthrough(message, server)
     }
-
 }

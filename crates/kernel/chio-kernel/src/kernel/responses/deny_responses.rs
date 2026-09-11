@@ -224,23 +224,6 @@ impl ChioKernel {
         })
     }
 
-    /// Build a denial response with a signed receipt.
-    pub(crate) fn build_deny_response(
-        &self,
-        request: &ToolCallRequest,
-        reason: &str,
-        timestamp: u64,
-        matched_grant_index: Option<usize>,
-    ) -> Result<ToolCallResponse, KernelError> {
-        self.build_deny_response_with_metadata(
-            request,
-            reason,
-            timestamp,
-            matched_grant_index,
-            None,
-        )
-    }
-
     fn build_local_v1_failclosed_deny_response_with_metadata(
         &self,
         request: &ToolCallRequest,

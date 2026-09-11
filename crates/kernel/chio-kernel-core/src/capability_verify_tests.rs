@@ -212,6 +212,7 @@ fn delegated_aggregate_mode_requires_root_and_detects_omission() -> Result<(), C
     .map_err(|error| CapabilityError::Internal(error.to_string()))?;
     let link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: root.id.clone(),
             delegator: root.subject.clone(),
             delegatee: delegatee.public_key(),
@@ -737,6 +738,7 @@ fn full_verifier_accepts_plain_pass_through_delegation_when_chain_binding_featur
     let subject = Keypair::generate();
     let parent_link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "parent-capability".to_string(),
             delegator: issuer.public_key(),
             delegatee: subject.public_key(),
@@ -808,6 +810,7 @@ fn full_verifier_rejects_delegation_chain_with_wrong_final_delegatee() {
     let subject = Keypair::generate();
     let parent_link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "parent-capability".to_string(),
             delegator: issuer.public_key(),
             delegatee: issuer.public_key(),
@@ -875,6 +878,7 @@ fn full_verifier_rejects_tampered_delegation_link_payload() {
     let subject = Keypair::generate();
     let mut parent_link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "parent-capability".to_string(),
             delegator: issuer.public_key(),
             delegatee: subject.public_key(),
@@ -943,6 +947,7 @@ fn resolver_entrypoints_reject_tampered_plain_delegation_link() {
     let subject = Keypair::generate();
     let mut parent_link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "parent-capability".to_string(),
             delegator: issuer.public_key(),
             delegatee: subject.public_key(),
@@ -1026,6 +1031,7 @@ fn full_verifier_rejects_delegated_attenuation_unbound_from_trust_root() {
 
     let parent_link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "parent-capability".to_string(),
             delegator: issuer.public_key(),
             delegatee: subject.public_key(),
@@ -1121,6 +1127,7 @@ fn full_verifier_rejects_multi_hop_attenuation_without_child_scope_witnesses() {
 
     let first_link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "root-parent".to_string(),
             delegator: issuer.public_key(),
             delegatee: intermediate.public_key(),
@@ -1135,6 +1142,7 @@ fn full_verifier_rejects_multi_hop_attenuation_without_child_scope_witnesses() {
     .expect("sign first delegation link");
     let second_link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "intermediate-parent".to_string(),
             delegator: intermediate.public_key(),
             delegatee: subject.public_key(),
@@ -1214,6 +1222,7 @@ fn delegated_budget_unknown_parent_fails_closed() {
     let subject = Keypair::generate();
     let parent_link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "missing-parent".to_string(),
             delegator: issuer.public_key(),
             delegatee: issuer.public_key(),
@@ -1269,4 +1278,114 @@ fn delegated_budget_unknown_parent_fails_closed() {
         err,
         CapabilityError::BudgetSplitRejected(BudgetSplitError::UnknownParent { .. })
     ));
+}
+
+#[test]
+fn every_root_verifier_checks_two_hop_witnesses_and_predecessor_scope() {
+    use chio_core_types::capability::delegated_token::{
+        issue_delegated_capability, DelegatedCapabilityRequest,
+    };
+    let issuer = Keypair::generate();
+    let holder = Keypair::generate();
+    let provider = Keypair::generate();
+    let specialist = Keypair::generate();
+    let mut root_scope = delegable_scope();
+    root_scope.grants[0].max_invocations = Some(10);
+    let root = CapabilityToken::sign(
+        CapabilityTokenBody {
+            id: "root".into(),
+            issuer: issuer.public_key(),
+            subject: holder.public_key(),
+            scope: root_scope.clone(),
+            issued_at: 100,
+            expires_at: 600,
+            delegation_chain: vec![],
+            aggregate_invocation_budget: None,
+        },
+        &issuer,
+    )
+    .unwrap();
+    let mut child_scope = root_scope.clone();
+    child_scope.grants[0].max_invocations = Some(2);
+    let (child, _) = issue_delegated_capability(
+        &root,
+        DelegatedCapabilityRequest {
+            id: "provider".into(),
+            subject: provider.public_key(),
+            scope: child_scope.clone(),
+            issued_at: 110,
+            expires_at: 500,
+            budget_share_bps: Some(6000),
+            nonce: [0; 16],
+        },
+        &holder,
+        &issuer,
+    )
+    .unwrap();
+    child_scope.grants[0].max_invocations = Some(1);
+    child_scope.grants[0].operations = vec![Operation::Invoke];
+    let (leaf, _) = issue_delegated_capability(
+        &child,
+        DelegatedCapabilityRequest {
+            id: "specialist".into(),
+            subject: specialist.public_key(),
+            scope: child_scope.clone(),
+            issued_at: 120,
+            expires_at: 400,
+            budget_share_bps: Some(2500),
+            nonce: [0; 16],
+        },
+        &provider,
+        &issuer,
+    )
+    .unwrap();
+    let root_hash = scope_hash(&root_scope).unwrap();
+    let clock = crate::FixedClock::new(150);
+    let floor = CapabilityCryptoFloor::AllowClassical;
+    let resolve = |_: &PublicKey| Some(root_hash.clone());
+    assert!(verify_capability_with_floor_and_trust_root(
+        &leaf,
+        &[issuer.public_key()],
+        &clock,
+        floor,
+        &root_hash
+    )
+    .is_ok());
+    assert!(verify_capability_with_floor_and_resolver(
+        &leaf,
+        &[issuer.public_key()],
+        &clock,
+        floor,
+        &resolve
+    )
+    .is_ok());
+    let mut forged = leaf.clone();
+    let false_proof = AttenuationProof {
+        parent_scope_hash: root_hash.clone(),
+        child_scope_hash: scope_hash(&child_scope).unwrap(),
+        normalized_subset_proof: compute_attenuation_witness(&root_scope, &child_scope).unwrap(),
+    };
+    let mut false_link = forged.delegation_chain[1].body();
+    false_link.scope_hash = Some(root_hash.clone());
+    false_link.child_binding.as_mut().unwrap().attenuation_proof = false_proof.clone();
+    forged.delegation_chain[1] = DelegationLink::sign(false_link, &provider).unwrap();
+    forged.attenuation_proof = Some(false_proof);
+    forged.signature = issuer.sign_canonical(&forged.signing_body()).unwrap().0;
+    assert!(forged.verify_signature().unwrap());
+    assert!(verify_capability_with_floor_and_trust_root(
+        &forged,
+        &[issuer.public_key()],
+        &clock,
+        floor,
+        &root_hash
+    )
+    .is_err());
+    assert!(verify_capability_with_floor_and_resolver(
+        &forged,
+        &[issuer.public_key()],
+        &clock,
+        floor,
+        &resolve
+    )
+    .is_err());
 }

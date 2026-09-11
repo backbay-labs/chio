@@ -885,6 +885,21 @@ impl ChioKernel {
                 )));
             }
 
+            if let Some(binding) = link.child_binding.as_ref() {
+                let child_hash = chio_core::capability::attenuation::scope_hash(&child_scope)
+                    .map_err(|error| KernelError::DelegationInvalid(error.to_string()))?;
+                if binding.capability_id != child_capability_id
+                    || binding.issued_at != child_issued_at
+                    || binding.expires_at != child_expires_at
+                    || binding.attenuation_proof.child_scope_hash != child_hash
+                {
+                    return Err(KernelError::DelegationInvalid(format!(
+                        "child capability {} snapshot differs from signed hop {} binding",
+                        child_capability_id, index
+                    )));
+                }
+            }
+
             validate_delegation_scope_step(
                 &parent_snapshot.capability_id,
                 &child_capability_id,

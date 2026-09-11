@@ -83,6 +83,7 @@ fn signed_link(
 ) -> crate::error::Result<DelegationLink> {
     DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: root.id.clone(),
             delegator: root.subject.clone(),
             delegatee: delegatee.clone(),
@@ -927,6 +928,7 @@ fn aggregate_invocation_rejects_multi_hop_scope_pivot_and_intermediate_predating
         |id: &str, mut scope: ChioScope, timestamp: u64| -> crate::error::Result<CapabilityToken> {
             let second = DelegationLink::sign(
                 DelegationLinkBody {
+                    child_binding: None,
                     capability_id: intermediate_token.id.clone(),
                     delegator: intermediate.public_key(),
                     delegatee: delegatee.public_key(),

@@ -569,6 +569,12 @@ fn verify_chain_binding_with_trust_root(
     trust_root_scope_hash: &ScopeHash,
 ) -> Result<(), CapabilityError> {
     if token.requires_chain_binding() {
+        validate_delegation_chain_with_trust_root(
+            &token.delegation_chain,
+            None,
+            trust_root_scope_hash,
+        )
+        .map_err(|err| CapabilityError::AttenuationViolation(err.to_string()))?;
         token
             .validate_chain_binding(trust_root_scope_hash)
             .map_err(|err| CapabilityError::AttenuationViolation(err.to_string()))?;

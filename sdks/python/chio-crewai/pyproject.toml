@@ -25,7 +25,7 @@ classifiers = [
 dependencies = [
     "chio-sdk-python>=0.1.0",
     "chio-adapter-base>=0.2.0,<0.3",
-    "crewai>=0.80,<1",
+    "crewai>=0.80,<2",
     "pydantic>=2.5,<3",
 ]
 

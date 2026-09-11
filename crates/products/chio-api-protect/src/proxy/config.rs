@@ -31,14 +31,15 @@ pub struct ProtectConfig {
     pub signer_seed_hex: Option<String>,
     /// Explicit capability issuers trusted by the HTTP authority.
     pub trusted_capability_issuers: Vec<PublicKey>,
-    /// Control-plane URL. When set, budget holds go through a `RemoteBudgetStore`.
+    /// Control-plane URL. When set, budget holds and live revocation checks use
+    /// this authority. A failed revocation check refuses admission.
     pub control_url: Option<String>,
-    /// Bearer token for the control-plane budget endpoints.
+    /// Bearer token for the control-plane budget and revocation endpoints.
     pub control_token: Option<String>,
     /// Local SQLite budget-store path used when no `control_url` is configured.
     pub budget_db: Option<String>,
     /// Optional durable SQLite revocation-store path. When set, the sidecar
-    /// loads its revoked capability ids at startup so operator revocations
+    /// queries it on every authorization so operator revocations
     /// recorded through `chio trust revoke --revocation-db <path>` are enforced
     /// on `/v1/evaluate` and every other path that consults the revoked set.
     /// Opening or reading a configured store that fails is fatal (fail-closed):

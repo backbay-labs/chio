@@ -431,6 +431,7 @@ mod tests {
         let scope = tool_scope();
         let link = DelegationLink::sign(
             DelegationLinkBody {
+                child_binding: None,
                 capability_id: "cap-parent".to_string(),
                 delegator: issuer.public_key(),
                 delegatee: subject.clone(),

@@ -284,6 +284,7 @@ fn import_federated_reputation_share(
     delegate_body.delegation_chain.push(
         DelegationLink::sign(
             DelegationLinkBody {
+                child_binding: None,
                 capability_id: root_token.id.clone(),
                 delegator: subject_keypair.public_key(),
                 delegatee: delegate_body.subject.clone(),

@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from chio_sdk.errors import ChioDeniedError
 from chio_sdk.errors import ChioValidationError
 from chio_sdk.models import ChioScope, Operation, ToolGrant
 from chio_sdk.testing import MockChioClient, MockVerdict
@@ -233,7 +234,7 @@ class TestResearcherWriterScoping:
 
 
 class TestDelegationAttenuation:
-    async def test_child_capability_is_subset_of_parent(self) -> None:
+    async def test_delegation_without_subject_signer_preserves_role_tokens(self) -> None:
         chio = _instrumented_client()
         search_tool, write_tool = _make_tools(chio)
         lead = _make_agent(
@@ -260,16 +261,13 @@ class TestDelegationAttenuation:
         )
         await crew.provision_capabilities()
 
-        # Delegation narrows lead -> junior to just 'search'.
-        child = await crew.attenuate_for_delegation(
-            delegator_role="lead",
-            delegate_role="junior",
-            new_scope=_scope("search"),
-        )
-        parent = crew.token_for("lead")
-        assert parent is not None
-        assert child.scope.is_subset_of(parent.scope)
-        assert not parent.scope.is_subset_of(child.scope)
+        original = crew.token_for("junior")
+        with pytest.raises(ChioDeniedError) as error:
+            await crew.attenuate_for_delegation(
+                delegator_role="lead", delegate_role="junior", new_scope=_scope("search"),
+            )
+        assert error.value.reason_code == "chio_attenuation_requires_subject_signer"
+        assert crew.token_for("junior") == original
 
     async def test_child_cannot_escalate(self) -> None:
         chio = _instrumented_client()

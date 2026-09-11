@@ -101,3 +101,32 @@ fn remote_session_factory_rejects_admission_sidecar_aliases() {
         .contains("durable admission database must not alias receipt database"));
     let _ = std::fs::remove_dir_all(directory);
 }
+
+#[test]
+fn remote_session_factory_rejects_conflicting_issuer_configuration_before_startup() {
+    let directory = private_remote_admission_directory("issuer-conflict");
+    let seed = directory.join("unused.seed");
+    let mut config = test_remote_config();
+    config.control_url = Some("http://127.0.0.1:1".to_owned());
+    config.authority_seed_path = Some(seed.clone());
+    config.policy_path = directory.join("not-loaded.yaml");
+    let error = RemoteSessionFactory::new(config)
+        .err()
+        .expect("conflicting authorities must fail before policy or network startup");
+    assert!(error.to_string().contains("remove --authority-seed-file"));
+    assert!(!seed.exists());
+    let _ = std::fs::remove_dir_all(directory);
+}
+
+#[test]
+fn receipt_lookup_preserves_both_public_query_spellings() {
+    for value in [
+        json!({"receiptId":"older-receipt", "toolName":"execute_review", "capabilityId":"cap-review"}),
+        json!({"receipt_id":"older-receipt", "tool_name":"execute_review", "capability_id":"cap-review"}),
+    ] {
+        let query: AdminToolReceiptQuery = serde_json::from_value(value).expect("valid admin query");
+        assert_eq!(query.receipt_id.as_deref(), Some("older-receipt"));
+        assert_eq!(query.tool_name.as_deref(), Some("execute_review"));
+        assert_eq!(query.capability_id.as_deref(), Some("cap-review"));
+    }
+}

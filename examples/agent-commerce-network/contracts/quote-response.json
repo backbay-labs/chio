@@ -6,6 +6,6 @@
   "price_minor": 125000,
   "currency": "USD",
   "approval_required": true,
-  "estimated_delivery_hours": 48,
+  "estimated_delivery_hours": 0,
   "pricing_basis": "bounded release review for one release window"
 }

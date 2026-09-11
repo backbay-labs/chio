@@ -48,6 +48,7 @@ pub(crate) fn make_delegated_capability_token(
     body.delegation_chain.push(
         DelegationLink::sign(
             DelegationLinkBody {
+                child_binding: None,
                 capability_id: parent.id.clone(),
                 delegator: delegator_keypair.public_key(),
                 delegatee: subject_keypair.public_key(),

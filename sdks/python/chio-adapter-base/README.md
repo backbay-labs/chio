@@ -1,5 +1,16 @@
 # chio-adapter-base
 
+## MCP execution bindings
+
+`McpToolBinding(session, tool_name)` executes through an application-owned Chio MCP host. `execute(arguments)` accepts synchronous clients; `aexecute(arguments)` also accepts the official asynchronous MCP ClientSession on its owning event loop. The host owns admission, signed authority and execution. `McpExecution` retains the tool's terminal result, request ID and receipt ID.
+
+`McpToolError` carries a terminal error and its association. It may mean admission refusal or execution failure; retrieve the signed receipt to distinguish them. `McpOutcomeUnknown` means transport or response validation failed, so an effect may have occurred. Neither path retries automatically. Cancellation is preserved. Associations alone are not verified signatures.
+
+The complete [framework notes application](https://www.chio.computer/docs/examples/agent-framework-sdks) includes input models, host, launcher, role policies and an independent receipt verifier. Its bundled adapters are source candidates; installing an older registry distribution does not add these APIs.
+
+Legacy local-executor and signerless-delegation APIs below have different authority requirements. An ID-only sidecar gate continues to refuse execution, and a sidecar without the parent subject signer cannot manufacture a delegated capability.
+
+
 Shared security and receipt primitives for the Chio Python adapter family.
 
 > **Status: shipping.** The first non-pre-release line is `0.2.0`;

@@ -1,0 +1,194 @@
+name: Builder examples
+on:
+  pull_request:
+    paths:
+      - 'crates/protocol/chio-envoy-ext-authz/**'
+      - 'crates/protocol/chio-mcp-edge/**'
+      - 'crates/protocol/chio-mcp-remote/**'
+      - 'crates/products/chio-api-protect/**'
+      - 'crates/products/chio-cli/**'
+      - 'crates/platform/chio-control-plane/**'
+      - 'examples/internet-of-agents-web3-network/application/**'
+      - 'crates/guards/chio-guards/**'
+      - 'crates/guards/chio-wasm-guards/**'
+      - 'crates/kernel/chio-kernel/**'
+      - 'crates/kernel/chio-kernel-core/**'
+      - 'crates/core/chio-core-types/**'
+      - 'crates/protocol/chio-a2a-edge/**'
+      - 'crates/protocol/chio-acp-edge/**'
+      - 'examples/protocol-tools/**'
+      - 'examples/hello-trust-control/application/**'
+      - 'examples/agent-commerce-network/**'
+      - 'sdks/python/chio-adapter-base/**'
+      - 'sdks/python/chio-py/**'
+      - 'sdks/dotnet/ChioMiddleware/**'
+      - 'sdks/python/chio-crewai/**'
+      - 'sdks/python/chio-autogen/**'
+      - 'sdks/python/chio-llamaindex/**'
+      - 'examples/istio-ext-authz/**'
+      - 'examples/hello-receipt-verify/**'
+      - '.github/workflows/builder-examples.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: builder-examples-${{ github.ref }}
+  # Preserve long-running deployment qualification when another fix is pushed.
+  cancel-in-progress: false
+jobs:
+  envoy:
+    name: Envoy executable and real request path
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: ./.github/actions/apt-install
+        with:
+          packages: clang cmake pkg-config libssl-dev protobuf-compiler
+      - run: rustup toolchain install 1.94.1 --profile minimal --component clippy
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          key: builder-envoy
+      - name: Protocol and authority regressions
+        run: |
+          cargo test --locked -p chio-cli --test passport
+          cargo test --locked -p chio-control-plane --lib policy::tests
+          cargo test --locked -p chio-core-types --lib capability
+          cargo test --locked -p chio-kernel-core --lib capability_verify
+          cargo test --locked -p chio-kernel --lib two_hop_bound_delegation
+          cargo test --locked -p chio-kernel --lib nested_
+          cargo test --locked -p chio-kernel --lib negotiation
+          cargo clippy --locked -p chio-kernel --lib -- -D warnings
+          cargo test --locked -p chio-wasm-guards --test spans_emitted
+          cargo clippy --locked -p chio-wasm-guards --lib -- -D warnings
+          cargo test --locked -p chio-guards --lib response_sanitization
+          cargo clippy --locked -p chio-guards --all-targets -- -D warnings
+          cargo test --locked -p chio-api-protect --lib
+          cargo clippy --locked -p chio-api-protect --all-targets -- -D warnings
+          cargo test --locked -p chio-acp-edge --lib
+          cargo clippy --locked -p chio-acp-edge --all-targets -- -D warnings
+          cargo test --locked -p chio-a2a-edge --lib
+          cargo clippy --locked -p chio-a2a-edge --all-targets -- -D warnings
+          cargo test --locked -p chio-mcp-remote --lib
+          cargo clippy --locked -p chio-mcp-remote --all-targets -- -D warnings
+          cargo test --locked -p chio-mcp-edge --lib
+          cargo clippy --locked -p chio-mcp-edge --all-targets -- -D warnings
+          cargo test --locked -p chio-envoy-ext-authz --features runtime
+          cargo clippy --locked -p chio-envoy-ext-authz --features runtime --all-targets -- -D warnings
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39
+      - name: Build the runtime and CLI
+        run: |
+          cargo build --locked -p chio-cli --bin chio
+          cargo build --locked -p chio-envoy-ext-authz --features runtime --bin chio-envoy-ext-authz
+      - name: Run actual Envoy allow, refusal, revocation and outage
+        run: |
+          python3 examples/istio-ext-authz/local/install-envoy.py
+          export CHIO_BIN="$PWD/target/debug/chio"
+          export CHIO_EXT_AUTHZ_BIN="$PWD/target/debug/chio-envoy-ext-authz"
+          export ENVOY_BIN="$PWD/examples/istio-ext-authz/local/.bin/envoy"
+          python3 examples/istio-ext-authz/local/run.py --check
+          CHIO_BIN="$PWD/target/debug/chio" examples/hello-receipt-verify/smoke.sh
+          CHIO_BIN="$PWD/target/debug/chio" uv run --locked examples/hello-trust-control/application/run.py "Verify durable revocation"
+      - name: Official A2A Python client through the actual HTTP host
+        working-directory: examples/protocol-tools
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: uv run --locked a2a_client.py
+      - name: Official ACP Python client through the actual stdio host
+        working-directory: examples/protocol-tools
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: uv run --locked acp_client.py
+      - name: Execute durable Commerce and its negative controls
+        working-directory: examples/agent-commerce-network
+        env:
+          CHIO_BIN: ${{ github.workspace }}/target/debug/chio
+        run: |
+          uv run --locked python -m unittest discover -s buyer -p 'test_*.py'
+          uv run --locked python -m unittest discover -s provider -p 'test_*.py'
+          uv run --locked run.py check
+      - name: Native federation, delegated work and real escrow recovery
+        working-directory: examples/internet-of-agents-web3-network/application
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+          CHIO_WORK_ORDER_CLI: ${{ github.workspace }}/target/debug/chio
+        run: |
+          uv run --locked run.py
+          uv run --locked check_capture.py
+      - name: Build the supplied container
+        run: |
+          docker build -f examples/istio-ext-authz/Dockerfile -t chio-ext-authz:qualification .
+          docker run --rm chio-ext-authz:qualification --help
+          docker image inspect chio-ext-authz:qualification --format '{{.Id}}' > envoy-image-id.txt
+          cat > /tmp/chio-container-authorization <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec docker run --rm --user "$(id -u):$(id -g)" --network host --volume "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE:ro" chio-ext-authz:qualification "$@"
+          SH
+          chmod +x /tmp/chio-container-authorization
+          CHIO_BIN="$PWD/target/debug/chio" CHIO_EXT_AUTHZ_BIN=/tmp/chio-container-authorization \
+            ENVOY_BIN="$PWD/examples/istio-ext-authz/local/.bin/envoy" \
+            python3 examples/istio-ext-authz/local/run.py --check
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: builder-envoy-evidence
+          include-hidden-files: true
+          path: |
+            examples/istio-ext-authz/local/.state/verification.json
+            examples/istio-ext-authz/local/.state/*.log
+            examples/hello-receipt-verify/.artifacts/*/summary.json
+            examples/agent-commerce-network/.state/qualification/*/runs/*/verification.json
+            examples/hello-trust-control/application/.state/runs/*/verification.json
+            examples/protocol-tools/.state/*/a2a-capture.json
+            examples/protocol-tools/.state/*/acp-capture.json
+            examples/internet-of-agents-web3-network/application/.state/*/execution.json
+            envoy-image-id.txt
+  python-adapters:
+    name: Python adapter regression suite (${{ matrix.package }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [chio-py, chio-adapter-base, chio-crewai, chio-autogen, chio-llamaindex]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39
+      - run: uv run --python 3.12 --project sdks/python/${{ matrix.package }} --extra dev pytest sdks/python/${{ matrix.package }}/tests -q
+
+  dotnet-middleware:
+    name: ASP.NET Core body and capability regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet test sdks/dotnet/ChioMiddleware/ChioMiddleware.sln --verbosity minimal
+
+  istio-kubernetes:
+    name: Istio Kubernetes deployment and signed request path
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39
+      - name: Install checksum-pinned cluster tools
+        run: python3 examples/istio-ext-authz/install-kubernetes-tools.py
+      - name: Deploy the supplied images and exercise the actual sidecar
+        run: uv run --locked examples/istio-ext-authz/kubernetes.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: builder-istio-evidence
+          include-hidden-files: true
+          path: |
+            examples/istio-ext-authz/.kubernetes/*/verification.json
+            examples/istio-ext-authz/.kubernetes/*/images.json
+            examples/istio-ext-authz/.kubernetes/*/commands.log

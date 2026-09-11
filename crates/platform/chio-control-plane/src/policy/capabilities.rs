@@ -72,7 +72,7 @@ fn build_default_capability_map(
                 tool_name: grant_config.tool.clone(),
                 operations,
                 constraints: vec![],
-                max_invocations: None,
+                max_invocations: grant_config.max_invocations,
                 max_cost_per_invocation: None,
                 max_total_cost: None,
                 dpop_required: None,

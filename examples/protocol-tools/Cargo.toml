@@ -1,0 +1,22 @@
+[package]
+name = "protocol-tools"
+version = "0.1.0"
+edition = "2021"
+default-run = "a2a-host"
+
+[workspace]
+
+[dependencies]
+chio-core = { package = "chio-core-types", path = "../../crates/core/chio-core-types" }
+chio-kernel = { path = "../../crates/kernel/chio-kernel" }
+chio-manifest = { path = "../../crates/platform/chio-manifest" }
+chio-a2a-edge = { path = "../../crates/protocol/chio-a2a-edge" }
+chio-acp-edge = { path = "../../crates/protocol/chio-acp-edge" }
+chio-control-plane = { path = "../../crates/platform/chio-control-plane" }
+chio-store-sqlite = { path = "../../crates/platform/chio-store-sqlite" }
+anyhow = "1"
+async-trait = "0.1"
+serde_json = "1"
+
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }

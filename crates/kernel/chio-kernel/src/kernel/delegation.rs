@@ -145,6 +145,7 @@ mod tests {
         for cap_id in chain_ids {
             let next_kp = Keypair::generate();
             let body = DelegationLinkBody {
+                child_binding: None,
                 capability_id: (*cap_id).to_string(),
                 delegator: last_kp.public_key(),
                 delegatee: next_kp.public_key(),

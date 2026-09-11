@@ -202,6 +202,18 @@ fn annotate_authoritative_a2a_metadata(metadata: &mut Value, output: Option<&Too
         return;
     };
 
+    // A2A text projection can discard the original chunk envelope. Retain the
+    // exact signed preimage so consumers can verify output hashes independently.
+    chio_metadata.insert(
+        "retainedOutput".to_string(),
+        match output {
+            Some(ToolCallOutput::Value(value)) => json!({"kind": "value", "value": value}),
+            Some(ToolCallOutput::Stream(stream)) => json!({"kind": "stream",
+                "chunks": stream.chunks.iter().map(|chunk| &chunk.data).collect::<Vec<_>>()}),
+            None => Value::Null,
+        },
+    );
+
     chio_metadata.insert(
         "lifecycle".to_string(),
         json!({

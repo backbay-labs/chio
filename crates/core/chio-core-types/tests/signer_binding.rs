@@ -265,6 +265,7 @@ fn delegation_link_sign_rejects_embedded_delegator_mismatch() {
     let delegatee = Keypair::generate();
 
     let body = DelegationLinkBody {
+        child_binding: None,
         capability_id: "cap-parent".to_string(),
         delegator: embedded_delegator.public_key(),
         delegatee: delegatee.public_key(),

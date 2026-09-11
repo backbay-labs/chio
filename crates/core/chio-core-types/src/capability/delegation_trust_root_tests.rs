@@ -11,6 +11,7 @@ fn delegation_chain_trust_root_accepts_matching_first_scope_hash() {
     let root_hash: ScopeHash = "root-scope".to_string();
     let link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "cap-root".to_string(),
             delegator: kp_a.public_key(),
             delegatee: kp_b.public_key(),
@@ -34,6 +35,7 @@ fn delegation_chain_trust_root_rejects_mismatched_first_scope_hash() {
     let root_hash: ScopeHash = "root-scope".to_string();
     let link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "cap-root".to_string(),
             delegator: kp_a.public_key(),
             delegatee: kp_b.public_key(),
@@ -59,6 +61,7 @@ fn delegation_chain_trust_root_rejects_multi_hop_without_per_hop_witnesses() {
     let root_hash: ScopeHash = "root-scope".to_string();
     let link_1 = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "cap-root".to_string(),
             delegator: kp_a.public_key(),
             delegatee: kp_b.public_key(),
@@ -73,6 +76,7 @@ fn delegation_chain_trust_root_rejects_multi_hop_without_per_hop_witnesses() {
     .unwrap();
     let link_2 = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "cap-hop-1".to_string(),
             delegator: kp_b.public_key(),
             delegatee: kp_c.public_key(),

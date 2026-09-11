@@ -13,6 +13,7 @@ syntax = "proto3";
 package envoy.config.core.v3;
 
 import "google/protobuf/struct.proto";
+import "google/protobuf/any.proto";
 import "google/protobuf/wrappers.proto";
 
 option java_package = "io.envoyproxy.envoy.config.core.v3";
@@ -60,11 +61,30 @@ message Metadata {
   map<string, google.protobuf.Struct> filter_metadata = 1;
 
   // Per-key typed metadata. Opaque to the Chio adapter.
-  map<string, google.protobuf.Struct> typed_filter_metadata = 2;
+  map<string, google.protobuf.Any> typed_filter_metadata = 2;
 }
 
 // Identifies a specific ControlPlane instance that Envoy is connected to. Opaque
 // to the Chio adapter and reduced to its wire-compatible field numbers.
 message ControlPlane {
   string identifier = 1;
+}
+
+// Wire-compatible address subset. A protobuf Struct cannot stand in for an
+// arbitrary nested message: Envoy socket addresses contain enum/integer fields.
+message SocketAddress {
+  enum Protocol { TCP = 0; UDP = 1; }
+  Protocol protocol = 1;
+  string address = 2;
+  oneof port_specifier {
+    uint32 port_value = 3;
+    string named_port = 4;
+  }
+  string resolver_name = 5;
+  bool ipv4_compat = 6;
+}
+message Address {
+  oneof address {
+    SocketAddress socket_address = 1;
+  }
 }

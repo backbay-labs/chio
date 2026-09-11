@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use arc_swap::ArcSwap;
+use chio_core::receipt::metadata::GuardEvidence;
 use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 use tracing::{debug, warn};
 
@@ -338,6 +339,22 @@ fn emit_guard_eval_metrics(guard_id: &str, verdict: &str, elapsed: std::time::Du
     families::GUARD_FUEL_CONSUMED.incr_by(&[guard_id], fuel);
 }
 
+/// Keep guest diagnostics in the evidence returned by this evaluation, rather
+/// than a shared last-error slot that concurrent calls could overwrite.
+/// A guest controls this text, so bound its contribution to the signed record.
+fn denial_evidence(guard_name: &str, reason: &str) -> Vec<GuardEvidence> {
+    let mut characters = reason.chars();
+    let mut details: String = characters.by_ref().take(1024).collect();
+    if characters.next().is_some() {
+        details.push_str(" [truncated]");
+    }
+    vec![GuardEvidence {
+        guard_name: guard_name.to_string(),
+        verdict: false,
+        details: Some(details),
+    }]
+}
+
 impl Guard for WasmGuard {
     fn name(&self) -> &str {
         &self.name
@@ -360,7 +377,10 @@ impl Guard for WasmGuard {
             emit_guard_eval_metrics(&self.name, VERDICT_DENY, eval_started.elapsed(), 0);
             chio_metrics_spec::runtime::families::GUARD_DENY
                 .incr(&[&self.name, REASON_CLASS_MALFORMED]);
-            return Ok(GuardDecision::deny(Vec::new()));
+            return Ok(GuardDecision::deny(denial_evidence(
+                &self.name,
+                "WASM guard could not extract the action from malformed arguments",
+            )));
         }
 
         let loaded = self.loaded.load_full();
@@ -429,7 +449,9 @@ impl Guard for WasmGuard {
                         reason = %reason_str,
                         "WASM advisory guard denied (non-blocking)"
                     );
-                    Ok(GuardDecision::allow())
+                    Ok(GuardDecision::allow_with_evidence(denial_evidence(
+                        &self.name, reason_str,
+                    )))
                 } else {
                     warn!(
                         guard = %self.name,
@@ -437,7 +459,7 @@ impl Guard for WasmGuard {
                         reason = %reason_str,
                         "WASM guard denied request"
                     );
-                    Ok(GuardDecision::deny(Vec::new()))
+                    Ok(GuardDecision::deny(denial_evidence(&self.name, reason_str)))
                 }
             }
             Err(e) => {
@@ -456,10 +478,11 @@ impl Guard for WasmGuard {
                     error = %e,
                     "WASM guard execution error"
                 );
+                let evidence = denial_evidence(&self.name, &format!("WASM execution error: {e}"));
                 if self.advisory {
-                    Ok(GuardDecision::allow())
+                    Ok(GuardDecision::allow_with_evidence(evidence))
                 } else {
-                    Ok(GuardDecision::deny(Vec::new()))
+                    Ok(GuardDecision::deny(evidence))
                 }
             }
         }

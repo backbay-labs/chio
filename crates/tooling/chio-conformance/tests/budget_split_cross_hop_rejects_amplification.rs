@@ -112,6 +112,7 @@ fn parent_5000_child_4000_two_grandchildren_3000_each_second_rejected() {
     let child_subject = Keypair::generate();
     let parent_to_child_link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: parent_id.to_string(),
             delegator: kp.public_key(),
             delegatee: child_subject.public_key(),
@@ -157,6 +158,7 @@ fn parent_5000_child_4000_two_grandchildren_3000_each_second_rejected() {
         let gc_subject = Keypair::generate();
         let child_to_gc_link = DelegationLink::sign(
             DelegationLinkBody {
+                child_binding: None,
                 capability_id: child_id.to_string(),
                 delegator: child_subject.public_key(),
                 delegatee: gc_subject.public_key(),

@@ -1,3 +1,4 @@
+from .http_receipt import verify_http_receipt_with_trusted_signers
 from .capability import (
     capability_body_canonical_json,
     capability_signing_body_canonical_json,
@@ -33,6 +34,7 @@ from .signing import (
 )
 
 __all__ = [
+    "verify_http_receipt_with_trusted_signers",
     "capability_body_canonical_json",
     "capability_signing_body_canonical_json",
     "canonicalize_json",

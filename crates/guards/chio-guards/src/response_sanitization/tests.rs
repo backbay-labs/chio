@@ -280,3 +280,26 @@ fn ssn_fragments_validator_rejects_invalid_areas() {
     assert!(!is_valid_ssn_fragments("123-45-0000"));
     assert!(is_valid_ssn_fragments("123-45-6789"));
 }
+
+#[test]
+fn compact_ssn_does_not_corrupt_digests_or_identifiers() {
+    let sanitizer = OutputSanitizer::default();
+    for value in [
+        "bd03cfdaae5b5fafaa9c63d8eb66b74bcf55afe97a362360940e70da41c15584",
+        "artifact_123456789_version",
+        "abc123456789def",
+    ] {
+        let result = sanitizer.sanitize_text(value);
+        assert_eq!(result.sanitized, value);
+    }
+}
+
+#[test]
+fn compact_ssn_still_redacts_standalone_and_adjacent_values() {
+    let sanitizer = OutputSanitizer::default();
+    for value in ["123456789", "SSN: 123456789.", "123456789,234567891"] {
+        let result = sanitizer.sanitize_text(value);
+        assert!(!result.sanitized.contains("123456789"));
+        assert!(!result.sanitized.contains("234567891"));
+    }
+}

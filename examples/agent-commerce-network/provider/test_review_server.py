@@ -1,23 +1,27 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
-
 
 SERVER = Path(__file__).resolve().parent / "review_server.py"
 
 
 class ProviderServerTests(unittest.TestCase):
     def setUp(self) -> None:
+        self.artifacts = tempfile.TemporaryDirectory()
+        self.addCleanup(self.artifacts.cleanup)
         self.proc = subprocess.Popen(
             [sys.executable, str(SERVER)],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env={**os.environ, "PROVIDER_ARTIFACTS": self.artifacts.name},
         )
 
     def tearDown(self) -> None:
@@ -48,7 +52,9 @@ class ProviderServerTests(unittest.TestCase):
         self.assertEqual(initialize["result"]["serverInfo"]["name"], "vanguard-security-review")
 
         assert self.proc.stdin is not None
-        self.proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
+        self.proc.stdin.write(
+            json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n"
+        )
         self.proc.stdin.flush()
 
         tools = self.send({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
@@ -66,7 +72,7 @@ class ProviderServerTests(unittest.TestCase):
                         "request_id": "quote_req_test_001",
                         "buyer_id": "lattice-platform-security",
                         "service_family": "security-review",
-                        "target": "git://lattice.example/payments-api",
+                        "target": "payments-api",
                         "requested_scope": "release-review",
                     },
                 },
@@ -80,7 +86,9 @@ class ProviderServerTests(unittest.TestCase):
         _initialize = self.send({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
 
         assert self.proc.stdin is not None
-        self.proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
+        self.proc.stdin.write(
+            json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n"
+        )
         self.proc.stdin.flush()
 
         fulfillment = self.send(
@@ -95,7 +103,7 @@ class ProviderServerTests(unittest.TestCase):
                         "quote_id": "quote_test_001",
                         "service_family": "security-review",
                         "requested_scope": "hotfix-review",
-                        "target": "git://lattice.example/payments-api",
+                        "target": "payments-api",
                     },
                 },
             }

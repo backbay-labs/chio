@@ -8,6 +8,7 @@ version = "0.2.0"
 source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },
+    { name = "chio-sdk" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "openai-agents" },
@@ -18,6 +19,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.52.0" },
+    { name = "chio-sdk", directory = "../../sdks/python/chio-py" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "openai-agents", specifier = ">=0.1.0" },
@@ -251,6 +253,23 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/de/32/d92444ad05c7a6e41fb2036749777c163baf7a0301a040cb672d6b2b1ae9/charset_normalizer-3.4.7-cp314-cp314t-win_arm64.whl", hash = "sha256:c35abb8bfff0185efac5878da64c45dafd2b37fb0383add1be155a763c1f083d", size = 153018, upload-time = "2026-04-02T09:27:51.116Z" },
     { url = "https://files.pythonhosted.org/packages/db/8f/61959034484a4a7c527811f4721e75d02d653a35afb0b6054474d8185d4c/charset_normalizer-3.4.7-py3-none-any.whl", hash = "sha256:3dce51d0f5e7951f8bb4900c257dad282f49190fdbebecd4ba99bcc41fef404d", size = 61958, upload-time = "2026-04-02T09:28:37.794Z" },
 ]
+
+[[package]]
+name = "chio-sdk"
+version = "0.1.0"
+source = { directory = "../../sdks/python/chio-py" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pure25519" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28,<1" },
+    { name = "pure25519", specifier = ">=0.0.1" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<9" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "click"
@@ -609,6 +628,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/16/ae/8af117a3a4a06ad72
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ac/1c/98efddc1e10b23a397ca901b6f6d251908be2e6a30a92e0c25fb5dff6348/openai_agents-0.14.1-py3-none-any.whl", hash = "sha256:09ea6e9c49c785dc490e071e17ea3a0b0cce9c5f97daeb50ee6dc8fb490dc817", size = 797518, upload-time = "2026-04-15T19:26:50.106Z" },
 ]
+
+[[package]]
+name = "pure25519"
+version = "0.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/83/8c/06b43b9bf1b9d51670421880bfab60a58abe51e7feead4bd81583bb0c89b/pure25519-0.0.1.tar.gz", hash = "sha256:8982b990294efc7bef12d8e89e3e3d0a8249ef7e21adf567660941fce255033d", size = 17810, upload-time = "2018-01-17T07:06:19.94Z" }
 
 [[package]]
 name = "pycparser"

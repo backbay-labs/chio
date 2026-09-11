@@ -1,0 +1,6 @@
+{
+  "schema": "document-tools.authority.v1",
+  "tool": "count_words",
+  "max_invocations": 2,
+  "lifetime_seconds": 1800
+}

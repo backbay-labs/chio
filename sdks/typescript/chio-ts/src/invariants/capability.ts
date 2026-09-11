@@ -11,6 +11,13 @@ export interface DelegationLink {
   attenuations?: unknown[];
   timestamp: number;
   scope_hash?: string;
+  child_binding?: {
+    capabilityId: string;
+    issuedAt: number;
+    expiresAt: number;
+    budgetShareBps?: number;
+    attenuationProof: unknown;
+  };
   signature: string;
 }
 

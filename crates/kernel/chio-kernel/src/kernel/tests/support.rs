@@ -254,9 +254,8 @@ impl SqliteReceiptStore {
             });
         }
         let batch_start_seq = latest_checkpointed_entry_seq + 1;
-        let batch_end_seq = latest_committed_entry_seq.min(
-            batch_start_seq.saturating_add(max_batch.saturating_sub(1)),
-        );
+        let batch_end_seq = latest_committed_entry_seq
+            .min(batch_start_seq.saturating_add(max_batch.saturating_sub(1)));
         let receipt_bytes_with_seqs = Self::receipts_canonical_bytes_range_locked(
             connection,
             batch_start_seq,
@@ -298,13 +297,12 @@ impl SqliteReceiptStore {
         let mut prior_chain_leaf_hashes = Vec::new();
         if let Some(previous) = previous_checkpoint.as_ref() {
             for seq in 1..=previous.body.checkpoint_seq {
-                let chained = Self::load_checkpoint_by_seq_locked(connection, seq)?.ok_or_else(
-                    || {
+                let chained =
+                    Self::load_checkpoint_by_seq_locked(connection, seq)?.ok_or_else(|| {
                         ReceiptStoreError::Conflict(format!(
                             "checkpoint chain has a gap at seq {seq}"
                         ))
-                    },
-                )?;
+                    })?;
                 prior_chain_leaf_hashes.push(
                     crate::checkpoint::checkpoint_chain_leaf_hash(&chained.body).map_err(
                         |error| {
@@ -1213,6 +1211,7 @@ fn make_chain_bound_delegation_link(
 ) -> DelegationLink {
     DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: capability_id.to_string(),
             delegator: delegator_kp.public_key(),
             delegatee: delegatee.clone(),
@@ -1303,6 +1302,7 @@ fn make_v2_delegated_child(input: V2DelegatedChildInput<'_>) -> CapabilityToken 
     };
     let link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: input.parent.id.clone(),
             delegator: input.parent_kp.public_key(),
             delegatee: input.child_kp.public_key(),

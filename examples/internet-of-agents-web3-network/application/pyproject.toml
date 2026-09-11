@@ -1,0 +1,8 @@
+[project]
+name = "chio-web3-work-order"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["chio-sdk", "pynacl>=1.5,<2", "cryptography>=46,<47"]
+
+[tool.uv.sources]
+chio-sdk = { path = "../../../sdks/python/chio-py" }

@@ -2,6 +2,13 @@ use super::*;
 
 impl RemoteSessionFactory {
     pub(super) fn new(config: RemoteServeHttpConfig) -> Result<Self, CliError> {
+        if config.control_url.is_some()
+            && (config.authority_seed_path.is_some() || config.authority_db_path.is_some())
+        {
+            return Err(CliError::cli_other_error(
+                "--control-url selects the remote capability authority; remove --authority-seed-file and --authority-db. The durable session database owns the MCP kernel signing identity.".to_owned(),
+            ));
+        }
         let loaded_policy = load_policy(&config.policy_path)?;
         validate_durable_admission_participant_paths(
             loaded_policy.kernel.durable_admission_mode,

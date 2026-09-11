@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from chio_sdk.errors import ChioDeniedError
 from chio_sdk.errors import ChioValidationError
 from chio_sdk.models import ChioScope, Operation, ToolGrant
 from chio_sdk.testing import MockChioClient, MockVerdict
@@ -329,7 +330,7 @@ class TestQueryEngineBinding:
 
 
 class TestAttenuation:
-    async def test_attenuate_narrows_scope(self) -> None:
+    async def test_attenuate_requires_subject_signer(self) -> None:
         chio = _instrumented_client()
         tool = ChioFunctionTool(
             fn=lambda q: q,
@@ -345,9 +346,10 @@ class TestAttenuation:
             agent_name="lead",
         )
         parent = await chio_runner.provision_capability()
-        child = await chio_runner.attenuate(new_scope=_scope_for_tools("search"))
-        assert child.scope.is_subset_of(parent.scope)
-        assert not parent.scope.is_subset_of(child.scope)
+        with pytest.raises(ChioDeniedError) as error:
+            await chio_runner.attenuate(new_scope=_scope_for_tools("search"))
+        assert error.value.reason_code == "chio_attenuation_requires_subject_signer"
+        assert parent.scope.is_subset_of(_scope_for_tools("search", "write"))
 
     async def test_attenuate_rejects_broader_scope(self) -> None:
         chio = _instrumented_client()

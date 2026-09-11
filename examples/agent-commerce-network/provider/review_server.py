@@ -9,6 +9,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from catalog import offer
+from review import execute_review, open_dispute
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS_DIR = ROOT / "contracts"
@@ -40,15 +42,17 @@ def read_message() -> dict[str, Any]:
 def quote_payload(arguments: dict[str, Any]) -> dict[str, Any]:
     template = deepcopy(contract_template("quote-response.json"))
     scope = arguments["requested_scope"]
-    price_minor = {
-        "hotfix-review": 45_000,
-        "release-review": 125_000,
-        "release-plus-cloud-review": 175_000,
-        "full-estate-review": 325_000,
-    }.get(scope, template["price_minor"])
+    selected = offer(scope)
+    price_minor = selected["price_minor"]
     template.update(
         {
             "quote_id": random_id("quote"),
+            "provider_id": "vanguard-security",
+            "offer_id": scope,
+            "checks": selected["checks"],
+            "max_files": selected["max_files"],
+            "max_bytes": selected["max_bytes"],
+            "target": arguments["target"],
             "request_id": arguments["request_id"],
             "service_family": arguments["service_family"],
             "price_minor": price_minor,
@@ -60,31 +64,11 @@ def quote_payload(arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 def fulfillment_payload(arguments: dict[str, Any]) -> dict[str, Any]:
-    template = deepcopy(contract_template("fulfillment-package.json"))
-    template.update(
-        {
-            "fulfillment_id": random_id("fulfillment"),
-            "job_id": arguments["job_id"],
-            "service_family": arguments["service_family"],
-            "target": arguments["target"],
-            "status": "completed_with_findings",
-        }
-    )
-    return template
+    return execute_review(arguments)
 
 
 def dispute_payload(arguments: dict[str, Any]) -> dict[str, Any]:
-    template = deepcopy(contract_template("dispute-record.json"))
-    template.update(
-        {
-            "dispute_id": random_id("dispute"),
-            "job_id": arguments["job_id"],
-            "reason_code": arguments["reason_code"],
-            "summary": arguments["summary"],
-            "status": "opened",
-        }
-    )
-    return template
+    return open_dispute(arguments)
 
 
 TOOLS = [
@@ -205,6 +189,8 @@ while True:
                 }
             )
             continue
+        except (ValueError, OSError, SyntaxError, RecursionError) as error:
+            result = {"content": [{"type": "text", "text": str(error)}], "isError": True}
         respond({"jsonrpc": "2.0", "id": message["id"], "result": result})
         continue
 

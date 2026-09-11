@@ -1,0 +1,58 @@
+{
+  "linux-amd64": {
+    "kind": {
+      "url": "https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64",
+      "sha256": "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d"
+    },
+    "istioctl": {
+      "url": "https://github.com/istio/istio/releases/download/1.31.0/istio-1.31.0-linux-amd64.tar.gz",
+      "sha256": "79fda9a16d0e718677cd8a1c01eb859dc90e18adf7fcd2a7c18cfb8819ab4903"
+    },
+    "kubectl": {
+      "url": "https://dl.k8s.io/release/v1.36.4/bin/linux/amd64/kubectl",
+      "sha256": "8b8f088da2dab964f853b38464033b1be15ede2839eca751482357c45abdd05a"
+    }
+  },
+  "linux-arm64": {
+    "kind": {
+      "url": "https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-arm64",
+      "sha256": "20022bee6cfcd5086cb7234d218e3454e6090022f2a8f55d1fa7fcf42c3867a2"
+    },
+    "istioctl": {
+      "url": "https://github.com/istio/istio/releases/download/1.31.0/istio-1.31.0-linux-arm64.tar.gz",
+      "sha256": "1ebedd17ae4d49c56887d0d7c264486d6cf2d0e43d5fefcad78afdf922fee112"
+    },
+    "kubectl": {
+      "url": "https://dl.k8s.io/release/v1.36.4/bin/linux/arm64/kubectl",
+      "sha256": "0ecf44450ee6063bf19dd166a103ee6df4a9034455c2abce626e6eea657d73fb"
+    }
+  },
+  "darwin-amd64": {
+    "kind": {
+      "url": "https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-darwin-amd64",
+      "sha256": "5a99f26f57246dc9319dd294803313197a0f34d33c525b3ea8b655db5916ece0"
+    },
+    "istioctl": {
+      "url": "https://github.com/istio/istio/releases/download/1.31.0/istio-1.31.0-osx-amd64.tar.gz",
+      "sha256": "afff9ca5a07c7ea3aad81276ee5eb47b5f87bc386f5dae6eb54c57e50629ab33"
+    },
+    "kubectl": {
+      "url": "https://dl.k8s.io/release/v1.36.4/bin/darwin/amd64/kubectl",
+      "sha256": "71a3aa7c2ee2c974d9fbb462cba0c5c04a4df2e8d85eee94714fd819ea3c4e63"
+    }
+  },
+  "darwin-arm64": {
+    "kind": {
+      "url": "https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-darwin-arm64",
+      "sha256": "0c8c7dbe5e23594a198b786c4bc13dacc101fa6196b0cb0b23a1ca44e61f4b4f"
+    },
+    "istioctl": {
+      "url": "https://github.com/istio/istio/releases/download/1.31.0/istio-1.31.0-osx-arm64.tar.gz",
+      "sha256": "263844544567c2137576a24c19c087a48f3b9b8188d76176efdd5eacc23f553c"
+    },
+    "kubectl": {
+      "url": "https://dl.k8s.io/release/v1.36.4/bin/darwin/arm64/kubectl",
+      "sha256": "c9e4f713d6fee0043a3d835cca13077cda2bc0973840eb9779360df0b5bdfc69"
+    }
+  }
+}

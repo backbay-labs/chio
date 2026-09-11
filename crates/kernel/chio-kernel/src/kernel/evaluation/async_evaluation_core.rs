@@ -114,7 +114,11 @@ impl ChioKernel {
                     "receipt federation admission failed pre-dispatch"
                 );
                 return self.build_negotiation_failclosed_deny_response_with_metadata(
-                    request, &msg, now, None, None,
+                    request,
+                    &msg,
+                    now,
+                    None,
+                    extra_metadata.clone(),
                 );
             }
         };

@@ -1709,8 +1709,11 @@ async fn sidecar_release_reaches_a_replica_booted_before_the_revocation() {
     // Replica B never reloaded its in-memory set...
     assert!(replica_b.revoked_capability_ids.lock().await.is_empty());
     // ...yet the shared durable store makes the revocation visible to it.
-    let found = find_revoked_capability_id(&replica_b, None, Some("cap-revoked")).await;
-    assert_eq!(found, Some("cap-revoked".to_string()));
+    let found = find_revocation_refusal(&replica_b, None, Some("cap-revoked")).await;
+    assert_eq!(
+        found.map(|(id, verdict)| (id, verdict_http_status(&verdict))),
+        Some(("cap-revoked".to_string(), 403))
+    );
 
     let _ = std::fs::remove_file(&receipt_db);
     let _ = std::fs::remove_file(format!("{receipt_db}.revocations"));
@@ -2701,6 +2704,7 @@ fn child_token_with_chain_ancestor(
     let delegatee = Keypair::generate();
     let link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: parent_id.to_string(),
             delegator: delegator.public_key(),
             delegatee: delegatee.public_key(),
@@ -2795,6 +2799,7 @@ async fn sidecar_validate_capability_checks_issuer_trust_before_walking_chain() 
     let delegatee = Keypair::generate();
     let link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: parent_id.to_string(),
             delegator: delegator.public_key(),
             delegatee: delegatee.public_key(),
@@ -3455,4 +3460,104 @@ async fn sidecar_evaluate_tool_call_denies_parameter_hash_mismatch() {
         .and_then(|m| m.get("advisory_check_outcome"))
         .and_then(|v| v.as_str());
     assert_eq!(alias_outcome, Some("parameter_hash_mismatch"));
+}
+
+#[tokio::test]
+async fn authority_outage_has_a_distinct_signed_refusal_and_recovers() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    struct Authority(Arc<AtomicBool>);
+    impl chio_kernel::RevocationStore for Authority {
+        fn is_revoked(&self, _: &str) -> Result<bool, chio_kernel::RevocationStoreError> {
+            if self.0.load(Ordering::SeqCst) {
+                Err(chio_kernel::RevocationStoreError::Sync("offline".into()))
+            } else {
+                Ok(false)
+            }
+        }
+        fn revoke(&self, _: &str) -> Result<bool, chio_kernel::RevocationStoreError> {
+            Err(chio_kernel::RevocationStoreError::Sync("offline".into()))
+        }
+    }
+    let unavailable = Arc::new(AtomicBool::new(true));
+    let mut state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+    Arc::get_mut(&mut state).test_unwrap().revocation_store =
+        Some(Arc::new(Authority(Arc::clone(&unavailable))));
+    let token = CapabilityToken::sign(
+        chio_core_types::capability::token::CapabilityTokenBody {
+            id: "cap-live".to_string(),
+            issuer: state.signer_keypair.public_key(),
+            subject: Keypair::generate().public_key(),
+            scope: ChioScope::default(),
+            issued_at: 1,
+            expires_at: u64::MAX,
+            delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
+        },
+        &state.signer_keypair,
+    )
+    .test_unwrap();
+    let headers = HashMap::from([(
+        "x-chio-capability".to_string(),
+        serde_json::to_string(&token).test_unwrap(),
+    )]);
+    let response = revoked_proxy_response(
+        &state,
+        HttpMethod::Post,
+        "/pets",
+        &HashMap::new(),
+        &headers,
+        None,
+    )
+    .await
+    .test_unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let receipt_id = response
+        .headers()
+        .get("X-Chio-Receipt-Id")
+        .test_unwrap()
+        .to_str()
+        .test_unwrap()
+        .to_string();
+    let body: serde_json::Value = serde_json::from_slice(
+        &to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap(),
+    )
+    .test_unwrap();
+    assert!(body["message"]
+        .as_str()
+        .test_unwrap()
+        .contains("unavailable"));
+    assert!(body["suggestion"]
+        .as_str()
+        .test_unwrap()
+        .contains("restore"));
+    let log = state.receipt_log.lock().await;
+    let receipt = log
+        .receipts
+        .iter()
+        .find(|receipt| receipt.id == receipt_id)
+        .test_unwrap();
+    assert_eq!(receipt.response_status, 503);
+    assert_eq!(receipt.capability_id.as_deref(), Some("cap-live"));
+    assert!(receipt.verify_signature().test_unwrap());
+    assert!(
+        matches!(&receipt.verdict, Verdict::Deny { guard, .. } if guard == "RevocationAuthorityUnavailable")
+    );
+    drop(log);
+    unavailable.store(false, Ordering::SeqCst);
+    assert!(state
+        .capability_revocation_verdict("cap-live")
+        .await
+        .is_none());
+    state
+        .revoked_capability_ids
+        .lock()
+        .await
+        .insert("cap-live".to_string());
+    let verdict = state
+        .capability_revocation_verdict("cap-live")
+        .await
+        .test_unwrap();
+    assert_eq!(verdict_http_status(&verdict), 403);
 }

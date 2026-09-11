@@ -34,6 +34,9 @@ pub struct ToolGrantConfig {
     pub server: String,
     /// Tool pattern (e.g. "*" for any, or "read_file").
     pub tool: String,
+    /// Lifetime invocation quota for this tool grant. Zero refuses every call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_invocations: Option<u32>,
     /// Operations to grant.
     #[serde(default = "default_operations")]
     pub operations: Vec<String>,

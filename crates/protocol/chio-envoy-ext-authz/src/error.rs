@@ -6,6 +6,9 @@ use thiserror::Error;
 /// [`crate::translate::ToolCallRequest`].
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum TranslateError {
+    /// Envoy did not provide the entire body needed to bind authorization.
+    #[error("complete request body is required; disable partial messages in Envoy ext_authz")]
+    IncompleteBody,
     /// The `CheckRequest` did not carry an `AttributeContext`.
     #[error("check request is missing the attributes field")]
     MissingAttributes,
@@ -25,15 +28,23 @@ pub enum TranslateError {
 
 /// Errors returned by the [`crate::EnvoyKernel`] abstraction. The adapter
 /// translates any error into a fail-closed `DeniedHttpResponse` with status
-/// `500 Internal Server Error`.
+/// `500 Internal Server Error`, or `503 Service Unavailable` for a missing authority.
 #[derive(Debug, Error)]
 pub enum KernelError {
+    /// The selected authority could not be reached or completed no response.
+    #[error("authority unavailable: {0}")]
+    Unavailable(String),
     /// The kernel rejected the request with a terminal internal error.
     #[error("kernel evaluation failed: {0}")]
     Evaluation(String),
 }
 
 impl KernelError {
+    /// Construct a dependency availability error, without treating it as a policy denial.
+    pub fn unavailable(reason: impl std::fmt::Display) -> Self {
+        Self::Unavailable(reason.to_string())
+    }
+
     /// Construct an evaluation error from any displayable value.
     pub fn evaluation(reason: impl std::fmt::Display) -> Self {
         Self::Evaluation(reason.to_string())

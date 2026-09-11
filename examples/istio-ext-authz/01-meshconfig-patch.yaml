@@ -1,68 +1,19 @@
-# Istio MeshConfig patch: register Chio as an ext_authz provider.
-#
-# Istio 1.22+ reads `extensionProviders` from the mesh-wide `MeshConfig`
-# (stored in the `istio` ConfigMap of the Istio install namespace, normally
-# `istio-system`). Once registered, any `AuthorizationPolicy` in the mesh can
-# reference it by name via `spec.provider.name: chio-ext-authz`.
-#
-# Two install paths are supported:
-#
-# A. Fresh install with `istioctl install`: apply this file as an overlay:
-#
-#      istioctl install -y \
-#        -f examples/istio-ext-authz/01-meshconfig-patch.yaml
-#
-# B. Existing mesh: patch the in-cluster `IstioOperator` (Istio 1.22+ uses a
-#    `Sail` / `IstioOperator` CR when installed via `istioctl install`). If
-#    you manage MeshConfig directly through the `istio` ConfigMap, merge
-#    `spec.meshConfig.extensionProviders` into `data.mesh` instead:
-#
-#      kubectl -n istio-system get cm istio -o yaml > istio-cm.yaml
-#      # edit data.mesh to add the extensionProviders block below
-#      kubectl -n istio-system apply -f istio-cm.yaml
-#      kubectl -n istio-system rollout restart deploy/istiod
-#
-#    After the edit, `istiod` hot-reloads MeshConfig without a pod restart;
-#    the rollout above is belt-and-suspenders.
-#
-# Verify:
-#
-#   istioctl proxy-config bootstrap -n <namespace> <pod> \
-#     | grep -A3 chio-ext-authz
-#   kubectl -n istio-system logs deploy/istiod | grep extensionProvider
-#
+# Merge this provider into your installation's existing extensionProviders.
+# gRPC providers do not support the HTTP provider's header allowlist fields.
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
-metadata:
-  name: chio-ext-authz-meshconfig
-  namespace: istio-system
 spec:
-  # Minimum Istio version. Earlier 1.20/1.21 builds also work for gRPC
-  # ext_authz but 1.22 stabilised the typed header forwarding knobs below.
   meshConfig:
     extensionProviders:
       - name: chio-ext-authz
         envoyExtAuthzGrpc:
-          # Fully-qualified cluster DNS name of the Service created in
-          # 00-chio-sidecar-deployment.yaml.
           service: chio-sidecar.chio-system.svc.cluster.local
           port: 9091
-          # Chio evaluation budget. Increase if your guard pipeline is slow.
-          timeout: 0.25s
-          # Forward identity + capability headers into the CheckRequest.
-          # `chio-envoy-ext-authz::translate` pulls identity from these names.
-          includeRequestHeadersInCheck:
-            - authorization
-            - x-chio-capability-token
-            - x-chio-session-id
-            - x-request-id
-          # Chio never stores or forwards raw request bodies, but small
-          # bodies must be available for guards that inspect content.
-          includeAdditionalHeadersInCheck:
-            x-chio-source: istio-mesh
-          # Status propagated back to the client on Chio failure. See
-          # docs/protocols/ENVOY-EXT-AUTHZ-INTEGRATION.md section 11.3.
-          statusOnError: "403"
-          # Inject the Envoy downstream peer certificate so Chio can derive a
-          # SPIFFE-style CallerIdentity from the mTLS handshake.
-          includePeerCertificate: true
+          timeout: 3s
+          failOpen: false
+          clearRouteCache: false
+          statusOnError: "503"
+          includeRequestBodyInCheck:
+            maxRequestBytes: 65536
+            allowPartialMessage: false
+            packAsBytes: true

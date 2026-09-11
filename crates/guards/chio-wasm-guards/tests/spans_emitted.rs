@@ -131,6 +131,17 @@ impl CapturedSpans {
     }
 }
 
+// These tests install thread-local subscribers while tracing maintains a
+// process-wide callsite-interest cache. Keep their setup and assertions in one
+// critical section, including evaluations that deliberately have no subscriber.
+static TRACING_TEST_GATE: Mutex<()> = Mutex::new(());
+
+fn tracing_test_guard() -> MutexGuard<'static, ()> {
+    TRACING_TEST_GATE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
+
 fn subscriber(captured: &CapturedSpans) -> impl Subscriber {
     Registry::default().with(captured.layer())
 }
@@ -226,6 +237,7 @@ fn loaded_allowing_backend() -> MockWasmBackend {
 
 #[test]
 fn evaluate_span_records_exact_field_set() {
+    let _tracing_guard = tracing_test_guard();
     let captured = CapturedSpans::default();
     tracing::subscriber::with_default(subscriber(&captured), || {
         let guard = WasmGuard::new_with_metadata(
@@ -269,6 +281,7 @@ fn evaluate_span_records_exact_field_set() {
 
 #[test]
 fn host_fetch_blob_and_verify_helpers_emit_exact_fields() {
+    let _tracing_guard = tracing_test_guard();
     let captured = CapturedSpans::default();
     tracing::subscriber::with_default(subscriber(&captured), || {
         let host_span = guard_host_call_span(HOST_FETCH_BLOB);
@@ -296,6 +309,7 @@ fn host_fetch_blob_and_verify_helpers_emit_exact_fields() {
 
 #[test]
 fn evaluation_emits_verdict_duration_and_fuel() {
+    let _tracing_guard = tracing_test_guard();
     use chio_metrics_spec::runtime::families;
     // Build a guard named uniquely for this test and drive one allow eval.
     let guard = WasmGuard::new_with_metadata(
@@ -347,6 +361,7 @@ fn evaluation_emits_verdict_duration_and_fuel() {
 
 #[test]
 fn reload_path_emits_applied_span() {
+    let _tracing_guard = tracing_test_guard();
     let captured = CapturedSpans::default();
     tracing::subscriber::with_default(subscriber(&captured), || {
         let engine = Engine::new(|_bytes: &[u8]| {
@@ -379,6 +394,7 @@ fn reload_path_emits_applied_span() {
 /// undeclared `ok` series that dashboards aggregating `applied` miss.
 #[test]
 fn record_reload_seq_uses_documented_applied_outcome() {
+    let _tracing_guard = tracing_test_guard();
     use chio_metrics_spec::runtime::families;
     let guard = WasmGuard::new_with_metadata(
         "reload-outcome-guard".to_string(),
@@ -455,6 +471,7 @@ fn make_malformed_request() -> ToolCallRequest {
 /// reflects WHY the guard denied.
 #[test]
 fn deny_records_bounded_reason_class_from_reason_string() {
+    let _tracing_guard = tracing_test_guard();
     use chio_metrics_spec::runtime::families;
     let guard = WasmGuard::new_with_metadata(
         "reason-class-guard".to_string(),
@@ -483,6 +500,13 @@ fn deny_records_bounded_reason_class_from_reason_string() {
         Err(err) => panic!("evaluation succeeds: {err}"),
     };
     assert!(matches!(verdict.verdict, Verdict::Deny));
+    assert_eq!(verdict.evidence.len(), 1);
+    assert_eq!(verdict.evidence[0].guard_name, "reason-class-guard");
+    assert!(!verdict.evidence[0].verdict);
+    assert_eq!(
+        verdict.evidence[0].details.as_deref(),
+        Some("prompt injection detected in arguments")
+    );
 
     let mut body = String::new();
     families::GUARD_DENY.render(&mut body);
@@ -504,6 +528,7 @@ fn deny_records_bounded_reason_class_from_reason_string() {
 /// reason class instead of returning unobserved.
 #[test]
 fn malformed_argument_deny_records_metrics() {
+    let _tracing_guard = tracing_test_guard();
     use chio_metrics_spec::runtime::families;
     let guard = WasmGuard::new_with_metadata(
         "malformed-guard".to_string(),
@@ -550,5 +575,37 @@ fn malformed_argument_deny_records_metrics() {
             "chio_guard_eval_duration_seconds_count{guard_id=\"malformed-guard\",verdict=\"deny\"} 1"
         ),
         "malformed deny must observe an evaluation duration sample: {body}"
+    );
+}
+
+#[test]
+fn advisory_denial_retains_bounded_unicode_reason_without_blocking() {
+    let _tracing_guard = tracing_test_guard();
+    let guard = WasmGuard::new(
+        "advisory-evidence-guard".to_string(),
+        Box::new(loaded_denying_backend(&"界".repeat(2048))),
+        true,
+        None,
+    );
+    let request = make_test_request();
+    let scope = ChioScope::default();
+    let ctx = GuardContext {
+        request: &request,
+        scope: &scope,
+        agent_id: &request.agent_id,
+        server_id: &request.server_id,
+        session_filesystem_roots: None,
+        matched_grant_index: None,
+    };
+    let decision = match guard.evaluate(&ctx) {
+        Ok(decision) => decision,
+        Err(error) => panic!("advisory evaluation failed: {error}"),
+    };
+    assert!(matches!(decision.verdict, Verdict::Allow));
+    assert_eq!(decision.evidence.len(), 1);
+    assert!(!decision.evidence[0].verdict);
+    assert_eq!(
+        decision.evidence[0].details,
+        Some(format!("{} [truncated]", "界".repeat(1024)))
     );
 }

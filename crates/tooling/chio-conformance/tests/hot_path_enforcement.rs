@@ -292,6 +292,7 @@ fn kernel_hot_path_rejects_oversubscribed_siblings() {
 
     let mk_chain = |delegatee: chio_core::PublicKey| {
         let body = DelegationLinkBody {
+            child_binding: None,
             capability_id: parent_id.to_string(),
             delegator: issuer.public_key(),
             delegatee,
@@ -410,6 +411,7 @@ fn delegated_child_without_pre_registered_parent_fails_closed() {
 
     let chain = {
         let body = DelegationLinkBody {
+            child_binding: None,
             capability_id: parent_id.to_string(),
             delegator: issuer.public_key(),
             delegatee: subject.public_key(),
@@ -499,6 +501,7 @@ fn unregistered_parent_rejects_first_sibling_fail_closed() {
 
     let mk_chain = |delegatee: chio_core::PublicKey| {
         let body = DelegationLinkBody {
+            child_binding: None,
             capability_id: parent_id.to_string(),
             delegator: issuer.public_key(),
             delegatee,

@@ -40,6 +40,10 @@ pub(crate) enum PassportCommands {
         /// Persistent seed file used to sign the embedded reputation credential.
         #[arg(long)]
         signing_seed_file: PathBuf,
+        /// Kernel receipt signer to trust independently of the passport issuer.
+        /// Repeat for multiple kernels. Defaults to the signing key when omitted.
+        #[arg(long = "trusted-kernel-key")]
+        trusted_kernel_keys: Vec<String>,
         /// Passport validity period in days.
         #[arg(long, default_value_t = 30)]
         validity_days: u32,
