@@ -130,6 +130,7 @@ async fn action(
         s.root.join("mission.json").exists(),
         "Configure your mission first",
     )?;
+    let exercise = matches!(&action, Action::Exercise);
     let mut command = tokio::process::Command::new(std::env::current_exe()?);
     command.arg("--state").arg(&s.root);
     match action {
@@ -163,7 +164,11 @@ async fn action(
         if !result.is_ok_and(|status| status.success()) {
             let _ = journal::emit(
                 &s.root,
-                "mission.phase",
+                if exercise {
+                    "exercise.failed"
+                } else {
+                    "mission.phase"
+                },
                 "host",
                 json!({"phase":"blocked","message":"Operation stopped. Open the retained outcomes and operator log before resuming."}),
             );
@@ -337,10 +342,12 @@ pub async fn serve(root: PathBuf, port: u16, open: bool) -> Result<()> {
             "/",
             get(|| async { Html(include_str!("../ui/index.html")) }),
         )
+        .route("/favicon.ico", get(|| async { StatusCode::NO_CONTENT }))
         .route("/api/state", get(snapshot))
         .route("/api/events", get(events))
         .route("/api/action", post(action))
         .layer(DefaultBodyLimit::max(16_384))
+        .layer(axum::middleware::map_response(secure_headers))
         .with_state(service);
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
@@ -353,4 +360,16 @@ pub async fn serve(root: PathBuf, port: u16, open: bool) -> Result<()> {
 fn require(condition: bool, message: &str) -> Result<()> {
     anyhow::ensure!(condition, "{message}");
     Ok(())
+}
+
+async fn secure_headers(mut response: axum::response::Response) -> axum::response::Response {
+    use axum::http::HeaderValue;
+    for (name, value) in [
+        ("cache-control", "no-store"),
+        ("x-frame-options", "DENY"),
+        ("x-content-type-options", "nosniff"),
+        ("referrer-policy", "no-referrer"),
+        ("content-security-policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"),
+    ] { response.headers_mut().insert(name, HeaderValue::from_static(value)); }
+    response
 }
