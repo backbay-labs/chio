@@ -46,11 +46,13 @@ fn interrupted_journal_is_never_silently_truncated() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 #[tokio::test]
 async fn generated_code_cannot_read_host_files_or_open_network() -> anyhow::Result<()> {
-    if !chio_megastart::sandbox::available() {
-        return Ok(());
-    }
+    anyhow::ensure!(
+        chio_megastart::sandbox::available(),
+        "The macOS sandbox executor is required for this check"
+    );
     let directory = root();
     std::fs::create_dir_all(directory.join("candidate"))?;
     let secret = directory.join("host-secret");
