@@ -1,0 +1,32 @@
+name: Megastart operator
+on:
+  pull_request:
+    paths:
+      - 'examples/megastart/**'
+      - 'crates/products/chio-cli/src/cli/**'
+      - '.github/workflows/megastart.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mission:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config clang cmake
+      - run: rustup toolchain install 1.94.1 --profile minimal --component rustfmt --component clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: examples/megastart
+      - run: cargo +1.94.1 fmt --manifest-path examples/megastart/Cargo.toml --all --check
+      - run: cargo +1.94.1 clippy --manifest-path examples/megastart/Cargo.toml --locked -p chio-megastart --all-targets -- -D warnings
+      - run: cargo +1.94.1 test --manifest-path examples/megastart/Cargo.toml --locked -p chio-megastart --tests

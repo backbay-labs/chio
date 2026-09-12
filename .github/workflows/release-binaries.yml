@@ -197,6 +197,8 @@ jobs:
                 --package "'"${CARGO_PACKAGE}"'" \
                 --bin "'"${BINARY_NAME}"'" \
                 --target "'"${CHIO_TARGET}"'"
+              cargo auditable build --manifest-path examples/megastart/Cargo.toml --release --locked \
+                --target "'"${CHIO_TARGET}"'" --target-dir target
             '
 
       - name: Install syft
@@ -328,6 +330,13 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
+      - name: Build Megastart companion (native Unix)
+        if: matrix.archive == 'tar.gz' && matrix.cross == false
+        shell: bash
+        run: |
+          cargo auditable build --manifest-path examples/megastart/Cargo.toml --release --locked --target "${{ matrix.target }}" --target-dir target
+          target/${{ matrix.target }}/release/megastart --help
+
       - name: Stage artifacts (unix)
         if: matrix.archive == 'tar.gz'
         shell: bash
@@ -340,6 +349,7 @@ jobs:
           stage_dir="chio-${CHIO_VERSION}-${CHIO_TARGET}"
           mkdir -p "dist/${stage_dir}"
           cp "target/${CHIO_TARGET}/release/${BINARY_NAME}${CHIO_BIN_SUFFIX}" "dist/${stage_dir}/"
+          cp "target/${CHIO_TARGET}/release/megastart" "dist/${stage_dir}/"
           cp README.md LICENSE "dist/${stage_dir}/" 2>/dev/null || true
           (cd dist && tar czf "${stage_dir}.tar.gz" "${stage_dir}")
           (cd dist && shasum -a 256 "${stage_dir}.tar.gz" > "${stage_dir}.tar.gz.sha256")

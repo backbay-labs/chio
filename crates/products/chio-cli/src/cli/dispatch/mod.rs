@@ -239,6 +239,7 @@ pub(crate) fn run() {
             control_url.as_deref(),
             control_token.as_deref(),
         ),
+        Commands::Megastart { args } => dispatch_megastart(args),
         Commands::Init { path } => scaffold::cmd_init(&path),
         Commands::Policy { command } => dispatch_policy(command, json_output),
         Commands::Api { command } => dispatch_api(command, receipt_db, revocation_db, authority_seed_file, budget_db, control_url, control_token),
@@ -318,5 +319,36 @@ mod tests {
         let layer =
             chio_log_redact::RedactionLayer::new(|_event: chio_log_redact::RedactedEvent| {});
         assert!(layer.is_ok(), "redaction layer must construct");
+    }
+}
+
+fn dispatch_megastart(args: Vec<std::ffi::OsString>) -> Result<(), CliError> {
+    let executable = std::env::current_exe()?;
+    let directory = executable
+        .parent()
+        .ok_or_else(|| CliError::Other("Cannot locate the Chio installation".into()))?;
+    let companion = directory.join(if cfg!(windows) {
+        "megastart.exe"
+    } else {
+        "megastart"
+    });
+    if !companion.is_file() {
+        return Err(CliError::Other("Megastart is missing from this installation. Reinstall the complete Chio release using https://chio.computer/install.sh".into()));
+    }
+    let mut command = std::process::Command::new(companion);
+    command.args(args);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        Err(CliError::Io(command.exec()))
+    }
+    #[cfg(not(unix))]
+    {
+        let status = command.status()?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(CliError::Other(format!("Megastart exited with {status}")))
+        }
     }
 }

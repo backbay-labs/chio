@@ -1,0 +1,56 @@
+[workspace]
+resolver = "2"
+members = [".", "support/shared", "support/runtime"]
+
+[package]
+name = "chio-megastart"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[[bin]]
+name = "megastart"
+path = "src/main.rs"
+
+[dependencies]
+chio-agent-os-shared = { path = "support/shared" }
+chio-core.workspace = true
+chio-kernel.workspace = true
+chio-control-plane.workspace = true
+chio-store-sqlite.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+clap = { version = "4", features = ["derive"] }
+fs2 = "0.4"
+axum.workspace = true
+reqwest.workspace = true
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+chio-core = { package = "chio-core-types", git = "https://github.com/backbay-labs/chio", rev = "9ffca8d6a3705188848c91916b4dd9ce8fe79643" }
+chio-kernel = { git = "https://github.com/backbay-labs/chio", rev = "9ffca8d6a3705188848c91916b4dd9ce8fe79643" }
+chio-store-sqlite = { git = "https://github.com/backbay-labs/chio", rev = "9ffca8d6a3705188848c91916b4dd9ce8fe79643" }
+chio-control-plane = { git = "https://github.com/backbay-labs/chio", rev = "9ffca8d6a3705188848c91916b4dd9ce8fe79643" }
+chio-swarm-authority = { git = "https://github.com/backbay-labs/chio", rev = "9ffca8d6a3705188848c91916b4dd9ce8fe79643" }
+chio-runtime-core = { git = "https://github.com/backbay-labs/chio", rev = "9ffca8d6a3705188848c91916b4dd9ce8fe79643" }
+anyhow = "1"
+async-trait = "0.1"
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time", "process", "io-util", "io-std"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+[profile.dev]
+debug = 0
+incremental = false
