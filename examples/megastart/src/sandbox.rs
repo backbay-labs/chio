@@ -27,12 +27,37 @@ pub fn command(binary: &Path, directory: &Path) -> Result<Command> {
         !toolchain.contains(['"', '\\', '\n']),
         "Invalid toolchain path"
     );
+    let selected = std::process::Command::new("/usr/bin/xcode-select")
+        .arg("--print-path")
+        .output()?;
+    anyhow::ensure!(
+        selected.status.success(),
+        "Select an installed Xcode or Command Line Tools toolchain"
+    );
+    let developer = std::path::PathBuf::from(String::from_utf8(selected.stdout)?.trim());
+    let developer = if developer.ends_with("Contents/Developer") {
+        developer
+            .parent()
+            .and_then(Path::parent)
+            .context("Invalid Xcode bundle path")?
+            .to_path_buf()
+    } else {
+        developer
+    };
+    let developer = developer.canonicalize()?;
+    let developer = developer
+        .to_str()
+        .context("Developer toolchain path must be UTF-8")?;
+    anyhow::ensure!(
+        !developer.contains(['"', '\\', '\n']),
+        "Invalid developer toolchain path"
+    );
     let fork_policy = if binary.starts_with(directory) {
         "(deny process-fork)"
     } else {
         ""
     };
-    let profile = format!("(version 1)(deny default)(allow process*)(allow sysctl-read)(allow mach-lookup)(allow file-read-metadata)(allow file-map-executable)(allow file-read* (literal \"/\") (subpath \"/System\") (subpath \"/usr\") (subpath \"{toolchain}\") (subpath \"/Library\") (subpath \"/Applications/Xcode.app\") (subpath \"/private/var/db/dyld\") (subpath \"{root}\") (literal \"/dev/null\") (literal \"/dev/urandom\"))(allow file-write* (subpath \"{root}\") (literal \"/dev/null\")){fork_policy}");
+    let profile = format!("(version 1)(deny default)(allow process*)(allow sysctl-read)(allow mach-lookup)(allow file-read-metadata)(allow file-map-executable)(allow file-read* (literal \"/\") (subpath \"/System\") (subpath \"/usr\") (subpath \"{toolchain}\") (subpath \"/Library\") (subpath \"{developer}\") (subpath \"/private/var/db/dyld\") (subpath \"{root}\") (literal \"/dev/null\") (literal \"/dev/urandom\"))(allow file-write* (subpath \"{root}\") (literal \"/dev/null\")){fork_policy}");
     let mut command = Command::new("/usr/bin/sandbox-exec");
     command
         .args(["-p", &profile])

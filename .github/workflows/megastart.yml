@@ -6,6 +6,9 @@ on:
       - 'crates/products/chio-cli/src/cli/**'
       - '.github/workflows/megastart.yml'
   workflow_dispatch:
+concurrency:
+  group: megastart-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -27,6 +30,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: examples/megastart
+          cache-on-failure: true
       - run: cargo +1.94.1 fmt --manifest-path examples/megastart/Cargo.toml --all --check
       - run: cargo +1.94.1 clippy --manifest-path examples/megastart/Cargo.toml --locked -p chio-megastart --all-targets -- -D warnings
       - run: cargo +1.94.1 test --manifest-path examples/megastart/Cargo.toml --locked -p chio-megastart --tests
