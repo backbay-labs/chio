@@ -557,7 +557,8 @@ impl TryFrom<&Constraint> for NormalizedConstraint {
                 Ok(Self::MinimumRuntimeAssurance((*tier).into()))
             }
             Constraint::Custom(key, value) => Ok(Self::Custom(key.clone(), value.clone())),
-            unsupported @ (Constraint::RequireCumulativeApprovalAbove { .. }
+            unsupported @ (Constraint::ArgumentPathPrefix { .. }
+            | Constraint::RequireCumulativeApprovalAbove { .. }
             | Constraint::MinimumAutonomyTier(_)
             | Constraint::TableAllowlist(_)
             | Constraint::ColumnDenylist(_)
@@ -643,6 +644,7 @@ fn pattern_covers(parent: &str, child: &str) -> bool {
 
 fn unsupported_constraint_name(constraint: &Constraint) -> &'static str {
     match constraint {
+        Constraint::ArgumentPathPrefix { .. } => "argument_path_prefix",
         Constraint::PathPrefix(_) => "path_prefix",
         Constraint::DomainExact(_) => "domain_exact",
         Constraint::DomainGlob(_) => "domain_glob",

@@ -394,6 +394,13 @@ fn constraint_matches(
     let string_leaves = collect_string_leaves(arguments);
 
     match constraint {
+        Constraint::ArgumentPathPrefix { pointer, prefix } => {
+            if !pointer.starts_with('/') || pointer.len() > 1024 || !prefix.starts_with('/') {
+                return Err(KernelError::InvalidConstraint("argument path prefix requires an explicit JSON Pointer and absolute prefix".into()));
+            }
+            Ok(arguments.pointer(pointer).and_then(serde_json::Value::as_str)
+                .is_some_and(|path| path_has_prefix(path, prefix)))
+        }
         Constraint::PathPrefix(prefix) => {
             let candidates: Vec<&str> = string_leaves
                 .iter()
@@ -1296,5 +1303,40 @@ fn argument_contains_custom(arguments: &serde_json::Value, key: &str, expected: 
         | serde_json::Value::Bool(_)
         | serde_json::Value::Number(_)
         | serde_json::Value::String(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod explicit_path_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_path_ignores_literal_source_and_edit_content() {
+        let constraint = Constraint::ArgumentPathPrefix {
+            pointer: "/path".into(), prefix: "/workspace/outputs/research-0".into(),
+        };
+        let arguments = serde_json::json!({
+            "path":"/workspace/outputs/research-0/findings.json",
+            "content":"The fault is in /workspace/source/lib.rs; compute sum / count.",
+            "edits":[{"oldText":"a / b", "newText":"wide / b"}],
+        });
+        assert!(constraint_matches(&constraint, &arguments, None).is_ok_and(|matched| matched));
+    }
+
+    #[test]
+    fn explicit_path_rejects_siblings_traversal_and_nested_decoys() {
+        let constraint = Constraint::ArgumentPathPrefix {
+            pointer: "/path".into(), prefix: "/workspace/outputs/research-0".into(),
+        };
+        for arguments in [
+            serde_json::json!({"path":"/workspace/outputs/research-1/findings.json"}),
+            serde_json::json!({"path":"/workspace/outputs/research-01/findings.json"}),
+            serde_json::json!({"path":"/workspace/outputs/research-0/../../source/lib.rs"}),
+            serde_json::json!({"path":"/workspace/source/lib.rs", "nested":{"path":"/workspace/outputs/research-0/allowed"}}),
+            serde_json::json!({"nested":{"path":"/workspace/outputs/research-0/allowed"}}),
+            serde_json::json!({"path":["/workspace/outputs/research-0/allowed"]}),
+        ] {
+            assert!(constraint_matches(&constraint, &arguments, None).is_ok_and(|matched| !matched), "{arguments}");
+        }
     }
 }

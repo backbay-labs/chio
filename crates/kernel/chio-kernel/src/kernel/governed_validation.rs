@@ -237,7 +237,8 @@ impl ChioKernel {
                 // `_` catch-all: a new Constraint variant must choose
                 // explicitly here rather than be silently dropped from
                 // governance requirements.
-                Constraint::PathPrefix(_)
+                Constraint::ArgumentPathPrefix { .. }
+                | Constraint::PathPrefix(_)
                 | Constraint::DomainExact(_)
                 | Constraint::DomainGlob(_)
                 | Constraint::RegexMatch(_)

@@ -1,6 +1,7 @@
 pub fn serve_http(config: RemoteServeHttpConfig) -> Result<(), CliError> {
-    let runtime = tokio::runtime::Runtime::new()
-        .map_err(|error| CliError::cli_other_error(format!("failed to start async runtime: {error}")))?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|error| {
+        CliError::cli_other_error(format!("failed to start async runtime: {error}"))
+    })?;
     runtime.block_on(async move { serve_http_async(config).await })
 }
 
@@ -72,8 +73,11 @@ async fn rate_limit_mcp_request(
 ) -> Response {
     let key = mcp_rate_limit_key(remote_addr);
     if let Err(retry_after) = limiter.check(key, mcp_rate_limit_now()) {
-        let mut response =
-            (StatusCode::TOO_MANY_REQUESTS, "MCP request rate limit exceeded").into_response();
+        let mut response = (
+            StatusCode::TOO_MANY_REQUESTS,
+            "MCP request rate limit exceeded",
+        )
+            .into_response();
         if let Ok(value) = HeaderValue::from_str(&retry_after.to_string()) {
             response
                 .headers_mut()
@@ -116,6 +120,22 @@ fn load_enterprise_provider_registry(
 }
 
 async fn serve_http_async(config: RemoteServeHttpConfig) -> Result<(), CliError> {
+    serve_http_with_binding(config, None).await
+}
+
+/// Serve a worker endpoint using retained authority and a shared admission owner.
+/// The caller owns the runtime and must retain it until every endpoint stops.
+pub async fn serve_http_bound(
+    config: RemoteServeHttpConfig,
+    authority: BoundSessionAuthority,
+) -> Result<(), CliError> {
+    serve_http_with_binding(config, Some(authority)).await
+}
+
+async fn serve_http_with_binding(
+    config: RemoteServeHttpConfig,
+    binding: Option<BoundSessionAuthority>,
+) -> Result<(), CliError> {
     let listener = tokio::net::TcpListener::bind(config.listen).await?;
     let local_addr = listener.local_addr()?;
     let enterprise_provider_registry = load_enterprise_provider_registry(
@@ -150,13 +170,19 @@ async fn serve_http_async(config: RemoteServeHttpConfig) -> Result<(), CliError>
     }
     let local_auth_server = build_local_auth_server(&config, local_addr)?;
 
-    let factory = Arc::new(RemoteSessionFactory::new(config.clone())?);
+    let factory = Arc::new(match binding {
+        Some(binding) => RemoteSessionFactory::new_bound(config.clone(), binding)?,
+        None => RemoteSessionFactory::new(config.clone())?,
+    });
     let sessions = Arc::new(RemoteSessionLedger::new(
         SessionLifecyclePolicy::from_env(),
         config.session_db_path.clone(),
     )?);
     if let Some(path) = config.session_db_path.as_deref() {
         let loaded_records = load_active_session_records(path)?;
+        if factory.bound_authority.is_some() && !loaded_records.invalid_session_ids.is_empty() {
+            return Err(CliError::cli_other_error("Malformed retained bound sessions; preserve the store for recovery".to_owned()));
+        }
         for session_id in loaded_records.invalid_session_ids {
             if let Err(delete_error) = delete_active_session_record(path, &session_id) {
                 warn!(
@@ -170,6 +196,9 @@ async fn serve_http_async(config: RemoteServeHttpConfig) -> Result<(), CliError>
             match factory.restore_session(&record) {
                 Ok(session) => sessions.insert_active(session).await,
                 Err(error) => {
+                    if factory.bound_authority.is_some() {
+                        return Err(error); // Retain unrestorable bound sessions; never replace their authority.
+                    }
                     warn!(
                         session_id = %record.session_id,
                         error = %error,
@@ -303,17 +332,18 @@ async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> R
         .map(|metadata| metadata.resource.as_str())
         .unwrap_or(MCP_ENDPOINT_PATH)
         .to_string();
-    let (request_auth_context, session_credential) = match remote_mcp_session_credentials::authenticate_request(
-        &state,
-        request.headers(),
-        "POST",
-        &expected_target,
-    )
-    .await
-    {
-        Ok(auth_context) => auth_context,
-        Err(response) => return response,
-    };
+    let (request_auth_context, session_credential) =
+        match remote_mcp_session_credentials::authenticate_request(
+            &state,
+            request.headers(),
+            "POST",
+            &expected_target,
+        )
+        .await
+        {
+            Ok(auth_context) => auth_context,
+            Err(response) => return response,
+        };
     if let Err(response) = validate_post_accept_header(request.headers()) {
         return response;
     }
@@ -341,7 +371,11 @@ async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> R
             return response;
         }
     }
-    let response_method = message.get("method").and_then(Value::as_str).unwrap_or_default().to_owned();
+    let response_method = message
+        .get("method")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
     let is_initialize = is_initialize_request(&message);
     let is_request = message.get("id").is_some() && message.get("method").is_some();
     if is_initialize {
@@ -356,13 +390,11 @@ async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> R
     }
 
     let session = {
-        let session_id = match jsonrpc_session_id_from_headers(
-            &headers,
-            "request requires MCP-Session-Id",
-        ) {
-            Ok(session_id) => session_id,
-            Err(response) => return response,
-        };
+        let session_id =
+            match jsonrpc_session_id_from_headers(&headers, "request requires MCP-Session-Id") {
+                Ok(session_id) => session_id,
+                Err(response) => return response,
+            };
         let Some(entry) = resolve_session_entry(&state, &session_id).await else {
             return plain_http_error(StatusCode::NOT_FOUND, "unknown MCP session");
         };
@@ -438,14 +470,21 @@ async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> R
     // Authority may expire or be revoked while waiting behind another request.
     if session_credential.is_some() {
         if let Err(response) = remote_mcp_session_credentials::authenticate_request(
-            &state, &headers, "POST", &expected_target,
-        ).await {
+            &state,
+            &headers,
+            "POST",
+            &expected_target,
+        )
+        .await
+        {
             return response;
         }
     }
     if response_method == "chio/acknowledge" {
         if let Some(credential) = session_credential.as_ref() {
-            return match remote_mcp_session_credentials::acknowledge_call(&state, credential, &message) {
+            return match remote_mcp_session_credentials::acknowledge_call(
+                &state, credential, &message,
+            ) {
                 Ok(response) => Json(response).into_response(),
                 Err(response) => response,
             };
@@ -460,8 +499,12 @@ async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> R
                 }
                 Err(response) => return response,
             }
-        } else { None }
-    } else { None };
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     if let Err(error) = session.send(message) {
         drop(stream_lock);
         return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
@@ -974,9 +1017,9 @@ async fn handle_delete(State(state): State<RemoteAppState>, request: Request) ->
 
     let session_id =
         match plain_session_id_from_headers(request.headers(), "missing MCP-Session-Id") {
-        Ok(session_id) => session_id,
-        Err(response) => return response,
-    };
+            Ok(session_id) => session_id,
+            Err(response) => return response,
+        };
     let Some(entry) = resolve_session_entry(&state, &session_id).await else {
         return plain_http_error(StatusCode::NOT_FOUND, "unknown MCP session");
     };

@@ -197,6 +197,13 @@ fn constraint_matches(
     let string_leaves = collect_string_leaves(arguments);
 
     match constraint {
+        Constraint::ArgumentPathPrefix { pointer, prefix } => {
+            if !pointer.starts_with('/') || pointer.len() > 1024 || !prefix.starts_with('/') {
+                return Err(ScopeMatchError::ConstraintError("argument path prefix requires an explicit JSON Pointer and absolute prefix".into()));
+            }
+            Ok(arguments.pointer(pointer).and_then(serde_json::Value::as_str)
+                .is_some_and(|path| path_has_prefix(path, prefix)))
+        }
         Constraint::PathPrefix(prefix) => {
             let candidates: Vec<&str> = string_leaves
                 .iter()
@@ -355,6 +362,7 @@ fn normalize_path(path: &str) -> Option<NormalizedPath> {
 
 fn constraint_name(constraint: &Constraint) -> &'static str {
     match constraint {
+        Constraint::ArgumentPathPrefix { .. } => "argument_path_prefix",
         Constraint::PathPrefix(_) => "path_prefix",
         Constraint::DomainExact(_) => "domain_exact",
         Constraint::DomainGlob(_) => "domain_glob",

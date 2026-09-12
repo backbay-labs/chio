@@ -195,7 +195,8 @@ struct RemoteAppState {
 
 struct RemoteSessionFactory {
     config: RemoteServeHttpConfig,
-    durable_admission: Option<DurableAdmissionRuntime>,
+    durable_admission: Option<Arc<DurableAdmissionRuntime>>,
+    bound_authority: Option<BoundSessionAuthority>,
     shared_upstream_owner: Arc<StdMutex<Option<Arc<SharedUpstreamOwner>>>>,
     lifecycle_policy: SessionLifecyclePolicy,
 }
