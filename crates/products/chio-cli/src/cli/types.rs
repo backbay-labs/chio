@@ -339,6 +339,12 @@ mod cli_env_tests {
 
 #[derive(Subcommand)]
 pub(crate) enum Commands {
+    /// Launch the local Megastart mission console and operator commands.
+    #[command(disable_help_flag = true)]
+    Megastart {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<std::ffi::OsString>,
+    },
     /// Spawn an agent subprocess and enforce policy via the kernel.
     Run {
         /// Path to the policy YAML file.
