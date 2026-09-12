@@ -23,3 +23,6 @@ include!("remote_mcp/http_service.rs");
 include!("remote_mcp/http_service_auth.rs");
 include!("remote_mcp/oauth.rs");
 include!("remote_mcp/tests.rs");
+
+mod bound_session;
+pub use bound_session::BoundSessionAuthority;

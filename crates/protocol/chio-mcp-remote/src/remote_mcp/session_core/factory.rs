@@ -60,7 +60,8 @@ impl RemoteSessionFactory {
         };
         Ok(Self {
             config,
-            durable_admission,
+            durable_admission: durable_admission.map(Arc::new),
+            bound_authority: None,
             shared_upstream_owner: Arc::new(StdMutex::new(None)),
             lifecycle_policy: read_session_lifecycle_policy(),
         })
@@ -224,10 +225,15 @@ impl RemoteSessionFactory {
         let session_auth_context = hosted_isolation.snapshot_auth_context(auth_context);
 
         let agent_kp = derive_session_agent_keypair(&self.config, &session_auth_context)?;
-        let agent_pk = agent_kp.public_key();
+        let agent_pk = self.bound_authority.as_ref().map_or_else(
+            || agent_kp.public_key(),
+            |binding| binding.subject().clone(),
+        );
         let agent_id = agent_pk.to_hex();
-        let capabilities: Vec<CapabilityToken> =
-            issue_default_capabilities(&kernel, &agent_pk, &default_capabilities)?;
+        let capabilities: Vec<CapabilityToken> = match &self.bound_authority {
+            Some(binding) => binding.install(&kernel, self.config.receipt_db_path.as_deref())?,
+            None => issue_default_capabilities(&kernel, &agent_pk, &default_capabilities)?,
+        };
         let session_capabilities = capabilities
             .iter()
             .map(|capability| RemoteSessionCapability {
@@ -405,19 +411,31 @@ impl RemoteSessionFactory {
 
         let agent_public_key = PublicKey::from_hex(&record.agent_id)?;
         let restored_peer_capabilities = validate_restored_peer_capabilities(record)?;
-        let issued_capabilities = match record.policy_fingerprint.as_deref() {
-            Some(stored)
-                if stored == policy_fingerprint
-                    && stored_capabilities_are_current(&record.issued_capabilities)
-                    && stored_capability_issuers_are_trusted(&kernel, &record.issued_capabilities)
-                    && record
-                        .issued_capabilities
-                        .iter()
-                        .all(|capability| capability.subject == agent_public_key) =>
-            {
-                record.issued_capabilities.clone()
+        let issued_capabilities = if let Some(binding) = &self.bound_authority {
+            binding.restore(
+                &kernel,
+                self.config.receipt_db_path.as_deref(),
+                record,
+                &policy_fingerprint,
+            )?
+        } else {
+            match record.policy_fingerprint.as_deref() {
+                Some(stored)
+                    if stored == policy_fingerprint
+                        && stored_capabilities_are_current(&record.issued_capabilities)
+                        && stored_capability_issuers_are_trusted(
+                            &kernel,
+                            &record.issued_capabilities,
+                        )
+                        && record
+                            .issued_capabilities
+                            .iter()
+                            .all(|capability| capability.subject == agent_public_key) =>
+                {
+                    record.issued_capabilities.clone()
+                }
+                _ => issue_default_capabilities(&kernel, &agent_public_key, &default_capabilities)?,
             }
-            _ => issue_default_capabilities(&kernel, &agent_public_key, &default_capabilities)?,
         };
         let session_capabilities = issued_capabilities
             .iter()

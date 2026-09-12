@@ -331,6 +331,9 @@ pub enum ModelSafetyTier {
 pub enum Constraint {
     /// File path parameter must start with this prefix.
     PathPrefix(String),
+    /// Constrain one explicit JSON Pointer path argument. Other string values,
+    /// including source code and edit content, are not filesystem destinations.
+    ArgumentPathPrefix { pointer: String, prefix: String },
     /// Network domain must match exactly.
     DomainExact(String),
     /// Network domain must match a glob pattern.

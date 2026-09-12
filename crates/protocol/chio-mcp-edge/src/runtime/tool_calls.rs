@@ -344,7 +344,14 @@ impl ChioMcpEdge {
             &binding.server_id,
             &arguments,
             model_metadata.as_ref(),
-        ) {
+        ).or_else(|| {
+            // A single retained grant unambiguously identifies the authority
+            // being exercised. Let the kernel evaluate its constraints and
+            // retain a signed refusal; an unsigned edge error cannot establish
+            // a governed outcome to a verifying client. Multiple grants remain
+            // subject to the ordinary complete-match selection above.
+            (self.capabilities.len() == 1).then(|| self.capabilities[0].clone())
+        }) {
             Some(capability) => capability,
             None => {
                 self.emit_log(
