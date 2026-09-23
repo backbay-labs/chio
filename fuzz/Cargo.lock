@@ -1507,16 +1507,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-finding-market-port"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chio-core-types",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-finding-market-store-postgres"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-core-types",
  "chio-finding",
  "chio-finding-market-migrations",
+ "chio-finding-market-port",
+ "chio-open-market",
  "serde",
  "serde_json",
  "sqlx",
  "thiserror 1.0.69",
+ "tracing",
  "zeroize",
 ]
 
@@ -1669,7 +1684,6 @@ dependencies = [
  "chio-metrics-spec",
  "chio-settle",
  "chio-supervisor",
- "chio-swarm-authority",
  "chio-tool-call-fabric",
  "chio-underwriting",
  "chio-weights",
@@ -1954,16 +1968,6 @@ version = "0.1.0"
 dependencies = [
  "loom",
  "serde",
-]
-
-[[package]]
-name = "chio-swarm-authority"
-version = "0.1.0"
-dependencies = [
- "chio-core-types",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
 ]
 
 [[package]]
