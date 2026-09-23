@@ -96,6 +96,8 @@ a real bilateral deployment; the artifact schemas exist, the lane does not.
   prior-art survey.
 - [THREAT-MODEL.md](THREAT-MODEL.md): adversaries, attack catalog with
   mitigations mapped to shipped primitives, residual-risk register.
+- [Capacity model](CAPACITY.md) - every ceiling the market enforces, what it
+  bounds, and what to change when it binds too early.
 - [ADR-0017](../adr/ADR-0017-cognition-market-finding-artifacts.md): finding
   artifacts and reveal as a governed call.
 - [ADR-0019](../adr/ADR-0019-kernel-delivery-contract.md): the kernel

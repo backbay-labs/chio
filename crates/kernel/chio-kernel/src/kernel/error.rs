@@ -688,6 +688,27 @@ impl KernelError {
     }
 }
 
+impl KernelError {
+    /// Add this error's finding-denial family to a receipt's admission
+    /// metadata, when it carries one.
+    ///
+    /// A denial that happens at dispatch, after the status changed under a
+    /// waiting call, reaches the receipt through this error rather than
+    /// through the admission path, so it needs the same record.
+    #[must_use]
+    pub fn denied_metadata(
+        &self,
+        metadata: &Option<serde_json::Value>,
+    ) -> Option<serde_json::Value> {
+        match self {
+            Self::FindingDenied(denial) => {
+                crate::finding_denial::record_finding_denial(metadata.clone(), denial.code())
+            }
+            _ => metadata.clone(),
+        }
+    }
+}
+
 impl From<crate::admission_operation::AdmissionOperationError> for KernelError {
     fn from(error: crate::admission_operation::AdmissionOperationError) -> Self {
         Self::DurableAdmission(error.to_string())

@@ -42,6 +42,19 @@ assert_rc() {
 }
 
 non_production="$work/non-production"
+vendored_comments="$work/vendored-comments"
+init_case "$vendored_comments"
+write_file "$vendored_comments/third_party/aws-lc-rs-chio/src/cipher.rs" \
+  "// TODO: Hopefully support CFB1, and CFB8"
+track_case "$vendored_comments"
+assert_rc "$(run_checker "$vendored_comments" "$work/vendor.out" "$work/vendor.err")" 0 \
+  "reviewed upstream comment is allowed"
+write_file "$vendored_comments/third_party/aws-lc-rs-chio/src/cipher.rs" \
+  "// TODO: Hopefully support CFB1, and CFB8" \
+  'pub fn encrypt() { unimplemented!(); }'
+assert_rc "$(run_checker "$vendored_comments" "$work/vendor-code.out" "$work/vendor-code.err")" 1 \
+  "vendored executable incomplete implementation still fails"
+
 init_case "$non_production"
 write_file "$non_production/docs/example.md" "TODO: documented follow-up"
 write_file "$non_production/tests/replay.rs" "fn test_stub() {}"

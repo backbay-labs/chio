@@ -17,6 +17,7 @@ chio_federation_transport_lane_total|counter|lane,outcome||Total iroh federation
 chio_federation_transport_outbox_total|counter|outcome||Total iroh federation-transport pheromone outbox drain outcomes.
 chio_federation_transport_router_alive|gauge|||Iroh federation-transport router liveness (1 alive, 0 the router died).
 chio_federation_transport_verify_failures_total|counter|seam,reason||Total iroh federation-transport verification failures by seam and bounded reason.
+chio_finding_market_edge_requests_total|counter|outcome||Requests the hosted market edge admitted, refused, or shed.
 chio_guard_deny_total|counter|guard_id,reason_class||Total WASM guard denies by reason class.
 chio_guard_eval_duration_seconds|histogram|guard_id,verdict|0.0001,0.0005,0.001,0.005,0.01,0.025,0.05,0.1,0.25,0.5,1.0|WASM guard evaluation duration in seconds.
 chio_guard_evaluations_total|counter|guard,outcome||Total guard evaluation outcomes across native and WASM guards.

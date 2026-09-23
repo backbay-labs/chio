@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chio_finding_market_port::{
-    HostedApiKeyLifecyclePort, HostedApiKeyRecord, HostedAuthPort,
+    HostedApiKeyLifecyclePort, HostedApiKeyRecord, HostedAuthPort, HostedCapabilityAdmission,
     HostedCapabilityAdmissionOutcome, HostedMarketPortError, HostedPortWriteOutcome,
     HostedPrincipal, HostedTenantId, HOSTED_API_KEY_ISSUED_EVENT_KIND,
     HOSTED_API_KEY_REVOKED_EVENT_KIND,
@@ -45,26 +45,19 @@ impl HostedAuthPort for PostgresFindingMarketStore {
     async fn consume_capability_dpop_admission(
         &self,
         tenant: &HostedTenantId,
-        capability_id: &str,
-        nonce_sha256: &str,
-        request_sha256: Option<&str>,
-        valid_through: u64,
-        max_invocations: u32,
-        expires_at: u64,
-        now: u64,
-        tenant_nonce_capacity: u64,
+        admission: &HostedCapabilityAdmission<'_>,
     ) -> Result<HostedCapabilityAdmissionOutcome, HostedMarketPortError> {
         PostgresFindingMarketStore::consume_capability_dpop_admission(
             self,
             tenant,
-            capability_id,
-            nonce_sha256,
-            request_sha256,
-            valid_through,
-            max_invocations,
-            expires_at,
-            now,
-            tenant_nonce_capacity,
+            admission.capability_id,
+            admission.nonce_sha256,
+            admission.request_sha256,
+            admission.valid_through,
+            admission.max_invocations,
+            admission.expires_at,
+            admission.now,
+            admission.tenant_nonce_capacity,
         )
         .await
         .map_err(map_error)

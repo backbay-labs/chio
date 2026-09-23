@@ -79,7 +79,7 @@ proptest! {
         let mut oracle = InMemoryRevocationOracle::new();
         let key = key(subject, nonce);
         let signer = Ed25519RootSigner::from_signing_key(
-            "m04-property",
+            "property-oracle-root",
             "0404040404040404040404040404040404040404040404040404040404040404",
         )
         .map_err(|err| TestCaseError::fail(format!("signer init failed: {err}")))?;

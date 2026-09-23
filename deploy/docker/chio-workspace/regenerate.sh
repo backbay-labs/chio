@@ -23,13 +23,19 @@ esac
   echo 'resolver = "2"'
   echo 'members = ["crates/products/chio-cli"]'
   echo
-  awk 'BEGIN { copy = 0 } /^\[workspace\.package\]/ { copy = 1 } copy { print }' \
+  awk 'BEGIN { copy = 0; patch = 0 }
+       /^\[workspace\.package\]/ { copy = 1 }
+       /^\[patch\.crates-io\]/ { patch = 1; print; next }
+       patch && /^\[/ { patch = 0 }
+       patch { print; next }
+       copy { print }' \
     "${repo_root}/Cargo.toml"
 } >"${tmp_dir}/Cargo.toml.generated"
 
 cp "${repo_root}/Cargo.lock" "${tmp_dir}/Cargo.lock"
 cp "${tmp_dir}/Cargo.toml.generated" "${tmp_dir}/Cargo.toml"
 ln -s "${repo_root}/crates" "${tmp_dir}/crates"
+ln -s "${repo_root}/third_party" "${tmp_dir}/third_party"
 ln -s "${repo_root}/fixtures" "${tmp_dir}/fixtures"
 ln -s "${repo_root}/spec" "${tmp_dir}/spec"
 ln -s "${repo_root}/wit" "${tmp_dir}/wit"

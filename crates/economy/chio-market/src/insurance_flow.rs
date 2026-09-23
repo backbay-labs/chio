@@ -42,6 +42,7 @@ use chio_core_types::crypto::{sha256_hex, PublicKey, Signature};
 use chio_fiscal::FiscalResolver;
 use chio_underwriting::{price_fiscal_premium, LookbackWindow, PremiumInputs, PremiumQuote};
 
+use crate::error::{InsuranceSeamError, InsuranceSeamErrorCode};
 use crate::validate_positive_money;
 
 /// Lane identifier used for insurance-flow settlement commitments. Matches
@@ -55,6 +56,11 @@ pub enum InsuranceFlowError {
     /// the quote.
     #[error("premium declined: {0}")]
     PremiumDeclined(String),
+    /// The injected premium source failed, carrying the family it
+    /// reported. Distinct from [`Self::PremiumDeclined`], which is this
+    /// crate's own decision rather than an upstream's.
+    #[error("premium declined: {0}")]
+    PremiumSourceFailed(InsuranceSeamError),
     /// The bound policy is not in a state that can accept claims (expired,
     /// cancelled, or the policy id does not match).
     #[error("policy unavailable: {0}")]
@@ -66,6 +72,10 @@ pub enum InsuranceFlowError {
     /// The settlement sink rejected the approved settlement.
     #[error("settlement submission failed: {0}")]
     SettlementFailed(String),
+    /// The injected settlement sink failed, carrying the family it
+    /// reported, so a caller can tell a retryable outage from a refusal.
+    #[error("settlement submission failed: {0}")]
+    SettlementSeamFailed(InsuranceSeamError),
     /// Malformed inputs that cannot be satisfied.
     #[error("invalid input: {0}")]
     InvalidInput(String),
@@ -103,13 +113,13 @@ pub trait PremiumSource {
     /// Produce risk inputs for pricing a premium. Implementations MUST
     /// fail closed: on any error (kernel unavailable, missing compliance
     /// report, etc.) return an `Err` and [`quote_and_bind`] will surface
-    /// it as `PremiumDeclined`.
+    /// it as `PremiumSourceFailed`.
     fn premium_inputs(
         &self,
         agent_id: &str,
         scope: &str,
         lookback_window: LookbackWindow,
-    ) -> Result<PremiumInputs, String>;
+    ) -> Result<PremiumInputs, InsuranceSeamError>;
 }
 
 /// Simple pass-through [`PremiumSource`] useful for tests and callers
@@ -134,7 +144,7 @@ impl PremiumSource for StaticPremiumSource {
         _agent_id: &str,
         _scope: &str,
         _lookback_window: LookbackWindow,
-    ) -> Result<PremiumInputs, String> {
+    ) -> Result<PremiumInputs, InsuranceSeamError> {
         Ok(self.inputs.clone())
     }
 }
@@ -152,7 +162,7 @@ impl PremiumSource for StaticPremiumSource {
 ///   verify the referenced receipt actually came from the kernel).
 pub trait ReceiptEvidenceSource {
     /// Resolve a receipt id to its cryptographic evidence.
-    fn resolve(&self, receipt_id: &str) -> Result<ResolvedReceiptEvidence, String>;
+    fn resolve(&self, receipt_id: &str) -> Result<ResolvedReceiptEvidence, InsuranceSeamError>;
 }
 
 /// Evidence bundle returned by [`ReceiptEvidenceSource::resolve`].
@@ -180,7 +190,7 @@ pub trait ClaimSettlementSink {
     /// Submit a [`ClaimSettlementRequest`] for execution. Returns the
     /// settlement reference assigned by the underlying rail (for example
     /// an on-chain tx hash or bond lock id).
-    fn submit(&self, request: ClaimSettlementRequest) -> Result<String, String>;
+    fn submit(&self, request: ClaimSettlementRequest) -> Result<String, InsuranceSeamError>;
 }
 
 /// Coverage limit attached to a [`BoundPolicy`].
@@ -377,10 +387,23 @@ impl BoundPolicy {
             let resolved = match receipts.resolve(&fingerprint.receipt_id) {
                 Ok(resolved) => resolved,
                 Err(error) => {
+                    // The seam classified the failure; carrying that
+                    // classification into the decision is what lets audit
+                    // and retry act on it without reading the prose.
+                    let reason = match error.code() {
+                        InsuranceSeamErrorCode::NotFound => ClaimDenialReason::EvidenceUnresolvable,
+                        InsuranceSeamErrorCode::EvidenceInvalid => {
+                            ClaimDenialReason::EvidenceInvalid
+                        }
+                        InsuranceSeamErrorCode::Unavailable => {
+                            ClaimDenialReason::EvidenceSourceUnavailable
+                        }
+                        InsuranceSeamErrorCode::Rejected => ClaimDenialReason::EvidenceRefused,
+                    };
                     return Ok(ClaimDecision::Denied {
                         policy_id: self.policy_id.clone(),
                         claim_id: evidence.claim_id.clone(),
-                        reason: ClaimDenialReason::EvidenceUnresolvable,
+                        reason,
                         justification: format!(
                             "receipt `{}` could not be resolved: {error}",
                             fingerprint.receipt_id
@@ -442,7 +465,7 @@ impl BoundPolicy {
 
         let settlement_reference = settlement_sink
             .submit(request.clone())
-            .map_err(InsuranceFlowError::SettlementFailed)?;
+            .map_err(InsuranceFlowError::SettlementSeamFailed)?;
 
         Ok(ClaimDecision::Approved {
             policy_id: self.policy_id.clone(),
@@ -566,8 +589,18 @@ pub enum ClaimDenialReason {
     CurrencyMismatch,
     /// No receipts were provided to support the claim.
     InsufficientEvidence,
-    /// A referenced receipt could not be resolved in the receipt store.
+    /// A referenced receipt is not in the receipt store.
     EvidenceUnresolvable,
+    /// The receipt store could not answer. Distinct from
+    /// [`Self::EvidenceUnresolvable`] because the receipt may well exist:
+    /// this claim can be retried, and that one cannot.
+    EvidenceSourceUnavailable,
+    /// The receipt store understood the request and refused it. Retrying
+    /// reaches the same refusal, which is what separates this from
+    /// [`Self::EvidenceSourceUnavailable`].
+    EvidenceRefused,
+    /// The receipt store answered and its evidence did not verify.
+    EvidenceInvalid,
     /// A referenced receipt's body digest did not match its fingerprint.
     EvidenceDigestMismatch,
     /// The kernel signature on a referenced receipt failed verification.
@@ -645,10 +678,10 @@ pub struct ClaimSettlement {
 /// verified fiscal `resolver`, then bind the quote into a [`BoundPolicy`]
 /// with the provided effective window.
 ///
-/// Returns `Err(InsuranceFlowError::PremiumDeclined)` if the premium
-/// source is unavailable or the underwriter declines the quote. This
-/// pathway is fail-closed: missing risk signals never produce a silent
-/// approval.
+/// Returns `Err(InsuranceFlowError::PremiumSourceFailed)` if the premium
+/// source is unavailable, or `Err(InsuranceFlowError::PremiumDeclined)`
+/// if the underwriter declines the quote. This pathway is fail-closed:
+/// missing risk signals never produce a silent approval.
 pub fn quote_and_bind(
     agent_id: &str,
     scope: &str,
@@ -677,9 +710,9 @@ pub fn quote_and_bind(
     let inputs = premium_source
         .premium_inputs(agent_id, scope, lookback_window)
         .map_err(|error| {
-            InsuranceFlowError::PremiumDeclined(format!(
-                "premium source failed for agent `{agent_id}` scope `{scope}`: {error}"
-            ))
+            InsuranceFlowError::PremiumSourceFailed(error.prefixed(&format!(
+                "premium source failed for agent `{agent_id}` scope `{scope}`"
+            )))
         })?;
 
     let quote = price_fiscal_premium(agent_id, scope, lookback_window, &inputs, resolver).map_err(
@@ -894,8 +927,21 @@ mod tests {
             _agent_id: &str,
             _scope: &str,
             _lookback_window: LookbackWindow,
-        ) -> Result<PremiumInputs, String> {
-            Err("kernel unavailable".to_string())
+        ) -> Result<PremiumInputs, InsuranceSeamError> {
+            Err(InsuranceSeamError::unavailable("kernel unavailable"))
+        }
+    }
+
+    /// A source that fails with one chosen family, so the decision's
+    /// classification can be asserted rather than inferred from prose.
+    struct FailingReceiptSource(InsuranceSeamErrorCode);
+
+    impl ReceiptEvidenceSource for FailingReceiptSource {
+        fn resolve(&self, receipt_id: &str) -> Result<ResolvedReceiptEvidence, InsuranceSeamError> {
+            Err(InsuranceSeamError::new(
+                self.0,
+                format!("receipt `{receipt_id}` is unavailable in this test"),
+            ))
         }
     }
 
@@ -906,11 +952,10 @@ mod tests {
     }
 
     impl ReceiptEvidenceSource for InMemoryReceiptSource {
-        fn resolve(&self, receipt_id: &str) -> Result<ResolvedReceiptEvidence, String> {
-            self.entries
-                .get(receipt_id)
-                .cloned()
-                .ok_or_else(|| format!("receipt `{receipt_id}` not found"))
+        fn resolve(&self, receipt_id: &str) -> Result<ResolvedReceiptEvidence, InsuranceSeamError> {
+            self.entries.get(receipt_id).cloned().ok_or_else(|| {
+                InsuranceSeamError::not_found(format!("receipt `{receipt_id}` not found"))
+            })
         }
     }
 
@@ -932,8 +977,11 @@ mod tests {
     }
 
     impl ClaimSettlementSink for CapturingSink {
-        fn submit(&self, request: ClaimSettlementRequest) -> Result<String, String> {
-            let mut events = self.events.lock().map_err(|error| error.to_string())?;
+        fn submit(&self, request: ClaimSettlementRequest) -> Result<String, InsuranceSeamError> {
+            let mut events = self
+                .events
+                .lock()
+                .map_err(|error| InsuranceSeamError::unavailable(error.to_string()))?;
             let reference = format!("settle-ref-{}", events.len());
             events.push(request);
             Ok(reference)
@@ -1010,10 +1058,11 @@ mod tests {
         )
         .unwrap_err();
         match error {
-            InsuranceFlowError::PremiumDeclined(message) => {
-                assert!(message.contains("kernel unavailable"));
+            InsuranceFlowError::PremiumSourceFailed(seam) => {
+                assert!(seam.detail().contains("kernel unavailable"));
+                assert_eq!(seam.code(), InsuranceSeamErrorCode::Unavailable);
             }
-            other => panic!("expected PremiumDeclined, got {other:?}"),
+            other => panic!("expected a classified premium source failure, got {other:?}"),
         }
     }
 
@@ -1173,6 +1222,109 @@ mod tests {
             );
             assert!(sink.events().is_empty(), "{label}: sink should not run");
         }
+    }
+
+    /// A failure the seam classified must still be classified once it has
+    /// crossed this crate's public error boundary, or typing the seam only
+    /// moved the parsing one level out.
+    #[test]
+    fn seam_families_survive_the_public_error_boundary() {
+        let Err(error) = test_quote_and_bind(
+            "agent-x",
+            "tool:exec",
+            window(),
+            &FailingPremiumSource(InsuranceSeamErrorCode::Unavailable),
+            1_000_600,
+            60 * 60 * 24 * 30,
+        ) else {
+            panic!("an unavailable premium source must decline the quote");
+        };
+        match &error {
+            InsuranceFlowError::PremiumSourceFailed(seam) => {
+                assert_eq!(seam.code(), InsuranceSeamErrorCode::Unavailable);
+            }
+            other => panic!("expected a classified premium failure, got {other:?}"),
+        }
+        assert!(
+            error
+                .to_string()
+                .starts_with("premium declined: premium source failed"),
+            "operator text must be unchanged: {error}"
+        );
+    }
+
+    struct FailingPremiumSource(InsuranceSeamErrorCode);
+
+    impl PremiumSource for FailingPremiumSource {
+        fn premium_inputs(
+            &self,
+            _agent_id: &str,
+            _scope: &str,
+            _lookback_window: LookbackWindow,
+        ) -> Result<PremiumInputs, InsuranceSeamError> {
+            Err(InsuranceSeamError::new(self.0, "upstream is unreachable"))
+        }
+    }
+
+    /// A source that cannot answer and a source that answers wrongly are
+    /// different failures, and a claim that flattens them into one reason
+    /// cannot tell a retry from a dead end.
+    #[test]
+    fn file_claim_keeps_the_family_the_receipt_source_reported() {
+        let keypair = Keypair::generate();
+        let policy = test_quote_and_bind(
+            "agent-clean",
+            "tool:exec",
+            window(),
+            &static_source(950),
+            1_000_600,
+            60 * 60 * 24 * 30,
+        )
+        .unwrap();
+        let (fingerprint, _resolved) = fake_receipt(&keypair, "rcpt-classified");
+        let sink = CapturingSink::new();
+        let evidence = ClaimEvidence {
+            claim_id: "claim-classified".to_string(),
+            policy_id: policy.policy_id.clone(),
+            requested_amount: MonetaryAmount {
+                units: 100_000,
+                currency: "USD".to_string(),
+            },
+            incident_description: "classified failure".to_string(),
+            supporting_receipts: vec![fingerprint],
+            settlement_chain_id: "ethereum-mainnet".to_string(),
+        };
+
+        for (code, expected) in [
+            (
+                InsuranceSeamErrorCode::NotFound,
+                ClaimDenialReason::EvidenceUnresolvable,
+            ),
+            (
+                InsuranceSeamErrorCode::EvidenceInvalid,
+                ClaimDenialReason::EvidenceInvalid,
+            ),
+            (
+                InsuranceSeamErrorCode::Unavailable,
+                ClaimDenialReason::EvidenceSourceUnavailable,
+            ),
+            (
+                InsuranceSeamErrorCode::Rejected,
+                ClaimDenialReason::EvidenceRefused,
+            ),
+        ] {
+            let decision = policy
+                .file_claim(&evidence, 1_001_000, &FailingReceiptSource(code), &sink)
+                .unwrap();
+            match decision {
+                ClaimDecision::Denied { reason, .. } => assert_eq!(
+                    reason, expected,
+                    "{code} must reach the decision as {expected:?}"
+                ),
+                ClaimDecision::Approved { .. } => panic!("{code} must deny"),
+            }
+        }
+        assert!(sink.events().is_empty(), "a denied claim never settles");
     }
 
     #[test]

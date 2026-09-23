@@ -5,6 +5,9 @@
 resolver = "2"
 members = ["crates/products/chio-cli"]
 
+[patch.crates-io]
+aws-lc-rs = { path = "third_party/aws-lc-rs-chio" }
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

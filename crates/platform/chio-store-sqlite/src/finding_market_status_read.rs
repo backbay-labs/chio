@@ -51,12 +51,11 @@ impl SqliteFindingMarketStore {
         // Discovery under-advertises on a trailing snapshot; the atomic
         // purchase gate re-checks on the authority connection, so this
         // read never queues behind a write transaction.
-        let mut connection = self.read_connection.lock().map_err(|_| {
-            FindingMarketStoreError::Unavailable(
-                "sqlite finding market read companion lock poisoned".to_owned(),
-            )
-        })?;
-        let transaction = self.begin_companion_read(&mut connection)?;
+        let mut companion = self
+            .read_companions
+            .lease()
+            .map_err(|error| FindingMarketStoreError::Unavailable(error.to_string()))?;
+        let transaction = self.begin_companion_read(companion.connection())?;
         require_verified_live_status_tx(
             &transaction,
             feed_id,

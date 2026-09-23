@@ -100,32 +100,45 @@ fn check_command_persists_receipt_to_sqlite() {
     secure_private_directory(dir.path());
     let db_path = dir.path().join("receipts.sqlite3");
     let session_db_path = dir.path().join("sessions.sqlite3");
-    let output = Command::new(env!("CARGO_BIN_EXE_chio"))
-        .current_dir(workspace_root())
-        .args([
-            "--receipt-db",
-            db_path.to_str().expect("utf-8 path"),
-            "--session-db",
-            session_db_path.to_str().expect("utf-8 session path"),
-            "check",
-            "--policy",
-            receipt_db_policy().to_str().expect("policy path"),
-            "--tool",
-            "bash",
-            "--server",
-            "*",
-            "--params",
-            r#"{"command":"echo durable receipt"}"#,
-        ])
-        .output()
-        .expect("run chio check");
+    let policy_path = dir.path().join("check-policy.yaml");
+    let policy = std::fs::read_to_string(receipt_db_policy()).expect("read receipt policy");
+    std::fs::write(
+        &policy_path,
+        policy.replace(
+            "durable_admission_mode: monetary",
+            "durable_admission_mode: all",
+        ),
+    )
+    .expect("write policy admitting every preview call");
+    for command in ["echo durable receipt", "echo another durable receipt"] {
+        let parameters = serde_json::json!({"command": command}).to_string();
+        let output = Command::new(env!("CARGO_BIN_EXE_chio"))
+            .current_dir(workspace_root())
+            .args([
+                "--receipt-db",
+                db_path.to_str().expect("utf-8 path"),
+                "--session-db",
+                session_db_path.to_str().expect("utf-8 session path"),
+                "check",
+                "--policy",
+                policy_path.to_str().expect("policy path"),
+                "--tool",
+                "bash",
+                "--server",
+                "*",
+                "--params",
+                &parameters,
+            ])
+            .output()
+            .expect("run chio check");
 
-    assert!(
-        output.status.success(),
-        "stdout:\n{}\n\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+        assert!(
+            output.status.success(),
+            "stdout:\n{}\n\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 
     let connection = Connection::open(&db_path).expect("open receipt db");
     let (count, distinct_count, decision_kind): (i64, i64, String) = connection
@@ -141,10 +154,19 @@ fn check_command_persists_receipt_to_sqlite() {
         })
         .expect("query child receipts");
 
-    assert_eq!(count, 1);
-    assert_eq!(distinct_count, 1);
+    assert_eq!(count, 2);
+    assert_eq!(distinct_count, 2);
     assert_eq!(decision_kind, "allow");
     assert_eq!(child_count, 0);
+    let admission = Connection::open(&session_db_path).expect("open durable admission db");
+    let identities: (i64, i64) = admission
+        .query_row(
+            "SELECT COUNT(*), COUNT(DISTINCT request_id) FROM admission_operations",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("query original admission identities");
+    assert_eq!(identities, (2, 2));
 
     drop(connection);
     let _ = std::fs::remove_file(db_path);

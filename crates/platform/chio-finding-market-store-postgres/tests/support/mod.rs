@@ -1,3 +1,21 @@
+//! Shared harness for the hosted market integration suite.
+//!
+//! The suite is one sequenced test rather than many, and splitting it
+//! needs one thing first.
+//!
+//! Some scenarios assert on schema state rather than on rows: the
+//! runtime-boundary checks weaken an RLS policy, prove the boundary
+//! refuses it, and restore it. Those mutations are database-wide, so a
+//! second test running concurrently against the same schema can observe
+//! the weakened window and fail for a reason unrelated to what it
+//! asserts.
+//!
+//! The prerequisite is a schema per test: each test creating its own
+//! uniquely named schema with every pool setting `search_path` to it, so
+//! a global mutation is global only to the test that made it. Tenant
+//! scoping is not enough on its own, because the mutations these
+//! assertions rely on are not tenant scoped.
+
 use super::*;
 use std::time::Duration;
 
@@ -1232,6 +1250,7 @@ pub(super) async fn assert_admission_and_accounting_invariants(
     nonce: u128,
 ) -> Result<(), Box<dyn Error>> {
     assert_concurrent_fresh_proofs_spend_one_invocation(store, runtime_pool, nonce).await?;
+    assert_one_proof_resumes_its_own_request(store, nonce).await?;
     assert_reissued_capability_records_its_admission(store, nonce).await?;
     assert_retained_request_bindings_are_bounded(store, nonce).await?;
     assert_charged_reservations_are_immutable(store, runtime_pool, nonce).await?;
@@ -1744,6 +1763,73 @@ pub(super) async fn assert_prior_release_writes_keep_accumulators(
             Err(HostedMarketStoreError::Capacity)
         ),
         "the nonce ceiling must account for the previous release's nonce"
+    );
+    Ok(())
+}
+
+/// Re-presenting one proof for the request it was admitted for resumes,
+/// and the same proof for any other request stays a replay.
+///
+/// This runs sequentially, so it resolves on the ledger probe that opens
+/// the admission rather than on the live-nonce probe below it. The raced
+/// ordering, where an attempt passes the ledger probe before a concurrent
+/// winner commits and then finds the nonce live, is covered by
+/// [`assert_concurrent_duplicates_replay`]; it cannot be reached
+/// deterministically without a pause between the two probes.
+pub(super) async fn assert_one_proof_resumes_its_own_request(
+    store: &PostgresFindingMarketStore,
+    nonce: u128,
+) -> Result<(), Box<dyn Error>> {
+    let tenant = &HostedTenantId::new(format!("integration-proof-resume-{nonce}"))?;
+    store
+        .register_tenant(
+            tenant,
+            &HostedTenantLimits::new(1, 8, 10_000, "integration-revision-1")?,
+            1_700_000_000,
+        )
+        .await?;
+    let capability = "capability-proof-resume";
+    let proof = "7".repeat(64);
+    let binding = "8".repeat(64);
+    let admit = |at: u64| {
+        store.consume_capability_dpop_admission(
+            tenant,
+            capability,
+            &proof,
+            Some(&binding),
+            1_700_000_300,
+            4,
+            1_700_000_300,
+            at,
+            8,
+        )
+    };
+    assert_eq!(
+        admit(1_700_000_001).await?,
+        HostedCapabilityAdmissionOutcome::Admitted
+    );
+    assert_eq!(
+        admit(1_700_000_002).await?,
+        HostedCapabilityAdmissionOutcome::RetriedSameRequest,
+        "the proof's own request must resume rather than be rejected as a replay"
+    );
+    // The same live proof presented for a different request stays a
+    // replay: the binding, not the nonce, is what may be resumed.
+    assert_eq!(
+        store
+            .consume_capability_dpop_admission(
+                tenant,
+                capability,
+                &proof,
+                Some(&"9".repeat(64)),
+                1_700_000_300,
+                4,
+                1_700_000_300,
+                1_700_000_003,
+                8,
+            )
+            .await?,
+        HostedCapabilityAdmissionOutcome::Replay
     );
     Ok(())
 }

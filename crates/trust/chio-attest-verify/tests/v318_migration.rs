@@ -49,7 +49,7 @@ fn fixture_classical_seed() -> [u8; 32] {
 }
 
 fn fixture_pq_seed() -> [u8; 32] {
-    let raw = b"chio-m03-p2-t5-migration-pq-seed";
+    let raw = b"chio-attest-migration-pq-seed-01";
     let mut out = [0u8; 32];
     out.copy_from_slice(raw);
     out

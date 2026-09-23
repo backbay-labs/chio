@@ -97,7 +97,7 @@ mod settlement;
 mod workflow;
 
 pub use claim::*;
-pub use error::{MarketError, MarketErrorCode};
+pub use error::{InsuranceSeamError, InsuranceSeamErrorCode, MarketError, MarketErrorCode};
 pub use placement::*;
 pub use provider::*;
 pub use quote::*;
