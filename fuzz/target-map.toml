@@ -42,6 +42,8 @@ notes    = "Round-trips canonical JSON; catches sort drift, float canonicalizati
 crate    = "chio-core-types"
 path     = "fuzz/fuzz_targets/capability_receipt.rs"
 triggers = [
+    "crates/products/chio-cli/src/cli/runtime.rs",
+    "crates/products/chio-cli/tests/receipt_db.rs",
     "crates/core/chio-core-types/src/_generated/**",
     "crates/core/chio-core-types/src/capability*.rs",
     "crates/core/chio-core-types/src/receipt*.rs",
@@ -260,6 +262,8 @@ notes    = "OpenApiMcpBridge::from_spec ingest path."
 crate    = "chio-kernel-core"
 path     = "fuzz/fuzz_targets/receipt_log_replay.rs"
 triggers = [
+    "crates/products/chio-cli/src/cli/runtime.rs",
+    "crates/products/chio-cli/tests/receipt_db.rs",
     "crates/kernel/chio-kernel-core/src/**",
     "crates/platform/chio-control-plane/src/trust_control/finding_operator_purchase.rs",
     "crates/platform/chio-store-sqlite/src/finding_operator_bundle_store.rs",
