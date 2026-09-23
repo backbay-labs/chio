@@ -65,6 +65,11 @@ ALLOWLIST_WAVES = 4
 # The waves are ordered by cap, smallest first, so the files that are
 # cheapest to bring back under their limit come due first.
 ALLOWLIST: dict[str, AllowlistEntry] = {
+    "third_party/aws-lc-rs-chio/src/cipher.rs": allow(
+        "2026-12-31",
+        "reviewed upstream AWS-LC cipher surface; capped to exact vendored size until split upstream",
+        max_lines=2_266,
+    ),
     "crates/products/chio-cli/tests/mcp_serve_http.rs": allow(
         "2027-01-31",
         "existing oversized CLI MCP HTTP integration suite; capped to current size until split",

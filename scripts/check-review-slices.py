@@ -77,6 +77,11 @@ SLICES: tuple[ReviewSlice, ...] = (
         ),
     ),
     ReviewSlice(
+        "vendored-dependencies",
+        "vendored workspace members and their notices",
+        ("third_party/**", "NOTICE"),
+    ),
+    ReviewSlice(
         "guards-policy",
         "guards, policy evaluation, guard SDKs, and guard registries",
         (

@@ -331,6 +331,18 @@ criteria = "safe-to-deploy"
 version = "1.2.14"
 notes = "Local cargo-vet review. Exact locked third-party version reviewed from local registry metadata, crate manifest, and source scan; no custom build target and no unsafe tokens in src. Approved for current workspace deployment role."
 
+[[audits.aws-lc-fips-sys]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.14.2"
+notes = "Exact-source audit of registry archive SHA-256 03367707e92796b190a4207d4d39b0a4271d574503d2969c2b0cfbf5c87658ee. All 1,965 bundled AWS-LC files and 42 Rust/build-wrapper files match upstream commit c4fde5c4cce80cab4cd475695ca9580268a6baef; the only native difference, go.mod, is the exact deterministic rewrite in the upstream publish script. Reviewed archive member safety, build and system-library selection, compiler and bindgen invocation, generated bindings, FFI ownership boundary, startup FIPS-mode probe, whole-archive retention, and ambient process/network capabilities. Native Linux tests passed through aws-lc-rs' 490-test FIPS suite, and controlled C and Rust constructor tests proved failure before main when FIPS mode is absent and success when present. Approved for the locked workspace role; platform-specific system-library selection remains fail-closed."
+
+[[audits.aws-lc-sys]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.45.0"
+notes = "Exact-source audit of registry archive SHA-256 9bff6c3b54fad79a2e60b8102caf565819711497c1f5f092f49508e2f5c31b27. All 1,946 bundled AWS-LC files and 80 Rust/build-wrapper files match clean upstream commit 7943223c99d909bc399bdf1b856821bb04f1f3c5. Reviewed archive member safety, build selection, argument-vector subprocess use, compiler and bindgen inputs, generated bindings, allocation and FFI ownership boundaries, integer-length conversions, and ambient process/network capabilities. Native Linux qualification passed the complete 361-test aws-lc-rs default library suite and 35 documentation tests. Approved for the locked workspace role."
+
 [[audits.aws-runtime]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
@@ -534,6 +546,12 @@ who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.1.0"
 notes = "cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked separately."
+
+[[audits.der]]
+who = "Codex (OpenAI), local delta review"
+criteria = "safe-to-deploy"
+delta = "0.8.0 -> 0.8.2"
+notes = "Reviewed the published 0.8.0 to 0.8.1 and 0.8.1 to 0.8.2 source diffs: nested reader depth and bounds, restoration of trailing-data rejection, SET OF duplicate and ordering behavior, borrowed integer conversions, manifests and tests. The four source files containing unsafe transparent-newtype conversions are byte-identical to 0.8.0; no new unsafe code, build script or ambient filesystem/network/process access was introduced. Ran the published 0.8.2 crate tests with all features, including nesting, trailing-data and SET OF regressions. This is a delta review for the locked PKCS8/SPKI dependency update, not a new full audit of the exempt 0.8.0 baseline."
 
 [[audits.der-parser]]
 who = "Chio supply-chain reviewer"

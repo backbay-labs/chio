@@ -16,7 +16,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import Fastify from "fastify";
 import http from "node:http";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { chio } from "@chio-protocol/fastify";
 import type { HttpReceipt, EvaluateResponse, Verdict } from "@chio-protocol/node-http";
 import { validateReceiptStructure, assertVerdictMatch } from "../../src/verify.js";
@@ -29,9 +29,14 @@ function createMockSidecar(): {
   port: () => number;
   setVerdictMode: (mode: "allow" | "deny") => void;
   lastRequest: () => unknown;
+  verificationCalls: () => number;
+  setVerificationTrusted: (trusted: boolean) => void;
 } {
   let verdictMode: "allow" | "deny" = "allow";
   let lastReq: unknown = null;
+  let lastReceipt: HttpReceipt | undefined;
+  let verificationCalls = 0;
+  let verificationTrusted = true;
 
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -39,10 +44,11 @@ function createMockSidecar(): {
     req.on("end", () => {
       const body = Buffer.concat(chunks).toString("utf-8");
       const parsed = JSON.parse(body);
-      lastReq = parsed;
 
       if (req.url === "/chio/evaluate") {
+        lastReq = parsed;
         const receipt = createMockReceipt(parsed, verdictMode);
+        lastReceipt = receipt;
         const response: EvaluateResponse = {
           verdict: receipt.verdict,
           receipt,
@@ -50,6 +56,27 @@ function createMockSidecar(): {
         };
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(response));
+      } else if (req.url === "/chio/verify") {
+        verificationCalls += 1;
+        // Transport fixture only: match the exact issued mock receipt.
+        // Native signed-receipt tests own cryptographic acceptance.
+        const exact = lastReceipt != null
+          && canonicalJsonString(parsed) === canonicalJsonString(lastReceipt);
+        const authorized = exact && verificationTrusted && lastReceipt?.verdict.verdict === "allow";
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          ok: authorized,
+          authorized,
+          signer_trusted: verificationTrusted,
+          signer_key_hex: lastReceipt?.kernel_key ?? "",
+          signature_valid: exact,
+          receipt_id_valid: exact,
+          parameter_hash_valid: exact,
+          receipt_kind: "mediated_decision",
+          boundary_class: "prevent",
+          trust_level: "mediated",
+          result: lastReceipt?.verdict.verdict ?? "incomplete",
+        }));
       } else if (req.url === "/chio/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "ok" }));
@@ -70,6 +97,8 @@ function createMockSidecar(): {
       verdictMode = mode;
     },
     lastRequest: () => lastReq,
+    verificationCalls: () => verificationCalls,
+    setVerificationTrusted: (trusted: boolean) => { verificationTrusted = trusted; },
   };
 }
 
@@ -103,12 +132,17 @@ function createMockReceipt(
     .digest("hex");
 
   return {
-    id: `receipt-${randomUUID()}`,
+    id: createHash("sha256").update(canonicalJsonString({ request: chioReq, verdict })).digest("hex"),
     request_id: chioReq.request_id,
     route_pattern: chioReq.route_pattern,
     method: chioReq.method as "GET",
     caller_identity_hash: callerHash,
     verdict,
+    receipt_kind: "mediated_decision",
+    boundary_class: "prevent",
+    tool_origin: "host_executed_provider_reported",
+    redaction_mode: "none",
+    trust_level: "mediated",
     evidence: [
       {
         guard_name: mode === "allow" ? "DefaultPolicyGuard" : "CapabilityGuard",
@@ -130,6 +164,7 @@ function createMockReceipt(
 describe("Fastify E2E conformance", () => {
   const mock = createMockSidecar();
   let fastify: ReturnType<typeof Fastify>;
+  let petRouteCalls = 0;
 
   beforeAll(async () => {
     // Start mock sidecar
@@ -143,7 +178,10 @@ describe("Fastify E2E conformance", () => {
     });
 
     fastify.get("/health", async () => ({ ok: true }));
-    fastify.get("/pets", async () => [{ name: "Fido" }]);
+    fastify.get("/pets", async () => {
+      petRouteCalls += 1;
+      return [{ name: "Fido" }];
+    });
     fastify.get("/pets/:petId", async (request) => ({
       id: (request.params as { petId: string }).petId,
       name: "Fido",
@@ -172,16 +210,37 @@ describe("Fastify E2E conformance", () => {
 
   it("GET /pets produces a valid allow receipt", async () => {
     mock.setVerdictMode("allow");
+    const previousVerifications = mock.verificationCalls();
     const resp = await fastify.inject({
       method: "GET",
       url: "/pets",
     });
     expect(resp.statusCode).toBe(200);
+    expect(mock.verificationCalls()).toBe(previousVerifications + 2);
 
     // Receipt ID should be in the response headers
     const receiptId = resp.headers["x-chio-receipt-id"];
     expect(receiptId).toBeDefined();
     expect(typeof receiptId).toBe("string");
+  });
+
+  it("rejects untrusted verification before the application route", async () => {
+    mock.setVerdictMode("allow");
+    mock.setVerificationTrusted(false);
+    const previousVerifications = mock.verificationCalls();
+    const previousRouteCalls = petRouteCalls;
+    try {
+      const resp = await fastify.inject({ method: "GET", url: "/pets" });
+      expect(resp.statusCode).toBe(502);
+      expect(JSON.parse(resp.body)).toMatchObject({
+        error: "chio_sidecar_unreachable",
+        message: expect.stringContaining("sidecar returned an unverified allow receipt"),
+      });
+      expect(mock.verificationCalls()).toBe(previousVerifications + 1);
+      expect(petRouteCalls).toBe(previousRouteCalls);
+    } finally {
+      mock.setVerificationTrusted(true);
+    }
   });
 
   it("sidecar receives correct ChioHttpRequest for GET /pets", async () => {
@@ -263,7 +322,7 @@ describe("Fastify E2E conformance", () => {
     expect(lastReq.caller.auth_method.key_hash).toHaveLength(64);
   });
 
-  it("receipt ID format is valid UUID", async () => {
+  it("receipt ID has the current lowercase SHA-256 format", async () => {
     mock.setVerdictMode("allow");
     const resp = await fastify.inject({
       method: "GET",
@@ -271,8 +330,7 @@ describe("Fastify E2E conformance", () => {
     });
     const receiptId = resp.headers["x-chio-receipt-id"];
     expect(typeof receiptId).toBe("string");
-    // Receipt ID should contain UUID-like characters
-    expect(receiptId).toMatch(/^receipt-[0-9a-f-]+$/);
+    expect(receiptId).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("mock receipt passes structural validation", async () => {

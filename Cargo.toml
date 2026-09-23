@@ -197,10 +197,15 @@ members = [
     "integrations/editors/zed-chio",
 ]
 exclude = [
+    # DES parity normalization and effective-key checks for the selected release.
+    "third_party/aws-lc-rs-chio",
     # PyO3 extension package: built through maturin with an explicit Python
     # sysconfig, not by the default Rust workspace gate.
     "crates/sdk/chio-eval-receipt/py",
 ]
+
+[patch.crates-io]
+aws-lc-rs = { path = "third_party/aws-lc-rs-chio" }
 
 [workspace.package]
 version = "0.1.0"
