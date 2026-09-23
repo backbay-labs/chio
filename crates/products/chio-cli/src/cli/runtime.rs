@@ -700,7 +700,7 @@ pub(crate) fn cmd_check(
 
     let context = OperationContext::new(
         session_id.clone(),
-        RequestId::new("check-001"),
+        RequestId::new(format!("check-{}", uuid::Uuid::new_v4())),
         session_agent_id,
     );
     let operation = SessionOperation::ToolCall(Box::new(ToolCallOperation {
