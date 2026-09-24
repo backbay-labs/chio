@@ -32,8 +32,7 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 }
 
 #[test]
-fn spool_persists_m07_fixture_payloads_encrypted_at_rest() -> Result<(), Box<dyn std::error::Error>>
-{
+fn spool_persists_fixture_payloads_encrypted_at_rest() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let db_path = dir.path().join("tee-spool.sqlite3");
     let store = SqliteEncryptedBlobStore::open(&db_path)?;

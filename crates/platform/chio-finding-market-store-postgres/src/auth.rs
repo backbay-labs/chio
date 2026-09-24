@@ -317,7 +317,24 @@ impl PostgresFindingMarketStore {
         .await
         .map_err(unavailable)?;
         if replayed {
+            // The nonce is live, which usually means this proof was
+            // already spent. It also means a concurrent attempt at this
+            // same request may have committed between the probe above and
+            // this one, and that is a retry to resume rather than a replay
+            // to reject: the caller is presenting the request it was
+            // admitted for, not reusing a proof for a different one.
+            let resumed = resumes_admitted_request(
+                &mut transaction,
+                tenant,
+                capability_id,
+                request_sha256,
+                now,
+            )
+            .await?;
             transaction.commit().await.map_err(unavailable)?;
+            if resumed {
+                return Ok(HostedCapabilityAdmissionOutcome::RetriedSameRequest);
+            }
             return Ok(HostedCapabilityAdmissionOutcome::Replay);
         }
         // A replica running the previous release serializes its capacity

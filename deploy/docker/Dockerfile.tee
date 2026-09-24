@@ -23,6 +23,7 @@ WORKDIR /workspace
 # inputs aborts manifest loading or Rust compilation.
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY third_party ./third_party
 COPY bench ./bench
 COPY contracts ./contracts
 COPY integrations/editors ./integrations/editors

@@ -39,6 +39,8 @@ pub enum HostedEdgeError {
     IntegrityFailure,
     #[error("hosted authentication capacity is unavailable")]
     CapacityUnavailable,
+    #[error("hosted edge request capacity is unavailable")]
+    RequestCapacityUnavailable,
     #[error("hosted authentication dependency is unavailable")]
     DependencyUnavailable,
     #[error("hosted edge configuration is invalid")]
@@ -59,6 +61,7 @@ impl HostedEdgeError {
             Self::Conflict => "conflict",
             Self::IntegrityFailure => "integrity_failure",
             Self::CapacityUnavailable => "authentication_capacity_unavailable",
+            Self::RequestCapacityUnavailable => "request_capacity_unavailable",
             Self::DependencyUnavailable => "authentication_dependency_unavailable",
             Self::Configuration => "edge_configuration_invalid",
         }
@@ -69,7 +72,10 @@ impl HostedEdgeError {
     pub const fn retryable(self) -> bool {
         matches!(
             self,
-            Self::RateLimited | Self::CapacityUnavailable | Self::DependencyUnavailable
+            Self::RateLimited
+                | Self::CapacityUnavailable
+                | Self::RequestCapacityUnavailable
+                | Self::DependencyUnavailable
         )
     }
 
@@ -98,6 +104,9 @@ impl HostedEdgeError {
                 Self::CapacityUnavailable => {
                     "The service is temporarily unable to accept this request."
                 }
+                Self::RequestCapacityUnavailable => {
+                    "The edge is temporarily unable to accept this request."
+                }
                 Self::DependencyUnavailable => "Authentication is temporarily unavailable.",
                 Self::Configuration => "The hosted edge is not ready.",
             },
@@ -117,7 +126,9 @@ impl HostedEdgeError {
             Self::NotFound => 404,
             Self::Conflict => 409,
             Self::IntegrityFailure => 503,
-            Self::CapacityUnavailable | Self::DependencyUnavailable => 503,
+            Self::CapacityUnavailable
+            | Self::RequestCapacityUnavailable
+            | Self::DependencyUnavailable => 503,
             Self::Configuration => 500,
         }
     }

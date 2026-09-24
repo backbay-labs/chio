@@ -8,8 +8,8 @@ use chio_core_types::capability::scope::Operation;
 use chio_core_types::capability::token::CapabilityToken;
 use chio_core_types::{canonical_json_bytes, sha256_hex, PublicKey};
 use chio_finding_market_port::{
-    HostedCapabilityAdmissionOutcome, HostedMarketPortError, HostedPrincipal, HostedPrincipalRole,
-    HostedTenantId,
+    HostedCapabilityAdmission, HostedCapabilityAdmissionOutcome, HostedMarketPortError,
+    HostedPrincipal, HostedPrincipalRole, HostedTenantId,
 };
 use chio_kernel::{DpopProof, DPOP_SCHEMA};
 use hmac::{Hmac, Mac as _};
@@ -449,20 +449,22 @@ impl HostedAuthenticator {
             .repository
             .consume_capability_dpop_admission(
                 &request.tenant_id,
-                &capability.id,
-                &nonce_sha256,
-                // Only a mutation with a durable idempotency key may be
-                // resumed from its request binding. A read carries none, so
-                // reusing its proof stays a rejected replay.
-                request
-                    .idempotency_key
-                    .as_deref()
-                    .map(|_| action_hash.as_str()),
-                valid_through,
-                max_invocations,
-                capability.expires_at,
-                request.now_unix_secs,
-                self.config.dpop_nonce_capacity_per_tenant,
+                &HostedCapabilityAdmission {
+                    capability_id: &capability.id,
+                    nonce_sha256: &nonce_sha256,
+                    // Only a mutation with a durable idempotency key may be
+                    // resumed from its request binding. A read carries none,
+                    // so reusing its proof stays a rejected replay.
+                    request_sha256: request
+                        .idempotency_key
+                        .as_deref()
+                        .map(|_| action_hash.as_str()),
+                    valid_through,
+                    max_invocations,
+                    expires_at: capability.expires_at,
+                    now: request.now_unix_secs,
+                    tenant_nonce_capacity: self.config.dpop_nonce_capacity_per_tenant,
+                },
             )
             .await
             .map_err(map_store)?;
@@ -700,14 +702,7 @@ mod tests {
         async fn consume_capability_dpop_admission(
             &self,
             _tenant: &HostedTenantId,
-            _capability_id: &str,
-            _nonce_sha256: &str,
-            _request_sha256: Option<&str>,
-            _valid_through: u64,
-            _max_invocations: u32,
-            _expires_at: u64,
-            _now: u64,
-            _tenant_nonce_capacity: u64,
+            _admission: &HostedCapabilityAdmission<'_>,
         ) -> Result<HostedCapabilityAdmissionOutcome, HostedMarketPortError> {
             let mut nonce_fresh = self
                 .nonce_fresh

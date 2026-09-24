@@ -121,7 +121,8 @@ jobs:
   postgres-store:
     name: Cognition market PostgreSQL isolation
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Cold Rust qualification plus evidence and cache upload can exceed 30 minutes.
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16.6-alpine

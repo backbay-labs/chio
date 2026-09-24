@@ -13,8 +13,9 @@ use chio_control_plane::trust_control::finding_hosted_profile::{
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes_from_str, PublicKey};
 use chio_finding_hosted_edge::{
-    serve_hosted_market_loopback_with_shutdown, HostedAuthenticator, HostedHttpServerConfig,
-    HostedHttpServerState, HostedReleaseIdentity, HOSTED_RELEASE_IDENTITY_SCHEMA,
+    serve_hosted_market_loopback_with_shutdown, HostedAuthenticator, HostedEdgeMetrics,
+    HostedHttpServerConfig, HostedHttpServerState, HostedReleaseIdentity,
+    HOSTED_RELEASE_IDENTITY_SCHEMA,
 };
 use chio_finding_market_store_postgres::{
     HostedAuthorityMode, HostedMarketAuthority, HostedMarketStoreError, HostedPostgresConfig,
@@ -142,6 +143,7 @@ async fn run(args: Args) -> Result<(), ServerError> {
         authenticator,
         store,
         Arc::new(trusted_proxy),
+        Arc::new(HostedEdgeMetrics::default()),
     )
     .map_err(|error| ServerError::Authentication(error.to_string()))?;
     let listener = tokio::net::TcpListener::bind(profile.listen)

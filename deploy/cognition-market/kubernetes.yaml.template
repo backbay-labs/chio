@@ -21,6 +21,12 @@ data:
       ssl_certificate_key /run/chio/tls/tls.key;
       client_max_body_size 4m;
       proxy_request_buffering on;
+      # Counters are operational intelligence about traffic, not something
+      # a caller needs. The public listener refuses them; the scrape
+      # listener below serves them on the pod address instead.
+      location = /health/metrics {
+        deny all;
+      }
       location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
@@ -30,6 +36,29 @@ data:
         proxy_set_header X-Forwarded-For "";
         proxy_set_header X-Forwarded-Host "";
         proxy_set_header X-Forwarded-Proto "";
+      }
+    }
+
+    # Counters are scraped from the pod address, which is how Prometheus
+    # reaches a workload, and this port is deliberately absent from the
+    # Service so nothing outside the cluster can route to it. It serves
+    # the counters and nothing else: any other path is refused here rather
+    # than reaching the edge without the public listener's headers.
+    server {
+      listen 9090;
+      listen [::]:9090;
+      location = /health/metrics {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Forwarded "for=$remote_addr;proto=https;host=@PUBLIC_HOST@";
+        proxy_set_header Chio-Proxy-Authentication "${CHIO_PROXY_AUTHENTICATION}";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Forwarded-Host "";
+        proxy_set_header X-Forwarded-Proto "";
+      }
+      location / {
+        return 404;
       }
     }
 ---
@@ -56,6 +85,12 @@ spec:
       labels:
         app.kubernetes.io/name: chio-finding-market
         chio.world/network-role: market-edge
+      annotations:
+        # The counters live on the pod address, not the Service, so a
+        # scraper reaches them without them being publicly routable.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: /health/metrics
     spec:
       serviceAccountName: chio-finding-market
       automountServiceAccountToken: false
@@ -189,6 +224,11 @@ spec:
           ports:
             - name: https
               containerPort: 8443
+              protocol: TCP
+            # Scraped from the pod address. Absent from the Service, so
+            # only in-cluster scrapers reach it.
+            - name: metrics
+              containerPort: 9090
               protocol: TCP
           readinessProbe:
             httpGet:
@@ -346,6 +386,16 @@ spec:
               chio.world/market-ingress-client: "true"
       ports:
         - port: 8443
+          protocol: TCP
+    # Scraping is opt-in per namespace, like ingress: a counter nothing
+    # can reach is not observability, and one anything can reach is a
+    # traffic-volume leak.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              chio.world/market-metrics-scraper: "true"
+      ports:
+        - port: 9090
           protocol: TCP
   egress:
     - to:

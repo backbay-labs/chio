@@ -33,7 +33,10 @@
   },
   "overrides": {
     "browserslist": "4.28.8",
-    "fast-uri": "3.1.5",
+    "fast-uri": "3.1.6",
+    "metro": "0.84.5",
+    "metro-config": "0.84.5",
+    "metro-transform-worker": "0.84.5",
     "miniflare": {
       "undici": "7.29.0"
     },
@@ -41,6 +44,7 @@
       "postcss": "8.5.26"
     },
     "postcss": "8.5.26",
+    "sharp": "0.35.4",
     "undici": "7.29.0",
     "uuid": "11.1.1"
   }

@@ -92,14 +92,14 @@ fn classical_seed() -> [u8; 32] {
 }
 
 fn stage2_pq_seed() -> [u8; 32] {
-    let raw = b"chio-m03-p5-t2-stage2-pq-seed!aa";
+    let raw = b"chio-attest-stage2-pq-seed-aaaaa";
     let mut out = [0u8; 32];
     out.copy_from_slice(raw);
     out
 }
 
 fn stage3_pq_seed() -> [u8; 32] {
-    let raw = b"chio-m03-p5-t2-stage3-rotpq-seed";
+    let raw = b"chio-attest-stage3-rotpq-seed-aa";
     let mut out = [0u8; 32];
     out.copy_from_slice(raw);
     out

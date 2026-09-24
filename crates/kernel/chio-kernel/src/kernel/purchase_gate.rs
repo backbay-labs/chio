@@ -757,6 +757,42 @@ mod tests {
         }
     }
 
+    /// Cross-organization escrow is registered on the wire and has no
+    /// admission lane. The reservation is only honest while every gate
+    /// refuses it, so a lane appearing without this test noticing is the
+    /// failure this guards.
+    #[test]
+    fn cross_organization_escrow_is_registered_and_never_admitted() {
+        let grant = ToolGrant {
+            server_id: "finding-server".to_owned(),
+            tool_name: "finding.reveal".to_owned(),
+            operations: vec![Operation::Invoke],
+            constraints: vec![
+                Constraint::RequireFindingPurchase(Box::new(FindingPurchaseMarkerV1 {
+                    finding_id: "finding-1".to_owned(),
+                    listing_id: "listing-1".to_owned(),
+                    settlement: FindingSettlementSelector::CrossOrgEscrow {
+                        settlement_profile_sha256: DIGEST.to_owned(),
+                    },
+                })),
+                Constraint::OutputDigestSha256(DIGEST.to_owned()),
+            ],
+            max_invocations: Some(1),
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: Some(true),
+        };
+
+        let Err(denial) = purchase_marked_grant(&grant) else {
+            panic!("an escrow-marked grant must never reach admission");
+        };
+        assert_eq!(denial.code(), FindingDenialCode::CarrierInvalid);
+        assert_eq!(
+            denial.detail(),
+            "purchase-marked delivery requires the local reversible-hold settlement rail"
+        );
+    }
+
     #[test]
     fn durable_purchase_snapshot_survives_status_operator_rotation() {
         let kernel_key = Keypair::from_seed(&[91; 32]);

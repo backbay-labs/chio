@@ -157,9 +157,9 @@ impl ChioKernel {
         expected: Option<&VerifiedFindingRecovery>,
         admitted_status: Option<&VerifiedFindingStatusProof>,
         _now_unix_secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), FindingDenial> {
         if expected.is_some() || admitted_status.is_some() {
-            return Err(MARKET_DISABLED.to_owned());
+            return Err(FindingDenial::unavailable(MARKET_DISABLED));
         }
         Ok(())
     }

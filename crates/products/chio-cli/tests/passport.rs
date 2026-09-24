@@ -5415,19 +5415,34 @@ fn passport_attestor_selects_serving_kernel_and_rejects_untrusted_evidence_count
     fs::write(&seed, attestor.seed_hex()).expect("write attestor");
     let capability = capability_with_id("cap-trusted-history", &subject, &kernel);
     let store = SqliteReceiptStore::open(&database).expect("open store");
-    store.record_capability_snapshot(&capability, None).expect("record lineage");
-    store.append_chio_receipt_returning_seq(&receipt_with_keypair(
-        "trusted-work", &capability.id, current_unix_secs(), &kernel,
-    )).expect("record work");
+    store
+        .record_capability_snapshot(&capability, None)
+        .expect("record lineage");
+    store
+        .append_chio_receipt_returning_seq(&receipt_with_keypair(
+            "trusted-work",
+            &capability.id,
+            current_unix_secs(),
+            &kernel,
+        ))
+        .expect("record work");
     let create = |trusted: Option<String>| {
         let mut command = Command::new(env!("CARGO_BIN_EXE_chio"));
         command.current_dir(&directory).args([
-            "--receipt-db", database.to_str().expect("db"), "passport", "create",
-            "--subject-public-key", &subject.public_key().to_hex(),
-            "--output", output.to_str().expect("output"),
-            "--signing-seed-file", seed.to_str().expect("seed"),
+            "--receipt-db",
+            database.to_str().expect("db"),
+            "passport",
+            "create",
+            "--subject-public-key",
+            &subject.public_key().to_hex(),
+            "--output",
+            output.to_str().expect("output"),
+            "--signing-seed-file",
+            seed.to_str().expect("seed"),
         ]);
-        if let Some(trusted) = trusted { command.args(["--trusted-kernel-key", &trusted]); }
+        if let Some(trusted) = trusted {
+            command.args(["--trusted-kernel-key", &trusted]);
+        }
         command.output().expect("run create")
     };
     let missing = create(None);
@@ -5438,16 +5453,33 @@ fn passport_attestor_selects_serving_kernel_and_rejects_untrusted_evidence_count
     assert!(!wrong.status.success());
     assert!(!output.exists());
     let accepted = create(Some(kernel.public_key().to_hex()));
-    assert!(accepted.status.success(), "{}", String::from_utf8_lossy(&accepted.stderr));
-    let passport: serde_json::Value = serde_json::from_slice(&fs::read(&output).expect("passport")).expect("JSON");
-    assert_eq!(passport["credentials"][0]["credentialSubject"]["metrics"]["history_depth"]["receipt_count"], 1);
+    assert!(
+        accepted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+    let passport: serde_json::Value =
+        serde_json::from_slice(&fs::read(&output).expect("passport")).expect("JSON");
+    assert_eq!(
+        passport["credentials"][0]["credentialSubject"]["metrics"]["history_depth"]
+            ["receipt_count"],
+        1
+    );
     assert_eq!(passport["credentials"][0]["evidence"]["receiptCount"], 1);
     fs::remove_file(&output).expect("remove accepted output");
-    store.append_chio_receipt_returning_seq(&receipt_with_keypair(
-        "injected-work", &capability.id, current_unix_secs(), &Keypair::generate(),
-    )).expect("insert untrusted but correctly signed record");
+    store
+        .append_chio_receipt_returning_seq(&receipt_with_keypair(
+            "injected-work",
+            &capability.id,
+            current_unix_secs(),
+            &Keypair::generate(),
+        ))
+        .expect("insert untrusted but correctly signed record");
     let injected = create(Some(kernel.public_key().to_hex()));
-    assert!(!injected.status.success(), "an untrusted record cannot inflate signed evidence counts");
+    assert!(
+        !injected.status.success(),
+        "an untrusted record cannot inflate signed evidence counts"
+    );
     assert!(!output.exists());
     drop(store);
     fs::remove_dir_all(directory).expect("remove isolated test");

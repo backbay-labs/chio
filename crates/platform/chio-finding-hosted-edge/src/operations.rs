@@ -291,6 +291,10 @@ pub enum HostedMetricEvent {
     LeaseConflict,
     TransitionCompleted,
     TransitionFailed,
+    /// A request refused before a handler ran because the replica was at
+    /// its in-flight ceiling. The overload signal: it separates "the edge
+    /// is saturated" from "the request was wrong".
+    RequestShed,
 }
 
 /// Every counter value at one instant.
@@ -307,12 +311,13 @@ pub struct HostedMetricSnapshot {
     pub lease_conflict: u64,
     pub transition_completed: u64,
     pub transition_failed: u64,
+    pub request_shed: u64,
 }
 
 /// Monotonic in-process counters for the operational endpoints.
 #[derive(Default)]
 pub struct HostedEdgeMetrics {
-    counters: [AtomicU64; 11],
+    counters: [AtomicU64; 12],
 }
 
 impl HostedEdgeMetrics {
@@ -337,6 +342,7 @@ impl HostedEdgeMetrics {
             lease_conflict: value(8),
             transition_completed: value(9),
             transition_failed: value(10),
+            request_shed: value(11),
         }
     }
 }
@@ -400,5 +406,12 @@ mod tests {
         let metrics = HostedEdgeMetrics::default();
         metrics.increment(HostedMetricEvent::AuthenticationDenied);
         assert_eq!(metrics.snapshot().authentication_denied, 1);
+        metrics.increment(HostedMetricEvent::RequestShed);
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.request_shed, 1);
+        assert_eq!(
+            snapshot.authentication_denied, 1,
+            "each family counts only its own event"
+        );
     }
 }

@@ -137,6 +137,115 @@ fn inclusion<'a>(
     }
 }
 
+/// Facts read back from the store's own public surface, so the shared rule
+/// can be run against exactly the state the store decided on.
+struct StoredFacts {
+    floor_map_epoch: u64,
+    operator_authorization_sha256: String,
+    epoch_generated_at: u64,
+    proof: chio_finding::FindingStatusProofFacts,
+}
+
+impl chio_finding::FindingStatusSource for StoredFacts {
+    type Error = std::convert::Infallible;
+
+    fn sticky_status(&self) -> Result<Option<chio_finding::FindingStickyStatus>, Self::Error> {
+        Ok(None)
+    }
+
+    fn floor(&self) -> Result<Option<chio_finding::FindingStatusFloorFacts>, Self::Error> {
+        Ok(Some(chio_finding::FindingStatusFloorFacts {
+            map_epoch: self.floor_map_epoch,
+            operator_authorization_sha256: self.operator_authorization_sha256.clone(),
+        }))
+    }
+
+    fn proof_at(
+        &self,
+        _map_epoch: u64,
+    ) -> Result<Option<chio_finding::FindingStatusProofFacts>, Self::Error> {
+        Ok(Some(self.proof))
+    }
+
+    fn epoch_generated_at(&self, _map_epoch: u64) -> Result<Option<u64>, Self::Error> {
+        Ok(Some(self.epoch_generated_at))
+    }
+}
+
+/// The store's decision is the shared rule's verdict on the same durable
+/// facts.
+///
+/// This pins the routing, not the rule: both sides run the same code, so a
+/// change to the rule moves both together and is caught by the rule's own
+/// tests in chio-finding. What this catches is the drift the seam exists to
+/// prevent, a profile deciding legality with a policy of its own.
+#[test]
+fn the_store_decision_tracks_the_shared_rule_on_identical_facts() {
+    let fixture = DurableFixture::new();
+    let finding_id = hex64('1');
+    let epoch_id = hex64('2');
+    let root_hash = hex64('3');
+    let authority = fixture.open();
+    let store = authority.finding_status_store();
+    store
+        .observe_verified_epoch(&epoch(
+            1,
+            &epoch_id,
+            &root_hash,
+            br#"{"schema":"chio.finding.status-epoch.v1","map_epoch":1}"#,
+            1,
+        ))
+        .expect("persist epoch");
+    store
+        .observe_verified_non_inclusion(&non_inclusion(
+            1,
+            &epoch_id,
+            &root_hash,
+            &finding_id,
+            br#"{"kind":"non_inclusion","map_epoch":1}"#,
+        ))
+        .expect("persist non-inclusion");
+
+    let current = store.get_current_epoch(FEED).expect("current epoch");
+    let proof = store
+        .get_latest_proof(FEED, &finding_id)
+        .expect("latest proof")
+        .expect("proof exists");
+    let facts = StoredFacts {
+        floor_map_epoch: current.map_epoch,
+        operator_authorization_sha256: current.operator_authorization_sha256.clone(),
+        epoch_generated_at: current.generated_at,
+        proof: chio_finding::FindingStatusProofFacts {
+            kind: proof.kind,
+            checked_at: proof.checked_at,
+            valid_until: proof.valid_until,
+        },
+    };
+
+    for trusted_now in [NOW + 1, NOW + 100, NOW + 302, NOW + 501, NOW + 900] {
+        let admitted_by_store = matches!(
+            store.status_for_purchase(FEED, &finding_id, trusted_now, MAX_EPOCH_AGE_SECS),
+            Ok(FindingStatusDecision::VerifiedLive(_))
+        );
+        let admitted_by_rule = matches!(
+            chio_finding::decide_finding_status(
+                &facts,
+                &chio_finding::FindingStatusAdmissionRequest {
+                    trusted_now,
+                    max_epoch_age_secs: MAX_EPOCH_AGE_SECS,
+                    expected_operator_authorization_sha256: None,
+                    operator_status_observed_at: None,
+                },
+            ),
+            Ok(chio_finding::FindingStatusVerdict::VerifiedLive)
+        );
+        assert_eq!(
+            admitted_by_store, admitted_by_rule,
+            "store and shared rule disagree at {trusted_now}"
+        );
+    }
+}
+
 #[test]
 fn floor_epoch_and_non_inclusion_survive_restart_with_exact_bytes() {
     let fixture = DurableFixture::new();

@@ -18,8 +18,9 @@ use chio_fiscal::{
 };
 use chio_market::{
     quote_and_bind, BoundPolicy, ClaimDecision, ClaimDenialReason, ClaimEvidence,
-    ClaimSettlementRequest, ClaimSettlementSink, InsuranceFlowError, PolicyStatus,
-    ReceiptEvidenceSource, ReceiptFingerprint, ResolvedReceiptEvidence, StaticPremiumSource,
+    ClaimSettlementRequest, ClaimSettlementSink, InsuranceFlowError, InsuranceSeamError,
+    PolicyStatus, ReceiptEvidenceSource, ReceiptFingerprint, ResolvedReceiptEvidence,
+    StaticPremiumSource,
 };
 use chio_underwriting::{LookbackWindow, PremiumInputs};
 
@@ -97,11 +98,10 @@ struct InMemoryReceipts {
 }
 
 impl ReceiptEvidenceSource for InMemoryReceipts {
-    fn resolve(&self, receipt_id: &str) -> Result<ResolvedReceiptEvidence, String> {
-        self.entries
-            .get(receipt_id)
-            .cloned()
-            .ok_or_else(|| format!("receipt `{receipt_id}` not found"))
+    fn resolve(&self, receipt_id: &str) -> Result<ResolvedReceiptEvidence, InsuranceSeamError> {
+        self.entries.get(receipt_id).cloned().ok_or_else(|| {
+            InsuranceSeamError::not_found(format!("receipt `{receipt_id}` not found"))
+        })
     }
 }
 
@@ -122,8 +122,11 @@ impl CapturingSink {
 }
 
 impl ClaimSettlementSink for CapturingSink {
-    fn submit(&self, request: ClaimSettlementRequest) -> Result<String, String> {
-        let mut events = self.events.lock().map_err(|error| error.to_string())?;
+    fn submit(&self, request: ClaimSettlementRequest) -> Result<String, InsuranceSeamError> {
+        let mut events = self
+            .events
+            .lock()
+            .map_err(|error| InsuranceSeamError::unavailable(error.to_string()))?;
         let reference = format!("settle-ref-{}", events.len());
         events.push(request);
         Ok(reference)

@@ -69,6 +69,15 @@ pub(crate) struct RollbackAnchor {
     /// leaves damage as the only explanation for a slot that does not
     /// decode.
     rotation: Mutex<()>,
+    /// The record the anchor last committed, published after the write that
+    /// made it durable.
+    ///
+    /// A companion read proves against this instead of the file, so an
+    /// ordinary read never waits on a rotation's fsyncs. It can lag the
+    /// file, never lead it, and proving against an older anchor is sound:
+    /// the database only moves forward, so an older anchor is a weaker
+    /// claim about the same chain.
+    committed: Mutex<Option<AnchorRecord>>,
 }
 
 impl RollbackAnchor {
@@ -86,6 +95,7 @@ impl RollbackAnchor {
             expected_device,
             expected_inode,
             rotation: Mutex::new(()),
+            committed: Mutex::new(None),
         };
         anchor.validate_identity()?;
         Ok(anchor)
@@ -207,6 +217,9 @@ impl RollbackAnchor {
     /// Anchor reads exclude the rotation, so no slot this observes is
     /// mid-write: a slot that does not decode was damaged, and denies.
     pub(crate) fn committed_record(&self) -> Result<AnchorRecord, SqliteServingOwnerError> {
+        if let Some(record) = self.published_record()? {
+            return Ok(record);
+        }
         let _rotation = self.hold_rotation()?;
         self.validate_identity()?;
         let loaded = self
@@ -215,7 +228,28 @@ impl RollbackAnchor {
         if loaded.corrupt_slot {
             return Err(invalid("serving rollback anchor contains a corrupt slot"));
         }
+        self.publish(&loaded.record)?;
         Ok(loaded.record)
+    }
+
+    /// The published record, if a write or a first read has established
+    /// one.
+    fn published_record(&self) -> Result<Option<AnchorRecord>, SqliteServingOwnerError> {
+        self.committed
+            .lock()
+            .map(|committed| committed.clone())
+            .map_err(|_| invalid("serving rollback anchor snapshot is poisoned"))
+    }
+
+    /// Publish the record readers prove against. Called only after the
+    /// record is durable, so the snapshot cannot lead the file.
+    fn publish(&self, record: &AnchorRecord) -> Result<(), SqliteServingOwnerError> {
+        let mut committed = self
+            .committed
+            .lock()
+            .map_err(|_| invalid("serving rollback anchor snapshot is poisoned"))?;
+        *committed = Some(record.clone());
+        Ok(())
     }
 
     pub(crate) fn sync_after_commit(
@@ -280,7 +314,7 @@ impl RollbackAnchor {
         if persisted.corrupt_slot || persisted.record != record {
             return Err(invalid("serving rollback anchor write did not round trip"));
         }
-        Ok(())
+        self.publish(&record)
     }
 
     /// Exclude the rotation from anchor reads for the caller's whole
@@ -735,9 +769,7 @@ mod tests {
 
     use crate::{SqliteAuthorityStore, SqliteServingOwnerError};
 
-    use super::{
-        decode_slot, COMMIT_MARKER, GENESIS_CHAIN_DIGEST, PAYLOAD_OFFSET, SLOT_COUNT, SLOT_SIZE,
-    };
+    use super::{decode_slot, COMMIT_MARKER, GENESIS_CHAIN_DIGEST, SLOT_COUNT, SLOT_SIZE};
 
     struct Fixture {
         _temp: TempDir,
@@ -872,14 +904,23 @@ mod tests {
             .expect("committed anchor slot")
     }
 
-    /// Rotation is excluded from anchor reads, so a slot a reader finds
-    /// cleared was not caught mid-write. An external rollback that clears
-    /// the newest slot to strand the companion on the prior record denies.
+    /// A reader proves against the record the anchor published when it
+    /// made that record durable, not against the file. Tampering with the
+    /// file cannot strand a live reader on a prior record, which is what
+    /// clearing the newest slot marker was for. A process that has
+    /// published nothing yet still reads the file, and a damaged file
+    /// fails that read.
     #[test]
-    fn companion_reads_reject_a_cleared_slot_marker() {
+    fn a_live_reader_is_not_downgraded_by_anchor_file_tampering() {
         let fixture = fixture();
-        begin(&fixture.authority, "request-rotation-a", now_ms());
-        begin(&fixture.authority, "request-rotation-b", now_ms());
+        begin(&fixture.authority, "request-tamper-a", now_ms());
+        begin(&fixture.authority, "request-tamper-b", now_ms());
+        let published = fixture
+            .authority
+            .owner
+            .companion_anchor()
+            .expect("published anchor");
+
         let anchor = lock_path(&fixture.lock_root, &fixture.authority);
         overwrite_at(
             &anchor,
@@ -887,12 +928,14 @@ mod tests {
             &[0_u8; COMMIT_MARKER.len()],
         );
 
-        assert!(
-            matches!(
-                fixture.authority.owner.companion_anchor(),
-                Err(SqliteServingOwnerError::Invalid(_))
-            ),
-            "a companion read denies a slot whose commit marker was cleared"
+        assert_eq!(
+            fixture
+                .authority
+                .owner
+                .companion_anchor()
+                .expect("the published record still stands"),
+            published,
+            "a reader must keep proving against the record the anchor published"
         );
     }
 
@@ -964,29 +1007,6 @@ mod tests {
         }
         commits.join().expect("writer thread");
         assert!(reads > 0, "the reader must observe the writer working");
-    }
-
-    /// Tolerating the rotation window must not extend to a slot that claims
-    /// to be committed and does not decode, which no interleaving produces.
-    #[test]
-    fn companion_reads_reject_a_slot_that_claims_a_corrupt_commit() {
-        let fixture = fixture();
-        begin(&fixture.authority, "request-corrupt-a", now_ms());
-        begin(&fixture.authority, "request-corrupt-b", now_ms());
-        let anchor = lock_path(&fixture.lock_root, &fixture.authority);
-        overwrite_at(
-            &anchor,
-            newest_slot_offset(&anchor) + u64::try_from(PAYLOAD_OFFSET).expect("payload offset"),
-            b"not-canonical-json",
-        );
-
-        assert!(
-            matches!(
-                fixture.authority.owner.companion_anchor(),
-                Err(SqliteServingOwnerError::Invalid(_))
-            ),
-            "a companion read denies a slot that claims a commit it cannot decode"
-        );
     }
 
     /// A companion read runs on its own connection and legitimately observes

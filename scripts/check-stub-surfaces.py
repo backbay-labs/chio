@@ -37,6 +37,52 @@ def allow(reason: str, expires: str) -> AllowlistEntry:
 
 
 ALLOWLIST: dict[str, AllowlistEntry] = {
+    # Exact upstream comments only. New code and comments remain checked;
+    # supply-chain audits separately cover this pinned cryptographic source.
+    "third_party/aws-lc-rs-chio/Makefile": allow(
+        "upstream optional macOS build recipe comments",
+        "2026-12-31",
+    ),
+    "third_party/aws-lc-rs-chio/src/aead.rs": allow(
+        "upstream ChaCha block-length type maintenance comment",
+        "2026-12-31",
+    ),
+    "third_party/aws-lc-rs-chio/src/aead/poly1305.rs": allow(
+        "upstream Poly1305 input-bound limitation; dependency audit owns this residual",
+        "2026-12-31",
+    ),
+    "third_party/aws-lc-rs-chio/src/agreement/data/agreement_tests.txt": allow(
+        "upstream RFC test-vector provenance comment",
+        "2026-12-31",
+    ),
+    "third_party/aws-lc-rs-chio/src/cipher.rs": allow(
+        "upstream unsupported CFB modes remain explicit",
+        "2026-12-31",
+    ),
+    "third_party/aws-lc-rs-chio/src/cipher/aes.rs": allow(
+        "upstream unsupported CFB modes remain explicit",
+        "2026-12-31",
+    ),
+    "third_party/aws-lc-rs-chio/src/cipher/key.rs": allow(
+        "upstream standard-library import maintenance comment",
+        "2026-12-31",
+    ),
+    "third_party/aws-lc-rs-chio/src/io/der.rs": allow(
+        "upstream DER conversion and code-size maintenance comments",
+        "2026-12-31",
+    ),
+    "third_party/aws-lc-rs-chio/src/lib.rs": allow(
+        "upstream standard-library import and FIPS version maintenance comments",
+        "2026-12-31",
+    ),
+    "third_party/aws-lc-rs-chio/src/rsa/key.rs": allow(
+        "upstream RSA validation documentation and maintenance comments",
+        "2026-12-31",
+    ),
+    "third_party/aws-lc-rs-chio/src/test.rs": allow(
+        "upstream disabled negative test comment",
+        "2026-12-31",
+    ),
     "crates/protocol/chio-acp-edge/src/bridge.rs": allow(
         "intentional advisory permission preview text, enforcement happens at invoke time",
         "2026-12-31",
@@ -242,6 +288,43 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
 }
 
 ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
+    "third_party/aws-lc-rs-chio/Makefile": (
+        r"^# TODO: This build target produces linker error on Mac\.$",
+    ),
+    "third_party/aws-lc-rs-chio/src/aead.rs": (
+        r"^// TODO: Make this `usize`\.$",
+    ),
+    "third_party/aws-lc-rs-chio/src/aead/poly1305.rs": (
+        r"^// TODO: enforce maximum input length\.$",
+    ),
+    "third_party/aws-lc-rs-chio/src/agreement/data/agreement_tests.txt": (
+        r"^# XXX: MyQ is not provided in the RFC, so we calculated it ourselves\.$",
+    ),
+    "third_party/aws-lc-rs-chio/src/cipher.rs": (
+        r"^// TODO: Hopefully support CFB1, and CFB8$",
+    ),
+    "third_party/aws-lc-rs-chio/src/cipher/aes.rs": (
+        r"^// TODO: Hopefully support CFB1, and CFB8$",
+    ),
+    "third_party/aws-lc-rs-chio/src/cipher/key.rs": (
+        r"^// TODO: Uncomment when MSRV >= 1\.64$",
+    ),
+    "third_party/aws-lc-rs-chio/src/io/der.rs": (
+        r"^\} // XXX: narrowing conversion\.$",
+        r"^// TODO: investigate taking decoder as a reference to reduce generated code$",
+    ),
+    "third_party/aws-lc-rs-chio/src/lib.rs": (
+        r"^// TODO: Uncomment when MSRV >= 1\.64$",
+        r"^// TODO: Resolve at runtime via the `FIPS_version\(\)` C API once$",
+    ),
+    "third_party/aws-lc-rs-chio/src/rsa/key.rs": (
+        r"^// TODO: Uncomment when MSRV >= 1\.64$",
+        r"^///   validate `d`, which means a key carrying a placeholder or otherwise$",
+        r"^// TODO: refactor$",
+    ),
+    "third_party/aws-lc-rs-chio/src/test.rs": (
+        r"^// TODO: This test is causing a thread panic which prevents capture with should_panic$",
+    ),
     "crates/protocol/chio-acp-edge/src/bridge.rs": (
         r"permission preview is advisory only; enforcement happens at invoke time",
     ),

@@ -2,6 +2,10 @@
 
 Next.js App Router wrappers for Chio verdict gating.
 
+Requires Next.js 15.5.24 or newer within the 15.x line. Earlier versions are
+outside this package's supported security baseline. Upgrading the application
+does not replace Chio capability or receipt verification.
+
 ## Route Handler
 
 ```ts

@@ -10,6 +10,22 @@
 //! history, bounded current point-proof retention, and sticky pending or
 //! retracted state per finding.
 
+// The status lattice and the admission rule live in chio-finding rather
+// than here, so this authority is not the only place that could hold
+// them. It is the only implementor today; see that module for what the
+// hosted profile would need before it could be a second one. There is
+// deliberately no live sticky row: liveness needs a fresh non-inclusion
+// proof at the current durable floor.
+pub use chio_finding::{FindingStatusProofKind, FindingStickyStatus};
+
+use std::cell::RefCell;
+
+use chio_finding::{
+    decide_finding_status, FindingStatusAdmissionError, FindingStatusAdmissionRequest,
+    FindingStatusFloorFacts, FindingStatusProofFacts, FindingStatusRefusal, FindingStatusSource,
+    FindingStatusVerdict,
+};
+
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use chio_core::{sha256_hex, StoreMutationFence};
@@ -215,14 +231,6 @@ pub struct FindingRetractionIntentRecord {
     pub updated_at: u64,
 }
 
-/// Sticky local status. There is deliberately no `live` row: liveness needs a
-/// fresh non-inclusion proof at the current durable floor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FindingStickyStatus {
-    Pending,
-    Retracted,
-}
-
 /// One sticky local status row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindingStatusRecord {
@@ -262,13 +270,6 @@ pub struct FindingStatusLeafRecord {
     pub first_map_epoch: u64,
     pub first_epoch_id: String,
     pub recorded_at: u64,
-}
-
-/// Closed portable proof branch persisted by the store.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FindingStatusProofKind {
-    Inclusion,
-    NonInclusion,
 }
 
 /// Storage-neutral boundary for a portable proof input already verified by the
@@ -1689,6 +1690,70 @@ impl CognitionMarketStatusTrustStore for SqliteFindingStatusStore {
 /// transaction. Purchase reservation uses this sibling-store seam so the
 /// fresh non-inclusion decision and the new financial reservation commit
 /// atomically under the same authority lock.
+/// Supplies the shared admission rule with this store's durable facts,
+/// retaining the rows it reads so the caller keeps its record-carrying
+/// decision without loading them twice.
+struct SqliteStatusFacts<'a> {
+    transaction: &'a Transaction<'a>,
+    feed_id: &'a str,
+    finding_id: &'a str,
+    sticky: RefCell<Option<FindingStatusRecord>>,
+    floor: RefCell<Option<FindingStatusFeedFloor>>,
+    proof: RefCell<Option<FindingStatusProofRecord>>,
+}
+
+impl FindingStatusSource for SqliteStatusFacts<'_> {
+    type Error = FindingStatusStoreError;
+
+    fn sticky_status(&self) -> Result<Option<FindingStickyStatus>, Self::Error> {
+        let record = load_status_tx(self.transaction, self.feed_id, self.finding_id)?;
+        let state = record.as_ref().map(|status| status.state);
+        *self.sticky.borrow_mut() = record;
+        Ok(state)
+    }
+
+    fn floor(&self) -> Result<Option<FindingStatusFloorFacts>, Self::Error> {
+        let record = load_floor_tx(self.transaction, self.feed_id)?;
+        let facts = record.as_ref().map(|floor| FindingStatusFloorFacts {
+            map_epoch: floor.map_epoch,
+            operator_authorization_sha256: floor.operator_authorization_sha256.clone(),
+        });
+        *self.floor.borrow_mut() = record;
+        Ok(facts)
+    }
+
+    fn proof_at(&self, map_epoch: u64) -> Result<Option<FindingStatusProofFacts>, Self::Error> {
+        let record = load_proof_tx(self.transaction, self.feed_id, self.finding_id, map_epoch)?;
+        // A row that does not bind the floor is damage, and damage is not
+        // a freshness question. Verifying it here rather than after the
+        // verdict keeps an expired mismatched row from being reported as
+        // an ordinary stale proof.
+        if let (Some(proof), Some(floor)) = (record.as_ref(), self.floor.borrow().as_ref()) {
+            verify_proof_record_at_floor(proof, floor)?;
+        }
+        let facts = record.as_ref().map(|proof| FindingStatusProofFacts {
+            kind: proof.kind,
+            checked_at: proof.checked_at,
+            valid_until: proof.valid_until,
+        });
+        *self.proof.borrow_mut() = record;
+        Ok(facts)
+    }
+
+    fn epoch_generated_at(&self, map_epoch: u64) -> Result<Option<u64>, Self::Error> {
+        // The floor and its epoch must agree before either can stand for a
+        // finding. That is this store's own referential integrity, so it
+        // is checked here rather than in the shared rule.
+        let Some(epoch) = load_epoch_tx(self.transaction, self.feed_id, map_epoch)? else {
+            return Ok(None);
+        };
+        if let Some(floor) = self.floor.borrow().as_ref() {
+            verify_floor_epoch_consistency(floor, &epoch)?;
+        }
+        Ok(Some(epoch.generated_at))
+    }
+}
+
 pub(crate) fn status_for_purchase_tx(
     transaction: &Transaction<'_>,
     feed_id: &str,
@@ -1704,57 +1769,76 @@ pub(crate) fn status_for_purchase_tx(
     require_positive(max_epoch_age_secs, "max_epoch_age_secs")?;
     ensure_feed_registered_tx(transaction, feed_id)?;
 
-    if let Some(status) = load_status_tx(transaction, feed_id, finding_id)? {
-        return Ok(match status.state {
-            FindingStickyStatus::Pending => FindingStatusDecision::Pending(status),
-            FindingStickyStatus::Retracted => FindingStatusDecision::Retracted(status),
-        });
-    }
-
-    let floor = load_floor_tx(transaction, feed_id)?.ok_or_else(|| {
-        FindingStatusStoreError::MissingFloor {
-            feed_id: feed_id.to_owned(),
-        }
-    })?;
-    if expected_operator_authorization_sha256
-        .is_some_and(|expected| floor.operator_authorization_sha256 != expected)
-    {
-        return Err(FindingStatusStoreError::Conflict(
-            "current status floor does not bind the governance-authorized operator".to_owned(),
-        ));
-    }
-    let proof =
-        load_proof_tx(transaction, feed_id, finding_id, floor.map_epoch)?.ok_or_else(|| {
-            FindingStatusStoreError::MissingState {
-                finding_id: finding_id.to_owned(),
-            }
-        })?;
-    let floor_epoch = load_epoch_tx(transaction, feed_id, floor.map_epoch)?
-        .ok_or_else(|| invariant("status floor points to a missing signed epoch"))?;
-    verify_floor_epoch_consistency(&floor, &floor_epoch)?;
-    if operator_status_observed_at.is_some_and(|observed_at| observed_at < floor_epoch.generated_at)
-    {
-        return Err(FindingStatusStoreError::Conflict(
-            "authenticated operator standing predates the current status epoch".to_owned(),
-        ));
-    }
-    if proof.kind != FindingStatusProofKind::NonInclusion {
-        return Err(invariant(
-            "inclusion proof exists without the required sticky retracted state",
-        ));
-    }
-    verify_proof_record_at_floor(&proof, &floor)?;
-    if trusted_now < proof.checked_at
-        || trusted_now >= proof.valid_until
-        || trusted_now < floor_epoch.generated_at
-        || trusted_now.saturating_sub(floor_epoch.generated_at) > max_epoch_age_secs
-    {
-        return Err(FindingStatusStoreError::StaleProof {
-            finding_id: finding_id.to_owned(),
+    let facts = SqliteStatusFacts {
+        transaction,
+        feed_id,
+        finding_id,
+        sticky: RefCell::new(None),
+        floor: RefCell::new(None),
+        proof: RefCell::new(None),
+    };
+    let verdict = decide_finding_status(
+        &facts,
+        &FindingStatusAdmissionRequest {
             trusted_now,
-        });
+            max_epoch_age_secs,
+            expected_operator_authorization_sha256,
+            operator_status_observed_at,
+        },
+    )
+    .map_err(status_admission_error(feed_id, finding_id, trusted_now))?;
+
+    let sticky = facts.sticky.into_inner();
+    match verdict {
+        FindingStatusVerdict::Pending | FindingStatusVerdict::Retracted => {
+            let record = sticky.ok_or_else(|| {
+                invariant("sticky status verdict without the row that produced it")
+            })?;
+            Ok(match verdict {
+                FindingStatusVerdict::Retracted => FindingStatusDecision::Retracted(record),
+                _ => FindingStatusDecision::Pending(record),
+            })
+        }
+        FindingStatusVerdict::VerifiedLive => {
+            // The proof was verified against the floor as it was read, so
+            // reaching a live verdict means the row already bound it.
+            let proof = facts
+                .proof
+                .into_inner()
+                .ok_or_else(|| invariant("live verdict without the proof it stands on"))?;
+            Ok(FindingStatusDecision::VerifiedLive(proof))
+        }
     }
-    Ok(FindingStatusDecision::VerifiedLive(proof))
+}
+
+/// Translate a shared refusal into this store's error vocabulary, keeping
+/// the messages callers already match on.
+fn status_admission_error<'a>(
+    feed_id: &'a str,
+    finding_id: &'a str,
+    trusted_now: u64,
+) -> impl Fn(FindingStatusAdmissionError<FindingStatusStoreError>) -> FindingStatusStoreError + 'a {
+    move |error| match error {
+        FindingStatusAdmissionError::Source(error) => error,
+        FindingStatusAdmissionError::Refused(refusal) => match refusal {
+            FindingStatusRefusal::FloorMissing => FindingStatusStoreError::MissingFloor {
+                feed_id: feed_id.to_owned(),
+            },
+            FindingStatusRefusal::ProofMissing => FindingStatusStoreError::MissingState {
+                finding_id: finding_id.to_owned(),
+            },
+            FindingStatusRefusal::Stale => FindingStatusStoreError::StaleProof {
+                finding_id: finding_id.to_owned(),
+                trusted_now,
+            },
+            FindingStatusRefusal::FloorEpochMissing
+            | FindingStatusRefusal::InclusionWithoutRetraction => invariant(refusal.detail()),
+            FindingStatusRefusal::OperatorNotBound
+            | FindingStatusRefusal::StandingPredatesEpoch => {
+                FindingStatusStoreError::Conflict(refusal.detail().to_owned())
+            }
+        },
+    }
 }
 
 fn reject_epoch_clock_rollback(

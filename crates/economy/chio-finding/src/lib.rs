@@ -67,6 +67,7 @@ mod replay_observation;
 mod report;
 mod reveal;
 mod status;
+mod status_admission;
 mod terms;
 mod types;
 mod validate;
@@ -198,6 +199,11 @@ pub use status::{
     FINDING_STATUS_SIGNATURE_DOMAIN, MAX_FINDING_STATUS_ANCHOR_REFS,
     MAX_FINDING_STATUS_ENCODED_BYTES, MAX_FINDING_STATUS_EPOCH_BYTES,
     MAX_FINDING_STATUS_PROOF_BYTES,
+};
+pub use status_admission::{
+    decide_finding_status, FindingStatusAdmissionError, FindingStatusAdmissionRequest,
+    FindingStatusFloorFacts, FindingStatusProofFacts, FindingStatusProofKind, FindingStatusRefusal,
+    FindingStatusSource, FindingStatusVerdict, FindingStickyStatus,
 };
 pub use terms::{
     compute_terms_id, verify_signed_market_terms, FindingBackingRequirement,

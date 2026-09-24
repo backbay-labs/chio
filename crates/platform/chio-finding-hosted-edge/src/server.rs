@@ -23,13 +23,14 @@ use chio_finding_market_port::{
     HostedDomainMutation, HostedHttpProjection, HostedMarketBackend, HostedMarketBackendError,
     HostedMarketBackendOutcome, HOSTED_AUTHENTICATED_DELIVERY_SCHEMA,
 };
+use chio_metrics_spec::CHIO_FINDING_MARKET_EDGE_REQUESTS_TOTAL;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 
 use crate::{
     HostedAuthCredential, HostedAuthRequest, HostedAuthenticator, HostedEdgeError,
-    HostedHttpMethod, HostedMutationOutcome, HostedMutationResponse, HostedPrincipalRole,
-    HostedRequestContract, HostedTenantBinding, HOSTED_TENANT_HEADER,
+    HostedHttpMethod, HostedMetricEvent, HostedMutationOutcome, HostedMutationResponse,
+    HostedPrincipalRole, HostedRequestContract, HostedTenantBinding, HOSTED_TENANT_HEADER,
 };
 
 const REQUEST_ID_HEADER: &str = "Chio-Request-ID";
@@ -134,6 +135,8 @@ pub struct HostedHttpServerState {
     authenticator: Arc<HostedAuthenticator>,
     backend: Arc<dyn HostedMarketBackend>,
     trusted_proxy: Arc<crate::HostedTrustedProxy>,
+    /// Counters the operational endpoints publish.
+    pub metrics: Arc<crate::HostedEdgeMetrics>,
 }
 
 impl HostedHttpServerState {
@@ -143,6 +146,7 @@ impl HostedHttpServerState {
         authenticator: Arc<HostedAuthenticator>,
         backend: Arc<dyn HostedMarketBackend>,
         trusted_proxy: Arc<crate::HostedTrustedProxy>,
+        metrics: Arc<crate::HostedEdgeMetrics>,
     ) -> Result<Self, HostedEdgeError> {
         config.validate()?;
         Ok(Self {
@@ -150,6 +154,7 @@ impl HostedHttpServerState {
             authenticator,
             backend,
             trusted_proxy,
+            metrics,
         })
     }
 }
@@ -313,6 +318,7 @@ pub fn hosted_market_router(state: HostedHttpServerState) -> Router {
     let health = Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
+        .route("/health/metrics", get(metrics))
         .with_state(HealthState {
             server: state.clone(),
             probe: ReadinessProbe::new(),
@@ -320,8 +326,10 @@ pub fn hosted_market_router(state: HostedHttpServerState) -> Router {
 
     // Everything that reaches the backend is bounded. Shedding answers
     // before the request reaches a handler, in the same error envelope as
-    // every other failure, so the trusted proxy reads the retryable flag
-    // and retries against a healthy replica.
+    // every other failure, so a caller reads the retryable flag and sends
+    // the request again. Nothing in between retries for it: the sidecar
+    // proxies to this pod alone, and a retry reaches another replica only
+    // by going back through the Service.
     //
     // These routes deliberately carry no request deadline. Authentication
     // durably consumes the DPoP nonce and the capability's invocation
@@ -343,6 +351,7 @@ pub fn hosted_market_router(state: HostedHttpServerState) -> Router {
         .layer(axum::middleware::from_fn_with_state(
             RequestAdmissions {
                 permits: Arc::new(Semaphore::new(state.config.maximum_concurrent_requests)),
+                metrics: Arc::clone(&state.metrics),
             },
             shed_when_saturated,
         ));
@@ -448,6 +457,46 @@ async fn live() -> impl IntoResponse {
     (StatusCode::OK, Json(serde_json::json!({"status": "live"})))
 }
 
+/// The counters the edge keeps, in Prometheus exposition format for a
+/// scraper inside the pod.
+///
+/// Counting an event nothing can read is not observability, and neither
+/// is publishing a field nothing increments: this renders the outcomes
+/// this router actually observes and no others. The deployment denies
+/// this path at the public listener, since traffic volume is operational
+/// intelligence rather than something a caller needs.
+async fn metrics(State(health): State<HealthState>) -> Response {
+    let counters = health.server.metrics.snapshot();
+    let mut body = String::new();
+    body.push_str("# HELP ");
+    body.push_str(CHIO_FINDING_MARKET_EDGE_REQUESTS_TOTAL);
+    body.push_str(" Requests the hosted market edge admitted, refused, or shed.\n");
+    body.push_str("# TYPE ");
+    body.push_str(CHIO_FINDING_MARKET_EDGE_REQUESTS_TOTAL);
+    body.push_str(" counter\n");
+    for (outcome, total) in [
+        ("accepted", counters.request_accepted),
+        ("denied", counters.request_denied),
+        ("shed", counters.request_shed),
+    ] {
+        body.push_str(CHIO_FINDING_MARKET_EDGE_REQUESTS_TOTAL);
+        body.push_str("{outcome=\"");
+        body.push_str(outcome);
+        body.push_str("\"} ");
+        body.push_str(&total.to_string());
+        body.push('\n');
+    }
+    (
+        StatusCode::OK,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4",
+        )],
+        body,
+    )
+        .into_response()
+}
+
 async fn ready(State(health): State<HealthState>) -> Response {
     if let Some(ready) = health.probe.fresh_answer() {
         return readiness_response(ready);
@@ -525,6 +574,7 @@ impl ReadinessProbe {
 #[derive(Clone)]
 struct RequestAdmissions {
     permits: Arc<Semaphore>,
+    metrics: Arc<crate::HostedEdgeMetrics>,
 }
 
 /// Refuse a request that would exceed the configured concurrency rather
@@ -535,11 +585,23 @@ async fn shed_when_saturated(
     next: Next,
 ) -> Response {
     let Ok(_permit) = Arc::clone(&admissions.permits).try_acquire_owned() else {
+        admissions.metrics.increment(HostedMetricEvent::RequestShed);
         let request_id =
             single_header(request.headers(), REQUEST_ID_HEADER).unwrap_or("invalid-request-id");
-        return error_response(HostedEdgeError::CapacityUnavailable, request_id);
+        return error_response(HostedEdgeError::RequestCapacityUnavailable, request_id);
     };
-    next.run(request).await
+    // Every guarded request passes here, so this is where the router can
+    // count what it admitted and what it refused without a handler having
+    // to remember to.
+    let response = next.run(request).await;
+    admissions
+        .metrics
+        .increment(if response.status().is_success() {
+            HostedMetricEvent::RequestAccepted
+        } else {
+            HostedMetricEvent::RequestDenied
+        });
+    response
 }
 
 async fn not_found() -> Response {
@@ -1099,8 +1161,9 @@ mod tests {
     use async_trait::async_trait;
     use chio_core_types::crypto::Keypair;
     use chio_finding_market_port::{
-        HostedApiKeyRecord, HostedAuthPort, HostedCapabilityAdmissionOutcome, HostedHttpPage,
-        HostedMarketPortError, HostedPrincipal, HostedTenantId,
+        HostedApiKeyRecord, HostedAuthPort, HostedCapabilityAdmission,
+        HostedCapabilityAdmissionOutcome, HostedHttpPage, HostedMarketPortError, HostedPrincipal,
+        HostedTenantId,
     };
     use tower::ServiceExt as _;
 
@@ -1142,14 +1205,7 @@ mod tests {
         async fn consume_capability_dpop_admission(
             &self,
             _tenant: &HostedTenantId,
-            _capability_id: &str,
-            _nonce_sha256: &str,
-            _request_sha256: Option<&str>,
-            _valid_through: u64,
-            _max_invocations: u32,
-            _expires_at: u64,
-            _now: u64,
-            _tenant_nonce_capacity: u64,
+            _admission: &HostedCapabilityAdmission<'_>,
         ) -> Result<HostedCapabilityAdmissionOutcome, HostedMarketPortError> {
             Ok(HostedCapabilityAdmissionOutcome::Replay)
         }
@@ -1254,12 +1310,42 @@ mod tests {
             Arc::new(authenticator),
             Arc::new(backend),
             Arc::new(trusted_proxy()?),
+            Arc::new(crate::HostedEdgeMetrics::default()),
         )?;
         Ok((state, readiness_checks))
     }
 
     fn router() -> Result<Router, HostedEdgeError> {
         server_state().map(hosted_market_router)
+    }
+
+    /// A guarded request that reaches a handler is counted as admitted or
+    /// refused, so the exported samples describe the traffic rather than
+    /// only the overload.
+    #[tokio::test]
+    async fn guarded_traffic_is_counted_as_admitted_or_refused() {
+        let state = server_state().unwrap_or_else(|error| panic!("test state failed: {error}"));
+        let metrics = Arc::clone(&state.metrics);
+        let router = hosted_market_router(state);
+
+        // The closed test auth port refuses this, which is a refusal the
+        // router observes rather than a shed.
+        let refused = router
+            .clone()
+            .oneshot(proxied_request(
+                Request::builder()
+                    .uri("/v1/findings")
+                    .header(REQUEST_ID_HEADER, "request-counted"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap_or_else(|error| panic!("test response failed: {error}"));
+        assert!(!refused.status().is_success());
+
+        let counters = metrics.snapshot();
+        assert_eq!(counters.request_denied, 1);
+        assert_eq!(counters.request_accepted, 0);
+        assert_eq!(counters.request_shed, 0, "a refusal is not an overload");
     }
 
     /// A shed request is the one failure a client cannot parse from the
@@ -1271,6 +1357,7 @@ mod tests {
         let mut state = server_state().unwrap_or_else(|error| panic!("test state failed: {error}"));
         // No permit exists, so the limiter is saturated for every request.
         state.config.maximum_concurrent_requests = 0;
+        let metrics = Arc::clone(&state.metrics);
         let router = hosted_market_router(state);
 
         let shed = router
@@ -1284,12 +1371,55 @@ mod tests {
             .await
             .unwrap_or_else(|error| panic!("test response failed: {error}"));
         assert_eq!(shed.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            metrics.snapshot().request_shed,
+            1,
+            "a shed request must be visible as overload, not silence"
+        );
+
+        // And scrapeable: a counter a scraper cannot ingest is not
+        // observability either.
+        let published = router
+            .clone()
+            .oneshot(proxied_request(
+                Request::builder()
+                    .uri("/health/metrics")
+                    .header(REQUEST_ID_HEADER, "request-metrics"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap_or_else(|error| panic!("test response failed: {error}"));
+        assert_eq!(published.status(), StatusCode::OK);
+        assert_eq!(
+            published
+                .headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("text/plain; version=0.0.4"),
+            "a Prometheus scraper reads the exposition content type"
+        );
+        let body = to_bytes(published.into_body(), 16 * 1024)
+            .await
+            .unwrap_or_else(|error| panic!("test body failed: {error}"));
+        let exposition = String::from_utf8(body.to_vec())
+            .unwrap_or_else(|error| panic!("test body is not text: {error}"));
+        assert!(
+            exposition.contains(&format!(
+                "{CHIO_FINDING_MARKET_EDGE_REQUESTS_TOTAL}{{outcome=\"shed\"}} 1"
+            )),
+            "the shed must appear as a sample: {exposition}"
+        );
+        assert!(
+            exposition.contains("# TYPE chio_finding_market_edge_requests_total counter"),
+            "exposition must declare the metric type: {exposition}"
+        );
         let body = to_bytes(shed.into_body(), 16 * 1024)
             .await
             .unwrap_or_else(|error| panic!("test body failed: {error}"));
         let error: serde_json::Value = serde_json::from_slice(&body)
             .unwrap_or_else(|error| panic!("test JSON failed: {error}"));
         assert_eq!(error["schema"], crate::HOSTED_ERROR_SCHEMA);
+        assert_eq!(error["code"], "request_capacity_unavailable");
         assert_eq!(error["requestId"], "request-shed");
         assert_eq!(error["retryable"], true);
 

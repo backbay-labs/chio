@@ -24,6 +24,9 @@ path = "src/lib.rs"
 # that libFuzzer's nightly-only runtime cannot satisfy.
 [workspace]
 
+[patch.crates-io]
+aws-lc-rs = { path = "../third_party/aws-lc-rs-chio" }
+
 [dependencies]
 chio-a2a-adapter = { path = "../crates/protocol/chio-a2a-adapter", features = ["fuzz"] }
 chio-acp-edge = { path = "../crates/protocol/chio-acp-edge", features = ["fuzz"] }
