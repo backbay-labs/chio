@@ -2023,6 +2023,7 @@ dependencies = [
  "chio-finding",
  "chio-finding-market-port",
  "chio-kernel",
+ "chio-metrics-spec",
  "hex",
  "hmac 0.12.1",
  "libc",

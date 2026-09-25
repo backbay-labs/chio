@@ -5,6 +5,9 @@ edition = "2021"
 
 [workspace]
 
+[patch.crates-io]
+aws-lc-rs = { path = "../../../third_party/aws-lc-rs-chio" }
+
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../../../crates/core/chio-core-types" }
 chio-kernel = { path = "../../../crates/kernel/chio-kernel" }
