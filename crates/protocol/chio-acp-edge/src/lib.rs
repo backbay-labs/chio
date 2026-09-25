@@ -1,8 +1,9 @@
 //! # chio-acp-edge
 //!
 //! Edge crate that exposes Chio tools as ACP (Agent Client Protocol)
-//! capabilities. This allows ACP-compatible editors and IDEs to access Chio
-//! tools over ACP-shaped permission and invocation surfaces.
+//! agents and compatibility tool profiles. [`AcpAgentConnection`] implements
+//! ACP initialization, caller-owned sessions and text prompts for one bounded
+//! tool. The host supplies authenticated execution context and transport.
 //!
 //! Responsibilities:
 //!
@@ -31,6 +32,7 @@
 //! - `bridge`: capability bridge, target bindings, fidelity, orchestration.
 //! - `conversion`: kernel-output conversion and Chio metadata builders.
 //! - `edge`: the [`ChioAcpEdge`] server and its compatibility wrapper.
+//! - `agent_connection`: standard ACP connection and session lifecycle.
 
 #![forbid(unsafe_code)]
 
@@ -94,6 +96,7 @@ include!("bridge.rs");
 include!("conversion.rs");
 include!("edge.rs");
 include!("jsonrpc.rs");
+include!("agent_connection.rs");
 include!("tests/all.rs");
 
 #[cfg(test)]

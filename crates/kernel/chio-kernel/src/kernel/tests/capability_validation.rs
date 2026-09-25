@@ -281,7 +281,10 @@ fn hosted_cumulative_family_requires_matching_signed_root_lineage(
     let valid_response = valid_kernel.evaluate_tool_call_blocking(&valid_request)?;
     assert_eq!(valid_response.verdict, Verdict::Deny);
     let valid_reason = valid_response.reason.as_deref().unwrap_or_default();
-    assert!(valid_reason.contains("qualified admission"), "{valid_reason}");
+    assert!(
+        valid_reason.contains("qualified admission"),
+        "{valid_reason}"
+    );
 
     let missing_path = unique_receipt_db_path("chio-hosted-cumulative-missing-root");
     let mut missing_kernel = make_hosted_kernel();
@@ -965,10 +968,9 @@ fn supplemental_authorization_is_rejected_before_dispatch_when_unconfigured() {
         .expect("unsupported extension must produce a signed denial");
 
     assert_eq!(response.verdict, Verdict::Deny);
-    assert!(response
-        .reason
-        .as_deref()
-        .is_some_and(|reason| reason.contains("supplemental authorization requires an installed verifier")));
+    assert!(response.reason.as_deref().is_some_and(
+        |reason| reason.contains("supplemental authorization requires an installed verifier")
+    ));
 }
 
 #[test]
@@ -1528,7 +1530,10 @@ fn delegated_tool_call_with_truncated_ancestor_chain_denies() {
         .unwrap();
     assert_eq!(response.verdict, Verdict::Deny);
     let reason = response.reason.as_deref().unwrap_or("");
-    assert!(reason.contains("root evidence is not a direct token"), "{reason}");
+    assert!(
+        reason.contains("root evidence is not a direct token"),
+        "{reason}"
+    );
 
     let _ = std::fs::remove_file(path);
 }
@@ -1729,4 +1734,97 @@ fn kernel_error_report_includes_request_cancel_context() {
     assert_eq!(report.context["request_id"], "req-123");
     assert_eq!(report.context["reason"], "operator cancelled");
     assert!(report.suggested_fix.contains("cancelled request ID"));
+}
+
+#[test]
+fn two_hop_bound_delegation_executes_and_revoked_ancestry_stops_dispatch() {
+    use chio_core::capability::delegated_token::{
+        issue_delegated_capability, DelegatedCapabilityRequest,
+    };
+    let path = unique_receipt_db_path("chio-two-hop-bound-delegation");
+    let mut kernel = make_kernel(make_config());
+    let calls = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer {
+        id: "srv-a".into(),
+        tools: vec!["append".into()],
+        invocations: calls.clone(),
+    }));
+    let root_holder = make_keypair();
+    let provider = make_keypair();
+    let specialist = make_keypair();
+    let mut parent_grant = make_grant("srv-a", "append");
+    parent_grant.operations.push(Operation::Delegate);
+    parent_grant.max_invocations = Some(10);
+    let root_scope = make_scope(vec![parent_grant.clone()]);
+    let root = make_capability(&kernel, &root_holder, root_scope.clone(), 300);
+    parent_grant.max_invocations = Some(4);
+    let now = current_unix_timestamp();
+    let (provider_cap, _) = issue_delegated_capability(
+        &root,
+        DelegatedCapabilityRequest {
+            id: "two-hop-provider".into(),
+            subject: provider.public_key(),
+            scope: make_scope(vec![parent_grant.clone()]),
+            issued_at: now,
+            expires_at: root.expires_at - 20,
+            budget_share_bps: Some(6000),
+            nonce: [1; 16],
+        },
+        &root_holder,
+        &kernel.config.keypair,
+    )
+    .unwrap();
+    parent_grant.operations = vec![Operation::Invoke];
+    parent_grant.max_invocations = Some(2);
+    let (leaf, _) = issue_delegated_capability(
+        &provider_cap,
+        DelegatedCapabilityRequest {
+            id: "two-hop-specialist".into(),
+            subject: specialist.public_key(),
+            scope: make_scope(vec![parent_grant]),
+            issued_at: now,
+            expires_at: root.expires_at - 40,
+            budget_share_bps: Some(2500),
+            nonce: [2; 16],
+        },
+        &provider,
+        &kernel.config.keypair,
+    )
+    .unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
+    store.record_capability_snapshot(&root, None).unwrap();
+    store
+        .record_capability_snapshot(&provider_cap, Some(&root.id))
+        .unwrap();
+    drop(store);
+    kernel
+        .set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()))
+        .unwrap();
+    set_capability_trust_root_for_scope(&kernel, &root_scope);
+    kernel
+        .register_budget_parent(root.id.clone(), 10_000)
+        .unwrap();
+    kernel
+        .register_budget_parent(provider_cap.id.clone(), 6000)
+        .unwrap();
+    let first = kernel
+        .evaluate_tool_call_blocking(&make_request("two-hop-first", &leaf, "append", "srv-a"))
+        .unwrap();
+    assert_eq!(first.verdict, Verdict::Allow, "{:?}", first.reason);
+    assert!(first.receipt.verify_signature().unwrap());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let records = SqliteReceiptStore::open(&path).unwrap();
+    let chain = records.get_delegation_chain(&leaf.id).unwrap();
+    assert_eq!(chain.len(), 3);
+    assert_eq!(chain[2].delegation_depth, 2);
+    kernel.revoke_capability(&provider_cap.id).unwrap();
+    let refused = kernel
+        .evaluate_tool_call_blocking(&make_request("two-hop-revoked", &leaf, "append", "srv-a"))
+        .unwrap();
+    assert_eq!(refused.verdict, Verdict::Deny);
+    assert!(refused.receipt.verify_signature().unwrap());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    drop(records);
+    drop(kernel);
+    let _ = std::fs::remove_file(path);
 }

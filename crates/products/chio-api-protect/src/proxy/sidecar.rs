@@ -704,13 +704,12 @@ pub(crate) async fn sidecar_validate_capability_handler(
     // Fail-closed: revoked capabilities are invalid even if the signature
     // verifies and `expires_at` is in the future. Consult the durable store as
     // well so a revocation a sibling replica recorded is honored here too.
-    let revoked = state.capability_is_revoked(&capability_id).await;
-    if revoked {
+    if let Some(verdict) = state.capability_revocation_verdict(&capability_id).await {
         return (
             StatusCode::OK,
             axum::Json(SidecarValidateCapabilityResponse {
                 valid: false,
-                reason: Some("capability has been revoked".to_string()),
+                reason: Some(revocation_refusal_message(&verdict).to_string()),
                 expires_at,
                 capability_id,
             }),
@@ -770,14 +769,18 @@ pub(crate) async fn sidecar_validate_capability_handler(
     // lookup per fabricated ancestor: a caller must present a trusted, signed,
     // unexpired token before its chain is weighed.
     for ancestor in &token.delegation_chain {
-        if state.capability_is_revoked(&ancestor.capability_id).await {
+        if let Some(verdict) = state
+            .capability_revocation_verdict(&ancestor.capability_id)
+            .await
+        {
             return (
                 StatusCode::OK,
                 axum::Json(SidecarValidateCapabilityResponse {
                     valid: false,
-                    reason: Some(
-                        "a delegated capability in the chain has been revoked".to_string(),
-                    ),
+                    reason: Some(format!(
+                        "delegation chain: {}",
+                        revocation_refusal_message(&verdict)
+                    )),
                     expires_at,
                     capability_id,
                 }),
@@ -1129,8 +1132,8 @@ pub(crate) async fn sidecar_evaluate_tool_call_handler(
         .as_ref()
         .map(|hash| hash.trim().to_ascii_lowercase());
 
-    let revoked = state
-        .capability_is_revoked(&evaluate_request.capability_id)
+    let revocation = state
+        .capability_revocation_verdict(&evaluate_request.capability_id)
         .await;
 
     let hash_mismatch = match claimed_hash.as_ref() {
@@ -1138,8 +1141,12 @@ pub(crate) async fn sidecar_evaluate_tool_call_handler(
         None => false,
     };
 
-    let advisory_check_outcome = if revoked {
-        "capability_revoked"
+    let advisory_check_outcome = if let Some(verdict) = &revocation {
+        if verdict_http_status(verdict) == 503 {
+            "revocation_authority_unavailable"
+        } else {
+            "capability_revoked"
+        }
     } else if hash_mismatch {
         "parameter_hash_mismatch"
     } else {
@@ -1150,7 +1157,7 @@ pub(crate) async fn sidecar_evaluate_tool_call_handler(
     // `Evaluated` signals "the advisory route evaluated the call but did not
     // synchronously authorize anything". Neither implies the kernel mediated
     // the tool call.
-    let observation_outcome = if revoked || hash_mismatch {
+    let observation_outcome = if revocation.is_some() || hash_mismatch {
         ObservationOutcome::Dropped
     } else {
         ObservationOutcome::Evaluated

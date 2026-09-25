@@ -2,7 +2,7 @@
 // or 'cargo xtask codegen --lang go'.
 //
 // Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Schema content SHA-256: 5a3ab3398e7601fe616aecfd864031942ece8e8ac2fcf18721c6dcc6a33d0457
+// Schema content SHA-256: 17e41918380cf9536251f337e49af18fe7bd94456b93596dd290baadf0650839
 // Tool:   oapi-codegen v2.4.1 (see xtask/codegen-tools.lock.toml)
 //
 // The Schema content SHA-256 is computed from the lex-sorted schema bytes
@@ -1287,8 +1287,17 @@ type CapabilityTokenCumulativeApprovalDirectConstraintType string
 type CapabilityTokenDelegationLink struct {
 	Attenuations *[]CapabilityTokenDelegationLink_Attenuations_Item `json:"attenuations,omitempty"`
 	CapabilityId string                                             `json:"capability_id"`
-	Delegatee    string                                             `json:"delegatee"`
-	Delegator    string                                             `json:"delegator"`
+
+	// ChildBinding The exact child authorized by this holder, signed with the link. Every hop in a multi-hop attenuated chain must carry this binding.
+	ChildBinding *struct {
+		AttenuationProof CapabilityTokenAttenuationProof `json:"attenuationProof"`
+		BudgetShareBps   *int64                          `json:"budgetShareBps,omitempty"`
+		CapabilityId     string                          `json:"capabilityId"`
+		ExpiresAt        int64                           `json:"expiresAt"`
+		IssuedAt         int64                           `json:"issuedAt"`
+	} `json:"child_binding,omitempty"`
+	Delegatee string `json:"delegatee"`
+	Delegator string `json:"delegator"`
 
 	// ScopeHash RFC 8785 canonical scope hash for this delegation hop. Runtime verification rejects links that omit it.
 	ScopeHash string `json:"scope_hash"`

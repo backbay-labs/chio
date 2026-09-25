@@ -95,6 +95,7 @@ fn family_descendant(
     };
     let link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: root.id.clone(),
             delegator: root.subject.clone(),
             delegatee: delegatee.public_key(),

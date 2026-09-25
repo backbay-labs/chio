@@ -23,8 +23,16 @@ use crate::translate::{check_request_to_tool_call, ToolCallRequest, Verdict};
 pub trait EnvoyKernel: Send + Sync + 'static {
     /// Evaluate a translated tool call. Implementations must be fail-closed:
     /// return [`KernelError`] rather than panicking on internal faults so the
-    /// adapter can deny with a 500 response.
+    /// adapter can refuse with 500, or 503 when the selected authority is unavailable.
     async fn evaluate(&self, request: ToolCallRequest) -> Result<Verdict, KernelError>;
+
+    /// Evaluate and retain a receipt association when the kernel supplies one.
+    async fn evaluate_with_receipt(
+        &self,
+        request: ToolCallRequest,
+    ) -> Result<(Verdict, Option<String>), KernelError> {
+        self.evaluate(request).await.map(|verdict| (verdict, None))
+    }
 }
 
 /// Canonical `Authorization` service implementation. Construct it with the
@@ -66,11 +74,20 @@ impl<K: EnvoyKernel> Authorization for ChioExtAuthzService<K> {
             "evaluating ext_authz check"
         );
 
-        match self.kernel.evaluate(tool_call).await {
-            Ok(verdict) => Ok(Response::new(verdict_to_response(&verdict))),
+        match self.kernel.evaluate_with_receipt(tool_call).await {
+            Ok((verdict, receipt_id)) => {
+                let mut response = verdict_to_response(&verdict);
+                if let Some(id) = receipt_id {
+                    crate::response::attach_receipt(&mut response, &id);
+                }
+                Ok(Response::new(response))
+            }
             Err(err) => {
                 warn!(error = %err, "ext_authz kernel evaluation failed");
-                Ok(Response::new(fail_closed_response()))
+                Ok(Response::new(match err {
+                    KernelError::Unavailable(_) => crate::response::unavailable_response(),
+                    KernelError::Evaluation(_) => fail_closed_response(),
+                }))
             }
         }
     }

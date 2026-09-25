@@ -1,5 +1,14 @@
 # chio-autogen
 
+## Execute through your Chio MCP host
+
+Use `ChioFunctionRegistry.register_mcp(binding, schema=CreateNoteInput, description="Save a note")`, where `binding` is `McpToolBinding(session, "createNote")`, to register the operation with classic AutoGen's function map. The application's existing MCP session owns remote admission and execution; `binding.last_execution` retains the terminal request and receipt association. For modern AgentChat use `chio_adapter_base.agentchat.mcp_tool`.
+
+The complete [framework notes application](https://www.chio.computer/docs/examples/agent-framework-sdks) includes input models, host, launcher, role policies and an independent receipt verifier. Its bundled adapters are source candidates; installing an older registry distribution does not add these APIs.
+
+Legacy local-executor and signerless-delegation APIs below have different authority requirements. An ID-only sidecar gate continues to refuse execution, and a sidecar without the parent subject signer cannot manufacture a delegated capability.
+
+
 AutoGen integration for the [Chio protocol](../../../spec/PROTOCOL.md). Wraps
 AutoGen's `register_function` / `function_map` and `GroupChat` so every
 registered function an agent attempts to call is evaluated by the Chio

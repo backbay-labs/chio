@@ -14,6 +14,9 @@ publish = false
 # dependencies against our local `Cargo.lock` instead of the Chio root.
 [workspace]
 
+[patch.crates-io]
+aws-lc-rs = { path = "../../../third_party/aws-lc-rs-chio" }
+
 [[bin]]
 name = "chio-lambda-extension"
 path = "src/main.rs"
@@ -37,7 +40,12 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 aws-config = { version = "1.5", features = ["behavior-version-latest"] }
-aws-sdk-dynamodb = { version = "1" }
+# The default `rustls` feature also enables legacy Hyper 0.14. Keep the
+# current Hyper 1 / AWS-LC HTTPS client and the Tokio runtime explicitly.
+aws-sdk-dynamodb = { version = "1", default-features = false, features = [
+    "default-https-client",
+    "rt-tokio",
+] }
 
 uuid = { version = "1", features = ["v7"] }
 

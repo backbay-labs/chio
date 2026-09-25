@@ -57,84 +57,96 @@ def allow(expires: str, rationale: str, *, max_lines: int | None = None) -> Allo
     return AllowlistEntry(rationale=rationale, expires=expires, max_lines=max_lines)
 
 
+ALLOWLIST_WAVES = 4
+
+# Entries expire in four waves rather than on one day. A single shared date
+# meant the gate would refuse 84 files at once, which is not a deadline
+# anyone can act on: the only available response is to move the date again.
+# The waves are ordered by cap, smallest first, so the files that are
+# cheapest to bring back under their limit come due first.
 ALLOWLIST: dict[str, AllowlistEntry] = {
+    "third_party/aws-lc-rs-chio/src/cipher.rs": allow(
+        "2026-12-31",
+        "reviewed upstream AWS-LC cipher surface; capped to exact vendored size until split upstream",
+        max_lines=2_266,
+    ),
     "crates/products/chio-cli/tests/mcp_serve_http.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "existing oversized CLI MCP HTTP integration suite; capped to current size until split",
         max_lines=6_235,
     ),
     "crates/products/chio-cli/tests/passport.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "existing oversized CLI passport integration suite; capped to current size until split",
         max_lines=5_395,
     ),
     "crates/products/chio-cli/tests/mcp_serve.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "existing oversized CLI MCP serve integration suite; capped to current size until split",
         max_lines=4_401,
     ),
     "crates/protocol/chio-mcp-edge/src/runtime/runtime_tests.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "existing oversized MCP edge runtime test suite; capped to current size until split",
         max_lines=4_626,
     ),
     "crates/products/chio-cli/tests/certify.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "existing oversized CLI certify integration suite; capped to current size until split",
         max_lines=3_645,
     ),
     "crates/products/chio-cli/src/cli/dispatch/proof/fixture.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "launch proof fixture dispatch surface; capped to current size until split",
         max_lines=6_323,
     ),
     "crates/products/chio-cli/src/cli/dispatch/proof.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "proof dispatch with ClaimSet-routed family verification; capped to current size until split",
         max_lines=3_484,
     ),
     "crates/products/chio-mercury/tests/cli.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "existing oversized Mercury CLI integration suite; capped to current size until split",
         max_lines=3_183,
     ),
     "crates/products/chio-cli/tests/trust_cluster.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "existing oversized CLI trust-cluster integration suite with signed delegation and same-second revocation coverage; capped to current size until split",
         max_lines=3_272,
     ),
     "crates/products/chio-api-protect/src/proxy/tests.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "existing oversized API protect proxy test suite; capped to current size until split",
         max_lines=3_458,
     ),
     "crates/protocol/chio-acp-edge/src/tests/all.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "existing oversized ACP edge aggregate test suite; capped to current size until split",
         max_lines=3_338,
     ),
     "crates/protocol/chio-a2a-edge/src/tests/all.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "existing oversized A2A edge aggregate test suite; capped to current size until split",
         max_lines=3_207,
     ),
     "crates/products/chio-cli/tests/proof_cli_contract/support.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "launch proof CLI contract support module; capped to current size until split",
         max_lines=4_072,
     ),
     "crates/products/chio-cli/tests/proof_verify.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "launch proof verifier integration suite; capped to current size until split",
         max_lines=3_094,
     ),
     "crates/platform/chio-enterprise-export/tests/enterprise_export.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "launch enterprise export integration suite; capped to current size until split",
         max_lines=2_724,
     ),
     "crates/products/chio-cli/tests/federated_issue.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "existing oversized CLI federated issue integration suite; capped to current size until split",
         max_lines=2_271,
     ),
@@ -144,7 +156,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=2_021,
     ),
     "crates/core/chio-core-types/src/capability/tests.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "existing oversized capability type test suite; capped to current size until split; covers time-checked verification, attenuation narrowing, and wildcard/concrete reflection regressions",
         max_lines=3_241,
     ),
@@ -154,17 +166,17 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=2_068,
     ),
     "crates/kernel/chio-runtime-core/tests/runtime_admission.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "runtime admission integration suite; capped to current size after swarm authority split",
         max_lines=2_847,
     ),
     "crates/platform/chio-transaction-passport/tests/transaction_passport.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "transaction passport integration suite with runtime-security and transparency-anchor review regressions; capped until split",
         max_lines=2_789,
     ),
     "crates/platform/chio-transaction-passport/tests/cognition_market.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "cognition-market transaction passport regression suite; capped to current size until split",
         max_lines=2_195,
     ),
@@ -179,7 +191,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=1_356,
     ),
     "crates/economy/chio-web3/src/tests.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "web3 test module with public-settlement review regressions; capped until split",
         max_lines=2_697,
     ),
@@ -189,22 +201,22 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=1_058,
     ),
     "crates/kernel/chio-swarm-authority/src/verifier.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "swarm authority verifier surface; capped to current size until split",
         max_lines=2_235,
     ),
     "crates/platform/chio-transaction-passport/src/runtime_security/artifacts.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "runtime security artifact verifier with trusted join and overflow hardening; capped until split",
         max_lines=2_322,
     ),
     "crates/products/chio-cli/tests/proof_cli_contract/fixture.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "launch proof CLI fixture contract suite; capped to current size until split",
         max_lines=2_210,
     ),
     "crates/products/chio-cli/tests/proof_verify/support.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "launch proof verifier support module; capped to current size until split",
         max_lines=2_231,
     ),
@@ -214,27 +226,27 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=1_196,
     ),
     "crates/economy/chio-settle/src/evm/tests.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "EVM settlement unit test module with anchor content-hash regression coverage; capped until split",
         max_lines=2_380,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "existing oversized kernel runtime test suite; capped to current size until split",
         max_lines=4_452,
     ),
     "crates/products/chio-cli/src/cli/chio/dispatch/pheromone/iroh_mount.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "pheromone iroh mount dispatch surface; capped to current size until split",
         max_lines=3_375,
     ),
     "crates/platform/chio-store-sqlite/src/receipt_store.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "receipt store hot-path module with anchored receipt, lineage metadata, checkpoint, and retention writes plus qualified read verification; capped to current size until split",
         max_lines=5_816,
     ),
     "crates/platform/chio-store-sqlite/src/receipt_store/tests/retention.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "receipt retention regression suite; capped to current size until split",
         max_lines=4_668,
     ),
@@ -244,32 +256,32 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=2_048,
     ),
     "crates/trust/chio-federation-transport-iroh/src/lanes/pheromone.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "iroh pheromone lane; capped to current size until split",
         max_lines=2_818,
     ),
     "crates/platform/chio-control-plane/src/trust_control/cluster_and_reports.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "trust-control cluster and reports surface with mixed-version revocation cursor coverage; capped to current size until split",
         max_lines=2_801,
     ),
     "crates/platform/chio-store-sqlite/src/budget_store/tests.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "existing oversized budget store test suite; capped to current size until split",
         max_lines=2_479,
     ),
     "crates/trust/chio-federation-transport-iroh/src/lanes/revocation.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "iroh revocation lane; capped to current size until split",
         max_lines=2_511,
     ),
     "crates/trust/chio-federation-transport-iroh/src/lanes/fanout.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "iroh fanout lane; capped to current size until split",
         max_lines=2_443,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/support.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "existing oversized kernel test support module; capped to current size until split",
         max_lines=2_317,
     ),
@@ -294,12 +306,12 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=2_042,
     ),
     "crates/economy/chio-market/src/tests.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "market admission and quote test suite; capped to current size until split",
         max_lines=2_387,
     ),
     "crates/economy/chio-open-market/tests/finding_admission.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "cognition-market admission regression suite; capped to current size until split",
         max_lines=2_256,
     ),
@@ -309,17 +321,17 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=2_030,
     ),
     "crates/kernel/chio-kernel/src/admission_operation_tests.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "durable admission operation regression suite with authoritative outcome binding coverage; capped to current size until split",
         max_lines=2_359,
     ),
     "crates/kernel/chio-kernel/src/admission_operation/projection.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "durable admission projection surface with current-status denial binding; capped to current size until split",
         max_lines=2_154,
     ),
     "crates/kernel/chio-kernel/src/kernel/admission_coordinator/terminal.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "durable terminal coordinator with status-release and recovery snapshots plus signed outcome and pool-claim binding; capped to current size until split",
         max_lines=2_428,
     ),
@@ -334,17 +346,17 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=2_058,
     ),
     "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "kernel async evaluation core with recovery status and pool dispatch continuity; capped to current size until split",
         max_lines=2_172,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/durable_admission.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "durable kernel admission regression suite; capped to current size until split",
         max_lines=2_773,
     ),
     "crates/kernel/chio-kernel/src/kernel/tests/execution_nonce.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "execution nonce regression suite; capped to current size until split",
         max_lines=3_377,
     ),
@@ -354,7 +366,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=2_083,
     ),
     "crates/kernel/chio-kernel/src/kernel/validation.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "kernel capability and admission validation surface; capped to current size until split",
         max_lines=2_821,
     ),
@@ -364,22 +376,22 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=1_034,
     ),
     "crates/platform/chio-control-plane/src/trust_control/capital_and_liability/liability.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "capital liability control surface; capped to current size until split",
         max_lines=2_166,
     ),
     "crates/platform/chio-control-plane/src/trust_control/finding_handlers.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "cognition finding handler surface with authenticated status-operator standing and live service-bond renewal; capped to current size until split",
         max_lines=2_426,
     ),
     "crates/economy/chio-finding/tests/challenge_families.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "cognition challenge artifact and schema regression suite; capped to current size until split",
         max_lines=2_277,
     ),
     "crates/trust/chio-finding-verifier/tests/verifier.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "cognition finding verifier regression suite with authority standing and evidence-role separation coverage; capped until split",
         max_lines=2_219,
     ),
@@ -389,22 +401,22 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=2_107,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_challenge_enforcement_e2e_tests.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "cognition challenge enforcement end-to-end regression suite with unavailable-status, authority-rotation, and bounded admission coverage; capped to current size until split",
-        max_lines=11_458,
+        max_lines=7_468,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_market_exit_tests.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "cognition market exit regression suite with status-gated activation, admission-view, and replay coverage; capped to current size until split",
         max_lines=3_438,
     ),
     "crates/platform/chio-control-plane/src/trust_control/service_runtime/finding_wedge_purchase_e2e_tests.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "cognition purchase and recovery end-to-end regression suite with bounded buyer admission and durable replay coverage; capped to current size until split",
         max_lines=6_213,
     ),
     "crates/platform/chio-store-sqlite/src/admission_operation_store/factor_assignment.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "admission factor assignment store surface; capped to current size until split",
         max_lines=2_246,
     ),
@@ -414,17 +426,17 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=2_104,
     ),
     "crates/platform/chio-store-sqlite/src/finding_market_store.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "cognition finding market authority store with atomic status and sales-blocked participation fences; capped to current size until split",
         max_lines=2_328,
     ),
     "crates/platform/chio-store-sqlite/src/finding_pool_ledger.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "cognition pool ledger with durable delivery claims; capped to current size until split",
         max_lines=2_283,
     ),
     "crates/platform/chio-store-sqlite/src/finding_challenge_store_tests.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "cognition challenge authority store regression suite; capped to current size until split",
         max_lines=4_531,
     ),
@@ -439,17 +451,17 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=2_142,
     ),
     "crates/platform/chio-store-sqlite/src/finding_purchase_store.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "cognition purchase and recovery authority store with atomic finding-status and sales-block reservation gates; capped until split",
         max_lines=3_385,
     ),
     "crates/platform/chio-store-sqlite/src/finding_purchase_store_tests.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "cognition purchase authority store regression suite split for sales-block coverage; capped to current size until split",
         max_lines=3_161,
     ),
     "crates/platform/chio-store-sqlite/src/fiscal_store.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "fiscal persistence surface; capped to current size until split",
         max_lines=2_937,
     ),
@@ -459,22 +471,22 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         max_lines=2_056,
     ),
     "crates/platform/chio-store-sqlite/src/serving_owner/global_commit_chain.rs": allow(
-        "2026-10-31",
+        "2026-12-31",
         "serving-owner commit chain persistence surface; capped to current size until split",
         max_lines=2_981,
     ),
     "crates/products/chio-cli/src/cli/dispatch/finding/unit_tests.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "cognition-market CLI regression suite with status trust-input migration coverage; capped to current size until split",
         max_lines=2_175,
     ),
     "crates/platform/chio-store-sqlite/src/serving_owner/tests.rs": allow(
-        "2026-10-31",
+        "2026-11-30",
         "serving-owner provisioning test suite with sequenced revocation stream coverage; capped to current size until split",
         max_lines=2_298,
     ),
     "crates/products/chio-api-protect/src/proxy/mediated.rs": allow(
-        "2026-10-31",
+        "2027-01-31",
         "mediated API protection proxy surface; capped to current size until split",
         max_lines=3_551,
     ),
@@ -824,10 +836,18 @@ def next_month_end(today: date) -> date:
     return date.fromordinal(date(year, month + 1, 1).toordinal() - 1)
 
 
+def wave_expiries(today: date) -> list[str]:
+    """The deadlines entries are spread across, soonest first."""
+    deadlines = [next_month_end(today)]
+    for _ in range(ALLOWLIST_WAVES - 1):
+        deadlines.append(next_month_end(deadlines[-1].replace(day=1)))
+    return [deadline.isoformat() for deadline in deadlines]
+
+
 def ratchet_allowlist(root: Path) -> int:
     today = date.today()
-    expires = next_month_end(today).isoformat()
-    kept: list[str] = []
+    expiries = wave_expiries(today)
+    kept: list[tuple[int, str, str, int]] = []
     dropped: list[str] = []
     tightened: list[str] = []
     for path, entry in ALLOWLIST.items():
@@ -844,13 +864,25 @@ def ratchet_allowlist(root: Path) -> int:
         new_cap = min(lines, old_cap)
         if new_cap < old_cap:
             tightened.append(f"{path}: cap {old_cap} -> {new_cap}")
-        kept.append(
-            f'    "{path}": allow(\n'
-            f'        "{expires}",\n'
-            f'        "{entry.rationale}",\n'
-            f"        max_lines={new_cap:_},\n"
-            f"    ),\n"
-        )
+        kept.append((new_cap, path, entry.rationale, new_cap))
+    # Spread the deadlines rather than stamping one on every entry. A
+    # single date is not a deadline anyone can act on, because the only
+    # available response is to move it again. Smallest caps come due
+    # first: they are the cheapest to bring back under their limit.
+    per_wave = max(1, -(-len(kept) // ALLOWLIST_WAVES))
+    by_cap = sorted(kept, key=lambda item: (item[0], item[1]))
+    schedule = {
+        path: expiries[min(index // per_wave, len(expiries) - 1)]
+        for index, (_, path, _, _) in enumerate(by_cap)
+    }
+    kept = [
+        f'    "{path}": allow(\n'
+        f'        "{schedule[path]}",\n'
+        f'        "{rationale}",\n'
+        f"        max_lines={cap:_},\n"
+        f"    ),\n"
+        for _, path, rationale, cap in kept
+    ]
     script = Path(__file__).resolve()
     source = script.read_text(encoding="utf-8")
     start_marker = "ALLOWLIST: dict[str, AllowlistEntry] = {\n"
@@ -863,7 +895,7 @@ def ratchet_allowlist(root: Path) -> int:
         print(f"tightened: {line}")
     print(
         f"allowlist ratcheted: {len(kept)} entries kept, {len(dropped)} dropped, "
-        f"{len(tightened)} tightened, expiry {expires}"
+        f"{len(tightened)} tightened, expiries {', '.join(expiries)}"
     )
     return 0
 

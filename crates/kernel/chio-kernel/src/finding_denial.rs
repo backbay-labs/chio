@@ -136,6 +136,44 @@ impl FindingDenial {
     }
 }
 
+/// Record a denial family on a receipt's admission metadata.
+///
+/// The receipt already carries an optional metadata object, so the family
+/// travels inside the signed body without changing the decision's shape.
+/// An offline verifier can classify the refusal without parsing prose,
+/// which the reason field alone never allowed.
+#[must_use]
+pub fn record_finding_denial(
+    metadata: Option<serde_json::Value>,
+    code: FindingDenialCode,
+) -> Option<serde_json::Value> {
+    let mut object = match metadata {
+        Some(serde_json::Value::Object(object)) => object,
+        // A non-object metadata value belongs to whoever set it; the
+        // family is dropped rather than overwriting another record.
+        Some(other) => return Some(other),
+        None => serde_json::Map::new(),
+    };
+    object.insert(
+        FINDING_DENIAL_METADATA_KEY.to_owned(),
+        serde_json::Value::String(code.as_str().to_owned()),
+    );
+    Some(serde_json::Value::Object(object))
+}
+
+/// Metadata key naming the denial family on a receipt.
+pub const FINDING_DENIAL_METADATA_KEY: &str = "findingDenial";
+
+/// Borrowing form of [`record_finding_denial`] for a deny path that still
+/// needs its metadata afterwards.
+#[must_use]
+pub fn denied_metadata(
+    metadata: &Option<serde_json::Value>,
+    denial: &FindingDenial,
+) -> Option<serde_json::Value> {
+    record_finding_denial(metadata.clone(), denial.code())
+}
+
 impl fmt::Display for FindingDenial {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.detail)
@@ -170,6 +208,28 @@ mod tests {
         assert_eq!(
             denial.to_string(),
             "purchase context rejected: payer key does not match"
+        );
+    }
+
+    #[test]
+    fn a_recorded_denial_joins_the_metadata_the_receipt_already_carries() {
+        let existing = serde_json::json!({"runtimeAdmission": "durable"});
+        let recorded = record_finding_denial(Some(existing), FindingDenialCode::StatusDenied)
+            .expect("metadata is present");
+        assert_eq!(recorded["runtimeAdmission"], "durable");
+        assert_eq!(recorded[FINDING_DENIAL_METADATA_KEY], "status_denied");
+
+        let created = record_finding_denial(None, FindingDenialCode::QuotaExhausted)
+            .expect("metadata is created");
+        assert_eq!(created[FINDING_DENIAL_METADATA_KEY], "quota_exhausted");
+    }
+
+    #[test]
+    fn a_non_object_metadata_value_is_left_to_its_owner() {
+        let opaque = serde_json::json!("opaque");
+        assert_eq!(
+            record_finding_denial(Some(opaque.clone()), FindingDenialCode::Unavailable),
+            Some(opaque)
         );
     }
 

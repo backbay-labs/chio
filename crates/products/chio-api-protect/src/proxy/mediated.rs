@@ -27,8 +27,7 @@ pub(crate) use budget_configuration::build_budget_store;
 /// Opening or reading a configured store that fails is fatal (fail-closed): the
 /// caller must not start the sidecar advertising revocation enforcement it
 /// cannot provide. The whole table is paged into memory once at startup;
-/// revocations recorded after startup require a sidecar restart or the
-/// in-process `/v1/capabilities/release` (or `--control-url`) channel.
+/// the live revocation store also observes subsequent changes on every request.
 pub(crate) fn load_revocation_db_ids(
     config: &ProtectConfig,
 ) -> Result<std::collections::HashSet<String>, ProtectError> {
@@ -332,7 +331,7 @@ pub(crate) async fn sidecar_evaluate_tool_call_mediated_handler(
     }
     // Fail-closed: reject the presented capability when its own id OR any ancestor
     // in its delegation chain is revoked, so a delegated child of a revoked root
-    // cannot keep earning mediated reservations until expiry. `capability_is_revoked`
+    // cannot keep earning mediated reservations until expiry. `capability_revocation_verdict`
     // consults the in-memory release set first (no I/O for a known-revoked id) and
     // then the durable revocation store, failing closed if that store cannot be
     // read, so a revocation a sibling replica or `chio trust revoke --revocation-db`
@@ -350,24 +349,30 @@ pub(crate) async fn sidecar_evaluate_tool_call_mediated_handler(
     if parsed.capability.delegation_chain.len() > MAX_MEDIATED_DELEGATION_CHAIN {
         return sidecar_bad_request("capability delegation chain is too long").into_response();
     }
-    let mut revoked = state.capability_is_revoked(&parsed.capability.id).await;
-    if !revoked {
+    let mut refusal = state
+        .capability_revocation_verdict(&parsed.capability.id)
+        .await;
+    if refusal.is_none() {
         for ancestor in &parsed.capability.delegation_chain {
-            if state.capability_is_revoked(&ancestor.capability_id).await {
-                revoked = true;
+            refusal = state
+                .capability_revocation_verdict(&ancestor.capability_id)
+                .await;
+            if refusal.is_some() {
                 break;
             }
         }
     }
-    if revoked {
+    if let Some(verdict) = refusal {
+        let status = StatusCode::from_u16(verdict_http_status(&verdict))
+            .unwrap_or(StatusCode::SERVICE_UNAVAILABLE);
         return (
-            StatusCode::FORBIDDEN,
+            status,
             axum::Json(serde_json::json!({
-                "error": "chio_capability_revoked",
-                "message": "capability has been revoked",
+                "error": if status == StatusCode::SERVICE_UNAVAILABLE { "chio_revocation_authority_unavailable" } else { "chio_capability_revoked" },
+                "message": revocation_refusal_message(&verdict),
+                "suggestion": revocation_refusal_suggestion(&verdict),
             })),
-        )
-            .into_response();
+        ).into_response();
     }
     let agent_id = parsed
         .agent_id
@@ -1454,6 +1459,7 @@ mod tests {
         };
         let link = DelegationLink::sign(
             DelegationLinkBody {
+                child_binding: None,
                 capability_id: ancestor_id.to_string(),
                 delegator: delegator.public_key(),
                 delegatee: subject.public_key(),

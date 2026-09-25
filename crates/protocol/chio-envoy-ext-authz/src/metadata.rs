@@ -21,12 +21,12 @@ pub(crate) fn deny_dynamic_metadata(reason: &str, guard: &str, http_status: u16)
     ])
 }
 
-pub(crate) fn fail_closed_dynamic_metadata(reason: &str) -> Struct {
+pub(crate) fn fail_closed_dynamic_metadata(reason: &str, status: u16) -> Struct {
     struct_from_fields([
         (VERDICT_KEY, string_value("deny")),
         (DENIAL_REASON_KEY, string_value(reason)),
         (DENIAL_GUARD_KEY, string_value("fail_closed")),
-        (HTTP_STATUS_KEY, number_value(500)),
+        (HTTP_STATUS_KEY, number_value(status)),
         (FAIL_CLOSED_KEY, bool_value(true)),
     ])
 }

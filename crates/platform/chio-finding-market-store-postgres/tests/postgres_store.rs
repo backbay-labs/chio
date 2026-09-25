@@ -1,3 +1,5 @@
+//! One sequenced test; `support` records what splitting it needs first.
+
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};

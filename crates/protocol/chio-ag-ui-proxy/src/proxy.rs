@@ -132,6 +132,7 @@ mod tests {
         let delegatee = Keypair::generate().public_key();
         let parent_link = DelegationLink::sign(
             DelegationLinkBody {
+                child_binding: None,
                 capability_id: parent_id.to_string(),
                 delegator: issuer.public_key(),
                 delegatee: delegatee.clone(),
@@ -189,6 +190,7 @@ mod tests {
         let delegatee = Keypair::generate().public_key();
         let parent_link = DelegationLink::sign(
             DelegationLinkBody {
+                child_binding: None,
                 capability_id: parent_id.to_string(),
                 delegator: issuer.public_key(),
                 delegatee: delegatee.clone(),
@@ -250,6 +252,7 @@ mod tests {
         let delegatee = Keypair::generate().public_key();
         let parent_link = DelegationLink::sign(
             DelegationLinkBody {
+                child_binding: None,
                 capability_id: parent_id.to_string(),
                 delegator: issuer.public_key(),
                 delegatee: delegatee.clone(),

@@ -17,7 +17,7 @@ use chio_core_types::crypto::{
 };
 
 fn fixture_pq_seed() -> [u8; 32] {
-    let raw = b"chio-m03-p2-t3-capability-hybrid";
+    let raw = b"chio-capability-hybrid-seed-0001";
     let mut out = [0u8; 32];
     out.copy_from_slice(raw);
     out

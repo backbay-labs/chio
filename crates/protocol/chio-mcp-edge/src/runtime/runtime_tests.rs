@@ -916,6 +916,31 @@ fn run_channel_session(edge: &mut ChioMcpEdge, messages: &[Value]) -> Vec<Value>
         .collect()
 }
 
+fn assert_transport_receipt_associations(edge: &ChioMcpEdge, messages: &[Value]) {
+    let receipt_log = edge.kernel.receipt_log();
+    let receipts = receipt_log.receipts();
+    let mut associations = 0;
+    for message in messages {
+        if let Some(association) = message.pointer("/result/_meta/chioReceipt") {
+            let receipt_id = association["receiptId"].as_str().unwrap();
+            let receipt = receipts
+                .iter()
+                .find(|receipt| receipt.id == receipt_id)
+                .expect("transport result references its actual persisted receipt");
+            assert!(receipt.verify_signature().unwrap());
+            assert_eq!(
+                association["requestId"],
+                receipt.metadata.as_ref().unwrap()["receipt_context"]["request_id"]
+            );
+            associations += 1;
+        }
+    }
+    assert!(
+        associations > 0,
+        "completed task must retain a receipt association"
+    );
+}
+
 fn normalize_transport_output(messages: &mut [Value]) {
     for message in messages {
         normalize_dynamic_transport_fields(message);
@@ -930,6 +955,13 @@ fn normalize_dynamic_transport_fields(value: &mut Value) {
             }
             if let Some(owner_request_id) = map.get_mut("ownerRequestId") {
                 *owner_request_id = json!("$request");
+            }
+            if let Some(association) = map.get_mut("chioReceipt") {
+                // Each transport executes independently. The tests validate
+                // these references against its own signed log before comparing
+                // their protocol shapes.
+                association["receiptId"] = json!("$receipt");
+                association["requestId"] = json!("$kernel_request");
             }
             // The two transports capture wall-clock timestamps independently;
             // a tick across a second boundary between the stdio and channel
@@ -2456,10 +2488,29 @@ fn tools_call_denied_by_capabilities_returns_tool_error() {
         .unwrap();
 
     assert_eq!(response["result"]["isError"], true);
-    assert!(response["result"]["content"][0]["text"]
-        .as_str()
-        .unwrap()
-        .contains("not authorized"));
+    let receipt_log = edge.kernel.receipt_log();
+    let receipts = receipt_log.receipts();
+    assert_eq!(receipts.len(), 1);
+    let receipt = &receipts[0];
+    assert_eq!(
+        serde_json::to_value(&receipt.decision).unwrap()["verdict"],
+        "deny"
+    );
+    assert!(receipt.verify_signature().unwrap());
+    assert_eq!(receipt.tool_name, "write_file");
+    assert_eq!(
+        receipt.action.parameters,
+        json!({"path": "/tmp/x", "content": "hi"})
+    );
+    assert_eq!(
+        response["result"]["_meta"]["chioReceipt"]["receiptId"],
+        receipt.id
+    );
+    assert_eq!(
+        response["result"]["_meta"]["chioReceipt"]["requestId"],
+        receipt.metadata.as_ref().unwrap()["receipt_context"]["request_id"]
+    );
+    assert!(response["result"].get("structuredContent").is_none());
 }
 
 #[test]
@@ -3258,6 +3309,8 @@ fn serve_message_channels_matches_stdio_for_streaming_tasks_result_flow() {
     let mut channel_edge = make_streaming_edge(10);
     let mut channel = run_channel_session(&mut channel_edge, &messages);
 
+    assert_transport_receipt_associations(&stdio_edge, &stdio);
+    assert_transport_receipt_associations(&channel_edge, &channel);
     normalize_transport_output(&mut stdio);
     normalize_transport_output(&mut channel);
 
@@ -3311,6 +3364,8 @@ fn serve_message_channels_matches_stdio_for_task_cancellation_flow() {
     let mut channel_edge = make_streaming_edge(10);
     let mut channel = run_channel_session(&mut channel_edge, &messages);
 
+    assert_transport_receipt_associations(&stdio_edge, &stdio);
+    assert_transport_receipt_associations(&channel_edge, &channel);
     normalize_transport_output(&mut stdio);
     normalize_transport_output(&mut channel);
 

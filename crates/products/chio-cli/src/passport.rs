@@ -590,7 +590,14 @@ fn build_attestation_evidence(
     until: Option<u64>,
     receipt_log_urls: &[String],
     require_checkpoints: bool,
-) -> Result<ChioCredentialEvidence, CliError> {
+    trusted_kernel_keys: &BTreeSet<String>,
+) -> Result<
+    (
+        ChioCredentialEvidence,
+        Vec<chio_core::receipt::body::ChioReceipt>,
+    ),
+    CliError,
+> {
     let bundle = store.build_evidence_export_bundle(&EvidenceExportQuery {
         capability_id: None,
         agent_subject: Some(subject_key.to_string()),
@@ -615,27 +622,49 @@ fn build_attestation_evidence(
         ));
     }
 
-    Ok(ChioCredentialEvidence {
-        query: AttestationWindow {
-            since,
-            until: until.unwrap_or_else(unix_now),
+    // Evidence counts are themselves signed claims. Never include records the
+    // scoring path would reject or infer trust from a record's embedded key.
+    for record in &bundle.tool_receipts {
+        let receipt = &record.receipt;
+        if !trusted_kernel_keys.contains(&receipt.kernel_key.to_hex())
+            || !receipt.verify_signature()?
+            || !receipt.action.verify_hash()?
+        {
+            return Err(CliError::policy_error(format!(
+                "receipt {} failed passport attestation trust or integrity checks; select the serving kernel with --trusted-kernel-key and verify the receipt store",
+                receipt.id
+            )));
+        }
+    }
+    let receipts = bundle
+        .tool_receipts
+        .iter()
+        .map(|record| record.receipt.clone())
+        .collect();
+    Ok((
+        ChioCredentialEvidence {
+            query: AttestationWindow {
+                since,
+                until: until.unwrap_or_else(unix_now),
+            },
+            receipt_count: bundle.tool_receipts.len(),
+            receipt_ids: bundle
+                .tool_receipts
+                .into_iter()
+                .map(|record| record.receipt.id)
+                .collect(),
+            checkpoint_roots: bundle
+                .checkpoints
+                .into_iter()
+                .map(|checkpoint| checkpoint.body.merkle_root.to_string())
+                .collect(),
+            receipt_log_urls: receipt_log_urls.to_vec(),
+            lineage_records: bundle.capability_lineage.len(),
+            uncheckpointed_receipts: bundle.uncheckpointed_receipts.len(),
+            runtime_attestation: None,
         },
-        receipt_count: bundle.tool_receipts.len(),
-        receipt_ids: bundle
-            .tool_receipts
-            .into_iter()
-            .map(|record| record.receipt.id)
-            .collect(),
-        checkpoint_roots: bundle
-            .checkpoints
-            .into_iter()
-            .map(|checkpoint| checkpoint.body.merkle_root.to_string())
-            .collect(),
-        receipt_log_urls: receipt_log_urls.to_vec(),
-        lineage_records: bundle.capability_lineage.len(),
-        uncheckpointed_receipts: bundle.uncheckpointed_receipts.len(),
-        runtime_attestation: None,
-    })
+        receipts,
+    ))
 }
 
 /// Build a deterministic snapshot of the inputs the kernel's
@@ -769,6 +798,7 @@ pub(crate) fn cmd_passport_create(
     subject_public_key: &str,
     output: &Path,
     signing_seed_file: &Path,
+    trusted_kernel_keys: &[String],
     validity_days: u32,
     since: Option<u64>,
     until: Option<u64>,
@@ -783,7 +813,7 @@ pub(crate) fn cmd_passport_create(
     let subject_key = subject_public_key.to_hex();
     let now = unix_now();
     let attestation_until = until.unwrap_or(now);
-    let corpus = build_local_reputation_corpus(
+    let mut corpus = build_local_reputation_corpus(
         &subject_key,
         receipt_db_path,
         budget_db_path,
@@ -796,24 +826,33 @@ pub(crate) fn cmd_passport_create(
         )));
     }
 
-    // Load the authority key first so its public key can anchor the
-    // reputation config's trusted kernel set. Without trusted kernel keys,
-    // `compute_local_scorecard` filters every receipt as unsigned and the
-    // resulting score is silently unknown / zero (see chio-reputation P2).
+    // A passport attestor and a serving kernel can be different identities.
+    // Receipt trust must be selected independently; deriving it from corpus
+    // contents would let an injected self-signed record authorize itself.
     let signing_key = load_or_create_authority_keypair(signing_seed_file)?;
-    let scoring_config =
-        ReputationConfig::default().with_trusted_kernel_keys([signing_key.public_key().to_hex()]);
-    let scorecard =
-        compute_local_scorecard(&subject_key, attestation_until, &corpus, &scoring_config);
+    let trusted_keys = if trusted_kernel_keys.is_empty() {
+        vec![signing_key.public_key().to_hex()]
+    } else {
+        trusted_kernel_keys
+            .iter()
+            .map(|key| PublicKey::from_hex(key).map(|key| key.to_hex()))
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    let scoring_config = ReputationConfig::default().with_trusted_kernel_keys(trusted_keys);
     let store = SqliteReceiptStore::open(require_receipt_db(receipt_db_path)?)?;
-    let evidence = build_attestation_evidence(
+    let (evidence, receipts) = build_attestation_evidence(
         &store,
         &subject_key,
         since,
         Some(attestation_until),
         receipt_log_urls,
         require_checkpoints,
+        &scoring_config.trusted_kernel_keys,
     )?;
+    // The score and its evidence counts use one verified receipt snapshot.
+    corpus.receipts = receipts;
+    let scorecard =
+        compute_local_scorecard(&subject_key, attestation_until, &corpus, &scoring_config);
     let credential = issue_reputation_credential_with_enterprise_identity(
         &signing_key,
         scorecard,

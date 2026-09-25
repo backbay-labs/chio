@@ -2,6 +2,9 @@
 resolver = "2"
 members = ["shared", "mission-host", "knowledge-network", "worker-fleet", "software-factory", "research-swarm", "personal-network", "cooperative", "cognition-marketplace", "operations", "incident-response", "suite", "launcher"]
 
+[patch.crates-io]
+aws-lc-rs = { path = "../../third_party/aws-lc-rs-chio" }
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

@@ -1,11 +1,19 @@
 kernel:
   max_capability_ttl: 3600
-  delegation_depth_limit: 5
+  delegation_depth_limit: 1
 
 capabilities:
   default:
     tools:
-      - server: "*"
-        tool: "*"
+      - server: "provider-security-review"
+        tool: "request_quote"
+        operations: [invoke]
+        ttl: 900
+      - server: "provider-security-review"
+        tool: "execute_review"
+        operations: [invoke]
+        ttl: 900
+      - server: "provider-security-review"
+        tool: "open_dispute"
         operations: [invoke]
         ttl: 900

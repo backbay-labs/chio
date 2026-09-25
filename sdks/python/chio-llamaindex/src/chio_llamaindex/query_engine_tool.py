@@ -202,8 +202,8 @@ class ChioQueryEngineTool(QueryEngineTool):
             return frozenset()
 
         collected: set[str] = set()
-        for grant in scope.grants:
-            for constraint in grant.constraints:
+        for grant in scope.grants or []:
+            for constraint in grant.constraints or []:
                 tag = getattr(constraint, "type", None)
                 if tag != MEMORY_STORE_ALLOWLIST_TAG:
                     continue

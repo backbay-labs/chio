@@ -67,7 +67,7 @@ pub enum AuthMethod {
 /// The adapter uses the HTTP method and request path to derive the tool
 /// identity (`http.<method>.<path>`) so that Chio policies written against
 /// HTTP resources can be evaluated uniformly with tool-style policies.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ToolCallRequest {
     /// Correlation identifier for this invocation. The adapter reuses the
     /// Envoy request id (`x-request-id`) when present, otherwise falls back
@@ -110,6 +110,10 @@ pub struct ToolCallRequest {
 
     /// Chio capability id pulled from `x-chio-capability-token`.
     pub capability_id: Option<String>,
+
+    /// Full signed capability, forwarded only to the configured authority.
+    /// Deliberately excluded from Debug and policy headers.
+    pub capability_token: Option<String>,
 }
 
 /// Verdict returned by an [`crate::EnvoyKernel`] implementation.
@@ -177,6 +181,14 @@ pub fn check_request_to_tool_call(check: &CheckRequest) -> Result<ToolCallReques
     let headers = collect_policy_headers(&http.headers);
     let caller = extract_caller_identity(&http.headers, attrs.source.as_ref());
 
+    let captured = if http.raw_body.is_empty() {
+        http.body.len()
+    } else {
+        http.raw_body.len()
+    };
+    if http.size < 0 || http.size as u64 != captured as u64 {
+        return Err(TranslateError::IncompleteBody);
+    }
     let (body_hash, body_length) = derive_body_binding(http);
 
     let session_id = header_value(&http.headers, "x-chio-session-id");
@@ -198,6 +210,7 @@ pub fn check_request_to_tool_call(check: &CheckRequest) -> Result<ToolCallReques
         body_length,
         session_id,
         capability_id,
+        capability_token: header_value(&http.headers, "x-chio-capability"),
     })
 }
 
@@ -402,6 +415,17 @@ fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     hex::encode(hasher.finalize())
+}
+
+impl std::fmt::Debug for ToolCallRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolCallRequest")
+            .field("request_id", &self.request_id)
+            .field("method", &self.method)
+            .field("path", &self.path)
+            .field("body_length", &self.body_length)
+            .finish_non_exhaustive()
+    }
 }
 
 #[cfg(test)]

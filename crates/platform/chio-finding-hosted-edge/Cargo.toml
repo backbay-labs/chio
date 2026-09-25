@@ -18,6 +18,7 @@ chio-core-types = { workspace = true }
 chio-finding = { workspace = true }
 chio-finding-market-port = { workspace = true }
 chio-kernel = { workspace = true }
+chio-metrics-spec = { workspace = true }
 hmac = { workspace = true }
 hex = { workspace = true }
 libc = { workspace = true }

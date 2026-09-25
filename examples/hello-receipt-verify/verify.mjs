@@ -1,0 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { verifyReceiptWithTrustedSigners } from '@chio-protocol/sdk/invariants';
+const [receipts = 'fixtures/minimal-evidence/receipts.ndjson', trust = 'trusted-signers.json'] = process.argv.slice(2);
+const signers = JSON.parse(readFileSync(trust, 'utf8'));
+if (!Array.isArray(signers) || !signers.length || signers.some(key => typeof key !== 'string')) throw Error('Trusted signers must be a nonempty JSON array of public keys');
+const records = readFileSync(receipts, 'utf8').split('\n').filter(line => line.trim()).map(JSON.parse);
+if (!records.length) throw Error('Receipt file is empty');
+const results = records.map(record => verifyReceiptWithTrustedSigners(record.receipt ?? record, signers));
+console.log(JSON.stringify(results, null, 2));
+process.exitCode = results.every(result => result.ok) ? 0 : 1;

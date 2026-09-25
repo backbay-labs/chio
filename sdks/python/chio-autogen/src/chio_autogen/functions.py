@@ -15,6 +15,7 @@ import threading
 from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from typing import Any
 
+from chio_adapter_base.mcp import McpToolBinding
 from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import CapabilityToken, ChioReceipt, ChioScope
@@ -96,6 +97,19 @@ class ChioFunctionRegistry:
 
     def bind_chio_client(self, client: ChioClientLike) -> None:
         self._chio_client = client
+
+    def register_mcp(self, binding: McpToolBinding, *, schema, description, name=None):
+        """Register remote execution on classic AutoGen without a local allow gate.
+
+        Authority belongs to binding's existing MCP session. The binding retains
+        the result's receipt association and never repeats an uncertain call.
+        """
+        name = name or binding.tool_name
+        fn = binding.function(schema, name=name, description=description)
+        self._agent.register_function(function_map={name: fn})
+        if getattr(self._agent, "llm_config", None):
+            self._agent.register_for_llm(name=name, description=description)(fn)
+        return fn
 
     def register(
         self,

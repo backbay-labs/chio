@@ -13,7 +13,7 @@ use chio_kernel::otel::{
 use proptest::prelude::*;
 
 #[test]
-fn locked_span_shape_matches_m10_contract() {
+fn locked_span_shape_matches_its_contract() {
     assert_eq!(
         OTEL_SEMCONV_SCHEMA_URL,
         "https://opentelemetry.io/schemas/1.31.0"

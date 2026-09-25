@@ -96,7 +96,7 @@ mod kernel_shim {
 }
 
 #[test]
-fn passkey_to_capability_to_kernel_call_then_revoke_within_m04_epoch() {
+fn passkey_to_capability_to_kernel_call_then_revoke_within_one_epoch() {
     // Stage 1: assemble the issuer with all three security surfaces
     // (signer, replay nonce store, revocation cascade).
     let backend = Ed25519Backend::new(Keypair::from_seed(&[71u8; 32]));

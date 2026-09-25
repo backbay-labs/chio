@@ -92,6 +92,7 @@ include!("bridge.rs");
 include!("conversion.rs");
 include!("edge.rs");
 include!("jsonrpc.rs");
+include!("v1.rs");
 include!("tests/all.rs");
 
 #[cfg(test)]

@@ -38,6 +38,7 @@ enum MockBehavior {
         http_status: u16,
     },
     Error(String),
+    Unavailable,
 }
 
 struct MockKernel {
@@ -64,6 +65,7 @@ impl EnvoyKernel for MockKernel {
                 guard: guard.clone(),
                 http_status: *http_status,
             }),
+            MockBehavior::Unavailable => Err(KernelError::unavailable("private authority address")),
             MockBehavior::Error(msg) => Err(KernelError::evaluation(msg)),
         }
     }
@@ -364,4 +366,31 @@ async fn bearer_token_populates_caller_identity_hint() {
     );
     let _ = client.check(check).await.unwrap().into_inner();
     assert_eq!(last_tool.lock().unwrap().as_deref(), Some("http.get.ping"));
+}
+
+#[tokio::test]
+async fn unavailable_authority_returns_503_without_a_receipt_or_internal_details() {
+    let (mut client, calls, _) = spawn_server(MockBehavior::Unavailable).await;
+    let response = client
+        .check(make_check("POST", "/notes", &[], "{}"))
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(response.status.unwrap().code, Code::Unavailable as i32);
+    match response.http_response.unwrap() {
+        HttpResponse::DeniedResponse(denied) => {
+            assert_eq!(
+                denied.status.unwrap().code,
+                EnvoyStatusCode::ServiceUnavailable as i32
+            );
+            assert!(denied.body.contains("authority unavailable"));
+            assert!(!denied.body.contains("private authority address"));
+            assert!(!denied.headers.iter().any(|header| header
+                .header
+                .as_ref()
+                .is_some_and(|header| header.key.eq_ignore_ascii_case("x-chio-receipt-id"))));
+        }
+        other => panic!("expected fail-closed denial, got {other:?}"),
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
 }

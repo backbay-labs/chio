@@ -306,19 +306,19 @@ pub struct SqliteFindingMarketStore {
     /// Read-only WAL companion for discovery reads that tolerate trailing
     /// the writer by one in-flight transaction. Admission and money paths
     /// stay on the serving-owner connection.
-    read_connection: Arc<Mutex<Connection>>,
+    read_companions: Arc<crate::read_companion::ReadCompanionPool>,
     serving_owner: Arc<SqliteServingOwner>,
 }
 
 impl SqliteFindingMarketStore {
     pub(crate) fn open_alongside(
         connection: Arc<Mutex<Connection>>,
-        read_connection: Arc<Mutex<Connection>>,
+        read_companions: Arc<crate::read_companion::ReadCompanionPool>,
         serving_owner: Arc<SqliteServingOwner>,
     ) -> Self {
         Self {
             connection,
-            read_connection,
+            read_companions,
             serving_owner,
         }
     }

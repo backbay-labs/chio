@@ -178,6 +178,11 @@ def validate_package(package_dir: Path) -> dict[str, Any]:
         lineage_record.get("capability_id") == capability_id,
         "lineage capability_id must match receipt capability_id",
     )
+    require(lineage_record.get("provenance") == "signed_token", "lineage requires signed-token provenance")
+    signed = require_object(lineage_record, "signed_capability", "lineage")
+    require(signed.get("id") == capability_id, "signed capability identity must match receipt")
+    require(signed.get("issuer") == lineage_record.get("issuer_key"), "signed issuer must match lineage")
+    require(signed.get("subject") == lineage_record.get("subject_key"), "signed subject must match lineage")
     require(lineage_record.get("delegation_depth") == 0, "lineage delegation depth drifted")
     grants_json = require_string(lineage_record, "grants_json", "lineage")
     try:

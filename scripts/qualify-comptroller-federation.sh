@@ -33,6 +33,14 @@ run_and_log() {
   local log_path="${log_root}/${name}.log"
   echo "==> ${name}"
   "$@" 2>&1 | tee "${log_path}"
+  if ! grep -Eq '^test result: ok\. 1 passed; 0 failed; 0 ignored;' "${log_path}"; then
+    echo "${name} did not execute exactly one passing test" >&2
+    return 1
+  fi
+  if grep -Eq 'skipping .*: loopback bind denied:' "${log_path}"; then
+    echo "${name} skipped its loopback-backed assertions" >&2
+    return 1
+  fi
 }
 
 python3 -m json.tool "${matrix_src}" >/dev/null
@@ -42,13 +50,13 @@ cp "${proof_src}" "${proof_snapshot}"
 export CARGO_TARGET_DIR="${cargo_target_dir}"
 
 run_and_log multi-hop-lineage \
-  cargo test -p chio-cli --test federated_issue trust_service_federated_issue_supports_multi_hop_imported_upstream_parent -- --exact
+  cargo test -p chio-cli --test federated_issue trust_service_federated_issue_supports_multi_hop_imported_upstream_parent -- --exact --nocapture
 run_and_log evidence-import \
-  cargo test -p chio-cli --test evidence_export evidence_import_roundtrip_surfaces_imported_trust_without_rewriting_local_history -- --exact
+  cargo test -p chio-cli --test evidence_export evidence_import_roundtrip_surfaces_imported_trust_without_rewriting_local_history -- --exact --nocapture
 run_and_log reconciliation-review \
-  cargo test -p chio-cli --test receipt_query test_settlement_reconciliation_report_and_action_endpoint -- --exact
+  cargo test -p chio-cli --test receipt_query_export test_settlement_reconciliation_report_and_action_endpoint -- --exact --nocapture
 run_and_log adversarial-open-market \
-  cargo test -p chio-cli --test certify certify_adversarial_multi_operator_open_market_preserves_visibility_without_trust -- --exact --nocapture
+  cargo test -p chio-cli --test certify certify_adversarial_multi_operator_open_market_preserves_visibility_without_trust -- --exact --ignored --nocapture
 
 cat >"${report_path}" <<'EOF'
 # Comptroller Federated Multi-Operator Qualification
@@ -71,10 +79,10 @@ Still not proved:
 
 Executed command set:
 
-- `cargo test -p chio-cli --test federated_issue trust_service_federated_issue_supports_multi_hop_imported_upstream_parent -- --exact`
-- `cargo test -p chio-cli --test evidence_export evidence_import_roundtrip_surfaces_imported_trust_without_rewriting_local_history -- --exact`
-- `cargo test -p chio-cli --test receipt_query test_settlement_reconciliation_report_and_action_endpoint -- --exact`
-- `cargo test -p chio-cli --test certify certify_adversarial_multi_operator_open_market_preserves_visibility_without_trust -- --exact --nocapture`
+- `cargo test -p chio-cli --test federated_issue trust_service_federated_issue_supports_multi_hop_imported_upstream_parent -- --exact --nocapture`
+- `cargo test -p chio-cli --test evidence_export evidence_import_roundtrip_surfaces_imported_trust_without_rewriting_local_history -- --exact --nocapture`
+- `cargo test -p chio-cli --test receipt_query_export test_settlement_reconciliation_report_and_action_endpoint -- --exact --nocapture`
+- `cargo test -p chio-cli --test certify certify_adversarial_multi_operator_open_market_preserves_visibility_without_trust -- --exact --ignored --nocapture`
 
 Supporting documents:
 

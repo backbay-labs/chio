@@ -3,7 +3,7 @@
 // Source:     spec/schemas/chio-wire/v1/**/*.schema.json
 // Tool:       json-schema-to-typescript 15.0.4 (see xtask/codegen-tools.lock.toml)
 // Pin file:   sdks/typescript/scripts/package.json
-// Schema SHA: 6792ebebdd0e9ef44b32a6418d2e5595ae3592b8cc5b8624919ab5219112f7f5
+// Schema SHA: ee0669f22545178205732b71bc204a9bea680d904a543895e9b6cf31fc7ef101
 //
 // The schema-sha above is sha256 of `<rel-path>\0<bytes>\0` for every
 // schema in lex order. It changes whenever any schema under
@@ -301,6 +301,33 @@ export namespace Agent_ToolCallRequest {
      * RFC 8785 canonical scope hash for this delegation hop. Runtime verification rejects links that omit it.
      */
     scope_hash: string;
+    /**
+     * The exact child authorized by this holder, signed with the link. Every hop in a multi-hop attenuated chain must carry this binding.
+     */
+    child_binding?: {
+      capabilityId: string;
+      issuedAt: number;
+      expiresAt: number;
+      budgetShareBps?: number;
+      attenuationProof: AttenuationProof;
+    };
+  }
+  export interface AttenuationProof {
+    parentScopeHash: string;
+    childScopeHash: string;
+    normalizedSubsetProof: AttenuationWitness;
+  }
+  export interface AttenuationWitness {
+    normalizedParentScope: string;
+    normalizedChildScope: string;
+    subsetRelations?: GrantSubsetRelation[];
+    restrictedPredicates?: string[];
+  }
+  export interface GrantSubsetRelation {
+    grantKind: "tool" | "resource" | "prompt";
+    childIndex: number;
+    parentIndex: number;
+    subset: true;
   }
   export interface ChioAggregateBudgetRootBinding {
     body: {
@@ -320,23 +347,6 @@ export namespace Agent_ToolCallRequest {
     kind: "restrict_tool" | "bind_session" | "restrict_audience" | "restrict_geo" | "restrict_time_window";
     predicate: string;
     sig?: string;
-  }
-  export interface AttenuationProof {
-    parentScopeHash: string;
-    childScopeHash: string;
-    normalizedSubsetProof: AttenuationWitness;
-  }
-  export interface AttenuationWitness {
-    normalizedParentScope: string;
-    normalizedChildScope: string;
-    subsetRelations?: GrantSubsetRelation[];
-    restrictedPredicates?: string[];
-  }
-  export interface GrantSubsetRelation {
-    grantKind: "tool" | "resource" | "prompt";
-    childIndex: number;
-    parentIndex: number;
-    subset: true;
   }
   export interface ChioGovernedTransactionIntent {
     id: string;
@@ -925,6 +935,33 @@ export namespace Capability_Token {
      * RFC 8785 canonical scope hash for this delegation hop. Runtime verification rejects links that omit it.
      */
     scope_hash: string;
+    /**
+     * The exact child authorized by this holder, signed with the link. Every hop in a multi-hop attenuated chain must carry this binding.
+     */
+    child_binding?: {
+      capabilityId: string;
+      issuedAt: number;
+      expiresAt: number;
+      budgetShareBps?: number;
+      attenuationProof: AttenuationProof;
+    };
+  }
+  export interface AttenuationProof {
+    parentScopeHash: string;
+    childScopeHash: string;
+    normalizedSubsetProof: AttenuationWitness;
+  }
+  export interface AttenuationWitness {
+    normalizedParentScope: string;
+    normalizedChildScope: string;
+    subsetRelations?: GrantSubsetRelation[];
+    restrictedPredicates?: string[];
+  }
+  export interface GrantSubsetRelation {
+    grantKind: "tool" | "resource" | "prompt";
+    childIndex: number;
+    parentIndex: number;
+    subset: true;
   }
   export interface ChioAggregateBudgetRootBinding {
     body: {
@@ -944,23 +981,6 @@ export namespace Capability_Token {
     kind: "restrict_tool" | "bind_session" | "restrict_audience" | "restrict_geo" | "restrict_time_window";
     predicate: string;
     sig?: string;
-  }
-  export interface AttenuationProof {
-    parentScopeHash: string;
-    childScopeHash: string;
-    normalizedSubsetProof: AttenuationWitness;
-  }
-  export interface AttenuationWitness {
-    normalizedParentScope: string;
-    normalizedChildScope: string;
-    subsetRelations?: GrantSubsetRelation[];
-    restrictedPredicates?: string[];
-  }
-  export interface GrantSubsetRelation {
-    grantKind: "tool" | "resource" | "prompt";
-    childIndex: number;
-    parentIndex: number;
-    subset: true;
   }
 }
 
@@ -1414,6 +1434,33 @@ export namespace Kernel_CapabilityList {
      * RFC 8785 canonical scope hash for this delegation hop. Runtime verification rejects links that omit it.
      */
     scope_hash: string;
+    /**
+     * The exact child authorized by this holder, signed with the link. Every hop in a multi-hop attenuated chain must carry this binding.
+     */
+    child_binding?: {
+      capabilityId: string;
+      issuedAt: number;
+      expiresAt: number;
+      budgetShareBps?: number;
+      attenuationProof: AttenuationProof;
+    };
+  }
+  export interface AttenuationProof {
+    parentScopeHash: string;
+    childScopeHash: string;
+    normalizedSubsetProof: AttenuationWitness;
+  }
+  export interface AttenuationWitness {
+    normalizedParentScope: string;
+    normalizedChildScope: string;
+    subsetRelations?: GrantSubsetRelation[];
+    restrictedPredicates?: string[];
+  }
+  export interface GrantSubsetRelation {
+    grantKind: "tool" | "resource" | "prompt";
+    childIndex: number;
+    parentIndex: number;
+    subset: true;
   }
   export interface ChioAggregateBudgetRootBinding {
     body: {
@@ -1433,23 +1480,6 @@ export namespace Kernel_CapabilityList {
     kind: "restrict_tool" | "bind_session" | "restrict_audience" | "restrict_geo" | "restrict_time_window";
     predicate: string;
     sig?: string;
-  }
-  export interface AttenuationProof {
-    parentScopeHash: string;
-    childScopeHash: string;
-    normalizedSubsetProof: AttenuationWitness;
-  }
-  export interface AttenuationWitness {
-    normalizedParentScope: string;
-    normalizedChildScope: string;
-    subsetRelations?: GrantSubsetRelation[];
-    restrictedPredicates?: string[];
-  }
-  export interface GrantSubsetRelation {
-    grantKind: "tool" | "resource" | "prompt";
-    childIndex: number;
-    parentIndex: number;
-    subset: true;
   }
 }
 

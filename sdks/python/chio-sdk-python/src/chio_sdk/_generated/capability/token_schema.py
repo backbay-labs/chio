@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 8ba0a80532a71a901c67466299ea1bfe1de2852479f67791d2ff4b08be726a8c
+# Schema sha256: 9f24fc984622e90fbadd2f5d5e6ed6115c591601711058eff10e9d6f1343e6ff
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -128,32 +128,6 @@ class Attenuation(BaseModel):
     type: constr(min_length=1)
 
 
-class DelegationLink(BaseModel):
-    """
-    A single delegation link. The required scope_hash binds the authorized parent scope used by the next hop's attenuation_proof.parent_scope_hash.
-    """
-
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    capability_id: constr(min_length=1)
-    delegator: constr(
-        pattern=r"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
-    )
-    delegatee: constr(
-        pattern=r"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
-    )
-    attenuations: list[Attenuation] | None = None
-    timestamp: conint(ge=0)
-    signature: constr(
-        pattern=r"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
-    )
-    scope_hash: constr(pattern=r"^[0-9a-f]{64}$") = Field(
-        ...,
-        description="RFC 8785 canonical scope hash for this delegation hop. Runtime verification rejects links that omit it.",
-    )
-
-
 class GrantKind(Enum):
     tool = "tool"
     resource = "resource"
@@ -259,6 +233,51 @@ class AttenuationProof(BaseModel):
     parentScopeHash: constr(pattern=r"^[0-9a-f]{64}$")
     childScopeHash: constr(pattern=r"^[0-9a-f]{64}$")
     normalizedSubsetProof: AttenuationWitness
+
+
+class ChildBinding(BaseModel):
+    """
+    The exact child authorized by this holder, signed with the link. Every hop in a multi-hop attenuated chain must carry this binding.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    capabilityId: constr(min_length=1, max_length=256)
+    issuedAt: conint(ge=0)
+    expiresAt: conint(ge=0)
+    budgetShareBps: conint(ge=0, le=10000) | None = None
+    attenuationProof: AttenuationProof
+
+
+class DelegationLink(BaseModel):
+    """
+    A single delegation link. The required scope_hash binds the authorized parent scope used by the next hop's attenuation_proof.parent_scope_hash.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    capability_id: constr(min_length=1)
+    delegator: constr(
+        pattern=r"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+    )
+    delegatee: constr(
+        pattern=r"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+    )
+    attenuations: list[Attenuation] | None = None
+    timestamp: conint(ge=0)
+    signature: constr(
+        pattern=r"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+    )
+    scope_hash: constr(pattern=r"^[0-9a-f]{64}$") = Field(
+        ...,
+        description="RFC 8785 canonical scope hash for this delegation hop. Runtime verification rejects links that omit it.",
+    )
+    child_binding: ChildBinding | None = Field(
+        None,
+        description="The exact child authorized by this holder, signed with the link. Every hop in a multi-hop attenuated chain must carry this binding.",
+    )
 
 
 class ToolGrant(BaseModel):

@@ -20,6 +20,7 @@ scan_paths=(
   crates/protocol/chio-acp-edge/src
   crates/protocol/chio-a2a-edge/src
   crates/platform/chio-http-core/src
+  crates/platform/chio-finding-hosted-edge/src
   crates/economy/chio-anchor/src
   crates/trust/chio-federation/src
   crates/trust/chio-pheromone-relay/src

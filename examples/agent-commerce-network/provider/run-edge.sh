@@ -1,71 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-EXAMPLE_ROOT="${ROOT}/examples/agent-commerce-network"
-STATE_DIR="${EXAMPLE_ROOT}/artifacts/live/provider-edge"
-SESSION_DB="${PROVIDER_SESSION_DB:-${STATE_DIR}/sessions.sqlite3}"
-
-mkdir -p "${STATE_DIR}"
-
-cd "${ROOT}"
-
-if [[ -n "${CHIO_BIN:-}" ]]; then
-  if [[ -n "${CHIO_CONTROL_URL:-}" ]]; then
-    exec "${CHIO_BIN}" \
-      --control-url "${CHIO_CONTROL_URL}" \
-      --control-token "${CHIO_CONTROL_TOKEN:-demo-token}" \
-      mcp serve-http \
-      --policy "${EXAMPLE_ROOT}/provider/policy.yaml" \
-      --server-id provider-security-review \
-      --server-name "Vanguard Security Review" \
-      --listen "${PROVIDER_EDGE_LISTEN:-127.0.0.1:8931}" \
-      --auth-token "${CHIO_EDGE_TOKEN:-demo-token}" \
-      --session-db "${SESSION_DB}" \
-      -- \
-      python3 "${EXAMPLE_ROOT}/provider/review_server.py"
-  fi
-
-  exec "${CHIO_BIN}" \
-    mcp serve-http \
-    --policy "${EXAMPLE_ROOT}/provider/policy.yaml" \
-    --server-id provider-security-review \
-    --server-name "Vanguard Security Review" \
-    --listen "${PROVIDER_EDGE_LISTEN:-127.0.0.1:8931}" \
-    --auth-token "${CHIO_EDGE_TOKEN:-demo-token}" \
-    --receipt-db "${STATE_DIR}/receipts.sqlite3" \
-    --revocation-db "${STATE_DIR}/revocations.sqlite3" \
-    --authority-db "${STATE_DIR}/authority.sqlite3" \
-    --session-db "${SESSION_DB}" \
-    -- \
-    python3 "${EXAMPLE_ROOT}/provider/review_server.py"
+EXAMPLE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CHIO_BIN="${CHIO_BIN:-$(command -v chio || true)}"
+if [[ ! -x "${CHIO_BIN}" ]]; then
+  echo 'Install the documented Chio CLI or set CHIO_BIN to your built executable.' >&2
+  exit 1
 fi
-
-if [[ -n "${CHIO_CONTROL_URL:-}" ]]; then
-  exec cargo run --bin chio -- \
-    --control-url "${CHIO_CONTROL_URL}" \
-    --control-token "${CHIO_CONTROL_TOKEN:-demo-token}" \
-    mcp serve-http \
-    --policy "${EXAMPLE_ROOT}/provider/policy.yaml" \
-    --server-id provider-security-review \
-    --server-name "Vanguard Security Review" \
-    --listen "${PROVIDER_EDGE_LISTEN:-127.0.0.1:8931}" \
-    --auth-token "${CHIO_EDGE_TOKEN:-demo-token}" \
-    --session-db "${SESSION_DB}" \
-    -- \
-    python3 "${EXAMPLE_ROOT}/provider/review_server.py"
-fi
-
-exec cargo run --bin chio -- \
+: "${CHIO_CONTROL_URL:?Start the application authority first}"
+: "${CHIO_CONTROL_TOKEN:?Configure the authority credential}"
+: "${CHIO_EDGE_TOKEN:?Configure the provider edge credential}"
+: "${PROVIDER_SESSION_DB:?Select the durable provider session database}"
+exec "${CHIO_BIN}" \
+  --control-url "${CHIO_CONTROL_URL}" \
+  --control-token "${CHIO_CONTROL_TOKEN}" \
   mcp serve-http \
   --policy "${EXAMPLE_ROOT}/provider/policy.yaml" \
   --server-id provider-security-review \
   --server-name "Vanguard Security Review" \
   --listen "${PROVIDER_EDGE_LISTEN:-127.0.0.1:8931}" \
-  --auth-token "${CHIO_EDGE_TOKEN:-demo-token}" \
-  --receipt-db "${STATE_DIR}/receipts.sqlite3" \
-  --revocation-db "${STATE_DIR}/revocations.sqlite3" \
-  --authority-db "${STATE_DIR}/authority.sqlite3" \
-  --session-db "${SESSION_DB}" \
-  -- \
-  python3 "${EXAMPLE_ROOT}/provider/review_server.py"
+  --auth-token "${CHIO_EDGE_TOKEN}" \
+  --session-db "${PROVIDER_SESSION_DB}" \
+  -- python3 "${EXAMPLE_ROOT}/provider/review_server.py"

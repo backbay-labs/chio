@@ -5,14 +5,14 @@
 This example owns the minimal offline evidence-verification path. It does not
 start trust-control, issue capabilities, run an app, or mint fresh receipts.
 Its checked-in `fixtures/minimal-evidence/` directory is the product surface:
-a captured evidence export with one tool receipt, one capability-lineage
+a captured evidence export with one policy-evaluation decision receipt, one capability-lineage
 record, no checkpoints, and an explicit `admin_all` read boundary. `smoke.sh`
 copies that fixture into an artifact directory, runs `chio evidence verify`,
 generates a compact summary, tampers with a copied package, and proves
 offline verification fails.
 
 There is no crate or package-manager manifest. The example depends only on the
-workspace `chio` binary and Python's standard library for local artifact
+installed `chio` binary (or an explicit `CHIO_BIN`) and Python's standard library for local artifact
 inspection.
 
 ## Security And API Constraints

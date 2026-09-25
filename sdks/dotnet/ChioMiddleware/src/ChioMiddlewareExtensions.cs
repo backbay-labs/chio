@@ -34,6 +34,12 @@ public class ChioMiddlewareOptions
     public int TimeoutSeconds { get; set; } = 5;
 
     /// <summary>
+    /// Maximum body bytes read before admission, including unknown-length bodies.
+    /// Defaults to 1 MiB. Requests over this limit receive 413 without dispatch.
+    /// </summary>
+    public long MaxRequestBodyBytes { get; set; } = 1_048_576;
+
+    /// <summary>
     /// Reserved no-op option. The middleware always denies when the sidecar is
     /// unreachable.
     /// </summary>
@@ -76,6 +82,8 @@ public class ChioProtectMiddleware
     {
         _next = next;
         _options = options.Value;
+        if (_options.MaxRequestBodyBytes < 1 || _options.MaxRequestBodyBytes > 67_108_864)
+            throw new ArgumentOutOfRangeException(nameof(options), "MaxRequestBodyBytes must be 1 to 67108864");
         _client = new ChioSidecarClient(_options.SidecarUrl, _options.TimeoutSeconds);
         _identityExtractor = _options.IdentityExtractor ?? ChioIdentityExtractor.DefaultExtract;
         _routeResolver = _options.RouteResolver ?? ((_, path) => path);
@@ -108,21 +116,72 @@ public class ChioProtectMiddleware
         // Resolve route pattern.
         var routePattern = _routeResolver(method, request.Path.Value ?? "/");
 
-        // Hash request body.
+        // Bind the bytes the handler will read, including chunked requests.
+        // Buffering spills to a bounded temporary file; hashing is incremental.
         string? bodyHash = null;
         long bodyLength = 0;
-        if (request.ContentLength.HasValue && request.ContentLength.Value > 0)
+        if (request.ContentLength > _options.MaxRequestBodyBytes)
         {
-            request.EnableBuffering();
-            await using var buffer = new MemoryStream();
-            await request.Body.CopyToAsync(buffer);
-            var bodyBytes = buffer.ToArray();
-            bodyLength = bodyBytes.LongLength;
-            if (bodyBytes.Length > 0)
+            await WriteJsonError(context, 413, new ChioErrorResponse
             {
-                bodyHash = ChioIdentityExtractor.Sha256Hex(bodyBytes);
+                Error = "request_body_too_large",
+                Message = $"request body exceeds {_options.MaxRequestBodyBytes} bytes",
+            });
+            return;
+        }
+        request.EnableBuffering(bufferThreshold: 32_768, bufferLimit: _options.MaxRequestBodyBytes + 1);
+        try
+        {
+            if (request.Body.CanSeek) request.Body.Position = 0;
+            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            var bytes = new byte[8192];
+            while (true)
+            {
+                var remaining = (int)Math.Min(bytes.Length, _options.MaxRequestBodyBytes - bodyLength + 1);
+                var read = await request.Body.ReadAsync(bytes.AsMemory(0, remaining), context.RequestAborted);
+                if (read == 0) break;
+                bodyLength += read;
+                if (bodyLength > _options.MaxRequestBodyBytes)
+                {
+                    await WriteJsonError(context, 413, new ChioErrorResponse
+                    {
+                        Error = "request_body_too_large",
+                        Message = $"request body exceeds {_options.MaxRequestBodyBytes} bytes",
+                    });
+                    return;
+                }
+                hash.AppendData(bytes, 0, read);
             }
-            request.Body.Position = 0;
+            if (request.ContentLength.HasValue && request.ContentLength.Value != bodyLength)
+            {
+                await WriteJsonError(context, 400, new ChioErrorResponse
+                {
+                    Error = "incomplete_request_body",
+                    Message = "request body length does not match Content-Length",
+                });
+                return;
+            }
+            if (bodyLength > 0) bodyHash = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+        }
+        catch (BadHttpRequestException error)
+        {
+            await WriteJsonError(context, error.StatusCode, new ChioErrorResponse
+            {
+                Error = "invalid_request_body", Message = "request body could not be read completely",
+            });
+            return;
+        }
+        catch (IOException)
+        {
+            await WriteJsonError(context, 400, new ChioErrorResponse
+            {
+                Error = "invalid_request_body", Message = "request body could not be read completely",
+            });
+            return;
+        }
+        finally
+        {
+            if (request.Body.CanSeek) request.Body.Position = 0;
         }
 
         var capabilityToken = ResolveCapabilityToken(request);

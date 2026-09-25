@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use super::*;
+use crate::finding_denial::{record_finding_denial, FindingDenial};
 use crate::kernel::delivery_contract;
 
 pub(crate) struct DurableToolReturn {
@@ -138,6 +139,16 @@ fn receipt_visible_delivery_content(
         content_hash: actual.content_hash.clone(),
         metadata: actual.metadata.clone(),
         canonical_content: actual.canonical_content.clone(),
+    }
+}
+
+fn record_terminal_finding_denial(
+    metadata: Option<serde_json::Value>,
+    denial: Option<&FindingDenial>,
+) -> Option<serde_json::Value> {
+    match denial {
+        Some(denial) => record_finding_denial(metadata, denial.code()),
+        None => metadata,
     }
 }
 
@@ -1599,6 +1610,7 @@ impl ChioKernel {
                 "purchase-marked delivery requires the frozen identity output plan".to_owned(),
             ));
         }
+        let mut terminal_finding_denial: Option<FindingDenial> = None;
         let mut delivery_evaluation = delivery_contract::evaluate_delivery(
             expected_output_digest.as_deref(),
             resolved_output_digest.as_str(),
@@ -1607,11 +1619,15 @@ impl ChioKernel {
             purchase.as_ref(),
         );
         if delivery_evaluation.denial.is_none() {
-            if let Err(reason) = self.revalidate_completed_purchase_status(
+            if let Err(denial) = self.revalidate_completed_purchase_status(
                 purchase.as_ref(),
                 current_unix_timestamp_ms() / 1_000,
             ) {
-                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase terminal output withheld");
+                warn!(request_id = %request.request_id, reason = %redacted!(&denial), "finding purchase terminal output withheld");
+                #[cfg(feature = "finding-market")]
+                {
+                    terminal_finding_denial = Some(denial);
+                }
                 delivery_evaluation.denial =
                     Some(delivery_contract::finding_status_delivery_denial());
             }
@@ -1683,24 +1699,29 @@ impl ChioKernel {
             })
             .map_err(tool_outcome_error)?;
         if delivery_evaluation.denial.is_none() {
-            if let Err(reason) = self.revalidate_completed_purchase_status(
+            if let Err(denial) = self.revalidate_completed_purchase_status(
                 purchase.as_ref(),
                 current_unix_timestamp_ms() / 1_000,
             ) {
-                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase final terminal output withheld");
+                warn!(request_id = %request.request_id, reason = %redacted!(&denial), "finding purchase final terminal output withheld");
+                #[cfg(feature = "finding-market")]
+                {
+                    terminal_finding_denial = Some(denial);
+                }
                 delivery_evaluation.denial =
                     Some(delivery_contract::finding_status_delivery_denial());
             }
         }
         if delivery_evaluation.denial.is_none() {
-            if let Err(reason) = self.revalidate_completed_recovery_status(
+            if let Err(denial) = self.revalidate_completed_recovery_status(
                 matched_grant_index,
                 request,
                 recovery.as_ref(),
                 recovery_status.as_ref(),
                 current_unix_timestamp_ms() / 1_000,
             ) {
-                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding recovery final terminal output withheld");
+                warn!(request_id = %request.request_id, reason = %redacted!(&denial), "finding recovery final terminal output withheld");
+                terminal_finding_denial = Some(denial);
                 delivery_evaluation.denial =
                     Some(delivery_contract::finding_status_delivery_denial());
             }
@@ -2024,6 +2045,7 @@ impl ChioKernel {
                 ADMISSION_RECEIPT_METADATA_KEY: admission_metadata
             })),
         );
+        let metadata = record_terminal_finding_denial(metadata, terminal_finding_denial.as_ref());
         // The delivery-contract block is the kernel's own verdict, so it is
         // merged last and a pre-existing key from caller or hook metadata is
         // a hard error: the shallow last-write-wins merge would otherwise
@@ -2387,42 +2409,5 @@ impl ChioKernel {
 }
 
 #[cfg(test)]
-mod delivery_redaction_tests {
-    use super::*;
-
-    fn actual(bytes: &[u8]) -> ReceiptContent {
-        ReceiptContent {
-            content_hash: sha256_hex(bytes),
-            metadata: Some(serde_json::json!({"stream": {"chunk_hashes": [sha256_hex(bytes)]}})),
-            canonical_content: bytes.to_vec(),
-        }
-    }
-
-    #[test]
-    fn mismatch_receipt_commitment_is_deterministic_and_payload_independent() {
-        let expected = sha256_hex(b"authorized-output");
-        let first = receipt_visible_delivery_content(&actual(b"secret-a"), true, Some(&expected));
-        let second = receipt_visible_delivery_content(&actual(b"secret-b"), true, Some(&expected));
-        assert_eq!(first.content_hash, second.content_hash);
-        assert!(first
-            .canonical_content
-            .starts_with(DELIVERY_MISMATCH_REDACTION_DOMAIN));
-        assert_eq!(first.metadata, None);
-        assert_ne!(first.content_hash, sha256_hex(b"secret-a"));
-        assert_ne!(first.content_hash, sha256_hex(b"secret-b"));
-
-        let old_fixed_sentinel = sha256_hex(br#"{"schema":"chio.delivery-mismatch.redacted.v1"}"#);
-        let collision_attempt =
-            receipt_visible_delivery_content(&actual(b"mismatch"), true, Some(&old_fixed_sentinel));
-        assert_ne!(collision_attempt.content_hash, old_fixed_sentinel);
-    }
-
-    #[test]
-    fn digest_matched_receipt_keeps_actual_binding_even_for_other_denials() {
-        let actual = actual(b"authorized-output");
-        let visible = receipt_visible_delivery_content(&actual, false, Some(&actual.content_hash));
-        assert_eq!(visible.content_hash, actual.content_hash);
-        assert_eq!(visible.canonical_content, actual.canonical_content);
-        assert_eq!(visible.metadata, actual.metadata);
-    }
-}
+#[path = "terminal_tests.rs"]
+mod tests;

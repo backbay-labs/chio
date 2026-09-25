@@ -504,6 +504,7 @@ mod tests {
             delegation_chain.push(
                 DelegationLink::sign(
                     DelegationLinkBody {
+                        child_binding: None,
                         capability_id: parent.to_string(),
                         delegator: issuer.public_key(),
                         delegatee: subject.public_key(),

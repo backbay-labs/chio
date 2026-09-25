@@ -774,6 +774,7 @@ fn sample_delegated_capability(
 ) -> CapabilityToken {
     let delegation = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: parent_capability_id.to_string(),
             delegator: delegator_kp.public_key(),
             delegatee: subject_kp.public_key(),

@@ -71,6 +71,8 @@ pub(crate) mod mediated;
 mod nonce_middleware;
 #[path = "proxy/receipts.rs"]
 mod receipts;
+#[path = "proxy/revocations.rs"]
+mod revocations;
 #[path = "proxy/router.rs"]
 mod router;
 #[path = "proxy/scope_subset.rs"]

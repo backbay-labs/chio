@@ -177,22 +177,39 @@ pub trait HostedAuthPort: Send + Sync {
         now: u64,
     ) -> Result<Option<HostedApiKeyRecord>, HostedMarketPortError>;
 
-    #[allow(clippy::too_many_arguments)]
-    /// Consume one DPoP admission. `request_sha256` carries the request
-    /// binding for a resumable mutation and is `None` for a request that
-    /// must never be resumed from its proof alone.
+    /// Consume one DPoP admission.
     async fn consume_capability_dpop_admission(
         &self,
         tenant: &HostedTenantId,
-        capability_id: &str,
-        nonce_sha256: &str,
-        request_sha256: Option<&str>,
-        valid_through: u64,
-        max_invocations: u32,
-        expires_at: u64,
-        now: u64,
-        tenant_nonce_capacity: u64,
+        admission: &HostedCapabilityAdmission<'_>,
     ) -> Result<HostedCapabilityAdmissionOutcome, HostedMarketPortError>;
+}
+
+/// One capability's DPoP admission attempt.
+///
+/// The nine positional arguments this replaces were four digests, three
+/// timestamps and two counts, all of them `&str` or `u64`, so a
+/// transposed pair type-checked. Naming them makes a call site say which
+/// clock and which digest it means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HostedCapabilityAdmission<'a> {
+    /// The capability presenting the proof.
+    pub capability_id: &'a str,
+    /// The proof's nonce digest.
+    pub nonce_sha256: &'a str,
+    /// The request binding for a resumable mutation, and `None` for a
+    /// request that must never be resumed from its proof alone.
+    pub request_sha256: Option<&'a str>,
+    /// When the proof stops being admissible.
+    pub valid_through: u64,
+    /// Invocations the capability authorizes in total.
+    pub max_invocations: u32,
+    /// When the capability itself expires.
+    pub expires_at: u64,
+    /// The caller's trusted clock reading.
+    pub now: u64,
+    /// How many live proofs the tenant may hold at once.
+    pub tenant_nonce_capacity: u64,
 }
 
 #[async_trait]

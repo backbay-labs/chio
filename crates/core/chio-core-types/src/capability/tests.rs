@@ -647,6 +647,7 @@ fn plain_delegated_token_without_attenuation_proof_verifies_and_skips_chain_bind
 
     let parent_link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "cap-parent".to_string(),
             delegator: issuer.public_key(),
             delegatee: subject.public_key(),
@@ -734,6 +735,7 @@ fn requires_chain_binding_tracks_only_new_attenuation() {
 
     let parent_link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "cap-parent".to_string(),
             delegator: issuer.public_key(),
             delegatee: subject.public_key(),
@@ -773,6 +775,7 @@ fn make_signed_link(
     timestamp: u64,
 ) -> DelegationLink {
     let body = DelegationLinkBody {
+        child_binding: None,
         capability_id: capability_id.to_string(),
         delegator: delegator_kp.public_key(),
         delegatee: delegatee.clone(),

@@ -443,6 +443,7 @@ fn cumulative_approval_link_scope_hash_authenticates_bound_root_scope() -> TestR
     let root = family_root(&issuer, &root_subject)?;
     let link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: root.id.clone(),
             delegator: root.subject.clone(),
             delegatee: delegatee.public_key(),
@@ -709,6 +710,7 @@ fn cumulative_approval_rejects_multi_hop_scope_pivot_and_intermediate_predating(
         |id: &str, scope: ChioScope, timestamp: u64| -> crate::error::Result<CapabilityToken> {
             let second = DelegationLink::sign(
                 DelegationLinkBody {
+                    child_binding: None,
                     capability_id: intermediate_token.id.clone(),
                     delegator: intermediate.public_key(),
                     delegatee: delegatee.public_key(),
@@ -1003,6 +1005,7 @@ fn cumulative_approval_rejects_root_binding_and_first_marker_grafts() -> TestRes
     let grafted_first = DelegationLink::sign(grafted_first_body, &root_subject)?;
     let second = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: "cap-intermediate".to_string(),
             delegator: intermediate.public_key(),
             delegatee: delegatee.public_key(),
@@ -1028,6 +1031,7 @@ fn cumulative_approval_rejects_root_binding_and_first_marker_grafts() -> TestRes
 
     let grafted_binding_link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: root.id.clone(),
             delegator: root.subject.clone(),
             delegatee: delegatee.public_key(),

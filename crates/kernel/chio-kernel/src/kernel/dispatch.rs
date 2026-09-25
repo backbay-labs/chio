@@ -818,17 +818,17 @@ impl ChioKernel {
         }
         let verified_purchase = self
             .verify_purchase_admission(matched_grant, request, now_unix_secs)
-            .map_err(|reason| {
-                KernelError::GuardDenied(format!(
-                    "finding purchase dispatch revalidation failed: {reason}"
-                ))
+            .map_err(|denial| {
+                KernelError::FindingDenied(
+                    denial.prefixed("finding purchase dispatch revalidation failed"),
+                )
             })?;
         let verified_recovery = self
             .verify_recovery_status_admission(matched_grant, request, now_unix_secs)
-            .map_err(|reason| {
-                KernelError::GuardDenied(format!(
-                    "finding recovery dispatch revalidation failed: {reason}"
-                ))
+            .map_err(|denial| {
+                KernelError::FindingDenied(
+                    denial.prefixed("finding recovery dispatch revalidation failed"),
+                )
             })?;
         Ok(VerifiedFindingDispatchAdmission {
             purchase: verified_purchase,
@@ -849,10 +849,10 @@ impl ChioKernel {
     ) -> Result<Option<crate::finding_purchase::VerifiedFindingPurchase>, KernelError> {
         let purchase = self
             .verify_purchase_admission(matched_grant, request, now_unix_ms / 1_000)
-            .map_err(|reason| {
-                KernelError::GuardDenied(format!(
-                    "finding purchase final dispatch verification failed: {reason}"
-                ))
+            .map_err(|denial| {
+                KernelError::FindingDenied(
+                    denial.prefixed("finding purchase final dispatch verification failed"),
+                )
             })?;
         if let Some(purchase) = purchase.as_ref() {
             self.claim_finding_pool_delivery(

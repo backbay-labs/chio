@@ -29,6 +29,9 @@ path = "src/lib.rs"
 # carry its own [workspace] declaration.
 [workspace]
 
+[patch.crates-io]
+aws-lc-rs = { path = "../../../../third_party/aws-lc-rs-chio" }
+
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../../../core/chio-core-types" }
 chio-kernel = { path = "../../../kernel/chio-kernel" }

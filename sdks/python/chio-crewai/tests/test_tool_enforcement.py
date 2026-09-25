@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from chio_sdk.errors import ChioDeniedError
 from chio_sdk.models import (
     ChioScope,
     Operation,
@@ -291,16 +292,16 @@ class TestAttenuatedDelegation:
             scope=_scope_for_tools("search", "browse"),
         )
         child_scope = _scope_for_tools("search")
-        child = await chio.attenuate_capability(parent, new_scope=child_scope)
-        # Index the child token for the policy as well.
-        chio._tokens[child.id] = child  # type: ignore[attr-defined]
+        with pytest.raises(ChioDeniedError) as error:
+            await chio.attenuate_capability(parent, new_scope=child_scope)
+        assert error.value.reason_code == "chio_attenuation_requires_subject_signer"
 
-        # The child tries to invoke a tool the parent did not have.
+        # Refusing attenuation must not expand the existing parent scope.
         escalate_tool = ChioBaseTool(
             name="write",
             description="escalation attempt",
             server_id="srv",
-            capability_id=child.id,
+            capability_id=parent.id,
             executor=lambda **_kw: "unreached",
             chio_client=chio,
         )

@@ -64,6 +64,7 @@ fn delegated_capability(
     body.delegation_chain.push(
         DelegationLink::sign(
             DelegationLinkBody {
+                child_binding: None,
                 capability_id: parent.id.clone(),
                 delegator: delegator.public_key(),
                 delegatee: subject.public_key(),

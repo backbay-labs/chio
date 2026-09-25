@@ -15,6 +15,7 @@ COPY deploy/docker/chio-workspace/Cargo.toml ./Cargo.toml
 COPY deploy/docker/chio-workspace/Cargo.lock ./Cargo.lock
 COPY .cargo ./.cargo
 COPY crates ./crates
+COPY third_party ./third_party
 COPY examples/chio-3vendor/fixtures/runtime-spine/scenario.json ./examples/chio-3vendor/fixtures/runtime-spine/scenario.json
 COPY fixtures/proof-room ./fixtures/proof-room
 COPY spec ./spec

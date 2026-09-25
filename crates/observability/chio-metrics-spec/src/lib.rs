@@ -139,6 +139,7 @@ pub const CHIO_FEDERATION_TRANSPORT_OUTBOX_TOTAL: &str = "chio_federation_transp
 pub const CHIO_FEDERATION_TRANSPORT_ROUTER_ALIVE: &str = "chio_federation_transport_router_alive";
 pub const CHIO_FEDERATION_TRANSPORT_VERIFY_FAILURES_TOTAL: &str =
     "chio_federation_transport_verify_failures_total";
+pub const CHIO_FINDING_MARKET_EDGE_REQUESTS_TOTAL: &str = "chio_finding_market_edge_requests_total";
 pub const CHIO_GUARD_DENY_TOTAL: &str = "chio_guard_deny_total";
 pub const CHIO_GUARD_EVAL_DURATION_SECONDS: &str = "chio_guard_eval_duration_seconds";
 pub const CHIO_GUARD_EVALUATIONS_TOTAL: &str = "chio_guard_evaluations_total";
@@ -330,6 +331,12 @@ pub const REGISTRY: &[MetricDescriptor] = &[
         help = "Total iroh federation-transport verification failures by seam and bounded reason.",
         kind = Counter,
         labels = ["seam", "reason"]
+    ),
+    describe!(
+        name = CHIO_FINDING_MARKET_EDGE_REQUESTS_TOTAL,
+        help = "Requests the hosted market edge admitted, refused, or shed.",
+        kind = Counter,
+        labels = ["outcome"]
     ),
     describe!(
         name = CHIO_GUARD_DENY_TOTAL,

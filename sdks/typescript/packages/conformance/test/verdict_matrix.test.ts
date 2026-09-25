@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { join, resolve } from "node:path";
 import {
   evaluateScenario,
+  loadScenarios,
   runVerdictMatrixScenarios,
   scenarioToHttpRequest,
   tupleFromEvaluateResponse,
@@ -22,8 +23,11 @@ describe("verdict matrix TypeScript node-http driver", () => {
       const unsupported = outcomes.filter((outcome) => outcome.status === "unsupported");
       const failures = outcomes.filter((outcome) => outcome.status === "fail");
 
-      expect(outcomes).toHaveLength(48);
-      expect(unsupported).toHaveLength(48);
+      const expectedIds = (await loadScenarios(scenarioRoot)).map((scenario) => scenario.id).sort();
+      expect(expectedIds).toHaveLength(72);
+      expect(new Set(expectedIds).size).toBe(72);
+      expect(outcomes.map((outcome) => outcome.scenario_id).sort()).toEqual(expectedIds);
+      expect(unsupported).toHaveLength(72);
       expect(failures).toEqual([]);
     } finally {
       restoreEnv("CHIO_VERDICT_MATRIX_SIDECAR_URL", previousMatrixSidecarUrl);

@@ -1,0 +1,6 @@
+.state/
+target/
+.venv/
+__pycache__/
+!src/bin/
+!src/bin/*.rs

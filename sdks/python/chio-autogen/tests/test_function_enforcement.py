@@ -321,9 +321,9 @@ class TestCapabilityRebind:
             subject="agent:lead",
             scope=_scope_for_tools("search", "write"),
         )
-        narrow = await chio.attenuate_capability(
-            broad, new_scope=_scope_for_tools("search")
-        )
+        # Rebinding tests use a separately issued narrower token. The sidecar
+        # cannot sign delegation on behalf of the parent's subject.
+        narrow = await _mint_token(chio, subject="agent:lead", scope=_scope_for_tools("search"))
         chio._tokens[narrow.id] = narrow  # type: ignore[attr-defined]
 
         agent = _make_agent("lead")

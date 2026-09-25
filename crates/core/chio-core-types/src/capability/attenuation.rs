@@ -47,6 +47,22 @@ pub struct AttenuationProof {
     pub normalized_subset_proof: AttenuationWitness,
 }
 
+/// The exact child authorized by one delegation hop.
+///
+/// Signed inside the delegator's link, including the complete subset witness.
+/// It binds the intermediate capability ID, lifetime, budget share and scope so
+/// the next holder cannot invent a broader predecessor in a multi-hop chain.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DelegationChildBinding {
+    pub capability_id: String,
+    pub issued_at: u64,
+    pub expires_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_share_bps: Option<u16>,
+    pub attenuation_proof: AttenuationProof,
+}
+
 /// A link in the delegation chain, recording that `delegator` granted a
 /// narrowed capability to `delegatee`.
 ///
@@ -86,6 +102,9 @@ pub struct DelegationLink {
     /// Authenticated preservation marker for cumulative approval root bindings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cumulative_approval: Option<CumulativeApprovalDelegationMarker>,
+    /// Exact child and per-hop subset witness. Required for multi-hop chains.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child_binding: Option<DelegationChildBinding>,
     /// Ed25519 signature by the delegator over the canonical form of the
     /// other fields in this link.
     pub signature: Signature,
@@ -107,6 +126,9 @@ pub struct DelegationLinkBody {
     pub aggregate_budget: Option<AggregateBudgetDelegationMarker>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cumulative_approval: Option<CumulativeApprovalDelegationMarker>,
+    /// Exact child and per-hop subset witness. Required for multi-hop chains.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child_binding: Option<DelegationChildBinding>,
 }
 
 impl DelegationLink {
@@ -134,6 +156,7 @@ impl DelegationLink {
             scope_hash: body.scope_hash,
             aggregate_budget: body.aggregate_budget,
             cumulative_approval: body.cumulative_approval,
+            child_binding: body.child_binding,
             signature,
         })
     }
@@ -150,6 +173,7 @@ impl DelegationLink {
             scope_hash: self.scope_hash.clone(),
             aggregate_budget: self.aggregate_budget.clone(),
             cumulative_approval: self.cumulative_approval.clone(),
+            child_binding: self.child_binding.clone(),
         }
     }
 
@@ -272,18 +296,16 @@ pub fn validate_delegation_chain(chain: &[DelegationLink], max_depth: Option<u32
 /// 1. Every link in the chain populates `scope_hash` (chains lacking
 ///    chain-binding are rejected fail-closed).
 /// 2. The first hop's `scope_hash` equals `trust_root_scope_hash`.
-/// 3. Multi-hop attenuated chains are rejected until delegation links carry
-///    per-hop child-scope witnesses. With only one `scope_hash` per link, a
-///    verifier cannot prove that link N's advertised parent scope was actually
-///    received from link N-1.
+/// 3. Every multi-hop link carries a signed `child_binding`. Its subset
+///    witness binds the granted child scope to the actual parent scope. The
+///    next link must use that child's ID, scope, lifetime and budget share.
 /// 4. The leaf capability token's `attenuation_proof.parent_scope_hash`
 ///    is checked against `chain.last().scope_hash` by
 ///    [`CapabilityToken::validate_chain_binding`].
 ///
-/// Scope hashes alone cannot prove per-hop subset relations because the
-/// full parent and child scopes are not carried on every delegation link.
-/// Callers that need per-hop semantic attenuation must carry explicit
-/// witnesses for each hop.
+/// Older single-hop links remain compatible. Multi-hop links without these
+/// witnesses still fail closed; signatures over unconnected scope hashes are
+/// insufficient. The leaf binding is checked by token schema validation.
 ///
 /// The signature, connectivity, and timestamp checks from the v1 entry
 /// point are also enforced.
@@ -296,13 +318,6 @@ pub fn validate_delegation_chain_with_trust_root(
 
     if chain.is_empty() {
         return Ok(());
-    }
-
-    if chain.len() > 1 {
-        return Err(Error::DelegationChainBroken {
-            reason: "multi-hop attenuated delegation chains require per-hop child-scope witnesses"
-                .to_string(),
-        });
     }
 
     for (i, link) in chain.iter().enumerate() {
@@ -318,6 +333,42 @@ pub fn validate_delegation_chain_with_trust_root(
             return Err(Error::DelegationChainBroken {
                 reason: "delegation chain link 0 scope_hash does not match trust root scope hash"
                     .to_string(),
+            });
+        }
+        if let Some(binding) = link.child_binding.as_ref() {
+            super::delegated_token::validate_child_binding(link, binding)?;
+            if chain[..=i]
+                .iter()
+                .any(|ancestor| ancestor.capability_id == binding.capability_id)
+            {
+                return Err(Error::DelegationChainBroken {
+                    reason: "delegation child reuses an ancestor capability ID".into(),
+                });
+            }
+            if let Some(next) = chain.get(i + 1) {
+                let next_binding = next.child_binding.as_ref().ok_or_else(|| Error::DelegationChainBroken {
+                    reason: "multi-hop attenuated delegation chains require per-hop child-scope witnesses".into(),
+                })?;
+                if binding.capability_id != next.capability_id
+                    || next.scope_hash.as_ref() != Some(&binding.attenuation_proof.child_scope_hash)
+                    || next.timestamp < binding.issued_at
+                    || next.timestamp >= binding.expires_at
+                    || next_binding.expires_at > binding.expires_at
+                    || next_binding
+                        .budget_share_bps
+                        .unwrap_or(MAX_BUDGET_SHARE_BPS)
+                        > binding.budget_share_bps.unwrap_or(MAX_BUDGET_SHARE_BPS)
+                {
+                    return Err(Error::DelegationChainBroken {
+                        reason: "delegation hop changed its signed predecessor ID, scope, lifetime or budget share".into(),
+                    });
+                }
+            }
+        } else if chain.len() > 1 {
+            return Err(Error::DelegationChainBroken {
+                reason:
+                    "multi-hop attenuated delegation chains require per-hop child-scope witnesses"
+                        .into(),
             });
         }
     }
@@ -606,7 +657,7 @@ fn validate_attenuation_steps(
 /// * `ReduceCostPerInvocation` / `ReduceTotalCost`: every covering child grant
 ///   must be capped, same-currency, and at or below the declared ceiling.
 /// * `ShortenExpiry`: the child expiry must be at or before the declared bound.
-fn validate_steps_reflected_in_child(
+pub(crate) fn validate_steps_reflected_in_child(
     child_scope: &ChioScope,
     child_expires_at: u64,
     steps: &[Attenuation],
@@ -1138,6 +1189,7 @@ pub fn delegate(
         scope_hash: Some(parent_scope_hash),
         aggregate_budget: aggregate_budget.clone(),
         cumulative_approval: cumulative_approval.clone(),
+        child_binding: None,
     };
     let link = DelegationLink::sign(body, delegator_keypair)?;
 

@@ -38,6 +38,7 @@ fn make_delegated_capability(
     let parent_scope_hash = scope_hash(&body.scope).unwrap();
     let parent_link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: parent_id.to_string(),
             delegator: issuer.public_key(),
             delegatee: subject.public_key(),

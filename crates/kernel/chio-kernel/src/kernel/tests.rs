@@ -18,6 +18,7 @@ include!("tests/capability_validation.rs");
 include!("tests/guard_pipeline.rs");
 include!("tests/hot_path_deadlines.rs");
 include!("tests/receipts.rs");
+include!("tests/nested_receipt_context.rs");
 include!("tests/session.rs");
 include!("tests/budget.rs");
 include!("tests/budget_governed_fallback.rs");

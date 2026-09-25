@@ -152,6 +152,124 @@ impl From<MarketError> for String {
     }
 }
 
+/// Closed failure families for the injected insurance seams.
+///
+/// The seams reach outside this crate for premium inputs, receipt
+/// evidence, and settlement execution. Their failures are integration
+/// failures rather than artifact-validation failures, so they carry their
+/// own family instead of borrowing [`MarketErrorCode`], whose variants
+/// describe malformed artifacts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum InsuranceSeamErrorCode {
+    /// The upstream is unreachable, unconfigured, or declined to answer.
+    Unavailable,
+    /// The referenced subject does not exist upstream.
+    NotFound,
+    /// The upstream answered, and the answer does not verify.
+    EvidenceInvalid,
+    /// The upstream understood the request and refused it.
+    Rejected,
+}
+
+impl InsuranceSeamErrorCode {
+    /// Stable snake_case identifier for telemetry and evidence keys.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unavailable => "unavailable",
+            Self::NotFound => "not_found",
+            Self::EvidenceInvalid => "evidence_invalid",
+            Self::Rejected => "rejected",
+        }
+    }
+}
+
+impl fmt::Display for InsuranceSeamErrorCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// One failure from an injected insurance seam.
+///
+/// Displays as its prose detail so existing operator text is unchanged;
+/// consumers that need the family match on [`Self::code`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InsuranceSeamError {
+    code: InsuranceSeamErrorCode,
+    detail: String,
+}
+
+impl InsuranceSeamError {
+    /// Construct a seam failure in the given family.
+    #[must_use]
+    pub fn new(code: InsuranceSeamErrorCode, detail: impl Into<String>) -> Self {
+        Self {
+            code,
+            detail: detail.into(),
+        }
+    }
+
+    /// The closed failure family.
+    #[must_use]
+    pub const fn code(&self) -> InsuranceSeamErrorCode {
+        self.code
+    }
+
+    /// Operator prose. Never a matching surface.
+    #[must_use]
+    pub fn detail(&self) -> &str {
+        &self.detail
+    }
+
+    /// The upstream is unreachable, unconfigured, or declined to answer.
+    #[must_use]
+    pub fn unavailable(detail: impl Into<String>) -> Self {
+        Self::new(InsuranceSeamErrorCode::Unavailable, detail)
+    }
+
+    /// The referenced subject does not exist upstream.
+    #[must_use]
+    pub fn not_found(detail: impl Into<String>) -> Self {
+        Self::new(InsuranceSeamErrorCode::NotFound, detail)
+    }
+
+    /// The upstream answered, and the answer does not verify.
+    #[must_use]
+    pub fn evidence_invalid(detail: impl Into<String>) -> Self {
+        Self::new(InsuranceSeamErrorCode::EvidenceInvalid, detail)
+    }
+
+    /// The upstream understood the request and refused it.
+    #[must_use]
+    pub fn rejected(detail: impl Into<String>) -> Self {
+        Self::new(InsuranceSeamErrorCode::Rejected, detail)
+    }
+
+    /// Name the call this failure came from without losing its family.
+    #[must_use]
+    pub fn prefixed(self, prefix: &str) -> Self {
+        Self {
+            code: self.code,
+            detail: format!("{prefix}: {}", self.detail),
+        }
+    }
+}
+
+impl fmt::Display for InsuranceSeamError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.detail)
+    }
+}
+
+impl std::error::Error for InsuranceSeamError {}
+
+impl From<InsuranceSeamError> for String {
+    fn from(error: InsuranceSeamError) -> Self {
+        error.detail
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,6 +283,14 @@ mod tests {
         );
         assert_eq!(error.code(), MarketErrorCode::CurrencyMismatch);
         assert_eq!(error.code().as_str(), "currency_mismatch");
+    }
+
+    #[test]
+    fn a_seam_failure_displays_its_detail_and_matches_on_its_family() {
+        let error = InsuranceSeamError::not_found("receipt is unknown to the store");
+        assert_eq!(error.to_string(), "receipt is unknown to the store");
+        assert_eq!(error.code(), InsuranceSeamErrorCode::NotFound);
+        assert_eq!(error.code().as_str(), "not_found");
     }
 
     #[test]

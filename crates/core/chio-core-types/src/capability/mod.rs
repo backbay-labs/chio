@@ -8,6 +8,7 @@ pub mod attenuation;
 pub mod caveat;
 pub mod crypto_floor;
 pub mod cumulative_approval;
+pub mod delegated_token;
 pub mod features;
 pub mod governance;
 pub mod runtime_attestation;
@@ -40,3 +41,7 @@ mod threshold_approval_tests;
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests;
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod delegated_token_tests;

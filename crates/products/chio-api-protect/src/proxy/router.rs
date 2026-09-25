@@ -399,18 +399,17 @@ pub(crate) async fn proxy_handler(
     }
 }
 
-pub(crate) async fn find_revoked_capability_id(
+pub(crate) async fn find_revocation_refusal(
     state: &Arc<ProxyState>,
     raw_capability: Option<&str>,
     capability_id_hint: Option<&str>,
-) -> Option<String> {
+) -> Option<(String, Verdict)> {
     let capability_id = presented_capability_id(raw_capability)
         .or_else(|| capability_id_hint.map(ToOwned::to_owned))?;
-    if state.capability_is_revoked(&capability_id).await {
-        Some(capability_id)
-    } else {
-        None
-    }
+    state
+        .capability_revocation_verdict(&capability_id)
+        .await
+        .map(|verdict| (capability_id, verdict))
 }
 
 pub(crate) async fn revoked_proxy_response(
@@ -421,7 +420,7 @@ pub(crate) async fn revoked_proxy_response(
     headers: &HashMap<String, String>,
     body_hash: Option<String>,
 ) -> Option<Response> {
-    let capability_id = find_revoked_capability_id(
+    let (capability_id, verdict) = find_revocation_refusal(
         state,
         extract_presented_capability_from_maps(headers, query),
         None,
@@ -460,7 +459,6 @@ pub(crate) async fn revoked_proxy_response(
         }
     };
 
-    let verdict = revoked_capability_verdict();
     let receipt = match build_manual_receipt(
         state,
         request.request_id.clone(),
@@ -469,7 +467,7 @@ pub(crate) async fn revoked_proxy_response(
         caller_identity_hash,
         None,
         verdict.clone(),
-        StatusCode::FORBIDDEN.as_u16(),
+        verdict_http_status(&verdict),
         request.timestamp,
         content_hash,
         Some(capability_id),
@@ -498,9 +496,9 @@ pub(crate) async fn revoked_proxy_response(
         StatusCode::from_u16(verdict_http_status(&verdict)).unwrap_or(StatusCode::FORBIDDEN);
     let error_body = serde_json::json!({
         "error": "chio_access_denied",
-        "message": "capability token has been revoked",
+        "message": revocation_refusal_message(&verdict),
         "receipt_id": receipt.id,
-        "suggestion": "request a fresh capability token before retrying",
+        "suggestion": revocation_refusal_suggestion(&verdict),
     });
 
     Some(
@@ -520,7 +518,7 @@ pub(crate) async fn revoked_sidecar_evaluate_response(
     request: &ChioHttpRequest,
     presented_capability: Option<&str>,
 ) -> Option<Response> {
-    let capability_id = find_revoked_capability_id(
+    let (capability_id, verdict) = find_revocation_refusal(
         state,
         presented_capability,
         request.capability_id.as_deref(),
@@ -551,7 +549,6 @@ pub(crate) async fn revoked_sidecar_evaluate_response(
     } else {
         request.route_pattern.clone()
     };
-    let verdict = revoked_capability_verdict();
     let receipt = match build_manual_receipt(
         state,
         request.request_id.clone(),
@@ -560,7 +557,7 @@ pub(crate) async fn revoked_sidecar_evaluate_response(
         caller_identity_hash,
         request.session_id.clone(),
         verdict.clone(),
-        StatusCode::FORBIDDEN.as_u16(),
+        verdict_http_status(&verdict),
         request.timestamp,
         content_hash,
         Some(capability_id),

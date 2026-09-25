@@ -26,6 +26,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from chio_adapter_base.mcp import McpToolBinding
 from chio_adapter_base.redact import (
     RedactionPolicy,
     bind_and_redact,
@@ -94,6 +95,19 @@ class ChioFunctionTool(FunctionTool):
         :class:`RedactionPolicy` to extend with adapter or workspace
         specific tool names.
     """
+
+    @classmethod
+    def from_mcp(cls, binding: McpToolBinding, *, fn_schema, description, name=None):
+        """Return LlamaIndex's native tool bound to remote Chio execution.
+
+        The supplied binding retains last_execution and owns no local executor.
+        Keep its MCP session open for the entire workflow.
+        """
+        return FunctionTool.from_defaults(
+            fn=binding.function(fn_schema, name=name, description=description),
+            async_fn=binding.function(fn_schema, name=name, description=description, asynchronous=True),
+            name=name or binding.tool_name, description=description, fn_schema=fn_schema,
+        )
 
     def __init__(
         self,

@@ -11,7 +11,26 @@ publish = false
 [lib]
 name = "chio_envoy_ext_authz"
 
+[[bin]]
+name = "chio-envoy-ext-authz"
+path = "src/main.rs"
+required-features = ["runtime"]
+
+[features]
+default = []
+runtime = ["dep:chio-http-core", "dep:chio-core-types", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:clap", "dep:axum", "dep:uuid", "dep:url", "dep:tracing-subscriber"]
+
 [dependencies]
+chio-http-core = { workspace = true, optional = true }
+chio-core-types = { workspace = true, optional = true }
+reqwest = { workspace = true, features = ["json", "rustls"], optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+axum = { version = "0.8", optional = true }
+uuid = { workspace = true, features = ["v7"], optional = true }
+url = { workspace = true, optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 tonic = "0.12"
 prost = "0.13"
 prost-types = "0.13"

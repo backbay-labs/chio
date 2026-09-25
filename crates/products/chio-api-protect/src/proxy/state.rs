@@ -389,31 +389,36 @@ pub(crate) struct ProxyState {
 }
 
 impl ProxyState {
-    /// Whether a capability has been revoked. The in-memory set is loaded once at
-    /// boot, so a revocation a sibling replica recorded after this process
-    /// started is only visible in the shared durable store; consult it as well.
-    /// Fails closed: if the durable store cannot be queried, treat the capability
-    /// as revoked rather than admit one that may have been released.
-    pub(crate) async fn capability_is_revoked(&self, capability_id: &str) -> bool {
+    /// Consult live revocation state and preserve the reason for a refusal.
+    /// An unavailable authority must prevent dispatch without falsely asserting
+    /// that an otherwise live grant was revoked.
+    pub(crate) async fn capability_revocation_verdict(
+        &self,
+        capability_id: &str,
+    ) -> Option<Verdict> {
         if self
             .revoked_capability_ids
             .lock()
             .await
             .contains(capability_id)
         {
-            return true;
+            return Some(revoked_capability_verdict());
         }
-        if let Some(revocation_store) = &self.revocation_store {
-            match revocation_store.is_revoked(capability_id) {
+        if let Some(store) = &self.revocation_store {
+            match store.is_revoked(capability_id) {
                 Ok(false) => {}
-                Ok(true) => return true,
+                Ok(true) => return Some(revoked_capability_verdict()),
                 Err(error) => {
                     warn!("failed to query durable revocation store: {error}");
-                    return true;
+                    return Some(Verdict::deny_with_status(
+                        "revocation authority is unavailable; no operation was dispatched",
+                        "RevocationAuthorityUnavailable",
+                        503,
+                    ));
                 }
             }
         }
-        false
+        None
     }
 }
 
@@ -625,14 +630,38 @@ impl ProtectProxy {
         // process: the same handle backs the embedded kernel's mediated checks
         // and the sidecar's release endpoint, so a token can be revoked in-process
         // rather than staying live until it expires.
+        let local_revocations: Arc<dyn chio_kernel::RevocationStore> = match durable_receipt_db {
+            Some(path) => Arc::new(
+                chio_store_sqlite::SqliteRevocationStore::open(revocation_sibling_path(path))
+                    .map_err(|error| ProtectError::ReceiptStore(error.to_string()))?,
+            ),
+            None => Arc::new(chio_kernel::InMemoryRevocationStore::new()),
+        };
+        let mut authorities: Vec<Arc<dyn chio_kernel::RevocationStore>> = Vec::new();
+        if let Some(path) = self.config.revocation_db.as_deref() {
+            authorities.push(Arc::new(
+                chio_store_sqlite::SqliteRevocationStore::open(path).map_err(|error| {
+                    ProtectError::Config(format!("cannot open revocation-db `{path}`: {error}"))
+                })?,
+            ));
+        }
+        if let Some(url) = self.config.control_url.as_deref() {
+            let remote = chio_control_plane::trust_control::service_runtime::remote_stores::build_remote_revocation_store(
+                url,
+                self.config.control_token.as_deref().unwrap_or(""),
+            )
+            .map_err(|error| ProtectError::Config(error.to_string()))?;
+            authorities.push(Arc::from(remote));
+        }
         let revocation_store: Option<Arc<dyn chio_kernel::RevocationStore>> =
-            match durable_receipt_db {
-                Some(path) => Some(Arc::new(
-                    chio_store_sqlite::SqliteRevocationStore::open(revocation_sibling_path(path))
-                        .map_err(|error| ProtectError::ReceiptStore(error.to_string()))?,
-                )),
-                None => Some(Arc::new(chio_kernel::InMemoryRevocationStore::new())),
-            };
+            Some(if authorities.is_empty() {
+                local_revocations
+            } else {
+                Arc::new(super::revocations::LiveRevocationStore {
+                    local: local_revocations,
+                    authorities,
+                })
+            });
 
         let durable_admission = match durable_receipt_db {
             Some(path) => {
@@ -710,9 +739,8 @@ impl ProtectProxy {
                 enforced = revoked_capability_ids.len(),
                 "chio api protect: loaded durable revocations from --revocation-db; \
                  enforced on /v1/evaluate and every revoked-capability path. \
-                 Revocations recorded after startup are not observed here: they \
-                 require a sidecar restart or the in-process \
-                 /v1/capabilities/release (or --control-url) channel"
+                 The configured store is also queried on every authorization, \
+                 so subsequent operator revocations apply without restarting"
             );
         }
 

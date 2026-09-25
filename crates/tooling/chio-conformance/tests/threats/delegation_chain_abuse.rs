@@ -76,6 +76,7 @@ fn signed_delegated_cap(
 ) -> CapabilityToken {
     let parent_link = match DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: parent_id.to_string(),
             delegator: issuer.public_key(),
             delegatee: issuer.public_key(),

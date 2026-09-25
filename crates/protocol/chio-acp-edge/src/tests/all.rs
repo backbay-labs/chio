@@ -3335,4 +3335,5 @@ mod tests {
         assert!(config.require_permission);
         assert_eq!(config.default_category, AcpCategory::Tool);
     }
+    include!("agent_connection.rs");
 }

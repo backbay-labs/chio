@@ -358,10 +358,21 @@ impl ChioMcpEdge {
                         "server": binding.server_id,
                     }),
                 );
-                return Err(jsonrpc_result(
-                    id.clone(),
-                    tool_error_result("tool is not authorized by the active capability set"),
-                ));
+                // Preserve the submitted authority and let the kernel record
+                // its scope/constraint refusal. Selecting a token here never
+                // adds grants: the kernel repeats authoritative validation
+                // before dispatch and signs the resulting denial.
+                match self.capabilities.first().cloned() {
+                    Some(capability) => capability,
+                    None => {
+                        return Err(jsonrpc_result(
+                            id.clone(),
+                            tool_error_result(
+                                "tool is not authorized by the active capability set",
+                            ),
+                        ));
+                    }
+                }
             }
         };
 

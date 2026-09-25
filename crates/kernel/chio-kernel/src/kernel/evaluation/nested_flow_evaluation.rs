@@ -2,6 +2,7 @@ use super::evaluation_helpers::OrdinaryRecoveryFinalization;
 use super::evaluation_helpers::PreDispatchCleanupDeny;
 use super::*;
 use crate::budget_store::BudgetInvocationCaptureDecision;
+use crate::finding_denial::denied_metadata;
 use crate::kernel::dispatch::dispatch_admission_error_reason;
 
 impl ChioKernel {
@@ -72,7 +73,7 @@ impl ChioKernel {
                 EMERGENCY_STOP_DENY_REASON,
                 now,
                 None,
-                None,
+                extra_metadata.clone(),
             );
         }
 
@@ -125,7 +126,11 @@ impl ChioKernel {
                     "receipt federation admission failed pre-dispatch (nested flow)"
                 );
                 return self.build_negotiation_failclosed_deny_response_with_metadata(
-                    request, &msg, now, None, None,
+                    request,
+                    &msg,
+                    now,
+                    None,
+                    extra_metadata.clone(),
                 );
             }
         };
@@ -149,13 +154,25 @@ impl ChioKernel {
         if let Err(error) = request.validate_authorization_extensions() {
             let msg = error.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "authorization extension rejected");
-            return self.build_deny_response(request, &msg, now, None);
+            return self.build_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
         }
 
         if let Err(error) = self.validate_finding_memory_write_admission(request) {
             let msg = error.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "Finding memory write rejected pre-dispatch (nested flow)");
-            return self.build_deny_response(request, &msg, now, None);
+            return self.build_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
         }
 
         let cap = &request.capability;
@@ -170,31 +187,61 @@ impl ChioKernel {
         ) {
             let msg = format!("capability verification failed: {reason}");
             warn!(request_id = %request.request_id, msg = %redacted!(&msg), "capability rejected");
-            return self.build_deny_response(request, &msg, now, None);
+            return self.build_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
         }
 
         if let Err(e) = check_time_bounds(cap, now) {
             let msg = e.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
-            return self.build_deny_response(request, &msg, now, None);
+            return self.build_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
         }
 
         if let Err(e) = self.check_tool_call_revocation_admission(request) {
             let msg = e.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
-            return self.build_deny_response(request, &msg, now, None);
+            return self.build_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
         }
 
         if let Err(e) = self.validate_delegation_admission(cap) {
             let msg = e.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
-            return self.build_deny_response(request, &msg, now, None);
+            return self.build_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
         }
 
         if let Err(e) = check_subject_binding(cap, &request.agent_id) {
             let msg = e.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
-            return self.build_deny_response(request, &msg, now, None);
+            return self.build_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
         }
 
         let matching_grants = match resolve_required_matching_grants(
@@ -208,7 +255,13 @@ impl ChioKernel {
             Err(error) => {
                 let msg = error.to_string();
                 warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
-                return self.build_deny_response(request, &msg, now, None);
+                return self.build_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    None,
+                    extra_metadata.clone(),
+                );
             }
         };
         let required_delivery_grant_index =
@@ -216,7 +269,13 @@ impl ChioKernel {
                 Ok(index) => index,
                 Err(reason) => {
                     warn!(request_id = %request.request_id, reason, "delivery contract denied");
-                    return self.build_deny_response(request, reason, now, None);
+                    return self.build_deny_response_with_metadata(
+                        request,
+                        reason,
+                        now,
+                        None,
+                        extra_metadata.clone(),
+                    );
                 }
             };
 
@@ -246,14 +305,26 @@ impl ChioKernel {
             if let Err(e) = verification {
                 let msg = e.to_string();
                 warn!(request_id = %request.request_id, reason = %redacted!(&msg), "DPoP verification failed");
-                return self.build_deny_response(request, &msg, now, None);
+                return self.build_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    None,
+                    extra_metadata.clone(),
+                );
             }
         }
 
         if let Err(e) = self.ensure_registered_tool_target(request) {
             let msg = e.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool target not registered");
-            return self.build_deny_response(request, &msg, now, None);
+            return self.build_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
         }
 
         // Confirm durable persistence is healthy BEFORE the first writer-backed
@@ -271,7 +342,11 @@ impl ChioKernel {
                 "federated receipt persistence unavailable pre-dispatch (nested flow)"
             );
             return self.build_receipt_persistence_failclosed_deny_response_with_metadata(
-                request, &msg, now, None, None,
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
             );
         }
         if let Err(error) = self.ensure_tcb_locks_healthy() {
@@ -282,7 +357,11 @@ impl ChioKernel {
                 "tcb lock poisoned pre-dispatch (nested flow)"
             );
             return self.build_receipt_persistence_failclosed_deny_response_with_metadata(
-                request, &msg, now, None, None,
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
             );
         }
         if let Err(error) = self.ensure_receipt_persistence_ready() {
@@ -293,7 +372,11 @@ impl ChioKernel {
                 "receipt persistence unavailable pre-dispatch (nested flow)"
             );
             return self.build_receipt_persistence_failclosed_deny_response_with_metadata(
-                request, &msg, now, None, None,
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
             );
         }
         if let Err(error) = self.ensure_revocation_durability_ready() {
@@ -304,7 +387,11 @@ impl ChioKernel {
                 "revocation durability unavailable pre-dispatch (nested flow)"
             );
             return self.build_receipt_persistence_failclosed_deny_response_with_metadata(
-                request, &msg, now, None, None,
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
             );
         }
 
@@ -346,7 +433,13 @@ impl ChioKernel {
                 None,
                 None,
             )?;
-            return self.build_deny_response(request, &msg, now, None);
+            return self.build_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
         }
 
         let session_roots = match self
@@ -363,7 +456,13 @@ impl ChioKernel {
                     None,
                     None,
                 )?;
-                return self.build_deny_response(request, &msg, now, None);
+                return self.build_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    None,
+                    extra_metadata.clone(),
+                );
             }
         };
 
@@ -895,7 +994,10 @@ impl ChioKernel {
                             durable_operation: durable_admission
                                 .as_ref()
                                 .map(DurableToolAdmission::operation),
-                            runtime_admission_metadata,
+                            runtime_admission_metadata: denied_metadata(
+                                &runtime_admission_metadata,
+                                &denial,
+                            ),
                             verified_payee_binding: verified_governed_payee_binding.as_ref(),
                             budget_lease_acquired,
                         })
@@ -918,7 +1020,10 @@ impl ChioKernel {
                             durable_operation: durable_admission
                                 .as_ref()
                                 .map(DurableToolAdmission::operation),
-                            runtime_admission_metadata,
+                            runtime_admission_metadata: denied_metadata(
+                                &runtime_admission_metadata,
+                                &denial,
+                            ),
                             verified_payee_binding: verified_governed_payee_binding.as_ref(),
                             budget_lease_acquired,
                         })
@@ -1100,7 +1205,7 @@ impl ChioKernel {
                     durable_operation: durable_admission
                         .as_ref()
                         .map(DurableToolAdmission::operation),
-                    runtime_admission_metadata: runtime_admission_metadata.clone(),
+                    runtime_admission_metadata: error.denied_metadata(&runtime_admission_metadata),
                     verified_payee_binding: verified_governed_payee_binding.as_ref(),
                     budget_lease_acquired,
                 })
@@ -1373,7 +1478,8 @@ impl ChioKernel {
                                 durable_operation: durable_admission
                                     .as_ref()
                                     .map(DurableToolAdmission::operation),
-                                runtime_admission_metadata: runtime_admission_metadata.clone(),
+                                runtime_admission_metadata: error
+                                    .denied_metadata(&runtime_admission_metadata),
                                 verified_payee_binding: verified_governed_payee_binding.as_ref(),
                                 budget_lease_acquired,
                             },
@@ -1446,7 +1552,8 @@ impl ChioKernel {
                         durable_operation: durable_admission
                             .as_ref()
                             .map(DurableToolAdmission::operation),
-                        runtime_admission_metadata: runtime_admission_metadata.clone(),
+                        runtime_admission_metadata: error
+                            .denied_metadata(&runtime_admission_metadata),
                         verified_payee_binding: verified_governed_payee_binding.as_ref(),
                         budget_lease_acquired,
                     },
@@ -1874,9 +1981,9 @@ impl ChioKernel {
             verified_finding_admission.recovery_status(),
             current_unix_timestamp_ms() / 1_000,
         );
-        if let Err(reason) = recovery_status {
+        if let Err(denial) = recovery_status {
             let reason = format!(
-                "finding recovery status changed before ordinary output finalization: {reason}"
+                "finding recovery status changed before ordinary output finalization: {denial}"
             );
             warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding recovery output withheld");
             return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
@@ -1885,7 +1992,7 @@ impl ChioKernel {
                     &reason,
                     current_unix_timestamp_ms() / 1_000,
                     Some(matched_grant_index),
-                    runtime_admission_metadata,
+                    denied_metadata(&runtime_admission_metadata, &denial),
                     verified_governed_payee_binding.as_ref(),
                 )
             });

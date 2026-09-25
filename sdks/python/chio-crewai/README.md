@@ -1,5 +1,14 @@
 # chio-crewai
 
+## Execute through your Chio MCP host
+
+Use `ChioBaseTool.from_mcp(session, tool_name="createNote", args_schema=CreateNoteInput, description="Save a note")` to build a native CrewAI tool around an existing application-owned MCP session. Full arguments reach the host that performs admission and execution. Keep the session open across the agent run; `last_mcp_execution` retains its request and receipt association. The binding never invokes an unrelated local executor.
+
+The complete [framework notes application](https://www.chio.computer/docs/examples/agent-framework-sdks) includes input models, host, launcher, role policies and an independent receipt verifier. Its bundled adapters are source candidates; installing an older registry distribution does not add these APIs.
+
+Legacy local-executor and signerless-delegation APIs below have different authority requirements. An ID-only sidecar gate continues to refuse execution, and a sidecar without the parent subject signer cannot manufacture a delegated capability.
+
+
 CrewAI integration for the [Chio protocol](../../../spec/PROTOCOL.md). Wraps
 `crewai.tools.BaseTool` so every tool invocation an agent attempts is
 evaluated by the Chio sidecar kernel for capability-scoped authorization,

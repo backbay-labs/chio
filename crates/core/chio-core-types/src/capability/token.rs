@@ -324,6 +324,7 @@ impl CapabilityToken {
             });
         }
         validate_direct_family_binding(self)?;
+        super::delegated_token::validate_leaf_binding(self)?;
         if !self.caveats.is_empty() {
             return Err(Error::AttenuationViolation {
                 reason:
@@ -450,6 +451,10 @@ impl CapabilityToken {
     #[must_use]
     pub fn requires_chain_binding(&self) -> bool {
         self.attenuation_proof.is_some()
+            || self
+                .delegation_chain
+                .iter()
+                .any(|link| link.child_binding.is_some())
             || self
                 .scope_attenuations
                 .as_ref()

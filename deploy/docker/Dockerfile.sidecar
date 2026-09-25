@@ -48,6 +48,7 @@ WORKDIR /workspace
 # separate top-level `COPY proto` needed.
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY third_party ./third_party
 COPY contracts ./contracts
 COPY spec ./spec
 COPY fixtures ./fixtures

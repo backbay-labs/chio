@@ -3204,4 +3204,5 @@ mod tests {
             json!({"kind": "unsupported", "reason": "needs cancellation"})
         );
     }
+    include!("v1_wire.rs");
 }

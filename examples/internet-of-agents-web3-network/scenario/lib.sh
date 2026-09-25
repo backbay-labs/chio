@@ -85,9 +85,8 @@ start_live_topology() {
     --advertise-url "${OPERATOR_CONTROL_URL}" \
     --service-token "${SERVICE_TOKEN}" \
     --receipt-db "${STATE_DIR}/operator-receipts.sqlite3" \
-    --revocation-db "${STATE_DIR}/operator-revocations.sqlite3" \
     --authority-seed-file "${OPERATOR_AUTHORITY_SEED}" \
-    --budget-db "${STATE_DIR}/operator-budgets.sqlite3" \
+    --session-db "${STATE_DIR}/operator-joint.sqlite3" \
     >"${LOG_DIR}/operator-trust-control.log" 2>&1 &
   OPERATOR_TRUST_PID=$!
 
@@ -96,9 +95,8 @@ start_live_topology() {
     --advertise-url "${PROVIDER_CONTROL_URL}" \
     --service-token "${SERVICE_TOKEN}" \
     --receipt-db "${STATE_DIR}/provider-receipts.sqlite3" \
-    --revocation-db "${STATE_DIR}/provider-revocations.sqlite3" \
     --authority-seed-file "${PROVIDER_AUTHORITY_SEED}" \
-    --budget-db "${STATE_DIR}/provider-budgets.sqlite3" \
+    --session-db "${STATE_DIR}/provider-joint.sqlite3" \
     >"${LOG_DIR}/provider-trust-control.log" 2>&1 &
   PROVIDER_TRUST_PID=$!
 
@@ -107,9 +105,8 @@ start_live_topology() {
     --advertise-url "${SUBCONTRACTOR_CONTROL_URL}" \
     --service-token "${SERVICE_TOKEN}" \
     --receipt-db "${STATE_DIR}/subcontractor-receipts.sqlite3" \
-    --revocation-db "${STATE_DIR}/subcontractor-revocations.sqlite3" \
     --authority-seed-file "${SUBCONTRACTOR_AUTHORITY_SEED}" \
-    --budget-db "${STATE_DIR}/subcontractor-budgets.sqlite3" \
+    --session-db "${STATE_DIR}/subcontractor-joint.sqlite3" \
     >"${LOG_DIR}/subcontractor-trust-control.log" 2>&1 &
   SUBCONTRACTOR_TRUST_PID=$!
 
@@ -118,11 +115,16 @@ start_live_topology() {
     --advertise-url "${FEDERATION_CONTROL_URL}" \
     --service-token "${SERVICE_TOKEN}" \
     --receipt-db "${STATE_DIR}/federation-receipts.sqlite3" \
-    --revocation-db "${STATE_DIR}/federation-revocations.sqlite3" \
     --authority-seed-file "${FEDERATION_AUTHORITY_SEED}" \
-    --budget-db "${STATE_DIR}/federation-budgets.sqlite3" \
+    --session-db "${STATE_DIR}/federation-joint.sqlite3" \
     >"${LOG_DIR}/federation-trust-control.log" 2>&1 &
   FEDERATION_TRUST_PID=$!
+
+  wait_for_http "${OPERATOR_CONTROL_URL}/health"
+  wait_for_http "${PROVIDER_CONTROL_URL}/health"
+  wait_for_http "${SUBCONTRACTOR_CONTROL_URL}/health"
+  wait_for_http "${FEDERATION_CONTROL_URL}/health"
+  uv sync --locked --project "${EXAMPLE_ROOT}"
 
   uv run --project "${EXAMPLE_ROOT}" python "${EXAMPLE_ROOT}/services/market_broker.py" \
     --port "${MARKET_RAW_PORT}" >"${LOG_DIR}/market-broker.log" 2>&1 &
@@ -138,6 +140,7 @@ start_live_topology() {
     --upstream "${MARKET_RAW_URL}" \
     --spec "${EXAMPLE_ROOT}/services/market-broker-openapi.yaml" \
     --listen "127.0.0.1:${MARKET_SIDECAR_PORT}" \
+    --authority-seed-file "${STATE_DIR}/market-sidecar-seed.hex" \
     --receipt-store "${STATE_DIR}/market-sidecar-receipts.sqlite3" \
     >"${LOG_DIR}/chio-market-sidecar.log" 2>&1 &
   MARKET_SIDECAR_PID=$!
@@ -148,6 +151,7 @@ start_live_topology() {
     --upstream "${SETTLEMENT_RAW_URL}" \
     --spec "${EXAMPLE_ROOT}/services/settlement-desk-openapi.yaml" \
     --listen "127.0.0.1:${SETTLEMENT_SIDECAR_PORT}" \
+    --authority-seed-file "${STATE_DIR}/settlement-sidecar-seed.hex" \
     --receipt-store "${STATE_DIR}/settlement-sidecar-receipts.sqlite3" \
     >"${LOG_DIR}/chio-settlement-sidecar.log" 2>&1 &
   SETTLEMENT_SIDECAR_PID=$!
@@ -161,7 +165,7 @@ start_live_topology() {
     --auth-token "${CHIO_AUTH_TOKEN}" \
     --session-db "${STATE_DIR}/web3-evidence-sessions.sqlite3" \
     --shared-hosted-owner \
-    -- python "${EXAMPLE_ROOT}/tools/web3_evidence.py" \
+    -- uv run --locked --project "${EXAMPLE_ROOT}" python "${EXAMPLE_ROOT}/tools/web3_evidence.py" \
     >"${LOG_DIR}/chio-web3-evidence-mcp.log" 2>&1 &
   WEB3_EVIDENCE_MCP_PID=$!
 
@@ -174,7 +178,7 @@ start_live_topology() {
     --auth-token "${CHIO_AUTH_TOKEN}" \
     --session-db "${STATE_DIR}/provider-review-sessions.sqlite3" \
     --shared-hosted-owner \
-    -- python "${EXAMPLE_ROOT}/tools/provider_review.py" \
+    -- uv run --locked --project "${EXAMPLE_ROOT}" python "${EXAMPLE_ROOT}/tools/provider_review.py" \
     >"${LOG_DIR}/chio-provider-review-mcp.log" 2>&1 &
   PROVIDER_REVIEW_MCP_PID=$!
 
@@ -187,7 +191,7 @@ start_live_topology() {
     --auth-token "${CHIO_AUTH_TOKEN}" \
     --session-db "${STATE_DIR}/subcontractor-review-sessions.sqlite3" \
     --shared-hosted-owner \
-    -- python "${EXAMPLE_ROOT}/tools/subcontractor_review.py" \
+    -- uv run --locked --project "${EXAMPLE_ROOT}" python "${EXAMPLE_ROOT}/tools/subcontractor_review.py" \
     >"${LOG_DIR}/chio-subcontractor-review-mcp.log" 2>&1 &
   SUBCONTRACTOR_REVIEW_MCP_PID=$!
 
@@ -250,7 +254,7 @@ run_live_scenario() {
     args+=(--ops-audit "${ops_audit}")
   fi
 
-  uv run --project "${EXAMPLE_ROOT}" python "${EXAMPLE_ROOT}/orchestrate.py" "${args[@]}" \
+  uv run --project "${EXAMPLE_ROOT}" python "${EXAMPLE_ROOT}/legacy_orchestrate.py" "${args[@]}" \
     > "${bundle_dir}/run-result.json"
 
   PYTHONPATH="${EXAMPLE_ROOT}" uv run --project "${EXAMPLE_ROOT}" python - "${bundle_dir}" "${require_base_sepolia}" <<'PY'

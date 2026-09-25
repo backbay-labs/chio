@@ -1,5 +1,6 @@
 use super::*;
 use chio_kernel::ReceiptReadContext;
+use chio_kernel::ReceiptStore as _;
 use subtle::ConstantTimeEq;
 
 pub(super) fn install_admin_routes(router: Router<RemoteAppState>) -> Router<RemoteAppState> {
@@ -230,7 +231,7 @@ async fn handle_admin_tool_receipts(
         Err(response) => return response,
     } {
         return match client.list_tool_receipts(&ToolReceiptQuery {
-            receipt_id: None,
+            receipt_id: query.receipt_id.clone(),
             capability_id: query.capability_id.clone(),
             tool_server: query.tool_server.clone(),
             tool_name: query.tool_name.clone(),
@@ -246,14 +247,21 @@ async fn handle_admin_tool_receipts(
         Err(response) => return response,
     };
     let read_context = ReceiptReadContext::admin_service();
-    let receipts = match store.list_tool_receipts_with_context(
-        &read_context,
-        admin_list_limit(query.limit),
-        query.capability_id.as_deref(),
-        query.tool_server.as_deref(),
-        query.tool_name.as_deref(),
-        query.decision.as_deref(),
-    ) {
+    let loaded = if let Some(identity) = query.receipt_id.as_deref() {
+        store
+            .load_chio_receipt(identity)
+            .map(|receipt| receipt.into_iter().collect())
+    } else {
+        store.list_tool_receipts_with_context(
+            &read_context,
+            admin_list_limit(query.limit),
+            query.capability_id.as_deref(),
+            query.tool_server.as_deref(),
+            query.tool_name.as_deref(),
+            query.decision.as_deref(),
+        )
+    };
+    let receipts = match loaded {
         Ok(receipts) => receipts,
         Err(error) => {
             return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
@@ -276,6 +284,7 @@ async fn handle_admin_tool_receipts(
         "kind": "tool",
         "count": receipts.len(),
         "filters": {
+            "receiptId": query.receipt_id,
             "capabilityId": query.capability_id,
             "toolServer": query.tool_server,
             "toolName": query.tool_name,

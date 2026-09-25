@@ -839,6 +839,7 @@ fn capture_runtime_revocation_trace_with_store(
     let now = current_unix_timestamp().max(parent.issued_at);
     let link = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: parent.id.clone(),
             delegator: kernel_key.public_key(),
             delegatee: subject.public_key(),
@@ -1598,6 +1599,7 @@ fn build_delegation_pair() -> (CapabilityToken, CapabilityToken) {
     let child_scope_hash = scope_hash(&child_scope).expect("hash child delegation scope");
     let delegation = DelegationLink::sign(
         DelegationLinkBody {
+            child_binding: None,
             capability_id: parent.id.clone(),
             delegator: parent_subject.public_key(),
             delegatee: child_subject.public_key(),

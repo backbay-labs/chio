@@ -1,0 +1,93 @@
+{
+  "source": "chio api protect, actual allowed and revoked POST /notes operations",
+  "trusted_signers": [
+    "cf26f5a29405241a68b1ae086f5e03c31c1c17dedd09267f808cadd1708631ef"
+  ],
+  "receipts": [
+    {
+      "id": "520a6f3d61b0ffb96cdbea4152af9ecad95949eec3d54f54b36eaa40ff2a3ffa",
+      "request_id": "01a08d5d-ba50-71b2-aa67-e339eec19a36",
+      "route_pattern": "/notes",
+      "method": "POST",
+      "caller_identity_hash": "5a45e80d1ab1a73e8c2644f3f6c6e53974d0a986c2fc86692372d3f130248c9c",
+      "verdict": {
+        "verdict": "allow"
+      },
+      "receipt_kind": "mediated_decision",
+      "boundary_class": "prevent",
+      "tool_origin": "caller_executed",
+      "redaction_mode": "none",
+      "evidence": [
+        {
+          "guard_name": "CapabilityGuard",
+          "verdict": true,
+          "details": "valid capability token presented"
+        }
+      ],
+      "response_status": 201,
+      "timestamp": 1789078125,
+      "content_hash": "dd2097099c3eb6c8a8babf0987392b03ca0e9d732a945da866f33cb75fa6a8bd",
+      "policy_hash": "d2ed7d01074c952ab46491c89a53e51d03d9e089fa670861788ace0c28e42fcb",
+      "trust_level": "mediated",
+      "capability_id": "cap-01a08d5d-b743-7b10-91ac-3909194fa3e2",
+      "metadata": {
+        "chio_decision_receipt_id": "f4de620b69987b60ed3ff11fcb922e30bfa62712d92da9d87f6e8d2b14cc8025",
+        "chio_http_status_scope": "final",
+        "chio_kernel_receipt_id": "0b2a44035a4554cc957f948df691cc1ce1e1c44e2ab73a5803706522fd752d48",
+        "route_selection": {
+          "candidates": [
+            {
+              "available": true,
+              "routeId": "native-route",
+              "selectedProtocols": [
+                "http",
+                "native"
+              ],
+              "targetProtocol": "native"
+            }
+          ],
+          "decision": "select",
+          "requestedTargetProtocol": "native",
+          "routeSelectionId": "d508c7a857b705c3a234267dbf1cf6a9fedc2436f489fc1aa8b2e7afd96e1a2c",
+          "selectedProtocols": [
+            "http",
+            "native"
+          ],
+          "selectedRouteId": "native-route",
+          "selectedTargetProtocol": "native",
+          "sourceProtocol": "http"
+        }
+      },
+      "kernel_key": "cf26f5a29405241a68b1ae086f5e03c31c1c17dedd09267f808cadd1708631ef",
+      "signature": "53662021dadfd9a7dc7f1eb3e27582faebc2baae5d053d188c8f6a79bc793baeb15e752f3911cf2da7b6eed5f7d478af6771db54b6496c5d5ae078b14699f005"
+    },
+    {
+      "id": "7c202b3eecea3f4084c535f8bca68935e9410664631694bf51589930fc1a060b",
+      "request_id": "01a08d5d-bf0d-7a10-994d-6b55122bb356",
+      "route_pattern": "/notes",
+      "method": "POST",
+      "caller_identity_hash": "5a45e80d1ab1a73e8c2644f3f6c6e53974d0a986c2fc86692372d3f130248c9c",
+      "verdict": {
+        "verdict": "deny",
+        "reason": "capability token has been revoked",
+        "guard": "CapabilityRevocation",
+        "http_status": 403
+      },
+      "receipt_kind": "mediated_decision",
+      "boundary_class": "prevent",
+      "tool_origin": "caller_executed",
+      "redaction_mode": "none",
+      "response_status": 403,
+      "timestamp": 1789078126,
+      "content_hash": "dd2097099c3eb6c8a8babf0987392b03ca0e9d732a945da866f33cb75fa6a8bd",
+      "policy_hash": "ecda1e4a9c5be2c572aa750eb9d174fd4e09f9f3364d4c70e550c3fa408cfa5a",
+      "trust_level": "mediated",
+      "capability_id": "cap-01a08d5d-b743-7b10-91ac-3909194fa3e2",
+      "metadata": {
+        "chio_http_status_scope": "final"
+      },
+      "kernel_key": "cf26f5a29405241a68b1ae086f5e03c31c1c17dedd09267f808cadd1708631ef",
+      "signature": "8eb8ada08adf184d6031e9dfcd60d6cbed7c72bde51b9cc890d85e60844430e1ac2561b956e216c99be82f16aacc5b8e33d9d3dd4a0fe1d1b7ea61f699c7be07"
+    }
+  ]
+}

@@ -1,31 +1,22 @@
 #!/usr/bin/env python3
-"""Commerce network orchestrator.
+"""Run a governed procurement request and retain the returned work and book settlement."""
 
-Runs the governed procurement flow:
-  1. Issue capability via trust-control with budget limits
-  2. Run procurement agent (requests quote, creates job, handles approval)
-  3. Charge budget via trust-control for each provider operation
-  4. Query financial reports (exposure ledger, budget usage)
-  5. Export evidence bundle
-"""
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
 import logging
-import os
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
-
 from commerce_network.agents import run_procurement_agent
 from commerce_network.chio import TrustControl
+from nacl.signing import SigningKey
 
+ROOT = Path(__file__).resolve().parent
 log = logging.getLogger("commerce-network")
 
 
@@ -59,42 +50,42 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--buyer-url", required=True, help="Buyer sidecar URL (chio api protect)")
     p.add_argument("--buyer-auth-token", default="demo-token")
     p.add_argument("--artifact-dir")
-    p.add_argument("--scope", default="hotfix-review",
-                   choices=["hotfix-review", "release-review", "release-plus-cloud-review", "full-estate-review"])
-    p.add_argument("--target", default="git://lattice.example/payments-api")
+    p.add_argument(
+        "--scope",
+        default="hotfix-review",
+        choices=[
+            "hotfix-review",
+            "release-review",
+            "release-plus-cloud-review",
+            "full-estate-review",
+        ],
+    )
+    p.add_argument("--target", default="payments-api")
     p.add_argument("--budget-minor", type=int, default=90_000, help="Budget in cents")
     p.add_argument("--release-window", default=None)
     args = p.parse_args(argv)
 
-    out = Path(args.artifact_dir) if args.artifact_dir else (
-        ROOT / "artifacts" / "live" / time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    out = (
+        Path(args.artifact_dir)
+        if args.artifact_dir
+        else (ROOT / "artifacts" / "live" / time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()))
     )
     out.mkdir(parents=True, exist_ok=True)
 
     trust = TrustControl(args.control_url, args.service_token)
 
-    # -- Issue capability with budget limits --
-    # The procurement agent gets a capped budget for provider operations.
-    # Chio's trust-control tracks budget consumption atomically.
+    # The HTTP gateway admits only the operator-issued application grant.
+    # The buyer owns quoted-price reservations and its persistent book ledger.
     cap = trust.issue_capability(
-        subject_pk="00" * 32,
+        subject_pk=SigningKey.generate().verify_key.encode().hex(),
         scope={
             "grants": [
                 {
-                    "server_id": "http-sidecar-client",
-                    "tool_name": "procurement_quote_read",
+                    "server_id": "chio_http_authority",
+                    "tool_name": "authorize_http_request",
                     "operations": ["invoke"],
                     "constraints": [],
-                },
-                {
-                    "server_id": "http-sidecar-client",
-                    "tool_name": "procurement_job_write",
-                    "operations": ["invoke"],
-                    "constraints": [],
-                    "maxInvocations": 3,
-                    "maxCostPerInvocation": _usd(args.budget_minor),
-                    "maxTotalCost": _usd(args.budget_minor),
-                },
+                }
             ],
             "resource_grants": [],
             "prompt_grants": [],
@@ -121,32 +112,11 @@ def main(argv: list[str] | None = None) -> int:
         tool_out = call.get("output", {})
         if call["tool"] == "request_quote" and "quote" in tool_out:
             _write(out / "contracts" / "quote-response.json", tool_out["quote"])
-        elif call["tool"] == "create_job":
+        elif call["tool"] == "create_job" or call["tool"] == "approve_job":
             if "fulfillment" in tool_out and tool_out["fulfillment"]:
                 _write(out / "contracts" / "fulfillment-package.json", tool_out["fulfillment"])
             if "settlement" in tool_out and tool_out["settlement"]:
                 _write(out / "contracts" / "settlement-reconciliation.json", tool_out["settlement"])
-        elif call["tool"] == "approve_job":
-            if "fulfillment" in tool_out and tool_out["fulfillment"]:
-                _write(out / "contracts" / "fulfillment-package.json", tool_out["fulfillment"])
-            if "settlement" in tool_out and tool_out["settlement"]:
-                _write(out / "contracts" / "settlement-reconciliation.json", tool_out["settlement"])
-
-    # -- Financial reports from trust-control --
-    budget_state = trust.query_budgets(capability_id=cap["id"])
-    _write(out / "financial" / "budget-usage.json", budget_state)
-
-    try:
-        exposure = trust.exposure_ledger()
-        _write(out / "financial" / "exposure-ledger.json", exposure)
-    except Exception:
-        _write(out / "financial" / "exposure-ledger.json", {"status": "not_available"})
-
-    try:
-        settlements = trust.settlement_report()
-        _write(out / "financial" / "settlement-report.json", settlements)
-    except Exception:
-        _write(out / "financial" / "settlement-report.json", {"status": "not_available"})
 
     # -- Summary --
     summary = {
@@ -160,15 +130,17 @@ def main(argv: list[str] | None = None) -> int:
         "currency": agent_out.get("currency", "USD"),
         "agent_mode": agent_out.get("mode"),
         "tool_calls": len(agent_out.get("tool_calls", [])),
-        "llm_mode": "openai" if os.getenv("OPENAI_API_KEY") else (
-            "anthropic" if os.getenv("ANTHROPIC_API_KEY") else "fallback"
-        ),
+        "llm_mode": agent_out.get("mode"),
     }
     _write(out / "summary.json", summary)
 
     json.dump({"artifact_dir": str(out), "summary": summary}, sys.stdout, indent=2)
     print()
-    return 0
+    return (
+        0
+        if summary["final_status"] in {"fulfilled", "pending_approval", "denied_budget", "disputed"}
+        else 1
+    )
 
 
 if __name__ == "__main__":

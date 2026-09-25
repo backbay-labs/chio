@@ -25,3 +25,19 @@ pub(crate) fn verdict_http_status(verdict: &Verdict) -> u16 {
         Verdict::Cancel { .. } | Verdict::Incomplete { .. } => 500,
     }
 }
+
+pub(crate) fn revocation_refusal_message(verdict: &Verdict) -> &'static str {
+    if verdict_http_status(verdict) == 503 {
+        "revocation authority is unavailable; no operation was dispatched"
+    } else {
+        "capability token has been revoked"
+    }
+}
+
+pub(crate) fn revocation_refusal_suggestion(verdict: &Verdict) -> &'static str {
+    if verdict_http_status(verdict) == 503 {
+        "restore the configured revocation authority before retrying this operation"
+    } else {
+        "request a fresh capability token before retrying"
+    }
+}

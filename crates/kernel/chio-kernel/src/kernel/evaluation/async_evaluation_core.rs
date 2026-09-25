@@ -3,7 +3,7 @@ use super::evaluation_helpers::{
 };
 use super::*;
 use crate::budget_store::BudgetInvocationCaptureDecision;
-use crate::kernel::dispatch::dispatch_admission_error_reason;
+use crate::{finding_denial::denied_metadata, kernel::dispatch::dispatch_admission_error_reason};
 
 impl ChioKernel {
     pub(super) async fn evaluate_tool_call_async_with_session_context(
@@ -114,7 +114,11 @@ impl ChioKernel {
                     "receipt federation admission failed pre-dispatch"
                 );
                 return self.build_negotiation_failclosed_deny_response_with_metadata(
-                    request, &msg, now, None, None,
+                    request,
+                    &msg,
+                    now,
+                    None,
+                    extra_metadata.clone(),
                 );
             }
         };
@@ -1013,7 +1017,7 @@ impl ChioKernel {
                             durable_operation: durable_admission
                                 .as_ref()
                                 .map(DurableToolAdmission::operation),
-                            runtime_admission_metadata: extra_metadata.clone(),
+                            runtime_admission_metadata: error.denied_metadata(&extra_metadata),
                             verified_payee_binding: verified_governed_payee_binding.as_ref(),
                             budget_lease_acquired,
                         };
@@ -1283,7 +1287,7 @@ impl ChioKernel {
                             durable_operation: durable_admission
                                 .as_ref()
                                 .map(DurableToolAdmission::operation),
-                            runtime_admission_metadata: extra_metadata.clone(),
+                            runtime_admission_metadata: denied_metadata(&extra_metadata, &denial),
                             verified_payee_binding: verified_governed_payee_binding.as_ref(),
                             budget_lease_acquired,
                         })
@@ -1309,7 +1313,7 @@ impl ChioKernel {
                             durable_operation: durable_admission
                                 .as_ref()
                                 .map(DurableToolAdmission::operation),
-                            runtime_admission_metadata: extra_metadata.clone(),
+                            runtime_admission_metadata: denied_metadata(&extra_metadata, &denial),
                             verified_payee_binding: verified_governed_payee_binding.as_ref(),
                             budget_lease_acquired,
                         })
@@ -1476,7 +1480,7 @@ impl ChioKernel {
                     durable_operation: durable_admission
                         .as_ref()
                         .map(DurableToolAdmission::operation),
-                    runtime_admission_metadata: extra_metadata.clone(),
+                    runtime_admission_metadata: error.denied_metadata(&extra_metadata),
                     verified_payee_binding: verified_governed_payee_binding.as_ref(),
                     budget_lease_acquired,
                 })
@@ -1745,7 +1749,7 @@ impl ChioKernel {
                                 durable_operation: durable_admission
                                     .as_ref()
                                     .map(DurableToolAdmission::operation),
-                                runtime_admission_metadata: extra_metadata.clone(),
+                                runtime_admission_metadata: error.denied_metadata(&extra_metadata),
                                 verified_payee_binding: verified_governed_payee_binding.as_ref(),
                                 budget_lease_acquired,
                             },
@@ -1819,7 +1823,7 @@ impl ChioKernel {
                         durable_operation: durable_admission
                             .as_ref()
                             .map(DurableToolAdmission::operation),
-                        runtime_admission_metadata: extra_metadata.clone(),
+                        runtime_admission_metadata: error.denied_metadata(&extra_metadata),
                         verified_payee_binding: verified_governed_payee_binding.as_ref(),
                         budget_lease_acquired,
                     },
@@ -2141,9 +2145,9 @@ impl ChioKernel {
             verified_finding_admission.recovery_status(),
             current_unix_timestamp_ms() / 1_000,
         );
-        if let Err(reason) = recovery_status {
+        if let Err(denial) = recovery_status {
             let reason = format!(
-                "finding recovery status changed before ordinary output finalization: {reason}"
+                "finding recovery status changed before ordinary output finalization: {denial}"
             );
             warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding recovery output withheld");
             return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
@@ -2152,7 +2156,7 @@ impl ChioKernel {
                     &reason,
                     current_unix_timestamp_ms() / 1_000,
                     Some(matched_grant_index),
-                    extra_metadata,
+                    denied_metadata(&extra_metadata, &denial),
                     verified_governed_payee_binding.as_ref(),
                 )
             });
