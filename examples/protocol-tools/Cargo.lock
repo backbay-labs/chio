@@ -893,8 +893,6 @@ dependencies = [
 [[package]]
 name = "aws-lc-rs"
 version = "1.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b281d307588d634de920874890732659e2e7672f72b5e10e81badc1a8a83621e"
 dependencies = [
  "aws-lc-fips-sys",
  "aws-lc-sys",
@@ -1857,6 +1855,7 @@ dependencies = [
  "chio-finding",
  "chio-finding-market-port",
  "chio-kernel",
+ "chio-metrics-spec",
  "hex",
  "hmac 0.12.1",
  "libc",
