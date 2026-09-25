@@ -2,6 +2,11 @@
 
 Source: aws-lc-rs 1.18.1 registry archive, SHA-256
 `b281d307588d634de920874890732659e2e7672f72b5e10e81badc1a8a83621e`.
+The archive is publicly available at
+`https://static.crates.io/crates/aws-lc-rs/aws-lc-rs-1.18.1.crate`.
+The published crate records upstream commit
+`22e629d5c46276497a24ee3e575be4315940e7cb` in
+`.cargo_vcs_info.json`.
 
 This fork repairs DES and TDEA key validation in the optional `legacy-des`
 feature. DES parity bits do not contribute to the effective key, but the
@@ -25,9 +30,40 @@ Eight upstream test-vector files also have CRLF endings, trailing whitespace
 or trailing blank lines normalized for the repository diff check. The test
 parser already ignores these differences; vector keys and values are unchanged.
 
-The repository retains the registry archive, source provenance, review notes,
-negative result, repaired result, commands, and hashes under
-`output/process-security-20260915/resume-20260921/aws-lc/`.
+The tracked [CHIO-PATCH.patch](CHIO-PATCH.patch) is the complete change to
+files present in the registry archive, excluding this provenance document.
+It adds the DES regression target and changes the crate manifest, DES key
+validation, and the five text-convention occurrences. The 71 test fixtures
+missing from the published archive are copied from the upstream commit above.
+Their checked-in hashes are in
+[CHIO-RESTORED-FIXTURES.sha256](CHIO-RESTORED-FIXTURES.sha256).
+Eight fixtures were normalized with the exact transformation below. All
+other fixture bytes match the upstream commit. These fixtures are test data,
+not production source.
+
+To independently reconstruct the fork, extract the verified registry archive,
+apply `CHIO-PATCH.patch` from the extracted crate root, and copy the fixture
+paths named in `CHIO-RESTORED-FIXTURES.sha256` from the upstream commit's
+`aws-lc-rs/` directory. Normalize the following eight files with
+`perl -0777 -pi -e 's/\r\n/\n/g; s/[ \t]+(?=\n)//g; s/\n+\z/\n/'`:
+
+```text
+src/test/test_1_tests.txt
+tests/data/cavp_3des_cmac_tests.txt
+tests/data/cavp_aes128_cmac_tests.txt
+tests/data/cavp_aes192_cmac_tests.txt
+tests/data/cavp_aes256_cmac_tests.txt
+tests/data/digest_tests.txt
+tests/data/rsa_pkcs1_sign_tests.txt
+tests/data/rsa_pss_verify_tests.txt
+```
+
+Run `sha256sum -c CHIO-RESTORED-FIXTURES.sha256` from the reconstructed
+crate root. Then compare every file with this checked-in directory, excluding
+`CHIO-PATCH.md`, `CHIO-PATCH.patch`, and
+`CHIO-RESTORED-FIXTURES.sha256`, which are review metadata. The regression
+was observed to fail against the published crate and pass against this fork
+with separate Cargo target directories; the commands below exercise the fork.
 
 This patch is not a certification of the entire dependency.
 

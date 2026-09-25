@@ -1,0 +1,205 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index b5f3054..871b2de 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -14,6 +14,7 @@ edition = "2021"
+ rust-version = "1.71.0"
+ name = "aws-lc-rs"
+ version = "1.18.1"
++publish = false
+ authors = ["AWS-LibCrypto"]
+ build = "build.rs"
+ links = "aws_lc_rs_1_18_1_sys"
+@@ -134,3 +135,10 @@ version = "1.0.15"
+
+ [dev-dependencies.regex]
+ version = "1.11.1"
++
++[workspace]
++
++[[test]]
++name = "des_parity_regression"
++path = "des_parity_regression.rs"
++required-features = ["legacy-des"]
+diff --git a/README.md b/README.md
+index 6ad2248..06bdd64 100644
+--- a/README.md
++++ b/README.md
+@@ -114,7 +114,7 @@ This allows consumers to provide their own implementations of `SecureRandom` (e.
+ deterministic RNG) for testing purposes. When enabled, a `mut_fill` method is also available on
+ `SecureRandom`.
+
+-This feature is restricted to **dev/debug profile builds only** — attempting to use it in a
++This feature is restricted to **dev/debug profile builds only** - attempting to use it in a
+ release build will result in a compile-time error.
+
+ It can be enabled in two ways:
+diff --git a/des_parity_regression.rs b/des_parity_regression.rs
+new file mode 100644
+index 0000000..c1442a2
+--- /dev/null
++++ b/des_parity_regression.rs
+@@ -0,0 +1,57 @@
++#![allow(deprecated)]
++use aws_lc_rs::cipher::{DecryptingKey, EncryptingKey, StreamingEncryptingKey,
++ UnboundCipherKey, DES_FOR_LEGACY_USE_ONLY, DES_EDE_FOR_LEGACY_USE_ONLY,
++ DES_EDE3_FOR_LEGACY_USE_ONLY};
++fn variant(mut key: [u8;8], mask: u8) -> [u8;8] {
++ for (i, b) in key.iter_mut().enumerate() { *b ^= (mask >> i) & 1; }
++ key
++}
++#[test]
++fn rejects_every_parity_variant_of_weak_des_key() {
++ let weak_keys = [
++  [0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01],
++  [0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE],
++  [0x1F, 0x1F, 0x1F, 0x1F, 0x0E, 0x0E, 0x0E, 0x0E],
++  [0xE0, 0xE0, 0xE0, 0xE0, 0xF1, 0xF1, 0xF1, 0xF1],
++  [0x01, 0xFE, 0x01, 0xFE, 0x01, 0xFE, 0x01, 0xFE],
++  [0xFE, 0x01, 0xFE, 0x01, 0xFE, 0x01, 0xFE, 0x01],
++  [0x1F, 0xE0, 0x1F, 0xE0, 0x0E, 0xF1, 0x0E, 0xF1],
++  [0xE0, 0x1F, 0xE0, 0x1F, 0xF1, 0x0E, 0xF1, 0x0E],
++  [0x01, 0xE0, 0x01, 0xE0, 0x01, 0xF1, 0x01, 0xF1],
++  [0xE0, 0x01, 0xE0, 0x01, 0xF1, 0x01, 0xF1, 0x01],
++  [0x1F, 0xFE, 0x1F, 0xFE, 0x0E, 0xFE, 0x0E, 0xFE],
++  [0xFE, 0x1F, 0xFE, 0x1F, 0xFE, 0x0E, 0xFE, 0x0E],
++  [0x01, 0x1F, 0x01, 0x1F, 0x01, 0x0E, 0x01, 0x0E],
++  [0x1F, 0x01, 0x1F, 0x01, 0x0E, 0x01, 0x0E, 0x01],
++  [0xE0, 0xFE, 0xE0, 0xFE, 0xF1, 0xFE, 0xF1, 0xFE],
++  [0xFE, 0xE0, 0xFE, 0xE0, 0xFE, 0xF1, 0xFE, 0xF1],
++ ];
++ for weak in weak_keys {
++ for mask in 0..=255 {
++  let key=variant(weak,mask);
++  assert!(EncryptingKey::cbc(UnboundCipherKey::new(&DES_FOR_LEGACY_USE_ONLY,&key).unwrap()).is_err(), "weak parity mask {mask}");
++  assert!(StreamingEncryptingKey::cbc_pkcs7(UnboundCipherKey::new(&DES_FOR_LEGACY_USE_ONLY,&key).unwrap()).is_err(), "streaming weak parity mask {mask}");
++ }
++ }
++}
++#[test]
++fn rejects_effectively_equal_tdea_subkeys() {
++ let first=[0x01,0x23,0x45,0x67,0x89,0xab,0xcd,0xef];
++ let distinct=[0x23,0x45,0x67,0x89,0xab,0xcd,0xef,0x01];
++ for mask in 0..=255 {
++  let second=variant(first,mask);
++  let pair=[first,second].concat();
++  assert!(EncryptingKey::cbc(UnboundCipherKey::new(&DES_EDE_FOR_LEGACY_USE_ONLY,&pair).unwrap()).is_err(), "2TDEA parity mask {mask}");
++  for keys in [[first,second,distinct],[distinct,first,second],[first,distinct,second]] {
++   let bytes=keys.concat();
++   assert!(EncryptingKey::cbc(UnboundCipherKey::new(&DES_EDE3_FOR_LEGACY_USE_ONLY,&bytes).unwrap()).is_err(), "3TDEA parity mask {mask}");
++   assert!(DecryptingKey::cbc(UnboundCipherKey::new(&DES_EDE3_FOR_LEGACY_USE_ONLY,&bytes).unwrap()).is_err(), "3TDEA decrypt parity mask {mask}");
++   assert!(StreamingEncryptingKey::cbc_pkcs7(UnboundCipherKey::new(&DES_EDE3_FOR_LEGACY_USE_ONLY,&bytes).unwrap()).is_err(), "3TDEA streaming parity mask {mask}");
++  }
++ }
++}
++#[test]
++fn accepts_distinct_nonweak_keys_with_arbitrary_parity() {
++ let key=[0x00,0x22,0x44,0x66,0x88,0xaa,0xcc,0xee,0x22,0x44,0x66,0x88,0xaa,0xcc,0xee,0x00];
++ assert!(EncryptingKey::cbc(UnboundCipherKey::new(&DES_EDE_FOR_LEGACY_USE_ONLY,&key).unwrap()).is_ok());
++}
+diff --git a/src/cipher.rs b/src/cipher.rs
+index 5c4be53..ec47901 100644
+--- a/src/cipher.rs
++++ b/src/cipher.rs
+@@ -565,13 +565,13 @@ pub const DES_FOR_LEGACY_USE_ONLY: Algorithm = Algorithm {
+ ///
+ /// 2-key Triple DES is a legacy algorithm and has been disallowed for encryption
+ /// by [NIST SP 800-131A Rev. 2](https://csrc.nist.gov/publications/detail/sp/800-131a/rev-2/final)
+-/// since 2015 — several years earlier than 3-key Triple DES. It is retained here
++/// since 2015 - several years earlier than 3-key Triple DES. It is retained here
+ /// solely for interoperability. New designs must use an AES-based algorithm.
+ ///
+ /// Only CBC and ECB operating modes are supported. Key material is validated
+ /// beyond the length check: weak and semi-weak DES subkeys are rejected, and
+ /// K1 must differ from K2 (otherwise the cipher degenerates to single-DES).
+-/// This validation is deferred — constructing an [`UnboundCipherKey`] only
++/// This validation is deferred - constructing an [`UnboundCipherKey`] only
+ /// checks length; the weak-key and pairwise-distinctness checks fire when the
+ /// [`UnboundCipherKey`] is passed to an [`EncryptingKey`], [`DecryptingKey`],
+ /// [`PaddedBlockEncryptingKey`], [`PaddedBlockDecryptingKey`],
+@@ -598,7 +598,7 @@ pub const DES_EDE_FOR_LEGACY_USE_ONLY: Algorithm = Algorithm {
+ /// Only CBC and ECB operating modes are supported. Key material is validated
+ /// beyond the length check: weak and semi-weak DES subkeys are rejected, and
+ /// K1, K2, and K3 must all be pairwise distinct (otherwise 3TDEA degenerates
+-/// to either single-DES or 2TDEA). This validation is deferred —
++/// to either single-DES or 2TDEA). This validation is deferred -
+ /// constructing an [`UnboundCipherKey`] only checks length; the weak-key and
+ /// pairwise-distinctness checks fire when the [`UnboundCipherKey`] is passed
+ /// to an [`EncryptingKey`], [`DecryptingKey`], [`PaddedBlockEncryptingKey`],
+diff --git a/src/cipher/key.rs b/src/cipher/key.rs
+index a521f97..0f773f2 100644
+--- a/src/cipher/key.rs
++++ b/src/cipher/key.rs
+@@ -3,7 +3,7 @@
+
+ use crate::aws_lc::{AES_set_decrypt_key, AES_set_encrypt_key, AES_KEY};
+ #[cfg(feature = "legacy-des")]
+-use crate::aws_lc::{DES_cblock, DES_key_schedule, DES_set_key};
++use crate::aws_lc::{DES_cblock, DES_key_schedule, DES_set_key, DES_set_odd_parity};
+ use crate::cipher::block::Block;
+ use crate::cipher::chacha::ChaCha20Key;
+ #[cfg(feature = "legacy-des")]
+@@ -194,7 +194,7 @@ impl SymmetricCipherKey {
+
+         // SP 800-67 §3.1 requires K1 != K2 for 2-Key TDEA; if they are equal
+         // the cipher degenerates to single-DES (56-bit effective security).
+-        if constant_time::verify_slices_are_equal(first_key, second_key).is_ok() {
++        if Self::des_effective_keys_equal(first_key, second_key) {
+             return Err(KeyRejected::inconsistent_components());
+         }
+
+@@ -213,17 +213,25 @@ impl SymmetricCipherKey {
+         })
+     }
+
++    #[cfg(feature = "legacy-des")]
++    fn des_effective_keys_equal(a: &[u8; 8], b: &[u8; 8]) -> bool {
++        let a = zeroize::Zeroizing::new(a.map(|byte| byte & 0xfe));
++        let b = zeroize::Zeroizing::new(b.map(|byte| byte & 0xfe));
++        constant_time::verify_slices_are_equal(a.as_ref(), b.as_ref()).is_ok()
++    }
++
+     #[cfg(feature = "legacy-des")]
+     fn des_set_key(key_bytes: &[u8; 8]) -> Result<DES_key_schedule, KeyRejected> {
++        // Parity does not affect the schedule, but native weak-key detection
++        // compares against keys represented with odd parity.
++        let mut normalized = zeroize::Zeroizing::new(*key_bytes);
++        unsafe { DES_set_odd_parity(normalized.as_mut_ptr().cast::<DES_cblock>()) };
++        let key_bytes: &[u8; 8] = &normalized;
+         let mut ks = MaybeUninit::<DES_key_schedule>::uninit();
+-        // DES_set_key return values (see openssl/des.h):
+-        //   0  => key is not weak and has odd parity (preferred)
+-        //  -1  => key parity is not odd (schedule is still valid; most callers
+-        //         do not maintain DES parity bits, so we accept this)
+-        //  -2  => key is a weak or semi-weak DES key; reject it
+-        // Any other non-zero value is treated as a failure.
++        // Only success is accepted after parity normalization. Native -2
++        // rejects weak and semi-weak keys; any other result fails closed.
+         match unsafe { DES_set_key(key_bytes.as_ptr() as *const DES_cblock, ks.as_mut_ptr()) } {
+-            0 | -1 => Ok(unsafe { ks.assume_init() }),
++            0 => Ok(unsafe { ks.assume_init() }),
+             _ => Err(KeyRejected::unspecified()),
+         }
+     }
+@@ -258,7 +266,7 @@ impl SymmetricCipherKey {
+             (second_key, third_key),
+             (first_key, third_key),
+         ] {
+-            any_equal |= u8::from(constant_time::verify_slices_are_equal(a, b).is_ok());
++            any_equal |= u8::from(Self::des_effective_keys_equal(a, b));
+             any_equal = core::hint::black_box(any_equal);
+         }
+         if any_equal != 0 {
+diff --git a/src/lib.rs b/src/lib.rs
+index 800ccf5..2dbaac1 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -132,7 +132,7 @@
+ //! deterministic RNG) for testing purposes. When enabled, a `mut_fill` method is also available on
+ //! `SecureRandom`.
+ //!
+-//! This feature is restricted to **dev/debug profile builds only** — attempting to use it in a
++//! This feature is restricted to **dev/debug profile builds only** - attempting to use it in a
+ //! release build will result in a compile-time error.
+ //!
+ //! It can be enabled in two ways:
