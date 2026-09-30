@@ -491,6 +491,16 @@ def scan_files(root: Path) -> list[str]:
 def classify(path: str) -> str:
     name = Path(path).name
     suffix = Path(path).suffix
+    # These are the canonical Internet-Draft's prose renderings, checked by
+    # the separate draft freshness, vector, schema, and idnits gates. Keep
+    # descriptions of illustrative signatures without exempting adjacent
+    # specifications or executable tools from production scanning.
+    if path in {
+        "spec/ietf/draft-whelan-chio-protocol-00.xml",
+        "spec/ietf/draft-whelan-chio-protocol-00.prepped.xml",
+        "spec/ietf/draft-whelan-chio-protocol-00.txt",
+    }:
+        return "docs"
     if "/_generated/" in f"/{path}/" or name in {
         "package-lock.json",
         "Cargo.lock",

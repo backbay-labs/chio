@@ -53,6 +53,27 @@ assert_rc "$(run_checker "$non_production" "$work/non-production.out" "$work/non
   "non-production stub-surface hits pass"
 grep -F "Stub-surface check passed" "$work/non-production.out" >/dev/null
 
+ietf_renderings="$work/ietf-renderings"
+init_case "$ietf_renderings"
+for rendering in xml prepped.xml txt; do
+  write_file "$ietf_renderings/spec/ietf/draft-whelan-chio-protocol-00.$rendering" \
+    "The example hashes and signature are placeholders."
+done
+track_case "$ietf_renderings"
+assert_rc "$(run_checker "$ietf_renderings" "$work/ietf-renderings.out" "$work/ietf-renderings.err")" 0 \
+  "named IETF document renderings remain documentation"
+grep -F "docs: 3 hit(s)" "$work/ietf-renderings.out" >/dev/null
+
+ietf_production="$work/ietf-production"
+init_case "$ietf_production"
+write_file "$ietf_production/spec/ietf/runtime.xml" "TODO: runtime implementation"
+write_file "$ietf_production/spec/ietf/tools/helper.py" "# TODO: unfinished production helper"
+track_case "$ietf_production"
+assert_rc "$(run_checker "$ietf_production" "$work/ietf-production.out" "$work/ietf-production.err")" 1 \
+  "neighboring XML and Python files retain production scanning"
+grep -F "spec/ietf/runtime.xml:1" "$work/ietf-production.err" >/dev/null
+grep -F "spec/ietf/tools/helper.py:1" "$work/ietf-production.err" >/dev/null
+
 production_fail="$work/production-fail"
 init_case "$production_fail"
 write_file "$production_fail/crates/chio-demo/src/lib.rs" \

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject empty, malformed, unresolved, or placeholder-bearing draft XML."""
+"""Reject empty, malformed, unresolved, or unfinished draft XML."""
 import sys
 from pathlib import Path
 from html.entities import name2codepoint
