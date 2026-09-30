@@ -144,3 +144,6 @@ _apalache-out/
 
 # Raw cargo-mutants output (dated JSON summaries stay tracked)
 audits/evidence/**/mutants.out/*.txt
+
+# Intermediate vocabulary conversion for the IETF draft.
+spec/ietf/*.v3.xml

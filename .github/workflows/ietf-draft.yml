@@ -47,9 +47,11 @@ jobs:
 
       - name: Install the draft toolchain
         run: |
-          sudo gem install kramdown-rfc --no-document
-          python -m pip install --upgrade "xml2rfc==3.34.1"
-          npm install -g @ietf-tools/idnits@3.1.0 aasvg
+          sudo apt-get update
+          sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 poppler-utils fonts-noto-core fonts-noto-mono fonts-roboto ripgrep
+          sudo gem install kramdown-rfc --version 1.7.43 --no-document
+          python -m pip install "xml2rfc[pdf]==3.34.1" "weasyprint==70.0"
+          npm install -g @ietf-tools/idnits@3.1.0 aasvg@0.5.7
 
       - name: Check the draft
         run: make -C spec/ietf check

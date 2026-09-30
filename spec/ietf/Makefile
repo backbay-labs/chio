@@ -29,29 +29,41 @@ ifeq ($(shell uname -s),Darwin)
 export DYLD_FALLBACK_LIBRARY_PATH ?= /opt/homebrew/lib
 endif
 
+.DELETE_ON_ERROR:
 .PHONY: all vectors check clean
 all: vectors $(OUTDIR)/$(OUT).xml $(OUTDIR)/$(OUT).prepped.xml $(OUTDIR)/$(OUT).txt $(OUTDIR)/$(OUT).pdf
 
 vectors:
 	$(PYTHON) tools/render_vectors.py --vectors $(VECTORS) --out generated
 
-$(OUTDIR)/$(OUT).raw.xml: $(SRC) $(wildcard generated/*.md)
-	$(KRAMDOWN) $(SRC) | sed -E 's/<\?line -?[0-9]+\?>//g' > $@
+$(OUTDIR)/$(OUT).raw.xml: $(SRC) Makefile tools/normalize_xml.py $(wildcard generated/*.md) | vectors
+	$(KRAMDOWN) $(SRC) > $@.tmp || { draft_status=$$?; rm -f $@.tmp; exit $$draft_status; }
+	$(PYTHON) tools/normalize_xml.py $@.tmp $@
+	rm -f $@.tmp
+	$(PYTHON) tools/check_xml.py $@
 
-$(OUTDIR)/$(OUT).xml: $(OUTDIR)/$(OUT).raw.xml
-	$(XML2RFC) --v3 --quiet --expand $< -o $@
+$(OUTDIR)/$(OUT).v3.xml: $(OUTDIR)/$(OUT).raw.xml
+	$(XML2RFC) --v2v3 $< -o $@.tmp
+	$(PYTHON) tools/normalize_xml.py $@.tmp $@
+	rm -f $@.tmp
+
+$(OUTDIR)/$(OUT).xml: $(OUTDIR)/$(OUT).v3.xml
+	$(XML2RFC) --v3 --expand $< -o $@.tmp
+	$(PYTHON) tools/normalize_xml.py $@.tmp $@
+	rm -f $@.tmp
+	$(PYTHON) tools/check_xml.py $@
 
 $(OUTDIR)/$(OUT).prepped.xml: $(OUTDIR)/$(OUT).xml
-	$(XML2RFC) --v3 --quiet --preptool $< -o $@
+	$(XML2RFC) --v3 --preptool $< -o $@
 
 $(OUTDIR)/$(OUT).txt: $(OUTDIR)/$(OUT).xml
-	$(XML2RFC) --v3 --quiet --text $< -o $@
+	$(XML2RFC) --v3 --text $< -o $@
 
 $(OUTDIR)/$(OUT).pdf: $(OUTDIR)/$(OUT).xml
-	$(XML2RFC) --v3 --quiet --pdf $< -o $@
+	$(XML2RFC) --v3 --pdf $< -o $@
 
 check:
 	./tools/check.sh
 
 clean:
-	rm -f $(OUTDIR)/$(OUT).raw.xml
+	rm -f $(OUTDIR)/$(OUT).raw.xml $(OUTDIR)/$(OUT).v3.xml
