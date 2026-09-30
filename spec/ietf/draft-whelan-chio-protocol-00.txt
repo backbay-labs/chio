@@ -1,0 +1,504 @@
+
+
+
+
+Network Working Group                                          C. Whelan
+Internet-Draft                                        Backbay Industries
+Intended status: Standards Track                          5 October 2026
+Expires: 8 April 2027
+
+
+ The Chio Protocol: Signed Capabilities and Receipts for Mediated Tool
+                               Execution
+                     draft-whelan-chio-protocol-00
+
+Abstract
+
+   This document is being written.  The abstract replaces this sentence.
+
+About This Document
+
+   This note is to be removed before publishing as an RFC.
+
+   Status information for this document may be found at
+   https://datatracker.ietf.org/doc/draft-whelan-chio-protocol/.
+
+   Discussion of this document takes place on the agentproto Working
+   Group mailing list (mailto:agentproto@ietf.org), which is archived at
+   https://mailarchive.ietf.org/arch/browse/agentproto/.  Subscribe at
+   https://www.ietf.org/mailman/listinfo/agentproto/.
+
+   Source for this draft and an issue tracker can be found at
+   https://github.com/backbay-labs/chio.
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF).  Note that other groups may also distribute
+   working documents as Internet-Drafts.  The list of current Internet-
+   Drafts is at https://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time.  It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as "work in progress."
+
+   This Internet-Draft will expire on 8 April 2027.
+
+
+
+
+
+
+Whelan                    Expires 8 April 2027                  [Page 1]
+
+Internet-Draft                Chio Protocol                 October 2026
+
+
+Copyright Notice
+
+   Copyright (c) 2026 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents (https://trustee.ietf.org/
+   license-info) in effect on the date of publication of this document.
+   Please review these documents carefully, as they describe your rights
+   and restrictions with respect to this document.  Code Components
+   extracted from this document must include Revised BSD License text as
+   described in Section 4.e of the Trust Legal Provisions and are
+   provided without warranty as described in the Revised BSD License.
+
+Table of Contents
+
+   1.  Introduction  . . . . . . . . . . . . . . . . . . . . . . . .   2
+   2.  Conventions and Terminology . . . . . . . . . . . . . . . . .   3
+   3.  Protocol Overview . . . . . . . . . . . . . . . . . . . . . .   3
+   4.  Encoding and Cryptography . . . . . . . . . . . . . . . . . .   3
+   5.  Capability Tokens . . . . . . . . . . . . . . . . . . . . . .   3
+   6.  Receipts  . . . . . . . . . . . . . . . . . . . . . . . . . .   3
+   7.  Budgets and Metering  . . . . . . . . . . . . . . . . . . . .   3
+   8.  Governed Transactions . . . . . . . . . . . . . . . . . . . .   3
+   9.  Receipt Checkpoints . . . . . . . . . . . . . . . . . . . . .   3
+   10. Native Transport  . . . . . . . . . . . . . . . . . . . . . .   3
+   11. Hosted MCP Binding  . . . . . . . . . . . . . . . . . . . . .   3
+   12. Trust-Control Interface . . . . . . . . . . . . . . . . . . .   3
+   13. Versioning and Negotiation  . . . . . . . . . . . . . . . . .   4
+   14. Error Model . . . . . . . . . . . . . . . . . . . . . . . . .   4
+   15. Security Considerations . . . . . . . . . . . . . . . . . . .   4
+   16. Privacy Considerations  . . . . . . . . . . . . . . . . . . .   4
+   17. IANA Considerations . . . . . . . . . . . . . . . . . . . . .   4
+   18. Implementation Status . . . . . . . . . . . . . . . . . . . .   4
+   19. References  . . . . . . . . . . . . . . . . . . . . . . . . .   4
+     19.1.  Normative References . . . . . . . . . . . . . . . . . .   4
+     19.2.  Informative References . . . . . . . . . . . . . . . . .   6
+   Appendix A.  Examples . . . . . . . . . . . . . . . . . . . . . .   8
+   Appendix B.  Test Vectors . . . . . . . . . . . . . . . . . . . .   8
+   Appendix C.  Relationship to Other Work . . . . . . . . . . . . .   8
+   Appendix D.  Document History . . . . . . . . . . . . . . . . . .   8
+   Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .   9
+   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .   9
+
+1.  Introduction
+
+   This section is being written.
+
+
+
+
+Whelan                    Expires 8 April 2027                  [Page 2]
+
+Internet-Draft                Chio Protocol                 October 2026
+
+
+2.  Conventions and Terminology
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+   "OPTIONAL" in this document are to be interpreted as described in
+   BCP 14 [RFC2119] [RFC8174] when, and only when, they appear in all
+   capitals, as shown here.
+
+3.  Protocol Overview
+
+   This section is being written.
+
+4.  Encoding and Cryptography
+
+   This section is being written.
+
+5.  Capability Tokens
+
+   This section is being written.
+
+6.  Receipts
+
+   This section is being written.
+
+7.  Budgets and Metering
+
+   This section is being written.
+
+8.  Governed Transactions
+
+   This section is being written.
+
+9.  Receipt Checkpoints
+
+   This section is being written.
+
+10.  Native Transport
+
+   This section is being written.
+
+11.  Hosted MCP Binding
+
+   This section is being written.
+
+12.  Trust-Control Interface
+
+   This section is being written.
+
+
+
+
+Whelan                    Expires 8 April 2027                  [Page 3]
+
+Internet-Draft                Chio Protocol                 October 2026
+
+
+13.  Versioning and Negotiation
+
+   This section is being written.
+
+14.  Error Model
+
+   This section is being written.
+
+15.  Security Considerations
+
+   This section is being written.
+
+16.  Privacy Considerations
+
+   This section is being written.
+
+17.  IANA Considerations
+
+   This section is being written.
+
+18.  Implementation Status
+
+   This section is to be removed before publishing as an RFC.
+
+   This section is being written.
+
+19.  References
+
+19.1.  Normative References
+
+   [FIPS180-4]
+              National Institute of Standards and Technology, "Secure
+              Hash Standard (SHS)", FIPS PUB 180-4,
+              DOI 10.6028/NIST.FIPS.180-4, August 2015,
+              <https://doi.org/10.6028/NIST.FIPS.180-4>.
+
+   [FIPS186-5]
+              National Institute of Standards and Technology, "Digital
+              Signature Standard (DSS)", FIPS PUB 186-5,
+              DOI 10.6028/NIST.FIPS.186-5, February 2023,
+              <https://doi.org/10.6028/NIST.FIPS.186-5>.
+
+   [FIPS204]  National Institute of Standards and Technology, "Module-
+              Lattice-Based Digital Signature Standard", FIPS PUB 204,
+              DOI 10.6028/NIST.FIPS.204, August 2024,
+              <https://doi.org/10.6028/NIST.FIPS.204>.
+
+
+
+
+
+Whelan                    Expires 8 April 2027                  [Page 4]
+
+Internet-Draft                Chio Protocol                 October 2026
+
+
+   [ISO4217]  International Organization for Standardization, "Codes for
+              the representation of currencies", ISO 4217:2015, August
+              2015, <https://www.iso.org/iso-4217-currency-codes.html>.
+
+   [JSON-RPC] JSON-RPC Working Group, "JSON-RPC 2.0 Specification",
+              January 2013, <https://www.jsonrpc.org/specification>.
+
+   [MCP]      Model Context Protocol, "Model Context Protocol
+              Specification, Version 2025-11-25", 25 November 2025,
+              <https://modelcontextprotocol.io/
+              specification/2025-11-25>.
+
+   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
+              Requirement Levels", BCP 14, RFC 2119,
+              DOI 10.17487/RFC2119, March 1997,
+              <https://www.rfc-editor.org/rfc/rfc2119>.
+
+   [RFC3279]  Bassham, L., Polk, W., and R. Housley, "Algorithms and
+              Identifiers for the Internet X.509 Public Key
+              Infrastructure Certificate and Certificate Revocation List
+              (CRL) Profile", RFC 3279, DOI 10.17487/RFC3279, May 2002,
+              <https://www.rfc-editor.org/rfc/rfc3279>.
+
+   [RFC4648]  Josefsson, S., "The Base16, Base32, and Base64 Data
+              Encodings", RFC 4648, DOI 10.17487/RFC4648, October 2006,
+              <https://www.rfc-editor.org/rfc/rfc4648>.
+
+   [RFC5234]  Crocker, D., Ed. and P. Overell, "Augmented BNF for Syntax
+              Specifications: ABNF", STD 68, RFC 5234,
+              DOI 10.17487/RFC5234, January 2008,
+              <https://www.rfc-editor.org/rfc/rfc5234>.
+
+   [RFC7405]  Kyzivat, P., "Case-Sensitive String Support in ABNF",
+              RFC 7405, DOI 10.17487/RFC7405, December 2014,
+              <https://www.rfc-editor.org/rfc/rfc7405>.
+
+   [RFC8032]  Josefsson, S. and I. Liusvaara, "Edwards-Curve Digital
+              Signature Algorithm (EdDSA)", RFC 8032,
+              DOI 10.17487/RFC8032, January 2017,
+              <https://www.rfc-editor.org/rfc/rfc8032>.
+
+   [RFC8126]  Cotton, M., Leiba, B., and T. Narten, "Guidelines for
+              Writing an IANA Considerations Section in RFCs", BCP 26,
+              RFC 8126, DOI 10.17487/RFC8126, June 2017,
+              <https://www.rfc-editor.org/rfc/rfc8126>.
+
+
+
+
+
+
+Whelan                    Expires 8 April 2027                  [Page 5]
+
+Internet-Draft                Chio Protocol                 October 2026
+
+
+   [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
+              2119 Key Words", BCP 14, RFC 8174, DOI 10.17487/RFC8174,
+              May 2017, <https://www.rfc-editor.org/rfc/rfc8174>.
+
+   [RFC8259]  Bray, T., Ed., "The JavaScript Object Notation (JSON) Data
+              Interchange Format", STD 90, RFC 8259,
+              DOI 10.17487/RFC8259, December 2017,
+              <https://www.rfc-editor.org/rfc/rfc8259>.
+
+   [RFC8446]  Rescorla, E., "The Transport Layer Security (TLS) Protocol
+              Version 1.3", RFC 8446, DOI 10.17487/RFC8446, August 2018,
+              <https://www.rfc-editor.org/rfc/rfc8446>.
+
+   [RFC8785]  Rundgren, A., Jordan, B., and S. Erdtman, "JSON
+              Canonicalization Scheme (JCS)", RFC 8785,
+              DOI 10.17487/RFC8785, June 2020,
+              <https://www.rfc-editor.org/rfc/rfc8785>.
+
+   [RFC9110]  Fielding, R., Ed., Nottingham, M., Ed., and J. Reschke,
+              Ed., "HTTP Semantics", STD 97, RFC 9110,
+              DOI 10.17487/RFC9110, June 2022,
+              <https://www.rfc-editor.org/rfc/rfc9110>.
+
+   [RFC9162]  Laurie, B., Messeri, E., and R. Stradling, "Certificate
+              Transparency Version 2.0", RFC 9162, DOI 10.17487/RFC9162,
+              December 2021, <https://www.rfc-editor.org/rfc/rfc9162>.
+
+   [RFC9449]  Fett, D., Campbell, B., Bradley, J., Lodderstedt, T.,
+              Jones, M., and D. Waite, "OAuth 2.0 Demonstrating Proof of
+              Possession (DPoP)", RFC 9449, DOI 10.17487/RFC9449,
+              September 2023, <https://www.rfc-editor.org/rfc/rfc9449>.
+
+   [SEC1]     Standards for Efficient Cryptography Group, "SEC 1:
+              Elliptic Curve Cryptography, Version 2.0", May 2009,
+              <https://www.secg.org/sec1-v2.pdf>.
+
+   [SSE]      WHATWG, "HTML Living Standard, Section 9.2: Server-sent
+              events", <https://html.spec.whatwg.org/multipage/server-
+              sent-events.html>.
+
+19.2.  Informative References
+
+   [A2A]      Linux Foundation A2A Project, "Agent2Agent (A2A) Protocol
+              Specification",
+              <https://a2a-protocol.org/latest/specification/>.
+
+
+
+
+
+
+Whelan                    Expires 8 April 2027                  [Page 6]
+
+Internet-Draft                Chio Protocol                 October 2026
+
+
+   [BISCUIT]  Eclipse Biscuit, "Biscuit, a bearer token with offline
+              attenuation and decentralized verification",
+              <https://doc.biscuitsec.org/reference/specifications>.
+
+   [I-D.ietf-scitt-architecture]
+              Birkholz, H., Delignat-Lavaud, A., Fournet, C., Deshpande,
+              Y., and S. Lasker, "An Architecture for Trustworthy and
+              Transparent Digital Supply Chains", Work in Progress,
+              Internet-Draft, draft-ietf-scitt-architecture-22, 10
+              October 2025, <https://datatracker.ietf.org/doc/html/
+              draft-ietf-scitt-architecture-22>.
+
+   [I-D.ietf-wimse-arch]
+              Salowey, J. A., Rosomakho, Y., and H. Tschofenig,
+              "Workload Identity in a Multi System Environment (WIMSE)
+              Architecture", Work in Progress, Internet-Draft, draft-
+              ietf-wimse-arch-08, 6 July 2026,
+              <https://datatracker.ietf.org/doc/html/draft-ietf-wimse-
+              arch-08>.
+
+   [MACAROONS]
+              Birgisson, A., Politz, J. G., Erlingsson, U., Taly, A.,
+              Vrable, M., and M. Lentczner, "Macaroons: Cookies with
+              Contextual Caveats for Decentralized Authorization in the
+              Cloud", Network and Distributed System Security
+              Symposium NDSS 2014, February 2014, <https://www.ndss-
+              symposium.org/ndss2014/programme/macaroons-cookies-
+              contextual-caveats-decentralized-authorization-cloud/>.
+
+   [OID4VCI]  OpenID Foundation, "OpenID for Verifiable Credential
+              Issuance 1.0", 2025, <https://openid.net/specs/openid-4-
+              verifiable-credential-issuance-1_0.html>.
+
+   [OID4VP]   OpenID Foundation, "OpenID for Verifiable Presentations
+              1.0", 2025, <https://openid.net/specs/openid-4-verifiable-
+              presentations-1_0.html>.
+
+   [RFC7942]  Sheffer, Y. and A. Farrel, "Improving Awareness of Running
+              Code: The Implementation Status Section", BCP 205,
+              RFC 7942, DOI 10.17487/RFC7942, July 2016,
+              <https://www.rfc-editor.org/rfc/rfc7942>.
+
+   [RFC8693]  Jones, M., Nadalin, A., Campbell, B., Ed., Bradley, J.,
+              and C. Mortimore, "OAuth 2.0 Token Exchange", RFC 8693,
+              DOI 10.17487/RFC8693, January 2020,
+              <https://www.rfc-editor.org/rfc/rfc8693>.
+
+
+
+
+
+Whelan                    Expires 8 April 2027                  [Page 7]
+
+Internet-Draft                Chio Protocol                 October 2026
+
+
+   [RFC8792]  Watsen, K., Auerswald, E., Farrel, A., and Q. Wu,
+              "Handling Long Lines in Content of Internet-Drafts and
+              RFCs", RFC 8792, DOI 10.17487/RFC8792, June 2020,
+              <https://www.rfc-editor.org/rfc/rfc8792>.
+
+   [RFC9334]  Birkholz, H., Thaler, D., Richardson, M., Smith, N., and
+              W. Pan, "Remote ATtestation procedureS (RATS)
+              Architecture", RFC 9334, DOI 10.17487/RFC9334, January
+              2023, <https://www.rfc-editor.org/rfc/rfc9334>.
+
+   [RFC9396]  Lodderstedt, T., Richer, J., and B. Campbell, "OAuth 2.0
+              Rich Authorization Requests", RFC 9396,
+              DOI 10.17487/RFC9396, May 2023,
+              <https://www.rfc-editor.org/rfc/rfc9396>.
+
+   [RFC9635]  Richer, J., Ed. and F. Imbault, "Grant Negotiation and
+              Authorization Protocol (GNAP)", RFC 9635,
+              DOI 10.17487/RFC9635, October 2024,
+              <https://www.rfc-editor.org/rfc/rfc9635>.
+
+   [UCAN]     UCAN Working Group, "User Controlled Authorization Network
+              (UCAN) Specification", <https://github.com/ucan-wg/spec>.
+
+   [VC-DATA-MODEL-2.0]
+              World Wide Web Consortium, "Verifiable Credentials Data
+              Model v2.0", 15 May 2025,
+              <https://www.w3.org/TR/vc-data-model-2.0/>.
+
+Appendix A.  Examples
+
+   This appendix is being written.
+
+Appendix B.  Test Vectors
+
+   This appendix is being written.
+
+Appendix C.  Relationship to Other Work
+
+   This appendix is being written.
+
+Appendix D.  Document History
+
+   This section is to be removed before publishing as an RFC.
+
+   This appendix is being written.
+
+
+
+
+
+
+Whelan                    Expires 8 April 2027                  [Page 8]
+
+Internet-Draft                Chio Protocol                 October 2026
+
+
+Acknowledgments
+
+   This section is being written.
+
+Author's Address
+
+   Connor Whelan
+   Backbay Industries
+   Email: connor@backbay.io
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Whelan                    Expires 8 April 2027                  [Page 9]

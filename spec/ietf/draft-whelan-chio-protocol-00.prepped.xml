@@ -1,0 +1,857 @@
+<?xml version='1.0' encoding='utf-8'?>
+<rfc xmlns:xi="http://www.w3.org/2001/XInclude" version="3" ipr="trust200902" docName="draft-whelan-chio-protocol-00" category="std" consensus="true" submissionType="IETF" tocInclude="true" sortRefs="true" symRefs="true" prepTime="2026-09-30T12:57:44" indexInclude="true" scripts="Common,Latin" tocDepth="3">
+  <!-- xml2rfc v2v3 conversion 3.34.1 -->
+  <front>
+    <title abbrev="Chio Protocol">The Chio Protocol: Signed Capabilities and Receipts for Mediated Tool Execution</title>
+    <seriesInfo name="Internet-Draft" value="draft-whelan-chio-protocol-00" stream="IETF"/>
+    <author fullname="Connor Whelan">
+      <organization showOnFrontPage="true">Backbay Industries</organization>
+      <address>
+        <email>connor@backbay.io</email>
+      </address>
+    </author>
+    <date month="10" year="2026" day="05"/>
+    <keyword>agent</keyword>
+    <keyword>tool</keyword>
+    <keyword>capability</keyword>
+    <keyword>delegation</keyword>
+    <keyword>attenuation</keyword>
+    <keyword>receipt</keyword>
+    <keyword>mediation</keyword>
+    <keyword>MCP</keyword>
+    <abstract pn="section-abstract">
+      <t indent="0" pn="section-abstract-1">This document is being written. The abstract replaces this sentence.</t>
+    </abstract>
+    <note removeInRFC="true" pn="section-note.1">
+      <name slugifiedName="name-about-this-document">About This Document</name>
+      <t indent="0" pn="section-note.1-1">This note is to be removed before publishing as an RFC.</t>
+      <t indent="0" pn="section-note.1-2">
+        Status information for this document may be found at <eref target="https://datatracker.ietf.org/doc/draft-whelan-chio-protocol/" brackets="none"/>.
+      </t>
+      <t indent="0" pn="section-note.1-3">
+        Discussion of this document takes place on the
+        agentproto Working Group mailing list (<eref target="mailto:agentproto@ietf.org" brackets="none"/>),
+        which is archived at <eref target="https://mailarchive.ietf.org/arch/browse/agentproto/" brackets="none"/>.
+        Subscribe at <eref target="https://www.ietf.org/mailman/listinfo/agentproto/" brackets="none"/>.
+      </t>
+      <t indent="0" pn="section-note.1-4">Source for this draft and an issue tracker can be found at
+        <eref target="https://github.com/backbay-labs/chio" brackets="none"/>.</t>
+    </note>
+    <boilerplate>
+      <section anchor="status-of-memo" numbered="false" removeInRFC="false" toc="exclude" pn="section-boilerplate.1">
+        <name slugifiedName="name-status-of-this-memo">Status of This Memo</name>
+        <t indent="0" pn="section-boilerplate.1-1">
+        This Internet-Draft is submitted in full conformance with the
+        provisions of BCP 78 and BCP 79.
+        </t>
+        <t indent="0" pn="section-boilerplate.1-2">
+        Internet-Drafts are working documents of the Internet Engineering Task
+        Force (IETF). Note that other groups may also distribute working
+        documents as Internet-Drafts. The list of current Internet-Drafts is
+        at <eref target="https://datatracker.ietf.org/drafts/current/" brackets="none"/>.
+        </t>
+        <t indent="0" pn="section-boilerplate.1-3">
+        Internet-Drafts are draft documents valid for a maximum of six months
+        and may be updated, replaced, or obsoleted by other documents at any
+        time. It is inappropriate to use Internet-Drafts as reference
+        material or to cite them other than as "work in progress."
+        </t>
+        <t indent="0" pn="section-boilerplate.1-4">
+        This Internet-Draft will expire on 8 April 2027.
+        </t>
+      </section>
+      <section anchor="copyright" numbered="false" removeInRFC="false" toc="exclude" pn="section-boilerplate.2">
+        <name slugifiedName="name-copyright-notice">Copyright Notice</name>
+        <t indent="0" pn="section-boilerplate.2-1">
+            Copyright (c) 2026 IETF Trust and the persons identified as the
+            document authors. All rights reserved.
+        </t>
+        <t indent="0" pn="section-boilerplate.2-2">
+            This document is subject to BCP 78 and the IETF Trust's Legal
+            Provisions Relating to IETF Documents
+            (<eref target="https://trustee.ietf.org/license-info" brackets="none"/>) in effect on the date of
+            publication of this document. Please review these documents
+            carefully, as they describe your rights and restrictions with
+            respect to this document. Code Components extracted from this
+            document must include Revised BSD License text as described in
+            Section 4.e of the Trust Legal Provisions and are provided without
+            warranty as described in the Revised BSD License.
+        </t>
+      </section>
+    </boilerplate>
+    <toc>
+      <section anchor="toc" numbered="false" removeInRFC="false" toc="exclude" pn="section-toc.1">
+        <name slugifiedName="name-table-of-contents">Table of Contents</name>
+        <ul bare="true" empty="true" indent="2" spacing="compact" pn="section-toc.1-1">
+          <li pn="section-toc.1-1.1">
+            <t indent="0" keepWithNext="true" pn="section-toc.1-1.1.1"><xref derivedContent="1" format="counter" sectionFormat="of" target="section-1"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-introduction">Introduction</xref></t>
+          </li>
+          <li pn="section-toc.1-1.2">
+            <t indent="0" keepWithNext="true" pn="section-toc.1-1.2.1"><xref derivedContent="2" format="counter" sectionFormat="of" target="section-2"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-conventions-and-terminology">Conventions and Terminology</xref></t>
+          </li>
+          <li pn="section-toc.1-1.3">
+            <t indent="0" keepWithNext="true" pn="section-toc.1-1.3.1"><xref derivedContent="3" format="counter" sectionFormat="of" target="section-3"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-protocol-overview">Protocol Overview</xref></t>
+          </li>
+          <li pn="section-toc.1-1.4">
+            <t indent="0" pn="section-toc.1-1.4.1"><xref derivedContent="4" format="counter" sectionFormat="of" target="section-4"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-encoding-and-cryptography">Encoding and Cryptography</xref></t>
+          </li>
+          <li pn="section-toc.1-1.5">
+            <t indent="0" pn="section-toc.1-1.5.1"><xref derivedContent="5" format="counter" sectionFormat="of" target="section-5"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-capability-tokens">Capability Tokens</xref></t>
+          </li>
+          <li pn="section-toc.1-1.6">
+            <t indent="0" pn="section-toc.1-1.6.1"><xref derivedContent="6" format="counter" sectionFormat="of" target="section-6"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-receipts">Receipts</xref></t>
+          </li>
+          <li pn="section-toc.1-1.7">
+            <t indent="0" pn="section-toc.1-1.7.1"><xref derivedContent="7" format="counter" sectionFormat="of" target="section-7"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-budgets-and-metering">Budgets and Metering</xref></t>
+          </li>
+          <li pn="section-toc.1-1.8">
+            <t indent="0" pn="section-toc.1-1.8.1"><xref derivedContent="8" format="counter" sectionFormat="of" target="section-8"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-governed-transactions">Governed Transactions</xref></t>
+          </li>
+          <li pn="section-toc.1-1.9">
+            <t indent="0" pn="section-toc.1-1.9.1"><xref derivedContent="9" format="counter" sectionFormat="of" target="section-9"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-receipt-checkpoints">Receipt Checkpoints</xref></t>
+          </li>
+          <li pn="section-toc.1-1.10">
+            <t indent="0" pn="section-toc.1-1.10.1"><xref derivedContent="10" format="counter" sectionFormat="of" target="section-10"/>. <xref derivedContent="" format="title" sectionFormat="of" target="name-native-transport">Native Transport</xref></t>
+          </li>
+          <li pn="section-toc.1-1.11">
+            <t indent="0" pn="section-toc.1-1.11.1"><xref derivedContent="11" format="counter" sectionFormat="of" target="section-11"/>. <xref derivedContent="" format="title" sectionFormat="of" target="name-hosted-mcp-binding">Hosted MCP Binding</xref></t>
+          </li>
+          <li pn="section-toc.1-1.12">
+            <t indent="0" pn="section-toc.1-1.12.1"><xref derivedContent="12" format="counter" sectionFormat="of" target="section-12"/>. <xref derivedContent="" format="title" sectionFormat="of" target="name-trust-control-interface">Trust-Control Interface</xref></t>
+          </li>
+          <li pn="section-toc.1-1.13">
+            <t indent="0" pn="section-toc.1-1.13.1"><xref derivedContent="13" format="counter" sectionFormat="of" target="section-13"/>. <xref derivedContent="" format="title" sectionFormat="of" target="name-versioning-and-negotiation">Versioning and Negotiation</xref></t>
+          </li>
+          <li pn="section-toc.1-1.14">
+            <t indent="0" pn="section-toc.1-1.14.1"><xref derivedContent="14" format="counter" sectionFormat="of" target="section-14"/>. <xref derivedContent="" format="title" sectionFormat="of" target="name-error-model">Error Model</xref></t>
+          </li>
+          <li pn="section-toc.1-1.15">
+            <t indent="0" pn="section-toc.1-1.15.1"><xref derivedContent="15" format="counter" sectionFormat="of" target="section-15"/>. <xref derivedContent="" format="title" sectionFormat="of" target="name-security-considerations">Security Considerations</xref></t>
+          </li>
+          <li pn="section-toc.1-1.16">
+            <t indent="0" pn="section-toc.1-1.16.1"><xref derivedContent="16" format="counter" sectionFormat="of" target="section-16"/>. <xref derivedContent="" format="title" sectionFormat="of" target="name-privacy-considerations">Privacy Considerations</xref></t>
+          </li>
+          <li pn="section-toc.1-1.17">
+            <t indent="0" pn="section-toc.1-1.17.1"><xref derivedContent="17" format="counter" sectionFormat="of" target="section-17"/>. <xref derivedContent="" format="title" sectionFormat="of" target="name-iana-considerations">IANA Considerations</xref></t>
+          </li>
+          <li pn="section-toc.1-1.18">
+            <t indent="0" pn="section-toc.1-1.18.1"><xref derivedContent="18" format="counter" sectionFormat="of" target="section-18"/>. <xref derivedContent="" format="title" sectionFormat="of" target="name-implementation-status">Implementation Status</xref></t>
+          </li>
+          <li pn="section-toc.1-1.19">
+            <t indent="0" pn="section-toc.1-1.19.1"><xref derivedContent="19" format="counter" sectionFormat="of" target="section-19"/>. <xref derivedContent="" format="title" sectionFormat="of" target="name-references">References</xref></t>
+            <ul bare="true" empty="true" indent="2" spacing="compact" pn="section-toc.1-1.19.2">
+              <li pn="section-toc.1-1.19.2.1">
+                <t indent="0" pn="section-toc.1-1.19.2.1.1"><xref derivedContent="19.1" format="counter" sectionFormat="of" target="section-19.1"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-normative-references">Normative References</xref></t>
+              </li>
+              <li pn="section-toc.1-1.19.2.2">
+                <t indent="0" pn="section-toc.1-1.19.2.2.1"><xref derivedContent="19.2" format="counter" sectionFormat="of" target="section-19.2"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-informative-references">Informative References</xref></t>
+              </li>
+            </ul>
+          </li>
+          <li pn="section-toc.1-1.20">
+            <t indent="0" pn="section-toc.1-1.20.1"><xref derivedContent="Appendix A" format="default" sectionFormat="of" target="section-appendix.a"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-examples">Examples</xref></t>
+          </li>
+          <li pn="section-toc.1-1.21">
+            <t indent="0" pn="section-toc.1-1.21.1"><xref derivedContent="Appendix B" format="default" sectionFormat="of" target="section-appendix.b"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-test-vectors">Test Vectors</xref></t>
+          </li>
+          <li pn="section-toc.1-1.22">
+            <t indent="0" pn="section-toc.1-1.22.1"><xref derivedContent="Appendix C" format="default" sectionFormat="of" target="section-appendix.c"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-relationship-to-other-work">Relationship to Other Work</xref></t>
+          </li>
+          <li pn="section-toc.1-1.23">
+            <t indent="0" pn="section-toc.1-1.23.1"><xref derivedContent="Appendix D" format="default" sectionFormat="of" target="section-appendix.d"/>.  <xref derivedContent="" format="title" sectionFormat="of" target="name-document-history">Document History</xref></t>
+          </li>
+          <li pn="section-toc.1-1.24">
+            <t indent="0" pn="section-toc.1-1.24.1"><xref derivedContent="" format="none" sectionFormat="of" target="section-appendix.e"/><xref derivedContent="" format="title" sectionFormat="of" target="name-acknowledgments">Acknowledgments</xref></t>
+          </li>
+          <li pn="section-toc.1-1.25">
+            <t indent="0" pn="section-toc.1-1.25.1"><xref derivedContent="" format="none" sectionFormat="of" target="section-appendix.f"/><xref derivedContent="" format="title" sectionFormat="of" target="name-authors-address">Author's Address</xref></t>
+          </li>
+        </ul>
+      </section>
+    </toc>
+  </front>
+  <middle>
+    <section anchor="introduction" numbered="true" removeInRFC="false" toc="include" pn="section-1">
+      <name slugifiedName="name-introduction">Introduction</name>
+      <t indent="0" pn="section-1-1">This section is being written.</t>
+    </section>
+    <section anchor="terminology" numbered="true" removeInRFC="false" toc="include" pn="section-2">
+      <name slugifiedName="name-conventions-and-terminology">Conventions and Terminology</name>
+      <t indent="0" pn="section-2-1">The key words "<bcp14>MUST</bcp14>", "<bcp14>MUST NOT</bcp14>", "<bcp14>REQUIRED</bcp14>", "<bcp14>SHALL</bcp14>", "<bcp14>SHALL NOT</bcp14>", "<bcp14>SHOULD</bcp14>", "<bcp14>SHOULD NOT</bcp14>", "<bcp14>RECOMMENDED</bcp14>", "<bcp14>NOT RECOMMENDED</bcp14>",
+"<bcp14>MAY</bcp14>", and "<bcp14>OPTIONAL</bcp14>" in this document are to be interpreted as
+described in BCP 14 <xref target="RFC2119" format="default" sectionFormat="of" derivedContent="RFC2119"/> <xref target="RFC8174" format="default" sectionFormat="of" derivedContent="RFC8174"/> when, and only when, they
+appear in all capitals, as shown here.</t>
+    </section>
+    <section anchor="overview" numbered="true" removeInRFC="false" toc="include" pn="section-3">
+      <name slugifiedName="name-protocol-overview">Protocol Overview</name>
+      <t indent="0" pn="section-3-1">This section is being written.</t>
+    </section>
+    <section anchor="encoding" numbered="true" removeInRFC="false" toc="include" pn="section-4">
+      <name slugifiedName="name-encoding-and-cryptography">Encoding and Cryptography</name>
+      <t indent="0" pn="section-4-1">This section is being written.</t>
+    </section>
+    <section anchor="capabilities" numbered="true" removeInRFC="false" toc="include" pn="section-5">
+      <name slugifiedName="name-capability-tokens">Capability Tokens</name>
+      <t indent="0" pn="section-5-1">This section is being written.</t>
+    </section>
+    <section anchor="receipts" numbered="true" removeInRFC="false" toc="include" pn="section-6">
+      <name slugifiedName="name-receipts">Receipts</name>
+      <t indent="0" pn="section-6-1">This section is being written.</t>
+    </section>
+    <section anchor="budgets" numbered="true" removeInRFC="false" toc="include" pn="section-7">
+      <name slugifiedName="name-budgets-and-metering">Budgets and Metering</name>
+      <t indent="0" pn="section-7-1">This section is being written.</t>
+    </section>
+    <section anchor="governed-transactions" numbered="true" removeInRFC="false" toc="include" pn="section-8">
+      <name slugifiedName="name-governed-transactions">Governed Transactions</name>
+      <t indent="0" pn="section-8-1">This section is being written.</t>
+    </section>
+    <section anchor="checkpoints" numbered="true" removeInRFC="false" toc="include" pn="section-9">
+      <name slugifiedName="name-receipt-checkpoints">Receipt Checkpoints</name>
+      <t indent="0" pn="section-9-1">This section is being written.</t>
+    </section>
+    <section anchor="native-transport" numbered="true" removeInRFC="false" toc="include" pn="section-10">
+      <name slugifiedName="name-native-transport">Native Transport</name>
+      <t indent="0" pn="section-10-1">This section is being written.</t>
+    </section>
+    <section anchor="hosted-mcp" numbered="true" removeInRFC="false" toc="include" pn="section-11">
+      <name slugifiedName="name-hosted-mcp-binding">Hosted MCP Binding</name>
+      <t indent="0" pn="section-11-1">This section is being written.</t>
+    </section>
+    <section anchor="trust-control" numbered="true" removeInRFC="false" toc="include" pn="section-12">
+      <name slugifiedName="name-trust-control-interface">Trust-Control Interface</name>
+      <t indent="0" pn="section-12-1">This section is being written.</t>
+    </section>
+    <section anchor="versioning" numbered="true" removeInRFC="false" toc="include" pn="section-13">
+      <name slugifiedName="name-versioning-and-negotiation">Versioning and Negotiation</name>
+      <t indent="0" pn="section-13-1">This section is being written.</t>
+    </section>
+    <section anchor="errors" numbered="true" removeInRFC="false" toc="include" pn="section-14">
+      <name slugifiedName="name-error-model">Error Model</name>
+      <t indent="0" pn="section-14-1">This section is being written.</t>
+    </section>
+    <section anchor="security" numbered="true" removeInRFC="false" toc="include" pn="section-15">
+      <name slugifiedName="name-security-considerations">Security Considerations</name>
+      <t indent="0" pn="section-15-1">This section is being written.</t>
+    </section>
+    <section anchor="privacy" numbered="true" removeInRFC="false" toc="include" pn="section-16">
+      <name slugifiedName="name-privacy-considerations">Privacy Considerations</name>
+      <t indent="0" pn="section-16-1">This section is being written.</t>
+    </section>
+    <section anchor="iana" numbered="true" removeInRFC="false" toc="include" pn="section-17">
+      <name slugifiedName="name-iana-considerations">IANA Considerations</name>
+      <t indent="0" pn="section-17-1">This section is being written.</t>
+    </section>
+    <section anchor="implementation-status" removeInRFC="true" numbered="true" toc="include" pn="section-18">
+      <name slugifiedName="name-implementation-status">Implementation Status</name>
+      <t indent="0" pn="section-18-1">This section is to be removed before publishing as an RFC.</t>
+      <t indent="0" pn="section-18-2">This section is being written.</t>
+    </section>
+  </middle>
+  <back>
+    <references anchor="sec-combined-references" pn="section-19">
+      <name slugifiedName="name-references">References</name>
+      <references anchor="sec-normative-references" pn="section-19.1">
+        <name slugifiedName="name-normative-references">Normative References</name>
+        <reference anchor="FIPS180-4" target="https://doi.org/10.6028/NIST.FIPS.180-4" quoteTitle="true" derivedAnchor="FIPS180-4">
+          <front>
+            <title>Secure Hash Standard (SHS)</title>
+            <author>
+              <organization showOnFrontPage="true">National Institute of Standards and Technology</organization>
+            </author>
+            <date year="2015" month="August"/>
+          </front>
+          <seriesInfo name="FIPS PUB" value="180-4"/>
+          <seriesInfo name="DOI" value="10.6028/NIST.FIPS.180-4"/>
+        </reference>
+        <reference anchor="FIPS186-5" target="https://doi.org/10.6028/NIST.FIPS.186-5" quoteTitle="true" derivedAnchor="FIPS186-5">
+          <front>
+            <title>Digital Signature Standard (DSS)</title>
+            <author>
+              <organization showOnFrontPage="true">National Institute of Standards and Technology</organization>
+            </author>
+            <date year="2023" month="February"/>
+          </front>
+          <seriesInfo name="FIPS PUB" value="186-5"/>
+          <seriesInfo name="DOI" value="10.6028/NIST.FIPS.186-5"/>
+        </reference>
+        <reference anchor="FIPS204" target="https://doi.org/10.6028/NIST.FIPS.204" quoteTitle="true" derivedAnchor="FIPS204">
+          <front>
+            <title>Module-Lattice-Based Digital Signature Standard</title>
+            <author>
+              <organization showOnFrontPage="true">National Institute of Standards and Technology</organization>
+            </author>
+            <date year="2024" month="August"/>
+          </front>
+          <seriesInfo name="FIPS PUB" value="204"/>
+          <seriesInfo name="DOI" value="10.6028/NIST.FIPS.204"/>
+        </reference>
+        <reference anchor="ISO4217" target="https://www.iso.org/iso-4217-currency-codes.html" quoteTitle="true" derivedAnchor="ISO4217">
+          <front>
+            <title>Codes for the representation of currencies</title>
+            <author>
+              <organization showOnFrontPage="true">International Organization for Standardization</organization>
+            </author>
+            <date year="2015" month="August"/>
+          </front>
+          <seriesInfo name="ISO" value="4217:2015"/>
+        </reference>
+        <reference anchor="JSON-RPC" target="https://www.jsonrpc.org/specification" quoteTitle="true" derivedAnchor="JSON-RPC">
+          <front>
+            <title>JSON-RPC 2.0 Specification</title>
+            <author>
+              <organization showOnFrontPage="true">JSON-RPC Working Group</organization>
+            </author>
+            <date year="2013" month="January"/>
+          </front>
+        </reference>
+        <reference anchor="MCP" target="https://modelcontextprotocol.io/specification/2025-11-25" quoteTitle="true" derivedAnchor="MCP">
+          <front>
+            <title>Model Context Protocol Specification, Version 2025-11-25</title>
+            <author>
+              <organization showOnFrontPage="true">Model Context Protocol</organization>
+            </author>
+            <date year="2025" month="November" day="25"/>
+          </front>
+        </reference>
+        <reference anchor="RFC2119" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc2119" derivedAnchor="RFC2119">
+          <front>
+            <title>Key words for use in RFCs to Indicate Requirement Levels</title>
+            <author fullname="S. Bradner" initials="S." surname="Bradner"/>
+            <date month="March" year="1997"/>
+            <abstract>
+              <t indent="0">In many standards track documents several words are used to signify the requirements in the specification. These words are often capitalized. This document defines these words as they should be interpreted in IETF documents. This document specifies an Internet Best Current Practices for the Internet Community, and requests discussion and suggestions for improvements.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="BCP" value="14"/>
+          <seriesInfo name="RFC" value="2119"/>
+          <seriesInfo name="DOI" value="10.17487/RFC2119"/>
+        </reference>
+        <reference anchor="RFC3279" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc3279" derivedAnchor="RFC3279">
+          <front>
+            <title>Algorithms and Identifiers for the Internet X.509 Public Key Infrastructure Certificate and Certificate Revocation List (CRL) Profile</title>
+            <author fullname="L. Bassham" initials="L." surname="Bassham"/>
+            <author fullname="W. Polk" initials="W." surname="Polk"/>
+            <author fullname="R. Housley" initials="R." surname="Housley"/>
+            <date month="May" year="2002"/>
+            <abstract>
+              <t indent="0">This document specifies algorithm identifiers and ASN.1 encoding formats for digital signatures and subject public keys used in the Internet X.509 Public Key Infrastructure (PKI). Digital signatures are used to sign certificates and certificate revocation list (CRLs). Certificates include the public key of the named subject. [STANDARDS-TRACK]</t>
+            </abstract>
+          </front>
+          <seriesInfo name="RFC" value="3279"/>
+          <seriesInfo name="DOI" value="10.17487/RFC3279"/>
+        </reference>
+        <reference anchor="RFC4648" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc4648" derivedAnchor="RFC4648">
+          <front>
+            <title>The Base16, Base32, and Base64 Data Encodings</title>
+            <author fullname="S. Josefsson" initials="S." surname="Josefsson"/>
+            <date month="October" year="2006"/>
+            <abstract>
+              <t indent="0">This document describes the commonly used base 64, base 32, and base 16 encoding schemes. It also discusses the use of line-feeds in encoded data, use of padding in encoded data, use of non-alphabet characters in encoded data, use of different encoding alphabets, and canonical encodings. [STANDARDS-TRACK]</t>
+            </abstract>
+          </front>
+          <seriesInfo name="RFC" value="4648"/>
+          <seriesInfo name="DOI" value="10.17487/RFC4648"/>
+        </reference>
+        <reference anchor="RFC5234" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc5234" derivedAnchor="RFC5234">
+          <front>
+            <title>Augmented BNF for Syntax Specifications: ABNF</title>
+            <author fullname="D. Crocker" initials="D." role="editor" surname="Crocker"/>
+            <author fullname="P. Overell" initials="P." surname="Overell"/>
+            <date month="January" year="2008"/>
+            <abstract>
+              <t indent="0">Internet technical specifications often need to define a formal syntax. Over the years, a modified version of Backus-Naur Form (BNF), called Augmented BNF (ABNF), has been popular among many Internet specifications. The current specification documents ABNF. It balances compactness and simplicity with reasonable representational power. The differences between standard BNF and ABNF involve naming rules, repetition, alternatives, order-independence, and value ranges. This specification also supplies additional rule definitions and encoding for a core lexical analyzer of the type common to several Internet specifications. [STANDARDS-TRACK]</t>
+            </abstract>
+          </front>
+          <seriesInfo name="STD" value="68"/>
+          <seriesInfo name="RFC" value="5234"/>
+          <seriesInfo name="DOI" value="10.17487/RFC5234"/>
+        </reference>
+        <reference anchor="RFC7405" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc7405" derivedAnchor="RFC7405">
+          <front>
+            <title>Case-Sensitive String Support in ABNF</title>
+            <author fullname="P. Kyzivat" initials="P." surname="Kyzivat"/>
+            <date month="December" year="2014"/>
+            <abstract>
+              <t indent="0">This document extends the base definition of ABNF (Augmented Backus-Naur Form) to include a way to specify US-ASCII string literals that are matched in a case-sensitive manner.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="RFC" value="7405"/>
+          <seriesInfo name="DOI" value="10.17487/RFC7405"/>
+        </reference>
+        <reference anchor="RFC8032" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc8032" derivedAnchor="RFC8032">
+          <front>
+            <title>Edwards-Curve Digital Signature Algorithm (EdDSA)</title>
+            <author fullname="S. Josefsson" initials="S." surname="Josefsson"/>
+            <author fullname="I. Liusvaara" initials="I." surname="Liusvaara"/>
+            <date month="January" year="2017"/>
+            <abstract>
+              <t indent="0">This document describes elliptic curve signature scheme Edwards-curve Digital Signature Algorithm (EdDSA). The algorithm is instantiated with recommended parameters for the edwards25519 and edwards448 curves. An example implementation and test vectors are provided.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="RFC" value="8032"/>
+          <seriesInfo name="DOI" value="10.17487/RFC8032"/>
+        </reference>
+        <reference anchor="RFC8126" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc8126" derivedAnchor="RFC8126">
+          <front>
+            <title>Guidelines for Writing an IANA Considerations Section in RFCs</title>
+            <author fullname="M. Cotton" initials="M." surname="Cotton"/>
+            <author fullname="B. Leiba" initials="B." surname="Leiba"/>
+            <author fullname="T. Narten" initials="T." surname="Narten"/>
+            <date month="June" year="2017"/>
+            <abstract>
+              <t indent="0">Many protocols make use of points of extensibility that use constants to identify various protocol parameters. To ensure that the values in these fields do not have conflicting uses and to promote interoperability, their allocations are often coordinated by a central record keeper. For IETF protocols, that role is filled by the Internet Assigned Numbers Authority (IANA).</t>
+              <t indent="0">To make assignments in a given registry prudently, guidance describing the conditions under which new values should be assigned, as well as when and how modifications to existing values can be made, is needed. This document defines a framework for the documentation of these guidelines by specification authors, in order to assure that the provided guidance for the IANA Considerations is clear and addresses the various issues that are likely in the operation of a registry.</t>
+              <t indent="0">This is the third edition of this document; it obsoletes RFC 5226.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="BCP" value="26"/>
+          <seriesInfo name="RFC" value="8126"/>
+          <seriesInfo name="DOI" value="10.17487/RFC8126"/>
+        </reference>
+        <reference anchor="RFC8174" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc8174" derivedAnchor="RFC8174">
+          <front>
+            <title>Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words</title>
+            <author fullname="B. Leiba" initials="B." surname="Leiba"/>
+            <date month="May" year="2017"/>
+            <abstract>
+              <t indent="0">RFC 2119 specifies common key words that may be used in protocol specifications. This document aims to reduce the ambiguity by clarifying that only UPPERCASE usage of the key words have the defined special meanings.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="BCP" value="14"/>
+          <seriesInfo name="RFC" value="8174"/>
+          <seriesInfo name="DOI" value="10.17487/RFC8174"/>
+        </reference>
+        <reference anchor="RFC8259" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc8259" derivedAnchor="RFC8259">
+          <front>
+            <title>The JavaScript Object Notation (JSON) Data Interchange Format</title>
+            <author fullname="T. Bray" initials="T." role="editor" surname="Bray"/>
+            <date month="December" year="2017"/>
+            <abstract>
+              <t indent="0">JavaScript Object Notation (JSON) is a lightweight, text-based, language-independent data interchange format. It was derived from the ECMAScript Programming Language Standard. JSON defines a small set of formatting rules for the portable representation of structured data.</t>
+              <t indent="0">This document removes inconsistencies with other specifications of JSON, repairs specification errors, and offers experience-based interoperability guidance.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="STD" value="90"/>
+          <seriesInfo name="RFC" value="8259"/>
+          <seriesInfo name="DOI" value="10.17487/RFC8259"/>
+        </reference>
+        <reference anchor="RFC8446" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc8446" derivedAnchor="RFC8446">
+          <front>
+            <title>The Transport Layer Security (TLS) Protocol Version 1.3</title>
+            <author fullname="E. Rescorla" initials="E." surname="Rescorla"/>
+            <date month="August" year="2018"/>
+            <abstract>
+              <t indent="0">This document specifies version 1.3 of the Transport Layer Security (TLS) protocol. TLS allows client/server applications to communicate over the Internet in a way that is designed to prevent eavesdropping, tampering, and message forgery.</t>
+              <t indent="0">This document updates RFCs 5705 and 6066, and obsoletes RFCs 5077, 5246, and 6961. This document also specifies new requirements for TLS 1.2 implementations.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="RFC" value="8446"/>
+          <seriesInfo name="DOI" value="10.17487/RFC8446"/>
+        </reference>
+        <reference anchor="RFC8785" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc8785" derivedAnchor="RFC8785">
+          <front>
+            <title>JSON Canonicalization Scheme (JCS)</title>
+            <author fullname="A. Rundgren" initials="A." surname="Rundgren"/>
+            <author fullname="B. Jordan" initials="B." surname="Jordan"/>
+            <author fullname="S. Erdtman" initials="S." surname="Erdtman"/>
+            <date month="June" year="2020"/>
+            <abstract>
+              <t indent="0">Cryptographic operations like hashing and signing need the data to be expressed in an invariant format so that the operations are reliably repeatable. One way to address this is to create a canonical representation of the data. Canonicalization also permits data to be exchanged in its original form on the "wire" while cryptographic operations performed on the canonicalized counterpart of the data in the producer and consumer endpoints generate consistent results.</t>
+              <t indent="0">This document describes the JSON Canonicalization Scheme (JCS). This specification defines how to create a canonical representation of JSON data by building on the strict serialization methods for JSON primitives defined by ECMAScript, constraining JSON data to the Internet JSON (I-JSON) subset, and by using deterministic property sorting.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="RFC" value="8785"/>
+          <seriesInfo name="DOI" value="10.17487/RFC8785"/>
+        </reference>
+        <reference anchor="RFC9110" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc9110" derivedAnchor="RFC9110">
+          <front>
+            <title>HTTP Semantics</title>
+            <author fullname="R. Fielding" initials="R." role="editor" surname="Fielding"/>
+            <author fullname="M. Nottingham" initials="M." role="editor" surname="Nottingham"/>
+            <author fullname="J. Reschke" initials="J." role="editor" surname="Reschke"/>
+            <date month="June" year="2022"/>
+            <abstract>
+              <t indent="0">The Hypertext Transfer Protocol (HTTP) is a stateless application-level protocol for distributed, collaborative, hypertext information systems. This document describes the overall architecture of HTTP, establishes common terminology, and defines aspects of the protocol that are shared by all versions. In this definition are core protocol elements, extensibility mechanisms, and the "http" and "https" Uniform Resource Identifier (URI) schemes.</t>
+              <t indent="0">This document updates RFC 3864 and obsoletes RFCs 2818, 7231, 7232, 7233, 7235, 7538, 7615, 7694, and portions of 7230.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="STD" value="97"/>
+          <seriesInfo name="RFC" value="9110"/>
+          <seriesInfo name="DOI" value="10.17487/RFC9110"/>
+        </reference>
+        <reference anchor="RFC9162" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc9162" derivedAnchor="RFC9162">
+          <front>
+            <title>Certificate Transparency Version 2.0</title>
+            <author fullname="B. Laurie" initials="B." surname="Laurie"/>
+            <author fullname="E. Messeri" initials="E." surname="Messeri"/>
+            <author fullname="R. Stradling" initials="R." surname="Stradling"/>
+            <date month="December" year="2021"/>
+            <abstract>
+              <t indent="0">This document describes version 2.0 of the Certificate Transparency (CT) protocol for publicly logging the existence of Transport Layer Security (TLS) server certificates as they are issued or observed, in a manner that allows anyone to audit certification authority (CA) activity and notice the issuance of suspect certificates as well as to audit the certificate logs themselves. The intent is that eventually clients would refuse to honor certificates that do not appear in a log, effectively forcing CAs to add all issued certificates to the logs.</t>
+              <t indent="0">This document obsoletes RFC 6962. It also specifies a new TLS extension that is used to send various CT log artifacts.</t>
+              <t indent="0">Logs are network services that implement the protocol operations for submissions and queries that are defined in this document.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="RFC" value="9162"/>
+          <seriesInfo name="DOI" value="10.17487/RFC9162"/>
+        </reference>
+        <reference anchor="RFC9449" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc9449" derivedAnchor="RFC9449">
+          <front>
+            <title>OAuth 2.0 Demonstrating Proof of Possession (DPoP)</title>
+            <author fullname="D. Fett" initials="D." surname="Fett"/>
+            <author fullname="B. Campbell" initials="B." surname="Campbell"/>
+            <author fullname="J. Bradley" initials="J." surname="Bradley"/>
+            <author fullname="T. Lodderstedt" initials="T." surname="Lodderstedt"/>
+            <author fullname="M. Jones" initials="M." surname="Jones"/>
+            <author fullname="D. Waite" initials="D." surname="Waite"/>
+            <date month="September" year="2023"/>
+            <abstract>
+              <t indent="0">This document describes a mechanism for sender-constraining OAuth 2.0 tokens via a proof-of-possession mechanism on the application level. This mechanism allows for the detection of replay attacks with access and refresh tokens.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="RFC" value="9449"/>
+          <seriesInfo name="DOI" value="10.17487/RFC9449"/>
+        </reference>
+        <reference anchor="SEC1" target="https://www.secg.org/sec1-v2.pdf" quoteTitle="true" derivedAnchor="SEC1">
+          <front>
+            <title>SEC 1: Elliptic Curve Cryptography, Version 2.0</title>
+            <author>
+              <organization showOnFrontPage="true">Standards for Efficient Cryptography Group</organization>
+            </author>
+            <date year="2009" month="May"/>
+          </front>
+        </reference>
+        <reference anchor="SSE" target="https://html.spec.whatwg.org/multipage/server-sent-events.html" quoteTitle="true" derivedAnchor="SSE">
+          <front>
+            <title>HTML Living Standard, Section 9.2: Server-sent events</title>
+            <author>
+              <organization showOnFrontPage="true">WHATWG</organization>
+            </author>
+            <date/>
+          </front>
+        </reference>
+      </references>
+      <references anchor="sec-informative-references" pn="section-19.2">
+        <name slugifiedName="name-informative-references">Informative References</name>
+        <reference anchor="A2A" target="https://a2a-protocol.org/latest/specification/" quoteTitle="true" derivedAnchor="A2A">
+          <front>
+            <title>Agent2Agent (A2A) Protocol Specification</title>
+            <author>
+              <organization showOnFrontPage="true">Linux Foundation A2A Project</organization>
+            </author>
+            <date/>
+          </front>
+        </reference>
+        <reference anchor="BISCUIT" target="https://doc.biscuitsec.org/reference/specifications" quoteTitle="true" derivedAnchor="BISCUIT">
+          <front>
+            <title>Biscuit, a bearer token with offline attenuation and decentralized verification</title>
+            <author>
+              <organization showOnFrontPage="true">Eclipse Biscuit</organization>
+            </author>
+            <date/>
+          </front>
+        </reference>
+        <reference anchor="I-D.ietf-scitt-architecture" quoteTitle="true" target="https://datatracker.ietf.org/doc/html/draft-ietf-scitt-architecture-22" derivedAnchor="I-D.ietf-scitt-architecture">
+          <front>
+            <title>An Architecture for Trustworthy and Transparent Digital Supply Chains</title>
+            <author fullname="Henk Birkholz" initials="H." surname="Birkholz">
+              <organization showOnFrontPage="true">Fraunhofer SIT</organization>
+            </author>
+            <author fullname="Antoine Delignat-Lavaud" initials="A." surname="Delignat-Lavaud">
+              <organization showOnFrontPage="true">Microsoft Research</organization>
+            </author>
+            <author fullname="Cedric Fournet" initials="C." surname="Fournet">
+              <organization showOnFrontPage="true">Microsoft Research</organization>
+            </author>
+            <author fullname="Yogesh Deshpande" initials="Y." surname="Deshpande">
+              <organization showOnFrontPage="true">ARM</organization>
+            </author>
+            <author fullname="Steve Lasker" initials="S." surname="Lasker">
+         </author>
+            <date day="10" month="October" year="2025"/>
+            <abstract>
+              <t indent="0">   Traceability in supply chains is a growing security concern.  While
+   verifiable data structures have addressed specific issues, such as
+   equivocation over digital certificates, they lack a universal
+   architecture for all supply chains.  This document defines such an
+   architecture for single-issuer signed statement transparency.  It
+   ensures extensibility, interoperability between different
+   transparency services, and compliance with various auditing
+   procedures and regulatory requirements.
+
+              </t>
+            </abstract>
+          </front>
+          <seriesInfo name="Internet-Draft" value="draft-ietf-scitt-architecture-22"/>
+          <refcontent>Work in Progress</refcontent>
+        </reference>
+        <reference anchor="I-D.ietf-wimse-arch" quoteTitle="true" target="https://datatracker.ietf.org/doc/html/draft-ietf-wimse-arch-08" derivedAnchor="I-D.ietf-wimse-arch">
+          <front>
+            <title>Workload Identity in a Multi System Environment (WIMSE) Architecture</title>
+            <author fullname="Joseph A. Salowey" initials="J. A." surname="Salowey">
+              <organization showOnFrontPage="true">Palo Alto Networks</organization>
+            </author>
+            <author fullname="Yaroslav Rosomakho" initials="Y." surname="Rosomakho">
+              <organization showOnFrontPage="true">Zscaler</organization>
+            </author>
+            <author fullname="Hannes Tschofenig" initials="H." surname="Tschofenig">
+              <organization showOnFrontPage="true">University of the Bundeswehr Munich</organization>
+            </author>
+            <date day="6" month="July" year="2026"/>
+            <abstract>
+              <t indent="0">   The increasing prevalence of cloud computing and micro service
+   architectures has led to the rise of complex software functions being
+   built and deployed as workloads, where a workload is defined as
+   software executing for a specific purpose, potentially comprising one
+   or more running instances.  This document discusses an architecture
+   for designing and standardizing protocols and payloads for conveying
+   workload identity and security context information.
+
+              </t>
+            </abstract>
+          </front>
+          <seriesInfo name="Internet-Draft" value="draft-ietf-wimse-arch-08"/>
+          <refcontent>Work in Progress</refcontent>
+        </reference>
+        <reference anchor="MACAROONS" target="https://www.ndss-symposium.org/ndss2014/programme/macaroons-cookies-contextual-caveats-decentralized-authorization-cloud/" quoteTitle="true" derivedAnchor="MACAROONS">
+          <front>
+            <title>Macaroons: Cookies with Contextual Caveats for Decentralized Authorization in the Cloud</title>
+            <author initials="A." surname="Birgisson" fullname="Arnar Birgisson">
+              <organization showOnFrontPage="true"/>
+            </author>
+            <author initials="J. G." surname="Politz" fullname="Joe Gibbs Politz">
+              <organization showOnFrontPage="true"/>
+            </author>
+            <author initials="U." surname="Erlingsson" fullname="Ulfar Erlingsson">
+              <organization showOnFrontPage="true"/>
+            </author>
+            <author initials="A." surname="Taly" fullname="Ankur Taly">
+              <organization showOnFrontPage="true"/>
+            </author>
+            <author initials="M." surname="Vrable" fullname="Michael Vrable">
+              <organization showOnFrontPage="true"/>
+            </author>
+            <author initials="M." surname="Lentczner" fullname="Mark Lentczner">
+              <organization showOnFrontPage="true"/>
+            </author>
+            <date year="2014" month="February"/>
+          </front>
+          <seriesInfo name="Network and Distributed System Security Symposium" value="NDSS 2014"/>
+        </reference>
+        <reference anchor="OID4VCI" target="https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html" quoteTitle="true" derivedAnchor="OID4VCI">
+          <front>
+            <title>OpenID for Verifiable Credential Issuance 1.0</title>
+            <author>
+              <organization showOnFrontPage="true">OpenID Foundation</organization>
+            </author>
+            <date year="2025"/>
+          </front>
+        </reference>
+        <reference anchor="OID4VP" target="https://openid.net/specs/openid-4-verifiable-presentations-1_0.html" quoteTitle="true" derivedAnchor="OID4VP">
+          <front>
+            <title>OpenID for Verifiable Presentations 1.0</title>
+            <author>
+              <organization showOnFrontPage="true">OpenID Foundation</organization>
+            </author>
+            <date year="2025"/>
+          </front>
+        </reference>
+        <reference anchor="RFC7942" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc7942" derivedAnchor="RFC7942">
+          <front>
+            <title>Improving Awareness of Running Code: The Implementation Status Section</title>
+            <author fullname="Y. Sheffer" initials="Y." surname="Sheffer"/>
+            <author fullname="A. Farrel" initials="A." surname="Farrel"/>
+            <date month="July" year="2016"/>
+            <abstract>
+              <t indent="0">This document describes a simple process that allows authors of Internet-Drafts to record the status of known implementations by including an Implementation Status section. This will allow reviewers and working groups to assign due consideration to documents that have the benefit of running code, which may serve as evidence of valuable experimentation and feedback that have made the implemented protocols more mature.</t>
+              <t indent="0">This process is not mandatory. Authors of Internet-Drafts are encouraged to consider using the process for their documents, and working groups are invited to think about applying the process to all of their protocol specifications. This document obsoletes RFC 6982, advancing it to a Best Current Practice.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="BCP" value="205"/>
+          <seriesInfo name="RFC" value="7942"/>
+          <seriesInfo name="DOI" value="10.17487/RFC7942"/>
+        </reference>
+        <reference anchor="RFC8693" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc8693" derivedAnchor="RFC8693">
+          <front>
+            <title>OAuth 2.0 Token Exchange</title>
+            <author fullname="M. Jones" initials="M." surname="Jones"/>
+            <author fullname="A. Nadalin" initials="A." surname="Nadalin"/>
+            <author fullname="B. Campbell" initials="B." role="editor" surname="Campbell"/>
+            <author fullname="J. Bradley" initials="J." surname="Bradley"/>
+            <author fullname="C. Mortimore" initials="C." surname="Mortimore"/>
+            <date month="January" year="2020"/>
+            <abstract>
+              <t indent="0">This specification defines a protocol for an HTTP- and JSON-based Security Token Service (STS) by defining how to request and obtain security tokens from OAuth 2.0 authorization servers, including security tokens employing impersonation and delegation.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="RFC" value="8693"/>
+          <seriesInfo name="DOI" value="10.17487/RFC8693"/>
+        </reference>
+        <reference anchor="RFC8792" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc8792" derivedAnchor="RFC8792">
+          <front>
+            <title>Handling Long Lines in Content of Internet-Drafts and RFCs</title>
+            <author fullname="K. Watsen" initials="K." surname="Watsen"/>
+            <author fullname="E. Auerswald" initials="E." surname="Auerswald"/>
+            <author fullname="A. Farrel" initials="A." surname="Farrel"/>
+            <author fullname="Q. Wu" initials="Q." surname="Wu"/>
+            <date month="June" year="2020"/>
+            <abstract>
+              <t indent="0">This document defines two strategies for handling long lines in width-bounded text content. One strategy, called the "single backslash" strategy, is based on the historical use of a single backslash ('\') character to indicate where line-folding has occurred, with the continuation occurring with the first character that is not a space character (' ') on the next line. The second strategy, called the "double backslash" strategy, extends the first strategy by adding a second backslash character to identify where the continuation begins and is thereby able to handle cases not supported by the first strategy. Both strategies use a self-describing header enabling automated reconstitution of the original content.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="RFC" value="8792"/>
+          <seriesInfo name="DOI" value="10.17487/RFC8792"/>
+        </reference>
+        <reference anchor="RFC9334" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc9334" derivedAnchor="RFC9334">
+          <front>
+            <title>Remote ATtestation procedureS (RATS) Architecture</title>
+            <author fullname="H. Birkholz" initials="H." surname="Birkholz"/>
+            <author fullname="D. Thaler" initials="D." surname="Thaler"/>
+            <author fullname="M. Richardson" initials="M." surname="Richardson"/>
+            <author fullname="N. Smith" initials="N." surname="Smith"/>
+            <author fullname="W. Pan" initials="W." surname="Pan"/>
+            <date month="January" year="2023"/>
+            <abstract>
+              <t indent="0">In network protocol exchanges, it is often useful for one end of a communication to know whether the other end is in an intended operating state. This document provides an architectural overview of the entities involved that make such tests possible through the process of generating, conveying, and evaluating evidentiary Claims. It provides a model that is neutral toward processor architectures, the content of Claims, and protocols.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="RFC" value="9334"/>
+          <seriesInfo name="DOI" value="10.17487/RFC9334"/>
+        </reference>
+        <reference anchor="RFC9396" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc9396" derivedAnchor="RFC9396">
+          <front>
+            <title>OAuth 2.0 Rich Authorization Requests</title>
+            <author fullname="T. Lodderstedt" initials="T." surname="Lodderstedt"/>
+            <author fullname="J. Richer" initials="J." surname="Richer"/>
+            <author fullname="B. Campbell" initials="B." surname="Campbell"/>
+            <date month="May" year="2023"/>
+            <abstract>
+              <t indent="0">This document specifies a new parameter authorization_details that is used to carry fine-grained authorization data in OAuth messages.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="RFC" value="9396"/>
+          <seriesInfo name="DOI" value="10.17487/RFC9396"/>
+        </reference>
+        <reference anchor="RFC9635" quoteTitle="true" target="https://www.rfc-editor.org/rfc/rfc9635" derivedAnchor="RFC9635">
+          <front>
+            <title>Grant Negotiation and Authorization Protocol (GNAP)</title>
+            <author fullname="J. Richer" initials="J." role="editor" surname="Richer"/>
+            <author fullname="F. Imbault" initials="F." surname="Imbault"/>
+            <date month="October" year="2024"/>
+            <abstract>
+              <t indent="0">The Grant Negotiation and Authorization Protocol (GNAP) defines a mechanism for delegating authorization to a piece of software and conveying the results and artifacts of that delegation to the software. This delegation can include access to a set of APIs as well as subject information passed directly to the software.</t>
+            </abstract>
+          </front>
+          <seriesInfo name="RFC" value="9635"/>
+          <seriesInfo name="DOI" value="10.17487/RFC9635"/>
+        </reference>
+        <reference anchor="UCAN" target="https://github.com/ucan-wg/spec" quoteTitle="true" derivedAnchor="UCAN">
+          <front>
+            <title>User Controlled Authorization Network (UCAN) Specification</title>
+            <author>
+              <organization showOnFrontPage="true">UCAN Working Group</organization>
+            </author>
+            <date/>
+          </front>
+        </reference>
+        <reference anchor="VC-DATA-MODEL-2.0" target="https://www.w3.org/TR/vc-data-model-2.0/" quoteTitle="true" derivedAnchor="VC-DATA-MODEL-2.0">
+          <front>
+            <title>Verifiable Credentials Data Model v2.0</title>
+            <author>
+              <organization showOnFrontPage="true">World Wide Web Consortium</organization>
+            </author>
+            <date year="2025" month="May" day="15"/>
+          </front>
+        </reference>
+      </references>
+    </references>
+    <section anchor="examples" numbered="true" removeInRFC="false" toc="include" pn="section-appendix.a">
+      <name slugifiedName="name-examples">Examples</name>
+      <t indent="0" pn="section-appendix.a-1">This appendix is being written.</t>
+    </section>
+    <section anchor="test-vectors" numbered="true" removeInRFC="false" toc="include" pn="section-appendix.b">
+      <name slugifiedName="name-test-vectors">Test Vectors</name>
+      <t indent="0" pn="section-appendix.b-1">This appendix is being written.</t>
+    </section>
+    <section anchor="related-work" numbered="true" removeInRFC="false" toc="include" pn="section-appendix.c">
+      <name slugifiedName="name-relationship-to-other-work">Relationship to Other Work</name>
+      <t indent="0" pn="section-appendix.c-1">This appendix is being written.</t>
+    </section>
+    <section anchor="history" removeInRFC="true" numbered="true" toc="include" pn="section-appendix.d">
+      <name slugifiedName="name-document-history">Document History</name>
+      <t indent="0" pn="section-appendix.d-1">This section is to be removed before publishing as an RFC.</t>
+      <t indent="0" pn="section-appendix.d-2">This appendix is being written.</t>
+    </section>
+    <section numbered="false" anchor="acknowledgments" removeInRFC="false" toc="include" pn="section-appendix.e">
+      <name slugifiedName="name-acknowledgments">Acknowledgments</name>
+      <t indent="0" pn="section-appendix.e-1">This section is being written.</t>
+    </section>
+    <section anchor="authors-addresses" numbered="false" removeInRFC="false" toc="include" pn="section-appendix.f">
+      <name slugifiedName="name-authors-address">Author's Address</name>
+      <author fullname="Connor Whelan">
+        <organization showOnFrontPage="true">Backbay Industries</organization>
+        <address>
+          <email>connor@backbay.io</email>
+        </address>
+      </author>
+    </section>
+  </back>
+  <!-- ##markdown-source:
+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
+
+-->
+
+</rfc>

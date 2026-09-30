@@ -1,0 +1,55 @@
+# ietf-draft.yml - build and check the Chio Protocol Internet-Draft.
+#
+# Job:
+#   - check: regenerates draft-whelan-chio-protocol-00 from its kramdown-rfc
+#     source, compares the XML, prepped XML, and text renderings with the
+#     committed files, checks the generated appendices against the binding
+#     vectors, and runs idnits in submission mode.
+
+name: ietf-draft
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "spec/ietf/**"
+      - "tests/bindings/vectors/**"
+      - ".github/workflows/ietf-draft.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "spec/ietf/**"
+      - "tests/bindings/vectors/**"
+      - ".github/workflows/ietf-draft.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ietf-draft-${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || format('main-{0}', github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      - name: Install the draft toolchain
+        run: |
+          sudo gem install kramdown-rfc --no-document
+          python -m pip install --upgrade "xml2rfc==3.34.1"
+          npm install -g @ietf-tools/idnits@3.1.0 aasvg
+
+      - name: Check the draft
+        run: make -C spec/ietf check

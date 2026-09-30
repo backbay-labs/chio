@@ -140,8 +140,8 @@ fn native_standards_artifacts_cover_required_categories_and_references() {
     ]);
     assert_eq!(categories, expected);
 
-    let draft = fs::read_to_string(repo_root.join("spec/ietf/draft-chio-protocol-00.md"))
-        .expect("read internet draft");
+    let draft = fs::read_to_string(repo_root.join("spec/ietf/draft-whelan-chio-protocol-00.txt"))
+        .expect("read internet draft rendering");
     assert!(draft.contains("Intended status: Standards Track"));
     assert!(draft.contains("Security Considerations"));
 

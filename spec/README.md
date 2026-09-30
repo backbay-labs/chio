@@ -54,8 +54,9 @@ Pick the sequence that matches why you are here:
 
 - `errors/`: machine-readable Chio error registry (`chio-error-registry.v1.json`)
   enumerating normative error codes and taxonomy.
-- `ietf/`: IETF draft artifacts, currently `draft-chio-protocol-00.md`, for
-  external standardization tracks.
+- `ietf/`: the Internet-Draft `draft-whelan-chio-protocol`: its kramdown-rfc
+  source, the committed XML, text, and PDF renderings of `-00`, the claim
+  review ledger, and the `make` build that regenerates and checks them.
 - `schemas/`: JSON schema trees for the native wire protocol (`chio-wire/v1`),
   the HTTP substrate (`chio-http/v1`), and registered higher-layer signed
   artifact families.
