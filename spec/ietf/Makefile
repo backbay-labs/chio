@@ -19,6 +19,10 @@ XML2RFC  ?= xml2rfc
 IDNITS   ?= idnits
 PYTHON   ?= python3
 
+# tools/bin/aasvg adds --compatible to every aasvg run so figures meet the
+# RFC 7996 SVG profile.
+export PATH := $(CURDIR)/tools/bin:$(PATH)
+
 # WeasyPrint, the PDF backend of xml2rfc, finds Homebrew's Pango through this
 # path on macOS.
 ifeq ($(shell uname -s),Darwin)
