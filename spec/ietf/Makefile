@@ -23,6 +23,9 @@ PYTHON   ?= python3
 # RFC 7996 SVG profile.
 export PATH := $(CURDIR)/tools/bin:$(PATH)
 
+# Use the same licensed fonts and fallback glyphs on every build host.
+export FONTCONFIG_FILE := $(CURDIR)/tools/fonts/fonts.conf
+
 # WeasyPrint, the PDF backend of xml2rfc, finds Homebrew's Pango through this
 # path on macOS.
 ifeq ($(shell uname -s),Darwin)
@@ -59,7 +62,7 @@ $(OUTDIR)/$(OUT).prepped.xml: $(OUTDIR)/$(OUT).xml
 $(OUTDIR)/$(OUT).txt: $(OUTDIR)/$(OUT).xml
 	$(XML2RFC) --v3 --text $< -o $@
 
-$(OUTDIR)/$(OUT).pdf: $(OUTDIR)/$(OUT).xml
+$(OUTDIR)/$(OUT).pdf: $(OUTDIR)/$(OUT).xml $(wildcard tools/fonts/*)
 	$(XML2RFC) --v3 --pdf $< -o $@
 
 check:

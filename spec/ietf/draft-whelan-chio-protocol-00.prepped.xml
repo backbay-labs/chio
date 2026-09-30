@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<rfc xmlns:xi="http://www.w3.org/2001/XInclude" version="3" ipr="trust200902" docName="draft-whelan-chio-protocol-00" category="std" consensus="true" submissionType="IETF" tocInclude="true" sortRefs="true" symRefs="true" prepTime="2026-09-30T16:40:24" indexInclude="true" scripts="Common,Latin" tocDepth="3">
+<rfc xmlns:xi="http://www.w3.org/2001/XInclude" version="3" ipr="trust200902" docName="draft-whelan-chio-protocol-00" category="std" consensus="true" submissionType="IETF" tocInclude="true" sortRefs="true" symRefs="true" prepTime="2026-09-30T16:58:14" indexInclude="true" scripts="Common,Latin" tocDepth="3">
   <!-- xml2rfc v2v3 conversion 3.34.1 -->
   <front>
     <title abbrev="Chio Protocol">The Chio Protocol: Signed Capabilities and Receipts for Mediated Tool Execution</title>

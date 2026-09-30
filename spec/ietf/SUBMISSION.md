@@ -24,11 +24,11 @@ The internal posting target remains November 1. The [official IETF 127 deadline]
 
 ## Regeneration and validation
 
-Use kramdown-rfc 1.7.43, xml2rfc 3.34.1, WeasyPrint 70.0, aasvg 0.5.7, idnits 3.1.0, Python 3, and `pdftotext`. The workflow installs the matching versions plus PDF fonts and native dependencies. Place the Ruby gem's executable directory on PATH; `KRAMDOWN=/path/to/kramdown-rfc` is also supported.
+Use kramdown-rfc 1.7.43, xml2rfc 3.34.1, WeasyPrint 70.0, aasvg 0.5.7, idnits 3.1.0, Python 3, Fontconfig, and `pdftotext`. The workflow installs the matching tool versions and native dependencies. The unmodified OFL font files in `tools/fonts` are pinned by immutable upstream URL and digest; `FONTCONFIG_FILE` isolates PDF rendering from host font versions and fallback glyphs. Place the Ruby gem's executable directory on PATH; `KRAMDOWN=/path/to/kramdown-rfc` is also supported.
 
 ```sh
 make -C spec/ietf
 make -C spec/ietf check
 ```
 
-The check regenerates all renderings, checks the vector corpus and folded bytes, compares XML/prepped XML/text and extracted PDF text, rejects writer diagnostics and incomplete validation runs, enforces 72-column text, and rejects all idnits errors or warnings. PDF layout comparison requires the matching fonts; Linux CI is the independent cross-platform verification.
+The check regenerates all renderings, checks the vector corpus and folded bytes, compares XML/prepped XML/text and extracted PDF text, rejects writer diagnostics and incomplete validation runs, enforces 72-column text, and rejects all idnits errors or warnings. PDF layout comparison uses the bundled fonts; Linux CI is the independent cross-platform verification.

@@ -42,7 +42,7 @@ if ! normalize "$out.prepped.xml" | cmp -s - "$tmp/$out.prepped.norm"; then
   status=1
 fi
 # The PDF embeds a creation time, so compare its extracted text. Reproducible
-# layout requires the Noto and Roboto fonts installed by the CI toolchain.
+# layout uses the pinned fonts selected by Makefile's FONTCONFIG_FILE.
 if command -v pdftotext >/dev/null 2>&1; then
   pdftotext -layout "$out.pdf" "$tmp/committed.pdf.txt"
   pdftotext -layout "$tmp/$out.pdf" "$tmp/fresh.pdf.txt"
