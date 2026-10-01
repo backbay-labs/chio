@@ -34,14 +34,26 @@ export function actionAvailability(
     ["accepted", "running", "unknown"].includes(state.active_command.status)
   )
     return no("Wait for the pending operation to resolve.");
-  if (type === "prepare_agent")
+  const storage = state.readiness.find(
+    (check) => check.id === "storage" && check.status !== "ready",
+  );
+  if (storage) return no(storage.message);
+  if (type === "prepare_agent") {
+    const preparation = state.readiness.find(
+      (check) => check.id.startsWith("prepare-") && check.status !== "ready",
+    );
+    if (preparation) return no(preparation.message);
     return state.capabilities.native
       ? { enabled: true, reason: null }
       : no("Native agents are unavailable on this host.");
+  }
   const blockers = state.readiness.filter(
     (check) => check.blocking && check.status !== "ready",
   );
-  if (["initialize", "run", "resume"].includes(type) && blockers.length)
+  if (
+    ["initialize", "run", "resume", "create_revision"].includes(type) &&
+    blockers.length
+  )
     return no(blockers[0].message);
   if (type === "initialize")
     return state.mission

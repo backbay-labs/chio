@@ -202,6 +202,12 @@ pub fn reconcile(root: &Path) -> Result<()> {
 
 fn preconditions(root: &Path, epoch: Uuid, request: &Request) -> Result<(), Failure> {
     let m = workspace::load(root)?;
+    if !workspace::writable(root) {
+        return Err(Failure::conflict(
+            "STORAGE_ERROR",
+            "Restore owner write and directory access permissions before continuing.",
+        ));
+    }
     if request.schema_version != 1 {
         return Err(Failure::new(
             "UNSUPPORTED_VERSION",
@@ -226,6 +232,24 @@ fn preconditions(root: &Path, epoch: Uuid, request: &Request) -> Result<(), Fail
     }
     match &request.command {
         Command::PrepareAgent { agent } => {
+            let checks = projection::readiness(&m.setup)?;
+            if checks
+                .as_array()
+                .context("Readiness is not a list")?
+                .iter()
+                .any(|check| {
+                    check["id"]
+                        .as_str()
+                        .is_some_and(|id| id.starts_with("prepare-"))
+                        && check["status"] != "ready"
+                })
+            {
+                return Err(Failure::new(
+                    "DEPENDENCY_MISSING",
+                    "Complete the native preparation prerequisites shown in setup.",
+                    axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                ));
+            }
             if !projection::native_available() {
                 return Err(Failure::new(
                     "UNQUALIFIED_SETUP",

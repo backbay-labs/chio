@@ -74,7 +74,10 @@ async fn perform(mission: &Mission, assignment: &Assignment) -> Result<Value> {
         );
         handoff["candidate_source"] = json!(source);
         let validation: Value = read(
-            &mission.directory.join("outcomes").join(format!("{candidate}.json")),
+            &mission
+                .directory
+                .join("outcomes")
+                .join(format!("{candidate}.json")),
         )?;
         handoff["candidate_validation"] = handoff_outcome(&validation)?;
     }
@@ -98,7 +101,10 @@ async fn perform(mission: &Mission, assignment: &Assignment) -> Result<Value> {
             crate::digest(&research)? == assignment.input["findings_sha256"],
             "Research handoff changed"
         );
-        handoff["research"] = json!(research.iter().map(handoff_outcome).collect::<Result<Vec<_>>>()?);
+        handoff["research"] = json!(research
+            .iter()
+            .map(handoff_outcome)
+            .collect::<Result<Vec<_>>>()?);
     }
     if handoff_path.exists() {
         anyhow::ensure!(
@@ -188,7 +194,6 @@ async fn perform(mission: &Mission, assignment: &Assignment) -> Result<Value> {
     mission.dispatch(&task).await
 }
 
-
 /// Keep the complete signed outcome in retained storage. Workers receive the
 /// useful result and its identity, without recursively repeating native journals,
 /// source, and delivery envelopes until the host truncates the MCP response.
@@ -257,7 +262,10 @@ mod tests {
             "receipt":{"signature":"original-signature"}
         });
         let projection = handoff_outcome(&outcome).unwrap();
-        assert_eq!(projection["outcome_sha256"], crate::digest(&outcome).unwrap());
+        assert_eq!(
+            projection["outcome_sha256"],
+            crate::digest(&outcome).unwrap()
+        );
         assert_eq!(projection["findings"][0], "empty windows fail");
         assert_eq!(projection["tests"]["passed"], true);
         assert!(projection.to_string().len() < 1000);

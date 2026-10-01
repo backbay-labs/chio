@@ -637,6 +637,18 @@ function Readiness({ controls }: { controls: LocalControls }) {
           <div>
             <strong>{check.label}</strong>
             <p>{check.message}</p>
+            {check.guide && check.status !== "ready" && (
+              <a
+                className={s.textButton}
+                href={
+                  check.guide === "installation"
+                    ? "https://chio.computer/docs/installation"
+                    : "https://chio.computer/docs/megastart#connect-workers"
+                }
+              >
+                Preparation guide <Arrow />
+              </a>
+            )}
             {check.agent && check.status === "missing" && (
               <LocalAction
                 controls={controls}

@@ -179,13 +179,16 @@ async fn console_requires_session_and_same_origin_before_mutation() -> anyhow::R
     Ok(())
 }
 
-
 #[cfg(feature = "native-agents")]
 #[test]
 fn native_setup_offers_claude_with_its_own_login_without_exposing_paths() -> anyhow::Result<()> {
     let snapshot = chio_megastart::agents::connections::snapshot()?;
-    let claude = snapshot["agents"].as_array().unwrap().iter()
-        .find(|entry| entry["id"] == "claude").unwrap();
+    let claude = snapshot["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["id"] == "claude")
+        .unwrap();
     assert_eq!(claude["can_prepare"], true);
     assert_eq!(claude["login"], "Existing Claude login");
     for entry in snapshot["agents"].as_array().unwrap() {

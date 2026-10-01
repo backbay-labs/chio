@@ -56,6 +56,16 @@ pub fn private(path: &Path) -> Result<()> {
     Ok(())
 }
 
+pub fn writable(root: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::iter::once(root.to_path_buf())
+        .chain(["missions", "revisions", "commands", "connections"].map(|name| root.join(name)))
+        .all(|path| {
+            std::fs::metadata(path)
+                .is_ok_and(|metadata| metadata.permissions().mode() & 0o300 == 0o300)
+        })
+}
+
 pub fn lock(root: &Path, name: &str) -> Result<File> {
     private(root)?;
     let mut options = std::fs::OpenOptions::new();

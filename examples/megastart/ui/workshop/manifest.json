@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "build_id": "82ae9608022dbe7e75343c68bf156595e9e3e305c446996298fb24dc58e45586",
+  "build_id": "703a75b3486c76fc1ba87298f5107ecb425074c9c2cb75e401ba5e348dd02431",
   "api_version": 1,
   "sources": [
     {
@@ -457,7 +457,7 @@
     },
     {
       "file": "src/components/workshop/Workshop.tsx",
-      "sha256": "b44833ba2d0f50fbd33f5700d906731f69b4abe0377a2f2b78ea7933d0adfa34"
+      "sha256": "cac51512509268d484ae5743b770d3dcc6b8355681a81451b1f4f2ba8c7432e4"
     },
     {
       "file": "src/components/workshop/local.css",
@@ -489,7 +489,7 @@
     },
     {
       "file": "src/lib/workshop/presentation.ts",
-      "sha256": "6a8a6f15456ad6bdc0b8fa5ac011194617dc0907719ce5f8ae18eca530fd1e57"
+      "sha256": "769a36af9e9b05af27073c82c7f3a7d668ca613993c6dcf50183ce671dadf67f"
     },
     {
       "file": "src/lib/workshop/recorded-adapter.ts",
@@ -538,10 +538,10 @@
       "bytes": 187208
     },
     {
-      "file": "59e2d6ff383ba56eed68-workshop.js",
+      "file": "fa24121fd5442aa237c0-workshop.js",
       "mime": "text/javascript; charset=utf-8",
-      "sha256": "59e2d6ff383ba56eed68208fcf3b712a8ddc63c967f07271e44354cdd810122c",
-      "bytes": 607497
+      "sha256": "fa24121fd5442aa237c01bcc4c4c434ff96e88a2ecd4ac5739fce72861e3fc2c",
+      "bytes": 607941
     },
     {
       "file": "24c6fb392a1a69243dd1-workshop.css",

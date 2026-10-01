@@ -53,6 +53,7 @@ pub fn readiness(setup: &Setup) -> Result<Value> {
         {
             use crate::agents::{connections, launcher::Installation};
             let mut names = std::collections::BTreeSet::new();
+            let mut needs_preparation = false;
             for agent in [roles.research, roles.implementation, roles.review] {
                 if !names.insert(agent.name()) {
                     continue;
@@ -64,9 +65,22 @@ pub fn readiness(setup: &Setup) -> Result<Value> {
                     serde_json::to_value(i.agent).ok() == Some(json!(agent.name()))
                         && connections::validate(&i).is_ok()
                 });
+                needs_preparation |= !prepared;
                 checks.push(json!({"id":format!("agent-{}",agent.name()),"label":format!("{} integration",agent.name()),"agent":agent,"status":if prepared{"ready"}else{"missing"},"blocking":true,"message":if prepared{"Pinned integration files and required local login files are present."}else{"Prepare this agent using your existing login."},"guide":"native-agents"}));
                 if prepared {
                     checks.push(json!({"id":format!("login-{}",agent.name()),"label":format!("{} account",agent.name()),"agent":agent,"status":"unverified","blocking":false,"message":"Account validity is checked when you explicitly start. Preparation does not make a model request."}));
+                }
+            }
+            if needs_preparation {
+                let mut node = std::process::Command::new("node");
+                node.args(["-e", "const [major,minor]=process.versions.node.split('.').map(Number);process.exit(major>22||(major===22&&minor>=19)?0:1)"]);
+                let available = bounded_check(node);
+                checks.push(json!({"id":"prepare-node","label":"Node.js","status":if available{"ready"}else{"missing"},"blocking":true,"message":if available{"Node.js meets the native preparation requirement."}else{"Install Node.js 22.19 or newer, then reopen the host from that terminal."},"guide":"installation"}));
+                for tool in ["npm", "git"] {
+                    let available =
+                        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+                            .any(|directory| directory.join(tool).is_file());
+                    checks.push(json!({"id":format!("prepare-{tool}"),"label":tool,"status":if available{"ready"}else{"missing"},"blocking":true,"message":if available{format!("{tool} is available for preparation.")}else{format!("Install {tool}, then reopen the host from that terminal.")},"guide":"installation"}));
                 }
             }
         }
@@ -337,6 +351,11 @@ pub fn state(
         Value::Null
     };
     let mut state = json!({"schema_version":1,"host":{"epoch":epoch,"operator_version":env!("CARGO_PKG_VERSION"),"ui_build_id":super::assets::BUILD_ID,"target":format!("{}-{}",std::env::consts::ARCH,std::env::consts::OS)},"workspace":{"id":m.id,"schema_version":1,"selected_mission_id":selected,"setup":m.setup,"missions":m.missions},"capabilities":{"commands":["prepare_agent","initialize","run","resume","approve","create_revision"],"reference":true,"native":native_available(),"native_teams":if native_available(){native_teams()}else{json!([])}},"readiness":readiness(&m.setup)?,"mission":mission,"last_event_sequence":last_event,"active_command":active});
+    #[cfg(unix)]
+    {
+        let writable = workspace::writable(root);
+        state["readiness"].as_array_mut().context("Readiness is not a list")?.push(json!({"id":"storage","label":"Workspace permissions","status":if writable{"ready"}else{"missing"},"blocking":true,"message":if writable{"Workspace directories permit writes by their owner."}else{"Restore owner write and directory access permissions before continuing. Retained work remains available for inspection."},"guide":"installation"}));
+    }
     state["snapshot_id"] = json!(digest(&state)?);
     ensure!(
         serde_json::to_vec(&state)?.len() <= 2_000_000,

@@ -21,13 +21,21 @@ impl Host {
         Self::open(root).await
     }
     async fn open(root: PathBuf) -> Result<Self> {
+        Self::open_with_path(root, None).await
+    }
+    async fn open_with_path(root: PathBuf, path: Option<&str>) -> Result<Self> {
         let descriptor = root.join("connections/console.json");
         if descriptor.exists() {
             std::fs::remove_file(&descriptor)?;
         }
-        let child = tokio::process::Command::new(env!("CARGO_BIN_EXE_megastart"))
+        let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_megastart"));
+        if let Some(path) = path {
+            command.env("PATH", path);
+        }
+        let child = command
             .args(["workshop", "--no-open", "--workspace"])
             .arg(&root)
+            .env("MEGASTART_CONNECTIONS", root.join("agent-connections"))
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .kill_on_drop(true)
@@ -433,6 +441,71 @@ async fn authentication_ids_and_command_conflicts_fail_before_effects() -> Resul
     Ok(())
 }
 
+#[tokio::test]
+async fn missing_tools_and_storage_permissions_block_effects() -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!("chio-workshop-readiness-{}", Uuid::new_v4()));
+    workspace::create(&root, Setup::reference())?;
+    let mut host = Host::open_with_path(root, Some("")).await?;
+    let state = host.state().await?;
+    let checks = state["readiness"].as_array().context("Missing readiness")?;
+    assert!(checks
+        .iter()
+        .any(|c| c["id"] == "compiler" && c["status"] == "missing"));
+    let request = Host::request(
+        &state,
+        json!({"type":"initialize","setup":Setup::reference()}),
+    );
+    assert_eq!(
+        host.post(&request).await?.1["error"]["code"],
+        "DEPENDENCY_MISSING"
+    );
+    assert!(workspace::load(&host.root)?.missions.is_empty());
+    assert!(workspace::load(&host.root)?.pending.is_none());
+    std::fs::set_permissions(&host.root, std::fs::Permissions::from_mode(0o500))?;
+    let state_result = host.state().await;
+    let rejected_result = host.post(&request).await;
+    // Restore permissions even if a request failed so the isolated fixture can be removed.
+    std::fs::set_permissions(&host.root, std::fs::Permissions::from_mode(0o700))?;
+    let state = state_result?;
+    assert!(state["readiness"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c["id"] == "storage" && c["status"] == "missing"));
+    assert_eq!(rejected_result?.1["error"]["code"], "STORAGE_ERROR");
+    assert!(workspace::load(&host.root)?.missions.is_empty());
+    host.stop().await?;
+    std::fs::remove_dir_all(&host.root)?;
+
+    #[cfg(feature = "native-agents")]
+    {
+        let root =
+            std::env::temp_dir().join(format!("chio-workshop-native-readiness-{}", Uuid::new_v4()));
+        workspace::create(&root, Setup::decode("sf1.native.codex.codex.codex")?)?;
+        let mut host = Host::open_with_path(root, Some("")).await?;
+        let state = host.state().await?;
+        let checks = state["readiness"].as_array().context("Missing readiness")?;
+        for id in ["prepare-node", "prepare-npm", "prepare-git", "agent-codex"] {
+            assert!(
+                checks
+                    .iter()
+                    .any(|c| c["id"] == id && c["status"] == "missing"),
+                "Missing {id} prerequisite"
+            );
+        }
+        let request = Host::request(&state, json!({"type":"prepare_agent","agent":"codex"}));
+        assert_eq!(
+            host.post(&request).await?.1["error"]["code"],
+            "DEPENDENCY_MISSING"
+        );
+        assert!(!host.root.join("agent-connections").exists());
+        host.stop().await?;
+        std::fs::remove_dir_all(&host.root)?;
+    }
+    Ok(())
+}
+
 #[test]
 fn normalization_never_invents_passing_named_checks() {
     let good = json!({"passed":true,"result":{"success":true,"stdout":"running 1 test\ntest one ... ok\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n"}});
@@ -460,4 +533,26 @@ fn normalization_never_invents_passing_named_checks() {
         projection::normalize_tests(&runner, Value::Null, "h")["status"],
         "runner_failed"
     );
+}
+
+#[tokio::test]
+async fn actual_compiler_and_test_failures_remain_distinct() -> Result<()> {
+    let root = std::env::temp_dir().join(format!("chio-workshop-failure-{}", Uuid::new_v4()));
+    std::fs::create_dir(&root)?;
+    std::fs::write(root.join("tests.rs"), "this is not Rust;")?;
+    let compile = chio_megastart::operations::tests(&root, false).await?;
+    let projected = projection::normalize_tests(&compile, Value::Null, "compile-fixture");
+    assert_eq!(projected["status"], "compile_failed");
+    assert!(projected["checks"].as_array().unwrap().is_empty());
+    std::fs::write(
+        root.join("tests.rs"),
+        "#[test] fn intentional_regression() { assert_eq!(2, 3); }\n",
+    )?;
+    let failed = chio_megastart::operations::tests(&root, false).await?;
+    let projected = projection::normalize_tests(&failed, Value::Null, "failure-fixture");
+    assert_eq!(projected["status"], "failed");
+    assert_eq!(projected["checks"][0]["name"], "intentional_regression");
+    assert_eq!(projected["checks"][0]["status"], "failed");
+    std::fs::remove_dir_all(root)?;
+    Ok(())
 }
