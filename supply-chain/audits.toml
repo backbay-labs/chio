@@ -1045,6 +1045,12 @@ criteria = "safe-to-deploy"
 version = "0.23.37"
 notes = "Exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
+[[audits.rustls]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+delta = "0.23.37 -> 0.23.45"
+notes = "Automated source delta review of the exact registry crates: checked handshake and cipher-suite validation, QUIC protocol restrictions, ECH name/padding changes, bounded ticket requests, truncated-ticket rejection, private-key zeroization, key-log permissions, ML-DSA dispatch and signature length checks. No new unsafe blocks or network/filesystem sinks beyond the existing opt-in key logger. Cryptographic primitives remain delegated to the separately tracked providers; this is not a primitive or FIPS certification. Patched CLI/operator builds and execution regression tests pass."
+
 [[audits.rustls-pki-types]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"

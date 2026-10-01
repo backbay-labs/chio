@@ -77,3 +77,17 @@ Full definitions and the precedence ordering live at
   certification, but it does not require a personal GitHub handle. New human
   reviewers should be added to `OWNERS.toml` first, then begin signing
   `audits.toml` entries with the agreed reviewer identity.
+
+## CLI 0.1.1 release maintenance
+
+The CLI policy uses `audit-as-crates-io = false` because the released executable
+is first-party code built from this workspace. Its launcher changes are reviewed
+and tested in the source PR; an audit of a different crates.io CLI version must
+not stand in for that review. The policy change does not remove dependency audits.
+
+The Rustls 0.23.37 to 0.23.45 entry records an automated source delta review. The
+existing bootstrap exemptions for aws-lc-rs, aws-lc-sys, aws-lc-fips-sys, DER and
+rustls-webpki move to their exact patched lockfile versions and explicitly remain
+unaudited. They are not represented as new cryptographic certifications. The
+Wasmtime advisory exception is assessed separately in
+[`docs/security/wasmtime-2026-0316.md`](../docs/security/wasmtime-2026-0316.md).

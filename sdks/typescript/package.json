@@ -33,15 +33,16 @@
   },
   "overrides": {
     "browserslist": "4.28.8",
-    "fast-uri": "3.1.5",
+    "fast-uri": "3.1.8",
     "miniflare": {
-      "undici": "7.29.0"
+      "undici": "7.29.1"
     },
     "next": {
       "postcss": "8.5.26"
     },
     "postcss": "8.5.26",
-    "undici": "7.29.0",
-    "uuid": "11.1.1"
+    "undici": "7.29.1",
+    "uuid": "11.1.1",
+    "sharp": "0.35.4"
   }
 }
