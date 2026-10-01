@@ -339,6 +339,13 @@ mod cli_env_tests {
 
 #[derive(Subcommand)]
 pub(crate) enum Commands {
+    /// Open the installed software factory and local workshop.
+    #[command(disable_help_flag = true)]
+    Megastart {
+        /// Arguments forwarded unchanged to the paired local operator.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        arguments: Vec<std::ffi::OsString>,
+    },
     /// Spawn an agent subprocess and enforce policy via the kernel.
     Run {
         /// Path to the policy YAML file.

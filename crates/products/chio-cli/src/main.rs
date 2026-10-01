@@ -15,6 +15,7 @@
 //   MCP-compatible edge over stdio for stock MCP clients.
 
 mod admin;
+mod companion;
 mod archive;
 mod cert;
 mod commands {

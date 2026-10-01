@@ -119,8 +119,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          rustup toolchain install 1.94.1 --profile minimal
+          rustup default 1.94.1
           rustup target add "${{ matrix.target }}"
 
       - name: Install protoc
@@ -197,7 +197,25 @@ jobs:
                 --package "'"${CARGO_PACKAGE}"'" \
                 --bin "'"${BINARY_NAME}"'" \
                 --target "'"${CHIO_TARGET}"'"
+              cargo auditable build --release --locked \
+                --manifest-path examples/megastart/Cargo.toml \
+                --target-dir target --target "'"${CHIO_TARGET}"'"
             '
+
+      - name: Build paired workshop operator (native Unix)
+        if: matrix.cross == false && matrix.archive == 'tar.gz'
+        shell: bash
+        env:
+          CHIO_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          features=()
+          if [[ "${CHIO_TARGET}" == "aarch64-apple-darwin" ]]; then
+            features=(--features native-agents)
+          fi
+          cargo auditable build --release --locked \
+            --manifest-path examples/megastart/Cargo.toml \
+            --target-dir target --target "${CHIO_TARGET}" "${features[@]}"
 
       - name: Install syft
         if: runner.os != 'Windows'
@@ -340,6 +358,12 @@ jobs:
           stage_dir="chio-${CHIO_VERSION}-${CHIO_TARGET}"
           mkdir -p "dist/${stage_dir}"
           cp "target/${CHIO_TARGET}/release/${BINARY_NAME}${CHIO_BIN_SUFFIX}" "dist/${stage_dir}/"
+          cp "target/${CHIO_TARGET}/release/megastart" "dist/${stage_dir}/"
+          if [[ "${{ matrix.cross }}" != "true" ]]; then
+            contract="$("dist/${stage_dir}/chio" megastart workshop-version)"
+            [[ "${contract}" == "chio-workshop-pair-v1 ${CHIO_VERSION}" ]]
+            "dist/${stage_dir}/chio" megastart workshop --help >/dev/null
+          fi
           cp README.md LICENSE "dist/${stage_dir}/" 2>/dev/null || true
           (cd dist && tar czf "${stage_dir}.tar.gz" "${stage_dir}")
           (cd dist && shasum -a 256 "${stage_dir}.tar.gz" > "${stage_dir}.tar.gz.sha256")

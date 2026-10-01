@@ -1,0 +1,69 @@
+id = "chio.megastart"
+name = "Chio"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Your agents. A system built on Chio."
+platforms = ["macos", "linux"]
+
+[[build]]
+command = ["cargo", "build", "--release", "--locked"]
+
+[[actions]]
+id = "open"
+title = "Open Chio mission"
+contexts = ["workspace"]
+command = ["target/release/chio-herdr", "open"]
+
+[[actions]]
+id = "browser"
+title = "Open full mission console"
+contexts = ["workspace"]
+command = ["target/release/chio-herdr", "browser"]
+
+[[panes]]
+id = "board"
+title = "Chio mission"
+placement = "tab"
+command = ["target/release/chio-herdr", "board"]
+
+[[panes]]
+id = "decisions"
+title = "Inspect Chio decisions"
+placement = "overlay"
+command = ["target/release/chio-herdr", "board", "--view", "decisions"]
+
+[[panes]]
+id = "candidate"
+title = "Review exact candidate"
+placement = "overlay"
+command = ["target/release/chio-herdr", "board", "--view", "candidate"]
+
+[[actions]]
+id = "inspect"
+title = "Inspect Chio decisions"
+contexts = ["workspace"]
+command = ["target/release/chio-herdr", "pane", "decisions"]
+
+[[actions]]
+id = "review"
+title = "Review exact candidate"
+contexts = ["workspace"]
+command = ["target/release/chio-herdr", "pane", "candidate"]
+
+[[actions]]
+id = "approve"
+title = "Review and authorize local publication"
+contexts = ["workspace"]
+command = ["target/release/chio-herdr", "pane", "candidate"]
+
+[[actions]]
+id = "resume"
+title = "Reconcile and resume Chio mission"
+contexts = ["workspace"]
+command = ["target/release/chio-herdr", "pane", "resume"]
+
+[[panes]]
+id = "resume"
+title = "Resume Chio mission"
+placement = "overlay"
+command = ["target/release/chio-herdr", "board", "--view", "resume"]

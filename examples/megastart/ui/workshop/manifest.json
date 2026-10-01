@@ -1,0 +1,553 @@
+{
+  "schema_version": 1,
+  "build_id": "82ae9608022dbe7e75343c68bf156595e9e3e305c446996298fb24dc58e45586",
+  "api_version": 1,
+  "sources": [
+    {
+      "file": "bun.lock",
+      "sha256": "2e2497b7b15c995c1cd2ac4931b9b6348066eab6cb0ecf60e1d7ec16f2dd9471"
+    },
+    {
+      "file": "node_modules/react-dom/cjs/react-dom-client.production.js",
+      "sha256": "4931d9b3a01afb23f7e2b8472e1290c67a8a009697926b5a7a7b3d4949ff015f"
+    },
+    {
+      "file": "node_modules/react-dom/cjs/react-dom.production.js",
+      "sha256": "7a5686f7191d3182a90b86f1dbc33d3eed458091c39d248e18280690d57d2b45"
+    },
+    {
+      "file": "node_modules/react-dom/client.js",
+      "sha256": "00e348ab3d6bc2eef908345d0bc4e008c95bcfecec060dfda5c4967953761396"
+    },
+    {
+      "file": "node_modules/react-dom/index.js",
+      "sha256": "ba1a3e33489f868371561777607e3ee5091df0f7ea3f1a10f789d6b86e4c1505"
+    },
+    {
+      "file": "node_modules/react/cjs/react-jsx-runtime.production.js",
+      "sha256": "1e46f15002696985e80c61d47aaa30dabb03c954270a690f5f7dfbbacfa9002b"
+    },
+    {
+      "file": "node_modules/react/cjs/react.production.js",
+      "sha256": "df8d0a7ac222a8a9500dc9737d547ef827372b57c0e71c9a67d91dff22fd4661"
+    },
+    {
+      "file": "node_modules/react/index.js",
+      "sha256": "60caffdecbdc5db3bc4ec4e83df9488345ccb271d07533b9210bf5750918d97e"
+    },
+    {
+      "file": "node_modules/react/jsx-runtime.js",
+      "sha256": "b392951a77d0a2e6a6bd017e49d768481ae5b63c4109c6c31f622cf7b2433edc"
+    },
+    {
+      "file": "node_modules/scheduler/cjs/scheduler.production.js",
+      "sha256": "679adff761d31e9426604f80c0e99be44a3e6f4c6834b0218ecf0312a67c171f"
+    },
+    {
+      "file": "node_modules/scheduler/index.js",
+      "sha256": "145965504d60007bc25486ab930b0367867dcd5d579ccd343c148d69349a7cfb"
+    },
+    {
+      "file": "node_modules/zod/index.js",
+      "sha256": "c733a1897d6b4b30dad6998597f6896b265b094a65534359ada34b08ecf8932c"
+    },
+    {
+      "file": "node_modules/zod/v4/classic/checks.js",
+      "sha256": "78a162d29e06001b4d919e1ed08f6e7d0d665bba0ef983201373745410d7b354"
+    },
+    {
+      "file": "node_modules/zod/v4/classic/coerce.js",
+      "sha256": "fb2efe3b6eacc475c77cbb571b5fb8650d92a10f316dc869e49b722973d83c3c"
+    },
+    {
+      "file": "node_modules/zod/v4/classic/compat.js",
+      "sha256": "0e948b101771cc0e7b753e54b3f5b486929d3db9bd4c09d98fe4ce86271bcf7b"
+    },
+    {
+      "file": "node_modules/zod/v4/classic/errors.js",
+      "sha256": "fd807f79ded4f88928ab8205de1922901a4d3a8c9b93d072e1ab8c0a44a95df5"
+    },
+    {
+      "file": "node_modules/zod/v4/classic/external.js",
+      "sha256": "179a03ace3d1d77895cc5b3c54a3fcbf2b7f8bad44d6f030092491c10e5d9097"
+    },
+    {
+      "file": "node_modules/zod/v4/classic/from-json-schema.js",
+      "sha256": "826d3386506f0e92b77c9917c04c67b8349c67815e002ac1f712b0e68d7538a7"
+    },
+    {
+      "file": "node_modules/zod/v4/classic/iso.js",
+      "sha256": "3cc5e6b4da086b8ffc7ee3188c69e4d3c945b368092e78d2299b5321182752c5"
+    },
+    {
+      "file": "node_modules/zod/v4/classic/parse.js",
+      "sha256": "14cbcc416ab9169abc2cde97af77da54ca769684eac1e03a3753c16ea4a7cd95"
+    },
+    {
+      "file": "node_modules/zod/v4/classic/schemas.js",
+      "sha256": "74f7043b7de6f35661a86c378e7b0f9198b6170336dfb85b30e6c8d1a43f8ef7"
+    },
+    {
+      "file": "node_modules/zod/v4/core/api.js",
+      "sha256": "b0249f67024345bab7b455b0363eccf40dd58c326f492d0321bf825888a71c9a"
+    },
+    {
+      "file": "node_modules/zod/v4/core/checks.js",
+      "sha256": "5a33a20dcad372b4d18ead8d1e58b1950454f136a2216e62f247e0e5601ac838"
+    },
+    {
+      "file": "node_modules/zod/v4/core/core.js",
+      "sha256": "3a988a40d75ea5729a6ffcb2c94619e244ba0341ff1ed981d5a1725229952442"
+    },
+    {
+      "file": "node_modules/zod/v4/core/doc.js",
+      "sha256": "e084bbcc536746a8942fd33b08afe4db345554b3a0383114f1dca95261c958d9"
+    },
+    {
+      "file": "node_modules/zod/v4/core/errors.js",
+      "sha256": "c920e5549c1abcb8fc95824678beabb43023407d6a92020a3ac4a223af0a7a4b"
+    },
+    {
+      "file": "node_modules/zod/v4/core/index.js",
+      "sha256": "f9698820ee8371215e8d015cfa060230c62e65428397dce83f78e6538976301c"
+    },
+    {
+      "file": "node_modules/zod/v4/core/json-schema-generator.js",
+      "sha256": "9cc884cdb535a9c87b85b66e61a593ff6b686222f038834f81c5e92552cd6e23"
+    },
+    {
+      "file": "node_modules/zod/v4/core/json-schema-processors.js",
+      "sha256": "1872537015ed25ea43461fa109491c70ddccf43dc4995329354fb80a8971d22e"
+    },
+    {
+      "file": "node_modules/zod/v4/core/json-schema.js",
+      "sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+    },
+    {
+      "file": "node_modules/zod/v4/core/parse.js",
+      "sha256": "a58b9c7be78e29d71f969f01807fe5f9be1f68d222a0f60c25e32e24f3b6639c"
+    },
+    {
+      "file": "node_modules/zod/v4/core/regexes.js",
+      "sha256": "a89562e9bea575edbbf5da84b7762fed64e20c4ff6c105dca318dfc60915706a"
+    },
+    {
+      "file": "node_modules/zod/v4/core/registries.js",
+      "sha256": "620ea1a715ccc4e6e605a271343bf47942dccae90885dc71f137b1f08a972e50"
+    },
+    {
+      "file": "node_modules/zod/v4/core/schemas.js",
+      "sha256": "8f25b8fe962d889812763c51e1a10b439996ef59c65b3ee7c46df911f82c4b59"
+    },
+    {
+      "file": "node_modules/zod/v4/core/to-json-schema.js",
+      "sha256": "7224e53b6d3110925b67d7abd1b61389e5a359f6cca6a982e27c8271b27ea19e"
+    },
+    {
+      "file": "node_modules/zod/v4/core/util.js",
+      "sha256": "e41f9e774b96a9fe2b04c08f5aad32e6db2f6aa090671d2a375e7062b4f178aa"
+    },
+    {
+      "file": "node_modules/zod/v4/core/versions.js",
+      "sha256": "070e8cb9b31440b1bf0ae0de74a5fd7e8d410217a08df8a927c3d620477cc01e"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/ar.js",
+      "sha256": "220ca3ca8cf67e4ccc05d789eeed2692d970269fe0cd82f05db8fd899b661b9e"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/az.js",
+      "sha256": "4725ffef0b2f2df947194f9698c792b69f52a8c3a5a1e1bdfabbf62259a1dd46"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/be.js",
+      "sha256": "da4bda7fbc940dd9f50efdd914caa9397243be779a505b82bd4be5395d3b795e"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/bg.js",
+      "sha256": "48511ad2f86043f0eea6e7673d5e2b848a3295a26c9c4650e96b3884d640196d"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/ca.js",
+      "sha256": "796f9ba7dcd53648171aa0132c50271ef358936765cec0a44a642c41d05b3e8c"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/cs.js",
+      "sha256": "670a75fe1db1104db090c95aabb01e4eb6decd451fe77fd830c2e4dafc79b49a"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/da.js",
+      "sha256": "cdaad7a1fa370abda1943fe9c2caba961e7896b9808d51275daf33f964af49cc"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/de.js",
+      "sha256": "521a4ed29fcaf3f781163875dc282cfb5262047773aa2b70a852996b1d8a51b9"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/en.js",
+      "sha256": "3e2c03ebed517345ad73a247a8134577e5986622c22e7b6c760b8b9af5827442"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/eo.js",
+      "sha256": "ebe08048aa3ee9871ce9fe1271e254cb672b1968ec40ac253066d08d176e8a65"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/es.js",
+      "sha256": "4edd9302e9724c408b024220e99092fbd2f90100ac3c6407a94543b79843610c"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/fa.js",
+      "sha256": "2dc1bee1e984e8a15191fb3c69aaecaa26c922e12a0d4486ac005a0372b78565"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/fi.js",
+      "sha256": "3911184979f01d2ae580ce611710ee40597eff97a410d0fa823ab6ea27cee88c"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/fr-CA.js",
+      "sha256": "f8716c2baaccdfd1d958743bbc5250c9bdef5152d0801470e9b9a380d618f4ab"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/fr.js",
+      "sha256": "af85482fed4a3e4c97565ef849b4a14193b979b88b385844633d6af9b2e5ae30"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/he.js",
+      "sha256": "290512e43d2907700211da09dc3959fd98d120bfb89f8836e6e3f83a472e26fe"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/hu.js",
+      "sha256": "913ee94a253db79b31463ae23a337060b6fe28be73dfc7657d8a83a4942bd8a8"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/hy.js",
+      "sha256": "0d3bbb96c0f8bc74468a2dfc7d066e838bb56fab64fd5ec03ce9c4d89eccbe99"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/id.js",
+      "sha256": "cd2c19b5c30dade3ed91ffcff3deb0b068713be24f02248e7e46b87b2b9553ee"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/index.js",
+      "sha256": "8b23cfb530a5af9375303c0ffbec9ee260fff97ac59a1f780171f288b6e2f2da"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/is.js",
+      "sha256": "ead5b14eac892229f915fe38ec94ab3b1e676f8aa2df2a8450848ba9ca9a1612"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/it.js",
+      "sha256": "1409d5c02a8d5922f21577f1d0f892aa141f56f3a3b49a13fe4802395ddaa0ac"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/ja.js",
+      "sha256": "43ee10378cac22b0b8aee912a66c3f36a834d5b4c76e9748f88a784044f248fd"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/ka.js",
+      "sha256": "b25387ebafa764efb3b1142eda956a24ed3bba8ea523d97a8ace4dc2973f0e38"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/kh.js",
+      "sha256": "78c3d1991041bb8c8fc0f7c5d745aae422d4c2e4e8f30bae44f3fef4765900a8"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/km.js",
+      "sha256": "dbdabda94dd93d4a1827e6c809505c79fa6aa7abefec91dc50fa0871382c99cc"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/ko.js",
+      "sha256": "d2efe22ac069d9b32b0109fa07713ac0695ac1c1357afc4e4277056466f2e196"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/lt.js",
+      "sha256": "dad886e52c56a1329d22e072f8b08dc8730f69c3dc5e5acf8267cac18df1ab28"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/mk.js",
+      "sha256": "9eb4af0392fc5b9c438cdc6ceea446acc541b59e221dba918f7b80800d9da3d1"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/ms.js",
+      "sha256": "c550a9185d997e8fcd17311951aa1e29793a50b8e825e18310efd5a46c641795"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/nl.js",
+      "sha256": "acba414579c5bbd7f83dc6661fa1a12d65f1822f9b0f5035549ac60f46d93763"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/no.js",
+      "sha256": "1854483c7cf158b8f97f0faf6fd799eb1f762009018b5fde893ca33f2fb0b313"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/ota.js",
+      "sha256": "34ae496104bc17fea7d30c3d45c94cfe3d1d569b5d39a6ca51de6c177690c556"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/pl.js",
+      "sha256": "18eab58f395e30b906e8e3fddc5f212eb19f2c4362410889a5c5e0141ebe2144"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/ps.js",
+      "sha256": "f977b5141fa8fb6a8459372e0b2895d74b381c9f2ff4899141f7ee3e639a4513"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/pt.js",
+      "sha256": "df172afc585544dee7c063c484f5a07b5ed103e2c1072a782c763ad8ceb08e17"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/ru.js",
+      "sha256": "c397a473e94d7d189a9c09c7890fe379c4f6f46d9556d52a040a90ffa56f7b93"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/sl.js",
+      "sha256": "ee2ff3a19b62cd2f89b54b165088773b937de15df7253df220bef07d9adf2d80"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/sv.js",
+      "sha256": "97d6718fb643e05d6fe30fa4f9f09b8d9a3eda4a3a350b57dfb2944943d19502"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/ta.js",
+      "sha256": "04bbde9766251f9047e786fdd77632f2ecd53aec2eb060eb2fc85bf576ad729d"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/th.js",
+      "sha256": "aea70c9ac2b399fe4749e19ba3aa99c3efb4dfb50eadfb62b0b2a6e005748f3d"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/tr.js",
+      "sha256": "4449f41d22c6f15ede5066f79d840a52ec45a6b694c859e16f9121062b6fad2f"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/ua.js",
+      "sha256": "9391169ffbc72f777a83230b6ffcc3f4cf46ab5945ec540de9ef4609dca1f4cc"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/uk.js",
+      "sha256": "77136a2a60eef62f7cc803a0f9971aebbc641403af77c1b41fd5ce59abfa5de3"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/ur.js",
+      "sha256": "858f4f38d651073e7a3fbec7ed356692578b3ad1fae1b453cb3d85312a4f39d2"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/uz.js",
+      "sha256": "287481257de95c9d99b91e070773ade607fb5c68cf5fb74df311376950d507b6"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/vi.js",
+      "sha256": "2c61bd3f4a733f3cbb1ad85e75a053cb15a8ebeb83ab56dc21f2948b1138e12f"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/yo.js",
+      "sha256": "98b9cbf31bf00c8b2c00de62725a9dd7cb718ac72d6e8fd4e0a1a7c49723e0f4"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/zh-CN.js",
+      "sha256": "99a4b16af598834a0b11607fcdebd1c6de026386ff1d6a5a306b364c154c5899"
+    },
+    {
+      "file": "node_modules/zod/v4/locales/zh-TW.js",
+      "sha256": "37dcae620e1553e9174a4b9434bbcc4e465150a627e80c9c17fd01de8baaf59a"
+    },
+    {
+      "file": "package.json",
+      "sha256": "e4bb023c1d8650066d176d6a48e5c6c485e7739ea7336f5c356600278a190a24"
+    },
+    {
+      "file": "scripts/build-workshop-local.mjs",
+      "sha256": "01102e93c572d201ece2f003543cef52c753672226b1c35db27133b02a5339ae"
+    },
+    {
+      "file": "src/assets/workshop/fonts/CormorantGaramond-Italic[wght].ttf",
+      "sha256": "0f48ea6abb2084537854f7174c470991a463b13036309e3b50a81511611c530d"
+    },
+    {
+      "file": "src/assets/workshop/fonts/CormorantGaramond[wght].ttf",
+      "sha256": "b20b7d9626dd956b2c5e558692ad328b1f19e3275e2782db4fa07670d83f35e0"
+    },
+    {
+      "file": "src/assets/workshop/fonts/InterTight[wght].ttf",
+      "sha256": "b81b73dcb64df3c230cabade7df6c5773bf863233f24c9ee51087519f1f88b6f"
+    },
+    {
+      "file": "src/assets/workshop/fonts/JetBrainsMono[wght].ttf",
+      "sha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda"
+    },
+    {
+      "file": "src/assets/workshop/fonts/cormorantgaramond-OFL.txt",
+      "sha256": "60700d351cac4650c51f3f9db318d2a420f8b45052dba2715eb5fec41f0f6956"
+    },
+    {
+      "file": "src/assets/workshop/fonts/intertight-OFL.txt",
+      "sha256": "50240ab035cf1b6b3307940235481d515c4b6de3ab1fa843dbe59e7892cb9d58"
+    },
+    {
+      "file": "src/assets/workshop/fonts/jetbrainsmono-OFL.txt",
+      "sha256": "b2fe5e8987594e9ffd1d2ca52a2f5d73eb8335243893c5d6254b5ad69269591d"
+    },
+    {
+      "file": "src/assets/workshop/fonts/sources.json",
+      "sha256": "e39dd9629c78da7145c0e03210cb34f657224bef4a1d786833540500a3a87226"
+    },
+    {
+      "file": "src/components/chio/build/Machine.tsx",
+      "sha256": "96a2a10eed24722bc01f2ed26c110c892796fc78f548f38d02ad06909b9ae8da"
+    },
+    {
+      "file": "src/components/chio/build/build-transition.ts",
+      "sha256": "c961c538d488a16ffaee9be0ee7058ff4b7f8527ddfcadaa58c6ca4f79acef74"
+    },
+    {
+      "file": "src/components/chio/build/build.module.css",
+      "sha256": "cf8c342f880a3f7aed7802b6bead33d5bb574558aacf1ea5261d2546a9028bcd"
+    },
+    {
+      "file": "src/components/chio/build/workshop-atelier.ts",
+      "sha256": "f6b1056860c8e3222785a3d32e001f7d958bfef3585f0f81aee82f6eae19fde0"
+    },
+    {
+      "file": "src/components/chio/build/workshop-cartridge.ts",
+      "sha256": "a21d9f3518e21d983680254bb9b0afdc06380027b06eb72d41d6a83d49dd1c79"
+    },
+    {
+      "file": "src/components/chio/build/workshop-deck.ts",
+      "sha256": "d849fed513dc09b217add52115433ac403686c1415375210dd276f1434f97639"
+    },
+    {
+      "file": "src/components/chio/build/workshop-operator.ts",
+      "sha256": "8fe4a4cb454b916cee98c4680807e0ef25faf63ed02770e89e853fb5449fb34c"
+    },
+    {
+      "file": "src/components/chio/build/workshop-pixels.ts",
+      "sha256": "336c1c6f4a77d189aa7a34b5f473ef9bbb8f8b0fe0e5b1749916193d16654bc7"
+    },
+    {
+      "file": "src/components/chio/build/workshop-scene.ts",
+      "sha256": "c657d8fd0e3cd7cb9d4f2e4e9c7cfcdbee5c1e5efc0807889559e9dd178c3cd0"
+    },
+    {
+      "file": "src/components/chio/build/workshop-shift.ts",
+      "sha256": "cea7822efc0f646233e8477818df10a147f50c2e3c43b52d75f11c39e7e21eef"
+    },
+    {
+      "file": "src/components/chio/build/workshop-station.ts",
+      "sha256": "6e6367abdb63d6f7d889bda9dbb940bbff001300f82685ef64d75c36e60d17fa"
+    },
+    {
+      "file": "src/components/chio/build/workshop-terminal.ts",
+      "sha256": "7ea5fd3a1b6937592308366fc454a46bb1e59e42e4c588c73474674c4a71c9f3"
+    },
+    {
+      "file": "src/components/chio/build/workshop-type.ts",
+      "sha256": "3c7855396bfd77af4dc422b5d2667ed9a9d86be50740ffd0a4fa1607b64cd289"
+    },
+    {
+      "file": "src/components/chio/build/workshop-world.ts",
+      "sha256": "c8a13d95bfa7d0dec59e1b65c21825d0376b0d9c8e37c45bf3b92fac6f8558e0"
+    },
+    {
+      "file": "src/components/chio/pixelslab/glyphs.ts",
+      "sha256": "d5adbe86ad653924bc9f8e91bb7c9f43c4756e680f9032e64739a47e7ef235f3"
+    },
+    {
+      "file": "src/components/workshop/LocalApp.tsx",
+      "sha256": "d38f34b6d96d049e2b54a0105f4852c3fdc3d2a1b2c3935b3aa32052cd1da5d1"
+    },
+    {
+      "file": "src/components/workshop/Workshop.tsx",
+      "sha256": "b44833ba2d0f50fbd33f5700d906731f69b4abe0377a2f2b78ea7933d0adfa34"
+    },
+    {
+      "file": "src/components/workshop/local.css",
+      "sha256": "1c6227a0a224772048926bd1688f52c7c4dbdcdab220005a3391ef23277ff439"
+    },
+    {
+      "file": "src/components/workshop/workshop.module.css",
+      "sha256": "a9de5f4661acea2860a5577846d21924155afc3f48603b094f29910446ffd79c"
+    },
+    {
+      "file": "src/lib/motion-policy.ts",
+      "sha256": "b08d641655c28912f809668d6f70352eec78da454875e12db7250839e86b1e75"
+    },
+    {
+      "file": "src/lib/workshop/diff.ts",
+      "sha256": "96c021fa6ab7a9d002604057d9179fb8f97011006084e21679f523aacaae098f"
+    },
+    {
+      "file": "src/lib/workshop/first-change.ts",
+      "sha256": "2027459b7dc4ed43160749a7e8f70456d29702212c3c39757c41c75b5ef7885c"
+    },
+    {
+      "file": "src/lib/workshop/local-client.ts",
+      "sha256": "b677f5811a19d8d432e6801957944f21e07cf139163c57ab118b7f58249ea1d6"
+    },
+    {
+      "file": "src/lib/workshop/navigation.ts",
+      "sha256": "14b553e148d832b8615959239b8b097db0c08030b0342474431de414e29414c1"
+    },
+    {
+      "file": "src/lib/workshop/presentation.ts",
+      "sha256": "6a8a6f15456ad6bdc0b8fa5ac011194617dc0907719ce5f8ae18eca530fd1e57"
+    },
+    {
+      "file": "src/lib/workshop/recorded-adapter.ts",
+      "sha256": "d2244bd5be3f98fdf7750a3ef58bc0cc45fa0bec9fd88631ae9f2d917ffca09b"
+    },
+    {
+      "file": "src/lib/workshop/schema.ts",
+      "sha256": "5a3cf5641f37513db1fe501e23bad9602104ab961e34c443d5600327347be065"
+    },
+    {
+      "file": "src/lib/workshop/setup-code.ts",
+      "sha256": "f091bfdfcec21bf7024c2637d232dcbc33411e9cdf308d6e48417a188905c884"
+    },
+    {
+      "file": "src/lib/workshop/view-model.ts",
+      "sha256": "9b6f41eddf2ed9cba1c48185e3a8c99703c19ad4d6f4060dd75e19ba52a62558"
+    },
+    {
+      "file": "tsconfig.json",
+      "sha256": "b3f2cd933fd1a492ac95e236d894a9de938d7c14ae1a10f8405c9111e76ccea3"
+    }
+  ],
+  "assets": [
+    {
+      "file": "0f48ea6abb2084537854-CormorantGaramond-Italic-wght-.ttf",
+      "mime": "font/ttf",
+      "sha256": "0f48ea6abb2084537854f7174c470991a463b13036309e3b50a81511611c530d",
+      "bytes": 715644
+    },
+    {
+      "file": "b20b7d9626dd956b2c5e-CormorantGaramond-wght-.ttf",
+      "mime": "font/ttf",
+      "sha256": "b20b7d9626dd956b2c5e558692ad328b1f19e3275e2782db4fa07670d83f35e0",
+      "bytes": 1195560
+    },
+    {
+      "file": "b81b73dcb64df3c230ca-InterTight-wght-.ttf",
+      "mime": "font/ttf",
+      "sha256": "b81b73dcb64df3c230cabade7df6c5773bf863233f24c9ee51087519f1f88b6f",
+      "bytes": 581588
+    },
+    {
+      "file": "48715a42ec242c21e9f0-JetBrainsMono-wght-.ttf",
+      "mime": "font/ttf",
+      "sha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda",
+      "bytes": 187208
+    },
+    {
+      "file": "59e2d6ff383ba56eed68-workshop.js",
+      "mime": "text/javascript; charset=utf-8",
+      "sha256": "59e2d6ff383ba56eed68208fcf3b712a8ddc63c967f07271e44354cdd810122c",
+      "bytes": 607497
+    },
+    {
+      "file": "24c6fb392a1a69243dd1-workshop.css",
+      "mime": "text/css; charset=utf-8",
+      "sha256": "24c6fb392a1a69243dd14858b38a97af3ae963184547c6c4376766e87f050b01",
+      "bytes": 50171
+    }
+  ]
+}

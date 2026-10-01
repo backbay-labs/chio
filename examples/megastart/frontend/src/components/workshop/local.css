@@ -1,0 +1,23 @@
+html {
+  color-scheme: dark;
+  --font-serif: "Cormorant Garamond", Georgia, serif;
+  --font-sans: "Inter Tight", Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --font-cormorant-garamond: var(--font-serif);
+  --font-inter-tight: var(--font-sans);
+  --font-jetbrains-mono: var(--font-mono);
+}
+body {
+  margin: 0;
+  background: #0c0b0e;
+}
+button,
+input,
+select {
+  font: inherit;
+}
+button,
+a,
+input {
+  -webkit-tap-highlight-color: transparent;
+}
