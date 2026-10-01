@@ -16,11 +16,6 @@ keyword:
   - receipt
   - mediation
   - MCP
-venue:
-  type: discussion
-  mail: agentproto@ietf.org
-  arch: https://mailarchive.ietf.org/arch/browse/agentproto/
-  github: backbay-labs/chio
 author:
   - fullname: Connor Whelan
     organization: Backbay Industries
