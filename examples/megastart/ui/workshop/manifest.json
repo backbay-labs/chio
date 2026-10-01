@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "build_id": "c58a4b51f705296e383dcb6443d5e40f081ad3ab1409381ec8bd65125eca3a54",
+  "build_id": "46efebbcf08a7917b53c48c6971c84d91533278107c4c40a85d9a3c7bde30904",
   "api_version": 1,
   "sources": [
     {
@@ -357,7 +357,7 @@
     },
     {
       "file": "scripts/build-workshop-local.mjs",
-      "sha256": "01102e93c572d201ece2f003543cef52c753672226b1c35db27133b02a5339ae"
+      "sha256": "b7f12b921bbf972808974dddfc08d38e218cb138ab95a05fefb1591c072370c3"
     },
     {
       "file": "src/assets/workshop/fonts/CormorantGaramond-Italic[wght].ttf",
@@ -508,8 +508,8 @@
       "sha256": "9b6f41eddf2ed9cba1c48185e3a8c99703c19ad4d6f4060dd75e19ba52a62558"
     },
     {
-      "file": "tsconfig.json",
-      "sha256": "b3f2cd933fd1a492ac95e236d894a9de938d7c14ae1a10f8405c9111e76ccea3"
+      "file": "tsconfig.workshop.json",
+      "sha256": "fc31b60644b454a96e9ebe095ed8f355c5102010896fa57d29679aff9b27e0c1"
     }
   ],
   "assets": [
@@ -538,10 +538,10 @@
       "bytes": 187208
     },
     {
-      "file": "f189cba8a871f2d88e5a-workshop.js",
+      "file": "35e49935791285ce7226-workshop.js",
       "mime": "text/javascript; charset=utf-8",
-      "sha256": "f189cba8a871f2d88e5a62e8fd394790697513c4d9c3f08d7954fe6f14560e6f",
-      "bytes": 608046
+      "sha256": "35e49935791285ce722698671206a52e0f287b300089bffb92fce82e95774a61",
+      "bytes": 607999
     },
     {
       "file": "24c6fb392a1a69243dd1-workshop.css",
