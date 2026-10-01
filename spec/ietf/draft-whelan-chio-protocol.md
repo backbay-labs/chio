@@ -1,5 +1,5 @@
 ---
-title: "The Chio Protocol: Signed Capabilities and Receipts for Mediated Tool Execution"
+title: "The Chio Protocol: Kernel Primitives for Agentic Operating Systems"
 abbrev: "Chio Protocol"
 category: std
 docname: draft-whelan-chio-protocol-00
@@ -9,12 +9,14 @@ v: 3
 date: 2026-09-30
 keyword:
   - agent
+  - kernel
+  - agentic operating system
   - tool
   - capability
   - delegation
   - attenuation
   - receipt
-  - mediation
+  - governed execution
   - MCP
 author:
   - fullname: Connor Whelan
@@ -156,38 +158,54 @@ informative:
 
 --- abstract
 
-This document specifies the Chio protocol, which mediates the tool calls
-of software agents. Before a tool runs, a trusted mediator called the
-kernel checks that the call is authorized by a signed capability token:
-a time-bounded grant of named tools to a specific key. A token can be
-delegated in narrowed form. The authenticated attenuation profile binds
-delegation to the parent scope and checks the child against that scope.
-The kernel evaluates local policy and dispatches permitted calls.
+Chio is a kernel for agentic operating systems. It provides shared
+primitives for delegated authority, resource accounting, governed
+execution, and verifiable records. This document specifies the Chio
+protocol: the signed objects and exchanges through which agents,
+kernels, and supporting services use those primitives.
+
+The protocol defines capability tokens, receipts, budgets and metering,
+governed transactions, and signed checkpoints. A capability token binds
+time-bounded authority to a subject key. The authenticated attenuation
+profile binds delegated authority to the parent scope and checks the
+child against that scope. Governed transactions require declared intent
+and approval; checkpoints commit to batches of receipts.
+
+Agents access the kernel through a framed native transport or a binding
+to the Model Context Protocol. HTTP interfaces support issuance,
+delegation, receipt query, and revocation. The kernel verifies authority
+and evaluates local policy before dispatching permitted tool calls.
 Receipt-bearing outcomes include denials, cancellations, and calls that
 end before completion. Signing, storage, malformed-authorization, and
 overload failures can produce an error without a receipt.
-
-This document defines the capability token and receipt formats, their
-canonical encoding and signatures, a framed transport between agent and
-kernel, a binding to the Model Context Protocol, and HTTP interfaces for
-issuance, delegation, receipt query, and revocation. It also defines
-budgets and metering, governed transactions that require declared intent
-and approval, and signed checkpoints over batches of receipts.
 
 --- middle
 
 # Introduction {#introduction}
 
-Software agents call tools. They read and write files, query services,
-send messages, and spend money on behalf of people and organizations.
+Agentic operating systems need a shared execution core beneath their
+agents, applications, and workflows. That core establishes the authority
+an agent can exercise, the constraints on delegated work, the accounting
+of resource use, and the records that other parties can verify. These
+responsibilities span individual models, tools, and application
+frameworks.
+
+Chio supplies this foundation as a kernel. Capability-based authority,
+local policy evaluation, budgets, governed transactions, and signed
+records form a common execution model on which agentic systems can
+build. This document specifies the protocol primitives and exchanges
+that make those functions interoperable across kernel implementations.
+
+Agents read and write files, query services, send messages, and spend
+money on behalf of people and organizations.
 When an agent directly holds broad tool credentials, delegating a task
 can also delegate more authority than it needs. Unless the deployment
 records an authenticated authorization decision and result binding, a
 third party lacks that evidence of what was authorized and what happened.
 
-Chio separates authority from execution by placing a kernel between an
-agent and its tool servers. A native agent sends each mediated call to
-that kernel, a mediator it does not control, with a capability token: a statement, signed by an issuer, that
+The kernel separates an agent's requested operation from the authority
+to execute it. A native agent sends each kernel-mediated call with a
+capability token: a statement, signed by an issuer, that
 a subject key may call named tools under stated constraints and limits
 until a stated time. The kernel verifies the token, evaluates local
 policy, dispatches the call to the tool server only if both permit it,
@@ -219,6 +237,10 @@ to audit history: budgets and metering, governed transactions, and
 receipt checkpoints.
 
 ## Design Goals {#goals}
+
+Shared kernel primitives:
+: Agents and applications use a common model of authority, constrained
+  execution, and signed records across the protocol's transports.
 
 Explicit authority:
 : Every mediated call names the capability token that authorizes it.
@@ -252,6 +274,10 @@ Algorithm agility:
 
 ## Scope {#scope}
 
+This document specifies the kernel's signed artifacts and protocol
+exchanges. Implementations choose the runtime architecture and host
+isolation mechanisms that support those exchanges.
+
 This document does not specify:
 
 * a policy language or a set of guards. Each kernel evaluates its own
@@ -260,8 +286,9 @@ This document does not specify:
 * how tool servers implement tools;
 
 * a replacement for the Model Context Protocol, the Agent2Agent
-  protocol {{A2A}}, or other agent communication protocols. Chio
-  mediates calls that such protocols carry;
+  protocol {{A2A}}, or other agent communication protocols. Protocol
+  bindings connect those interfaces to the kernel's authority and
+  execution model;
 
 * an OAuth authorization server;
 
@@ -271,7 +298,8 @@ This document does not specify:
 
 ## Document Organization {#organization}
 
-{{overview}} describes the roles and walks through one mediated call.
+{{overview}} describes the roles and walks through one native kernel
+execution.
 {{encoding}} through {{checkpoints}} define the signed objects: the
 encoding and signature rules, capability tokens, receipts, budgets,
 governed transactions, and checkpoints. {{native-transport}} through
@@ -293,8 +321,10 @@ Agent:
   an agent; an agent acts only through the capability tokens it presents.
 
 Kernel:
-: The trusted mediator that verifies capability tokens, evaluates
-  policy, dispatches permitted calls to tool servers, and signs receipts.
+: The trusted execution core of an agentic system. It verifies
+  capability authority, evaluates local policy, applies the configured
+  budget and governance checks, dispatches permitted calls to tool
+  servers, and signs receipts for receipt-bearing outcomes.
 
 Tool server:
 : A service that implements tools, resources, or prompts, to which a
@@ -397,7 +427,7 @@ isolation and credential controls ({{security-tool-servers}}). A tool
 server role does not itself confer token-issuing authority. The trust-control service is
 trusted to issue and revoke tokens under the operator's policy.
 
-## A Mediated Call {#mediated-call}
+## Kernel Execution {#mediated-call}
 
 {{fig-call}} shows one call over the native transport ({{native-transport}}).
 
@@ -421,7 +451,7 @@ Agent                      Kernel                       Tool server
   |  (result, receipt)       |                               |
   |<-------------------------+                               |
 ~~~
-{: #fig-call title="One Mediated Call"}
+{: #fig-call title="One Native Kernel Execution"}
 
 The figure shows a receipt-bearing native exchange. The reference driver
 can buffer all output and sign the receipt before sending the first

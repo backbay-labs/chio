@@ -2,13 +2,28 @@
 
 Implementation baseline: `f5566d9a765c21cb36652a99c79de64968a656bf`.
 Review date: 2026-09-30.
-Final draft source SHA-256: `96d5daac0b256f37407335667d82021d91f84685a639cf7327aadeb39593920e`.
+2026-09-30 reviewed draft source SHA-256: `96d5daac0b256f37407335667d82021d91f84685a639cf7327aadeb39593920e`.
 
 The following eight independent source reviews cover the abstract, all numbered sections, related-work claims, every BCP 14 obligation, and concrete wire fields, signature inputs, limits, ordering, and error mappings. The generated examples and vectors are separately checked against their source bytes by the build gate.
 
 Supported means the inspected implementation supplies the stated behavior. Qualified means the statement is a bounded profile, a caller/operator/consumer obligation, or a documented difference between typed parsing, schema validation, and runtime enforcement. A qualified row is not proof of automatic runtime enforcement or public availability. No unresolved required source-claim correction remains.
 
 Individual reviews retain their own frozen snapshot hashes and line pointers. Subsequent edits in other sections can shift line numbers without changing the reviewed claim. The final formatting pass dedented diagrams, wrapped one mathematical expression, and removed trailing whitespace; it did not change the reviewed wire values. Repository-relative citations are internal verification provenance, not public checkout instructions.
+
+## Kernel framing update, 2026-10-01
+
+Current draft source SHA-256: `cac54b9f8f79fd69d120edce2f2754c931468810c9eefb110279d28f22799cfb`.
+
+The title, abstract, introductory architecture, kernel definition, and the name of the native execution walkthrough now lead with Chio as a kernel for agentic operating systems. The optional document housekeeping note remains removed. This is an editorial update of the existing protocol scope.
+
+- Delegated authority, local policy, conditional dispatch, and receipt-bearing outcomes retain the qualifications in OV-A01 through OV-A04 and OV-T02.
+- Resource accounting refers to the existing budgets and metering section. Configured budget and governance checks are supported by `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs` and `crates/kernel/chio-kernel/src/kernel/governed_validation.rs`, already reviewed in OV-A06 and the extension ledgers below.
+- Governed transactions and receipt checkpoints remain the existing signed-object profiles. No host scheduler, universal process isolation, universal receipt availability, or new wire behavior is claimed.
+- Native versus hosted MCP receipt delivery, trusted-issuer delegation, authenticated attenuation, and operator isolation duties retain their original qualifications.
+- The full source from Section 4 (Encoding and Cryptography) onward is byte-identical to the parent source revision. The complete ordered sequence of BCP 14 keywords is unchanged.
+- The new landing illustration is an architectural overview. It does not replace or renumber the protocol's exchange figures.
+
+The historical reviews below retain their original snapshots and line numbers. This addendum records the new editorial scope without relabeling those reviews as new runtime acceptance.
 
 ## Abstract and Sections 1-3
 
