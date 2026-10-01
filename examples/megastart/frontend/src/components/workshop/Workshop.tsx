@@ -1,6 +1,7 @@
 "use client";
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -149,18 +150,24 @@ function Evidence({
   );
   const scroll = useRef<HTMLDivElement>(null);
   const positions = useRef<Record<string, [number, number]>>({});
-  function changeDocument(next: Document) {
+  function rememberPosition() {
     const element = scroll.current?.querySelector(
       `.${s.codeScroll},.${s.diffScroll}`,
     );
+    const key = `${document}/${source}`;
     if (element)
-      positions.current[`${document}/${source}`] = [
-        element.scrollLeft,
+      positions.current[key] = [
+        expanded && element.scrollWidth <= element.clientWidth
+          ? (positions.current[key]?.[0] ?? element.scrollLeft)
+          : element.scrollLeft,
         element.scrollTop,
       ];
+  }
+  function changeDocument(next: Document) {
+    rememberPosition();
     onDocument(next);
   }
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = scroll.current?.querySelector(
       `.${s.codeScroll},.${s.diffScroll}`,
     );
@@ -169,7 +176,7 @@ function Evidence({
       element.scrollLeft = position[0];
       element.scrollTop = position[1];
     }
-  }, [document, source]);
+  }, [document, source, expanded]);
   function navigate(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const next =
       event.key === "ArrowRight"
@@ -215,7 +222,10 @@ function Evidence({
         </div>
         <button
           className={s.expandWork}
-          onClick={onExpand}
+          onClick={() => {
+            rememberPosition();
+            onExpand();
+          }}
           aria-label={expanded ? "Show workshop" : "Expand work"}
           title={expanded ? "Show workshop" : "Expand work"}
         >
