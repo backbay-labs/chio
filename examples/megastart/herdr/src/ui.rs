@@ -488,7 +488,6 @@ fn pretty(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_default()
 }
 
-
 #[cfg(test)]
 mod role_tests {
     #[test]

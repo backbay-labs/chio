@@ -91,3 +91,8 @@ rustls-webpki move to their exact patched lockfile versions and explicitly remai
 unaudited. They are not represented as new cryptographic certifications. The
 Wasmtime advisory exception is assessed separately in
 [`docs/security/wasmtime-2026-0316.md`](../docs/security/wasmtime-2026-0316.md).
+
+The owner approved these five exact bootstrap-version changes on 2026-10-01. The
+required [PR justification](https://github.com/backbay-labs/chio/pull/25#issuecomment-5942169511)
+records the unaudited boundary and removal condition; the exemption gate remains
+enabled. This approval is separate from the two advisory exceptions.

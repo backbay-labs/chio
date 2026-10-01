@@ -54,10 +54,7 @@ enum Cmd {
 fn private_dir(path: &Path) -> Result<()> {
     if path.exists() {
         let metadata = fs::symlink_metadata(path)?;
-        ensure!(
-            metadata.is_dir(),
-            "State path must be a real directory"
-        );
+        ensure!(metadata.is_dir(), "State path must be a real directory");
         ensure!(
             metadata.mode() & 0o077 == 0,
             "Choose an owner-only state directory (mode 0700); existing directory permissions are preserved"
