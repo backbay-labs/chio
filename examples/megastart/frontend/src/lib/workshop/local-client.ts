@@ -84,7 +84,11 @@ export class LocalClient {
   private sending = false;
   private refreshAgain = false;
   private reading = false;
+  private readController: AbortController | null = null;
   private failures = 0;
+  private visibilityChanged = () => {
+    if (!document.hidden && !this.stopped) void this.refresh();
+  };
   constructor(
     private token: string,
     private uiBuildId?: string,
@@ -102,18 +106,26 @@ export class LocalClient {
     this.listeners.forEach((listener) => listener());
   }
   start() {
+    if (!this.stopped) return;
     this.stopped = false;
+    if (typeof document !== "undefined")
+      document.addEventListener("visibilitychange", this.visibilityChanged);
     void this.refresh();
   }
   stop() {
     this.stopped = true;
     this.generation++;
+    this.refreshAgain = false;
+    this.readController?.abort();
+    if (typeof document !== "undefined")
+      document.removeEventListener("visibilitychange", this.visibilityChanged);
     if (this.timer) clearTimeout(this.timer);
   }
   select(mission: string) {
     if (mission === this.selected) return;
     this.selected = mission;
     this.generation++;
+    this.readController?.abort();
     this.cursor = null;
     this.set({ freshness: "stale" });
     void this.refresh();
@@ -121,13 +133,16 @@ export class LocalClient {
   private async request(
     path: string,
     init: RequestInit = {},
+    readSignal?: AbortSignal,
   ): Promise<unknown> {
     const response = await this.fetcher(`/api/workshop/v1/${path}`, {
       ...init,
       redirect: "error",
       cache: "no-store",
       credentials: "omit",
-      signal: AbortSignal.timeout(12_000),
+      signal: readSignal
+        ? AbortSignal.any([readSignal, AbortSignal.timeout(12_000)])
+        : AbortSignal.timeout(12_000),
       headers: {
         Authorization: `Bearer ${this.token}`,
         ...(init.body ? { "Content-Type": "application/json" } : {}),
@@ -150,13 +165,17 @@ export class LocalClient {
       return;
     }
     this.reading = true;
+    const controller = new AbortController();
+    this.readController = controller;
     const generation = this.generation;
     if (this.timer) clearTimeout(this.timer);
     try {
       const suffix = this.selected
         ? `?mission=${encodeURIComponent(this.selected)}`
         : "";
-      const state = StateSchema.parse(await this.request(`state${suffix}`));
+      const state = StateSchema.parse(
+        await this.request(`state${suffix}`, {}, controller.signal),
+      );
       if (generation !== this.generation || this.stopped) return;
       if (this.uiBuildId && state.host.ui_build_id !== this.uiBuildId)
         throw new HostError(
@@ -170,6 +189,8 @@ export class LocalClient {
       ) {
         const events = await this.request(
           `events?mission=${this.cursor.missionId}&after=${this.cursor.after}`,
+          {},
+          controller.signal,
         );
         this.cursor = {
           ...this.cursor,
@@ -205,6 +226,8 @@ export class LocalClient {
               const artifact = ArtifactContentSchema.parse(
                 await this.request(
                   `artifacts/${descriptor.id}?mission=${state.mission!.id}`,
+                  {},
+                  controller.signal,
                 ),
               );
               if (
@@ -226,7 +249,11 @@ export class LocalClient {
       if (this.pendingId && !this.sending) {
         try {
           pending = CommandObservationSchema.parse(
-            await this.request(`commands/${this.pendingId}`),
+            await this.request(
+              `commands/${this.pendingId}`,
+              {},
+              controller.signal,
+            ),
           );
         } catch (error) {
           if (!(error instanceof HostError) || error.code !== "UNKNOWN_OUTCOME")
@@ -294,17 +321,20 @@ export class LocalClient {
       });
     } finally {
       this.reading = false;
+      if (this.readController === controller) this.readController = null;
       if (!this.stopped) {
         const delay = this.refreshAgain
           ? 0
-          : Math.min(
-              8000,
-              this.failures
-                ? 1000 * 2 ** this.failures
-                : this.pendingId || this.value.state?.active_command
-                  ? 750
-                  : 1500,
-            );
+          : typeof document !== "undefined" && document.hidden
+            ? 8000
+            : Math.min(
+                8000,
+                this.failures
+                  ? 1000 * 2 ** this.failures
+                  : this.pendingId || this.value.state?.active_command
+                    ? 750
+                    : 1500,
+              );
         this.refreshAgain = false;
         this.timer = setTimeout(() => void this.refresh(), delay);
       }

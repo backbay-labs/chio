@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "build_id": "1a862bc012c42aa9bbb09c478098046096c4a6e35d5a5754b7b385923fda650e",
+  "build_id": "5888afa39ab457c15285bfdb6546197f1a66204e8369bf985a96e2ad36e4402b",
   "api_version": 1,
   "sources": [
     {
@@ -481,7 +481,7 @@
     },
     {
       "file": "src/lib/workshop/local-client.ts",
-      "sha256": "b677f5811a19d8d432e6801957944f21e07cf139163c57ab118b7f58249ea1d6"
+      "sha256": "5394d8831ed6f81d8dd32a8e61ac0742936c9e8b55791ad44a1538b52e31c9aa"
     },
     {
       "file": "src/lib/workshop/navigation.ts",
@@ -538,10 +538,10 @@
       "bytes": 187208
     },
     {
-      "file": "42f1724892599f78c96c-workshop.js",
+      "file": "6fd613157722b22f3fc9-workshop.js",
       "mime": "text/javascript; charset=utf-8",
-      "sha256": "42f1724892599f78c96cd8ea1735e3645fbde46fe82ac4fa5f40fc3be92239d3",
-      "bytes": 607999
+      "sha256": "6fd613157722b22f3fc9a6a588c1aaf227fc106634b70a3bf395bad103704511",
+      "bytes": 608609
     },
     {
       "file": "24c6fb392a1a69243dd1-workshop.css",
