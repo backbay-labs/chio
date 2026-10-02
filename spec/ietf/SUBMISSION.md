@@ -1,34 +1,23 @@
-# Submission package for draft-whelan-chio-protocol-00
+# Chio Protocol submission package
 
-Prepared September 30, 2026. This is an individual Internet-Draft with intended status Standards Track. It has not been posted: the Datatracker document URL returned HTTP 404 on September 30. The draft is not an adopted working-group document or an RFC.
+Author: Connor Whelan, Backbay Industries, <mailto:connor@backbay.io>.
+Public source and issues: <https://github.com/backbay-labs/chio>.
 
-The single source is `draft-whelan-chio-protocol.md`. The upload file is `draft-whelan-chio-protocol-00.xml`, the expanded RFCXML v3 rendering. The prepped XML is the docs reader's source; the text and PDF are companion renderings. `CLAIMS.md` contains the independent implementation review and its claim limits.
+The canonical source is `draft-whelan-chio-protocol.md`. Expanded RFCXML v3 in `draft-whelan-chio-protocol-00.xml` is the upload artifact; the prepped XML feeds the document reader. Text and PDF are companion renderings.
 
-Author: Connor Whelan, Backbay Industries, `connor@backbay.io`. Discussion: `agentproto@ietf.org`; public issues: <https://github.com/backbay-labs/chio/issues>.
+## Preparation
 
-## Owner submission steps
+1. Verify the completed release against the draft's conformance and security requirements. Review [the document checks](CLAIMS.md) and the rendered PDF.
+2. Set the source date to the submission date and regenerate every rendering. Confirm the name and revision against any preceding submission before reusing `-00`.
+3. Publish the source revision, regenerate the reader and downloads from that exact public revision, and verify source links and artifact hashes.
+4. Submit the expanded XML through <https://datatracker.ietf.org/submit/>. Confirm the title, author, stream, intended status, date, and revision. Complete the author's BCP 78/79 declarations and email confirmation.
+5. After posting, compare the official rendering and anchors with the reader and downloads. An individual submission does not establish working-group adoption.
 
-1. Review the source, claim ledger, and rendered PDF. Set the source's `date` to the actual submission date if it differs from September 30, 2026, then regenerate and check all outputs. A date change also requires refreshing the website's generated document and downloads.
-2. Open <https://datatracker.ietf.org/submit/> and upload `draft-whelan-chio-protocol-00.xml`.
-3. Confirm the extracted name, revision `00`, title, author email, IETF stream, Standards Track intended status, date, and generated expiry. Confirm the author's BCP 78/79 declarations in the submission tool.
-4. Submit and complete the confirmation email sent to `connor@backbay.io`. Confirm that <https://datatracker.ietf.org/doc/draft-whelan-chio-protocol/> shows revision `00` and the intended metadata.
-5. Verify the public Chio source revision used by the website, regenerate its pin/data/downloads, and merge the site PR only after posting. Check the deployed page, downloads, source links, official anchors, and OG image against the posted document.
+## Regeneration
 
-## Intellectual property answer
-
-The owner answered the submission-checklist question about known patents or patent applications held by the owner, Backbay Industries, or another party: **"None that I am aware of."** This records the answer supplied; it is not a patent search. The author completes the submission tool's declarations and any required disclosure at <https://datatracker.ietf.org/ipr/>.
-
-## Deadline
-
-The internal posting target remains November 1. The [official IETF 127 deadline](https://datatracker.ietf.org/meeting/127/important-dates/) is **November 2, 2026 at 23:59 UTC**, for all Internet-Drafts, including `-00` (verified September 30, 2026). IETF 127 begins November 14 in San Francisco.
-
-## Regeneration and validation
-
-Use kramdown-rfc 1.7.43, xml2rfc 3.34.1, WeasyPrint 70.0, aasvg 0.5.7, idnits 3.1.0, Python 3, Fontconfig, and `pdftotext`. The workflow installs the matching tool versions and native dependencies. The unmodified OFL font files in `tools/fonts` are pinned by immutable upstream URL and digest; `FONTCONFIG_FILE` isolates PDF rendering from host font versions and fallback glyphs. Place the Ruby gem's executable directory on PATH; `KRAMDOWN=/path/to/kramdown-rfc` is also supported.
+Use kramdown-rfc 1.7.43, xml2rfc 3.34.1, WeasyPrint 70.0, aasvg 0.5.7, idnits 3.1.0, Python 3, Fontconfig, and pdftotext. The repository workflow installs the pinned toolchain; bundled OFL fonts make PDF rendering reproducible.
 
 ```sh
 make -C spec/ietf
 make -C spec/ietf check
 ```
-
-The check regenerates all renderings, checks the vector corpus and folded bytes, compares XML/prepped XML/text and extracted PDF text, rejects writer diagnostics and incomplete validation runs, enforces 72-column text, and rejects all idnits errors or warnings. PDF layout comparison uses the bundled fonts; Linux CI is the independent cross-platform verification.

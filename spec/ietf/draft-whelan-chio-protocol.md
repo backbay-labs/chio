@@ -6,7 +6,7 @@ docname: draft-whelan-chio-protocol-00
 submissiontype: IETF
 ipr: trust200902
 v: 3
-date: 2026-09-30
+date: 2026-10-02
 keyword:
   - agent
   - kernel
@@ -34,6 +34,7 @@ normative:
   RFC8032:
   RFC8446:
   RFC8785:
+  RFC8725:
   RFC9110:
   RFC9162:
   RFC9449:
@@ -98,6 +99,7 @@ normative:
     target: https://html.spec.whatwg.org/multipage/server-sent-events.html
 
 informative:
+  RFC3552:
   RFC7942:
   RFC8693:
   RFC8792:
@@ -173,11 +175,11 @@ and approval; checkpoints commit to batches of receipts.
 
 Agents access the kernel through a framed native transport or a binding
 to the Model Context Protocol. HTTP interfaces support issuance,
-delegation, receipt query, and revocation. The kernel verifies authority
-and evaluates local policy before dispatching permitted tool calls.
-Receipt-bearing outcomes include denials, cancellations, and calls that
-end before completion. Signing, storage, malformed-authorization, and
-overload failures can produce an error without a receipt.
+delegation, receipt query, and revocation. The kernel establishes
+authority before execution, accounts for committed resources, controls
+the release of results, and preserves verifiable evidence across retries
+and recovery. These functions provide a common execution foundation for
+agents, applications, and workflows.
 
 --- middle
 
@@ -197,34 +199,34 @@ build. This document specifies the protocol primitives and exchanges
 that make those functions interoperable across kernel implementations.
 
 Agents read and write files, query services, send messages, and spend
-money on behalf of people and organizations.
-When an agent directly holds broad tool credentials, delegating a task
-can also delegate more authority than it needs. Unless the deployment
-records an authenticated authorization decision and result binding, a
-third party lacks that evidence of what was authorized and what happened.
+money on behalf of people and organizations. When an agent directly
+holds broad tool credentials, delegating a task can also delegate more
+authority than it needs. Unless the deployment records an authenticated
+authorization decision and result binding, a third party lacks that
+evidence of what was authorized and what happened.
 
 The kernel separates an agent's requested operation from the authority
 to execute it. A native agent sends each kernel-mediated call with a
-capability token: a statement, signed by an issuer, that
-a subject key may call named tools under stated constraints and limits
-until a stated time. The kernel verifies the token, evaluates local
-policy, dispatches the call to the tool server only if both permit it,
-and signs a receipt for receipt-bearing protocol outcomes, including
-denials, cancellations, and calls that end before completion. Signing,
-storage, malformed-authorization, and overload failures can return an
-error without a receipt; a deployment cannot claim universal receipt
-availability for those paths.
+capability token: a statement, signed by an issuer, that a subject key
+may call named tools under stated constraints and limits until a stated
+time. The kernel verifies the token, evaluates local policy, dispatches
+the call to the tool server only if both permit it, and records the
+decision and result in a signed receipt. Execution is a stateful kernel
+operation: admission, resource reservation, dispatch, output release,
+and finalization have distinct authority and failure semantics. The
+kernel preserves those distinctions through concurrency, process
+failure, and restart ({{execution-lifecycle}}).
 
 Chio's authenticated delegation profiles enforce narrowing of authority.
-A holder can request or arrange trusted-issuer signing of a
-narrower token for another key. The resulting token signature is made
-by a trusted issuer; a delegation-link signature alone does not make
-an arbitrary holder a trusted token issuer. Each delegation link is
-signed. In the authenticated attenuation profile, scope hashes and a
-subset witness bind the child scope to the issuer-resolved parent scope.
-A kernel enforcing that profile rejects a claimed parent scope that is
-not bound to the chain. Plain delegated v1 tokens do not themselves
-require these hashes or witnesses; deployments requiring authenticated
+A holder can request or arrange trusted-issuer signing of a narrower
+token for another key. The resulting token signature is made by a
+trusted issuer; a delegation-link signature alone does not make an
+arbitrary holder a trusted token issuer. Each delegation link is signed.
+In the authenticated attenuation profile, scope hashes and a subset
+witness bind the child scope to the issuer-resolved parent scope. A
+kernel enforcing that profile rejects a claimed parent scope that is not
+bound to the chain. Plain delegated v1 tokens do not themselves require
+these hashes or witnesses; deployments requiring authenticated
 attenuation enforce the profile in {{chain-binding}}.
 
 This document specifies the objects and exchanges that independent
@@ -255,18 +257,21 @@ Fail-closed evaluation:
 : A failure to verify a token, a delegation chain, a proof, or a policy
   result denies the call.
 
-A record of receipt-bearing outcomes:
-: The kernel signs receipts for receipt-bearing evaluation outcomes. The receipt
-  distinguishes allowed, denied, canceled, and incomplete calls.
+Durable execution and evidence:
+: The kernel binds authorization, resource accounting, and signed outcomes
+  to the same operation. Recovery preserves committed authority and
+  prevents an uncertain operation from silently becoming a new execution.
 
 Portable verification:
-: A party that holds a receipt and the kernel's public key can verify
-  the receipt without contacting the kernel.
+: A party with the receipt and an independently trusted kernel key can
+  verify its integrity without contacting the kernel. Additional claims,
+  such as inclusion in a particular log or execution by a particular
+  provider, require evidence appropriate to that claim.
 
 Transport independence:
 : The native transport and the MCP binding use the same signed capability
-  and receipt formats. Native replies carry receipts; the hosted MCP
-  binding records receipt-bearing outcomes for query.
+  and receipt formats. Native replies and hosted MCP tool results carry receipts for kernel
+  outcomes; authorized consumers can also query retained receipts.
 
 Algorithm agility:
 : Keys and signatures identify their own algorithm, so classical and
@@ -324,7 +329,8 @@ Kernel:
 : The trusted execution core of an agentic system. It verifies
   capability authority, evaluates local policy, applies the configured
   budget and governance checks, dispatches permitted calls to tool
-  servers, and signs receipts for receipt-bearing outcomes.
+  servers, and durably records signed outcomes. Its execution state survives a
+  restart without recreating consumed authority.
 
 Tool server:
 : A service that implements tools, resources, or prompts, to which a
@@ -370,8 +376,27 @@ Guard:
   output, as part of its local policy.
 
 Receipt:
-: A signed record of a call or operation, carrying a mediated decision,
+: A signed record of a call or operation, carrying a kernel decision,
   trace observation, or advisory evaluation ({{receipts}}).
+
+Operation:
+: One logical execution, including its admission, reservations, dispatch,
+  recovery, and finalization. A transport request identifier correlates an
+  exchange; it is not by itself a durable operation identifier.
+
+Dispatch commitment:
+: The durable transition that consumes an operation's dispatch authority
+  and captures its associated resource exposure. Commitment does not
+  prove that an external effect occurred.
+
+Output release:
+: The authorized transfer of a result across a kernel trust boundary,
+  after the applicable output checks and durable release conditions.
+
+Execution profile:
+: The agreed set of enforcement and evidence requirements for a call.
+  A profile cannot weaken the artifact verification rules in this
+  document.
 
 Decision:
 : The outcome that a receipt records for a mediated call: `allow`,
@@ -381,8 +406,8 @@ Checkpoint:
 : A signed statement by a kernel that commits to a batch of receipts in
   a Merkle tree ({{checkpoints}}).
 
-Code-formatted words such as `expires_at` are protocol element names
-and values, which are case-sensitive. JSON is defined in {{RFC8259}}.
+Code-formatted words such as `expires_at` are protocol element names and
+values, which are case-sensitive. JSON is defined in {{RFC8259}}.
 
 # Protocol Overview {#overview}
 
@@ -415,17 +440,54 @@ The agent sends a call, with the token, to the kernel (2). The kernel
 verifies the token, evaluates policy, and, if both permit the call,
 dispatches it to the tool server (3). The kernel signs a receipt for the
 receipt-bearing outcome and records it (4). The illustrated native
-exchange returns that receipt with the result. Hosted MCP clients receive
-the result without the receipt, which an operator can query when retained
-by trust-control ({{hosted-tool-calls}}).
+exchange returns that receipt with the result. The hosted MCP binding
+returns the receipt in result metadata ({{hosted-tool-calls}}).
+Authorized consumers can query retained evidence through trust-control.
 
 The kernel is trusted to mediate the call path. It holds the key that
 signs receipts and the configuration of trusted issuer keys. The agent
 is untrusted: it can present any token it holds, and the kernel verifies
 each one. Preventing calls that bypass the kernel depends on deployment
 isolation and credential controls ({{security-tool-servers}}). A tool
-server role does not itself confer token-issuing authority. The trust-control service is
-trusted to issue and revoke tokens under the operator's policy.
+server role does not itself confer token-issuing authority. The
+trust-control service is trusted to issue and revoke tokens under the
+operator's policy.
+
+## Conformance and Feature Selection {#conformance}
+
+This document distinguishes artifact verification from kernel execution.
+An artifact verifier implements the encoding, signature, and semantic
+checks for the artifact types it accepts. It MUST identify unsupported
+schemas, algorithms, and required features as unsupported; it MUST NOT
+report them as successfully verified. A valid signature authenticates
+signed bytes under a key. Trust in that key and acceptance of the
+artifact's authority are separate checks.
+
+A conforming execution kernel implements capability verification,
+policy enforcement, receipts, and the durable lifecycle in
+{{execution-lifecycle}}. Budgets, governed transactions, authenticated
+attenuation, and checkpoints are feature profiles. A kernel that accepts
+a call requiring a feature MUST enforce that feature's complete
+requirements. Otherwise, it MUST reject the call before dispatch. It
+MUST NOT discard a constraint or substitute an advisory check for an
+enforcement requirement.
+
+Peers MUST establish the required features, signature policy, trusted
+identities, and transport binding before accepting execution requests.
+The native v1 binding uses authenticated deployment configuration; its
+wire version alone does not negotiate these features. The MCP binding
+uses its initialization exchange and trusted server policy. An
+agent-supplied feature list cannot lower that policy. A change that
+requires a new wire member or value MUST follow {{versioning}}.
+
+Confinement, credential custody, information-flow control, and active
+response extend the kernel's execution boundary. {{security-runtime}}
+defines their security requirements when selected by an execution
+profile. Their platform mechanisms and companion artifact formats are
+not additional wire formats implicitly negotiated by this document. An
+implementation MUST state which profiles it implements. Support for an
+artifact library or protocol adapter alone is not conformance as an
+execution kernel.
 
 ## Kernel Execution {#mediated-call}
 
@@ -453,35 +515,89 @@ Agent                      Kernel                       Tool server
 ~~~
 {: #fig-call title="One Native Kernel Execution"}
 
-The figure shows a receipt-bearing native exchange. The reference driver
-can buffer all output and sign the receipt before sending the first
-chunk; chunk delivery does not establish when the tool produced it.
+The figure shows a successful execution. A kernel can buffer output
+until finalization, or use a streaming release policy that enforces the
+output requirements below. Chunk boundaries describe delivery, not the
+time at which the tool produced the data.
 
-An ordinary receipt-bearing native call proceeds as follows:
+A native call proceeds as follows:
 
-1. The agent sends a `tool_call_request` that carries a capability
-   token, the target tool server and tool, and the call's parameters.
+1. The agent sends a `tool_call_request` with its capability token,
+   target, and parameters.
 
-2. The kernel verifies the token: its signature, its validity interval,
-   its delegation chain and any applicable attenuation proof, the revocation state of
-   the token and of each delegation ancestor, the grant that matches the
-   target, and a sender proof when the grant requires one
-   ({{capability-verification}}). The native request has no sender-proof
-   field, so a grant requiring that proof is denied on this binding.
+2. The kernel verifies the token, chain, validity interval, revocation
+   state, matching grant, required proofs, and local policy. The native
+   v1 request has no sender-proof field; a call requiring an explicit
+   sender proof is rejected on this binding.
 
-3. The kernel evaluates its guards for the call. When budgets apply, it
-   reserves the call's authorized exposure before dispatch ({{budgets}}).
+3. The kernel reserves applicable resources and resolves required
+   approvals. A pending approval does not authorize dispatch.
 
-4. If every check passes, the kernel dispatches the call. Output may
-   stream back to the agent as `tool_call_chunk` messages.
+4. The kernel commits dispatch authority and calls the tool server.
+   It evaluates the returned output under the selected release policy.
 
-5. On a receipt-bearing path, the kernel signs the outcome and returns
-   the receipt in the terminal `tool_call_response`. A failed check
-   prevents dispatch and ordinarily produces a denial receipt. The
-   signing, storage, malformed-authorization, and overload exceptions in
-   {{introduction}} can instead return an error without a receipt;
-   {{tool-call-results}} describes native diagnostic keys and response
-   failures.
+5. The kernel durably finalizes the operation and its receipt, then
+   returns the authorized result. {{execution-lifecycle}} specifies the
+   failure and recovery cases; {{tool-call-results}} defines the wire
+   outcomes.
+
+## Durable Execution Lifecycle {#execution-lifecycle}
+
+The kernel MUST bind the authenticated subject, capability digest,
+normalized target, parameters digest, selected policy, and required
+resource reservations to one logical operation. A retry, approval, or
+recovery message MUST NOT replace that binding with caller-supplied
+state. Concurrent processes sharing an authority domain MUST serialize
+consumption of its single-use authority and resource limits.
+
+Before dispatch, the kernel MUST verify current authority and acquire
+the required reservations. A reservation, successful evaluation, pending
+approval, or execution nonce is not permission for an independent caller
+to perform an external effect. Dispatch authority MUST be committed
+durably before a tool is permitted to execute. The commit MUST bind the
+operation to its executor and resource state. A stale process or expired
+ownership lease MUST NOT authorize a new transition.
+
+Before commitment, the kernel can cancel an operation and release its
+unconsumed reservations. After commitment, loss of a response or absence
+of evidence of an effect MUST NOT be treated as proof of non-execution.
+The kernel MUST preserve committed exposure until authenticated evidence
+and the applicable accounting rules authorize reconciliation. It MUST
+NOT automatically redispatch a committed operation, refund its exposure,
+or mint replacement single-use authority because a process restarted or
+a deadline elapsed. An uncertain effect is recorded as incomplete.
+
+Output MUST pass the applicable guards before crossing the agent-facing
+boundary. When a policy requires the complete result, the kernel MUST
+buffer it within configured limits before release. A streaming profile
+MUST define the unit of inspection and release; an unchecked prefix
+cannot be exposed and retroactively described as blocked. The kernel
+MUST durably record the release authorization and retain the evidence
+needed to finalize the operation before releasing protected output. A
+release record does not prove that the client received the bytes.
+
+Finalization MUST bind the original operation, accounting outcome, and
+receipt. Recovery MUST reuse that binding and any already-finalized
+receipt; it MUST NOT silently sign a different account of the same
+terminal outcome. If safe recovery cannot establish ownership or recover
+required state, the affected execution domain MUST remain unavailable. A
+missing or corrupt authority store MUST NOT be replaced with an empty
+store that restores consumed authority.
+
+Failures before sufficient authenticated context exists can produce only
+a transport error. A signing or storage failure can also prevent a
+receipt from being delivered. Such failures MUST NOT authorize dispatch
+or output release that requires the missing evidence. If an effect might
+already have occurred, the kernel MUST preserve an incomplete operation
+for reconciliation. It MUST NOT fabricate a successful receipt or use an
+untrusted emergency signing key.
+
+These rules provide durable execution authority, not a generic guarantee
+of exactly-once external effects. An external executor needs an
+authenticated operation binding and durable duplicate suppression, or a
+provider-specific idempotency and recovery contract. A client MUST NOT
+infer that a timed-out operation is safe to repeat from its transport
+status alone.
 
 ## Protocol Surfaces {#surfaces}
 
@@ -501,79 +617,116 @@ trust-control service, and then sends calls.
 
 # Encoding and Cryptography {#encoding}
 
-Chio signs typed JSON projections. A verifier reconstructs the projection
-specified for that artifact, canonicalizes it, and verifies its signature.
-It does not sign the original transport bytes, whitespace, or unknown
-members discarded during typed parsing. Consumers therefore distinguish
-authenticated fields from other data in the incoming envelope.
+Chio signs typed JSON projections. A verifier reconstructs the
+projection specified for that artifact, canonicalizes it, and verifies
+its signature. It does not sign the original transport bytes,
+whitespace, or unknown members discarded during typed parsing. Consumers
+therefore distinguish authenticated fields from other data in the
+incoming envelope.
 
 ## Canonical JSON {#canonical-json}
 
 Canonical bytes are UTF-8. Object members are ordered lexicographically
 by their UTF-16 code-unit sequences; a proper prefix sorts first. Arrays
-retain order. The encoding emits no whitespace between tokens. It escapes
-quotation marks, reverse solidus, and U+0000 through U+001F, using the
-short escapes for backspace, form feed, line feed, carriage return, and tab.
-Other control escapes use four lowercase hexadecimal digits. Other Unicode
-characters are emitted without normalization.
+retain order. The encoding emits no whitespace between tokens. It
+escapes quotation marks, reverse solidus, and U+0000 through U+001F,
+using the short escapes for backspace, form feed, line feed, carriage
+return, and tab. Other control escapes use four lowercase hexadecimal
+digits. Other Unicode characters are emitted without normalization.
 
-Floating-point values use the shortest round-trip decimal representation.
-Negative zero becomes `0`. Values with magnitude at least 0.000001 and
-less than 1e21 use decimal notation; other nonzero values use exponent
-notation, with `+` on a non-negative exponent. Non-finite values cannot
-be encoded. These rules follow {{RFC8785}}.
+Floating-point values use the shortest round-trip decimal
+representation. Negative zero becomes `0`. Values with magnitude at
+least 0.000001 and less than 1e21 use decimal notation; other nonzero
+values use exponent notation, with `+` on a non-negative exponent.
+Non-finite values cannot be encoded. These rules follow {{RFC8785}}.
 
 The v1 typed encoding additionally preserves signed 64-bit and unsigned
 64-bit integer values as exact decimal integers. It does not round those
-values to binary64. For example, `9007199254740993` remains those decimal
-digits. This compatibility rule differs from unrestricted application of
-RFC 8785's I-JSON number model. An implementation using only binary64
-numbers cannot verify such an artifact after rounding its integer fields.
-For interoperable inputs within the shared I-JSON domain, the encodings
-agree. Producers can keep integers within the safe binary64 range when
-interacting with consumers that cannot preserve full-width integers.
+values to binary64. For example, `9007199254740993` remains those
+decimal digits. This compatibility rule differs from unrestricted
+application of RFC 8785's I-JSON number model. An implementation using
+only binary64 numbers cannot verify such an artifact after rounding its
+integer fields. For interoperable inputs within the shared I-JSON
+domain, the encodings agree. Producers can keep integers within the safe
+binary64 range when interacting with consumers that cannot preserve
+full-width integers.
 
-Duplicate-member handling and unknown-member rejection belong to the
-artifact parser. The typed compatibility path does not provide universal
-duplicate-member rejection. An application requiring rejection at ingress
-uses a strict JSON parser before constructing its typed object. This
-document does not turn that stricter profile into a claim about every
-v1 decoder.
+Receivers MUST validate the original UTF-8 input before constructing a
+typed object. They MUST reject duplicate object member names at every
+nesting level, including duplicates written with different JSON escape
+sequences. Parsing into a map and checking afterward is insufficient.
+Receivers MUST reject invalid Unicode, non-finite numbers, out-of-range
+integers, and conversions that round or truncate a signed field. Signed
+integer fields MUST use decimal integer tokens without a fraction or
+exponent; their full declared range MUST be preserved. An unsigned field
+MUST NOT accept a negative spelling, including negative zero. These
+requirements apply to network input, persisted signed records, imports,
+and nested signed envelopes.
+
+Unsigned application parameters may contain ordinary JSON floating-point
+values. Their canonical representation, rather than their source
+spelling, is hashed. A receiver MUST NOT apply an integer-only
+restriction to an arbitrary JSON field. Where a protocol specifies exact
+canonical bytes, the receiver MUST additionally compare the original
+bytes with the canonical encoding.
+
+Each artifact specifies the fields covered by its signature. Unknown
+members MUST NOT confer authority or satisfy a required feature. A
+closed schema rejects them; an explicitly extensible metadata object
+retains them in the signed projection. A verifier MUST NOT silently drop
+a recognized security constraint to make an artifact verify.
 
 ## Hashing {#hashing}
 
 Unless a structure specifies a domain prefix or Merkle construction,
-Chio uses SHA-256 over the specified bytes {{FIPS180-4}}. Content-addressed receipt
-identifiers and scope hashes are lowercase hexadecimal strings without
-`0x`. Capability and other application-assigned identifiers are strings;
-they are not required to be hashes. Merkle hashes are serialized as `0x` followed by 64 lowercase
+Chio uses SHA-256 over the specified bytes {{FIPS180-4}}.
+Content-addressed receipt identifiers and scope hashes are lowercase
+hexadecimal strings without `0x`. Capability and other
+application-assigned identifiers are strings; they are not required to
+be hashes. Merkle hashes are serialized as `0x` followed by 64 lowercase
 hexadecimal digits. A hash of canonical JSON means the hash of its UTF-8
 bytes, rather than a hash of an application language's object storage.
 
 ## Signature Suites {#signature-suites}
 
 This document defines Ed25519 {{RFC8032}}, ECDSA P-256 with SHA-256,
-ECDSA P-384 with SHA-384 {{FIPS186-5}}, and a composite of each classical
-suite with ML-DSA-65 {{FIPS204}}. ECDSA signatures use ASN.1 DER
-encoding {{RFC3279}}. ML-DSA-65 uses an empty context string. Composite
-verification requires both components over identical message bytes and
-matching encoded algorithm sets.
+ECDSA P-384 with SHA-384 {{FIPS186-5}}, and a composite of each
+classical suite with ML-DSA-65 {{FIPS204}}. ECDSA signatures use ASN.1
+DER encoding {{RFC3279}}. ML-DSA-65 uses an empty context string.
+Composite verification requires both components over identical message
+bytes and matching encoded algorithm sets.
 
 A verifier dispatches from the parsed key and signature material. It
 MUST reject a key/signature algorithm mismatch. A composite verifier
 MUST reject a different algorithm set on the key and signature, an
-invalid component pairing, or either failed component signature.
-An unsupported suite fails verification. Capability and receipt v1
+invalid component pairing, or either failed component signature. An
+unsupported suite fails verification. Capability and receipt v1
 verification uses ordinary Ed25519 verification; it does not imply the
 additional weak-key checks of a strict-verification profile.
 
 Cryptographic floors are `allow_classical`, `allow_hybrid`, and
 `pq_required`. They respectively accept classical suites only, classical
 or composite suites, and composite suites only. A floor-aware verifier
-MUST reject an artifact disallowed by the configured floor. On artifacts with
-an `algorithm` envelope hint, it also rejects a present hint inconsistent
-with the signature encoding. A missing hint does not override a
-self-describing signature.
+MUST reject an artifact disallowed by the configured floor. On artifacts
+with an `algorithm` envelope hint, it also rejects a present hint
+inconsistent with the signature encoding. A missing hint does not
+override a self-describing signature unless the artifact explicitly
+defines a legacy default. Approval tokens and threshold proposals
+interpret an absent hint as Ed25519. A verifier MUST apply the rules of
+the artifact it is verifying rather than infer a different default from
+another artifact.
+
+An execution profile MUST select its accepted suites through trusted
+configuration. That policy applies to every required signature,
+including capabilities, approval proposals, votes, receipts, and
+recovery evidence. The allowed sets can differ by signer role, but an
+artifact cannot select its own lower floor. A signer MUST check that the
+backend's returned key and algorithm match the requested signing
+identity and that the produced signature verifies. It MUST NOT fall back
+to a weaker backend after a signing failure. Receipt signing, error
+paths, and recovery MUST use the configured receipt authority. Persisted
+terminal receipts are replayed as original signed envelopes, even when a
+suite can produce multiple valid signatures for the same message.
 
 ## Key and Signature Encodings {#key-encoding}
 
@@ -595,12 +748,26 @@ The classical component retains its own prefix when it is ECDSA. The
 algorithm set is exactly `ed25519+mldsa65`, `p256+mldsa65`, or
 `p384+mldsa65`. ML-DSA-65 public keys occupy 1952 octets and signatures
 3309 octets. Components are separated from the right, since an ECDSA
-classical encoding contains a colon. Composites cannot nest. This version
-defines no standalone ML-DSA wire encoding.
+classical encoding contains a colon. Composites cannot nest. This
+version defines no standalone ML-DSA wire encoding.
 
 Producers emit lowercase hexadecimal and no `0x` on classical material.
 Classical decoders also accept uppercase hexadecimal and an optional
-`0x`; typed serialization normalizes those spellings before verification.
+`0x`; typed serialization normalizes those spellings before
+verification.
+
+### Bounded Cryptographic Decoding {#crypto-bounds}
+
+A decoder MUST bound encoded lengths before allocation and decoding.
+Ed25519 keys and signatures contain exactly 32 and 64 octets. P-256 and
+P-384 public keys contain exactly 65 and 97 octets; their DER signatures
+are at most 72 and 104 octets respectively. An ECDSA verifier MUST
+reject non-DER encodings, trailing data, and invalid scalar or point
+values. ML-DSA-65 components contain exactly 1952 public-key octets or
+3309 signature octets. A composite contains exactly one permitted
+classical component and one ML-DSA-65 component; recursive composites
+are invalid. A length-valid encoding still requires full cryptographic
+verification.
 
 ## Artifact Signing Inputs {#signing-input}
 
@@ -609,20 +776,21 @@ schema and exclude their signature and algorithm hint. Receipts sign a
 wrapper containing the computed identifier and identity projection.
 Delegation links, approvals, child receipts, and checkpoints use their
 own body projections. Aggregate budget roots add a domain prefix.
-Copying a signing rule from one artifact to another is not valid.
-The relevant sections define the exact bytes.
+Copying a signing rule from one artifact to another is not valid. The
+relevant sections define the exact bytes.
 
 ## Chio Key Identifiers {#did-chio}
 
-The `did:chio` form in this version is `did:chio:` followed by the
-64 lowercase hexadecimal characters of an Ed25519 public key. It does
-not encode an ECDSA or composite key. Resolution constructs a local
-key document; it does not perform an online trust lookup. The key method
+The `did:chio` form in this version is `did:chio:` followed by the 64
+lowercase hexadecimal characters of an Ed25519 public key. It does not
+encode an ECDSA or composite key. Resolution constructs a local key
+document; it does not perform an online trust lookup. The key method
 identifier is the DID plus `#key-1`, with type
 `Ed25519VerificationKey2020`. Its `publicKeyMultibase` is `z` followed
-by base58btc of `0xed 0x01` and the raw key. Authentication and assertion
-references identify that method. Knowing the DID does not establish
-permission to issue capabilities or sign receipts for an operator.
+by base58btc of `0xed 0x01` and the raw key. Authentication and
+assertion references identify that method. Knowing the DID does not
+establish permission to issue capabilities or sign receipts for an
+operator.
 
 # Capability Tokens {#capabilities}
 
@@ -653,24 +821,24 @@ the kernel can dispatch a request.
 The signing input is one flattened object containing every typed member
 above except `algorithm` and `signature`, with the same omission rules.
 The `schema` member is included and equals `chio.capability.v1`, even
-when omitted by an older wire producer. There is no byte prefix.
-The issuer MUST reject a signing operation whose actual key differs
-from `issuer`. {{example-capability}} gives exact generated bytes.
+when omitted by an older wire producer. There is no byte prefix. The
+issuer MUST reject a signing operation whose actual key differs from
+`issuer`. {{example-capability}} gives exact generated bytes.
 
-For compatibility, verification can retry the body without `schema`
-only for a plain v1 token: no caveats, no nonempty `scope_attenuations`,
-no attenuation proof, no budget share, no aggregate budget, and no
+For compatibility, verification can retry the body without `schema` only
+for a plain v1 token: no caveats, no nonempty `scope_attenuations`, no
+attenuation proof, no budget share, no aggregate budget, and no
 cumulative-approval constraint. A delegation chain alone does not
 disable this fallback. New signing uses the schema-aware projection.
 Other schema values fail validation.
 
 ## Scope and Grants {#scope-and-grants}
 
-A scope has `grants` (tool grants), `resource_grants`, and `prompt_grants`.
-Each array defaults to empty and is omitted when empty. An empty scope
-is `{}`. Operations are `invoke`, `read_result`, `read`, `subscribe`,
-`get`, and `delegate`. An operation name is not proof that a runtime
-implements an enforcement point for it.
+A scope has `grants` (tool grants), `resource_grants`, and
+`prompt_grants`. Each array defaults to empty and is omitted when empty.
+An empty scope is `{}`. Operations are `invoke`, `read_result`, `read`,
+`subscribe`, `get`, and `delegate`. An operation name is not proof that
+a runtime implements an enforcement point for it.
 
 ### Tool Grants {#tool-grants}
 
@@ -687,7 +855,8 @@ count, each descending; ties keep the original grant index. A constraint
 evaluation error on a target-matching grant aborts resolution rather
 than allowing a less specific grant to hide that error. The portable
 tool profile selects the first match. The hosted kernel can try matched
-grants in order through governance, policy, runtime, and budget admission.
+grants in order through governance, policy, runtime, and budget
+admission.
 
 ### Resource Grants {#resource-grants}
 
@@ -748,10 +917,9 @@ dot with only ASCII alphanumerics, dots, and hyphens after extraction.
 Governed constraints are defined in {{intent-constraints}}. Other
 constraint families require an explicitly supported runtime profile.
 When constraint evaluation encounters an unsupported constraint, the
-portable kernel MUST fail grant resolution.
-A marker that a hosted matcher defers to a guard is not evidence that
-the guard enforced it. {{implementation-status}} identifies that
-profile boundary.
+portable kernel MUST fail grant resolution. A marker that a hosted
+matcher defers to a guard is not evidence that the guard enforced it.
+{{implementation-status}} identifies that profile boundary.
 
 ## Sender Constraint {#sender-constraint}
 
@@ -759,11 +927,11 @@ The Chio invocation proof object below is distinct from the hosted HTTP
 DPoP proof. The native `tool_call_request` has no field carrying it; the
 ordinary session bridge supplies no invocation proof. Hosted HTTP sender
 proof authenticates the edge session and is not forwarded as this kernel
-invocation proof. A grant requiring invocation-level DPoP therefore needs
-a surface that carries the object; neither transport silently supplies it.
+invocation proof. A grant requiring invocation-level DPoP therefore
+needs a surface that carries the object; neither transport silently
+supplies it.
 
-
-When any matching tool grant has `dpop_required: true`, the hosted
+ When any matching tool grant has `dpop_required: true`, the hosted
 kernel requires a valid proof before invocation. The native proof is
 `{body,signature}`. Its body has `schema` (`chio.dpop_proof.v1`),
 `capability_id`, `tool_server`, `tool_name`, `action_hash`, `nonce`,
@@ -775,8 +943,8 @@ distinct from the HTTP-method and URI JWT binding in {{RFC9449}}.
 The kernel checks schema, subject key, capability/server/tool/action
 bindings, freshness, signature, and nonce replay state. The default
 freshness window is 300 seconds with 30 seconds future-clock allowance;
-the expiration comparison is inclusive. The nonce's replay identity
-is `(nonce, capability_id)` and is retained through its signed expiry.
+the expiration comparison is inclusive. The nonce's replay identity is
+`(nonce, capability_id)` and is retained through its signed expiry.
 Preview and dispatch revalidation can be stateless; dispatch credential
 reservation reserves the nonce. A required proof with unavailable replay
 state fails closed. Hosted HTTP sender constraint is a separate binding
@@ -788,16 +956,16 @@ A delegation link requires `capability_id`, `delegator`, `delegatee`,
 `timestamp`, and `signature`. It includes `attenuations` when nonempty,
 and `scope_hash`, `aggregate_budget`, and `cumulative_approval` when
 present. The delegator signs canonical JSON of those typed fields except
-`signature`; there is no schema member or domain prefix. The signer
-has to match `delegator`.
+`signature`; there is no schema member or domain prefix. The signer has
+to match `delegator`.
 
-A chain verifier checks each link's signature, adjacent key connectivity,
-nondecreasing timestamps, and final delegatee equal to the token subject.
-A configured maximum depth is also enforced. A portable verifier has no
-universal default depth limit. The hosted kernel additionally validates
-stored parent snapshots, delegator authority, validity windows, expiry
-narrowing, and delegation permissions. It checks revocation for the
-token and every named ancestor.
+A chain verifier checks each link's signature, adjacent key
+connectivity, nondecreasing timestamps, and final delegatee equal to the
+token subject. A configured maximum depth is also enforced. A portable
+verifier has no universal default depth limit. The hosted kernel
+additionally validates stored parent snapshots, delegator authority,
+validity windows, expiry narrowing, and delegation permissions. It
+checks revocation for the token and every named ancestor.
 
 ## Attenuation {#attenuation}
 
@@ -816,9 +984,8 @@ are beside `type`, rather than nested inside a `value` member:
 {: #tab-attenuation-variants title="Signed Attenuation Variants"}
 
 Target names are strings; `operation`, `constraint`, and monetary
-amounts use the types defined above. Unknown variants fail parsing.
-The compatibility decoder can discard unknown variant members, which
-therefore supply no authenticated authority.
+amounts use the types defined above. A receiver MUST reject unknown
+variants and unknown members within a variant.
 
 A cumulative-approval constraint in a child scope MUST preserve the
 parent's approval-budget identifier, epoch, currency, and canonically
@@ -826,32 +993,73 @@ equal root binding, or have both root bindings absent. Its threshold
 MUST NOT exceed the parent's threshold. A child MUST NOT introduce a
 cumulative-approval marker absent from its covering parent grant.
 
-
-Every child grant fits a parent grant of the same kind. For tools, the
+ Every child grant fits a parent grant of the same kind. For tools, the
 parent covers the child server and tool, child operations are contained,
 parent constraints remain present, invocation and monetary caps remain
-or narrow, and `dpop_required: true` remains true. Monetary caps preserve
-currency. Constraint preservation uses equality except the supported
-cumulative-approval narrowing rule in {{governed-transactions}}.
-Resource and prompt narrowing use their pattern-coverage rules. Delegating
-authority additionally requires a covering parent grant with `delegate`.
+or narrow, and `dpop_required: true` remains true. Monetary caps
+preserve currency. Constraint preservation uses equality except the
+supported cumulative-approval narrowing rule in
+{{governed-transactions}}. Resource and prompt narrowing use their
+pattern-coverage rules. Delegating authority additionally requires a
+covering parent grant with `delegate`.
 
 The attenuation proof uses camelCase members `parentScopeHash`,
 `childScopeHash`, and `normalizedSubsetProof`. The witness contains
 `normalizedParentScope` and `normalizedChildScope` (JSON strings),
 `subsetRelations` and `restrictedPredicates` when nonempty, and
 `aggregateBudget` and `cumulativeApproval` when present. A relation has
-`grantKind`, `childIndex`, `parentIndex`, and boolean `subset`.
-Scope hashes are SHA-256 of the canonical typed scope bytes. Array order
-is preserved; normalization does not sort grants or operations.
+`grantKind`, `childIndex`, `parentIndex`, and boolean `subset`. Scope
+hashes are SHA-256 of the canonical typed scope bytes. Array order is
+preserved; normalization does not sort grants or operations.
 
 The verifier hashes the supplied scope strings, parses both scopes, and
-recomputes actual grant subset relationships. It rejects a false declared
-subset relation, child-hash mismatch, or a widened actual scope. Relation
-indices and textual restricted-predicate descriptions are not independent
+requires both strings to be exact canonical JSON and recomputes actual
+grant subset relationships. It rejects a false declared subset relation,
+child-hash mismatch, or a widened actual scope. Relation indices and
+textual restricted-predicate descriptions are not independent
 authorization evidence. The token's `scope_attenuations` is signed but
-does not substitute for recomputing the subset. Nonempty caveats fail
-closed in this version; this document defines no caveat evaluator.
+does not substitute for recomputing the subset. The only supported
+caveat in this document is the security-context binding below. A
+verifier MUST reject other caveat kinds and a token containing more than
+one security-context binding.
+
+### Authenticated Security Context {#capability-security-context}
+
+A capability can bind its authority to an authenticated runtime context
+through a caveat whose `kind` is `bind_security_context`. Its
+`predicate` is a string containing the exact canonical JSON of the
+following object. The caveat MUST NOT carry a detached `sig`; the
+capability signature covers the complete caveat.
+
+| Member | Type and meaning |
+|---|---|
+| `schema` | `chio.capability-security-binding.v1` |
+| `tenantId` | Tenant identity |
+| `lineageId` | Capability lineage identity |
+| `sessionId` | Authenticated session identity |
+| `principalId` | Authenticated principal identity |
+| `isolationEpochId` | Isolation epoch identity |
+| `contextGeneration` | Positive unsigned 64-bit context generation |
+| `workloadId` | Workload identity |
+| `serverId` | Tool-server identity |
+| `workloadSignerPublicKey` | Workload signing key ({{key-encoding}}) |
+{: #tab-security-binding title="Capability Security Context"}
+
+All members are REQUIRED. All identities are nonempty strings without
+leading or trailing whitespace or control characters. Unknown members
+are invalid. The receiver MUST validate the predicate's original bytes,
+require exact canonical encoding, validate the key, and compare every
+member with independently authenticated runtime context. A caller's
+unsigned assertion of the same identifiers is insufficient.
+
+An execution kernel MUST reject a context-bound call if it cannot obtain
+that trusted context or if any member differs. Protocol adapters MUST
+preserve the binding through dispatch; they MUST NOT remove the caveat
+to obtain compatibility with a weaker evaluator. A new session,
+principal, tenant, workload, or isolation epoch does not inherit
+authority merely because it presents an old token. Delegation requiring
+a different binding needs explicit authorization from the trusted issuer
+and a new valid token.
 
 ## Chain Binding {#chain-binding}
 
@@ -878,10 +1086,11 @@ Root scope hash             Parent scope hash       Child scope hash
 
 Portable full verification checks, in order: peer profile validity;
 issuer trust; optional-feature negotiation; algorithm-hint consistency
-and cryptographic floor; schema and signature; time; supplied direct-root
-capability, if present; aggregate and cumulative budget bindings; chain shape; chain
-binding; and sibling-share admission. Time is valid exactly when
-`issued_at <= now < expires_at`, with no capability clock-skew allowance.
+and cryptographic floor; schema and signature; time; supplied
+direct-root capability, if present; aggregate and cumulative budget
+bindings; chain shape; chain binding; and sibling-share admission. Time
+is valid exactly when `issued_at <= now < expires_at`, with no
+capability clock-skew allowance.
 
 Failures deny admission. They distinguish untrusted issuer, invalid
 signature, rejected cryptographic floor, not-yet-valid, expired,
@@ -899,44 +1108,50 @@ verified earlier is not exempt from later revocation or changed state.
 ## Feature Negotiation {#feature-negotiation}
 
 A capability-feature profile is
-`{"schema":"chio.capabilities.v1","features":{"name":true}}`.
-`schema` defaults to this value on parsing and is always serialized; an
-empty `features` map is omitted. Unknown envelope members are rejected.
+`{"schema":"chio.capabilities.v1","features":{"name":true}}`. `schema`
+defaults to this value on parsing and is always serialized; an empty
+`features` map is omitted. Unknown envelope members are rejected.
 Feature names contain 1 to 96 ASCII bytes from `[a-z0-9_.-]`; values are
 booleans. The flags relevant here are `delegation_chain_binding`,
 `aggregate_invocation_budget`, `cumulative_approval_budget`, and
-`threshold_governed_approvals`. Other defined flags describe companion
-profiles and do not establish support for this document's checks.
+`threshold_governed_approvals`, `governed_active_response_plan`, and
+`opaque_supplemental_authorization`. The last two select a response-plan
+validator or an installed supplemental-authorization verifier;
+preserving an opaque object does not verify it or authorize execution.
 
 The intersection of two valid profiles contains true only when both
 sides declare true, false when either explicitly declares false, and
 omits a flag declared true by only one side. The chain-binding rule's
 absent-flag compatibility default still applies to that intersection.
 
-
-Optional-feature negotiation can gate chain binding, aggregate invocation
-budgets, cumulative approval, and threshold approval. An absent chain-
-binding flag defaults to enabled; explicitly disabling it rejects tokens
-that require it. A feature flag describes supported validation behavior,
-not permission to skip a constraint whose evaluation is unsupported. The
-reference local kernel configures this profile locally; the separately
-specified federation handshake carries signed capability negotiation and
-a pinned intersection. MCP initialization advertises its own transport
-features, not the complete `chio.capabilities.v1` negotiation object.
+ Before an invocation crosses an adapter, the adapter MUST check support
+for every required feature against the host-authenticated peer profile.
+Invocation metadata MUST NOT supply that profile. The adapter MUST NOT
+strip approval artifacts, aggregate limits, or supplemental
+authorization to make a request acceptable to an unsupported receiver.
+An absent chain- binding flag defaults to enabled; explicitly disabling
+it rejects tokens that require it. A feature flag describes supported
+validation behavior, not permission to skip a constraint whose
+evaluation is unsupported. The local kernel configures this profile
+through trusted deployment state; the separately specified federation
+handshake carries signed capability negotiation and a pinned
+intersection. MCP initialization advertises its own transport features,
+not the complete `chio.capabilities.v1` negotiation object.
 
 # Receipts {#receipts}
 
-A receipt binds a kernel key to a recorded outcome. Its signature permits
-a verifier to detect changes to the signed record. The verifier separately
-decides whether to trust that key and what authority the recorded boundary
-supports. A trace of an observed call does not establish that the kernel
-authorized that call.
+A receipt binds a kernel key to a recorded outcome. Its signature
+permits a verifier to detect changes to the signed record. The verifier
+separately decides whether to trust that key and what authority the
+recorded boundary supports. A trace of an observed call does not
+establish that the kernel authorized that call.
 
 ## Receipt Structure {#receipt-structure}
 
 The receipt is one JSON object. It has no top-level `schema` member.
-`chio.receipt.v1` names the artifact and signing projection, rather than a
-field to insert into the wire object. All names below are case-sensitive.
+`chio.receipt.v1` names the artifact and signing projection, rather than
+a field to insert into the wire object. All names below are
+case-sensitive.
 
 | Field | Type | Presence |
 |---|---|---|
@@ -963,23 +1178,28 @@ field to insert into the wire object. All names below are case-sensitive.
 | `signature` | Encoded signature | Always |
 {: #tab-receipt-fields title="Receipt Fields"}
 
-The action has `parameters` (any JSON value) and `parameter_hash`.
-The latter is lowercase hexadecimal SHA-256 of the canonical parameters.
-An actor has `actor_id` and, when supplied, `actor_kind`. Guard evidence
+The action has `parameters` (any JSON value) and `parameter_hash`. The
+latter is lowercase hexadecimal SHA-256 of the canonical parameters. An
+actor has `actor_id` and, when supplied, `actor_kind`. Guard evidence
 has `guard_name`, `verdict` (boolean), and, when supplied, `details`.
-`policy_hash` identifies the evaluated policy; a symbolic policy identifier
-is also representable, so this field is not necessarily a SHA-256 digest.
+`policy_hash` identifies the evaluated policy; a symbolic policy
+identifier is also representable, so this field is not necessarily a
+SHA-256 digest.
 
-`tool_origin` is `caller_executed`, `host_executed_provider_reported`, or
-`host_executed_unmediated`. `redaction_mode` is `none`, `summary`, or
-`redacted`. The origin describes the execution path; it does not change
-the boundary's authority. Redaction describes the producer's representation
-of the record, not permission to modify an already signed receipt.
+`tool_origin` is `caller_executed`, `host_executed_provider_reported`,
+`host_executed_unmediated`, or `chio_internal`. The last class
+identifies an operation executed within Chio's trusted runtime; it does
+not confer additional authority or change the receipt's decision
+semantics. `redaction_mode` is `none`, `summary`, or `redacted`. The
+origin describes the execution path; it does not change the boundary's
+authority. Redaction describes the producer's representation of the
+record, not permission to modify an already signed receipt.
 
 ## Receipt Kinds and Boundaries {#receipt-kinds}
 
 The kernel or other producer MUST check the following coherence rules
-before signing. A receipt verifier MUST reject a record that violates them.
+before signing. A receipt verifier MUST reject a record that violates
+them.
 
 | Kind | Boundary | Trust | Outcome member |
 |---|---|---|---|
@@ -991,8 +1211,8 @@ before signing. A receipt verifier MUST reject a record that violates them.
 A mediated receipt carries a decision and no observation outcome. A
 non-mediated receipt carries an observation outcome and no decision.
 Observation outcomes are `observed`, `evaluated`, and `dropped`.
-`cannot_see` is not a signable receipt boundary in this version.
-The word `verified` in a trust label describes the observation class; it
+`cannot_see` is not a signable receipt boundary in this version. The
+word `verified` in a trust label describes the observation class; it
 does not prove preventive enforcement.
 
 ## Decisions {#decisions}
@@ -1005,41 +1225,41 @@ Decisions are JSON objects tagged by `verdict`:
 * `incomplete`: `reason`, a string.
 
 An allow decision establishes authorization only inside a coherent
-`mediated_decision` receipt, under a trusted kernel key. Denied, canceled,
-and incomplete outcomes do not authorize the call. An incomplete outcome
-preserves uncertainty about execution; it is not a statement that nothing
-happened. An observation or advisory receipt never substitutes for an
-allow decision at a preventive boundary.
+`mediated_decision` receipt, under a trusted kernel key. Denied,
+canceled, and incomplete outcomes do not authorize the call. An
+incomplete outcome preserves uncertainty about execution; it is not a
+statement that nothing happened. An observation or advisory receipt
+never substitutes for an allow decision at a preventive boundary.
 
 ## Content Binding {#content-hash}
 
 For a mediated value result, the kernel hashes canonical JSON of the
 evaluated output. For an ordinary, non-redacted call with no output, it
-hashes the four UTF-8 bytes `null`. For a stream, it first hashes each chunk's canonical data;
-then it hashes the concatenation of those lowercase hexadecimal digests,
-in chunk order, without separators. The concatenated values are ASCII
-hexadecimal strings, not raw 32-octet digests. Stream metadata records
-chunk hashes, count, and canonical byte count. A delivery-mismatch denial
-uses the distinct redacted commitment
-`H(UTF8("chio.delivery-mismatch.redacted.v1") || 0x00 || ASCII(expected_digest))`
-and omits public stream metadata. A verifier MUST select that producer
-profile before comparing the content binding.
+hashes the four UTF-8 bytes `null`. For a stream, it first hashes each
+chunk's canonical data; then it hashes the concatenation of those
+lowercase hexadecimal digests, in chunk order, without separators. The
+concatenated values are ASCII hexadecimal strings, not raw 32-octet
+digests. Stream metadata records chunk hashes, count, and canonical byte
+count. A delivery-mismatch denial uses the distinct redacted commitment
+`H(UTF8("chio.delivery-mismatch.redacted.v1") || 0x00 ||
+ASCII(expected_digest))` and omits public stream metadata. A verifier
+MUST select that producer profile before comparing the content binding.
 
-When the kernel holds the evaluated output, it MUST recompute its content
-hash before signing. A pre-filled hash that does not match is rejected.
-A trusted-body relay can sign a record supplied by a trusted producer
-when it does not hold that output. That seam preserves producer trust;
-it does not provide an independent check of the content.
+When the kernel holds the evaluated output, it MUST recompute its
+content hash before signing. A pre-filled hash that does not match is
+rejected. A trusted-body relay can sign a record supplied by a trusted
+producer when it does not hold that output. That seam preserves producer
+trust; it does not provide an independent check of the content.
 
-Different observation producers can bind different content preimages.
-A verifier therefore needs the producer's content profile and the actual
+Different observation producers can bind different content preimages. A
+verifier therefore needs the producer's content profile and the actual
 content to check `content_hash`; the signature alone does not perform
 this check.
 
 ## Receipt Identifier {#receipt-identifier}
 
-Let `J(x)` be the canonical JSON UTF-8 encoding in {{canonical-json}} and
-let `H(x)` be lowercase hexadecimal SHA-256. Construct the identity
+Let `J(x)` be the canonical JSON UTF-8 encoding in {{canonical-json}}
+and let `H(x)` be lowercase hexadecimal SHA-256. Construct the identity
 projection `I` from all typed receipt fields except `id`, `algorithm`,
 `signature`, and the selective-disclosure extension signature. Preserve
 the omission rules of {{receipt-structure}}. The identifier is:
@@ -1051,12 +1271,13 @@ id = H(J(I))
 Thus the kernel key, decision, content binding, action, evidence,
 attribution, metadata, and tenant are bound into the identifier. Field
 order in an incoming JSON object does not affect it. Unknown members
-discarded by a typed parser are outside this projection; consumers cannot
-infer that such members were authenticated. Extensions that change the
-projection need a separately defined profile. A base-profile consumer
-MUST reject `bbs_projection_version` or `bbs_signature`, or route the
-object to the separately defined selective-disclosure profile. This
-document does not define that extension's projection or signing wrapper.
+discarded by a typed parser are outside this projection; consumers
+cannot infer that such members were authenticated. Extensions that
+change the projection need a separately defined profile. A base-profile
+consumer MUST reject `bbs_projection_version` or `bbs_signature`, or
+route the object to the separately defined selective-disclosure profile.
+This document does not define that extension's projection or signing
+wrapper.
 
 ## Signing {#receipt-signing}
 
@@ -1065,10 +1286,10 @@ signing nonce if the pre-binding identifier is nonempty; compute the
 content-addressed identifier; then sign the wrapper below. The nonce is
 the trimmed pre-binding identifier. It is placed in
 `metadata.chio_receipt_signing_nonce`, replacing an existing value.
-Absent metadata becomes an object. Non-object metadata is preserved under
-`original_metadata` before the nonce is inserted. An empty pre-binding
-identifier does not insert a nonce. A verifier cannot assume every
-receipt carries one.
+Absent metadata becomes an object. Non-object metadata is preserved
+under `original_metadata` before the nonce is inserted. An empty
+pre-binding identifier does not insert a nonce. A verifier cannot assume
+every receipt carries one.
 
 Without selective-disclosure extension material, the signature input is
 exactly the canonical UTF-8 encoding of:
@@ -1082,15 +1303,15 @@ The kernel MUST reject a signing operation whose actual key differs from
 the embedded `kernel_key`. The signature covers the wrapper, not the
 wire envelope or the identity projection by itself. The optional
 `algorithm` hint is outside the signed projection. {{key-encoding}}
-defines the self-describing signature encodings. {{examples}} contains
-a generated receipt and its exact signing input.
+defines the self-describing signature encodings. {{examples}} contains a
+generated receipt and its exact signing input.
 
 ## Receipt Lineage {#receipt-lineage}
 
 An ordinary receipt has no top-level DAG ordinal, parent set, or hybrid
 logical clock. A governed call carries pairwise continuation information
-inside signed metadata, as specified in {{call-chain-continuation}}.
-A separate lineage statement can connect parent and child receipts.
+inside signed metadata, as specified in {{call-chain-continuation}}. A
+separate lineage statement can connect parent and child receipts.
 Multiple verified statements can describe multiple parents; this does
 not make generic receipt signature verification a DAG validator.
 
@@ -1126,16 +1347,16 @@ Operation kinds are `tool_call`, `create_message`, `create_elicitation`,
 `list_roots`, `list_resources`, `read_resource`,
 `list_resource_templates`, `list_prompts`, `get_prompt`, `complete`,
 `list_capabilities`, and `heartbeat`. The `terminal_state` is tagged by
-`state`: `completed`, `cancelled` with a string `reason`, or `incomplete`
-with a string `reason`.
+`state`: `completed`, `cancelled` with a string `reason`, or
+`incomplete` with a string `reason`.
 
 The child signature covers canonical JSON of its body, including `id`
 and excluding `algorithm` and `signature`. It has no ordinary receipt
 wrapper or signing nonce. A successful child outcome hashes canonical
 JSON of `{"outcome":"result","result":value}`; an error hashes
-`{"outcome":"error","message":text}`. An ordinary operation error
-can be a completed child operation. Child completion therefore does not
-mean that its result succeeded or was authorized. A child verifier MUST
+`{"outcome":"error","message":text}`. An ordinary operation error can be
+a completed child operation. Child completion therefore does not mean
+that its result succeeded or was authorized. A child verifier MUST
 verify the canonical child body under its embedded signing key, and a
 consumer accepting it as evidence MUST separately authorize that signer
 and apply any configured cryptographic floor. It MUST NOT apply the
@@ -1157,38 +1378,40 @@ the distinct preimage and checks in {{child-receipts}}:
 4. Check whether the kernel key belongs to the verifier's configured
    trusted set. A self-consistent record signed by an untrusted key is
    not accepted as evidence of that verifier's kernel.
-5. If checking action integrity, recompute `parameter_hash` from
-   `action.parameters`. If checking content integrity, obtain the output
-   and its producer profile, then recompute its content binding.
+5. Recompute `parameter_hash` from `action.parameters` and reject a
+   mismatch. Before claiming content integrity, obtain the output and
+   its producer profile, then recompute its content binding. If the
+   output is unavailable, report content integrity as unchecked.
 6. Evaluate the policy identity, time, tenant, attribution, and any
    lineage evidence against the verifier's own application policy.
 
-Generic signature verification supplies steps 1 through 3. The binding
-verification profile additionally checks parameter integrity and signer
-membership. Freshness, external content, and the operational meaning of
-metadata remain separate checks. A field named `trust_level` or
-`evidenceClass` never replaces those checks.
+A consumer accepting a receipt as evidence MUST perform steps 1 through
+6 for its intended use. A signature-only helper implements only part of
+this procedure and MUST NOT be presented as complete receipt
+verification. Freshness, external content, and the operational meaning
+of metadata require the context identified above. A field named
+`trust_level` or `evidenceClass` never replaces those checks.
 
 # Budgets and Metering {#budgets}
 
-Budgets mediate admission and reserve accounting headroom before dispatch.
-They do not, by themselves, establish the amount an external service billed
-or stop a provider from reporting more than the reserved exposure. A
-verifier distinguishes an authorization ceiling, a durable reservation,
-realized accounting, and an external charge.
+Budgets mediate admission and reserve accounting headroom before
+dispatch. They do not, by themselves, establish the amount an external
+service billed or stop a provider from reporting more than the reserved
+exposure. A verifier distinguishes an authorization ceiling, a durable
+reservation, realized accounting, and an external charge.
 
 ## Monetary Amounts {#monetary-amounts}
 
 A monetary amount is exactly `{"units":integer,"currency":string}`.
-`units` is an unsigned 64-bit integer in minor units; zero is representable.
-`currency` denotes an ISO 4217 currency {{ISO4217}}, such as USD with cents
-or JPY with yen. The wire type rejects unknown members. The typed grant
-path does not independently validate ISO spelling or the equality of
-per-call and total currencies. Delegation narrowing does compare currency
-strings and rejects a changed currency.
+`units` is an unsigned 64-bit integer in minor units; zero is
+representable. `currency` denotes an ISO 4217 currency {{ISO4217}}, such
+as USD with cents or JPY with yen. The wire type rejects unknown
+members. The typed grant path does not independently validate ISO
+spelling or the equality of per-call and total currencies. Delegation
+narrowing does compare currency strings and rejects a changed currency.
 
-A monetary-amount producer MUST include both members and encode units
-as an integer from 0 through 18446744073709551615. A typed monetary-amount
+A monetary-amount producer MUST include both members and encode units as
+an integer from 0 through 18446744073709551615. A typed monetary-amount
 decoder MUST reject missing members, unknown members, a non-integer
 units value, or a units value outside that range. The JSON-schema
 profile additionally requires a nonempty currency string. The typed
@@ -1196,11 +1419,11 @@ grant path does not enforce that string's ISO spelling or compare the
 per-call denomination with the total denomination; deployments that
 require those properties apply a separate currency policy.
 
-Budget-store additions MUST fail on integer overflow rather than wrap.
-A store whose integer range is narrower MUST reject values outside
-that range. The reference SQLite store supports nonnegative values
-through 9223372036854775807. These budget-store rules do not describe
-the saturating totals in auxiliary metering records.
+Budget-store additions MUST fail on integer overflow rather than wrap. A
+store whose integer range is narrower MUST reject values outside that
+range. The reference SQLite store supports nonnegative values through
+9223372036854775807. These budget-store rules do not describe the
+saturating totals in auxiliary metering records.
 
 ## Grant Ceilings {#grant-ceilings}
 
@@ -1226,17 +1449,20 @@ ceiling.
 
 An admission in the durable monetary profile MUST have a positive
 per-call exposure. A kernel enforcing that profile MUST deny financial
-tool dispatch when no durable admission covers the selected grant.
-An explicitly enabled development escape from that check does not
-establish durable monetary enforcement.
+tool dispatch when no durable admission covers the selected grant. An
+explicitly enabled development escape from that check does not establish
+durable monetary enforcement.
 
-Monetary rows are scoped to the capability identifier and grant index.
-A delegated token does not automatically share its parent's monetary row.
+Monetary rows are scoped to the capability identifier and grant index. A
+delegated token does not automatically share its parent's monetary row.
 
 ## Budget Holds {#budget-holds}
 
 The admission lifecycle is authorize exposure and reserve invocation
-quotas, capture before dispatch, then reconcile measured spend.
+quotas, capture before dispatch, then reconcile measured spend. The
+kernel MUST use checked arithmetic and reject any transition that cannot
+be represented exactly in its authoritative store. It MUST NOT admit a
+value by wrapping, rounding, or saturating a counter.
 
 ~~~ aasvg
 authorize              dispatch fence                  terminal
@@ -1249,39 +1475,45 @@ reserved ---------------- captured ---------------- reconciled
     +--- reserved-hold expiry: exposure forfeited
 ~~~
 
-For a positive monetary exposure, a hold store MUST reject reconciliation
-unless the invocation is captured, the monetary state is exposed, the
-supplied exposure equals the hold's remaining exposure, and realized
-units do not exceed that exposure. Successful reconciliation removes
-that exposure and adds realized units; the unused portion returns to
-headroom. Realized units can be zero.
+For a positive monetary exposure, a hold store MUST reject
+reconciliation unless the invocation is captured, the monetary state is
+exposed, the supplied exposure equals the hold's remaining exposure, and
+realized units do not exceed that exposure. Successful reconciliation
+removes that exposure and adds realized units; the unused portion
+returns to headroom. Realized units can be zero.
 
 A hold store MUST reject a monetary release unless the release is
 positive, does not exceed remaining exposure, the monetary state is
 exposed, and the invocation remains authorized. It MUST reject reversal
-unless the invocation remains authorized and the reversed amount is
-the complete remaining exposure. Release and reversal therefore cannot
-cross invocation capture. Cancellation of a captured admission before
-dispatch is a separate operation.
+unless the invocation remains authorized and the reversed amount is the
+complete remaining exposure. Release and reversal therefore cannot cross
+invocation capture. Cancellation of a captured admission before dispatch
+is a separate operation.
 
 For an explicitly caller-reserved hold that is still open and whose
-reserved_until is at or before the reaper's time, the reaper MUST capture the invocation if
-needed and realize the full remaining exposure. It does not refund an
-abandoned reservation. This expiry rule applies to those reserved
-holds, not every open inline hold. A zero-exposure invocation
-reservation settles through capture alone.
+reserved_until is at or before the reaper's time, the reaper MUST
+capture the invocation if needed and realize the full remaining
+exposure. This conservative legacy v1 accounting rule forfeits an
+abandoned reservation; it is not evidence that an external effect
+occurred. An operation-owned caller profile can instead compensate an
+uncommitted reservation when it proves that no dispatch authority was
+released. It MUST NOT compensate committed or uncertain execution merely
+because a deadline expired. Neither rule applies indiscriminately to
+every open inline hold. A zero-exposure invocation reservation settles
+through capture alone.
 
 On the measured-cost path, the kernel reconciles at no more than the
-authorized exposure. A missing cost report on that path defaults to
-the full exposure. If reported cost exceeds a positive exposure,
-accounting closes at exposure and settlement_status is failed; the
-financial reported amount can retain the larger cost and the call can
-remain allowed. The receipt does not prove the external charge was
-limited. In the reference path with no separate final cost authorization,
-an adapter that explicitly declares that it does not measure realized
-cost instead produces a provisional allow with cost_charged 0,
-settlement_status pending, reversed hold lineage, and no minted nonce.
-That path does not satisfy the authoritative-spend profile.
+authorized exposure. A missing cost report on that path defaults to the
+full exposure. If reported cost exceeds a positive exposure, accounting
+closes at exposure and settlement_status is failed; the financial
+reported amount can retain the larger cost and the call can remain
+allowed. The receipt does not prove the external charge was limited. If
+an adapter cannot measure realized cost or provide the required final
+authorization, the kernel MUST either retain conservative exposure or
+reject a call requiring authoritative spend. An explicitly advisory
+profile can record a provisional outcome, but MUST NOT present zero
+reported cost as proof of zero liability or release committed exposure
+without authority.
 
 ## Delegated Budget Shares {#budget-shares}
 
@@ -1290,32 +1522,32 @@ from 0 through 10000, omitted when absent. A token verifier MUST reject
 a value above 10000. A token carrying this member MUST also carry the
 attenuation proof required by {{chain-binding}}.
 
-For delegated-token sibling admission, the parent identifier is the
-last delegation link's capability_id, the child identifier is the
-token's id, and an absent share is treated as 10000. The registry MUST
-reject an unknown parent, a changed share for an already admitted
-child, or an existing sibling sum plus the proposed share greater than
-the registered parent share. Re-admitting the same child and share is
-idempotent. Each intermediate parent requires its own registration;
-admitting a child does not automatically register it as a parent.
+For delegated-token sibling admission, the parent identifier is the last
+delegation link's capability_id, the child identifier is the token's id,
+and an absent share is treated as 10000. The registry MUST reject an
+unknown parent, a changed share for an already admitted child, or an
+existing sibling sum plus the proposed share greater than the registered
+parent share. Re-admitting the same child and share is idempotent. Each
+intermediate parent requires its own registration; admitting a child
+does not automatically register it as a parent.
 
-The registry compares parent and child shares on one basis-point
-scale. It does not scale max_invocations, max_cost_per_invocation, or
-max_total_cost, and the share alone does not establish a shared
-monetary balance. The reference hosted implementation keeps this
-registry in process-local memory. Hosted admissions use
-reference-counted holder leases and release the child edge when its
-last holder releases. A portable verify-only admission can remain in
-that registry with no holder lease; this does not imply persistence
-across restart.
+The registry compares parent and child shares on one basis-point scale.
+It does not scale max_invocations, max_cost_per_invocation, or
+max_total_cost, and the share alone does not establish a shared monetary
+balance. An execution kernel using shares as an admission constraint
+MUST maintain one authoritative registry for the delegation family. It
+MUST preserve admitted allocations across restart, serialize concurrent
+allocation, and release an allocation only when no live or recoverable
+holder can exercise it. An offline share calculation does not establish
+availability in that registry.
 
 ## Aggregate Invocation Budgets {#aggregate-budgets}
 
 The token's `aggregate_invocation_budget` is an object with `scope`
 (`capability` or `delegation_family`), `max_invocations` (unsigned
-32-bit integer), and `root_binding` when needed. Capability scope forbids
-a root binding and delegation. Delegation-family scope requires one.
-Neither this object nor its root body has an epoch member.
+32-bit integer), and `root_binding` when needed. Capability scope
+forbids a root binding and delegation. Delegation-family scope requires
+one. Neither this object nor its root body has an epoch member.
 
 The signed root binding has `body`, `signature`, and the non-default
 `algorithm` hint when supplied. The body has:
@@ -1348,8 +1580,8 @@ The root commitment projection is exactly:
       "max_invocations": N
     }
 
-Here the expressions R.id and similar expressions denote copied
-values, not JSON strings. root_capability_hash is:
+Here the expressions R.id and similar expressions denote copied values,
+not JSON strings. root_capability_hash is:
 
     H("chio.aggregate-budget-root-commitment.v1" || 0x00 ||
       C(projection))
@@ -1373,16 +1605,16 @@ and sign exactly:
 
     "chio.aggregate-budget-root.v1" || 0x00 || C(B)
 
-The signature is placed beside body, with a non-default algorithm
-hint when supplied. A verifier MUST reject an unsupported body schema,
-a present algorithm hint inconsistent with the signature, or a failed
-signature under B.root_issuer. A verifier comparing the binding with
-R MUST require equality of root_capability_id, root_capability_hash,
+The signature is placed beside body, with a non-default algorithm hint
+when supplied. A verifier MUST reject an unsupported body schema, a
+present algorithm hint inconsistent with the signature, or a failed
+signature under B.root_issuer. A verifier comparing the binding with R
+MUST require equality of root_capability_id, root_capability_hash,
 root_issuer, root_subject, max_invocations, root_expires_at, and
 root_scope_hash with their recomputed root values.
 
-For the complete binding E, including its signature and any
-non-default algorithm hint, the descendant marker digest is:
+For the complete binding E, including its signature and any non-default
+algorithm hint, the descendant marker digest is:
 
     H("chio.aggregate-budget-root-binding-digest.v1" || 0x00 || C(E))
 
@@ -1393,15 +1625,15 @@ The shared family-accounting owner is:
 The owner hashes the body, while the marker digest hashes the complete
 binding. Neither the aggregate object nor B has an epoch member.
 
-A capability-scoped aggregate object MUST omit root_binding and MUST
-NOT authorize delegation. A delegation-family object MUST carry
-root_binding, and its maximum MUST equal the binding body's maximum.
-An implementation of this aggregate profile MUST reject family
-delegation longer than one hop.
+A capability-scoped aggregate object MUST omit root_binding and MUST NOT
+authorize delegation. A delegation-family object MUST carry
+root_binding, and its maximum MUST equal the binding body's maximum. An
+implementation of this aggregate profile MUST reject family delegation
+longer than one hop.
 
-A family-descendant verifier MUST authenticate a direct root token
-with an empty delegation chain and a trusted root issuer. It MUST
-reject the descendant unless all of the following hold:
+A family-descendant verifier MUST authenticate a direct root token with
+an empty delegation chain and a trusted root issuer. It MUST reject the
+descendant unless all of the following hold:
 
 * The first link's capability_id equals the root id, its delegator
   equals the root subject, and its scope_hash equals the root scope
@@ -1425,22 +1657,20 @@ without the required durable composite admission MUST reject the
 aggregate request rather than infer enforcement from parsing.
 
 Composite quota admission MUST check every participating quota before
-writing any reservation. It MUST reject a changed stored maximum,
-an exhausted reserved-plus-captured count, or a maximum of zero. Its
-quota set MUST be strictly sorted by unique key and contain at most
-eight entries. Capability aggregate quotas use the capability id as
-owner under chio.aggregate-capability-invocation.v1; family quotas
-use the derived family owner under chio.aggregate-family-invocation.v1.
-Neither key has a grant index. Monetary rows remain per capability
-and grant.
+writing any reservation. It MUST reject a changed stored maximum, an
+exhausted reserved-plus-captured count, or a maximum of zero. Its quota
+set MUST be strictly sorted by unique key and contain at most eight
+entries. Capability aggregate quotas use the capability id as owner
+under chio.aggregate-capability-invocation.v1; family quotas use the
+derived family owner under chio.aggregate-family-invocation.v1. Neither
+key has a grant index. Monetary rows remain per capability and grant.
 
-The reference portable evaluator rejects aggregate invocation
-enforcement, and the ordinary capability issuance validator does not
-issue this feature. The supplied v1 token JSON schema also lacks the
-aggregate marker members in its closed delegation-link and witness
-definitions. Passing that schema is therefore not acceptance evidence
-for a family descendant described here. This schema limitation does
-not remove the signed marker checks.
+An issuer supporting aggregate invocation budgets MUST emit all required
+root, link, and witness bindings. A verifier MUST check those bindings
+and the authoritative quota state before dispatch. An implementation
+that supports only ordinary per-token limits MUST reject a token
+requiring aggregate enforcement. Syntax validation alone does not
+establish a family's remaining authority.
 
 ## Guarantee Levels {#guarantee-levels}
 
@@ -1451,28 +1681,32 @@ missing budget-authority block, an unknown claimed level, or a claimed
 level ranked below the requested floor.
 
 A producer of budget execution metadata MUST obtain the guarantee
-identifier from its accounting store. The reference local stores
-return single_node_atomic; the remote trust-control accounting client
-returns advisory_posthoc. The reference implementation does not
-supply a store that returns partition_escrowed or ha_linearizable.
-Recognizing those identifiers does not establish those backings.
-Likewise, a single_node_atomic label by itself does not establish
-durable storage or distributed accounting truth.
+identifier from its accounting store. The reference local stores return
+single_node_atomic; the remote trust-control accounting client returns
+advisory_posthoc. The reference implementation does not supply a store
+that returns partition_escrowed or ha_linearizable. Recognizing those
+identifiers does not establish those backings. Likewise, a
+single_node_atomic label by itself does not establish durable storage or
+distributed accounting truth.
 
 Hold authority can carry `authority_id`, `lease_id`, and `lease_epoch`.
 A budget term is `authority_id:lease_epoch`. Local authority uses a
-kernel-key identifier, lease `single-node`, and epoch 1. A durable serving
-store checks its ownership fence within the transaction. An epoch on a
-hold authority is distinct from an aggregate invocation budget.
+kernel-key identifier, lease `single-node`, and epoch 1. A durable
+serving store checks its ownership fence within the transaction. An
+epoch on a hold authority is distinct from an aggregate invocation
+budget.
 
 ## Authoritative Spend {#authoritative-spend}
 
-An execution nonce has exactly the JSON-schema profile envelope
-members nonce and signature. The nonce body and its binding are:
+An execution nonce has exactly the envelope members `nonce` and
+`signature`. The legacy v1 profile signs the body directly. The
+operation-owned v2 profile binds that body to durable admission context
+({{operation-nonce}}). Neither profile alone authorizes an external
+caller to execute. The nonce body and its binding are:
 
 | Member | Type | Presence |
 | --- | --- | --- |
-| schema | string equal to chio.execution_nonce.v1 | required |
+| schema | chio.execution_nonce.v1 or chio.execution_nonce.v2 | required |
 | nonce_id | nonempty string | required |
 | issued_at | integer from 0 through 9223372036854775807, Unix seconds | required |
 | expires_at | integer in the same range, Unix seconds | required |
@@ -1490,45 +1724,87 @@ members nonce and signature. The nonce body and its binding are:
 | parameter_hash | 64 lowercase hexadecimal SHA-256 characters | required |
 
 For this JSON-schema profile, a receiver MUST reject missing required
-members, unknown members at any of the three object levels, and
-values outside the listed types and ranges. The reference typed
-compatibility decoder represents the two timestamps as signed
-64-bit integers, does not universally reject unknown members, and
-defaults an omitted request_id to an empty string. Such decoding does
-not establish schema-profile acceptance; normal execution verification
-rejects an empty request_id.
+members, unknown members at any of the three object levels, and values
+outside the listed types and ranges. A receiver MUST NOT default a
+missing request binding or infer it from another operation.
 
-A nonce signer MUST sign the typed canonical JSON of the complete
-nonce body, including each optional body member that is present,
-without a domain prefix. The signature is beside nonce, not inside
-it. Reference kernel issuance uses its Ed25519 key; the schema's
-additional signature spellings do not establish an additional nonce
-issuance backend. Reference nonce identifiers are UUIDv7 strings and
-the default lifetime is 30 seconds. Nonce enforcement is an explicit
-runtime choice and is off by default.
+A v1 nonce signer MUST sign the typed canonical JSON of the complete
+nonce body, including each optional body member that is present, without
+a domain prefix. The signature is beside nonce, not inside it. The
+signer and verifier MUST use the kernel's configured nonce signing
+authority and accepted suite policy. A nonce identifier MUST be unique
+within that authority's lifetime; UUIDv7 is one implementation choice.
+The issuer MUST bound the lifetime by the operation's remaining
+authority. A 30-second lifetime is suitable only when consistent with
+the selected execution profile and its clock assumptions.
 
-A nonce verifier for a presented tool-call request MUST reject an
-unsupported schema, now greater than or equal to expires_at, an empty
-request_id, a mismatch in any of the six binding fields against the
-independently derived expected request, or an invalid signature under
-the kernel key. Before accepting that execution, it MUST reserve the
-nonce identifier exactly once in its replay store and reject a replay
-or replay-store failure. The consumed marker remains needed through
-the signed expiry.
+A v1 nonce verifier for a presented tool-call request MUST reject any
+schema other than `chio.execution_nonce.v1`, a time before `issued_at`
+or at or after `expires_at`, an empty request_id, a mismatch in any of
+the six binding fields against the independently derived expected
+request, or an invalid signature under the kernel key. Before accepting
+that execution, it MUST reserve the nonce identifier exactly once in its
+replay store and reject a replay or replay-store failure. The consumed
+marker remains needed through the signed expiry.
 
-Reconciliation by a caller-reserved nonce is a distinct path. The
-reference implementation validates the nonce using its own signed
-binding, then separately checks the presented arguments hash, the
-named open hold, the hold's capability, and the reserved monetary
-currency. It clamps realized units to remaining exposure and closes
-the hold atomically. Consumption is attempted only after settlement;
-a failure to write the consumed marker is nonfatal because the closed
-hold rejects a second settlement. This path does not independently
-derive a fresh caller subject, request, server, or tool binding.
+### Operation-Owned Nonces {#operation-nonce}
 
-A consumer recognizing chio.mediated_spend.v1 through the
-authoritative-spend receipt predicate MUST reject the receipt unless
-every following condition holds:
+A `chio.execution_nonce.v2` signer signs the canonical JSON of an object
+with exactly three members:
+
+| Member | Value |
+|---|---|
+| `schema` | `chio.admission-execution-nonce-signature.v1` |
+| `operation_id` | Authenticated durable admission operation identifier |
+| `nonce` | Complete v2 nonce body, including all present optional members |
+{: #tab-operation-nonce title="Operation-Owned Nonce Signing Input"}
+
+There is no additional domain prefix. The wire envelope remains `nonce`
+and `signature`; the signing wrapper is reconstructed from trusted
+admission state and is not supplied by the agent. The operation
+identifier names a binding that includes the authenticated namespace,
+capability artifact, request, policy, and effect class. The verifier
+MUST resolve that binding independently and check all six nonce request
+fields, the trusted signer, issuance interval, and current expiry. An
+identifier chosen in untrusted metadata cannot select a different
+operation for verification.
+
+The kernel MUST atomically reserve and consume the nonce under its
+original operation's durable ownership. Fresh operation-owned admission
+MUST reject v1, even if a legacy replay cache reports the nonce unused.
+A v1 verifier MUST reject v2 before consuming any replay marker.
+Relabeling the schema does not convert a signature between these
+profiles. Historical v1 reservations and terminal decisions remain
+evidence, not renewed execution authority; cleanup MUST retain any
+tombstones required to prevent their reuse.
+
+### Caller Execution and Spend Evidence {#caller-spend-evidence}
+
+A caller-reserved nonce is an admission artifact, not a dispatch
+credential. An execution profile that delegates the external effect to a
+caller MUST separately authenticate that executor and bind dispatch to
+the original operation, capability digest, target, parameters digest,
+reservation, executor identity and key epoch, and validity interval. The
+executor MUST authenticate the kernel's dispatch authorization and
+durably claim the operation before performing the effect. Reconciliation
+MUST authenticate the executor's report and bind it to that same
+authorization. A caller-supplied cost or an unsigned assertion of
+success is insufficient to release captured exposure or claim verified
+execution.
+
+The kernel MUST retain the original dispatch authorization and report
+identity for recovery. An uncertain committed operation remains subject
+to {{execution-lifecycle}}; a missing report does not authorize refund
+or redispatch. The output of a caller-executed operation passes the same
+release checks as native tool output. The executor's signed report
+attests to that executor's account, not independently to the provider's
+external state. The executor-authorization and report wire formats
+belong to a separately agreed execution profile; the execution nonce
+defined here does not supply those messages.
+
+A consumer recognizing the legacy `chio.mediated_spend.v1` receipt
+predicate with a `chio.execution_nonce.v1` nonce MUST reject the receipt
+unless every following condition holds:
 
 1. The receipt signature is valid under its embedded kernel_key and
    that key belongs to the consumer's admitted kernel signer set.
@@ -1546,13 +1822,13 @@ every following condition holds:
 7. The nonce signature verifies under the same admitted kernel_key.
 
 This predicate does not independently check nonce subject_id,
-request_id, schema, expiry, replay state, or the guarantee floor.
-It also does not query a budget store or quorum and does not require
-a budget_commit_index. Its terminal realized accounting amount is
+request_id, schema, expiry, replay state, or the guarantee floor. It
+also does not query a budget store or quorum and does not require a
+budget_commit_index. Its terminal realized accounting amount is
 terminal.realized_spend_units, which can differ from the reported
 financial.cost_charged. Execution-time nonce verification and
-guarantee-floor checking are separate checks; successful evaluation
-of this predicate alone does not establish them.
+guarantee-floor checking are separate checks; successful evaluation of
+this predicate alone does not establish them.
 
 ## Metering Metadata {#metering}
 
@@ -1624,20 +1900,22 @@ one of the identifiers in {{guarantee-levels}}.
 A successful invocation_capture object records invocation_count_after
 and includes event_id and budget_commit_index when available. An
 ambiguous-capture denial instead records event_id with
-invocation_capture_ambiguous and admission_retained set to true.
-These are distinct projections of capture state.
+invocation_capture_ambiguous and admission_retained set to true. These
+are distinct projections of capture state.
 
-When a producer links a nonce to this block, it MUST include both
-execution_nonce_id and mediated_spend.profile. Receipt consumers
+When a producer links a v1 nonce to a `chio.mediated_spend.v1` block, it
+MUST include both execution_nonce_id and mediated_spend.profile. A v2
+nonce MUST NOT be labeled as satisfying that legacy predicate merely
+because it occupies the same transport envelope. Receipt consumers
 distinguish reported financial amounts from the committed authorize,
 capture, and terminal lineage. The typed financial and budget_authority
 decoders do not universally reject unknown members; these metadata
 blocks are not a strict unknown-member-rejection profile.
 
 Auxiliary metering records can measure compute time, data volume, API
-cost, warehouse queries, and custom dimensions. They are not automatically
-attached to kernel receipts and do not substitute for the durable hold
-contract in this section.
+cost, warehouse queries, and custom dimensions. They are not
+automatically attached to kernel receipts and do not substitute for the
+durable hold contract in this section.
 
 # Governed Transactions {#governed-transactions}
 
@@ -1674,8 +1952,8 @@ identifier: the `id` of a native `tool_call_request`, or
 An agent MUST NOT send both `approval_token` and a non-empty
 `approval_tokens`. An agent that sends `threshold_approval_proposal`
 MUST send a non-empty `approval_tokens`, and an agent that sends a
-non-empty `approval_tokens` MUST send `threshold_approval_proposal`.
-The kernel denies a call that breaks these rules.
+non-empty `approval_tokens` MUST send `threshold_approval_proposal`. The
+kernel denies a call that breaks these rules.
 
 ## Applying the Checks {#governed-evaluation}
 
@@ -1697,10 +1975,12 @@ Unless this section says otherwise, a governed validation failure MUST
 prevent dispatch. For authorization artifacts representable by the typed
 digest structures, the kernel returns a signed denial with decision
 `deny` and guard `kernel`; the native result is `policy_denied`.
-Structurally inconsistent approvals can fail receipt-metadata construction
-and return `internal_error` instead. A fallback error receipt lacks the
-governed context and is not authenticated under the configured kernel key
-({{native-errors}}).
+Structurally inconsistent approvals can prevent construction of the
+usual governed metadata. If the kernel can still authenticate the
+request and persist a valid denial, it returns `internal_error` with a
+receipt under its configured receipt authority. Otherwise it terminates
+the exchange as specified in {{tool-call-results}}. An unconfigured
+signing key is never an error-recovery mechanism.
 
 ## Governed Intent {#governed-intent}
 
@@ -1722,7 +2002,7 @@ absent.
 | `call_chain` | object | OPTIONAL | Asserted call chain ({{tab-governed-call-chain}}). |
 | `autonomy` | object | OPTIONAL | Autonomy tier ({{governed-intent-checks}}). |
 | `context` | JSON value | OPTIONAL | Free-form context. Two keys are reserved ({{call-chain-continuation}}). |
-| `body` | object | OPTIONAL | Omitted for a tool call. Its `kind` is `tool_invocation` or `active_response_plan`. |
+| `body` | object | OPTIONAL | `tool_invocation`, `bound_tool_invocation`, or the companion `active_response_plan` profile. Omission means `tool_invocation`. |
 {: #tab-governed-intent title="Governed Intent Members"}
 
 | Field | Type | Presence | Meaning |
@@ -1786,6 +2066,34 @@ the reference implementation.
 Its intent hash is
 `6584f466fdfd57b71861d268d2ffe45a48b179a5999ab9502cb58e935bdb875d`.
 
+### Approval of Exact Arguments {#bound-tool-intent}
+
+An intent requesting approval of exact tool arguments MUST carry a body
+with `kind: bound_tool_invocation` and a `value` object containing
+exactly `capability_id` and `parameters_hash`. The first is the nonempty
+identifier of the authorizing capability. The second is SHA-256 over
+canonical JSON of the call's parameters, encoded as `0x` followed by 64
+lowercase hexadecimal digits. The intent hash commits both values.
+
+Before checking approval artifacts or dispatching, the kernel MUST
+compare those bindings with the authenticated capability and actual
+arguments. A mismatch MUST deny the call, including substitution of a
+different capability belonging to the same subject. Approval interfaces
+MUST show or otherwise bind the approved arguments and target to this
+intent, rather than relying solely on its free-text purpose.
+
+An omitted body or `tool_invocation` retains the legacy intent-only
+binding. It MUST NOT be described as approval of exact arguments. A host
+requiring that property MUST reject a receiver that does not support the
+bound body; moving the digest into advisory metadata is not an
+equivalent fallback. The body does not itself require approval: the
+matched grant's approval constraints determine that requirement.
+Authenticated session ownership remains a separate host responsibility.
+
+An `active_response_plan` body selects the companion response-plan
+profile and its installed validator. An ordinary tool-call evaluator
+MUST reject that body rather than treat it as a tool invocation.
+
 ### Intent Hash {#governed-intent-hash}
 
 The intent hash is the SHA-256 digest ({{hashing}}), as 64 lowercase
@@ -1807,7 +2115,10 @@ deny the call if any item fails:
 
 1. `server_id` and `tool_name` equal the target of the call.
 
-2. `body` is absent or has the `kind` `tool_invocation`.
+2. `body` is absent, has kind `tool_invocation`, or is a valid
+   `bound_tool_invocation` whose bindings pass {{bound-tool-intent}}.
+   An active-response operation instead requires its separately
+   selected profile ({{security-active-response}}).
 
 3. If `runtime_attestation` is present, it passes the kernel's local
    verification of attestation evidence. This holds even when no grant
@@ -1921,8 +2232,8 @@ answers such a call with an execution nonce instead of executing it
 
 Three grant constraints ({{constraints}}) govern intents and approvals.
 They do not affect whether a grant matches a call; the kernel enforces
-them in the checks of this section. A delegated grant keeps each of
-them unchanged ({{attenuation}}).
+them in the checks of this section. A delegated grant keeps each of them
+unchanged ({{attenuation}}).
 
 ~~~ json
 [
@@ -1967,11 +2278,11 @@ presented approval even when no approval is required, and an approval
 that fails verification denies the call.
 
 The constraints `minimum_runtime_assurance` and `minimum_autonomy_tier`
-also trigger the checks. For each, the largest value in a grant
-applies. The first requires a `runtime_attestation` that the kernel
-accepts at that tier or higher, in the order `none`, `basic`,
-`attested`, `verified`. The second requires an `autonomy` object whose
-`tier` is at least the required tier.
+also trigger the checks. For each, the largest value in a grant applies.
+The first requires a `runtime_attestation` that the kernel accepts at
+that tier or higher, in the order `none`, `basic`, `attested`,
+`verified`. The second requires an `autonomy` object whose `tier` is at
+least the required tier.
 
 ## Approval Tokens {#approval-tokens}
 
@@ -2040,9 +2351,10 @@ current time `now`, and MUST deny the call if a step fails:
 
 5. `decision` is `approved`.
 
-6. `approver` is the kernel's own key, a configured capability-authority
-   key, or another issuer key trusted by the kernel
-   ({{capability-verification}}), and the signature verifies.
+6. `approver` is explicitly authorized by the applicable approval policy,
+   and the signature verifies under that key and its configured suite
+   policy. Trust as a receipt signer or capability issuer alone does not
+   confer approval authority ({{security-key-lifecycle}}).
 
 7. `expires_at - issued_at` is at most 3600 seconds.
 
@@ -2055,14 +2367,17 @@ identifier, and the intent hash until the token's `expires_at`. The
 kernel MUST deny the call as a replay if the tuple is already recorded
 and has not expired. Because the record is keyed by the tuple and not by
 the token's `id`, a second token for the same subject, request, and
-intent is also refused. The kernel releases an owned replay reservation only after definite
-pre-effect rejection with successful rollback. After acknowledged or
-ambiguous external payment authorization it retains the marker, even
-when later checks prevent tool dispatch. Uncertain cleanup can also
-retain it; a denial alone does not authorize replay. If the kernel cannot record the tuple, for example
-because its record store is full, it MUST deny the call. A kernel SHOULD
-keep these records across restarts; a kernel that loses them can accept
-the same approval again until it expires.
+intent is also refused. The kernel releases an owned replay reservation
+only after definite pre-effect rejection with successful rollback. After
+acknowledged or ambiguous external payment authorization it retains the
+marker, even when later checks prevent tool dispatch. Uncertain cleanup
+can also retain it; a denial alone does not authorize replay. If the
+kernel cannot record the tuple, for example because its record store is
+full, it MUST deny the call. The kernel MUST retain these records
+durably across restarts and enforce uniqueness across all processes that
+can consume the approval. It MUST NOT discard a record while an accepted
+operation still requires it for recovery, even when the original
+approval has expired.
 
 ## Threshold Approval {#threshold-approval}
 
@@ -2092,6 +2407,13 @@ out of scope ({{scope}}). A requirement has:
 * a threshold from 1 to the number of eligible approvers;
 
 * a timeout from 1 to 3600 seconds.
+
+For durable threshold coordination, the call's request identifier,
+server identifier, and tool name MUST each contain 1 to 256 UTF-8 octets,
+with no leading or trailing whitespace or control characters. This
+profile's bound applies even when a transport permits a longer request
+identifier. An unsupported identifier MUST be rejected before creating
+a proposal or consuming approval authority.
 
 The eligible set digest is the lowercase hexadecimal SHA-256 digest of
 the ASCII bytes `chio.approver-set.v1`, one zero byte, and the canonical
@@ -2205,6 +2527,16 @@ The kernel MUST verify a threshold set as follows, at the current time
 10. The number of approvers is at least `threshold`. Extra valid votes
     are allowed.
 
+The kernel MUST resolve the threshold requirement from trusted policy
+and authenticated request context, not from the proposal alone. It MUST
+apply the configured signature floor to both the proposal and every
+vote. A collection service can assemble votes but cannot confer
+authority by declaring that a quorum was reached. The executing kernel
+performs the verification itself. On resumption, it MUST recheck current
+policy, revocation, validity, and signer eligibility against the
+original binding; it MUST NOT rewrite a pending proposal to fit changed
+policy.
+
 A vote whose `decision` is `denied` fails step 6, so it denies the call
 rather than counting against the quorum.
 
@@ -2230,19 +2562,26 @@ equal the recorded values.
 
 ### Kernel-Issued Proposals {#threshold-kernel-proposals}
 
-A kernel also issues proposals itself, when a budget requires
-cumulative approval ({{budget-holds}}). It signs the proposal with its
-own key as `policy_authority`, takes `proposal_created_at` from the time
-it recorded the budget hold, and records the proposal. If the call
-carries no votes, the kernel does not dispatch it. It signs a receipt
-whose decision is `deny`, with guard `kernel` and reason `cumulative
-approval required`, and whose `metadata` has a `threshold_approval`
-object with the members `proposal_id`, `proposal_hash`,
-`proposal_deadline`, and `state`, the last with the value
-`approval_required`. A native agent receives `policy_denied` with guard
-`approval` ({{native-errors}}). A later call with votes MUST carry the
-recorded proposal unchanged. This document does not specify how an
-agent obtains that proposal.
+A kernel issues a proposal when cumulative budget approval is required
+({{budget-holds}}). It signs with its configured proposal authority,
+takes `proposal_created_at` from the recorded hold, and durably retains
+the proposal with the admission. If votes are absent, it MUST NOT
+dispatch. It returns `pending_approval` with the complete signed
+proposal ({{tool-call-results}}). The receipt records `deny`, with guard
+`kernel` and reason `cumulative approval required`; its
+`metadata.threshold_approval` contains `proposal_id`, `proposal_hash`,
+`proposal_deadline`, and `state: approval_required`. Here `deny` records
+that execution was not authorized in this exchange; the operation can
+still await approval.
+
+A subsequent request carries the original request identifier, unchanged
+execution binding, exact retained proposal, and collected votes. The
+kernel MUST resume the original admission or reject the request; it MUST
+NOT create a second reservation for the same pending operation. A
+pending response MUST NOT carry an execution nonce or tool output. A
+client MUST verify the proposal's signature and binding before
+presenting it to approvers. The MCP projection is defined in
+{{hosted-tool-calls}}.
 
 ## Provenance Classes {#provenance}
 
@@ -2290,13 +2629,13 @@ checks carries the class `asserted`.
 
 Two keys of the intent's `context` carry evidence for a `call_chain`:
 `callChainUpstreamProof` and `callChainContinuation`. The kernel reads
-them only when `context` is a JSON object and `call_chain` is present.
-A key whose value is `null` counts as absent, and a value that does not
-parse as the object below denies the call. If `callChainContinuation`
-is present, the kernel validates it and ignores
-`callChainUpstreamProof`. Both objects have camelCase members, and each
-is signed by its `signer` over the canonical JSON of all its members
-except `signature`, with no domain-separation prefix.
+them only when `context` is a JSON object and `call_chain` is present. A
+key whose value is `null` counts as absent, and a value that does not
+parse as the object below denies the call. If `callChainContinuation` is
+present, the kernel validates it and ignores `callChainUpstreamProof`.
+Both objects have camelCase members, and each is signed by its `signer`
+over the canonical JSON of all its members except `signature`, with no
+domain-separation prefix.
 
 An upstream proof is a statement by the delegator that handed the call
 chain to the caller. It has the call-chain members of
@@ -2332,8 +2671,8 @@ child call:
 | `signature` | string | REQUIRED | Signature by `signer`. |
 {: #tab-continuation-token title="Continuation Token Members"}
 
-The kernel MUST verify a continuation token as follows and MUST deny
-the call if a step fails:
+The kernel MUST verify a continuation token as follows and MUST deny the
+call if a step fails:
 
 1. `schema` is `chio.call_chain_continuation.v1`, and the signature
    verifies.
@@ -2374,10 +2713,10 @@ the call if a step fails:
 
 An embedded token's `governedIntentHash` would bind an intent containing
 that same signed token. This document defines no construction for that
-self-bound form; senders omit this member on a token embedded in `context`.
-The kernel does not use `nonce` or `tokenId` to detect replay. It
-records `tokenId` in the receipt, and the anchor's `sessionAnchorId`
-when step 9 applied.
+self-bound form; senders omit this member on a token embedded in
+`context`. The kernel does not use `nonce` or `tokenId` to detect
+replay. It records `tokenId` in the receipt, and the anchor's
+`sessionAnchorId` when step 9 applied.
 
 This document specifies how a kernel verifies these objects, not when a
 kernel issues them. Carrying call chains between operators is outside
@@ -2405,9 +2744,9 @@ exception. Its members are:
 
 The `approval` object has snake_case members. For a singular token,
 `token_id` is its `id`, `approver_key` its `approver`,
-`approval_artifact_digest` its token digest, and `approved` is true
-when its `decision` is `approved`. For a threshold set, `token_id` is
-the `proposal_id`, `approver_key` the `policy_authority`,
+`approval_artifact_digest` its token digest, and `approved` is true when
+its `decision` is `approved`. For a threshold set, `token_id` is the
+`proposal_id`, `approver_key` the `policy_authority`,
 `approval_artifact_digest` the approval set hash, and `approved` is
 true. The object describes what the call carried. On a receipt whose
 decision is `allow`, the approval passed verification; on a denial, it
@@ -2443,8 +2782,8 @@ prove that a publisher disclosed every view it signed.
 
 ## Checkpoint Statement {#checkpoint-statement}
 
-The signed object has two required members, `body` and `signature`.
-A verifier MUST reject any unknown member in either the envelope or the
+The signed object has two required members, `body` and `signature`. A
+verifier MUST reject any unknown member in either the envelope or the
 body. New issuance uses `chio.checkpoint_statement.v2`. Legacy
 `chio.checkpoint_statement.v1` remains accepted for verification.
 
@@ -2477,8 +2816,8 @@ body. New issuance uses `chio.checkpoint_statement.v2`. Legacy
 {: #tab-checkpoint-fields-meaning title="Checkpoint Statement Body Meanings"}
 
 The two OPTIONAL fields default to absence. A producer MUST omit an
-absent field, and a verifier MUST reject explicit `null` for either.
-The body has no `log_id`. Producers MUST encode `merkle_root` and
+absent field, and a verifier MUST reject explicit `null` for either. The
+body has no `log_id`. Producers MUST encode `merkle_root` and
 `chain_root` as `0x` followed by 64 lowercase hexadecimal characters.
 The compatibility decoder also accepts typed hashes without the `0x`
 prefix and accepts hexadecimal digits in either case; typed
@@ -2488,8 +2827,8 @@ compatibility follows {{key-encoding}}.
 A verifier MUST reject an unsupported schema, a zero checkpoint number,
 zero batch start, inverted range, zero tree size, zero timestamp, or
 `tree_size` unequal to `batch_end_seq - batch_start_seq + 1`. It MUST
-reject a present predecessor digest that does not have the exact form
-in the table. Count arithmetic that overflows is invalid.
+reject a present predecessor digest that does not have the exact form in
+the table. Count arithmetic that overflows is invalid.
 
 The signer MUST sign the canonical typed encoding of `body` alone,
 without the envelope signature or an additional domain prefix. A
@@ -2517,30 +2856,31 @@ signature and kernel key. Other entry kinds are invalid for this batch
 projection. Receipt identifiers alone are not the leaf data.
 
 For leaf data `b`, an implementation MUST compute its leaf hash as
-`SHA-256(0x00 || b)`. It MUST compute a parent as
-`SHA-256(0x01 || left || right)`, where each child is its raw 32-octet
-hash. For a subtree of `n > 1` leaves, the recursive split is the largest
-power of two strictly less than `n`, as in {{RFC9162}}. An unpaired
-rightmost node advances unchanged. A single-leaf root is its leaf hash;
-an empty receipt batch is invalid.
+`SHA-256(0x00 || b)`. It MUST compute a parent as `SHA-256(0x01 || left
+|| right)`, where each child is its raw 32-octet hash. For a subtree of
+`n > 1` leaves, the recursive split is the largest power of two strictly
+less than `n`, as in {{RFC9162}}. An unpaired rightmost node advances
+unchanged. A single-leaf root is its leaf hash; an empty receipt batch
+is invalid.
 
-The checkpoint-chain leaf is canonical JSON of exactly
-`checkpoint_seq`, `batch_start_seq`, `batch_end_seq`, and `merkle_root`.
-Its canonical member order is `batch_end_seq`, `batch_start_seq`,
-`checkpoint_seq`, `merkle_root`. It excludes every other checkpoint
-field. Its hash is `SHA-256(0x00 || canonical_chain_leaf_bytes)`.
-An issuer carrying `chain_root` MUST compute it by combining the already
-hashed chain leaves for checkpoint 1 through `checkpoint_seq`, in
-sequence order, with the parent hash above, without hashing them as
-leaves again. The chain tree's size is the checkpoint count.
+The checkpoint-chain leaf is canonical JSON of exactly `checkpoint_seq`,
+`batch_start_seq`, `batch_end_seq`, and `merkle_root`. Its canonical
+member order is `batch_end_seq`, `batch_start_seq`, `checkpoint_seq`,
+`merkle_root`. It excludes every other checkpoint field. Its hash is
+`SHA-256(0x00 || canonical_chain_leaf_bytes)`. An issuer carrying
+`chain_root` MUST compute it by combining the already hashed chain
+leaves for checkpoint 1 through `checkpoint_seq`, in sequence order,
+with the parent hash above, without hashing them as leaves again. The
+chain tree's size is the checkpoint count.
 
-A v1 checkpoint producer MUST omit `chain_root`. A v2 checkpoint 1 producer MUST carry a
-`chain_root` equal to its own chain-leaf hash. A detached later v2
-statement can pass standalone validation without a chain root; a
-verifier MUST reject its use as a successor in a predecessor pair.
-For the local store profile, the first persisted checkpoint MUST have
-checkpoint number 1, batch start 1, and no predecessor digest. Those
-store-genesis rules are separate from standalone statement validation.
+A v1 checkpoint producer MUST omit `chain_root`. A v2 checkpoint 1
+producer MUST carry a `chain_root` equal to its own chain-leaf hash. A
+detached later v2 statement can pass standalone validation without a
+chain root; a verifier MUST reject its use as a successor in a
+predecessor pair. For the local store profile, the first persisted
+checkpoint MUST have checkpoint number 1, batch start 1, and no
+predecessor digest. Those store-genesis rules are separate from
+standalone statement validation.
 
 A local store accepting a checkpoint MUST verify the covered receipts,
 require every receipt's `kernel_key` to equal the checkpoint's
@@ -2555,8 +2895,8 @@ signatures. It MUST require the successor's checkpoint number to equal
 the predecessor's plus 1, its batch start to equal the predecessor's
 batch end plus 1, and its `previous_checkpoint_sha256` to equal the
 SHA-256 digest of the predecessor's canonical typed body, excluding
-signature. Overflow is invalid. It MUST reject a successor that drops
-an existing chain commitment, and a v2 successor without a chain root.
+signature. Overflow is invalid. It MUST reject a successor that drops an
+existing chain commitment, and a v2 successor without a chain root.
 Predecessor linkage alone does not prove Merkle prefix extension or
 require increasing timestamps.
 
@@ -2610,18 +2950,18 @@ does not establish a valid v2 proof.
 
 The log identifier is `local-log-` followed by 64 lowercase hexadecimal
 characters: SHA-256 of the raw Ed25519 key bytes, or of the UTF-8 bytes
-of the normalized prefixed public-key encoding for another suite.
-This proof profile supports adjacent checkpoints under one derived log
+of the normalized prefixed public-key encoding for another suite. This
+proof profile supports adjacent checkpoints under one derived log
 identifier. A consistency verifier MUST reject a pair with different
 derived identifiers, and MUST compare every metadata field against the
 values recomputed from the signed bodies.
 
-For v2 verification, both signed statements MUST carry chain roots.
-The verifier MUST require the record's roots to equal them and both
-endpoint inclusion objects to be present. For each endpoint, it MUST
-require an inclusion tree size equal to that endpoint's checkpoint
-number, an index equal to that number minus 1, and a path proving that
-endpoint's own chain-leaf hash against its signed chain root.
+For v2 verification, both signed statements MUST carry chain roots. The
+verifier MUST require the record's roots to equal them and both endpoint
+inclusion objects to be present. For each endpoint, it MUST require an
+inclusion tree size equal to that endpoint's checkpoint number, an index
+equal to that number minus 1, and a path proving that endpoint's own
+chain-leaf hash against its signed chain root.
 
 The verifier MUST establish the earlier prefix by one of these methods:
 
@@ -2641,13 +2981,14 @@ numbers as tree sizes and the two signed chain roots, following
 unsuccessful metadata, root, inclusion, anchor, or path comparisons
 are failed proofs.
 
-Legacy `chio.checkpoint_consistency_proof.v1` carries metadata continuity
-only. A verifier MUST NOT treat it as a cryptographic prefix proof.
-Successful legacy verification requires two v1 statements, decoded
-absence of both chain roots and endpoint inclusions, and an empty
-decoded `chain_proof_hashes`. Omission and explicit null both represent
-absence for its four optional fields; omission and `[]` both represent
-an empty path. Prefix anchors are not evaluated for legacy records.
+Legacy `chio.checkpoint_consistency_proof.v1` carries metadata
+continuity only. A verifier MUST NOT treat it as a cryptographic prefix
+proof. Successful legacy verification requires two v1 statements,
+decoded absence of both chain roots and endpoint inclusions, and an
+empty decoded `chain_proof_hashes`. Omission and explicit null both
+represent absence for its four optional fields; omission and `[]` both
+represent an empty path. Prefix anchors are not evaluated for legacy
+records.
 
 ## Inclusion Proofs {#inclusion-proofs}
 
@@ -2672,8 +3013,8 @@ rightmost node consumes no sibling at that level. It MUST reject a path
 with missing or unused hashes and accept membership only when the
 computed root equals the expected root.
 
-The evidence-export wrapper is unsigned and has no schema identifier.
-It has these five required members, none with a parsing default:
+The evidence-export wrapper is unsigned and has no schema identifier. It
+has these five required members, none with a parsing default:
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -2684,69 +3025,89 @@ It has these five required members, none with a parsing default:
 | `proof` | Merkle inclusion object | Nested path and tree parameters. |
 
 Its compatibility decoder accepts unknown members. Basic wrapper
-verification MUST require matching wrapper and nested indices and
-verify the canonical receipt bytes against the expected root supplied
-by the caller. It does not independently authenticate the wrapper's
-sequence metadata or advertised root.
+verification MUST require matching wrapper and nested indices and verify
+the canonical receipt bytes against the expected root supplied by the
+caller. It does not independently authenticate the wrapper's sequence
+metadata or advertised root.
 
-An evidence-package verifier MUST resolve the referenced checkpoint
-and receipt, compare the wrapper root to the signed checkpoint root,
-require the wrapper index to be below the checkpoint's batch size, and
-require `receipt_seq` to fall within its inclusive batch range. It MUST
-reject two proofs for the same receipt sequence, verify the canonical
-receipt bytes against the signed root, and require the number of
-exported tool receipts without successful proofs to equal the
-manifest's uncheckpointed count.
+An evidence-package verifier MUST resolve the referenced checkpoint and
+receipt, compare the wrapper root to the signed checkpoint root, require
+the wrapper index to be below the checkpoint's batch size, and require
+`receipt_seq` to fall within its inclusive batch range. It MUST reject
+two proofs for the same receipt sequence, verify the canonical receipt
+bytes against the signed root, and require the number of exported tool
+receipts without successful proofs to equal the manifest's
+uncheckpointed count.
 
-That package profile does not independently compare the nested tree
-size with the signed batch size, or the index with the claimed sequence
-offset. A consumer claiming positional membership MUST additionally
-require `proof.tree_size == checkpoint.body.tree_size` and
-`leaf_index == receipt_seq - checkpoint.body.batch_start_seq`, after
-checking the sequence range. These are additional positional-profile
-checks; they are not implicit in basic wrapper or generic package
-verification.
+The verifier MUST also require `proof.tree_size ==
+checkpoint.body.tree_size` and `leaf_index == receipt_seq -
+checkpoint.body.batch_start_seq`, after checking the sequence range. It
+MUST reject arithmetic overflow and inconsistent batch bounds. These
+checks bind membership to the claimed position, not merely to an
+unsigned wrapper containing a valid path.
 
 The current export emits tool-receipt proofs. Child receipts can be
-batch leaves, while child-receipt inclusion-proof export remains
-outside this export profile. Uncovered tool receipts are reported
-explicitly; absence of a proof establishes no membership.
+batch leaves, while child-receipt inclusion-proof export remains outside
+this export profile. Uncovered tool receipts are reported explicitly;
+absence of a proof establishes no membership.
 
 ## Checkpoint Verification {#checkpoint-verification}
 
 A consumer that treats a checkpoint as evidence from an expected kernel
 MUST check its `kernel_key` against a separately configured trusted-key
-policy. Signature validity under a key carried in the statement does
-not establish that key's authority. This is a consumer-policy check;
-the reference standalone and checkpoint-set APIs do not take a
-trusted-key input. A stricter consumer profile can also require strict
-signature verification and signer validity intervals.
+policy. Signature validity under a key carried in the statement does not
+establish that key's authority. The consumer MUST apply its trusted
+signer roles, accepted suites, and any required signer validity interval
+before accepting the statement. A checkpoint timestamp by itself cannot
+prove that a signature preceded a key compromise.
 
-A checkpoint-set verifier for this profile MUST validate every
-statement and signature, reject duplicate checkpoint numbers and
-observed conflicting statements, and require each predecessor digest
-to resolve within the supplied set and pass predecessor validation.
-A checkpoint without a predecessor MUST be checkpoint 1 with batch
-start 1. A cited predecessor absent from the set is invalid. The
-reference set verifier requires the complete prefix through checkpoint
-1 and has no separately pinned-boundary input; the pair-level anchor
-interface in {{consistency-proofs}} is a distinct verification path.
+A checkpoint-set verifier for this profile MUST validate every statement
+and signature, reject duplicate checkpoint numbers and observed
+conflicting statements, and require each predecessor digest to resolve
+within the supplied set and pass predecessor validation. A checkpoint
+without a predecessor MUST be checkpoint 1 with batch start 1. A cited
+predecessor absent from the set is invalid. The reference set verifier
+requires the complete prefix through checkpoint 1 and has no separately
+pinned-boundary input; the pair-level anchor interface in
+{{consistency-proofs}} is a distinct verification path.
 
 Scoped evidence exports retain the prefix through the newest checkpoint
 covering the selected receipts. Inclusion and consistency verification
-uses the roots in the validated signed bodies, rather than relying on
-an unsigned advertised root. Consumer signer policy determines which
-of those signed bodies is accepted as evidence from the intended kernel.
+uses the roots in the validated signed bodies, rather than relying on an
+unsigned advertised root. Consumer signer policy determines which of
+those signed bodies is accepted as evidence from the intended kernel.
+
+### Retention and Evidence Availability {#checkpoint-retention}
+
+A receipt, its sequence, and the checkpoint covering that sequence MUST
+be read from a consistent authenticated state. A verifier MUST NOT
+combine a receipt from one log view with a root or sequence assignment
+from another. An uncovered tail is uncheckpointed evidence, even if its
+receipts have valid signatures.
+
+Archival MUST preserve original signed bytes, sequence identities,
+checkpoint links, and the information needed to verify retained proofs.
+Deleting payloads under a retention policy does not authorize
+renumbering or rewriting history. A service MUST distinguish unavailable
+evidence from a valid proof of absence. It MUST NOT reconstruct a
+missing history as a new empty log under the old identity.
+
+Replay records, unresolved operations, consumed approvals, and
+accounting obligations have security lifetimes independent of receipt
+presentation policies. Retention MUST NOT remove state still required to
+prevent replay or recover an operation. A recovery process MUST
+authenticate retained records and reject rollback to an older authority
+state before resuming execution.
 
 ## Claim Limits {#checkpoint-claims}
 
 The checkpoint surface provides local signed audit evidence and verified
-continuity for the supplied, anchored views. It does not establish public
-append-only publication, complete receipt-family sequencing, or strong
-non-repudiation. A verifier can detect conflicting statements that it
-receives; it cannot detect a hidden competing view from these bytes alone.
-External witnessing and publication policies need separate protocols and
-qualification and are outside this document.
+continuity for the supplied, anchored views. It does not establish
+public append-only publication, complete receipt-family sequencing, or
+strong non-repudiation. A verifier can detect conflicting statements
+that it receives; it cannot detect a hidden competing view from these
+bytes alone. External witnessing and publication policies need separate
+protocols and qualification and are outside this document.
 
 # Native Transport {#native-transport}
 
@@ -2757,12 +3118,11 @@ messages, the kernel sends kernel messages, and each message travels in
 one frame.
 
 A native session lasts as long as the byte stream. The transport has no
-initialization exchange and no in-band version negotiation: both
-parties use version `chio-wire-v1`, agreed out of band ({{versioning}}).
-The kernel binds each session to one agent key, which it establishes
-when the session opens by means outside this document. It denies a call
-whose capability token has a different subject
-({{capability-verification}}).
+initialization exchange and no in-band version negotiation: both parties
+use version `chio-wire-v1`, agreed out of band ({{versioning}}). The
+kernel binds each session to one agent key, which it establishes when
+the session opens by means outside this document. It denies a call whose
+capability token has a different subject ({{capability-verification}}).
 
 The native transport provides no confidentiality, integrity protection,
 or peer authentication of its own. It relies on the underlying byte
@@ -2826,8 +3186,8 @@ members when it receives them.
 | kernel | `heartbeat` | none | Reply to `heartbeat` |
 {: #tab-native-types title="Native Message Types"}
 
-A `tool_call_request` has the members in {{tab-tool-call-request}}.
-A sender omits an OPTIONAL member that has no value and omits
+A `tool_call_request` has the members in {{tab-tool-call-request}}. A
+sender omits an OPTIONAL member that has no value and omits
 `approval_tokens` when it is empty.
 
 | Field | Type | Presence |
@@ -2862,10 +3222,13 @@ A sender omits an OPTIONAL member that has no value and omits
 | `execution_nonce` | Execution nonce that the kernel returned for this `id` ({{authoritative-spend}}) |
 {: #tab-tool-call-request-meaning title="tool_call_request Members Meanings"}
 
-The agent MUST NOT reuse an `id` within a session, except to retry a
-call with the execution nonce that the kernel returned for that `id`.
-The kernel answers a reused `id` with `internal_error`
-({{native-errors}}).
+The agent MUST NOT reuse an `id` within a session except to resume the
+same operation with a kernel-issued execution nonce or a pending
+approval proposal and its votes. The target, parameters, subject, and
+capability binding MUST remain unchanged. The kernel MUST correlate an
+accepted resumption with the original admission; other reuse is rejected
+with `internal_error` ({{native-errors}}). A repeated identifier alone
+does not request or authorize a second execution.
 
 The kernel denies a request that carries both `approval_token` and a
 non-empty `approval_tokens`, a `threshold_approval_proposal` without
@@ -2875,8 +3238,8 @@ set to `session_authorization`.
 
 No member of `tool_call_request` carries a sender proof. A kernel
 therefore denies every native call for which a matching grant requires
-one ({{sender-constraint}}). No member carries model metadata either,
-so a model constraint that requires metadata ({{constraints}}) is never
+one ({{sender-constraint}}). No member carries model metadata either, so
+a model constraint that requires metadata ({{constraints}}) is never
 satisfied on this transport.
 
 The following request is shown with whitespace added and with its
@@ -2913,8 +3276,10 @@ depends on the revoked capability is denied ({{revocation}}).
 
 ## Tool Call Results {#tool-call-results}
 
-For each `tool_call_request`, the kernel sends zero or more
-`tool_call_chunk` messages and then one `tool_call_response`. Each
+For each `tool_call_request` whose exchange completes, the kernel sends
+zero or more `tool_call_chunk` messages and then one
+`tool_call_response`. Transport, signing, or durable-state failures can
+terminate the exchange without a response, as specified below. Each
 carries the request's `id`, and the agent correlates them by that value.
 {{tab-tool-call-response}} lists the members of `tool_call_response`.
 
@@ -2927,9 +3292,12 @@ carries the request's `id`, and the agent correlates them by that value.
 | `execution_nonce` | object | OPTIONAL | Nonce to present when retrying this `id` ({{authoritative-spend}}); omitted when absent |
 {: #tab-tool-call-response title="tool_call_response Members"}
 
-The `result` member is an object whose `status` member selects its
-other members ({{tab-tool-call-result}}). The "Decision" column gives
-the decision that the receipt records ({{decisions}}).
+The `result` member is an object whose `status` member selects its other
+members ({{tab-tool-call-result}}). The "Decision" column gives the
+decision that the receipt records ({{decisions}}). The receipt's
+parameters, target, and any available result binding MUST agree with the
+request and returned result. A valid receipt for a different call is not
+evidence for this response.
 
 | `status` | Other members | Decision | Meaning |
 |---|---|---|---|
@@ -2937,8 +3305,16 @@ the decision that the receipt records ({{decisions}}).
 | `stream_complete` | `total_chunks` (integer) | `allow` | The call completed after streaming `total_chunks` chunks. |
 | `cancelled` | `reason` (string), `chunks_received` (integer) | `cancelled` | The call was canceled. |
 | `incomplete` | `reason` (string), `chunks_received` (integer) | `incomplete` | The call ended before completion. |
-| `err` | `error` (object, {{native-errors}}) | `deny` | The kernel denied the call or failed to evaluate it. |
+| `err` | `error` (object, {{native-errors}}) | `deny` | The kernel denied the call or failed to evaluate it; this status does not establish absence of an external effect. |
+| `pending_approval` | `proposal` (object, {{threshold-proposal}}) | `deny` | Execution awaits approval; no tool was dispatched. |
 {: #tab-tool-call-result title="Tool Call Results"}
+
+A `pending_approval` result contains exactly `status` and `proposal`.
+It ends this request-response exchange but does not finalize the logical
+operation. The kernel MUST send no output chunks and MUST omit
+`execution_nonce`. A client that does not support this result MUST stop;
+it MUST NOT interpret it as an allowed call. Resumption follows
+{{threshold-kernel-proposals}}.
 
 In `cancelled` and `incomplete` results, `chunks_received` is the number
 of chunks that the kernel sent for the call.
@@ -2961,19 +3337,19 @@ before it sends the first chunk, so an agent cannot assume that chunks
 arrive while the tool runs. Each chunk travels in its own frame, and the
 frame limit ({{native-framing}}) applies to each one. A kernel MAY bound
 the duration, total size, or chunk count of a stream. When it stops a
-stream at such a bound, it sends the chunks it kept and ends the call as
-`incomplete`.
+stream at such a bound, it sends only chunks already authorized for
+release under {{execution-lifecycle}} and ends the call as `incomplete`.
+If the policy requires complete-output inspection, it releases no
+unchecked partial result.
 
-Every `tool_call_response` carries a receipt, including a response that
-reports a denial, a cancellation, an incomplete call, or an evaluation
-error. Normal evaluation signs with the kernel's configured receipt key
-({{receipt-signing}}). The reference native error handler can instead
-sign a diagnostic receipt with a fresh key after an evaluation error;
-that key is not authenticated to the session kernel. If even that signing
-fails, no response is sent. A consumer MUST NOT treat a diagnostic
-receipt under an untrusted key as evidence of its expected kernel. An
-agent SHOULD verify a receipt
-({{receipt-verification}}) before it relies on it.
+Every `tool_call_response` carries a receipt signed by the configured
+kernel receipt authority, including denials, pending approvals,
+cancellations, and incomplete calls. The receiver MUST verify the
+receipt as specified in {{receipt-verification}} before relying on it.
+If signing or durable finalization fails, the kernel MUST NOT substitute
+a newly generated, unauthenticated key. It terminates or resets the
+affected exchange and preserves recoverable operation state. A closed
+transport does not establish that an external effect was absent.
 
 ## Native Errors {#native-errors}
 
@@ -3015,6 +3391,12 @@ instead report any denial as `policy_denied` with `guard` set to
 `kernel` and a `reason` that names the failure, such as "capability has
 expired", and any evaluation failure as `internal_error`. An agent can
 therefore receive either form for the same condition.
+
+A diagnostic code identifies the failure, not whether a committed effect
+occurred. If dispatch has been committed and the effect cannot be
+resolved, the kernel MUST preserve the operation as incomplete under
+{{execution-lifecycle}}. A denial receipt or `tool_server_error` MUST
+NOT be used to justify refund or redispatch of that operation.
 
 The following `err` result reports an expired token in the second form.
 
@@ -3062,15 +3444,15 @@ Signed objects travel inside messages, including capability tokens (in
 `tool_call_request` and `capability_list`) and receipts (in
 `tool_call_response`), approval artifacts, and execution nonces. Each
 artifact defines its own authenticated projection and signing input
-({{signing-input}}). A party that forwards an artifact MUST preserve that
-projection and its signature. It MAY re-encode the same typed values
-when this produces the same signing input. Unknown JSON members are not
-thereby authenticated.
+({{signing-input}}). A party that forwards an artifact MUST preserve
+that projection and its signature. It MAY re-encode the same typed
+values when this produces the same signing input. Unknown JSON members
+are not thereby authenticated.
 
 # Hosted MCP Binding {#hosted-mcp}
 
-A hosted edge is an MCP server {{MCP}} whose tool calls a kernel
-mediates. It uses the MCP Streamable HTTP transport: the client sends
+A hosted edge exposes the kernel's execution services as an MCP server
+{{MCP}}. It uses the MCP Streamable HTTP transport: the client sends
 each JSON-RPC 2.0 message {{JSON-RPC}} in an HTTP POST {{RFC9110}}, and
 the edge answers requests with server-sent events {{SSE}}. The edge
 supports MCP version 2025-11-25, which it selects as {{versioning}}
@@ -3088,7 +3470,7 @@ The edge serves one endpoint path, `/mcp`, with the methods in
 
 | Method | Use | Success response |
 |---|---|---|
-| POST | Send one JSON-RPC request, notification, or response | 200 with an event stream for a request; 202, or 200 with an event stream, otherwise |
+| POST | Send one JSON-RPC request, notification, or response | 200 with an event stream for an accepted request; 202 with no body for an accepted notification or response |
 | GET | Open the notification stream ({{hosted-replay}}) | 200 with an event stream |
 | DELETE | End the session | 204 |
 {: #tab-hosted-methods title="Hosted Endpoint Methods"}
@@ -3099,11 +3481,11 @@ examines.
 | Header | Sent with | Rule |
 |---|---|---|
 | `Authorization` | every request | A `Bearer` credential ({{hosted-admission}}) |
-| `Origin` | any request | If present, its host is `localhost`, `127.0.0.1`, or `::1` |
+| `Origin` | any request | If present, its complete origin matches the configured allowlist |
 | `Accept` | POST, GET | POST lists `application/json` and `text/event-stream`; GET lists `text/event-stream` |
-| `Content-Type` | POST | Begins with `application/json` |
+| `Content-Type` | POST | Parsed media type equals `application/json` |
 | `MCP-Session-Id` | every request after `initialize` | The session identifier |
-| `MCP-Protocol-Version` | any request in a session | If present, equals the session's version |
+| `MCP-Protocol-Version` | every request after `initialize` | Client sends the negotiated version; server compatibility handling follows {{versioning}} |
 | `Last-Event-ID` | GET | Replay cursor ({{hosted-replay}}) |
 | `DPoP` | any request | Sender proof, when the access token requires one ({{hosted-admission}}) |
 {: #tab-hosted-headers title="Hosted Request Headers"}
@@ -3112,12 +3494,17 @@ The edge limits the request rate of each client address and answers a
 request over the limit with 429 and a `Retry-After` header. It then
 processes a POST in this order, stopping at the first failure:
 
-1. An `Origin` header whose host is not a loopback name or address: 403.
+1. A present `Origin` that is malformed or absent from the deployment's
+   explicit allowed-origin set: 403. Matching compares the complete
+   origin, including scheme, host, and effective port. A loopback host
+   name alone is not authorization for an arbitrary browser origin.
 
 2. Admission fails ({{hosted-admission}}): 401.
 
-3. `Accept` lacks either media type: 406. `Content-Type` does not begin
-   with `application/json`: 415.
+3. `Accept` does not accept both required media types: 406. The parsed
+   `Content-Type` media type is not `application/json`: 415. Parameters
+   are parsed as HTTP parameters; a prefix such as
+   `application/json-extra` is not a match.
 
 4. `Content-Length` is not an integer: 400, with JSON-RPC code -32600.
    The body exceeds 8,388,608 octets: 413, with JSON-RPC code -32600.
@@ -3131,15 +3518,18 @@ processes a POST in this order, stopping at the first failure:
    404.
 
 7. For a session in a terminal state ({{hosted-sessions}}), the edge
-   checks credential continuity (403 on failure) and then answers 410.
+   answers 404, as required by the MCP session lifecycle.
 
 8. Otherwise, a `MCP-Protocol-Version` header that differs from the
    session's version: 400. Credential continuity fails: 403. The
    session is not `ready`: 409.
 
 Where a step gives a JSON-RPC code, the response body is a JSON object
-with members `jsonrpc` and `error`, and no `id` member. Other error
-responses carry a plain-text body.
+with members `jsonrpc`, `error`, and `id`. The `id` equals the request
+identifier when it can be determined safely; otherwise it is `null`, as
+specified by {{JSON-RPC}}. HTTP-layer rejection of a notification uses
+an HTTP error status rather than a JSON-RPC response to that
+notification. Other error responses carry a plain-text body.
 
 A POST that carries a request, meaning a message with both `id` and
 `method`, receives an event stream. The stream starts with a priming
@@ -3147,14 +3537,15 @@ event that has an event identifier, a `retry` field of 1000
 milliseconds, and empty data. It ends after the event that carries the
 response to the request. The edge handles the requests of a session one
 at a time: a request POST waits until the stream of the previous request
-has ended. A POST that carries a notification or a response receives any
-resulting output of the session as an event stream, or 202 if there is
-none. The edge answers 202 at once if a request stream of the session is
-open.
+has ended. An accepted POST carrying a notification or response MUST
+receive 202 with no body. The edge MUST process the accepted message; an
+occupied request stream is not permission to silently discard it. Any
+resulting server messages use an appropriate open stream under the MCP
+transport rules.
 
-A DELETE is checked for Origin and admission as a POST is. It then
-needs an `MCP-Session-Id` of a known session (400 or 404 otherwise, with
-plain-text bodies) and credential continuity (403). The edge answers 410
+A DELETE is checked for Origin and admission as a POST is. It then needs
+an `MCP-Session-Id` of a known session (400 or 404 otherwise, with
+plain-text bodies) and credential continuity (403). The edge answers 404
 for a session already in a terminal state. Otherwise it moves the
 session to `deleted` and answers 204.
 
@@ -3175,13 +3566,22 @@ The edge accepts tokens in one configured mode:
 
 * a JWT {{RFC7519}}, signed with EdDSA, RS256, RS384, RS512, PS256,
   PS384, PS512, ES256, or ES384 under a configured key or key set. The
-  edge rejects the token before its `nbf` time or at or after its `exp`
-  time when those claims are present. When the corresponding expected issuer, audience, or protected
-  resource is configured, it checks `iss`, the audience or `resource`
-  claim; it also checks configured scopes;
+  edge MUST configure an allowed algorithm set independently of the
+  token, require and validate `iss`, `aud`, and `exp`, and reject a
+  token before a present `nbf` or at or after `exp`. It MUST bind issuer
+  keys to the expected issuer, validate its own audience and configured
+  resource and scopes, and reject a token intended for a different use.
+  JWT processing follows {{RFC8725}};
 
 * a token that the edge validates by OAuth token introspection
   {{RFC7662}}.
+
+Introspection MUST use an authenticated, protected connection to the
+configured authorization server and require an active token for the
+expected resource, principal, scope, and validity interval. Static
+bearer credentials are an explicitly configured shared-principal
+profile; they MUST NOT be described as distinct authenticated users or
+sender-bound credentials.
 
 The edge has no unauthenticated mode.
 
@@ -3201,12 +3601,32 @@ respectively, with a value equal to the claim. A failed check is 401.
 These checks authenticate HTTP requests; the edge does not pass the
 proof to the kernel ({{hosted-tool-calls}}).
 
+A present `cnf` MUST select at least one supported sender-key or
+certificate binding, and every selected binding MUST be verified. The
+edge MUST reject malformed, empty, or unsupported confirmation methods;
+it MUST NOT silently treat such a token as an unconstrained bearer.
+In particular, a `jkt` confirmation requires the separately implemented
+OAuth DPoP binding and cannot be satisfied by the Chio proof format.
+
+The Chio object carried in this binding's `DPoP` header is not the JWT
+proof format of {{RFC9449}}. Implementations MUST NOT advertise this
+binding as OAuth DPoP interoperability. Deployments needing that format
+require a separately specified binding.
+
+Certificate and attestation headers MUST originate from an authenticated
+trusted ingress that strips client-supplied copies and validates the
+underlying evidence. An attestation digest comparison alone is not
+sender authentication. Tokens with an attestation binding MUST also have
+a verified sender-key or certificate binding on the same request. The
+edge MUST reject the request if the required trusted ingress context is
+unavailable.
+
 The edge binds the authentication context of `initialize` to the
 session. Every later request of the session MUST present the same
 context: the same `Origin` value or none, and either the same static
 token or, for a JWT or introspected token, the same principal, issuer,
-subject, audience, scopes, and identity claims. When the edge recorded
-a fingerprint of the token, the request MUST carry the same token. The
+subject, audience, scopes, and identity claims. When the edge recorded a
+fingerprint of the token, the request MUST carry the same token. The
 edge answers a mismatch with 403.
 
 ## Initialization {#hosted-initialization}
@@ -3228,8 +3648,7 @@ A client opens a session as follows:
    then the `initialize` response. If the response is a result, the
    edge sets `MCP-Session-Id` on the HTTP response, records
    `result.protocolVersion` as the session's version, and moves the
-   session to `ready`. If the response is an error, for example for an
-   unsupported version ({{versioning}}), the HTTP response has no
+   session to `ready`. If initialization fails, the HTTP response has no
    `MCP-Session-Id` and the edge discards the session.
 
 4. The client sends `notifications/initialized` in a POST with the
@@ -3241,11 +3660,11 @@ A client opens a session as follows:
 Every `initialize` creates a new session, and the edge never
 re-initializes an existing one. A client that sets
 `toolCallChunkNotifications` within
-`capabilities.experimental.chioToolStreaming`
-to `true` in `initialize` receives streamed tool output as notifications
-({{hosted-tool-calls}}). The result's `capabilities.experimental`
-member advertises that feature as `chioToolStreaming` and describes
-version selection as `chioProtocol` ({{versioning}}).
+`capabilities.experimental.chioToolStreaming` to `true` in `initialize`
+receives streamed tool output as notifications ({{hosted-tool-calls}}).
+The result's `capabilities.experimental` member advertises that feature
+as `chioToolStreaming` and describes version selection as `chioProtocol`
+({{versioning}}).
 
 ## Session States {#hosted-sessions}
 
@@ -3276,63 +3695,65 @@ shutdown moves it to `closed`.
 The states `deleted`, `expired`, and `closed` are terminal, and a
 terminal session never changes state. The edge answers a request to an
 `initializing` or `draining` session with 409 and a request to a
-terminal session with 410. It keeps a record of a terminal session for a
-retention period, 30 minutes by default, and then answers 404.
+terminal session with 404. Retaining an internal tombstone for replay
+protection does not change that externally visible status.
 
 The edge does not resume a terminal session. A client continues after
-410 or 404 only by opening a new session. While a session is `ready`, a
-client that loses a connection can keep sending requests with the same
-session identifier and credentials. A response lost with its stream
-cannot be recovered; only notifications can be replayed
-({{hosted-replay}}).
+404 only by opening a new session. While a session is `ready`, a client
+that loses a connection can keep sending requests with the same session
+identifier and credentials. A response lost with its stream cannot be
+recovered through the notification replay buffer ({{hosted-replay}}).
+The client MUST resolve the original operation's outcome through an
+authenticated recovery path before retrying a call with possible side
+effects. A new session does not make a new execution of that call safe.
 
 ## Notification Stream and Replay {#hosted-replay}
 
 A client opens the notification stream of a session with a GET. The GET
 needs an `MCP-Session-Id` header (400, with JSON-RPC code -32600,
 otherwise) and an `Accept` header that lists `text/event-stream` (406
-otherwise). The edge applies the Origin, admission, version,
-continuity, and state checks of a POST. A session has at most one
-notification stream: the edge answers a second GET with 409 while the
-first stream is open. The stream carries only notifications, meaning
-messages with `method` and without `id`. It has no priming event and
-ends when its output channel closes or the client disconnects. A logical
-session-state transition does not guarantee immediate closure of an
-already open stream.
+otherwise). The edge applies the Origin, admission, version, continuity,
+and state checks of a POST. A session has at most one notification
+stream: the edge answers a second GET with 409 while the first stream is
+open. The stream carries only notifications, meaning messages with
+`method` and without `id`. It has no priming event and ends when its
+output channel closes or the client disconnects. A logical session-state
+transition does not guarantee immediate closure of an already open
+stream.
 
 While a notification stream is open, the edge sends notifications only
 on it. While none is open, it sends them on the stream of the current
 request POST. A request stream also carries the edge's requests to the
 client, which have both `method` and `id`.
 
-Each event has an identifier of the form `<session-id>-<n>`, where
-`<n>` is a decimal counter. The counter starts at 1 and counts every
-event of the session on every stream, priming events included. The
-counter is allocated when the edge creates an event, so its value does
-not establish delivery order across streams or buffered events. For a
+Each event has an identifier of the form `<session-id>-<n>`, where `<n>`
+is a decimal counter. The counter starts at 1 and counts every event of
+the session on every stream, priming events included. The counter is
+allocated when the edge creates an event, so its value does not
+establish delivery order across streams or buffered events. For a
 non-priming event, `data` is one JSON-RPC message; a priming event has
-empty data. The edge sets no `event` field. The edge retains the last 64 notifications for replay and
-retains no other events. Delivery on an open stream is best effort: the
-edge drops events, without notice, for a reader that falls too far
-behind.
+empty data. The edge sets no `event` field. The edge retains the last 64
+notifications for replay and retains no other events. Delivery on an
+open stream is best effort: the edge drops events, without notice, for a
+reader that falls too far behind.
 
 A GET with a `Last-Event-ID` header asks the edge to replay the
-notifications that followed that event. The edge splits the value at
-its last hyphen. The part before it has to equal the session identifier,
-and the part after it, the cursor, has to be an unsigned decimal
-integer. The edge answers 409 and opens no stream if the value is
-malformed or names another session, if it retains no notifications, or
-if the cursor is below one less than the counter of the oldest retained
-notification or above that of the newest. Otherwise it sends each
-retained notification with a larger counter and then continues with live
+notifications that followed that event. The edge splits the value at its
+last hyphen. The part before it has to equal the session identifier, and
+the part after it, the cursor, has to be an unsigned decimal integer.
+The edge answers 409 and opens no stream if the value is malformed or
+names another session, if it retains no notifications, or if the cursor
+is below one less than the counter of the oldest retained notification
+or above that of the newest. Otherwise it sends each retained
+notification with a larger counter and then continues with live
 notifications, without duplicates. After a 409, a client can open a
 stream without `Last-Event-ID` and accept that it missed notifications.
 
-An edge can serve several sessions through one connection to an
-upstream tool server. In that configuration it delivers every
-notification from the upstream server into every live session's queue.
-Session workers filter resource updates by subscription and elicitation
-completion by session context, and ignore unsupported notifications.
+An edge can serve several sessions through one connection to an upstream
+tool server. In that configuration it delivers every notification from
+the upstream server into every live session's queue. Session workers
+filter resource updates by subscription and elicitation completion by
+session context, and ignore unsupported notifications.
 
 ## Tool Calls {#hosted-tool-calls}
 
@@ -3391,9 +3812,11 @@ uses it as the request identifier. Without it, the edge uses the request
 identifier bound in a presented execution nonce, or assigns a new
 identifier to each call. A request that carries approval members or
 `supplementalAuthorization` MUST carry `chioRequestId`, and the approval
-members have to follow the combination rules of {{native-messages}};
-the edge answers -32602 otherwise. The kernel records `routeSelection`,
-an object, in the receipt's metadata as `route_selection`.
+members have to follow the combination rules of {{native-messages}}; the
+edge answers -32602 otherwise. Calls requiring durable threshold
+coordination also satisfy the narrower identifier bounds in
+{{threshold-approval}}. The kernel records `routeSelection`, an
+object, in the receipt's metadata as `route_selection`.
 
 The following request is illustrative.
 
@@ -3432,29 +3855,63 @@ The edge returns the kernel's outcome as an MCP tool result:
   instead describes the stream delivery in `content` and records the
   reason in `structuredContent.chioToolStream.reason`.
 
+* For pending approval, `content` is an empty array, `isError` is
+  `false`, and `structuredContent` is the native pending result:
+  `status: pending_approval` and the complete signed `proposal`.
+  This is a workflow state, not permission to execute. The next call
+  uses the original `chioRequestId`, proposal, and collected votes.
+
 * For a call that needs a URL elicitation, the edge returns JSON-RPC
   error -32042 with `data.elicitations`.
 
-The result does not contain the receipt. Receipt-bearing evaluation
-paths sign and retain receipts as in the native integration. Kernel
-evaluation errors and duplicate or stale request rejection can produce
-an MCP error without a receipt. An edge configured with a
-trust-control service appends each receipt to it, where the operator can
-query it ({{receipt-query}}). When the kernel issues an execution
-nonce, the edge returns it in `result._meta.chioExecutionNonce`.
+For a kernel outcome, the edge includes the signed receipt in
+`result._meta.chio.receipt`, its identifier in `receiptId`, the
+projected decision in `decision`, and diagnostic lifecycle information
+in `terminalState`. The projected decision is `allow`, `deny`, or
+`pending_approval`; it MUST NOT replace the signed receipt's decision.
+In particular, a pending result's receipt records denied execution for
+that exchange ({{threshold-kernel-proposals}}).
+
+The edge also returns `result._meta.chioEvidence`, with schema
+`chio.mcp.execution-evidence.v1`, the signed `receipt`, `requestId`,
+`outputKind`, `output`, and diagnostic `terminalState`. `requestId` is
+the request identifier from signed receipt metadata, or `null` when that
+metadata is absent. Consumers MUST compare a present identifier with the
+expected request; a null value cannot establish request correlation by
+itself. For
+an allowed scalar or object result, `outputKind` is `value` and `output`
+contains the original value whose canonical bytes the kernel bound. A
+projected MCP wrapper is not a substitute for that original value. For a
+stream, `outputKind` is `stream` and `output` is `null`; stream content
+verification requires the ordered chunks and their binding profile. When
+no releasable value is available, `outputKind` is `none` and `output` is
+`null`. The evidence wrapper is not separately signed; consumers MUST
+verify the enclosed receipt and all claimed bindings. They MUST NOT
+infer permission from an unsigned diagnostic field or from MCP's
+`isError` alone.
+
+The edge MUST construct these metadata namespaces from the actual kernel
+response, replacing conflicting tool-supplied metadata. It MUST preserve
+the original signed receipt. Authorized consumers can also query
+retained receipts through trust-control ({{receipt-query}}). An
+admission or transport failure can occur before a receipt exists; such
+an error MUST NOT carry fabricated execution evidence. When issued, an
+execution nonce is returned in `result._meta.chioExecutionNonce`; it
+MUST be absent from a pending approval response.
 
 If the client enabled chunk notifications at initialization, the edge
 sends one `notifications/chio/tool_call_chunk` notification per chunk
 before the result. Its `params` members are `requestId` (the JSON-RPC
 `id` of the call), `chunkIndex`, `totalChunks`, and `chunk`. The
 result's `structuredContent.chioToolStream` then has `mode` set to
-`notification_stream`. Otherwise a retained stream's `chioToolStream` has `mode` set to
-`collapsed_result` and carries every chunk in `chunks`. In both cases
-`chioToolStream` also carries `totalChunks` and `terminalState`, which
-is `completed` or `incomplete` in retained streamed results. Cancellation
-is an exception: the edge returns a reason-only error result and omits
-the stream summary and collapsed chunks. Chunk notifications can already
-have been queued before that cancellation result.
+`notification_stream`. Otherwise a retained stream's `chioToolStream`
+has `mode` set to `collapsed_result` and carries every chunk in
+`chunks`. In both cases `chioToolStream` also carries `totalChunks` and
+`terminalState`, which is `completed` or `incomplete` in retained
+streamed results. Cancellation is an exception: the edge returns a
+reason-only error result and omits the stream summary and collapsed
+chunks. Chunk notifications can already have been queued before that
+cancellation result.
 
 ## Model Metadata {#model-metadata}
 
@@ -3510,8 +3967,8 @@ adds members that describe the node that handled a request.
 An error response has the body `{"error": "<message>"}`, and its status
 code gives the class of error. The service rejects a body or query
 string that does not parse into the structure defined here with a 4xx
-status, which can precede authentication and can carry a different
-body. It answers 503 when it sheds load.
+status, which can precede authentication and can carry a different body.
+It answers 503 when it sheds load.
 
 ## Capability Issuance {#issuance}
 
@@ -3530,8 +3987,9 @@ token ({{capability-structure}}).
 
 The service signs the token with its authority key. The token's
 `subject` is `subjectPublicKey`, its `issued_at` is the current time,
-and its `expires_at` is `issued_at` plus `ttlSeconds`, saturating at the
-unsigned 64-bit maximum (2^64 - 1). Its scope is the
+and its `expires_at` is `issued_at` plus a policy-bounded `ttlSeconds`.
+The lifetime MUST be positive. The service MUST reject overflow or an
+unrepresentable deadline instead of saturating it. Its scope is the
 requested scope, to whose grants the service's issuance policy can add
 constraints. The service answers:
 
@@ -3548,15 +4006,16 @@ constraints. The service answers:
 * 500 for any other failure.
 
 A runtime attestation statement is a normalized result from an
-attestation verifier, with members `schema`, `verifier`, `tier`
-(`none`, `basic`, `attested`, or `verified`), `issued_at`, `expires_at`,
+attestation verifier, with members `schema`, `verifier`, `tier` (`none`,
+`basic`, `attested`, or `verified`), `issued_at`, `expires_at`,
 `evidence_sha256`, and the OPTIONAL `runtime_identity`,
 `workload_identity`, and `claims`. The service rejects a statement
 outside its validity interval (`issued_at` <= now < `expires_at`).
-Configured trust and assurance policies determine acceptance and effective
-tier; without trust rules, untrusted evidence can be downgraded to `none`.
-That effective tier selects any configured scope and lifetime ceilings. Attestation evidence formats and their appraisal are outside
-the scope of this document.
+Configured trust and assurance policies determine acceptance and
+effective tier; without trust rules, untrusted evidence can be
+downgraded to `none`. That effective tier selects any configured scope
+and lifetime ceilings. Attestation evidence formats and their appraisal
+are outside the scope of this document.
 
 ## Delegated Issuance {#delegated-issuance}
 
@@ -3611,8 +4070,10 @@ request at the first that fails:
 
 3. If `delegationPolicy` is present, the requested token is within its
    ceiling: the requested scope is a subset of the policy's `scope`
-   ({{attenuation}}), `ttl` <= `ttlSeconds`, and now plus `ttl`, saturating
-   at the unsigned 64-bit maximum, is at most `expiresAt` (403).
+   ({{attenuation}}), `ttl` is greater than zero and no greater than
+   `ttlSeconds`, and checked addition of now plus `ttl` is representable
+   and no greater than `expiresAt` (403). Overflow MUST reject issuance;
+   it MUST NOT be replaced by a saturated expiry.
 
 4. `upstreamCapabilityId`, if present, equals the policy's
    `parentCapabilityId`, and a policy `parentCapabilityId` is present
@@ -3674,15 +4135,20 @@ and the filters that are present all apply.
 {: #tab-receipt-query title="Receipt Query Parameters"}
 
 The service MUST reject the query with 400 if `minCost` exceeds
-`maxCost`, if `minCost` or `maxCost` is present without
-`costCurrency`, or if `costCurrency` is not exactly three uppercase
-ASCII letters. It answers an `outcome` outside the four values with
-500. A receipt without cost data matches no cost filter.
+`maxCost`, if `minCost` or `maxCost` is present without `costCurrency`,
+or if `costCurrency` is not exactly three uppercase ASCII letters. It
+MUST also reject an `outcome` outside the four values with 400. A
+receipt without cost data matches no cost filter.
 
 A caller authenticated with the service token reads all receipts. The
 service MAY also accept read tokens that are each bound to one tenant; a
-query authenticated with such a token returns only receipts whose
-`tenant_id` is that tenant.
+query authenticated with such a token returns only receipts whose signed
+`tenant_id` is that tenant. The service MUST derive tenant context from
+authenticated credentials, apply it to every lookup and page, and verify
+that returned signed bodies match that context. An identifier or query
+parameter is not read authority. Receipts without authenticated tenant
+attribution MUST NOT be included in a tenant query. Privileged
+administrative access is an explicitly separate authorization role.
 
 ### Paging {#receipt-query-paging}
 
@@ -3702,10 +4168,10 @@ The response has three members:
 : An array of receipt objects ({{receipt-structure}}).
 
 A client pages by passing `nextCursor` as `cursor` until `nextCursor` is
-`null`; the last page can be empty. Positions are not otherwise
-exposed. The service verifies the signature of each receipt before it
-returns it, and it fails the query with 500 if a stored receipt does not
-verify. A query that matches nothing returns:
+`null`; the last page can be empty. Positions are not otherwise exposed.
+The service verifies the signature of each receipt before it returns it,
+and it fails the query with 500 if a stored receipt does not verify. A
+query that matches nothing returns:
 
 ~~~ json
 {"nextCursor": null, "receipts": [], "totalCount": 0}
@@ -3716,10 +4182,10 @@ verify. A query that matches nothing returns:
 `POST /v1/revocations` revokes a capability. Its request body has one
 REQUIRED member, `capabilityId`, a string that identifies the
 capability. Only the service token authenticates this endpoint. The
-service records the identifier as revoked without checking that it
-names an issued capability, so a caller can revoke an identifier before
-any token uses it. It answers 200 only after the revocation is visible
-in its store, 409 if it has no revocation store, and 500 if the store
+service records the identifier as revoked without checking that it names
+an issued capability, so a caller can revoke an identifier before any
+token uses it. It answers 200 only after the revocation is visible in
+its store, 409 if it has no revocation store, and 500 if the store
 fails. A 200 response has these members:
 
 `capabilityId`:
@@ -3748,36 +4214,58 @@ token's `id` and of each capability in the token's delegation chain
 ({{capability-verification}}). A kernel configured with a trust-control
 service makes each check a `GET /v1/revocations` request with
 `capabilityId` set to the identifier and `limit` set to 1, reads
-`revoked`, and keeps no cache. The kernel MUST deny the call, with a
-signed receipt, if any identifier is revoked or if a check fails. The
+`revoked`, and keeps no cache. The kernel MUST deny the call if any
+identifier is revoked or a check fails. It records a denial receipt when
+its signing and storage authorities are available, subject to
+{{execution-lifecycle}}. The
 trust-control service does not notify kernels of revocations. The
 reference native driver does not notify agents; the optional
 `capability_revoked` message remains a permitted wire allocation
 ({{native-messages}}).
+
+A successful revocation response acknowledges durable visibility at the
+responding authority. It does not by itself acknowledge observation by
+every kernel or cancellation of an already-committed external effect.
+Deployments with replicated authorities MUST define the freshness bound
+and admission fence for their revocation profile. A kernel MUST NOT
+continue using a stale negative revocation result after that bound.
+Unavailable or indeterminate revocation state denies new dispatch.
 
 # Versioning and Negotiation {#versioning}
 
 Each wire surface has its own version selector. A version match on one
 surface does not establish a match on another surface.
 
+A schema identifier fixes its field meanings, canonicalization, and
+signing input. An incompatible change requires a new schema or binding
+version. A registry allocation alone does not negotiate an extension. A
+peer MUST reject an unsupported required feature rather than remove it
+and retry under weaker semantics. In particular, peers using threshold
+approval MUST agree support for the `pending_approval` result before
+opening an execution session.
+
 For the native transport, this document defines `chio-wire-v1`. The
 agent and kernel establish that value out of band. Native messages carry
 no in-band version field. A kernel that cannot accept the agreed version
 closes or resets the transport. Registry code 1000 classifies that
 out-of-band incompatibility; there is no native numeric-error frame or
-implemented in-band version exchange.
-There is no native downgrade exchange.
+implemented in-band version exchange. There is no native downgrade
+exchange.
 
-The hosted edge selects by exact match from its supported set. This
-document defines MCP version `2025-11-25`. The client sends
-`params.protocolVersion` in `initialize`; the response carries
-`result.protocolVersion`. The client carries the selected value in
-`MCP-Protocol-Version` on subsequent requests. The hosted edge rejects an
-initialization-time mismatch with JSON-RPC code -32600 and Chio code 1000.
-An omitted initialize selector uses the compatibility default. A later
-HTTP version-header mismatch produces HTTP 400 with a plain-text body,
-not that JSON-RPC error; an omitted header is tolerated. Session admission
-and state handling are specified in {{hosted-mcp}}.
+The hosted binding supports MCP version `2025-11-25` and follows MCP's
+initialization negotiation. The client MUST send `params.protocolVersion`.
+If the requested version is supported, the edge returns that version;
+otherwise it returns a version it supports. A client that cannot use the
+returned version MUST end initialization without submitting operations.
+A missing or malformed selector is invalid parameters, not implicit
+agreement to a default.
+
+The client MUST send the selected version in `MCP-Protocol-Version` on
+subsequent HTTP requests. The edge rejects an invalid or unsupported
+header with HTTP 400. When the header is absent but an authenticated
+session identifies the negotiated version, the edge can use that version
+for compatibility; it MUST NOT infer another version from request data.
+Session admission and state handling are specified in {{hosted-mcp}}.
 
 The trust-control interface uses the path prefix `/v1`. A client selects
 that prefix explicitly. There is no downgrade negotiation for that
@@ -3796,8 +4284,8 @@ idempotency contract.
 The numeric registry has eight categories: `protocol`, `auth`,
 `capability`, `guard`, `budget`, `tool`, `internal`, and `transaction`.
 {{iana-error-codes}} gives every initial allocation. The transaction
-entries reserve identifiers used by related evidence profiles;
-this document does not define those profiles.
+range reserves identifiers for related evidence profiles; this document
+does not allocate individual codes or define those profiles.
 
 A transient flag describes whether a changed condition can permit a
 later attempt. It is not permission to repeat the same request without
@@ -3805,7 +4293,9 @@ change. The retry strategy is part of each allocation. For example,
 `auth_missing_or_invalid` requires fresh credentials, and
 `budget_exhausted` requires a budget change or reconciliation. A revoked
 token stays revoked even though a newly issued token can authorize a
-later call. Tool and internal failures use bounded backoff.
+later call. For tool and internal failures, bounded backoff controls
+load only after the client establishes that retry is safe under
+{{execution-lifecycle}}. It does not resolve an uncertain external effect.
 
 ## Surface Mappings {#error-mapping}
 
@@ -3814,38 +4304,60 @@ The nested error has `code` and, for variants carrying diagnostic text,
 `detail`. The native names are `capability_denied`,
 `capability_expired`, `capability_revoked`, `policy_denied`,
 `tool_server_error`, and `internal_error`. They map to registry codes
-2100, 2101, 2102, 3100, 5100, and 6100 respectively. A registry allocation
-does not add a variant to the closed native error union.
+2100, 2101, 2102, 3100, 5100, and 6100 respectively. A registry
+allocation does not add a variant to the closed native error union.
 
 Hosted errors use JSON-RPC and, where supplied, a Chio code in error
-data. The registered mappings are -32600 for unsupported version and
-invalid request shape, and -32002 for a session that is not initialized.
+data. Invalid request shape uses -32600, invalid method parameters use
+-32602, and a session that is not initialized uses -32002. Version
+selection follows {{versioning}}; an unsupported later HTTP version
+header is an HTTP-layer error.
 Authentication failures can occur at HTTP session admission before a
 JSON-RPC response exists. A client keeps HTTP status, JSON-RPC code, and
 Chio code distinct.
 
 # Security Considerations {#security}
 
-This section describes the threats that Chio addresses, the controls that
-address them, and the risks that remain. It follows the order in which
-authority moves: issuance, delivery to the kernel, admission, dispatch to
-a tool server, and the receipt.
+This section describes the protocol's threat model, controls, and
+residual risks using the approach of {{RFC3552}}. The security boundary
+includes authority issuance, kernel admission, dispatch, resource
+accounting, output release, and evidence verification.
 
 ## Assets and Trust Boundaries {#security-boundaries}
 
-The assets are capability tokens and delegation state, session
-identifiers and sender bindings, the authenticity of the kernel, the
-confinement of tool execution, the integrity of receipts and of the
-decisions they record, and the availability of the kernel and its
-services.
+The protected assets are execution authority, confidential data and
+credentials, resource budgets, isolation state, signed evidence, and the
+availability of the services that enforce them.
 
-Authority crosses five boundaries: from the trust-control service to the
-agent at issuance, from the agent to the kernel over the native transport
-or the MCP binding, inside the kernel at admission, from the kernel to a
-tool server at dispatch, and from the kernel to any verifier through the
-receipt. The kernel is the component that must be trusted at every
-boundary except the last, where the receipt lets a verifier check the
-kernel's statements with the kernel's public key.
+An adversary can control an agent, its prompts and requested parameters,
+a tool's returned data, and an untrusted network. It can steal bearer
+tokens, replay or reorder messages, submit malformed signed objects,
+collude across sessions, race concurrent admissions, interrupt
+processes, and present stale storage snapshots. A compromised tool
+server can try to escape its permitted files, destinations, or
+credential scope.
+
+The trusted computing base includes the kernel's enforcement code,
+trusted issuers and policy configuration, signing authorities, durable
+authority stores, authenticated adapters, and the host isolation
+mechanisms selected by the execution profile. A secret broker is also
+trusted for the provider credentials and actions entrusted to it.
+Protocol signatures do not compensate for compromise of those
+components.
+
+Chio constrains the authority available to an agent even when its
+instructions or model behavior are adversarial. It does not infer user
+intent from the semantic safety of a prompt. A policy that authorizes an
+undesired operation can still produce a correctly signed allow receipt.
+Likewise, a compromised kernel key can authenticate false statements; a
+verifier checks the signer's statement and the evidence supporting each
+additional claim, rather than treating a signature as proof of truth.
+
+An execution profile MUST identify the components on which its claims
+depend and prevent alternative paths around them. An adapter that omits
+authenticated context, a tool with ambient credentials, or a recovery
+path that recreates consumed authority can defeat otherwise valid
+protocol checks.
 
 ## Transport Security {#security-transport}
 
@@ -3854,7 +4366,7 @@ surface. TLS supplies channel protection; {{RFC8446}} defines TLS 1.3.
 
 | Surface | TLS | Mutual TLS | Without transport security |
 |---|---|---|---|
-| Native transport | REQUIRED across hosts or untrusted networks | REQUIRED when the peer's identity is part of the authorization decision | Conformant only over a same-host socket or loopback, for development |
+| Native transport | REQUIRED across hosts or untrusted networks | REQUIRED when TLS peer identity supplies authorization identity | Authenticated same-host IPC is permitted; unauthenticated loopback is development-only |
 | MCP binding | REQUIRED for any non-loopback deployment | REQUIRED when the session's sender binding is an mTLS certificate thumbprint | Conformant only on loopback or in a test harness |
 | Trust-control interface | REQUIRED for any non-loopback deployment | REQUIRED for service-to-service deployments that rely on transport identity | Conformant only on loopback |
 | Kernel to tool server | Provided by mutual TLS when networked | REQUIRED over TCP across processes or hosts | Not conformant for production over a network |
@@ -3868,16 +4380,20 @@ carries in plaintext across a network.
 
 A hosted edge can run behind a proxy that terminates TLS and passes the
 client certificate's thumbprint to the edge in a request header. The
-edge then trusts that header. An operator MUST ensure that only the proxy
-can reach the edge, because a client that reaches the edge directly can
-set the header itself.
+edge accepts that value only in authenticated ingress context. The proxy
+MUST remove any client-supplied copy, and the edge MUST be unreachable
+by untrusted clients through a path that bypasses the proxy. Same-host
+IPC used for authority decisions MUST authenticate peer identity and
+socket ownership; a pathname or loopback address alone is insufficient.
 
 ## Token Theft and Replay {#security-token-theft}
 
 A capability token that is not sender-constrained is a bearer token for
 its validity interval: anyone who obtains it can present it. Signatures,
-validity intervals, and revocation bound the damage, and a sender proof
-({{sender-constraint}}) removes it for grants that require one.
+validity intervals, and revocation bound the damage. A correctly bound
+sender proof ({{sender-constraint}}) prevents possession of the token
+alone from authorizing a call; compromise of the sender key remains a
+compromise of that authority.
 
 The native transport carries no sender proof ({{native-messages}}), and
 it has no anti-replay marker of its own: a captured frame that carries a
@@ -3889,11 +4405,12 @@ constraint for sensitive or cross-host flows where the surface supports
 it, and SHOULD revoke a token as soon as its holder is suspected of
 compromise ({{revocation}}).
 
-A kernel records the nonces of sender proofs it has accepted, and a
-kernel that restarts or fails over without that record accepts a replayed
-proof again within the proof's lifetime. Deployments that run several
-kernel instances, or restart them, SHOULD keep that record in shared,
-durable storage.
+A kernel MUST durably record consumed sender-proof nonces for their full
+acceptance interval. All processes accepting proofs in the same
+authority domain MUST share atomic replay protection. An unavailable,
+corrupt, or rolled-back replay store MUST deny admission. Expiry-based
+collection MUST account for the profile's allowed clock skew and
+unresolved operations; restart is not a new replay epoch.
 
 ## Kernel Impersonation and Receipt Trust {#security-kernel-trust}
 
@@ -3907,25 +4424,68 @@ keys; this document does not define a public transparency system for
 them ({{checkpoint-claims}}).
 
 In the same way, a kernel accepts a capability token only from an issuer
-in its configured set of trusted issuer keys ({{capability-verification}}).
-Distributions SHOULD pin or securely provision kernel keys, issuer keys,
-and certificates, rather than learning them from the traffic they
-protect.
+in its configured set of trusted issuer keys
+({{capability-verification}}). Distributions SHOULD pin or securely
+provision kernel keys, issuer keys, and certificates, rather than
+learning them from the traffic they protect.
 
-Capability tokens carry no audience. Any kernel that trusts a token's
-issuer accepts the token for the grants it names. Operators that run
-kernels in different trust domains SHOULD use a distinct issuer key for
-each domain, so that a token issued for one domain is not accepted in
-another.
+A basic capability token has no general audience member. Without an
+additional binding, its issuer trust and grants can make it usable at
+more than one kernel. The security-context caveat in
+{{capability-security-context}} restricts use to its authenticated
+context; it is not a generic OAuth audience. Operators that run kernels
+in different trust domains SHOULD use distinct issuer keys and MUST
+configure the context and target checks required by each domain.
+
+### Signing Roles and Key Lifecycle {#security-key-lifecycle}
+
+Trust is role-specific. Configuring a key to sign receipts MUST NOT make
+it a capability issuer, manifest publisher, approver, credential broker,
+or active-response authority. Deployments MUST authorize those roles
+explicitly and SHOULD use separate keys for independent trust domains.
+
+Signing keys MUST be generated or derived using cryptographic secret
+material appropriate to their suite. Public identifiers, user names,
+workload names, and public-key bytes MUST NOT be used alone to derive a
+private key. Issuance to a subject public key does not authorize an
+adapter to replace that key with one it can reconstruct from public
+inputs.
+
+Changes to issuer sets, signing roles, or key epochs MUST come from an
+authenticated authority authorized to make that change. A replication
+peer's connectivity or possession of a general service credential is
+insufficient. Replicated trust state MUST bind its authority domain and
+monotonic revision, reject rollback and cross-domain substitution, and
+be durably applied before it authorizes operations. A profile MUST
+specify its protected replication channel and authenticated update
+format; an unsigned snapshot over an unprotected channel is invalid.
+
+A key lifecycle profile MUST specify activation, retirement, compromise
+handling, and historical verification. Rotation MUST have one
+unambiguous active signing authority per role and epoch; concurrent or
+stale workers MUST NOT continue signing as that active authority after
+its fence changes. Activation MUST follow the profile's authenticated
+transition and durable-state requirements. A failed rotation MUST NOT
+silently select an older or weaker signer.
+
+An old public key retained for historical verification does not
+authorize new signatures. A verifier MUST apply its own trusted key
+history and compromise policy. An artifact's self-asserted timestamp
+cannot establish that it predates compromise. When a profile requires
+independent key-log witnesses, the roster and quorum MUST come from
+trusted configuration, and missing or conflicting witness evidence MUST
+block activation. Key-log and witness wire formats are companion-profile
+concerns; a receipt checkpoint alone does not supply a key-rotation
+protocol.
 
 ## Delegation Abuse {#security-delegation}
 
 An attacker who holds a delegated token can try to widen its scope,
-truncate its lineage, or claim a parent it does not hold. The attenuation
-proof and the chain-binding rule ({{attenuation}}, {{chain-binding}})
-make a claimed parent scope verifiable against the trust root or the
-previous delegation link, and delegated issuance at the trust-control
-service cannot exceed its signed delegation policy
+truncate its lineage, or claim a parent it does not hold. The
+attenuation proof and the chain-binding rule ({{attenuation}},
+{{chain-binding}}) make a claimed parent scope verifiable against the
+trust root or the previous delegation link, and delegated issuance at
+the trust-control service cannot exceed its signed delegation policy
 ({{delegated-issuance}}).
 
 The kernel checks the revocation state of a token and of each ancestor
@@ -3956,35 +4516,134 @@ produce a classical signature for a key the verifier trusts.
 Signatures cover canonical bytes ({{canonical-json}}), so two parties
 that parse the same bytes differently can disagree about what was
 signed. JSON objects with duplicate member names are the usual source of
-such disagreement. Verifiers SHOULD reject a signed object that contains
-duplicate member names rather than resolving them. Intermediaries MUST
-preserve every member and value in the artifact's typed signing
+such disagreement. Verifiers MUST apply the original-byte parsing and
+numeric preservation requirements in {{canonical-json}}. Intermediaries
+MUST preserve every member and value in the artifact's typed signing
 projection when forwarding it. They MAY change insignificant JSON
 whitespace and member order, since verification reconstructs canonical
 bytes ({{native-receiver}}). They MUST NOT add unauthenticated members
 and represent them as part of the signed statement.
 
-## Tool Server Confinement {#security-tool-servers}
+## Runtime Enforcement Profiles {#security-runtime}
 
-The kernel decides whether a call reaches a tool server, and it checks
-the server, the tool, and the arguments against the grant before
-dispatch. It does not constrain what the tool server does once it runs.
-A tool server MUST be treated as less trusted than the kernel unless it
-runs in the same reviewed binary and privilege domain. Operators SHOULD
-confine tool servers with operating-system or container isolation,
-least-privilege file system access, and outbound network controls. A
-compromised tool server keeps whatever host privileges it was given.
+Kernel admission controls entry to an operation. Confinement, credential
+custody, and information-flow policies control the authority exercised
+while that operation runs and the data released afterward. When a
+profile requires these controls, the kernel MUST establish them before
+dispatch and MUST deny service if any required control is unavailable.
+It MUST NOT fall back to a less restrictive execution path.
+
+### Tool Server Confinement {#security-tool-servers}
+
+A confined execution profile MUST bind the selected tool to an
+authenticated manifest and an independently configured operator ceiling.
+The effective authority is their intersection. An adapter MUST apply the
+operator's authenticated policy to every exposed operation, including
+routes absent from an upstream API description. It MUST NOT infer an
+exemption from an HTTP method, a tool-supplied side-effect annotation, or
+an untrusted schema. Anonymous or unrestricted operations require an
+explicit operator policy. A signed manifest is
+accepted only from a publisher authorized for that workload; signature
+validity alone does not authorize its requested privileges.
+
+The launcher MUST establish the required process, filesystem, syscall,
+network, environment, and descriptor restrictions before untrusted code
+runs. It MUST prevent executable, directory, or socket substitution
+between verification and use. Child processes MUST inherit restrictions
+that prevent escape from the operation's authority. A failed isolation
+setup MUST prevent launch. A pathname constraint on a tool argument is
+not an operating-system filesystem boundary.
+
+A destination policy MUST cover the connection actually made, including
+name resolution, redirects, proxying, and endpoint changes. A hostname
+string comparison alone is insufficient. Profiles that restrict network
+destinations MUST use a trusted enforcement point capable of enforcing
+those restrictions. Portable artifacts do not establish that a
+particular host installed its promised controls; claims about
+confinement require authenticated evidence from that host and its stated
+trust assumptions.
+
+### Credential Custody {#security-credential-custody}
+
+A credential-custody profile MUST keep provider secrets outside the
+agent and untrusted tool processes. A trusted broker performs the
+authorized provider operation without returning reusable credentials.
+Secrets MUST NOT be exposed through tool parameters, inherited
+environment variables, command-line arguments, IPC responses, logs, or
+receipts.
+
+The broker MUST authenticate the invoking kernel and bind each operation
+to the verified capability, caller and tenant, target, parameters,
+resource reservation, and executor identity. It MUST reject destination
+substitution, stale authority, and replay. Broker-specific quota checks
+MUST participate in the same committed accounting decision as the
+operation's other required budgets; independent local counters do not
+establish a composite spend bound. An upstream timeout preserves an
+uncertain committed operation rather than restoring spend authority.
+
+### Information-Flow Control {#security-information-flow}
+
+A flow-enforced profile MUST bind the authenticated principal, tenant,
+lineage, session, isolation epoch, and context generation through
+{{capability-security-context}}. The kernel MUST derive input
+sensitivity from trusted retained state and authenticated tool declarations,
+not from agent-selected labels. Unknown history MUST be treated as the
+profile's most restrictive label rather than as public data.
+
+The kernel MUST propagate accumulated sensitivity through the operation
+and check the destination's policy-owned clearance before egress.
+Closing a session or changing an untrusted identifier MUST NOT clear
+principal or lineage sensitivity. A less restrictive successor requires
+an authenticated isolation transition or authorized declassification.
+
+Declassification MUST bind the exact operation, data or label
+transition, permitted purpose and destination, approving authority, and
+expiry. Single-use declassification authority MUST be consumed durably
+and MUST NOT be restored after an uncertain dispatch. A tool or adapter
+that cannot preserve the required context MUST be rejected for that
+profile. These requirements constrain explicit flows; they do not
+establish elimination of timing, traffic-volume, or other covert
+channels.
+
+### Active Response {#security-active-response}
+
+An active-response profile treats containment actions as governed kernel
+operations. Detection evidence is an input to policy, not authority to
+act. The kernel MUST authenticate its provenance and causal scope and
+verify the response plan, required capabilities, and approvals before
+applying a response. Untrusted tool output MUST NOT impersonate an
+internal security event or approval.
+
+Simulation and live execution MUST be distinct authenticated modes. A
+dry-run result MUST NOT be accepted as evidence that a live action was
+applied. Reversible responses MUST retain durable ownership of their
+individual contributions so expiry or rollback removes only the state
+that response owns. Overlapping responses MUST NOT undo each other's
+restrictions. An uncertain rollback MUST remain unresolved and MUST NOT
+be recorded as successful restoration.
+
+Permanent revocation requires separately authorized action; an automatic
+containment policy does not implicitly acquire that authority. Recovery
+MUST reconcile pending responses and stale ownership before the affected
+execution domain becomes ready. These requirements use the governance
+model in {{governed-transactions}} without defining a separate quorum or
+approval protocol.
 
 ## Resource Exhaustion {#security-dos}
 
 A kernel rejects native frames larger than the maximum payload length
-before allocating a buffer for them ({{native-framing}}). The MCP binding
-limits each session to one notification stream and never resumes a
-session that has reached a terminal state ({{hosted-sessions}}).
-Deployments SHOULD apply rate, concurrency, and time limits at the hosted
-edge and the trust-control service, and SHOULD bound per-session buffers
-and queues. An authenticated caller can still spend its own budget and
-queue share; budgets bound the cost of that, not its occurrence.
+before allocating a buffer for them ({{native-framing}}). The MCP
+binding limits each session to one notification stream and never resumes
+a session that has reached a terminal state ({{hosted-sessions}}).
+Deployments MUST bound message size, nesting depth, array and string
+lengths, signature work, concurrency, queues, and operation duration at
+each untrusted boundary. They MUST apply limits before the corresponding
+allocation or expensive work where possible. Streaming and decompression
+need limits on cumulative decoded size as well as individual frames.
+Overload MUST reject or defer work without bypassing authorization,
+accounting, or durable finalization. An authenticated caller can still
+spend its own budget and queue share; budgets bound the cost of that,
+not its occurrence.
 
 ## Budgets and Approvals {#security-budgets}
 
@@ -3992,12 +4651,12 @@ A budget hold is reserved before dispatch and captured once
 ({{budget-holds}}); a kernel denies a request that tries to capture a
 hold a second time. Approval tokens and threshold approvals are single
 use ({{approval-tokens}}, {{threshold-approval}}), and a kernel records
-the ones it has accepted. As with sender proofs, loss of a singular
-approval's replay record can allow replay within its validity interval,
-so deployments relying on singular approvals SHOULD keep that record in
-durable storage. Threshold approval MUST use the durable admission
-replay reservation in {{threshold-verification}} and MUST deny admission
-when that durable reservation is unavailable.
+the ones it has accepted. Both singular and threshold approvals require
+durable replay protection. Threshold approval MUST use the admission
+reservation in {{threshold-verification}} and MUST deny admission when
+that authority is unavailable. Reconstructing a request after restart
+MUST NOT produce a new approval or reservation for an already committed
+operation.
 
 Threshold approval counts distinct keys. Distinct keys are not distinct
 people or organizations: an operator who configures an eligible key set
@@ -4005,12 +4664,13 @@ decides how independent the approvers are.
 
 ## Checkpoint Equivocation {#security-checkpoints}
 
-A kernel signs its own checkpoints, so a kernel whose key is compromised,
-or a dishonest operator, can sign two checkpoints that disagree and show
-each to a different verifier. Consistency proofs let a verifier detect
-the disagreement when it holds both checkpoints
+A kernel signs its own checkpoints, so a kernel whose key is
+compromised, or a dishonest operator, can sign two checkpoints that
+disagree and show each to a different verifier. Consistency proofs let a
+verifier detect the disagreement when it holds both checkpoints
 ({{consistency-proofs}}); nothing in this document makes a verifier hold
-both. {{checkpoint-claims}} states what a verified checkpoint establishes.
+both. {{checkpoint-claims}} states what a verified checkpoint
+establishes.
 
 ## Provenance Inflation {#security-provenance}
 
@@ -4022,25 +4682,44 @@ NOT present `asserted` context as `observed` or `verified`.
 ## Attestation {#security-attestation}
 
 Attestation evidence can inform issuance ({{issuance}}), but it does not
-authorize a call by itself. A profile that binds an attestation digest to
-a token MUST also bind the request to the token's sender, by a sender
+authorize a call by itself. A verifier MUST validate the evidence under
+an independently configured attester trust policy, including the
+signature or authenticated verification result, workload measurements,
+freshness, and challenge or session binding required by the profile.
+Agent-supplied assurance labels, verifier names, and evidence digests do
+not satisfy those checks. A receipt MUST NOT label such assertions as
+verified attestation without that validation. A profile that binds an attestation digest
+to a token MUST also bind the request to the token's sender, by a sender
 proof or by mutual TLS continuity, on the same request.
 
-## Clock Skew {#security-clock-skew}
+## Time and Deadlines {#security-clock-skew}
 
-A kernel treats a token as expired when its clock reaches `expires_at`
-and as not yet valid while its clock is before `issued_at`, with no
-tolerance for skew ({{capability-verification}}). An issuer whose clock
-runs ahead of the kernel's produces tokens that the kernel rejects at
-first, and a kernel whose clock runs behind accepts tokens after they
-expire. Issuers and kernels need synchronized clocks.
+Validity intervals are half-open: `issued_at <= now < expires_at` unless
+an artifact explicitly states a different rule. Remote timestamp
+acceptance can use only the skew allowance specified by that artifact's
+profile. An allowance for remote clocks MUST NOT excuse regression or
+failure of the kernel's own trusted clock.
+
+The kernel MUST use checked time arithmetic and reject an unreadable,
+regressed, or unrepresentable clock value when it affects authority. It
+MUST NOT replace a failed time read with zero or extend a deadline
+through integer saturation. Issuers and kernels need sufficiently
+synchronized wall clocks for the selected validity intervals.
+
+For an admitted operation, the effective remaining lifetime MUST be
+bounded by both its signed wall-clock deadline and its original elapsed-
+time budget. Retries, queue transfers, and restarts MUST NOT reset that
+budget. A monotonic timestamp from another process or boot is not a
+portable time authority. If recovery cannot conservatively establish the
+remaining lifetime, it MUST refuse new dispatch under that
+authorization.
 
 # Privacy Considerations {#privacy}
 
 Blocking dispatch does not remove attempted arguments from a denial
-receipt. A pre-invocation guard can deny an attempt while its raw arguments
-remain in signed audit evidence; protect receipt storage and read access
-independently of tool admission.
+receipt. A pre-invocation guard can deny an attempt while its raw
+arguments remain in signed audit evidence; protect receipt storage and
+read access independently of tool admission.
 
 Receipts are designed to be kept and shown to other parties, and they
 contain more than a verdict. A receipt records the tool server and tool,
@@ -4048,17 +4727,17 @@ the capability identifier, the call's parameters as the agent sent them
 together with their hash, a hash of the output, the guards that were
 evaluated and their evidence, the chain of actors that the kernel
 attributes the call to, the time, and, in multi-tenant deployments, the
-tenant ({{receipt-structure}}). A receipt has no dedicated output field. Free-form metadata can still
-contain output or other sensitive data.
+tenant ({{receipt-structure}}). A receipt has no dedicated output field.
+Free-form metadata can still contain output or other sensitive data.
 
 Parameters are the most sensitive part. Because a receipt signs the
 parameters that the agent sent, anyone who can read the receipt can read
 them, including secrets or personal data that the agent placed there.
 Agents and tool designers SHOULD keep secrets and personal data out of
 tool arguments where the tool allows it. Deployments that handle
-regulated data SHOULD evaluate a guard that detects and redacts or blocks
-sensitive values before the call, and SHOULD restrict who can query
-receipts.
+regulated data SHOULD evaluate a guard that detects and redacts or
+blocks sensitive values before the call, and SHOULD restrict who can
+query receipts.
 
 Receipts are linkable. The capability identifier and the subject key
 connect every call made under one token, and a delegation chain reveals
@@ -4072,8 +4751,9 @@ does not by itself remove anything.
 A trust-control service limits receipt queries by tenant
 ({{receipt-query}}). A tenant sees its own receipts; an administrator
 sees all of them. Checkpoints commit to batches of receipts from every
-tenant that a kernel serves, so the size and timing of a batch can reveal
-aggregate activity across tenants to anyone who can see the checkpoint.
+tenant that a kernel serves, so the size and timing of a batch can
+reveal aggregate activity across tenants to anyone who can see the
+checkpoint.
 
 When MCP logging is enabled, a hosted edge can send the client log
 messages that name denied tools and carry error text ({{hosted-mcp}}).
@@ -4089,39 +4769,39 @@ allocations below are requests, not assertions that IANA has assigned
 these values.
 
 String values in the message and artifact registries are case-sensitive
-ASCII names of 1 to 96 octets using lowercase letters, digits, underscore,
-hyphen, and period. Signature-suite names additionally permit plus.
-These are proposed registration rules; compatibility decoders can accept
-other key spellings as specified in {{key-encoding}}.
+ASCII names of 1 to 96 octets using lowercase letters, digits,
+underscore, hyphen, and period. Signature-suite names additionally
+permit plus. These are proposed registration rules; compatibility
+decoders can accept other key spellings as specified in
+{{key-encoding}}.
 
 A registration identifies its value, name, description, and a stable
 specification. The designated experts check uniqueness, complete
 encoding and verification rules, and whether the specification states
-its security and interoperability consequences. A registration does
-not establish cryptographic suitability or implementation support.
-An update retains the meaning of previously allocated values; a change
-that breaks that meaning receives a new value.
+its security and interoperability consequences. A registration does not
+establish cryptographic suitability or implementation support. An update
+retains the meaning of previously allocated values; a change that breaks
+that meaning receives a new value.
 
 ## Chio Error Codes {#iana-error-codes}
 
 The registration template is: numeric code; symbolic name; category;
 transient flag; retry strategy and guidance; native error name, if any;
-JSON-RPC code, if any; and reference. Codes are decimal integers from
-0 through 2147483647. Negative JSON-RPC codes belong to their separate
-namespace and are not values in this registry.
-Experts check that the retry guidance distinguishes a changed condition
-from repeating an unsafe side effect. The initial allocations follow.
-Core allocations reference this document. Values 7100 through 7113 are
-reserved for related transaction profiles, rather than allocated by this
-document; their diagnostic names below describe current implementation
-usage. A future Specification Required registration supplies a permanent
-public specification before assigning any reserved value.
+JSON-RPC code, if any; and reference. Codes are decimal integers from 0
+through 2147483647. Negative JSON-RPC codes belong to their separate
+namespace and are not values in this registry. Experts check that the
+retry guidance distinguishes a changed condition from repeating an
+unsafe side effect. The initial allocations follow. Core allocations
+reference this document. Values 7100 through 7113 are reserved for
+related transaction profiles, rather than allocated by this document. A
+future Specification Required registration supplies a permanent public
+specification before assigning any reserved value.
 
 1000 (`protocol_version_unsupported`):
 : Category `protocol`; transient `false`;
   retry `do_not_retry_until_version_change`.
-  JSON-RPC code: -32600.
-  Retry only after selecting a supported protocol version.
+  Select a mutually supported binding version before a new operation.
+  This allocation does not replace MCP initialization negotiation.
 
 1001 (`session_not_initialized`):
 : Category `protocol`; transient `false`;
@@ -4173,97 +4853,17 @@ public specification before assigning any reserved value.
 : Category `tool`; transient `true`;
   retry `retry_with_backoff`.
   Native name: `tool_server_error`.
-  Use bounded exponential backoff unless upstream tooling documents a permanent failure.
+  Establish safe recovery or idempotency before a bounded retry.
 
 6100 (`internal_error`):
 : Category `internal`; transient `true`;
   retry `retry_with_backoff`.
   Native name: `internal_error`.
-  Retry with bounded backoff and escalate if the condition persists.
+  Resolve the original operation's state before a bounded retry.
 
-7100 (`transaction_passport_schema_unsupported`):
-: Category `transaction`; transient `false`;
-  retry `do_not_retry`.
-  Related-profile diagnostic name: `transaction_passport_schema_unsupported`.
-  Regenerate the passport with a registered transaction passport schema.
-
-7101 (`transaction_passport_hash_mismatch`):
-: Category `transaction`; transient `false`;
-  retry `do_not_retry`.
-  Related-profile diagnostic name: `transaction_passport_hash_mismatch`.
-  Rebuild the passport root with matching evidence graph, claim set, and policy digests.
-
-7102 (`transaction_graph_not_closed`):
-: Category `transaction`; transient `false`;
-  retry `do_not_retry`.
-  Related-profile diagnostic name: `transaction_graph_not_closed`.
-  Include every required evidence, claim-set, policy, and receipt node in the transaction graph.
-
-7103 (`transaction_graph_cycle`):
-: Category `transaction`; transient `false`;
-  retry `do_not_retry`.
-  Related-profile diagnostic name: `transaction_graph_cycle`.
-  Emit an acyclic evidence graph whose dependency edges can be topologically verified.
-
-7104 (`transaction_required_claim_missing`):
-: Category `transaction`; transient `false`;
-  retry `do_not_retry`.
-  Related-profile diagnostic name: `transaction_required_claim_missing`.
-  Add verified evidence for the required claim or remove the unsupported requirement.
-
-7105 (`transaction_artifact_hash_mismatch`):
-: Category `transaction`; transient `false`;
-  retry `do_not_retry`.
-  Related-profile diagnostic name: `transaction_artifact_hash_mismatch`.
-  Regenerate the artifact set with matching transaction evidence digests.
-
-7106 (`transaction_identity_not_bound`):
-: Category `transaction`; transient `false`;
-  retry `do_not_retry`.
-  Related-profile diagnostic name: `transaction_identity_not_bound`.
-  Bind identity evidence to the transaction passport subject and evidence graph.
-
-7107 (`transaction_authorization_not_bound`):
-: Category `transaction`; transient `false`;
-  retry `do_not_retry`.
-  Related-profile diagnostic name: `transaction_authorization_not_bound`.
-  Bind capability, policy, approval, or guard evidence to the governed transaction.
-
-7108 (`transaction_receipt_uncheckpointed`):
-: Category `transaction`; transient `false`;
-  retry `do_not_retry`.
-  Related-profile diagnostic name: `transaction_receipt_uncheckpointed`.
-  Provide checkpointed receipt or inclusion evidence for the transaction receipt.
-
-7109 (`transaction_runtime_proof_rejected`):
-: Category `transaction`; transient `false`;
-  retry `do_not_retry`.
-  Related-profile diagnostic name: `transaction_runtime_proof_rejected`.
-  Regenerate runtime security, parity, lease, nonce, revocation, sandbox, ack, and terminal receipt evidence.
-
-7110 (`transaction_buyer_review_rejected`):
-: Category `transaction`; transient `false`;
-  retry `do_not_retry`.
-  Related-profile diagnostic name: `transaction_buyer_review_rejected`.
-  Regenerate buyer review evidence that matches the transaction passport and verifier policy.
-
-7111 (`transaction_settlement_unverified`):
-: Category `transaction`; transient `false`;
-  retry `do_not_retry`.
-  Related-profile diagnostic name: `transaction_settlement_unverified`.
-  Include settlement evidence bound to the transaction order, amount, currency, rail, and receipt lineage.
-
-7112 (`transaction_dispute_unbound`):
-: Category `transaction`; transient `false`;
-  retry `do_not_retry`.
-  Related-profile diagnostic name: `transaction_dispute_unbound`.
-  Bind dispute, refund, remediation, and settlement reversal evidence to the transaction passport and receipts.
-
-7113 (`transaction_transparency_preview_not_allowed`):
-: Category `transaction`; transient `false`;
-  retry `do_not_retry`.
-  Related-profile diagnostic name: `transaction_transparency_preview_not_allowed`.
-  Provide verified transparency inclusion evidence or remove the transparency claim.
+Values 7100 through 7113 are Reserved. All other values not allocated
+above are Unassigned. Reservation does not define a wire error or imply
+support for a companion transaction profile.
 
 ## Chio Signature Suites {#iana-signature-suites}
 
@@ -4312,10 +4912,10 @@ wire version or explicit extension agreement defines its availability.
 The registration template is: schema identifier; artifact role; exact
 signed projection; canonical encoding; domain separation, if any;
 verification procedure; and reference. Experts check that a verifier
-cannot confuse artifacts with different authority or trust roles.
-A registry identifier can name a projection without appearing as a
-member in its wire envelope. In particular, receipt records carry no
-top-level `schema` member.
+cannot confuse artifacts with different authority or trust roles. A
+registry identifier can name a projection without appearing as a member
+in its wire envelope. In particular, receipt records carry no top-level
+`schema` member.
 
 Initial values in the scope of this document are:
 
@@ -4323,71 +4923,64 @@ Initial values in the scope of this document are:
 * `chio.receipt.v1`: receipt signing projection ({{receipts}}).
 * `chio.aggregate-budget-root.v1`: aggregate budget root
   ({{aggregate-budgets}}).
-* `chio.execution_nonce.v1`: authoritative execution nonce
+* `chio.execution_nonce.v1`: legacy execution nonce
   ({{authoritative-spend}}).
+* `chio.execution_nonce.v2`: operation-owned execution nonce
+  ({{operation-nonce}}).
+* `chio.dpop_proof.v1`: Chio sender proof ({{sender-constraint}}).
+* `chio.receipt_lineage_statement.v1`: signed receipt relationship
+  ({{receipt-lineage}}).
+* `chio.call_chain_continuation.v1`: call-chain continuation
+  ({{call-chain-continuation}}).
 * `chio.threshold-approval-proposal.v1`: threshold proposal
   ({{threshold-approval}}).
 * `chio.checkpoint_statement.v2`: signed receipt checkpoint
   ({{checkpoint-statement}}).
 
-Approval tokens, delegation links, and child receipts do not gain a
-new schema member from this registration. Unsigned proof records do
-not become signed artifacts through inclusion in a registry.
+Approval tokens, delegation links, and child receipts do not gain a new
+schema member from this registration. Unsigned proof records do not
+become signed artifacts through inclusion in a registry.
 
 # Implementation Status {#implementation-status}
 {: removeInRFC="true"}
 
-This section is included according to {{RFC7942}} and is removed before
-publication as an RFC. Its purpose is to inform discussion. It is not
-an IETF endorsement, an interoperability certification, or evidence of
-independent implementations.
+This section follows {{RFC7942}} and is removed before publication as an
+RFC. It describes the implementation supporting this specification;
+implementation availability is distinct from IETF endorsement or
+independent interoperability results.
 
-The Chio Rust implementation is available at
-<https://github.com/backbay-labs/chio>, under the Apache-2.0 license.
-The contact is Connor Whelan, <mailto:connor@backbay.io>. It implements
-capability tokens, signed receipts, framed native messages, hosted MCP,
-trust-control endpoints, governed transactions, budget accounting, and
-receipt checkpoints. Cryptographic suite and operational support depend
-on the enabled build features and configuration.
+Chio is implemented as a modern Rust kernel for agentic operating
+systems. Its source is published under Apache-2.0 at
+<https://github.com/backbay-labs/chio>. The contact is Connor Whelan,
+<mailto:connor@backbay.io>.
 
-The inspected implementation profile is leader-local single-writer
-trust-control with eventual repair; hosted admission on one node or a
-dedicated session owner; atomic monetary accounting in one store with
-bounded clustered overrun; and signed local checkpoint evidence.
-Static bearer, tokens without sender bindings, and shared-owner hosted
-authentication are compatibility modes, not the stronger operational
-profile. Neither checkpoint signatures nor these configurations establish
-public transparency or distributed spend linearizability.
+The implementation provides the signed capability and receipt formats,
+framed native transport, hosted MCP binding, trust-control interfaces,
+authenticated attenuation, budget accounting, governed approvals, and
+receipt checkpoints specified here. The runtime composes these with
+authenticated process context, durable execution and recovery, confined
+tool processes, brokered credentials, information-flow enforcement, and
+governed active response. Cryptographic suites and host mechanisms are
+selected through explicit build and deployment profiles.
 
-TLS and proxy-only reachability requirements are deployment duties.
-The hosted listeners themselves accept plain TCP; operators provide the
-required transport protection. The local token issuer pairs attestation
-confirmation with a sender key or certificate binding, but imported JWT
-and introspection paths can accept attestation-only confirmation. Such
-imports require an issuer or deployment policy enforcing
-{{security-attestation}}; that property is not a universal edge check.
+The production execution profile uses a single operator authority domain
+with durable stores and fenced ownership. Its resource guarantee is
+`single_node_atomic`; it does not advertise `ha_linearizable` merely
+because multiple clients or processes use that authority. Native
+confinement is a platform profile, not a property inferred from an
+artifact verifier or transport adapter. Public checkpoint witnessing and
+cross-operator federation have separate trust and availability
+requirements.
 
-The portable core and the hosted kernel have different enforcement
-surfaces. The portable core handles tool grants and refuses constraints
-that require unavailable runtime evidence. The hosted kernel supplies
-resource and prompt matching, revocation state, sender-constraint
-verification, budget holds, and governed transaction validation. A
-producer or consumer claiming conformance states its supported profile;
-parsing an artifact does not establish enforcement of its constraints.
-
-The native conformance suite is in `tests/conformance/native/`. Its
-six scenario descriptors cover capability validation, delegation
-attenuation, receipt integrity, revocation propagation, proof of
-possession, and governed transaction enforcement. The runner supports
-three driver modes: deterministic `artifact` validation, native framed
-`stdio` exchange with an external executable, and a test-only `http`
-bridge exposing `POST /chio-conformance/v1/invoke`. That bridge is a
-conformance harness contract, not a fourth production wire surface.
-
-Binding vectors are described in {{test-vectors}}. Passing these
-vectors establishes the exercised encoding and validation cases; it
-does not certify budget durability, deployment isolation, checkpoint
-publication, or end-to-end behavior of a third-party tool.
+Conformance artifacts exercise capability validation, attenuation,
+receipt integrity, revocation, sender binding, governed transactions,
+and the native framing contract. Binding examples and cryptographic
+vectors are given in {{examples}} and {{test-vectors}}. Runtime
+qualification additionally exercises concurrency, process failure,
+restart, confinement, credential custody, and retention. These test
+categories distinguish wire interoperability from deployment assurance;
+no independent multi-implementation interoperability result is claimed
+by this section.
 
 --- back
 
@@ -4411,10 +5004,11 @@ The Model Context Protocol {{MCP}} defines how a client discovers and
 calls the tools, resources, and prompts of a server. The Agent2Agent
 protocol {{A2A}} defines how agents exchange tasks and messages. Chio
 does not replace either. The MCP binding in {{hosted-mcp}} makes a Chio
-kernel an MCP server whose tool calls it mediates, so an unmodified MCP
-client can make basic tool calls through a kernel under a compatible
-admission profile. Chio sender constraints and governed metadata require
-a client that supplies those extensions.
+kernel accessible as an MCP server. Applications using a compatible
+admission profile obtain the kernel's authority, accounting, governance,
+and evidence services through ordinary MCP tool calls. Chio sender
+constraints and governed metadata require a client that supplies those
+extensions.
 
 ## Delegated Authorization
 
@@ -4431,8 +5025,10 @@ objects and does not claim GNAP compatibility.
 
 DPoP {{RFC9449}} binds an OAuth access token to a key held by the
 client. The sender proof in {{sender-constraint}} has the same goal for
-capability tokens. It uses a Chio-specific proof format and is not
-RFC 9449 on the native transport.
+capability tokens. It uses a Chio-specific proof format and is not the
+JWT-based proof defined by RFC 9449. The native v1 transport has no
+sender-proof member; the hosted HTTP binding uses the Chio format as
+specified in {{hosted-admission}}.
 
 ## Capability Tokens
 
@@ -4441,26 +5037,28 @@ bearer or key-bound capability tokens that support offline attenuation.
 Chio shares their model of narrowing authority by adding restrictions.
 Its authenticated attenuation profile binds a one-hop delegation to
 scope hashes, with a trusted token issuer and verifier-owned root inputs.
-Its kernel also applies the qualified sibling-budget checks in
-{{budgets}} and records receipt-bearing mediated outcomes. These features
-do not establish a uniqueness claim against other capability systems.
+Chio connects delegated authority to a stateful execution boundary:
+resource reservations, approval consumption, dispatch commitment, output
+release, and signed evidence belong to one recoverable operation.
+{{budgets}} specifies the accounting profiles; {{execution-lifecycle}}
+defines the lifecycle that a token format alone does not provide.
 
 ## Workload Identity and Attestation
 
 The WIMSE architecture {{I-D.ietf-wimse-arch-08}} addresses identity for
 workloads that call one another across systems, and RATS {{RFC9334}}
-defines how a verifier appraises attestation evidence. A Chio subject
-is a public key. A deployment can bind that key to a workload identity
-or accept attestation evidence at issuance ({{trust-control}}), but
+defines how a verifier appraises attestation evidence. A Chio subject is
+a public key. A deployment can bind that key to a workload identity or
+accept attestation evidence at issuance ({{trust-control}}), but
 attestation does not by itself authorize a call ({{security}}).
 
 ## Signed Evidence and Transparency
 
-SCITT {{RFC9943}} defines signed statements and
-transparency services that record them. Chio receipts and checkpoints
-address a related problem: they let a party check what a kernel
-authorized and executed. Chio is not a SCITT profile, and {{checkpoints}}
-states the limits of the claims that checkpoints support.
+SCITT {{RFC9943}} defines signed statements and transparency services
+that record them. Chio receipts and checkpoints address a related
+problem: they let a party check what a kernel authorized and executed.
+Chio is not a SCITT profile, and {{checkpoints}} states the limits of
+the claims that checkpoints support.
 
 ## Verifiable Credentials
 
@@ -4485,7 +5083,16 @@ not specify. Each could be specified in its own document:
 
 * public anchoring of checkpoints;
 
-* mediation of arbitrary HTTP APIs through a local evaluation service;
+* authenticated caller execution, provider evidence, and idempotent
+  recovery across external execution boundaries;
+
+* manifests, process confinement, information-flow labels, and
+  declassification artifacts;
+
+* credential-broker and key-lifecycle protocols, including witness
+  policies and key-rotation evidence;
+
+* active-response artifact and authority-service bindings;
 
 * selective disclosure of receipt fields.
 
