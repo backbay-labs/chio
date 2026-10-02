@@ -202,6 +202,7 @@ pub(crate) fn run() {
 
     let command = cli.command;
     let result = match command {
+        Commands::Megastart { arguments } => crate::companion::megastart(&arguments).map_err(CliError::Io),
         Commands::Run { policy, command } => cmd_run(
             &policy,
             &command,

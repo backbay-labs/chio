@@ -11,6 +11,8 @@ on:
       - "crates/**/Cargo.toml"
       - "supply-chain/**"
       - ".github/workflows/cargo-vet.yml"
+      - "scripts/check-cargo-vet-justification.py"
+      - "scripts/tests/test_cargo_vet_justification.py"
   pull_request:
     paths:
       - "Cargo.lock"
@@ -18,6 +20,8 @@ on:
       - "crates/**/Cargo.toml"
       - "supply-chain/**"
       - ".github/workflows/cargo-vet.yml"
+      - "scripts/check-cargo-vet-justification.py"
+      - "scripts/tests/test_cargo_vet_justification.py"
 
 permissions:
   contents: read
@@ -35,6 +39,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Verify exemption review gate
+        run: python3 -m unittest discover -s scripts/tests -p 'test_cargo_vet_justification.py'
 
       - name: Install Rust toolchain
         shell: bash
@@ -92,25 +99,7 @@ jobs:
             exit 1
           fi
 
-          has_authorized_justification() {
-            local endpoint="$1"
-            gh api "$endpoint" --paginate --jq '
-              .[]
-              | select(
-                  (
-                    .author_association == "OWNER"
-                    or .author_association == "MEMBER"
-                    or .author_association == "COLLABORATOR"
-                  )
-                  and ((.body // "") | test("^cargo-vet-exemption-justification:"; "i"))
-                )
-              | .id
-            ' | grep -q .
-          }
-
-          if has_authorized_justification "repos/$REPO/issues/$PR_NUMBER/comments" \
-            || has_authorized_justification "repos/$REPO/pulls/$PR_NUMBER/comments" \
-            || has_authorized_justification "repos/$REPO/pulls/$PR_NUMBER/reviews"; then
+          if python3 scripts/check-cargo-vet-justification.py --repo "$REPO" --pr "$PR_NUMBER"; then
             echo "cargo-vet exemption increase accepted by explicit PR justification comment"
             exit 0
           fi
@@ -119,7 +108,7 @@ jobs:
             echo
             echo "cargo-vet-exemption-justification: <reason>"
             echo
-            echo "Accepted locations: issue comments, pull request review comments, or pull request reviews from OWNER, MEMBER, or COLLABORATOR accounts."
+            echo "Accepted locations: issue comments, pull request review comments, or pull request reviews from accounts with repository write or admin permission."
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
 

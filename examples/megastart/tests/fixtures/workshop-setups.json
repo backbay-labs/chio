@@ -1,0 +1,1129 @@
+{
+  "valid": [
+    {
+      "code": "sf1.reference",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "reference"
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.claude.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "claude",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.claude.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "claude",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.claude.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "claude",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.claude.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "claude",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.codex.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "codex",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.codex.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "codex",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.codex.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "codex",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.codex.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "codex",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.hermes.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "hermes",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.hermes.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "hermes",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.hermes.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "hermes",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.hermes.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "hermes",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.pi.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "pi",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.pi.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "pi",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.pi.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "pi",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.claude.pi.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "claude",
+            "implementation": "pi",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.claude.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "claude",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.claude.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "claude",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.claude.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "claude",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.claude.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "claude",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.codex.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "codex",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.codex.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "codex",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.codex.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "codex",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.codex.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "codex",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.hermes.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "hermes",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.hermes.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "hermes",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.hermes.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "hermes",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.hermes.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "hermes",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.pi.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "pi",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.pi.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "pi",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.pi.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "pi",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.codex.pi.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "codex",
+            "implementation": "pi",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.claude.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "claude",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.claude.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "claude",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.claude.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "claude",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.claude.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "claude",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.codex.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "codex",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.codex.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "codex",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.codex.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "codex",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.codex.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "codex",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.hermes.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "hermes",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.hermes.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "hermes",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.hermes.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "hermes",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.hermes.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "hermes",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.pi.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "pi",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.pi.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "pi",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.pi.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "pi",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.hermes.pi.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "hermes",
+            "implementation": "pi",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.claude.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "claude",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.claude.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "claude",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.claude.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "claude",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.claude.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "claude",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.codex.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "codex",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.codex.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "codex",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.codex.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "codex",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.codex.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "codex",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.hermes.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "hermes",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.hermes.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "hermes",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.hermes.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "hermes",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.hermes.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "hermes",
+            "review": "pi"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.pi.claude",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "pi",
+            "review": "claude"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.pi.codex",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "pi",
+            "review": "codex"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.pi.hermes",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "pi",
+            "review": "hermes"
+          }
+        }
+      }
+    },
+    {
+      "code": "sf1.native.pi.pi.pi",
+      "setup": {
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "project": "moving-average",
+        "exampleRevision": 1,
+        "workers": {
+          "mode": "native",
+          "roles": {
+            "research": "pi",
+            "implementation": "pi",
+            "review": "pi"
+          }
+        }
+      }
+    }
+  ],
+  "invalid": [
+    "",
+    "sf2.reference",
+    "SF1.reference",
+    "sf1.Reference",
+    " sf1.reference",
+    "sf1.reference ",
+    "sf1.reference\n",
+    "sf1.reference\u0000",
+    "sf1.reference.extra",
+    "sf1.native.codex.codex",
+    "sf1.native.codex.codex.codex.extra",
+    "sf1.native.gpt.codex.pi",
+    "sf1.native.Codex.codex.codex",
+    "sf1.native.codex.codex.c\u043edex",
+    "sf1%2ereference",
+    "sf1/../../etc/passwd",
+    "sf1.reference;id",
+    "sf1.reference$(id)",
+    "sf1.reference`id`",
+    "sf1.reference\"",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "https://example.com",
+    "sf1.native..."
+  ]
+}

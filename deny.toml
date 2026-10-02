@@ -12,10 +12,8 @@ no-default-features = false
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
-# The resolved graph has seven upstream advisories without safe compatible
-# upgrades. Each exception is narrow, dated, and restricted to compile-time,
-# test-only, or public-key verification use. Known exploitable runtime paths
-# remain unconditionally denied.
+# Each exception is narrow, dated, and justified by its actual use below.
+# Known exploitable runtime paths remain unconditionally denied.
 ignore = [
     # last-checked = 2026-08-29. dudect-bencher 0.7 is the current release and
     # retains clap 2, which pulls ansi_term and atty. Both are test-only timing
@@ -40,6 +38,12 @@ ignore = [
     # attestation, and Sigstore validation. Private-key operations are limited
     # to local tests, outside an attacker-observable signing service.
     "RUSTSEC-2023-0071",
+    # last-checked = 2026-10-01. GHSA-jqpg-j7w6-42pr affects dynamic
+    # wasmtime::component::Val lifting only. Chio's sole Wasmtime consumer,
+    # chio-wasm-guards, uses bindgen-generated Guard bindings and typed calls.
+    # Upstream explicitly identifies these APIs as unaffected. Reassess before
+    # introducing dynamic component calls. See docs/security/wasmtime-2026-0316.md.
+    "RUSTSEC-2026-0316",
 ]
 
 # cargo-deny 0.16 enforces an explicit allow-list only: unlisted licenses are

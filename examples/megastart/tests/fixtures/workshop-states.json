@@ -1,0 +1,750 @@
+{
+  "draft": {
+    "active_command": null,
+    "capabilities": {
+      "commands": [
+        "prepare_agent",
+        "initialize",
+        "run",
+        "resume",
+        "approve",
+        "create_revision"
+      ],
+      "native": false,
+      "native_teams": [],
+      "reference": true
+    },
+    "host": {
+      "epoch": "4874959b-d943-4eb9-a0ed-493f54729289",
+      "operator_version": "0.1.0",
+      "target": "aarch64-macos",
+      "ui_build_id": "workshop-development"
+    },
+    "last_event_sequence": 0,
+    "mission": null,
+    "readiness": [
+      {
+        "blocking": true,
+        "guide": "installation",
+        "id": "compiler",
+        "label": "Rust compiler",
+        "message": "Rust compiler is available.",
+        "status": "ready"
+      }
+    ],
+    "schema_version": 1,
+    "snapshot_id": "a2feda605d6e7fcfa8aaf239752befa073eaa98d10cddfb8d4847daaef67fb34",
+    "workspace": {
+      "id": "9a562bf9-4d90-40cb-9d5a-eb2ab102020d",
+      "missions": [],
+      "schema_version": 1,
+      "selected_mission_id": null,
+      "setup": {
+        "exampleRevision": 1,
+        "project": "moving-average",
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "workers": {
+          "mode": "reference"
+        }
+      }
+    }
+  },
+  "child-review": {
+    "active_command": null,
+    "capabilities": {
+      "commands": [
+        "prepare_agent",
+        "initialize",
+        "run",
+        "resume",
+        "approve",
+        "create_revision"
+      ],
+      "native": false,
+      "native_teams": [],
+      "reference": true
+    },
+    "host": {
+      "epoch": "4874959b-d943-4eb9-a0ed-493f54729289",
+      "operator_version": "0.1.0",
+      "target": "aarch64-macos",
+      "ui_build_id": "workshop-development"
+    },
+    "last_event_sequence": 29,
+    "mission": {
+      "active_role": null,
+      "agents": null,
+      "allowance": {
+        "committed": 6,
+        "remaining": 0,
+        "reserved": 0,
+        "total": 6
+      },
+      "artifacts": [
+        {
+          "digest": "ef18522352796f103aa362148d79890c3caf434c88a59c9fb8c3b665afb5ece3",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "original",
+          "kind": "original",
+          "label": "lib.rs \u00b7 original",
+          "operation_id": null,
+          "status": "available"
+        },
+        {
+          "digest": "790ef4137d80c8f9cd6f905ffa05c03b13f768359f464684d84d3fcc9ece593b",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "harness",
+          "kind": "harness",
+          "label": "tests.rs",
+          "operation_id": null,
+          "status": "available"
+        },
+        {
+          "digest": "cea65906822fac5001d0fba3789c6fd7a3074b9cd151ce71aa6196af7988efe6",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "candidate",
+          "kind": "candidate",
+          "label": "lib.rs \u00b7 candidate",
+          "operation_id": null,
+          "status": "available"
+        },
+        {
+          "digest": "3a3107d7c0722526532248f23eed4e5c7be876c880da1e7c8ab40a808a972c1b",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "test-output",
+          "kind": "test-output",
+          "label": "Test output",
+          "operation_id": "3f689f94-bd66-4bb4-9a94-002010278be1",
+          "status": "available"
+        },
+        {
+          "digest": null,
+          "digest_scheme": "canonical-json-sha256",
+          "id": "compiler-output",
+          "kind": "compiler-output",
+          "label": "Compiler output",
+          "operation_id": "3f689f94-bd66-4bb4-9a94-002010278be1",
+          "status": "pending"
+        },
+        {
+          "digest": "f0f289728f9a6d7bea2916fbed3fb5d2958a45fff49a6d6f75071c18657fb601",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "review",
+          "kind": "review",
+          "label": "Review",
+          "operation_id": null,
+          "status": "available"
+        },
+        {
+          "digest": null,
+          "digest_scheme": "canonical-json-sha256",
+          "id": "published",
+          "kind": "published",
+          "label": "Published lib.rs",
+          "operation_id": null,
+          "status": "pending"
+        }
+      ],
+      "harness_digest": "790ef4137d80c8f9cd6f905ffa05c03b13f768359f464684d84d3fcc9ece593b",
+      "id": "3954ff5d-a2a5-4ef1-a348-876186f0a4cf",
+      "input_identity": "68ebbeac7e94009bdb879bf0bda5eef327ff72dcf451fba5358f6404e25302e6",
+      "label": "Moving average \u00b7 added regression",
+      "mode": "reference",
+      "phase": "awaiting_review",
+      "proposal": {
+        "candidate_digest": "cea65906822fac5001d0fba3789c6fd7a3074b9cd151ce71aa6196af7988efe6",
+        "candidate_id": "958ef0dc-e9bd-4063-a437-a3fda2696860",
+        "harness_digest": "790ef4137d80c8f9cd6f905ffa05c03b13f768359f464684d84d3fcc9ece593b",
+        "review_receipt": "a618ba62eb13811731c9731ec09c3e6e4df5162b7ccef2192ec5220792c33bbd",
+        "source_digest": "ef18522352796f103aa362148d79890c3caf434c88a59c9fb8c3b665afb5ece3",
+        "test_receipt": "648c6ed7de424f1adde0f8b557ed0d00f078b8401bc9897b23ed9ad92f083be4"
+      },
+      "publication": null,
+      "source_digest": "ef18522352796f103aa362148d79890c3caf434c88a59c9fb8c3b665afb5ece3",
+      "tests": {
+        "candidate_digest": "cea65906822fac5001d0fba3789c6fd7a3074b9cd151ce71aa6196af7988efe6",
+        "checks": [
+          {
+            "name": "incomplete_window_has_no_mean",
+            "status": "passed"
+          },
+          {
+            "name": "ordinary_windows",
+            "status": "passed"
+          },
+          {
+            "name": "rolling_update_matches_wide_reference",
+            "status": "passed"
+          },
+          {
+            "name": "singleton_window_preserves_value",
+            "status": "passed"
+          },
+          {
+            "name": "wide_accumulator_preserves_large_means",
+            "status": "passed"
+          },
+          {
+            "name": "zero_window_is_an_error",
+            "status": "passed"
+          }
+        ],
+        "compiler_output": null,
+        "complete": true,
+        "harness_digest": "790ef4137d80c8f9cd6f905ffa05c03b13f768359f464684d84d3fcc9ece593b",
+        "output": "\nrunning 6 tests\ntest incomplete_window_has_no_mean ... ok\ntest ordinary_windows ... ok\ntest rolling_update_matches_wide_reference ... ok\ntest singleton_window_preserves_value ... ok\ntest wide_accumulator_preserves_large_means ... ok\ntest zero_window_is_an_error ... ok\n\ntest result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+        "status": "passed"
+      }
+    },
+    "readiness": [
+      {
+        "blocking": true,
+        "guide": "installation",
+        "id": "compiler",
+        "label": "Rust compiler",
+        "message": "Rust compiler is available.",
+        "status": "ready"
+      }
+    ],
+    "schema_version": 1,
+    "snapshot_id": "008531bdb9e2ca1e1de9b49a05b523019c590408dd7865577585a083f5b60e12",
+    "workspace": {
+      "id": "9a562bf9-4d90-40cb-9d5a-eb2ab102020d",
+      "missions": [
+        {
+          "id": "cab5f289-1285-4503-b261-dd2d881ce989",
+          "label": "Moving average",
+          "parent_id": null,
+          "recipe": null,
+          "revision_id": "b3aee477-6154-4cf6-8aa2-0f97408a2f5a"
+        },
+        {
+          "id": "3954ff5d-a2a5-4ef1-a348-876186f0a4cf",
+          "label": "Moving average \u00b7 added regression",
+          "parent_id": "cab5f289-1285-4503-b261-dd2d881ce989",
+          "recipe": "singleton-window-v1",
+          "revision_id": "6569f987-c5d2-4396-ac88-7cbaef209633"
+        }
+      ],
+      "schema_version": 1,
+      "selected_mission_id": "3954ff5d-a2a5-4ef1-a348-876186f0a4cf",
+      "setup": {
+        "exampleRevision": 1,
+        "project": "moving-average",
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "workers": {
+          "mode": "reference"
+        }
+      }
+    }
+  },
+  "review": {
+    "active_command": null,
+    "capabilities": {
+      "commands": [
+        "prepare_agent",
+        "initialize",
+        "run",
+        "resume",
+        "approve",
+        "create_revision"
+      ],
+      "native": false,
+      "native_teams": [],
+      "reference": true
+    },
+    "host": {
+      "epoch": "4874959b-d943-4eb9-a0ed-493f54729289",
+      "operator_version": "0.1.0",
+      "target": "aarch64-macos",
+      "ui_build_id": "workshop-development"
+    },
+    "last_event_sequence": 30,
+    "mission": {
+      "active_role": null,
+      "agents": null,
+      "allowance": {
+        "committed": 6,
+        "remaining": 0,
+        "reserved": 0,
+        "total": 6
+      },
+      "artifacts": [
+        {
+          "digest": "ef18522352796f103aa362148d79890c3caf434c88a59c9fb8c3b665afb5ece3",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "original",
+          "kind": "original",
+          "label": "lib.rs \u00b7 original",
+          "operation_id": null,
+          "status": "available"
+        },
+        {
+          "digest": "c0c80d01e5877c6d4f067926130e4f542f5b734ad3d34959a9dcec04aad6e95f",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "harness",
+          "kind": "harness",
+          "label": "tests.rs",
+          "operation_id": null,
+          "status": "available"
+        },
+        {
+          "digest": "cea65906822fac5001d0fba3789c6fd7a3074b9cd151ce71aa6196af7988efe6",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "candidate",
+          "kind": "candidate",
+          "label": "lib.rs \u00b7 candidate",
+          "operation_id": null,
+          "status": "available"
+        },
+        {
+          "digest": "58492a22381729fbff30ed6a79b139fffec408c2323d4cda39821c482ee8c324",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "test-output",
+          "kind": "test-output",
+          "label": "Test output",
+          "operation_id": "87da9781-8194-45ea-bf98-a8fa79bc5570",
+          "status": "available"
+        },
+        {
+          "digest": null,
+          "digest_scheme": "canonical-json-sha256",
+          "id": "compiler-output",
+          "kind": "compiler-output",
+          "label": "Compiler output",
+          "operation_id": "87da9781-8194-45ea-bf98-a8fa79bc5570",
+          "status": "pending"
+        },
+        {
+          "digest": "0efe25e839e612d96ff28944c0a32467efad8f6a51625342c1c4d66183629f44",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "review",
+          "kind": "review",
+          "label": "Review",
+          "operation_id": null,
+          "status": "available"
+        },
+        {
+          "digest": null,
+          "digest_scheme": "canonical-json-sha256",
+          "id": "published",
+          "kind": "published",
+          "label": "Published lib.rs",
+          "operation_id": null,
+          "status": "pending"
+        }
+      ],
+      "harness_digest": "c0c80d01e5877c6d4f067926130e4f542f5b734ad3d34959a9dcec04aad6e95f",
+      "id": "cab5f289-1285-4503-b261-dd2d881ce989",
+      "input_identity": "7fc4c0af4f73951f4e0ccf8278057b46a27f09fcb7a5ff121dbc72da16bd3cf2",
+      "label": "Moving average",
+      "mode": "reference",
+      "phase": "awaiting_review",
+      "proposal": {
+        "candidate_digest": "cea65906822fac5001d0fba3789c6fd7a3074b9cd151ce71aa6196af7988efe6",
+        "candidate_id": "ac43dca9-3b6e-47c7-a4f8-5e7321599754",
+        "harness_digest": "c0c80d01e5877c6d4f067926130e4f542f5b734ad3d34959a9dcec04aad6e95f",
+        "review_receipt": "252eb375e02e4be3ee0d37bd87fbed6f52157bd97850a9f205988bc108ce6c6c",
+        "source_digest": "ef18522352796f103aa362148d79890c3caf434c88a59c9fb8c3b665afb5ece3",
+        "test_receipt": "cfe36a8f9a88aabb80031c447e2fe369ac8f892e3b360bae05757ba30fad3bc2"
+      },
+      "publication": null,
+      "source_digest": "ef18522352796f103aa362148d79890c3caf434c88a59c9fb8c3b665afb5ece3",
+      "tests": {
+        "candidate_digest": "cea65906822fac5001d0fba3789c6fd7a3074b9cd151ce71aa6196af7988efe6",
+        "checks": [
+          {
+            "name": "incomplete_window_has_no_mean",
+            "status": "passed"
+          },
+          {
+            "name": "ordinary_windows",
+            "status": "passed"
+          },
+          {
+            "name": "rolling_update_matches_wide_reference",
+            "status": "passed"
+          },
+          {
+            "name": "wide_accumulator_preserves_large_means",
+            "status": "passed"
+          },
+          {
+            "name": "zero_window_is_an_error",
+            "status": "passed"
+          }
+        ],
+        "compiler_output": null,
+        "complete": true,
+        "harness_digest": "c0c80d01e5877c6d4f067926130e4f542f5b734ad3d34959a9dcec04aad6e95f",
+        "output": "\nrunning 5 tests\ntest incomplete_window_has_no_mean ... ok\ntest ordinary_windows ... ok\ntest rolling_update_matches_wide_reference ... ok\ntest wide_accumulator_preserves_large_means ... ok\ntest zero_window_is_an_error ... ok\n\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+        "status": "passed"
+      }
+    },
+    "readiness": [
+      {
+        "blocking": true,
+        "guide": "installation",
+        "id": "compiler",
+        "label": "Rust compiler",
+        "message": "Rust compiler is available.",
+        "status": "ready"
+      }
+    ],
+    "schema_version": 1,
+    "snapshot_id": "d7129318e5485d05b77461abac02c89baa1a8f0b91a254a61b9baf1dfe6b08b4",
+    "workspace": {
+      "id": "9a562bf9-4d90-40cb-9d5a-eb2ab102020d",
+      "missions": [
+        {
+          "id": "cab5f289-1285-4503-b261-dd2d881ce989",
+          "label": "Moving average",
+          "parent_id": null,
+          "recipe": null,
+          "revision_id": "b3aee477-6154-4cf6-8aa2-0f97408a2f5a"
+        }
+      ],
+      "schema_version": 1,
+      "selected_mission_id": "cab5f289-1285-4503-b261-dd2d881ce989",
+      "setup": {
+        "exampleRevision": 1,
+        "project": "moving-average",
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "workers": {
+          "mode": "reference"
+        }
+      }
+    }
+  },
+  "ready": {
+    "active_command": null,
+    "capabilities": {
+      "commands": [
+        "prepare_agent",
+        "initialize",
+        "run",
+        "resume",
+        "approve",
+        "create_revision"
+      ],
+      "native": false,
+      "native_teams": [],
+      "reference": true
+    },
+    "host": {
+      "epoch": "4874959b-d943-4eb9-a0ed-493f54729289",
+      "operator_version": "0.1.0",
+      "target": "aarch64-macos",
+      "ui_build_id": "workshop-development"
+    },
+    "last_event_sequence": 1,
+    "mission": {
+      "active_role": null,
+      "agents": null,
+      "allowance": null,
+      "artifacts": [
+        {
+          "digest": "ef18522352796f103aa362148d79890c3caf434c88a59c9fb8c3b665afb5ece3",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "original",
+          "kind": "original",
+          "label": "lib.rs \u00b7 original",
+          "operation_id": null,
+          "status": "available"
+        },
+        {
+          "digest": "c0c80d01e5877c6d4f067926130e4f542f5b734ad3d34959a9dcec04aad6e95f",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "harness",
+          "kind": "harness",
+          "label": "tests.rs",
+          "operation_id": null,
+          "status": "available"
+        },
+        {
+          "digest": null,
+          "digest_scheme": "canonical-json-sha256",
+          "id": "candidate",
+          "kind": "candidate",
+          "label": "lib.rs \u00b7 candidate",
+          "operation_id": null,
+          "status": "pending"
+        },
+        {
+          "digest": null,
+          "digest_scheme": "canonical-json-sha256",
+          "id": "test-output",
+          "kind": "test-output",
+          "label": "Test output",
+          "operation_id": null,
+          "status": "pending"
+        },
+        {
+          "digest": null,
+          "digest_scheme": "canonical-json-sha256",
+          "id": "compiler-output",
+          "kind": "compiler-output",
+          "label": "Compiler output",
+          "operation_id": null,
+          "status": "pending"
+        },
+        {
+          "digest": null,
+          "digest_scheme": "canonical-json-sha256",
+          "id": "review",
+          "kind": "review",
+          "label": "Review",
+          "operation_id": null,
+          "status": "pending"
+        },
+        {
+          "digest": null,
+          "digest_scheme": "canonical-json-sha256",
+          "id": "published",
+          "kind": "published",
+          "label": "Published lib.rs",
+          "operation_id": null,
+          "status": "pending"
+        }
+      ],
+      "harness_digest": "c0c80d01e5877c6d4f067926130e4f542f5b734ad3d34959a9dcec04aad6e95f",
+      "id": "cab5f289-1285-4503-b261-dd2d881ce989",
+      "input_identity": "7fc4c0af4f73951f4e0ccf8278057b46a27f09fcb7a5ff121dbc72da16bd3cf2",
+      "label": "Moving average",
+      "mode": "reference",
+      "phase": "ready",
+      "proposal": null,
+      "publication": null,
+      "source_digest": "ef18522352796f103aa362148d79890c3caf434c88a59c9fb8c3b665afb5ece3",
+      "tests": {
+        "candidate_digest": null,
+        "checks": [],
+        "compiler_output": null,
+        "complete": false,
+        "harness_digest": "c0c80d01e5877c6d4f067926130e4f542f5b734ad3d34959a9dcec04aad6e95f",
+        "output": null,
+        "status": "pending"
+      }
+    },
+    "readiness": [
+      {
+        "blocking": true,
+        "guide": "installation",
+        "id": "compiler",
+        "label": "Rust compiler",
+        "message": "Rust compiler is available.",
+        "status": "ready"
+      }
+    ],
+    "schema_version": 1,
+    "snapshot_id": "cea078fcfa4a25fccd4b63178e0e7a3690314abcb1cfd58e61d35ae5febda6bf",
+    "workspace": {
+      "id": "9a562bf9-4d90-40cb-9d5a-eb2ab102020d",
+      "missions": [
+        {
+          "id": "cab5f289-1285-4503-b261-dd2d881ce989",
+          "label": "Moving average",
+          "parent_id": null,
+          "recipe": null,
+          "revision_id": "b3aee477-6154-4cf6-8aa2-0f97408a2f5a"
+        }
+      ],
+      "schema_version": 1,
+      "selected_mission_id": "cab5f289-1285-4503-b261-dd2d881ce989",
+      "setup": {
+        "exampleRevision": 1,
+        "project": "moving-average",
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "workers": {
+          "mode": "reference"
+        }
+      }
+    }
+  },
+  "published": {
+    "active_command": null,
+    "capabilities": {
+      "commands": [
+        "prepare_agent",
+        "initialize",
+        "run",
+        "resume",
+        "approve",
+        "create_revision"
+      ],
+      "native": false,
+      "native_teams": [],
+      "reference": true
+    },
+    "host": {
+      "epoch": "4874959b-d943-4eb9-a0ed-493f54729289",
+      "operator_version": "0.1.0",
+      "target": "aarch64-macos",
+      "ui_build_id": "workshop-development"
+    },
+    "last_event_sequence": 32,
+    "mission": {
+      "active_role": null,
+      "agents": null,
+      "allowance": {
+        "committed": 6,
+        "remaining": 0,
+        "reserved": 0,
+        "total": 6
+      },
+      "artifacts": [
+        {
+          "digest": "ef18522352796f103aa362148d79890c3caf434c88a59c9fb8c3b665afb5ece3",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "original",
+          "kind": "original",
+          "label": "lib.rs \u00b7 original",
+          "operation_id": null,
+          "status": "available"
+        },
+        {
+          "digest": "c0c80d01e5877c6d4f067926130e4f542f5b734ad3d34959a9dcec04aad6e95f",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "harness",
+          "kind": "harness",
+          "label": "tests.rs",
+          "operation_id": null,
+          "status": "available"
+        },
+        {
+          "digest": "cea65906822fac5001d0fba3789c6fd7a3074b9cd151ce71aa6196af7988efe6",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "candidate",
+          "kind": "candidate",
+          "label": "lib.rs \u00b7 candidate",
+          "operation_id": null,
+          "status": "available"
+        },
+        {
+          "digest": "58492a22381729fbff30ed6a79b139fffec408c2323d4cda39821c482ee8c324",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "test-output",
+          "kind": "test-output",
+          "label": "Test output",
+          "operation_id": "87da9781-8194-45ea-bf98-a8fa79bc5570",
+          "status": "available"
+        },
+        {
+          "digest": null,
+          "digest_scheme": "canonical-json-sha256",
+          "id": "compiler-output",
+          "kind": "compiler-output",
+          "label": "Compiler output",
+          "operation_id": "87da9781-8194-45ea-bf98-a8fa79bc5570",
+          "status": "pending"
+        },
+        {
+          "digest": "0efe25e839e612d96ff28944c0a32467efad8f6a51625342c1c4d66183629f44",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "review",
+          "kind": "review",
+          "label": "Review",
+          "operation_id": null,
+          "status": "available"
+        },
+        {
+          "digest": "cea65906822fac5001d0fba3789c6fd7a3074b9cd151ce71aa6196af7988efe6",
+          "digest_scheme": "canonical-json-sha256",
+          "id": "published",
+          "kind": "published",
+          "label": "Published lib.rs",
+          "operation_id": null,
+          "status": "available"
+        }
+      ],
+      "harness_digest": "c0c80d01e5877c6d4f067926130e4f542f5b734ad3d34959a9dcec04aad6e95f",
+      "id": "cab5f289-1285-4503-b261-dd2d881ce989",
+      "input_identity": "7fc4c0af4f73951f4e0ccf8278057b46a27f09fcb7a5ff121dbc72da16bd3cf2",
+      "label": "Moving average",
+      "mode": "reference",
+      "phase": "published",
+      "proposal": {
+        "candidate_digest": "cea65906822fac5001d0fba3789c6fd7a3074b9cd151ce71aa6196af7988efe6",
+        "candidate_id": "ac43dca9-3b6e-47c7-a4f8-5e7321599754",
+        "harness_digest": "c0c80d01e5877c6d4f067926130e4f542f5b734ad3d34959a9dcec04aad6e95f",
+        "review_receipt": "252eb375e02e4be3ee0d37bd87fbed6f52157bd97850a9f205988bc108ce6c6c",
+        "source_digest": "ef18522352796f103aa362148d79890c3caf434c88a59c9fb8c3b665afb5ece3",
+        "test_receipt": "cfe36a8f9a88aabb80031c447e2fe369ac8f892e3b360bae05757ba30fad3bc2"
+      },
+      "publication": {
+        "candidate_digest": "cea65906822fac5001d0fba3789c6fd7a3074b9cd151ce71aa6196af7988efe6",
+        "destination": "/local/workshop/missions/cab5f289-1285-4503-b261-dd2d881ce989/release"
+      },
+      "source_digest": "ef18522352796f103aa362148d79890c3caf434c88a59c9fb8c3b665afb5ece3",
+      "tests": {
+        "candidate_digest": "cea65906822fac5001d0fba3789c6fd7a3074b9cd151ce71aa6196af7988efe6",
+        "checks": [
+          {
+            "name": "incomplete_window_has_no_mean",
+            "status": "passed"
+          },
+          {
+            "name": "ordinary_windows",
+            "status": "passed"
+          },
+          {
+            "name": "rolling_update_matches_wide_reference",
+            "status": "passed"
+          },
+          {
+            "name": "wide_accumulator_preserves_large_means",
+            "status": "passed"
+          },
+          {
+            "name": "zero_window_is_an_error",
+            "status": "passed"
+          }
+        ],
+        "compiler_output": null,
+        "complete": true,
+        "harness_digest": "c0c80d01e5877c6d4f067926130e4f542f5b734ad3d34959a9dcec04aad6e95f",
+        "output": "\nrunning 5 tests\ntest incomplete_window_has_no_mean ... ok\ntest ordinary_windows ... ok\ntest rolling_update_matches_wide_reference ... ok\ntest wide_accumulator_preserves_large_means ... ok\ntest zero_window_is_an_error ... ok\n\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+        "status": "passed"
+      }
+    },
+    "readiness": [
+      {
+        "blocking": true,
+        "guide": "installation",
+        "id": "compiler",
+        "label": "Rust compiler",
+        "message": "Rust compiler is available.",
+        "status": "ready"
+      }
+    ],
+    "schema_version": 1,
+    "snapshot_id": "0a47b07a7e5d750e6ac9e743cac901c57596f08f864b4d89b64fc36fc012aa93",
+    "workspace": {
+      "id": "9a562bf9-4d90-40cb-9d5a-eb2ab102020d",
+      "missions": [
+        {
+          "id": "cab5f289-1285-4503-b261-dd2d881ce989",
+          "label": "Moving average",
+          "parent_id": null,
+          "recipe": null,
+          "revision_id": "b3aee477-6154-4cf6-8aa2-0f97408a2f5a"
+        }
+      ],
+      "schema_version": 1,
+      "selected_mission_id": "cab5f289-1285-4503-b261-dd2d881ce989",
+      "setup": {
+        "exampleRevision": 1,
+        "project": "moving-average",
+        "schemaVersion": 1,
+        "system": "software-factory",
+        "workers": {
+          "mode": "reference"
+        }
+      }
+    }
+  }
+}

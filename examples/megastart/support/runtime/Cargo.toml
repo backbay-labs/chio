@@ -1,0 +1,17 @@
+[package]
+name = "chio-example-runtime"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1"
+libc = "0.2"
+rustix = { version = "1", features = ["fs"] }
+sha2 = "0.10"
+subtle = "2"
+tokio = { version = "1", features = ["rt", "sync", "time", "signal", "macros"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "test-util"] }

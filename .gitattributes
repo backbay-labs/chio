@@ -12,3 +12,7 @@ releases/audit-reports/*.pdf binary
 
 # Mobile xcframework static archives are generated release artifacts.
 sdks/swift/Frameworks/ChioKernel.xcframework/**/*.a filter=lfs diff=lfs merge=lfs -text
+
+# Embedded workshop assets retain upstream license and generated string bytes.
+examples/megastart/ui/workshop/** whitespace=-blank-at-eol linguist-generated=true
+examples/megastart/frontend/src/assets/workshop/fonts/*-OFL.txt whitespace=-blank-at-eol

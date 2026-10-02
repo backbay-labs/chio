@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "kind": "recorded-reference-outcomes",
+  "qualification": "Recorded reference missions from the source build verified in the release notes. No native-agent execution in these records.",
+  "archiveSha256": "9dcbecec5bf9681c301ffd0bf7a2eeea685ec8b8b5911ac180692f66cf292050",
+  "executableSha256": "91a1ac233d0c6cdb322d40a52ca91e814bd4b7a92abce7f47487255bd3583102",
+  "original": "/// Means for complete windows; accumulation must not overflow for u64 inputs.\npub fn moving_average(values: &[u64], window: usize) -> Result<Vec<u64>, &'static str> {\n    if window > values.len() {\n        return Ok(Vec::new());\n    }\n    let mut sum: u64 = values[..window].iter().copied().sum();\n    let mut output = Vec::with_capacity(values.len() - window + 1);\n    output.push((sum / window as u64) as u64);\n    for index in window..values.len() {\n        sum -= values[index - window] as u64;\n        sum += values[index] as u64;\n        output.push((sum / window as u64) as u64);\n    }\n    Ok(output)\n}\n",
+  "regression": "#[test]\nfn singleton_window_preserves_value() {\n    assert_eq!(moving_average(&[u64::MAX], 1), Ok(vec![u64::MAX]));\n}\n",
+  "runs": [
+    {
+      "id": "baseline",
+      "mode": "reference",
+      "phase": "awaiting_review",
+      "published": false,
+      "candidate": "/// Means for complete windows; accumulation must not overflow for u64 inputs.\npub fn moving_average(values: &[u64], window: usize) -> Result<Vec<u64>, &'static str> {\n    if window == 0 {\n        return Err(\"window must be positive\");\n    }\n    if window > values.len() {\n        return Ok(Vec::new());\n    }\n    let mut sum: u128 = values[..window].iter().map(|&value| u128::from(value)).sum();\n    let mut output = Vec::with_capacity(values.len() - window + 1);\n    output.push((sum / window as u128) as u64);\n    for index in window..values.len() {\n        sum -= u128::from(values[index - window]);\n        sum += u128::from(values[index]);\n        output.push((sum / window as u128) as u64);\n    }\n    Ok(output)\n}\n",
+      "identity": {
+        "candidate": "c79f1e46-1bc8-4d5e-bc43-c0d5c92d7956",
+        "candidate_sha256": "cea65906822fac5001d0fba3789c6fd7a3074b9cd151ce71aa6196af7988efe6",
+        "source_sha256": "ef18522352796f103aa362148d79890c3caf434c88a59c9fb8c3b665afb5ece3",
+        "tests_sha256": "c0c80d01e5877c6d4f067926130e4f542f5b734ad3d34959a9dcec04aad6e95f",
+        "test_receipt": "629119220656582978d61fe468da3bdafe971d311672d4afc5f25dbefd16ef69",
+        "review_receipt": "f1781ae39d3e99dc61ba7ce08c2781d648a994f794e61982679fefb99eadc115"
+      },
+      "tests": [
+        "incomplete_window_has_no_mean",
+        "ordinary_windows",
+        "rolling_update_matches_wide_reference",
+        "wide_accumulator_preserves_large_means",
+        "zero_window_is_an_error"
+      ],
+      "testOutput": "\nrunning 5 tests\ntest incomplete_window_has_no_mean ... ok\ntest ordinary_windows ... ok\ntest rolling_update_matches_wide_reference ... ok\ntest wide_accumulator_preserves_large_means ... ok\ntest zero_window_is_an_error ... ok\n\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+      "immutableTests": true,
+      "testSource": "include!(\"lib.rs\");\n\n#[test]\nfn ordinary_windows() {\n    assert_eq!(moving_average(&[2, 4, 8, 10], 2), Ok(vec![3, 6, 9]));\n}\n#[test]\nfn zero_window_is_an_error() {\n    assert!(moving_average(&[2, 4], 0).is_err());\n    assert!(moving_average(&[], 0).is_err());\n}\n#[test]\nfn incomplete_window_has_no_mean() {\n    assert_eq!(moving_average(&[], 1), Ok(vec![]));\n    assert_eq!(moving_average(&[4], 2), Ok(vec![]));\n}\n#[test]\nfn wide_accumulator_preserves_large_means() {\n    assert_eq!(moving_average(&[u64::MAX; 3], 2), Ok(vec![u64::MAX; 2]));\n}\n#[test]\nfn rolling_update_matches_wide_reference() {\n    let values = [0, u64::MAX, 7, u64::MAX - 1, 2, 10];\n    for window in 1..=values.len() {\n        let expected: Vec<u64> = values\n            .windows(window)\n            .map(|v| (v.iter().map(|&x| u128::from(x)).sum::<u128>() / window as u128) as u64)\n            .collect();\n        assert_eq!(moving_average(&values, window), Ok(expected));\n    }\n}\n"
+    },
+    {
+      "id": "extended",
+      "mode": "reference",
+      "phase": "awaiting_review",
+      "published": false,
+      "candidate": "/// Means for complete windows; accumulation must not overflow for u64 inputs.\npub fn moving_average(values: &[u64], window: usize) -> Result<Vec<u64>, &'static str> {\n    if window == 0 {\n        return Err(\"window must be positive\");\n    }\n    if window > values.len() {\n        return Ok(Vec::new());\n    }\n    let mut sum: u128 = values[..window].iter().map(|&value| u128::from(value)).sum();\n    let mut output = Vec::with_capacity(values.len() - window + 1);\n    output.push((sum / window as u128) as u64);\n    for index in window..values.len() {\n        sum -= u128::from(values[index - window]);\n        sum += u128::from(values[index]);\n        output.push((sum / window as u128) as u64);\n    }\n    Ok(output)\n}\n",
+      "identity": {
+        "candidate": "0fb528a7-4148-4976-9ef8-7b42d449b78e",
+        "candidate_sha256": "cea65906822fac5001d0fba3789c6fd7a3074b9cd151ce71aa6196af7988efe6",
+        "source_sha256": "ef18522352796f103aa362148d79890c3caf434c88a59c9fb8c3b665afb5ece3",
+        "tests_sha256": "790ef4137d80c8f9cd6f905ffa05c03b13f768359f464684d84d3fcc9ece593b",
+        "test_receipt": "de2e2c5c2aef988152269dd21f5cd74d8365a6280d9c24a20d344849c929dfed",
+        "review_receipt": "90e71478f6279fc0fcd22fb8516d3e970468665633b09e80ac75d73262fd9272"
+      },
+      "tests": [
+        "incomplete_window_has_no_mean",
+        "ordinary_windows",
+        "rolling_update_matches_wide_reference",
+        "singleton_window_preserves_value",
+        "wide_accumulator_preserves_large_means",
+        "zero_window_is_an_error"
+      ],
+      "testOutput": "\nrunning 6 tests\ntest incomplete_window_has_no_mean ... ok\ntest ordinary_windows ... ok\ntest rolling_update_matches_wide_reference ... ok\ntest singleton_window_preserves_value ... ok\ntest wide_accumulator_preserves_large_means ... ok\ntest zero_window_is_an_error ... ok\n\ntest result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+      "immutableTests": true,
+      "testSource": "include!(\"lib.rs\");\n\n#[test]\nfn ordinary_windows() {\n    assert_eq!(moving_average(&[2, 4, 8, 10], 2), Ok(vec![3, 6, 9]));\n}\n#[test]\nfn zero_window_is_an_error() {\n    assert!(moving_average(&[2, 4], 0).is_err());\n    assert!(moving_average(&[], 0).is_err());\n}\n#[test]\nfn incomplete_window_has_no_mean() {\n    assert_eq!(moving_average(&[], 1), Ok(vec![]));\n    assert_eq!(moving_average(&[4], 2), Ok(vec![]));\n}\n#[test]\nfn wide_accumulator_preserves_large_means() {\n    assert_eq!(moving_average(&[u64::MAX; 3], 2), Ok(vec![u64::MAX; 2]));\n}\n#[test]\nfn rolling_update_matches_wide_reference() {\n    let values = [0, u64::MAX, 7, u64::MAX - 1, 2, 10];\n    for window in 1..=values.len() {\n        let expected: Vec<u64> = values\n            .windows(window)\n            .map(|v| (v.iter().map(|&x| u128::from(x)).sum::<u128>() / window as u128) as u64)\n            .collect();\n        assert_eq!(moving_average(&values, window), Ok(expected));\n    }\n}\n\n#[test]\nfn singleton_window_preserves_value() {\n    assert_eq!(moving_average(&[u64::MAX], 1), Ok(vec![u64::MAX]));\n}\n"
+    }
+  ]
+}

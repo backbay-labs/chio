@@ -83,7 +83,7 @@ audit-as-crates-io = true
 audit-as-crates-io = true
 
 [policy.chio-cli]
-audit-as-crates-io = true
+audit-as-crates-io = false
 
 [policy.chio-cohere-tools-adapter]
 audit-as-crates-io = true
@@ -577,16 +577,19 @@ version = "1.0.3"
 criteria = "safe-to-deploy"
 
 [[exemptions.aws-lc-fips-sys]]
-version = "0.13.14"
+version = "0.14.2"
 criteria = "safe-to-deploy"
+notes = "Retains the existing bootstrap exemption for the Rustls security update. This exact version has not received a full source audit; remove when an imported or local audit covers it."
 
 [[exemptions.aws-lc-rs]]
-version = "1.16.2"
+version = "1.18.1"
 criteria = "safe-to-deploy"
+notes = "Retains the existing bootstrap exemption for the Rustls security update. This exact version has not received a full source audit; remove when an imported or local audit covers it."
 
 [[exemptions.aws-lc-sys]]
-version = "0.39.1"
+version = "0.45.0"
 criteria = "safe-to-deploy"
+notes = "Retains the existing bootstrap exemption for the Rustls security update. This exact version has not received a full source audit; remove when an imported or local audit covers it."
 
 [[exemptions.aws-sdk-bedrockruntime]]
 version = "1.130.0"
@@ -1030,8 +1033,9 @@ version = "0.6.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.der]]
-version = "0.8.0"
+version = "0.8.2"
 criteria = "safe-to-deploy"
+notes = "Retains the existing bootstrap exemption for the Rustls security update. This exact version has not received a full source audit; remove when an imported or local audit covers it."
 
 [[exemptions.der-parser]]
 version = "10.0.0"
@@ -2430,8 +2434,9 @@ version = "0.1.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.rustls-webpki]]
-version = "0.103.13"
+version = "0.103.15"
 criteria = "safe-to-deploy"
+notes = "Retains the existing bootstrap exemption for the Rustls security update. This exact version has not received a full source audit; remove when an imported or local audit covers it."
 
 [[exemptions.rusty-fork]]
 version = "0.3.1"

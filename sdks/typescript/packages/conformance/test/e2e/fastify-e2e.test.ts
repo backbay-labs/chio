@@ -16,7 +16,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import Fastify from "fastify";
 import http from "node:http";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { chio } from "@chio-protocol/fastify";
 import type { HttpReceipt, EvaluateResponse, Verdict } from "@chio-protocol/node-http";
 import { validateReceiptStructure, assertVerdictMatch } from "../../src/verify.js";
@@ -32,6 +32,7 @@ function createMockSidecar(): {
 } {
   let verdictMode: "allow" | "deny" = "allow";
   let lastReq: unknown = null;
+  let lastReceipt: HttpReceipt | undefined;
 
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -39,10 +40,10 @@ function createMockSidecar(): {
     req.on("end", () => {
       const body = Buffer.concat(chunks).toString("utf-8");
       const parsed = JSON.parse(body);
-      lastReq = parsed;
-
       if (req.url === "/chio/evaluate") {
+        lastReq = parsed;
         const receipt = createMockReceipt(parsed, verdictMode);
+        lastReceipt = receipt;
         const response: EvaluateResponse = {
           verdict: receipt.verdict,
           receipt,
@@ -50,6 +51,25 @@ function createMockSidecar(): {
         };
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(response));
+      } else if (req.url === "/chio/verify") {
+        // A synthetic trusted-sidecar response, not a cryptographic proof.
+        // Accept only the exact receipt this fixture issued for this request.
+        const matches = lastReceipt != null
+          && canonicalJsonString(parsed) === canonicalJsonString(lastReceipt);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          signature_valid: matches,
+          signer_trusted: matches,
+          receipt_id_valid: matches,
+          parameter_hash_valid: matches,
+          receipt_kind: parsed.receipt_kind,
+          boundary_class: parsed.boundary_class,
+          trust_level: parsed.trust_level,
+          result: parsed.verdict.verdict,
+          authorized: matches && parsed.verdict.verdict === "allow",
+          signer_key_hex: parsed.kernel_key,
+          ok: matches,
+        }));
       } else if (req.url === "/chio/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "ok" }));
@@ -103,12 +123,18 @@ function createMockReceipt(
     .digest("hex");
 
   return {
-    id: `receipt-${randomUUID()}`,
+    // Synthetic structural fixture; cryptographic verification is tested separately.
+    id: createHash("sha256").update(canonicalJsonString({ request: chioReq, verdict })).digest("hex"),
     request_id: chioReq.request_id,
     route_pattern: chioReq.route_pattern,
     method: chioReq.method as "GET",
     caller_identity_hash: callerHash,
     verdict,
+    receipt_kind: "mediated_decision",
+    boundary_class: "prevent",
+    tool_origin: "host_executed_provider_reported",
+    redaction_mode: "none",
+    trust_level: "mediated",
     evidence: [
       {
         guard_name: mode === "allow" ? "DefaultPolicyGuard" : "CapabilityGuard",
@@ -263,7 +289,7 @@ describe("Fastify E2E conformance", () => {
     expect(lastReq.caller.auth_method.key_hash).toHaveLength(64);
   });
 
-  it("receipt ID format is valid UUID", async () => {
+  it("receipt ID uses the content-addressed wire format", async () => {
     mock.setVerdictMode("allow");
     const resp = await fastify.inject({
       method: "GET",
@@ -271,8 +297,8 @@ describe("Fastify E2E conformance", () => {
     });
     const receiptId = resp.headers["x-chio-receipt-id"];
     expect(typeof receiptId).toBe("string");
-    // Receipt ID should contain UUID-like characters
-    expect(receiptId).toMatch(/^receipt-[0-9a-f-]+$/);
+    // The current receipt wire contract uses a lowercase SHA-256 identifier.
+    expect(receiptId).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("mock receipt passes structural validation", async () => {
